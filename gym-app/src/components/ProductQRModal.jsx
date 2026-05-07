@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { useTranslation } from 'react-i18next';
 import { signQRPayload } from '../lib/qrSecurity';
 
 /**
@@ -9,6 +10,7 @@ import { signQRPayload } from '../lib/qrSecurity';
  * When scanned by admin, it auto-fills member + product in AdminStore.
  */
 export default function ProductQRModal({ memberId, memberName, gymId, product, onClose }) {
+  const { t } = useTranslation('pages');
   const [signedPayload, setSignedPayload] = useState(null);
 
   const payload = `gym-purchase:${gymId}:${memberId}:${product?.id}`;
@@ -18,6 +20,13 @@ export default function ProductQRModal({ memberId, memberName, gymId, product, o
       signQRPayload(payload).then(setSignedPayload);
     }
   }, [payload, product, memberId]);
+
+  // Lock body scroll while modal is mounted
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   if (!product || !memberId) return null;
 
@@ -32,7 +41,7 @@ export default function ProductQRModal({ memberId, memberName, gymId, product, o
         {/* Close */}
         <button
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t('productQR.close', { defaultValue: 'Close' })}
           className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
         >
           <X size={18} />
@@ -64,7 +73,7 @@ export default function ProductQRModal({ memberId, memberName, gymId, product, o
             {memberName}
           </p>
           <p className="text-[12px] text-[#6B7280] text-center">
-            Show this to staff to log your purchase
+            {t('productQR.showToStaff', { defaultValue: 'Show this to staff to log your purchase' })}
           </p>
         </div>
       </div>

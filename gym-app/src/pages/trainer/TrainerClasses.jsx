@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+// eslint-disable-next-line no-unused-vars
+import { motion } from 'framer-motion';
 import {
   CalendarDays, Users, Clock, Dumbbell, BarChart3, Star, Plus,
   Trash2, Search, Check, UserCheck, X, ChevronRight,
@@ -13,6 +15,12 @@ import logger from '../../lib/logger';
 import { format, addDays, startOfDay } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import UnderlineTabs from '../../components/UnderlineTabs';
+import Skeleton from '../../components/Skeleton';
+import TrainerEmptyState from './components/TrainerEmptyState';
+import { TT, TFont } from './components/designTokens';
+import {
+  TCard, TEyebrow, TPageTitle, TPrimaryButton, TDarkButton, TTabPill,
+} from './components/designPrimitives';
 
 const DAYS_OF_WEEK = [
   { value: 0, labelKey: 'days.sunday' },
@@ -210,6 +218,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
 // ── Tab 1: My Classes ──
 function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
   const [selectedClass, setSelectedClass] = useState(null);
+  const [filter, setFilter] = useState('all'); // all | today | week | past
 
   // Compute next upcoming date for each class
   const getNextDate = (cls) => {
@@ -221,63 +230,143 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
     for (const s of schedules) {
       let diff = s.day_of_week - todayDay;
       if (diff < 0) diff += 7;
-      if (diff === 0) diff = 0; // today counts
       if (diff < minDaysAhead) minDaysAhead = diff;
     }
     if (minDaysAhead > 7) return null;
     return addDays(startOfDay(today), minDaysAhead);
   };
 
+  // Filter classes by tab
+  const todayDow = new Date().getDay();
+  const filtered = classes.filter(cls => {
+    const sch = cls.gym_class_schedules || [];
+    if (filter === 'today') return sch.some(s => s.day_of_week === todayDow);
+    if (filter === 'week') return sch.length > 0;
+    if (filter === 'past') return sch.length === 0;
+    return true;
+  });
+
+  const counts = useMemo(() => {
+    const todayN = classes.filter(c => (c.gym_class_schedules || []).some(s => s.day_of_week === todayDow)).length;
+    const weekN = classes.filter(c => (c.gym_class_schedules || []).length > 0).length;
+    const pastN = classes.filter(c => (c.gym_class_schedules || []).length === 0).length;
+    return { all: classes.length, today: todayN, week: weekN, past: pastN };
+  }, [classes, todayDow]);
+
   return (
     <>
-      {classes.length === 0 ? (
-        <div className="text-center py-16">
-          <CalendarDays size={40} className="mx-auto text-[var(--color-text-muted)] mb-3" />
-          <p className="text-[15px] text-[var(--color-text-muted)]">{t('trainerClasses.noClasses')}</p>
-        </div>
+      {/* Filter pills */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        <TTabPill active={filter === 'all'} onClick={() => setFilter('all')} count={counts.all || null}>
+          {t('trainerClasses.filterAll', 'All')}
+        </TTabPill>
+        <TTabPill active={filter === 'today'} onClick={() => setFilter('today')} count={counts.today || null}>
+          {t('trainerClasses.filterToday', 'Today')}
+        </TTabPill>
+        <TTabPill active={filter === 'week'} onClick={() => setFilter('week')} count={counts.week || null}>
+          {t('trainerClasses.filterThisWeek', 'This week')}
+        </TTabPill>
+        <TTabPill active={filter === 'past'} onClick={() => setFilter('past')} count={counts.past || null}>
+          {t('trainerClasses.filterPast', 'Past')}
+        </TTabPill>
+      </div>
+
+      {filtered.length === 0 ? (
+        <TrainerEmptyState
+          icon={CalendarDays}
+          title={t('trainerClasses.noClasses', 'No classes assigned')}
+          description={t('trainerClasses.emptyDesc', 'Once your gym admin assigns classes to you, they will appear here.')}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {classes.map(cls => {
+          {filtered.map((cls, idx) => {
             const nextDate = getNextDate(cls);
+            const slots = cls.gym_class_schedules?.length || 0;
+            const accent = cls.accent_color || TT.accent;
+            const isToday = (cls.gym_class_schedules || []).some(s => s.day_of_week === todayDow);
             return (
-              <button
+              <motion.button
                 key={cls.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: Math.min(idx * 0.04, 0.4) }}
                 onClick={() => setSelectedClass(cls)}
-                className="w-full bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)] p-3.5 sm:p-4 hover:border-white/12 transition-all text-left group"
+                style={{
+                  width: '100%', padding: 0, border: 'none',
+                  borderRadius: 18, overflow: 'hidden', textAlign: 'left',
+                  background: TT.surface, cursor: 'pointer',
+                  boxShadow: TT.shadow,
+                  display: 'flex', flexDirection: 'column',
+                }}
+                aria-label={cls.name}
               >
-                <div className="flex items-center gap-3">
-                  {cls.image_url ? (
-                    <img src={cls.image_url} alt={cls.name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-[var(--color-border-subtle)]" />
-                  ) : (
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border border-[var(--color-border-subtle)]"
-                      style={{ backgroundColor: (cls.accent_color || '#D4AF37') + '20' }}
-                    >
-                      <CalendarDays size={20} style={{ color: cls.accent_color || '#D4AF37' }} />
+                {/* Image-card top half */}
+                <div style={{
+                  position: 'relative', width: '100%',
+                  aspectRatio: '16 / 9',
+                  background: cls.image_url ? `url(${cls.image_url}) center/cover` : `linear-gradient(135deg, ${accent}33, ${accent}11)`,
+                  borderTopLeftRadius: 18, borderTopRightRadius: 18,
+                }}>
+                  {!cls.image_url && (
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <CalendarDays size={42} style={{ color: accent, opacity: 0.6 }} />
                     </div>
                   )}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-[14px] font-bold text-[var(--color-text-primary)] truncate">{cls.name}</h3>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                      <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
-                        <Clock size={11} /> {cls.duration_minutes} min
+                  {isToday && (
+                    <div style={{
+                      position: 'absolute', top: 10, left: 10,
+                      padding: '4px 10px', borderRadius: 999,
+                      background: TT.accent, color: '#06363B',
+                      fontSize: 10, fontWeight: 800, letterSpacing: 0.6,
+                      textTransform: 'uppercase',
+                    }}>
+                      {t('trainerClasses.filterToday', 'Today')}
+                    </div>
+                  )}
+                </div>
+                {/* Body */}
+                <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div>
+                    <div style={{
+                      fontFamily: TFont.display, fontSize: 16, fontWeight: 800,
+                      color: TT.text, letterSpacing: -0.3, lineHeight: 1.15,
+                    }}>
+                      {cls.name}
+                    </div>
+                    <div style={{
+                      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10,
+                      marginTop: 4,
+                    }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: TT.textSub }}>
+                        <Clock size={11} /> {cls.duration_minutes} {t('trainerClasses.minutesShort', 'min')}
                       </span>
-                      <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: TT.textSub }}>
                         <Users size={11} /> {cls.max_capacity}
                       </span>
-                      <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
-                        <CalendarDays size={11} /> {cls.gym_class_schedules?.length || 0} {t('trainerClasses.slots')}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: TT.textSub }}>
+                        <CalendarDays size={11} /> {slots} {t('trainerClasses.slots')}
                       </span>
                     </div>
-                    {nextDate && (
-                      <p className="text-[10px] text-[var(--color-accent)] mt-1.5 font-medium">
-                        {t('trainerClasses.nextDate')}: {format(nextDate, 'EEE, MMM d', { locale: dateLocale })}
-                      </p>
-                    )}
                   </div>
-                  <ChevronRight size={16} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)] transition-colors flex-shrink-0" />
+                  {nextDate && (
+                    <div style={{ fontSize: 11, color: TT.accent, fontWeight: 700 }}>
+                      {t('trainerClasses.nextDate')}: {format(nextDate, 'EEE, MMM d', { locale: dateLocale })}
+                    </div>
+                  )}
+                  {isToday && (
+                    <TPrimaryButton
+                      style={{ width: '100%', justifyContent: 'center' }}
+                      onClick={(e) => { e.stopPropagation(); setSelectedClass(cls); }}
+                    >
+                      <UserCheck size={13} strokeWidth={2.4} />
+                      {t('trainerClasses.takeAttendance', 'Take attendance')}
+                    </TPrimaryButton>
+                  )}
                 </div>
-              </button>
+              </motion.button>
             );
           })}
         </div>
@@ -377,10 +466,12 @@ function BookingsTab({ classes, t, dateLocale }) {
       {isLoading ? (
         <Spinner label={t('trainerClasses.loading')} />
       ) : Object.keys(grouped).length === 0 ? (
-        <div className="text-center py-12">
-          <Users size={32} className="mx-auto text-[var(--color-text-muted)] mb-2" />
-          <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerClasses.noBookings')}</p>
-        </div>
+        <TrainerEmptyState
+          icon={Users}
+          title={t('trainerClasses.noBookings', 'No bookings yet')}
+          description={t('trainerClasses.noBookingsDesc', 'When members book this day, they will show up here ready to mark attendance.')}
+          compact
+        />
       ) : (
         <div className="space-y-4">
           {Object.entries(grouped).map(([classId, classBookings]) => {
@@ -491,10 +582,11 @@ function AnalyticsTab({ classes, t, dateLocale }) {
 
   if (classes.length === 0) {
     return (
-      <div className="text-center py-16">
-        <BarChart3 size={40} className="mx-auto text-[var(--color-text-muted)] mb-3" />
-        <p className="text-[15px] text-[var(--color-text-muted)]">{t('trainerClasses.noClasses')}</p>
-      </div>
+      <TrainerEmptyState
+        icon={BarChart3}
+        title={t('trainerClasses.noClasses', 'No classes assigned')}
+        description={t('trainerClasses.analyticsEmptyDesc', 'Once you have classes, attendance and rating analytics appear here.')}
+      />
     );
   }
 
@@ -514,10 +606,12 @@ function AnalyticsTab({ classes, t, dateLocale }) {
       {isLoading ? (
         <Spinner label={t('trainerClasses.loading')} />
       ) : !analytics || analytics.total === 0 ? (
-        <div className="text-center py-12">
-          <BarChart3 size={32} className="mx-auto text-[var(--color-text-muted)] mb-2" />
-          <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerClasses.noData')}</p>
-        </div>
+        <TrainerEmptyState
+          icon={BarChart3}
+          title={t('trainerClasses.noData', 'No data yet')}
+          description={t('trainerClasses.noDataDesc', 'Booking and attendance data will appear here once members start booking.')}
+          compact
+        />
       ) : (
         <>
           {/* Attendance rate + avg rating cards */}
@@ -998,7 +1092,7 @@ export default function TrainerClasses() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('gym_classes')
-        .select('*, gym_class_schedules(id, day_of_week, start_time, end_time, capacity_override)')
+        .select('*, gym_class_schedules(id, day_of_week, start_time, end_time, override_capacity)')
         .eq('trainer_id', trainerId)
         .eq('is_active', true)
         .order('name');
@@ -1030,44 +1124,41 @@ export default function TrainerClasses() {
   };
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 py-6 max-w-4xl mx-auto w-full overflow-x-hidden">
-      {/* Header */}
-      <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-3 sm:-mx-4 md:-mx-6 px-3 sm:px-4 md:px-6 py-3 mb-4"
-        style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--color-border-subtle) 50%, transparent)' }}>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>
-          {t('trainerClasses.subtitle')}
-        </p>
-        <div className="flex items-center justify-between">
-          <h1 className="text-[22px] font-black tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
-            {t('trainerClasses.title')}
-          </h1>
-          <button
-            onClick={() => setShowProposeClass(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 font-bold rounded-xl text-[13px] transition-colors min-h-[44px] shrink-0 hover:brightness-110 active:scale-95"
-            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
-          >
-            <Plus size={15} />
-            <span className="hidden sm:inline">{t('trainerClasses.proposeClass', 'Propose New Class')}</span>
+    <div style={{ background: TT.bg, minHeight: '100%', paddingBottom: 100 }}>
+      <div className="max-w-4xl mx-auto" style={{ padding: '14px 16px 24px' }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+          gap: 14, marginBottom: 14,
+        }}>
+          <div>
+            <TEyebrow>
+              {t('trainerClasses.eyebrow', 'Classes · {{count}}', { count: classes.length })}
+            </TEyebrow>
+            <TPageTitle>{t('trainerClasses.title')}</TPageTitle>
+          </div>
+          <TDarkButton onClick={() => setShowProposeClass(true)}>
+            <Plus size={14} strokeWidth={2.4} />
+            <span className="hidden sm:inline">{t('trainerClasses.addClass', '+ Add class')}</span>
             <span className="sm:hidden">{t('trainerClasses.propose', 'Propose')}</span>
-          </button>
+          </TDarkButton>
         </div>
-      </div>
 
-      {/* Tab bar */}
-      <div className="mb-5">
-        <UnderlineTabs
-          tabs={TABS.map(tab => ({ key: tab, label: t(`trainerClasses.${tabKeys[tab]}`) }))}
-          activeIndex={TABS.indexOf(activeTab) >= 0 ? TABS.indexOf(activeTab) : 0}
-          onChange={(i) => setActiveTab(TABS[i])}
-        />
-      </div>
+        {/* Tab bar — sub-tab navigation */}
+        <div style={{ marginBottom: 14 }}>
+          <UnderlineTabs
+            tabs={TABS.map(tab => ({ key: tab, label: t(`trainerClasses.${tabKeys[tab]}`) }))}
+            activeIndex={TABS.indexOf(activeTab) >= 0 ? TABS.indexOf(activeTab) : 0}
+            onChange={(i) => setActiveTab(TABS[i])}
+          />
+        </div>
 
       {/* Loading state */}
       {isLoading && (
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-24 bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)] animate-pulse" />
-          ))}
+        <div className="space-y-3">
+          <Skeleton variant="list-item" />
+          <Skeleton variant="list-item" />
+          <Skeleton variant="list-item" />
         </div>
       )}
 
@@ -1094,6 +1185,7 @@ export default function TrainerClasses() {
           tc={tc}
         />
       )}
+      </div>
     </div>
   );
 }

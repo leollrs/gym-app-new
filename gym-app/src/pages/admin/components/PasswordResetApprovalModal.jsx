@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, ShieldCheck, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
 import { Avatar } from '../../../components/admin';
 import AdminModal from '../../../components/admin/AdminModal';
@@ -14,6 +15,7 @@ import AdminModal from '../../../components/admin/AdminModal';
  * - onComplete: called after approve/deny with the action taken
  */
 export default function PasswordResetApprovalModal({ requestId, onClose, onComplete }) {
+  const { t } = useTranslation('pages');
   const [loading, setLoading] = useState(true);
   const [request, setRequest] = useState(null);
   const [member, setMember] = useState(null);
@@ -35,7 +37,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
           .single();
 
         if (reqErr) throw reqErr;
-        if (!req) throw new Error('Reset request not found.');
+        if (!req) throw new Error(t('admin.passwordResetApproval.errorNotFound', 'Request not found'));
         setRequest(req);
 
         if (req.status !== 'pending') {
@@ -45,7 +47,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
         }
 
         if (new Date(req.expires_at) < new Date()) {
-          setError('This reset request has expired.');
+          setError(t('admin.passwordResetApproval.errorExpired', 'Request has expired'));
           setLoading(false);
           return;
         }
@@ -59,7 +61,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
 
         setMember(prof);
       } catch (err) {
-        setError(err.message || 'Failed to load request.');
+        setError(err.message || t('admin.passwordResetApproval.errorLoad', 'Failed to load request'));
       } finally {
         setLoading(false);
       }
@@ -75,7 +77,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
       setResult('approved');
       onComplete?.('approved');
     } catch (err) {
-      setError(err.message || 'Failed to approve.');
+      setError(err.message || t('admin.passwordResetApproval.errorApprove', 'Failed to approve'));
     } finally {
       setActing(false);
     }
@@ -90,7 +92,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
       setResult('denied');
       onComplete?.('denied');
     } catch (err) {
-      setError(err.message || 'Failed to deny.');
+      setError(err.message || t('admin.passwordResetApproval.errorDeny', 'Failed to deny'));
     } finally {
       setActing(false);
     }
@@ -103,14 +105,14 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
     <AdminModal
       isOpen={true}
       onClose={onClose}
-      title="Password Reset Request"
+      title={t('admin.passwordResetApproval.title', 'Reset password approval')}
       titleIcon={ShieldCheck}
       size="sm"
     >
       {loading ? (
         <div className="flex flex-col items-center justify-center py-10">
           <Loader2 size={24} className="text-[#D4AF37] animate-spin mb-3" />
-          <p className="text-[13px] text-[#6B7280]">Loading request...</p>
+          <p className="text-[13px] text-[#6B7280]">{t('admin.passwordResetApproval.loading', 'Loading…')}</p>
         </div>
       ) : error && !member ? (
         <div className="text-center py-8">
@@ -120,7 +122,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
             onClick={onClose}
             className="px-5 py-2 rounded-xl text-[13px] font-semibold bg-white/6 text-[#9CA3AF] border border-white/8 hover:text-[#E5E7EB] transition-colors whitespace-nowrap"
           >
-            Close
+            {t('admin.passwordResetApproval.close', 'Close')}
           </button>
         </div>
       ) : result ? (
@@ -130,9 +132,9 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/12 border-2 border-emerald-500/30 mx-auto mb-4">
                 <CheckCircle size={32} className="text-emerald-400" />
               </div>
-              <p className="text-[16px] font-bold text-[#E5E7EB]">Reset Approved</p>
+              <p className="text-[16px] font-bold text-[#E5E7EB]">{t('admin.passwordResetApproval.resetApproved', 'Password reset approved')}</p>
               <p className="text-[13px] text-[#6B7280] mt-1">
-                {member?.full_name || 'The member'} can now set a new password.
+                {t('admin.passwordResetApproval.canSetNewPassword', { name: member?.full_name || t('admin.passwordResetApproval.theMember', 'The member'), defaultValue: '{{name}} can now set a new password.' })}
               </p>
             </>
           ) : (
@@ -140,15 +142,15 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-500/12 border-2 border-red-500/30 mx-auto mb-4">
                 <XCircle size={32} className="text-red-400" />
               </div>
-              <p className="text-[16px] font-bold text-[#E5E7EB]">Reset Denied</p>
-              <p className="text-[13px] text-[#6B7280] mt-1">The request has been denied.</p>
+              <p className="text-[16px] font-bold text-[#E5E7EB]">{t('admin.passwordResetApproval.resetDenied', 'Password reset denied')}</p>
+              <p className="text-[13px] text-[#6B7280] mt-1">{t('admin.passwordResetApproval.requestDenied', 'Request denied')}</p>
             </>
           )}
           <button
             onClick={onClose}
             className="mt-5 px-6 py-2.5 rounded-xl text-[13px] font-semibold bg-white/6 text-[#9CA3AF] border border-white/8 hover:text-[#E5E7EB] transition-colors whitespace-nowrap"
           >
-            Close
+            {t('admin.passwordResetApproval.close', 'Close')}
           </button>
         </div>
       ) : (
@@ -157,7 +159,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
           <div className="flex items-center gap-3 bg-[#111827] border border-white/6 rounded-xl p-4 overflow-hidden">
             <Avatar name={member?.full_name} size="lg" src={member?.avatar_url} className="flex-shrink-0" />
             <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-bold text-[#E5E7EB] truncate">{member?.full_name || 'Unknown'}</p>
+              <p className="text-[15px] font-bold text-[#E5E7EB] truncate">{member?.full_name || t('admin.passwordResetApproval.memberUnknown', 'Unknown member')}</p>
               {memberEmail && <p className="text-[12px] text-[#6B7280]">{memberEmail}</p>}
             </div>
           </div>
@@ -166,7 +168,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
           <div className="flex items-center gap-2.5 bg-[#D4AF37]/8 border border-[#D4AF37]/20 rounded-xl px-4 py-3">
             <ShieldCheck size={15} className="text-[#D4AF37] flex-shrink-0" />
             <p className="text-[13px] text-[#D4AF37]">
-              This member is requesting a password reset. Verify their identity before approving.
+              {t('admin.passwordResetApproval.verifyIdentity', 'Verify identity before approving')}
             </p>
           </div>
 
@@ -180,7 +182,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
           {/* Created at */}
           {request?.created_at && (
             <p className="text-[11px] text-[#6B7280] text-center">
-              Requested {new Date(request.created_at).toLocaleString()}
+              {t('admin.passwordResetApproval.requestedAt', { date: new Date(request.created_at).toLocaleString(), defaultValue: 'Requested at {{date}}' })}
             </p>
           )}
 
@@ -196,7 +198,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
               ) : (
                 <CheckCircle size={15} />
               )}
-              Approve
+              {t('admin.passwordResetApproval.approve', 'Approve')}
             </button>
             <button
               onClick={handleDeny}
@@ -208,7 +210,7 @@ export default function PasswordResetApprovalModal({ requestId, onClose, onCompl
               ) : (
                 <XCircle size={15} />
               )}
-              Deny
+              {t('admin.passwordResetApproval.deny', 'Deny')}
             </button>
           </div>
         </div>

@@ -56,6 +56,18 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/**
+ * Constant-time hex string comparison. Used to compare hashed auth tokens
+ * after fetching them from the DB without relying on DB equality (which
+ * is not constant-time and can leak timing information).
+ */
+function timingSafeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
 async function computeHmacSignature(body: string): Promise<string> {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -98,21 +110,57 @@ async function hashAuthToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Verify Apple Wallet auth token against stored profile tokens */
+/** Verify Apple Wallet auth token against stored profile tokens.
+ *
+ * Security: instead of relying on the DB equality (which is not
+ * constant-time and could leak timing information), we narrow the
+ * candidate set when possible (e.g. by serial) and then compare the
+ * stored hashed token against the hashed incoming token in constant
+ * time on the JS side. */
 async function verifyAuthToken(
   req: Request,
   supabase: ReturnType<typeof createClient>,
-  selectFields = 'id, gym_id'
+  selectFields = 'id, gym_id',
+  serial?: string,
 ): Promise<Record<string, unknown> | null> {
   const token = getAuthToken(req);
   if (!token) return null;
   const hashed = await hashAuthToken(token);
-  const { data } = await supabase
+
+  // Always include wallet_auth_token in the SELECT so we can do the
+  // comparison in constant time on the JS side.
+  const fields = selectFields.includes('wallet_auth_token')
+    ? selectFields
+    : `${selectFields}, wallet_auth_token`;
+
+  if (serial) {
+    // Narrow to a single profile by serial — the wallet pass serial
+    // already uniquely identifies the profile, so this returns at most
+    // one candidate row regardless of token value.
+    const { data } = await supabase
+      .from('profiles')
+      .select(fields)
+      .eq('wallet_pass_serial', serial)
+      .maybeSingle();
+    if (!data) return null;
+    const stored = (data as { wallet_auth_token?: string }).wallet_auth_token || '';
+    if (!timingSafeEqualHex(hashed, stored)) return null;
+    return data;
+  }
+
+  // Fallback: pull a bounded set of candidate profiles whose token
+  // matches and apply the constant-time check for defense in depth.
+  const { data: candidates } = await supabase
     .from('profiles')
-    .select(selectFields)
+    .select(fields)
     .eq('wallet_auth_token', hashed)
-    .maybeSingle();
-  return data;
+    .limit(2);
+  if (!candidates || candidates.length === 0) return null;
+  for (const c of candidates) {
+    const stored = (c as { wallet_auth_token?: string }).wallet_auth_token || '';
+    if (timingSafeEqualHex(hashed, stored)) return c as Record<string, unknown>;
+  }
+  return null;
 }
 
 serve(async (req: Request) => {
@@ -220,13 +268,22 @@ serve(async (req: Request) => {
       const authToken = getAuthToken(req);
       if (!authToken && !hmacPassed) return new Response('', { status: 401 });
 
-      // Profile data is required for registration insert (profile_id, gym_id)
+      // Profile data is required for registration insert (profile_id, gym_id).
+      // Scope by serial (which uniquely identifies the profile) and
+      // compare hashed tokens in constant time on the JS side.
       let profile: Record<string, unknown> | null = null;
       if (authToken) {
         const hashedToken = await hashAuthToken(authToken);
-        const { data } = await supabase.from('profiles').select('id, gym_id')
-          .eq('wallet_auth_token', hashedToken).single();
-        profile = data;
+        const { data } = await supabase.from('profiles')
+          .select('id, gym_id, wallet_auth_token')
+          .eq('wallet_pass_serial', serial)
+          .maybeSingle();
+        if (data) {
+          const stored = (data as { wallet_auth_token?: string }).wallet_auth_token || '';
+          if (timingSafeEqualHex(hashedToken, stored)) {
+            profile = data;
+          }
+        }
       }
       if (!profile) return new Response('', { status: 401 });
 
@@ -273,15 +330,18 @@ serve(async (req: Request) => {
       if (!reg) return new Response('', { status: 404 });
 
       // Verify the auth token belongs to the profile that owns this registration
-      // (skip ownership check if HMAC-authenticated — trusted server-to-server call)
+      // (skip ownership check if HMAC-authenticated — trusted server-to-server call).
+      // Scope by profile id (already known from the registration) and compare
+      // hashed tokens in constant time on the JS side.
       if (!hmacPassed) {
         const hashedToken = await hashAuthToken(authToken);
-        const { data: profile } = await supabase.from('profiles').select('id')
-          .eq('wallet_auth_token', hashedToken)
+        const { data: profile } = await supabase.from('profiles')
+          .select('id, wallet_auth_token')
           .eq('id', reg.profile_id)
           .maybeSingle();
 
-        if (!profile) {
+        const stored = (profile as { wallet_auth_token?: string } | null)?.wallet_auth_token || '';
+        if (!profile || !timingSafeEqualHex(hashedToken, stored)) {
           console.warn(`[Wallet] DELETE auth mismatch: device=${deviceId} serial=${serial}`);
           return new Response('', { status: 401 });
         }
@@ -302,13 +362,40 @@ serve(async (req: Request) => {
 
       // Profile data is required to build the pass — auth token must resolve to a profile.
       // HMAC alone is not sufficient here since we need member-specific data.
+      // Scope the SELECT to the relevant profile (by serial for membership
+      // passes, by profile id derived from the prefix for punch cards) and
+      // then compare the hashed token in constant time on the JS side.
       let profile: Record<string, unknown> | null = null;
       if (authToken) {
         const hashedToken = await hashAuthToken(authToken);
-        const { data } = await supabase.from('profiles')
-          .select('id, gym_id, full_name, wallet_auth_token, wallet_pass_serial, qr_code_payload')
-          .eq('wallet_auth_token', hashedToken).single();
-        profile = data;
+        const profileSelect = 'id, gym_id, full_name, wallet_auth_token, wallet_pass_serial, qr_code_payload';
+
+        let candidate: Record<string, unknown> | null = null;
+        if (serial.startsWith('punch-')) {
+          // Punch card serial is `punch-<profileUUID>-<slug>`. The
+          // profileUUID is a 36-char UUID containing dashes, so slice it
+          // by length rather than splitting on '-'.
+          const rest = serial.slice('punch-'.length);
+          const profileId = rest.slice(0, 36);
+          if (profileId) {
+            const { data } = await supabase.from('profiles')
+              .select(profileSelect)
+              .eq('id', profileId)
+              .maybeSingle();
+            candidate = data as Record<string, unknown> | null;
+          }
+        } else {
+          const { data } = await supabase.from('profiles')
+            .select(profileSelect)
+            .eq('wallet_pass_serial', serial)
+            .maybeSingle();
+          candidate = data as Record<string, unknown> | null;
+        }
+
+        if (candidate) {
+          const stored = (candidate as { wallet_auth_token?: string }).wallet_auth_token || '';
+          if (timingSafeEqualHex(hashedToken, stored)) profile = candidate;
+        }
       }
       if (!profile) return new Response('', { status: 401 });
 

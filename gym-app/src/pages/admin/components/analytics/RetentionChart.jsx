@@ -105,8 +105,8 @@ function RetentionChart({ gymId }) {
           <AreaChart data={retentionData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
             <defs>
               <linearGradient id="retentionGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#34D399" stopOpacity={0.15} />
-                <stop offset="100%" stopColor="#34D399" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--color-success)" stopOpacity={0.15} />
+                <stop offset="100%" stopColor="var(--color-success)" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, rgba(255,255,255,0.04))" vertical={false} />
@@ -136,7 +136,7 @@ function RetentionChart({ gymId }) {
                   </div>
                 );
               }}
-              cursor={{ stroke: '#34D399', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.3 }}
+              cursor={{ stroke: 'var(--color-success)', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.3 }}
             />
             <ReferenceLine
               y={BENCHMARKS.retentionRate}
@@ -155,11 +155,11 @@ function RetentionChart({ gymId }) {
             <Area
               type="monotone"
               dataKey="retention"
-              stroke="#34D399"
+              stroke="var(--color-success)"
               strokeWidth={2.5}
               fill="url(#retentionGrad)"
               dot={false}
-              activeDot={{ r: 5, strokeWidth: 2, fill: 'var(--color-bg-card)', stroke: '#34D399' }}
+              activeDot={{ r: 5, strokeWidth: 2, fill: 'var(--color-bg-card)', stroke: 'var(--color-success)' }}
               animationDuration={1000}
               animationEasing="ease-out"
             />

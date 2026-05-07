@@ -61,12 +61,12 @@ async function fetchSummaryData(gymId, summaryMonth) {
 
 // Muted, cohesive stat colors
 const STAT_COLORS = {
-  gold:    '#C9A84C',
-  emerald: '#34D399',
-  blue:    '#7B9EFF',
+  gold:    'var(--color-accent-soft)',
+  emerald: 'var(--color-success)',
+  blue:    'var(--color-info)',
   amber:   '#F0C050',
-  violet:  '#9B8AFB',
-  rose:    '#F87171',
+  violet:  'var(--color-coach)',
+  rose:    'var(--color-danger)',
   teal:    '#5EEAD4',
 };
 

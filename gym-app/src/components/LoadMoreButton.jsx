@@ -1,6 +1,8 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 export default function LoadMoreButton({ hasMore, loading, onLoadMore }) {
+  const { t } = useTranslation('pages');
   if (!hasMore) return null;
   return (
     <div className="flex justify-center py-6">
@@ -14,9 +16,9 @@ export default function LoadMoreButton({ hasMore, loading, onLoadMore }) {
         {loading ? (
           <span className="flex items-center gap-2">
             <span className="w-4 h-4 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-            Loading…
+            {t('loadMore.loading', { defaultValue: 'Loading…' })}
           </span>
-        ) : 'Load more'}
+        ) : t('loadMore.loadMore', { defaultValue: 'Load more' })}
       </button>
     </div>
   );

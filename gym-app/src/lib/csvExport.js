@@ -20,9 +20,17 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
+// Cells that begin with `=`, `+`, `-`, `@`, tab, or carriage return are interpreted
+// as formulas by Excel/Sheets/LibreOffice. Prefix with a single quote to neutralize.
+// Reference: OWASP "CSV Injection".
+const FORMULA_PREFIX_RE = /^[=+\-@\t\r]/;
+
 function escapeCSV(value) {
   if (value == null) return '';
-  const str = String(value);
+  let str = String(value);
+  if (FORMULA_PREFIX_RE.test(str)) {
+    str = `'${str}`;
+  }
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
   }

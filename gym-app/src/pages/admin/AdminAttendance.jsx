@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend,
@@ -18,15 +18,13 @@ import {
   PageHeader,
   StatCard,
   AdminCard,
-  FilterBar,
   FadeIn,
-  SectionLabel,
   CardSkeleton,
   ErrorCard,
 } from '../../components/admin';
 
 const DAY_KEYS = ['dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 'daySun'];
-const HOURS = Array.from({ length: 16 }, (_, i) => i + 6); // 6am-9pm
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 6); // 6am-8pm (15 hours)
 
 const PERIOD_OPTIONS = [
   { key: '14', label: '14d' },
@@ -50,7 +48,9 @@ export default function AdminAttendance() {
   // ── Fetch attendance data ──
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: [...adminKeys.attendance(gymId), period],
+    enabled: !!gymId,
     queryFn: async () => {
+      if (!gymId) return { sessions: [], checkIns: [] };
       const from = subDays(new Date(), parseInt(period)).toISOString();
 
       const [{ data: sessions }, { data: checkIns }] = await Promise.all([
@@ -98,7 +98,11 @@ export default function AdminAttendance() {
         avgPerDay: (checkInList.length / days).toFixed(1),
       };
 
-      // Heatmap
+      // Heatmap — strictly check-ins. Previous behavior silently fell back to
+      // workout sessions when there were no check-ins, but the heatmap label says
+      // "Peak Hours" and admins were seeing workout data presented as check-in
+      // data. If there are no check-ins, the heatmap stays empty (and the empty
+      // state in the UI surfaces that honestly).
       const heat = {};
       checkInList.forEach(c => {
         const d = new Date(c.checked_in_at);
@@ -107,15 +111,6 @@ export default function AdminAttendance() {
         const key = `${dayIndex}-${d.getHours()}`;
         heat[key] = (heat[key] || 0) + 1;
       });
-      if (checkInList.length === 0) {
-        sessionList.forEach(s => {
-          const d = new Date(s.started_at);
-          const day = d.getDay();
-          const dayIndex = (day === 0) ? 6 : day - 1;
-          const key = `${dayIndex}-${d.getHours()}`;
-          heat[key] = (heat[key] || 0) + 1;
-        });
-      }
 
       // Compute deltas: compare second half of period to first half
       const midpoint = Math.floor(interval.length / 2);
@@ -149,7 +144,6 @@ export default function AdminAttendance() {
 
       return { dailyData, summaryStats, heatmap: heat, deltas, peakSummary };
     },
-    enabled: !!gymId,
   });
 
   const dailyData = data?.dailyData ?? [];
@@ -162,25 +156,34 @@ export default function AdminAttendance() {
   const formatDelta = (val) => {
     if (val === 0) return null;
     const arrow = val > 0 ? '\u2191' : '\u2193';
-    return `${arrow} ${Math.abs(val)}% vs prev`;
+    return `${arrow} ${Math.abs(val)}% ${t('admin.attendance.vsPrev', 'vs prev')}`;
   };
 
   const peakLabel = peakSummary
     ? (() => {
         const dayName = DAYS[peakSummary.dayIdx] || '';
         const h = peakSummary.hour;
-        const hourStr = `${h > 12 ? h - 12 : h}${h >= 12 ? 'pm' : 'am'}`;
-        return `${t('admin.attendance.peak', 'Peak')}: ${dayName} ${hourStr} (${peakSummary.count} ${t('admin.attendance.checkins', 'check-ins')})`;
+        const hourStr = `${h > 12 ? h - 12 : h}${h >= 12 ? t('admin.attendance.pm', 'pm') : t('admin.attendance.am', 'am')}`;
+        return `${t('admin.attendance.peak', 'Peak')} ${dayName} ${hourStr}`;
       })()
     : null;
 
-  const heatColor = (val) => {
-    if (!val) return 'bg-white/4';
+  // Heat intensity bucket (0..4)
+  const heatBucket = (val) => {
+    if (!val) return 0;
     const intensity = val / maxHeat;
-    if (intensity > 0.75) return 'bg-[#D4AF37]';
-    if (intensity > 0.5)  return 'bg-[#D4AF37]/70';
-    if (intensity > 0.25) return 'bg-[#D4AF37]/35';
-    return 'bg-[#D4AF37]/15';
+    if (intensity > 0.75) return 4;
+    if (intensity > 0.5)  return 3;
+    if (intensity > 0.25) return 2;
+    return 1;
+  };
+
+  const heatBg = (bucket) => {
+    if (bucket === 0) return 'var(--color-admin-panel)';
+    if (bucket === 1) return 'color-mix(in srgb, var(--color-accent) 18%, transparent)';
+    if (bucket === 2) return 'color-mix(in srgb, var(--color-accent) 38%, transparent)';
+    if (bucket === 3) return 'color-mix(in srgb, var(--color-accent) 65%, transparent)';
+    return 'var(--color-accent)';
   };
 
   const handleExport = () => {
@@ -200,30 +203,42 @@ export default function AdminAttendance() {
       <PageHeader
         title={t('admin.attendance.title', 'Attendance')}
         subtitle={t('admin.attendance.subtitle', 'Check-ins and workout activity')}
-      />
-
-      {/* Period filter + Export */}
-      <FadeIn>
-        <div className="mt-5 mb-5 flex items-center gap-1.5 flex-wrap">
-          <FilterBar
-            options={PERIOD_OPTIONS}
-            active={period}
-            onChange={setPeriod}
-          />
+        actions={
           <button
             onClick={handleExport}
-            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors min-h-[44px]"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-colors min-h-[44px]"
+            style={{
+              border: '1px solid var(--color-admin-border)',
+              color: 'var(--color-admin-text-sub)',
+              background: 'var(--color-bg-card)',
+            }}
             aria-label={t('admin.attendance.export', 'Export CSV')}
           >
             <Download size={13} />
             {t('admin.attendance.export', 'Export')}
           </button>
+        }
+      />
+
+      {/* Period filter row */}
+      <FadeIn>
+        <div className="mt-5 mb-5 flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1 md:mx-0 md:px-0 md:flex-wrap md:overflow-visible">
+          {PERIOD_OPTIONS.map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => setPeriod(opt.key)}
+              className={`admin-pill flex-shrink-0 ${period === opt.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
+              style={{ cursor: 'pointer', minHeight: 44, padding: '0 16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {t(`admin.attendance.periodLabel.${opt.key}`, opt.label)}
+            </button>
+          ))}
         </div>
       </FadeIn>
 
       {isLoading ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3">
             {[0, 1, 2, 3].map(i => <CardSkeleton key={i} h="h-[90px]" />)}
           </div>
           <CardSkeleton h="h-[260px]" />
@@ -234,12 +249,15 @@ export default function AdminAttendance() {
       ) : (
         <>
           {/* KPI row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <span className="admin-eyebrow block mb-2">
+            {t('admin.attendance.atAGlance', 'LAST ' + period + ' DAYS')}
+          </span>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-5">
             <StatCard
               label={t('admin.attendance.totalCheckins', 'Total Check-ins')}
               value={summaryStats.totalCheckins}
               sub={formatDelta(deltas.checkins)}
-              borderColor="#8B5CF6"
+              borderColor="var(--color-coach)"
               icon={CalendarCheck}
               delay={0}
             />
@@ -247,21 +265,21 @@ export default function AdminAttendance() {
               label={t('admin.attendance.totalWorkouts', 'Total Workouts')}
               value={summaryStats.totalWorkouts}
               sub={formatDelta(deltas.workouts)}
-              borderColor="#D4AF37"
+              borderColor="var(--color-accent)"
               icon={Dumbbell}
               delay={0.05}
             />
             <StatCard
               label={t('admin.attendance.uniqueVisitors', 'Unique Visitors')}
               value={summaryStats.uniqueVisitors}
-              borderColor="#10B981"
+              borderColor="var(--color-success)"
               icon={Users}
               delay={0.1}
             />
             <StatCard
               label={t('admin.attendance.avgPerDay', 'Avg Check-ins / Day')}
               value={summaryStats.avgPerDay}
-              borderColor="#60A5FA"
+              borderColor="var(--color-info)"
               icon={Flame}
               delay={0.15}
             />
@@ -269,49 +287,57 @@ export default function AdminAttendance() {
 
           {/* Daily activity trend chart */}
           <FadeIn delay={0.1}>
-            <AdminCard hover padding="p-5" className="mb-5">
-              <SectionLabel icon={TrendingUp} className="mb-4">
-                {t('admin.attendance.dailyActivity', 'Daily Activity')}
-              </SectionLabel>
+            <AdminCard hover padding="p-3 sm:p-4 md:p-5" className="mb-5">
+              <div className="flex items-start justify-between mb-4 gap-3">
+                <div>
+                  <h3 className="admin-page-title text-[17px] mb-1" style={{ letterSpacing: '-0.01em' }}>
+                    {t('admin.attendance.dailyActivity', 'Daily Activity')}
+                  </h3>
+                  <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                    {t('admin.attendance.dailySubtitle', 'Check-ins and workouts over last {{period}} days', { period })}
+                  </p>
+                </div>
+                <TrendingUp size={16} style={{ color: 'var(--color-admin-text-muted)' }} />
+              </div>
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={dailyData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <CartesianGrid strokeDasharray="3 4" stroke="var(--color-admin-border)" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tick={{ fontSize: 10, fill: 'var(--color-admin-text-muted)' }}
                     tickLine={false}
                     axisLine={false}
                     interval={Math.floor(dailyData.length / 6)}
                   />
                   <YAxis
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tick={{ fontSize: 10, fill: 'var(--color-admin-text-muted)' }}
                     tickLine={false}
                     axisLine={false}
                     allowDecimals={false}
                   />
-                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#D4AF37', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--color-accent)', strokeWidth: 1, strokeDasharray: '4 4' }} />
                   <Legend
                     iconType="circle"
                     iconSize={8}
-                    wrapperStyle={{ fontSize: 11, color: '#9CA3AF', paddingTop: 8 }}
+                    wrapperStyle={{ fontSize: 11, color: 'var(--color-admin-text-muted)', paddingTop: 8 }}
                   />
                   <Line
                     type="monotone"
                     dataKey="checkins"
                     name={t('admin.attendance.checkins', 'Check-ins')}
-                    stroke="#8B5CF6"
-                    strokeWidth={2}
+                    stroke="var(--color-coach)"
+                    strokeWidth={2.5}
                     dot={false}
-                    activeDot={{ r: 5, strokeWidth: 2, fill: '#8B5CF6' }}
+                    activeDot={{ r: 5, strokeWidth: 2, fill: 'var(--color-coach)' }}
                   />
                   <Line
                     type="monotone"
                     dataKey="workouts"
                     name={t('admin.attendance.workoutsLabel', 'Workouts')}
-                    stroke="#D4AF37"
-                    strokeWidth={2}
+                    stroke="var(--color-warning)"
+                    strokeWidth={2.5}
                     dot={false}
-                    activeDot={{ r: 5, strokeWidth: 2, fill: '#D4AF37' }}
+                    activeDot={{ r: 5, strokeWidth: 2, fill: 'var(--color-warning)' }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -320,56 +346,84 @@ export default function AdminAttendance() {
 
           {/* Peak hours heatmap */}
           <FadeIn delay={0.2}>
-            <AdminCard hover padding="p-5" className="overflow-x-auto">
-              <SectionLabel icon={CalendarCheck} className="mb-1">
-                {t('admin.attendance.peakHours', 'Peak Hours')}
-              </SectionLabel>
-              <div className="flex items-center gap-3 mb-4 ml-6 flex-wrap">
-                <p className="text-[11px] text-[#6B7280]">
-                  {t('admin.attendance.basedOn', 'Based on gym check-ins')}
-                </p>
+            <AdminCard hover padding="p-3 sm:p-4 md:p-5" className="overflow-x-auto">
+              <div className="flex items-start justify-between mb-4 gap-3">
+                <div>
+                  <h3 className="admin-page-title text-[17px] mb-1" style={{ letterSpacing: '-0.01em' }}>
+                    {t('admin.attendance.peakHours', 'Peak Hours')}
+                  </h3>
+                  <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                    {peakLabel || t('admin.attendance.basedOn', 'Based on gym check-ins')}
+                  </p>
+                </div>
                 {peakLabel && (
-                  <span className="text-[11px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 px-2.5 py-0.5 rounded-full">
-                    {peakLabel}
+                  <span className="admin-pill admin-pill--coach">
+                    {peakLabel.toUpperCase()}
                   </span>
                 )}
               </div>
               <div className="min-w-[520px] md:min-w-0">
-                {/* Hour labels */}
-                <div className="flex mb-1.5 ml-10">
+                <div
+                  className="grid gap-[3px]"
+                  style={{ gridTemplateColumns: `40px repeat(${HOURS.length}, 1fr)` }}
+                >
+                  <div />
                   {HOURS.map(h => (
-                    <div key={h} className="flex-1 text-center text-[9px] text-[#4B5563]">
-                      {h % 3 === 0 ? `${h > 12 ? h - 12 : h}${h >= 12 ? 'p' : 'a'}` : ''}
+                    <div
+                      key={`h-${h}`}
+                      className="text-center admin-mono"
+                      style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--color-admin-text-muted)' }}
+                    >
+                      {`${h > 12 ? h - 12 : h}${h >= 12 ? t('admin.attendance.pmShort', 'p') : t('admin.attendance.amShort', 'a')}`}
                     </div>
                   ))}
-                </div>
-                {/* Grid */}
-                {DAYS.map((day, di) => (
-                  <div key={day} className="flex items-center mb-1">
-                    <span className="w-10 text-[10px] text-[#6B7280] flex-shrink-0">{day}</span>
-                    {HOURS.map(h => {
-                      const val = heatmap[`${di}-${h}`] || 0;
-                      return (
-                        <div key={h} className="flex-1 px-0.5">
+                  {DAYS.map((day, di) => (
+                    <Fragment key={`row-${di}`}>
+                      <div
+                        className="flex items-center"
+                        style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-admin-text-muted)' }}
+                      >
+                        {day}
+                      </div>
+                      {HOURS.map(h => {
+                        const val = heatmap[`${di}-${h}`] || 0;
+                        const bucket = heatBucket(val);
+                        return (
                           <div
-                            className={`h-6 rounded-[3px] transition-colors ${heatColor(val)}`}
+                            key={`${di}-${h}`}
                             title={`${day} ${h}:00 — ${val} ${t('admin.attendance.checkins', 'check-ins')}`}
+                            style={{
+                              height: 26,
+                              background: heatBg(bucket),
+                              borderRadius: 4,
+                              transition: 'background 0.15s',
+                            }}
                           />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-                {/* Legend */}
-                <div className="flex items-center gap-2 mt-3 justify-end">
-                  <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.less', 'Less')}</span>
-                  {[0, 0.25, 0.5, 0.75, 1].map(v => (
-                    <div key={v} className={`w-5 h-4 rounded-[3px] ${
-                      v === 0 ? 'bg-white/4' : v <= 0.25 ? 'bg-[#D4AF37]/15' : v <= 0.5 ? 'bg-[#D4AF37]/35' : v <= 0.75 ? 'bg-[#D4AF37]/70' : 'bg-[#D4AF37]'
-                    }`} />
+                        );
+                      })}
+                    </Fragment>
                   ))}
-                  <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.more', 'More')}</span>
-                  <span className="text-[10px] text-[#4B5563] ml-1 tabular-nums">({t('admin.attendance.max', 'max')}: {maxHeat})</span>
+                </div>
+
+                {/* Legend */}
+                <div
+                  className="flex items-center gap-1.5 mt-3 justify-end"
+                  style={{ fontSize: 10.5, color: 'var(--color-admin-text-muted)', fontWeight: 600 }}
+                >
+                  <span>{t('admin.attendance.less', 'Less')}</span>
+                  {[0, 1, 2, 3, 4].map(b => (
+                    <span
+                      key={b}
+                      style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: 3,
+                        background: heatBg(b),
+                        display: 'inline-block',
+                      }}
+                    />
+                  ))}
+                  <span>{t('admin.attendance.more', 'More')}</span>
                 </div>
               </div>
             </AdminCard>

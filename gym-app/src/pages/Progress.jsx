@@ -7,8 +7,14 @@ import ProgressOverview from './progress/ProgressOverview';
 import ProgressBody from './progress/ProgressBody';
 import Skeleton from '../components/Skeleton';
 
-const PersonalRecords = lazy(() => import('./PersonalRecords'));
-const Nutrition = lazy(() => import('./Nutrition'));
+// Preload sub-tab chunks so switching tabs is instant
+const personalRecordsImport = () => import('./PersonalRecords');
+const nutritionImport = () => import('./Nutrition');
+if (typeof window !== 'undefined') {
+  setTimeout(() => { personalRecordsImport(); nutritionImport(); }, 1000);
+}
+const PersonalRecords = lazy(personalRecordsImport);
+const Nutrition = lazy(nutritionImport);
 
 const TAB_KEYS = ['overview', 'body', 'records', 'nutrition'];
 
@@ -62,11 +68,11 @@ export default function Progress() {
   return (
     <div className="bg-[var(--color-bg-primary)]">
       {/* Sticky header */}
-      <div className="sticky top-0 z-30 backdrop-blur-2xl bg-[var(--color-bg-primary)]/95 border-b border-white/6">
-        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 md:px-6 pt-3 pb-3" data-tour="tour-progress-page">
+      <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}>
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 md:px-6 pt-3" data-tour="tour-progress-page">
           <h1
-            className="text-[22px] font-black text-[var(--color-text-primary)] mb-3 truncate"
-            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+            className="mb-3 truncate"
+            style={{ fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontSize: 28, fontWeight: 800, letterSpacing: -1, lineHeight: 1, color: 'var(--color-text-primary)' }}
           >
             {t('progress.title')}
           </h1>
@@ -83,10 +89,17 @@ export default function Progress() {
       {/* Tab content (swipeable) */}
       <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 md:px-6 pt-5 pb-28 md:pb-12">
         <SwipeableTabView activeIndex={tabIndex} onChangeIndex={handleSwipe} tabKeys={TAB_KEYS}>
-          <div>{loadedTabs.has('overview') && <ProgressOverview />}</div>
-          <div>{loadedTabs.has('body') && <ProgressBody />}</div>
-          <div>{loadedTabs.has('records') && <Suspense fallback={<Skeleton variant="card" count={4} />}><PersonalRecords embedded /></Suspense>}</div>
-          <div>{loadedTabs.has('nutrition') && <Suspense fallback={<Skeleton variant="card" count={4} />}><Nutrition embedded /></Suspense>}</div>
+          {/*
+            Each tab, once loaded, stays mounted for the lifetime of the Progress
+            page. Keeping them mounted preserves their React state + in-flight
+            queries so switching tabs doesn't re-trigger loading skeletons.
+            SwipeableTabView already hides inactive panels via visibility:hidden,
+            so there's no visual bleed.
+          */}
+          <div>{loadedTabs.has('overview') ? <ProgressOverview /> : null}</div>
+          <div>{loadedTabs.has('body') ? <ProgressBody /> : null}</div>
+          <div>{loadedTabs.has('records') ? <Suspense fallback={<Skeleton variant="card" count={4} />}><PersonalRecords embedded /></Suspense> : null}</div>
+          <div>{loadedTabs.has('nutrition') ? <Suspense fallback={<Skeleton variant="card" count={4} />}><Nutrition embedded /></Suspense> : null}</div>
         </SwipeableTabView>
       </div>
     </div>

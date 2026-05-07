@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Flame, Clock, Dumbbell, ChevronRight, RefreshCw, Sparkles, Zap, Play } from 'lucide-react';
@@ -27,8 +27,8 @@ const MUSCLE_COLORS = {
   Calves:    'bg-teal-500/20 text-teal-400',
 };
 
-export default function GymWOD() {
-  const { t } = useTranslation('pages');
+function GymWOD() {
+  const { t, i18n } = useTranslation('pages');
   const { user, profile } = useAuth();
   const navigate = useNavigate();
 
@@ -124,7 +124,7 @@ export default function GymWOD() {
           setWod(inserted);
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to load workout');
+        if (!cancelled) setError(err.message || t('gymWOD.loadFailed', 'Failed to load workout'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -258,7 +258,7 @@ export default function GymWOD() {
 
       navigate(`/session/${routine.id}`);
     } catch (err) {
-      setError(err.message || 'Failed to start workout');
+      setError(err.message || t('gymWOD.startFailed', 'Failed to start workout'));
       setSaving(false);
     }
   };
@@ -319,70 +319,154 @@ export default function GymWOD() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="bg-[var(--color-bg-card)] rounded-[14px] border border-white/8 overflow-hidden">
-      {/* Header — always visible, tap to expand/collapse */}
+    <div
+      className="overflow-hidden"
+      style={{
+        background: 'var(--color-bg-card)',
+        borderRadius: 18,
+        border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',
+        boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 6px 18px rgba(15,20,25,0.04)',
+      }}
+    >
+      {/* Header */}
       <button
         type="button"
         onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center justify-between p-4 text-left active:bg-white/[0.02] transition-colors"
+        className="w-full flex items-center justify-between text-left transition-colors"
+        style={{ padding: '14px 16px' }}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <Flame className="w-5 h-5 text-orange-400 flex-shrink-0" />
-          <div className="min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className="flex items-center justify-center shrink-0"
+            style={{
+              width: 38, height: 38, borderRadius: 12,
+              background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',
+            }}
+          >
+            <Flame size={18} strokeWidth={2.4} style={{ color: 'var(--color-accent)' }} />
+          </div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="text-[var(--color-text-primary)] font-semibold text-sm tracking-wide truncate">
+              <p
+                className="uppercase truncate"
+                style={{
+                  fontSize: 10.5, fontWeight: 800, letterSpacing: '0.14em',
+                  color: 'var(--color-accent)',
+                }}
+              >
                 {t('gymWOD.title')}
-              </h3>
+              </p>
               {isNew && (
-                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-[9px] font-bold uppercase tracking-wider">
+                <span
+                  className="flex items-center gap-0.5 uppercase"
+                  style={{
+                    padding: '2px 6px', borderRadius: 999,
+                    background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                    color: 'var(--color-accent)',
+                    fontSize: 9, fontWeight: 800, letterSpacing: 0.8,
+                  }}
+                >
                   <Zap className="w-2.5 h-2.5" />
                   {t('gymWOD.new')}
                 </span>
               )}
             </div>
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t(`gymWOD.themes.${wod.theme.replace(/[^a-zA-Z]/g, '_').toLowerCase()}`, wod.theme)} · ~{wod.estimated_duration} min
+            <p
+              className="truncate"
+              style={{
+                fontFamily: '"Archivo", "Familjen Grotesk", system-ui',
+                fontSize: 16, fontWeight: 800, letterSpacing: -0.3,
+                color: 'var(--color-text-primary)',
+                marginTop: 2, lineHeight: 1.2,
+              }}
+            >
+              {t(`gymWOD.themes.${wod.theme.replace(/[^a-zA-Z]/g, '_').toLowerCase()}`, wod.theme)}
+            </p>
+            <p
+              style={{
+                fontSize: 11, fontWeight: 700,
+                color: 'var(--color-text-muted)',
+                marginTop: 2,
+              }}
+            >
+              ~{wod.estimated_duration} {t('dashboard.min', 'min')}
             </p>
           </div>
         </div>
-        <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
+        <ChevronRight
+          className={`w-4 h-4 shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+          style={{ color: 'var(--color-text-muted)' }}
+        />
       </button>
 
       {/* Collapsible body */}
       {expanded && (
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4" style={{ borderTop: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))' }}>
           {/* Meta: difficulty + muscle pills */}
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${DIFFICULTY_STYLES[wod.difficulty] || ''}`}>
+          <div className="flex flex-wrap items-center gap-1.5 pt-3 mb-4">
+            <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase tracking-wider ${DIFFICULTY_STYLES[wod.difficulty] || ''}`}>
               {t(`gymWOD.difficulty.${wod.difficulty}`)}
             </span>
-            {muscleGroups.slice(0, 4).map(muscle => (
+            {muscleGroups.map(muscle => (
               <span
                 key={muscle}
-                className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${MUSCLE_COLORS[muscle] || 'bg-white/10 text-[var(--color-text-muted)]'}`}
+                className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase tracking-wider ${MUSCLE_COLORS[muscle] || 'bg-white/10 text-[var(--color-text-muted)]'}`}
               >
-                {muscle}
+                {t(`muscleGroups.${muscle}`, muscle)}
               </span>
             ))}
           </div>
 
           {/* Exercise list */}
-          <div className="space-y-2 mb-4">
+          <div className="space-y-2.5 mb-2">
             {exercises.map((ex, idx) => {
               const exerciseData = getExerciseById(ex.exerciseId);
-              const name = exerciseData?.name || ex.exerciseId;
+              const name = (i18n.language === 'es' && exerciseData?.name_es) ? exerciseData.name_es : (exerciseData?.name || ex.exerciseId);
               return (
-                <div key={ex.exerciseId} className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    <span className="text-xs text-[var(--color-text-subtle)] font-mono mt-0.5 w-4 shrink-0 text-right">{idx + 1}</span>
+                <div
+                  key={ex.exerciseId}
+                  className="flex items-center justify-between gap-3"
+                  style={{
+                    padding: '10px 12px', borderRadius: 12,
+                    background: 'var(--color-surface-hover, rgba(255,255,255,0.03))',
+                  }}
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span
+                      className="shrink-0 text-center tabular-nums"
+                      style={{
+                        width: 22, height: 22, borderRadius: 6,
+                        background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                        color: 'var(--color-accent)',
+                        fontSize: 11, fontWeight: 800, lineHeight: '22px',
+                      }}
+                    >
+                      {idx + 1}
+                    </span>
                     <div className="min-w-0">
-                      <p className="text-sm text-[var(--color-text-primary)] font-medium truncate">{name}</p>
+                      <p
+                        className="truncate"
+                        style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text-primary)' }}
+                      >
+                        {name}
+                      </p>
                       {exerciseData?.muscle && (
-                        <p className="text-[11px] text-[var(--color-text-subtle)] leading-snug mt-0.5">{exerciseData.muscle}</p>
+                        <p style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 1 }}>
+                          {t(`muscleGroups.${exerciseData.muscle}`, exerciseData.muscle)}
+                        </p>
                       )}
                     </div>
                   </div>
-                  <span className="text-xs text-[var(--color-text-muted)] font-medium whitespace-nowrap shrink-0 mt-0.5">{ex.sets} x {ex.reps}</span>
+                  <span
+                    className="whitespace-nowrap shrink-0 tabular-nums"
+                    style={{
+                      fontFamily: '"Archivo", "Familjen Grotesk", system-ui',
+                      fontSize: 13, fontWeight: 800, color: 'var(--color-text-primary)',
+                      letterSpacing: -0.2,
+                    }}
+                  >
+                    {ex.sets} × {ex.reps}
+                  </span>
                 </div>
               );
             })}
@@ -390,41 +474,55 @@ export default function GymWOD() {
         </div>
       )}
 
-      {/* CTA area — always visible */}
+      {/* CTA area */}
       <div className="px-4 pb-4">
         {wodCompleted ? (
-          /* Already completed today */
-          <div className="w-full flex items-center justify-center gap-2 font-semibold text-sm py-3 rounded-xl" style={{ backgroundColor: 'color-mix(in srgb, #10B981 10%, var(--color-bg-card))', color: '#10B981' }}>
-            <span className="text-[14px]">✓</span>
+          <div
+            className="w-full flex items-center justify-center gap-2"
+            style={{
+              padding: '12px', borderRadius: 14,
+              background: 'rgba(16,185,129,0.12)',
+              border: '1px solid rgba(16,185,129,0.28)',
+              color: '#10B981',
+              fontWeight: 800, fontSize: 13, letterSpacing: 0.2,
+            }}
+          >
+            <span style={{ fontSize: 14 }}>✓</span>
             {t('gymWOD.completedToday', 'Completed today')}
           </div>
         ) : wodDraft ? (
-          /* Resume WOD in progress */
           <button
             onClick={() => navigate(`/session/${wodDraft.routineId}`)}
-            className="w-full flex items-center justify-center gap-2 font-bold text-sm py-3 rounded-xl transition-colors active:scale-[0.98]"
-            style={{ backgroundColor: '#60A5FA', color: '#FFFFFF' }}
+            className="w-full flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+            style={{
+              padding: '13px', borderRadius: 14,
+              background: '#60A5FA', color: '#fff',
+              fontWeight: 800, fontSize: 13, letterSpacing: 0.2,
+              border: 'none',
+              boxShadow: '0 4px 14px rgba(96,165,250,0.32)',
+            }}
           >
-            <Play className="w-4 h-4" fill="#fff" strokeWidth={0} />
+            <Play size={15} fill="#fff" strokeWidth={0} />
             {t('gymWOD.resumeWOD', 'Resume WOD')} ({wodDraft.completedSets}/{wodDraft.totalSets})
           </button>
         ) : (
-          /* Start new WOD */
           <button
             onClick={handleStartClick}
             disabled={saving}
-            className="w-full flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm py-3 rounded-xl transition-colors disabled:opacity-60"
+            className="w-full flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-60"
+            style={{
+              padding: '13px', borderRadius: 14,
+              background: 'var(--color-accent)',
+              color: 'var(--color-bg-card, #0A0D10)',
+              fontWeight: 800, fontSize: 13, letterSpacing: 0.2,
+              border: 'none',
+              boxShadow: '0 4px 14px color-mix(in srgb, var(--color-accent) 35%, transparent)',
+            }}
           >
             {saving ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                {t('gymWOD.settingUp')}
-              </>
+              <><RefreshCw size={15} className="animate-spin" />{t('gymWOD.settingUp')}</>
             ) : (
-              <>
-                <Dumbbell className="w-4 h-4" />
-                {t('gymWOD.startWorkout')}
-              </>
+              <><Dumbbell size={15} />{t('gymWOD.startWorkout')}</>
             )}
           </button>
         )}
@@ -464,3 +562,5 @@ export default function GymWOD() {
     </div>
   );
 }
+
+export default memo(GymWOD);

@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
   Target, Plus, Trophy, Dumbbell, Scale, Flame, TrendingUp,
-  Calendar, Check, X, ChevronRight, Zap, Activity, Search,
+  Calendar, Check, X, Zap, Activity, Search,
   Pencil, Trash2, AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -12,14 +12,26 @@ import { useAuth } from '../contexts/AuthContext';
 import { exName } from '../lib/exerciseName';
 import Confetti from './Confetti';
 
+// ── Warm-paper onboarding-aligned design tokens ───────────────────────────
+const OB_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
+const OB_BODY    = '"Familjen Grotesk", -apple-system, system-ui, sans-serif';
+const OB_TEAL    = '#2EC4C4';
+const OB_TEAL_DEEP = '#0FA5A5';
+const OB_TEAL_SOFT = '#D7F1F1';
+const OB_ORANGE  = '#FF5A2E';
+const OB_ORANGE_SOFT = '#FBE0D3';
+const OB_SUB     = '#6B6A63';
+const OB_LINE    = 'rgba(11,15,18,0.08)';
+const OB_LINE_STRONG = 'rgba(11,15,18,0.14)';
+
 // ── Goal type config ─────────────────────────────────────────────────────
 const GOAL_TYPES = [
-  { key: 'lift_1rm',       icon: Dumbbell,    color: '#D4AF37', needsExercise: true },
-  { key: 'body_weight',    icon: Scale,        color: '#60A5FA', needsExercise: false },
-  { key: 'body_fat',       icon: Activity,     color: '#34D399', needsExercise: false },
-  { key: 'workout_count',  icon: TrendingUp,   color: '#A78BFA', needsExercise: false },
-  { key: 'streak',         icon: Flame,        color: '#F97316', needsExercise: false },
-  { key: 'volume',         icon: Zap,          color: '#EF4444', needsExercise: false },
+  { key: 'lift_1rm',       icon: Dumbbell,    color: '#E8C547', soft: '#F6ECB6', needsExercise: true },
+  { key: 'body_weight',    icon: Scale,        color: '#60A5FA', soft: '#DBEAFE', needsExercise: false },
+  { key: 'body_fat',       icon: Activity,     color: '#34D399', soft: '#D1FAE5', needsExercise: false },
+  { key: 'workout_count',  icon: TrendingUp,   color: '#6D5FDB', soft: '#E0DCF5', needsExercise: false },
+  { key: 'streak',         icon: Flame,        color: '#FF5A2E', soft: '#FBE0D3', needsExercise: false },
+  { key: 'volume',         icon: Zap,          color: '#EF4444', soft: '#FEE2E2', needsExercise: false },
 ];
 
 const UNIT_MAP = {
@@ -31,6 +43,69 @@ const UNIT_MAP = {
   volume: 'lbs',
 };
 
+// Localized unit label for display. The DB still stores the canonical UNIT_MAP
+// value, but we render the locale-appropriate string in the UI.
+function unitLabel(goalType, t) {
+  const u = UNIT_MAP[goalType];
+  if (!u) return '';
+  return t(`goals.units.${u}`, u);
+}
+
+/**
+ * Suggest a realistic but motivating target date for a goal.
+ * Returns an ISO date string or null when we can't make a confident estimate.
+ *
+ * Heuristics:
+ *  - lift_1rm: use the existing PROGRESSION_RATES * gap, clamped to 8-16 weeks
+ *  - body_weight: 1-2 lb/week → clamped to 4-12 weeks
+ *  - body_fat: ~0.5%/week (2%/month) → clamped to 6-12 weeks
+ *  - workout_count: 3 sessions/week → at least 4 weeks
+ *  - streak: target days + a small buffer
+ *  - volume: 4-8 weeks (not enough signal to estimate precisely)
+ */
+function suggestTargetDate({ goalType, targetValue, currentValue, fitnessLevel, exerciseName }) {
+  const target = parseFloat(targetValue);
+  if (!target || isNaN(target) || target <= 0) return null;
+  const current = parseFloat(currentValue);
+  const gap = !isNaN(current) ? target - current : null;
+
+  let weeks = null;
+  if (goalType === 'lift_1rm' && gap != null && gap > 0) {
+    const level = fitnessLevel || 'intermediate';
+    const rates = PROGRESSION_RATES[level] || PROGRESSION_RATES.intermediate;
+    const isIso = isIsolationExercise(exerciseName);
+    const weeklyRate = isIso ? rates.isolation : rates.compound;
+    weeks = Math.max(8, Math.min(16, Math.ceil(gap / weeklyRate)));
+  } else if (goalType === 'body_weight') {
+    // 1.5 lb/week (midpoint of 1-2 lb/week). Without a current value we can't
+    // estimate the gap, so default to 8 weeks.
+    weeks = (gap != null && gap !== 0)
+      ? Math.max(4, Math.min(12, Math.ceil(Math.abs(gap) / 1.5)))
+      : 8;
+  } else if (goalType === 'body_fat') {
+    // 0.5%/week (2%/month). Default to 8 weeks if no current value.
+    weeks = (gap != null && gap !== 0)
+      ? Math.max(6, Math.min(12, Math.ceil(Math.abs(gap) / 0.5)))
+      : 8;
+  } else if (goalType === 'workout_count') {
+    // assume 3 sessions/week
+    weeks = Math.max(4, Math.ceil(target / 3));
+  } else if (goalType === 'streak') {
+    // streak goal in days → days from today, capped at 1 year
+    const days = Math.max(7, Math.min(365, Math.ceil(target)));
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split('T')[0];
+  } else if (goalType === 'volume') {
+    weeks = 6; // 4-8 week midpoint
+  }
+
+  if (!weeks) return null;
+  const d = new Date();
+  d.setDate(d.getDate() + weeks * 7);
+  return d.toISOString().split('T')[0];
+}
+
 // Progression rates in lbs/week (intermediate defaults)
 const PROGRESSION_RATES = {
   beginner:     { compound: 5,    isolation: 2.5 },
@@ -38,7 +113,6 @@ const PROGRESSION_RATES = {
   advanced:     { compound: 1.25, isolation: 0.5 },
 };
 
-// Exercises commonly considered isolation (match by partial name)
 const ISOLATION_KEYWORDS = [
   'curl', 'extension', 'fly', 'flye', 'raise', 'kickback',
   'pullover', 'shrug', 'wrist', 'calf', 'forearm',
@@ -50,21 +124,21 @@ function isIsolationExercise(exerciseName) {
   return ISOLATION_KEYWORDS.some(kw => lower.includes(kw));
 }
 
-function getGoalIcon(goalType) {
-  return GOAL_TYPES.find(g => g.key === goalType)?.icon ?? Target;
-}
-function getGoalColor(goalType) {
-  return GOAL_TYPES.find(g => g.key === goalType)?.color ?? 'var(--color-accent)';
+function getGoalMeta(goalType) {
+  return GOAL_TYPES.find(g => g.key === goalType) || GOAL_TYPES[0];
 }
 
 // ── Main Goals Section ───────────────────────────────────────────────────
 export default function GoalsSection() {
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
-  const [goals, setGoals] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const goalsCacheKey = `goals-${user?.id || 'anon'}`;
+  const [goals, setGoals] = useCachedState(goalsCacheKey, []);
+  // Skip the loading skeleton on re-mount if we already have cached goals — data
+  // will refresh in the background but the UI stays populated instead of flashing empty.
+  const [loading, setLoading] = useState(!hasCachedState(goalsCacheKey));
   const [showModal, setShowModal] = useState(false);
-  const [editGoal, setEditGoal] = useState(null); // goal object for edit/detail modal
+  const [editGoal, setEditGoal] = useState(null);
   const [celebrateGoal, setCelebrateGoal] = useState(null);
 
   const loadGoals = async () => {
@@ -85,7 +159,6 @@ export default function GoalsSection() {
       setCelebrateGoal(goal);
       setTimeout(() => setCelebrateGoal(null), 2500);
     }
-    // Always open detail modal
     setEditGoal(goal);
   };
 
@@ -114,81 +187,88 @@ export default function GoalsSection() {
   return (
     <div className="flex flex-col gap-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
-          <Target size={16} style={{ color: 'var(--color-accent)' }} />
-          <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('goals.title')}</p>
+          <Target size={16} style={{ color: 'var(--color-accent, ' + OB_TEAL + ')' }} strokeWidth={2} />
+          <p style={{ fontFamily: OB_DISPLAY, fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>
+            {t('goals.title')}
+          </p>
           {activeGoals.length > 0 && (
-            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }}>
+            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent, ' + OB_TEAL + ')' }}>
               {activeGoals.length}
             </span>
           )}
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-1 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
-          style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+          className="flex items-center gap-1 text-[12px] font-bold px-2.5 py-1 rounded-full transition-colors"
+          style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent, ' + OB_TEAL + ')' }}
         >
-          <Plus size={14} />
+          <Plus size={12} strokeWidth={2.4} />
           {t('goals.addGoal')}
         </button>
       </div>
 
-      {/* Goal cards — 2-column grid */}
+      {/* Empty suggestion state */}
       {goals.length === 0 ? (
-        <button
-          onClick={() => setShowModal(true)}
-          className="rounded-2xl border border-dashed border-white/[0.1] p-6 flex flex-col items-center gap-2 hover:bg-white/[0.04] transition-colors"
-          style={{ background: 'var(--color-bg-card)' }}
-        >
-          <Target size={28} style={{ color: 'var(--color-text-subtle)' }} />
-          <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('goals.noGoalsYet')}</p>
-          <p className="text-[12px] font-semibold text-[#D4AF37]">{t('goals.setYourFirstGoal')}</p>
-        </button>
+        <div className="rounded-[22px] p-[18px]" style={{ background: 'var(--color-bg-card)', boxShadow: 'var(--color-shadow-card, 0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05))' }}>
+          <div className="flex gap-3.5">
+            {[
+              { icon: Dumbbell, label: t('goals.suggestTrain', 'Train 3\u00d7/wk'), color: 'var(--color-accent, ' + OB_TEAL + ')' },
+              { icon: Scale, label: t('goals.suggestWeight', 'Drop 5 lbs'), color: '#6D5FDB' },
+              { icon: Trophy, label: t('goals.suggestLift', 'Squat 225'), color: '#FF5A2E' },
+            ].map(({ icon: SIcon, label, color }) => (
+              <button key={label} onClick={() => setShowModal(true)} className="flex-1 flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-[14px] flex items-center justify-center"
+                  style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
+                  <SIcon size={20} style={{ color }} strokeWidth={2} />
+                </div>
+                <span className="text-[11px] font-bold" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.1 }}>{label}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-center mt-3.5" style={{ color: 'var(--color-text-muted)' }}>
+            {t('goals.suggestionHint', 'Pick one to get started, or tap Add Goal')}
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {activeGoals.map(goal => (
-            <GoalCard key={goal.id} goal={goal} onTap={handleGoalTap} onDelete={handleDelete} />
+            <GoalCard key={goal.id} goal={goal} onTap={handleGoalTap} />
           ))}
           {achievedGoals.map(goal => (
-            <GoalCard key={goal.id} goal={goal} onTap={handleGoalTap} onDelete={handleDelete} />
+            <GoalCard key={goal.id} goal={goal} onTap={handleGoalTap} />
           ))}
         </div>
       )}
 
-      {/* Confetti for achieved goal */}
       <Confetti active={!!celebrateGoal} particleCount={80} duration={2500} />
 
-      {/* Celebrate overlay */}
-      <AnimatePresence>
-        {celebrateGoal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-            onClick={() => setCelebrateGoal(null)}
+      {/* Achieved celebrate overlay */}
+      {celebrateGoal && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => setCelebrateGoal(null)}
+        >
+          <div
+            className="rounded-3xl p-8 flex flex-col items-center gap-4 max-w-[280px] mx-4 animate-fade-in"
+            style={{ background: 'var(--color-bg-card)', border: '1px solid ' + OB_LINE }}
+            onClick={e => e.stopPropagation()}
           >
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              className="border border-[#D4AF37]/30 rounded-3xl p-8 flex flex-col items-center gap-4 max-w-[280px] mx-4"
-              style={{ background: 'var(--color-bg-card)' }}
-              onClick={e => e.stopPropagation()}
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: OB_TEAL_SOFT, boxShadow: '0 0 40px ' + OB_TEAL_SOFT }}
             >
-              <div
-                className="w-16 h-16 rounded-full flex items-center justify-center"
-                style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', boxShadow: '0 0 40px var(--color-accent-glow)' }}
-              >
-                <Trophy size={32} className="text-[#D4AF37]" />
-              </div>
-              <p className="text-[18px] font-bold text-center" style={{ color: 'var(--color-text-primary)' }}>{t('goals.goalAchieved')}</p>
-              <p className="text-[14px] text-center" style={{ color: 'var(--color-text-muted)' }}>{celebrateGoal.title}</p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <Trophy size={32} style={{ color: OB_TEAL_DEEP }} />
+            </div>
+            <p className="text-[18px] font-bold text-center" style={{ fontFamily: OB_DISPLAY, color: 'var(--color-text-primary)' }}>
+              {t('goals.goalAchieved')}
+            </p>
+            <p className="text-[14px] text-center" style={{ color: 'var(--color-text-muted)' }}>{celebrateGoal.title}</p>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Create modal */}
       {showModal && createPortal(
@@ -216,15 +296,19 @@ export default function GoalsSection() {
   );
 }
 
-// ── Goal Card (compact for 2-col grid) ───────────────────────────────────
-function GoalCard({ goal, onTap, onDelete }) {
+// ── Goal Card (compact 2-col, tap-to-edit) ────────────────────────────────
+function GoalCard({ goal, onTap }) {
   const { t } = useTranslation('pages');
   const isAchieved = !!goal.achieved_at;
-  const pct = Math.min(100, Math.round((parseFloat(goal.current_value) / parseFloat(goal.target_value)) * 100));
-  const Icon = getGoalIcon(goal.goal_type);
-  const color = getGoalColor(goal.goal_type);
+  const pct = Math.min(100, Math.max(0, Math.round((parseFloat(goal.current_value) / parseFloat(goal.target_value)) * 100)));
+  const meta = getGoalMeta(goal.goal_type);
+  const Icon = meta.icon;
+  const color = meta.color;
+  const soft = meta.soft;
 
-  // Days remaining
+  const delta = parseFloat(goal.target_value) - parseFloat(goal.current_value);
+  const unit = goal.unit || UNIT_MAP[goal.goal_type] || '';
+
   let daysLeft = null;
   if (goal.target_date && !isAchieved) {
     const diff = Math.ceil((new Date(goal.target_date) - new Date()) / (1000 * 60 * 60 * 24));
@@ -232,70 +316,171 @@ function GoalCard({ goal, onTap, onDelete }) {
   }
 
   return (
-    <motion.button
-      layout
+    <button
       onClick={() => onTap(goal)}
-      className="relative rounded-xl border border-white/[0.06] p-3 flex flex-col gap-2 text-left group transition-colors hover:bg-white/[0.04]"
+      className="relative text-left group transition-transform active:scale-[0.98]"
       style={{
         background: 'var(--color-bg-card)',
-        ...(isAchieved ? { borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)' } : {}),
+        border: '1px solid ' + (isAchieved ? 'color-mix(in srgb, var(--color-accent) 30%, transparent)' : 'var(--color-border, ' + OB_LINE + ')'),
+        borderRadius: 18,
+        padding: 12,
+        display: 'flex', flexDirection: 'column', gap: 8,
+        fontFamily: OB_BODY,
       }}
-      whileTap={{ scale: 0.97 }}
     >
-      {/* Icon + title */}
+      {/* Icon tile + title */}
       <div className="flex items-start gap-2">
         <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: `${color}15` }}
+          className="flex items-center justify-center flex-shrink-0"
+          style={{ width: 32, height: 32, borderRadius: 10, background: soft }}
         >
-          {isAchieved ? <Check size={14} style={{ color }} /> : <Icon size={14} style={{ color }} />}
+          {isAchieved
+            ? <Check size={15} style={{ color }} strokeWidth={2.5} />
+            : <Icon size={15} style={{ color }} strokeWidth={2.2} />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[12px] font-semibold leading-tight line-clamp-2" style={{ color: 'var(--color-text-primary)' }}>{goal.title}</p>
+          <p className="text-[12px] leading-tight line-clamp-2" style={{ fontFamily: OB_DISPLAY, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.1 }}>
+            {goal.title}
+          </p>
           {goal.exercises?.name && (
             <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--color-text-subtle)' }}>{exName(goal.exercises)}</p>
           )}
         </div>
       </div>
 
+      {/* Target + delta */}
+      <div className="flex items-baseline justify-between">
+        <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+          {parseFloat(goal.current_value).toLocaleString()} / {parseFloat(goal.target_value).toLocaleString()}
+        </span>
+        {!isAchieved && delta > 0 && (
+          <span className="text-[10px] font-bold" style={{ color, fontVariantNumeric: 'tabular-nums' }}>
+            +{delta.toLocaleString()} {unit}
+          </span>
+        )}
+      </div>
+
       {/* Progress bar */}
-      <div className="w-full">
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-            {parseFloat(goal.current_value).toLocaleString()} / {parseFloat(goal.target_value).toLocaleString()}
-          </span>
-          <span className="text-[10px] font-bold" style={{ color: isAchieved ? 'var(--color-success)' : color, fontVariantNumeric: 'tabular-nums' }}>
-            {pct}%
-          </span>
-        </div>
-        <div className="h-[5px] rounded-full bg-white/[0.06] overflow-hidden">
-          <motion.div
-            className="h-full rounded-full"
-            style={{ background: isAchieved ? 'var(--color-success)' : color }}
-            initial={{ width: 0 }}
-            animate={{ width: `${pct}%` }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
+      <div style={{ width: '100%' }}>
+        <div style={{ height: 6, borderRadius: 999, background: 'var(--color-surface-hover, rgba(0,0,0,0.06))', overflow: 'hidden' }}>
+          <div
+            style={{
+              height: '100%', borderRadius: 999,
+              width: `${pct}%`,
+              background: isAchieved ? 'var(--color-success, #10B981)' : color,
+              transition: 'width 0.6s ease-out',
+            }}
           />
         </div>
       </div>
 
-      {/* Footer: days left or achieved */}
-      <div className="flex items-center gap-1">
+      {/* Footer */}
+      <div className="flex items-center justify-between">
         {isAchieved ? (
-          <span className="text-[9px] font-semibold text-[#10B981] flex items-center gap-1">
-            <Check size={9} /> {t('goals.achieved')}
+          <span className="text-[10px] font-bold flex items-center gap-1" style={{ color: 'var(--color-success, #10B981)' }}>
+            <Check size={10} /> {t('goals.achieved')}
           </span>
         ) : daysLeft !== null ? (
-          <span className="text-[9px] font-semibold flex items-center gap-1" style={{ color: 'var(--color-text-subtle)' }}>
-            <Calendar size={9} /> {t('goals.daysLeft', { count: daysLeft })}
+          <span className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'var(--color-text-subtle)' }}>
+            <Calendar size={10} /> {t('goals.daysLeft', { count: daysLeft })}
           </span>
         ) : (
-          <span className="text-[9px] font-semibold" style={{ color: 'var(--color-text-subtle)' }}>{t('goals.openEnded')}</span>
+          <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-subtle)' }}>{t('goals.openEnded')}</span>
         )}
+        <span className="text-[10px] font-bold" style={{ color: isAchieved ? 'var(--color-success, #10B981)' : color, fontVariantNumeric: 'tabular-nums' }}>
+          {pct}%
+        </span>
       </div>
-    </motion.button>
+    </button>
   );
 }
+
+// ── Shared modal shell (warm-paper aesthetic, bottom-sheet mobile) ───────
+function ModalShell({ onClose, children }) {
+  // Lock background scroll on both <html> and <body> — iOS WebView ignores
+  // body-only locks when there's an outer scroll container, which let the
+  // Profile/Progress page scroll behind the modal.
+  useEffect(() => {
+    const prevHtml = document.documentElement.style.overflow;
+    const prevBody = document.body.style.overflow;
+    const prevTouch = document.body.style.touchAction;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    return () => {
+      document.documentElement.style.overflow = prevHtml;
+      document.body.style.overflow = prevBody;
+      document.body.style.touchAction = prevTouch;
+    };
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 z-[150] flex items-center justify-center animate-fade-in p-4"
+      style={{ background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)' }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="animate-fade-in-up w-full sm:max-w-[460px] overflow-y-auto overflow-x-hidden"
+        style={{
+          // dvh accounts for the iOS browser chrome (URL/toolbar) — vh would
+          // overshoot the visible viewport on a phone and clip the modal.
+          // The 32px subtraction matches the parent's p-4 padding on both axes.
+          maxHeight: 'min(calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 720px)',
+          background: 'var(--color-bg-card)',
+          borderRadius: 28,
+          padding: '22px 22px 28px',
+          fontFamily: OB_BODY,
+          border: '1px solid var(--color-border, ' + OB_LINE + ')',
+          boxShadow: '0 16px 48px rgba(11,15,18,0.18)',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        {children}
+      </div>
+      <style>{`
+        @media (min-width: 640px) {
+          [data-ob-modal] { border-radius: 28px !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ── Reusable label ────────────────────────────────────────────────────────
+function OBLabel({ children, optional }) {
+  return (
+    <p style={{
+      fontFamily: OB_DISPLAY, fontSize: 11, fontWeight: 800, letterSpacing: 1.2,
+      textTransform: 'uppercase', color: 'var(--color-text-muted)',
+      marginBottom: 8,
+    }}>
+      {children}
+      {optional && <span style={{ fontWeight: 600, letterSpacing: 0.4, textTransform: 'none', color: 'var(--color-text-subtle)', marginLeft: 6 }}>({optional})</span>}
+    </p>
+  );
+}
+
+// ── Reusable 54px input surface ───────────────────────────────────────────
+const OB_INPUT_STYLE = {
+  height: 54,
+  width: '100%',
+  // border-box so the 18px horizontal padding + 1px border don't push the
+  // computed width past 100% — iOS native date input was overflowing the
+  // modal because the default boxSizing is content-box for inputs.
+  boxSizing: 'border-box',
+  maxWidth: '100%',
+  padding: '0 18px',
+  borderRadius: 16,
+  background: 'var(--color-bg-input, var(--color-surface-hover, rgba(0,0,0,0.03)))',
+  border: '1px solid var(--color-border, ' + OB_LINE + ')',
+  fontFamily: OB_BODY,
+  fontSize: 15,
+  fontWeight: 600,
+  color: 'var(--color-text-primary)',
+  outline: 'none',
+};
 
 // ── Goal Detail / Edit Modal ─────────────────────────────────────────────
 function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
@@ -305,30 +490,25 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
   const [targetDate, setTargetDate] = useState(goal.target_date ?? '');
   const [title, setTitle] = useState(goal.title);
   const [saving, setSaving] = useState(false);
-  const [dateWarning, setDateWarning] = useState('');
+  const [dateWarning, setDateWarning] = useState(null);
+  const [realisticCaption, setRealisticCaption] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isAchieved = !!goal.achieved_at;
-  const pct = Math.min(100, Math.round((parseFloat(goal.current_value) / parseFloat(goal.target_value)) * 100));
-  const Icon = getGoalIcon(goal.goal_type);
-  const color = getGoalColor(goal.goal_type);
+  const pct = Math.min(100, Math.max(0, Math.round((parseFloat(goal.current_value) / parseFloat(goal.target_value)) * 100)));
+  const meta = getGoalMeta(goal.goal_type);
+  const Icon = meta.icon;
+  const color = meta.color;
+  const soft = meta.soft;
 
-  // Prevent background page scrolling while modal is open
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
-  // Date validation for lift goals
   useEffect(() => {
     if (goal.goal_type !== 'lift_1rm' || !targetDate || !targetValue) {
-      setDateWarning('');
-      return;
+      setDateWarning(null); setRealisticCaption(''); return;
     }
-    // If we don't have a current value, we can't estimate a realistic date
     const currentVal = parseFloat(goal.current_value);
-    if (!currentVal || currentVal <= 0) { setDateWarning(''); return; }
+    if (!currentVal || currentVal <= 0) { setDateWarning(null); setRealisticCaption(''); return; }
     const gap = parseFloat(targetValue) - currentVal;
-    if (gap <= 0) { setDateWarning(''); return; }
+    if (gap <= 0) { setDateWarning(null); setRealisticCaption(''); return; }
 
     const level = fitnessLevel || 'intermediate';
     const rates = PROGRESSION_RATES[level] || PROGRESSION_RATES.intermediate;
@@ -340,12 +520,29 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
     const picked = new Date(targetDate + 'T00:00:00');
 
     if (picked < minDate) {
-      const minDateStr = minDate.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' });
-      setDateWarning(t('goals.dateWarning', { date: minDateStr, weeks: minWeeks, rate: weeklyRate }));
+      const suggestedISO = minDate.toISOString().split('T')[0];
+      const suggestedShort = minDate.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' });
+      const goalUnit = goal.unit || 'lb';
+      setDateWarning({
+        suggestedDate: suggestedISO,
+        suggestedLabel: suggestedShort,
+        weeks: minWeeks,
+        weeklyRate,
+        unit: goalUnit,
+        plan: t('goals.suggestedPlan', {
+          rate: weeklyRate,
+          unit: goalUnit,
+          weeks: minWeeks,
+          defaultValue: '+{{rate}} {{unit}}/week × {{weeks}} weeks',
+        }),
+      });
+      setRealisticCaption('');
     } else {
-      setDateWarning('');
+      setDateWarning(null);
+      const shortDate = picked.toLocaleDateString('default', { month: 'short', day: 'numeric' });
+      setRealisticCaption(t('goals.realisticBy', { date: shortDate, defaultValue: 'Realistic · {{date}}' }));
     }
-  }, [targetDate, targetValue, goal.goal_type, goal.current_value, fitnessLevel, goal.exercises?.name]);
+  }, [targetDate, targetValue, goal.goal_type, goal.current_value, goal.unit, fitnessLevel, goal.exercises?.name, t]);
 
   const handleSave = async () => {
     if (!targetValue || !title.trim()) return;
@@ -359,147 +556,211 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ y: 100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 100, opacity: 0 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        onClick={e => e.stopPropagation()}
-        className="border border-white/[0.08] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[85vh] overflow-y-auto overflow-x-hidden p-6 pb-8"
-        style={{ background: 'var(--color-bg-card)' }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: `${color}15` }}
-            >
-              {isAchieved ? <Trophy size={20} style={{ color }} /> : <Icon size={20} style={{ color }} />}
-            </div>
-            <div>
-              <h2 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{editing ? t('goals.editGoal') : goal.title}</h2>
-              <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t(`goals.types.${goal.goal_type}`)}</p>
-            </div>
+    <ModalShell onClose={onClose}>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <div
+            className="flex items-center justify-center"
+            style={{ width: 46, height: 46, borderRadius: 14, background: soft }}
+          >
+            {isAchieved
+              ? <Trophy size={22} style={{ color }} strokeWidth={2.2} />
+              : <Icon size={22} style={{ color }} strokeWidth={2.2} />}
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-white/[0.06] transition-colors">
-            <X size={18} style={{ color: 'var(--color-text-subtle)' }} />
-          </button>
+          <div>
+            <h2 style={{ fontFamily: OB_DISPLAY, fontSize: 22, fontWeight: 900, color: 'var(--color-text-primary)', letterSpacing: -0.4, lineHeight: 1.1 }}>
+              {editing ? t('goals.editGoal') : goal.title}
+            </h2>
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+              {t(`goals.types.${goal.goal_type}`)}
+            </p>
+          </div>
         </div>
+        <button
+          onClick={onClose}
+          className="rounded-full transition-colors"
+          style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}
+        >
+          <X size={16} style={{ color: 'var(--color-text-subtle)' }} />
+        </button>
+      </div>
 
-        {/* Exercise info */}
-        {goal.exercises?.name && (
-          <div className="flex items-center gap-2 mb-4 bg-white/[0.03] rounded-xl px-3 py-2">
-            <Dumbbell size={14} style={{ color: 'var(--color-text-subtle)' }} />
-            <span className="text-[13px]" style={{ color: 'var(--color-text-primary)' }}>{exName(goal.exercises)}</span>
-            {goal.exercises.muscle_group && (
-              <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-subtle)' }}>{goal.exercises.muscle_group}</span>
-            )}
-          </div>
+      {/* Exercise info */}
+      {goal.exercises?.name && (
+        <div className="flex items-center gap-2 mb-4" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.03))', borderRadius: 14, padding: '10px 14px' }}>
+          <Dumbbell size={14} style={{ color: 'var(--color-text-subtle)' }} />
+          <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{exName(goal.exercises)}</span>
+          {goal.exercises.muscle_group && (
+            <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-subtle)' }}>{goal.exercises.muscle_group}</span>
+          )}
+        </div>
+      )}
+
+      {/* Progress */}
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+            {parseFloat(goal.current_value).toLocaleString()} / {parseFloat(goal.target_value).toLocaleString()} {goal.unit}
+          </span>
+          <span className="text-[16px] font-bold" style={{ fontFamily: OB_DISPLAY, color: isAchieved ? 'var(--color-success, #10B981)' : color, fontVariantNumeric: 'tabular-nums' }}>
+            {pct}%
+          </span>
+        </div>
+        <div style={{ height: 8, borderRadius: 999, background: 'var(--color-surface-hover, rgba(0,0,0,0.06))', overflow: 'hidden' }}>
+          <div style={{ height: '100%', borderRadius: 999, width: `${pct}%`, background: isAchieved ? 'var(--color-success, #10B981)' : color, transition: 'width 0.6s ease-out' }} />
+        </div>
+        {isAchieved && (
+          <p className="text-[12px] mt-2 flex items-center gap-1 font-semibold" style={{ color: 'var(--color-success, #10B981)' }}>
+            <Check size={12} /> {t('goals.achieved')} — {new Date(goal.achieved_at).toLocaleDateString()}
+          </p>
         )}
+        {goal.target_date && !isAchieved && (
+          <p className="text-[12px] mt-2 flex items-center gap-1" style={{ color: 'var(--color-text-subtle)' }}>
+            <Calendar size={12} /> {t('goals.targetDate')}: {new Date(goal.target_date + 'T00:00:00').toLocaleDateString()}
+          </p>
+        )}
+      </div>
 
-        {/* Progress */}
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-              {parseFloat(goal.current_value).toLocaleString()} / {parseFloat(goal.target_value).toLocaleString()} {goal.unit}
-            </span>
-            <span className="text-[14px] font-bold" style={{ color: isAchieved ? 'var(--color-success)' : color, fontVariantNumeric: 'tabular-nums' }}>
-              {pct}%
-            </span>
-          </div>
-          <div className="h-[8px] rounded-full bg-white/[0.06] overflow-hidden">
-            <motion.div
-              className="h-full rounded-full"
-              style={{ background: isAchieved ? 'var(--color-success)' : color }}
-              initial={{ width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
+      {/* Edit form */}
+      {editing && (
+        <div className="flex flex-col gap-4 mb-5">
+          <div>
+            <OBLabel>{t('goals.goalTitle')}</OBLabel>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              maxLength={80}
+              style={OB_INPUT_STYLE}
             />
           </div>
-          {isAchieved && (
-            <p className="text-[12px] text-[#10B981] mt-1 flex items-center gap-1 font-semibold">
-              <Check size={12} /> {t('goals.achieved')} — {new Date(goal.achieved_at).toLocaleDateString()}
-            </p>
-          )}
-          {goal.target_date && !isAchieved && (
-            <p className="text-[12px] mt-1 flex items-center gap-1" style={{ color: 'var(--color-text-subtle)' }}>
-              <Calendar size={12} /> {t('goals.targetDate')}: {new Date(goal.target_date + 'T00:00:00').toLocaleDateString()}
-            </p>
-          )}
-        </div>
-
-        {/* Edit form */}
-        {editing && (
-          <div className="flex flex-col gap-4 mb-5">
-            <div>
-              <p className="text-[12px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('goals.goalTitle')}</p>
+          <div>
+            <OBLabel>{t('goals.targetValue')}</OBLabel>
+            <div className="flex items-center gap-2 max-w-full">
               <input
-                type="text"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                className="w-full border border-white/[0.08] rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
-                style={{ background: 'var(--color-bg-input, #111827)', color: 'var(--color-text-primary)' }}
+                type="number"
+                inputMode="decimal"
+                value={targetValue}
+                onChange={e => setTargetValue(e.target.value)}
+                className="min-w-0 flex-1"
+                style={{ ...OB_INPUT_STYLE, width: 'auto', fontFamily: OB_DISPLAY, fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontSize: 17 }}
               />
+              <span className="text-[12px] font-bold flex-shrink-0" style={{ minWidth: 56, maxWidth: 110, textAlign: 'center', color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {unitLabel(goal.goal_type, t) || goal.unit}
+              </span>
             </div>
-            <div>
-              <p className="text-[12px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('goals.targetValue')}</p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={targetValue}
-                  onChange={e => setTargetValue(e.target.value)}
-                  className="flex-1 border border-white/[0.08] rounded-xl px-4 py-2.5 text-[14px] font-bold focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
-                  style={{ background: 'var(--color-bg-input, #111827)', color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}
-                />
-                <span className="text-[13px] font-semibold w-14" style={{ color: 'var(--color-text-subtle)' }}>{goal.unit}</span>
-              </div>
-            </div>
-            <div>
-              <p className="text-[12px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                {t('goals.targetDate')} <span className="normal-case" style={{ color: 'var(--color-text-subtle)' }}>({t('goals.optional')})</span>
+          </div>
+          <div>
+            <OBLabel optional={t('goals.optional')}>{t('goals.targetDate')}</OBLabel>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={e => setTargetDate(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+              style={OB_INPUT_STYLE}
+            />
+            {realisticCaption && !dateWarning && (
+              <p className="text-[11px] mt-1.5 flex items-center gap-1.5" style={{ color: OB_TEAL_DEEP, fontWeight: 700 }}>
+                <Check size={11} strokeWidth={2.8} /> {realisticCaption}
               </p>
-              <input
-                type="date"
-                value={targetDate}
-                onChange={e => setTargetDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="w-full border border-white/[0.08] rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
-                style={{ background: 'var(--color-bg-input, #111827)', color: 'var(--color-text-primary)' }}
-              />
-            </div>
-            {dateWarning && (
-              <div className="flex items-start gap-2 bg-[#F97316]/10 border border-[#F97316]/20 rounded-xl px-3 py-2.5">
-                <AlertTriangle size={14} className="text-[#F97316] flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] text-[#F97316] leading-relaxed">{dateWarning}</p>
-              </div>
             )}
           </div>
-        )}
+          {dateWarning && (
+            <div
+              style={{
+                background: OB_ORANGE_SOFT,
+                border: '1px solid ' + OB_ORANGE + '33',
+                borderRadius: 14,
+                padding: '12px 14px',
+              }}
+            >
+              <div className="flex items-start gap-2 mb-2">
+                <AlertTriangle size={14} style={{ color: OB_ORANGE, flexShrink: 0, marginTop: 2 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p className="text-[12px] leading-snug" style={{ color: '#7a2910', fontWeight: 700 }}>
+                    {t('goals.tooAggressiveTitle', 'That date is too aggressive')}
+                  </p>
+                  <p className="text-[11px] leading-relaxed mt-1" style={{ color: '#7a2910', fontWeight: 500 }}>
+                    {t('goals.suggestRealistic', {
+                      date: dateWarning.suggestedLabel,
+                      defaultValue: 'Realistic target: {{date}}',
+                    })}
+                    {' · '}
+                    <span style={{ fontWeight: 700 }}>{dateWarning.plan}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTargetDate(dateWarning.suggestedDate)}
+                className="w-full"
+                style={{
+                  height: 36,
+                  borderRadius: 10,
+                  background: OB_ORANGE,
+                  color: '#fff',
+                  border: 'none',
+                  fontFamily: OB_DISPLAY,
+                  fontWeight: 800,
+                  fontSize: 12,
+                  letterSpacing: 0.3,
+                }}
+              >
+                {t('goals.useRealisticDate', 'Use this date instead')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* Actions */}
+      {/* Delete confirm */}
+      {confirmDelete && (
+        <div className="mb-4 animate-fade-in" style={{ background: OB_ORANGE_SOFT, border: '1px solid ' + OB_ORANGE + '33', borderRadius: 16, padding: 14 }}>
+          <p className="text-[13px] font-bold mb-3" style={{ color: '#7a2910', fontFamily: OB_DISPLAY }}>
+            {t('goals.confirmDelete', 'Delete this goal? This cannot be undone.')}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="flex-1 transition-colors"
+              style={{ height: 42, borderRadius: 999, background: 'transparent', border: '1px solid ' + OB_LINE_STRONG, fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 13, color: 'var(--color-text-primary)' }}
+            >
+              {t('goals.cancel')}
+            </button>
+            <button
+              onClick={() => onDelete(goal.id)}
+              className="flex-1"
+              style={{ height: 42, borderRadius: 999, background: OB_ORANGE, color: '#fff', fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 13 }}
+            >
+              {t('goals.deleteGoal')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
+      {!confirmDelete && (
         <div className="flex gap-2">
           {editing ? (
             <>
               <button
                 onClick={() => setEditing(false)}
-                className="flex-1 py-3 rounded-xl text-[13px] font-semibold border border-white/[0.08] hover:bg-white/[0.04] transition-colors"
-                style={{ color: 'var(--color-text-muted)' }}
+                className="flex-1 transition-colors"
+                style={{ height: 54, borderRadius: 999, background: 'transparent', border: '1px solid ' + OB_LINE_STRONG, fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 15, color: 'var(--color-text-muted)' }}
               >
                 {t('goals.cancel')}
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving || !targetValue || !title.trim()}
-                className="flex-1 py-3 rounded-xl text-[13px] font-bold bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-40 text-black transition-colors"
+                className="flex-1 transition-colors"
+                style={{
+                  height: 54, borderRadius: 999,
+                  background: saving || !targetValue || !title.trim() ? OB_TEAL_SOFT : OB_TEAL,
+                  color: saving || !targetValue || !title.trim() ? OB_SUB : '#0A2A2A',
+                  fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 15,
+                }}
               >
                 {saving ? t('goals.saving') : t('goals.saveChanges')}
               </button>
@@ -509,31 +770,33 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
               {!isAchieved && (
                 <button
                   onClick={() => setEditing(true)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-[13px] font-semibold border border-white/[0.08] hover:bg-white/[0.04] transition-colors"
-                  style={{ color: 'var(--color-text-primary)' }}
+                  className="flex-1 flex items-center justify-center gap-1.5 transition-colors"
+                  style={{ height: 54, borderRadius: 999, background: 'transparent', border: '1px solid ' + OB_LINE_STRONG, fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 15, color: 'var(--color-text-primary)' }}
                 >
                   <Pencil size={14} /> {t('goals.editGoal')}
                 </button>
               )}
               <button
-                onClick={() => onDelete(goal.id)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-[13px] font-semibold border border-[#EF4444]/20 hover:bg-[#EF4444]/10 transition-colors text-[#EF4444]"
+                onClick={() => setConfirmDelete(true)}
+                className="flex-1 flex items-center justify-center gap-1.5"
+                style={{ height: 54, borderRadius: 999, background: 'transparent', border: '1px solid ' + OB_ORANGE + '55', fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 15, color: OB_ORANGE }}
               >
                 <Trash2 size={14} /> {t('goals.deleteGoal')}
               </button>
             </>
           )}
         </div>
-      </motion.div>
-    </motion.div>
+      )}
+    </ModalShell>
   );
 }
 
-// ── Goal Creation Modal ──────────────────────────────────────────────────
+// ── Goal Creation Modal (warm-paper redesign) ────────────────────────────
 function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
   const { t } = useTranslation('pages');
   const { user } = useAuth();
-  const [goalType, setGoalType] = useState('lift_1rm');
+  const [stage, setStage] = useState('type'); // 'type' | 'details'
+  const [goalType, setGoalType] = useState(null);
   const [exerciseId, setExerciseId] = useState('');
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [exercises, setExercises] = useState([]);
@@ -546,16 +809,17 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
   const [loadingExercises, setLoadingExercises] = useState(false);
   const [current1RM, setCurrent1RM] = useState(null);
   const [dateWarning, setDateWarning] = useState('');
+  const [realisticCaption, setRealisticCaption] = useState('');
+  // True when targetDate was filled by the auto-suggestion heuristic. Cleared
+  // as soon as the user touches the field manually.
+  const [dateIsSuggested, setDateIsSuggested] = useState(false);
   const searchTimerRef = useRef(null);
 
-  // Prevent background page scrolling while modal is open
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
-  const needsExercise = GOAL_TYPES.find(g => g.key === goalType)?.needsExercise;
-  const unit = UNIT_MAP[goalType];
+  const meta = goalType ? getGoalMeta(goalType) : null;
+  const needsExercise = meta?.needsExercise;
+  // Stored unit (canonical, ASCII) goes into the DB; displayUnit is shown in UI.
+  const unit = goalType ? UNIT_MAP[goalType] : '';
+  const displayUnit = goalType ? unitLabel(goalType, t) : '';
 
   // Debounced search
   useEffect(() => {
@@ -566,7 +830,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchQuery]);
 
-  // Load exercises from DB with server-side search
+  // Load exercises
   useEffect(() => {
     if (!needsExercise) return;
     const load = async () => {
@@ -590,7 +854,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     load();
   }, [needsExercise, debouncedQuery]);
 
-  // Fetch current 1RM when exercise is selected (for date validation)
+  // Fetch current 1RM
   useEffect(() => {
     if (!exerciseId || goalType !== 'lift_1rm') { setCurrent1RM(null); return; }
     const fetchCurrent = async () => {
@@ -607,16 +871,17 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     fetchCurrent();
   }, [exerciseId, goalType, user?.id]);
 
-  // Realistic date validation for lift goals
+  // Date validation. Instead of bare "too aggressive" text, surface a
+  // suggested realistic date plus a one-line plan (rate × weeks). The
+  // dateWarning state goes from a string to an object so the render block
+  // can offer a one-tap "Use this date" action.
   useEffect(() => {
     if (goalType !== 'lift_1rm' || !targetDate || !targetValue) {
-      setDateWarning('');
-      return;
+      setDateWarning(null); setRealisticCaption(''); return;
     }
-    // If we don't have a current 1RM, we can't estimate a realistic date
-    if (!current1RM || current1RM <= 0) { setDateWarning(''); return; }
+    if (!current1RM || current1RM <= 0) { setDateWarning(null); setRealisticCaption(''); return; }
     const gap = parseFloat(targetValue) - current1RM;
-    if (gap <= 0) { setDateWarning(''); return; }
+    if (gap <= 0) { setDateWarning(null); setRealisticCaption(''); return; }
 
     const level = fitnessLevel || 'intermediate';
     const rates = PROGRESSION_RATES[level] || PROGRESSION_RATES.intermediate;
@@ -628,23 +893,60 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     const picked = new Date(targetDate + 'T00:00:00');
 
     if (picked < minDate) {
-      const minDateStr = minDate.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' });
-      setDateWarning(t('goals.dateWarning', { date: minDateStr, weeks: minWeeks, rate: weeklyRate }));
+      const suggestedISO = minDate.toISOString().split('T')[0];
+      const suggestedShort = minDate.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' });
+      setDateWarning({
+        suggestedDate: suggestedISO,
+        suggestedLabel: suggestedShort,
+        weeks: minWeeks,
+        weeklyRate,
+        unit,
+        plan: t('goals.suggestedPlan', {
+          rate: weeklyRate,
+          unit,
+          weeks: minWeeks,
+          defaultValue: '+{{rate}} {{unit}}/week × {{weeks}} weeks',
+        }),
+      });
+      setRealisticCaption('');
     } else {
-      setDateWarning('');
+      setDateWarning(null);
+      const shortDate = picked.toLocaleDateString('default', { month: 'short', day: 'numeric' });
+      setRealisticCaption(t('goals.realisticBy', { date: shortDate, defaultValue: 'Realistic · {{date}}' }));
     }
-  }, [targetDate, targetValue, goalType, current1RM, fitnessLevel, selectedExercise?.name]);
+  }, [targetDate, targetValue, goalType, current1RM, fitnessLevel, selectedExercise?.name, unit, t]);
+
+  // Auto-suggest a target date when the user enters a target value. We only
+  // overwrite the date when it's empty OR when it was previously filled by us
+  // (dateIsSuggested) — never if the user picked their own date.
+  useEffect(() => {
+    if (!goalType || !targetValue) return;
+    if (targetDate && !dateIsSuggested) return; // user picked their own date
+    const suggested = suggestTargetDate({
+      goalType,
+      targetValue,
+      currentValue: goalType === 'lift_1rm' ? current1RM : null,
+      fitnessLevel,
+      exerciseName: selectedExercise?.name,
+    });
+    if (suggested && suggested !== targetDate) {
+      setTargetDate(suggested);
+      setDateIsSuggested(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goalType, targetValue, current1RM, fitnessLevel, selectedExercise?.name]);
 
   // Auto-generate title
   useEffect(() => {
+    if (!goalType) return;
     const ex = selectedExercise;
     const typeLabels = {
-      lift_1rm: ex ? `${exName(ex)} ${targetValue || '?'} ${unit}` : '',
-      body_weight: `${t('goals.types.body_weight')} ${targetValue || '?'} ${unit}`,
-      body_fat: `${t('goals.types.body_fat')} ${targetValue || '?'}${unit}`,
+      lift_1rm: ex ? `${exName(ex)} ${targetValue || '?'} ${displayUnit}` : '',
+      body_weight: `${t('goals.types.body_weight')} ${targetValue || '?'} ${displayUnit}`,
+      body_fat: `${t('goals.types.body_fat')} ${targetValue || '?'}${displayUnit}`,
       workout_count: `${targetValue || '?'} ${t('goals.types.workout_count')}`,
       streak: `${targetValue || '?'} ${t('goals.types.streak')}`,
-      volume: `${targetValue || '?'} ${unit} ${t('goals.types.volume')}`,
+      volume: `${targetValue || '?'} ${displayUnit} ${t('goals.types.volume')}`,
     };
     const auto = typeLabels[goalType] || '';
     if (targetDate) {
@@ -654,7 +956,16 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     } else {
       setTitle(auto);
     }
-  }, [goalType, exerciseId, targetValue, targetDate, selectedExercise]);
+  }, [goalType, exerciseId, targetValue, targetDate, selectedExercise, unit, t]);
+
+  const pickType = (key) => {
+    setGoalType(key);
+    setExerciseId('');
+    setSelectedExercise(null);
+    setSearchQuery('');
+    setCurrent1RM(null);
+    setStage('details');
+  };
 
   const handleSave = async () => {
     if (!targetValue || !title.trim()) return;
@@ -681,177 +992,297 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     if (!error) onCreated();
   };
 
+  const canSave = targetValue && title.trim() && (!needsExercise || exerciseId);
+
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ y: 100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 100, opacity: 0 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        onClick={e => e.stopPropagation()}
-        className="border border-white/[0.08] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[85vh] overflow-y-auto overflow-x-hidden p-6 pb-8"
-        style={{ background: 'var(--color-bg-card, #0F172A)' }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('goals.newGoal')}</h2>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-white/[0.06] transition-colors">
-            <X size={18} style={{ color: 'var(--color-text-subtle)' }} />
-          </button>
+    <ModalShell onClose={onClose}>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-5">
+        <div>
+          <p style={{ fontFamily: OB_DISPLAY, fontSize: 11, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: OB_TEAL_DEEP, marginBottom: 4 }}>
+            {t('goals.newGoal')}
+          </p>
+          <h2 style={{
+            fontFamily: OB_DISPLAY, fontWeight: 900,
+            fontSize: 27, letterSpacing: -0.6, lineHeight: 1.05,
+            color: 'var(--color-text-primary)',
+          }}>
+            {stage === 'type'
+              ? t('goals.whatsYourGoal', "What's your goal?")
+              : meta ? t(`goals.types.${goalType}`) : ''}
+          </h2>
         </div>
+        <button
+          onClick={onClose}
+          className="rounded-full transition-colors"
+          style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', flexShrink: 0 }}
+        >
+          <X size={16} style={{ color: 'var(--color-text-subtle)' }} />
+        </button>
+      </div>
 
-        {/* Goal type selector */}
-        <p className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('goals.goalType')}</p>
-        <div className="grid grid-cols-3 gap-2 mb-5">
-          {GOAL_TYPES.map(({ key, icon: TypeIcon, color }) => (
-            <button
-              key={key}
-              onClick={() => { setGoalType(key); setExerciseId(''); setSelectedExercise(null); setSearchQuery(''); setCurrent1RM(null); }}
-              className="flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all"
-              style={goalType === key
-                ? { background: `${color}15`, borderColor: `${color}40`, color }
-                : { background: 'transparent', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
-              }
-            >
-              <TypeIcon size={18} />
-              <span className="text-[10px] font-semibold leading-tight text-center">
-                {t(`goals.types.${key}`)}
-              </span>
-            </button>
-          ))}
+      {/* Stage 1: Goal type picker */}
+      {stage === 'type' && (
+        <div className="animate-fade-in">
+          <div className="grid grid-cols-2 gap-2.5 mb-4">
+            {GOAL_TYPES.map(({ key, icon: TypeIcon, color, soft }) => (
+              <button
+                key={key}
+                onClick={() => pickType(key)}
+                className="transition-transform active:scale-[0.97] min-w-0"
+                style={{
+                  padding: 14,
+                  borderRadius: 18,
+                  background: 'var(--color-surface-hover, rgba(0,0,0,0.02))',
+                  border: '1px solid var(--color-border, ' + OB_LINE + ')',
+                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10,
+                  textAlign: 'left',
+                  minHeight: 118,
+                  // Prevent long localized labels (e.g. "Conteo de entrenamientos")
+                  // from overflowing the grid track and pushing the modal wider
+                  // than the viewport.
+                  minWidth: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12,
+                  background: soft,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <TypeIcon size={20} style={{ color }} strokeWidth={2.2} />
+                </div>
+                <div className="min-w-0 w-full">
+                  <p
+                    style={{
+                      fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 14,
+                      color: 'var(--color-text-primary)', letterSpacing: -0.2,
+                      lineHeight: 1.15,
+                      wordBreak: 'break-word',
+                      hyphens: 'auto',
+                    }}
+                  >
+                    {t(`goals.types.${key}`)}
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 11, color: 'var(--color-text-subtle)',
+                      marginTop: 3, lineHeight: 1.25,
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {t(`goals.typeSub.${key}`, {
+                      defaultValue: {
+                        lift_1rm: 'Hit a new 1RM',
+                        body_weight: 'Reach a target weight',
+                        body_fat: 'Lean down',
+                        workout_count: 'Sessions goal',
+                        streak: 'Consecutive days',
+                        volume: 'Total pounds moved',
+                      }[key],
+                    })}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
+      )}
 
-        {/* Exercise picker (for lift goals) */}
-        {needsExercise && (
-          <div className="mb-5">
-            <p className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('goals.exercise')}</p>
-            <div className="relative mb-2">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-text-subtle)' }} />
-              <input
-                type="text"
-                placeholder={t('goals.searchExercise')}
-                value={searchQuery}
-                onChange={e => { setSearchQuery(e.target.value); if (exerciseId) { setExerciseId(''); setSelectedExercise(null); } }}
-                className="w-full border border-white/[0.08] rounded-xl pl-9 pr-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
-                style={{ background: 'var(--color-bg-input, #111827)', color: 'var(--color-text-primary)', '--tw-placeholder-color': 'var(--color-text-subtle)' }}
-              />
+      {/* Stage 2: Details form */}
+      {stage === 'details' && meta && (
+        <div className="animate-fade-in">
+          {/* Exercise picker */}
+          {needsExercise && (
+            <div className="mb-4">
+              <OBLabel>{t('goals.exercise')}</OBLabel>
+              <div className="relative mb-2">
+                <Search size={15} style={{ position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-subtle)', pointerEvents: 'none' }} />
+                <input
+                  type="text"
+                  placeholder={t('goals.searchExercise')}
+                  value={searchQuery}
+                  onChange={e => { setSearchQuery(e.target.value); if (exerciseId) { setExerciseId(''); setSelectedExercise(null); } }}
+                  maxLength={100}
+                  style={{ ...OB_INPUT_STYLE, paddingLeft: 44 }}
+                />
+              </div>
+              {selectedExercise ? (
+                <div className="flex items-center gap-2" style={{ background: OB_TEAL_SOFT, border: '1px solid ' + OB_TEAL + '55', borderRadius: 14, padding: '10px 14px' }}>
+                  <Check size={14} style={{ color: OB_TEAL_DEEP }} strokeWidth={2.6} />
+                  <span className="text-[13px] font-bold" style={{ color: OB_TEAL_DEEP, fontFamily: OB_DISPLAY }}>{exName(selectedExercise)}</span>
+                  {selectedExercise.muscle_group && (
+                    <span className="text-[11px] ml-auto" style={{ color: OB_TEAL_DEEP, opacity: 0.7 }}>{selectedExercise.muscle_group}</span>
+                  )}
+                  <button onClick={() => { setExerciseId(''); setSelectedExercise(null); setSearchQuery(''); }} style={{ marginLeft: 4, padding: 2, borderRadius: 999 }}>
+                    <X size={12} style={{ color: OB_TEAL_DEEP }} />
+                  </button>
+                </div>
+              ) : (
+                <div className="max-h-[200px] overflow-y-auto" style={{ background: 'var(--color-bg-input, var(--color-surface-hover, rgba(0,0,0,0.03)))', borderRadius: 14, border: '1px solid ' + OB_LINE }}>
+                  {loadingExercises ? (
+                    <div className="px-4 py-3 text-[12px] text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('goals.loading')}</div>
+                  ) : exercises.length === 0 ? (
+                    <div className="px-4 py-3 text-[12px] text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('goals.noExercisesFound')}</div>
+                  ) : (
+                    exercises.map(ex => (
+                      <button
+                        key={ex.id}
+                        onClick={() => { setExerciseId(ex.id); setSelectedExercise(ex); setSearchQuery(exName(ex)); }}
+                        className="w-full text-left px-4 py-2.5 text-[13px] transition-colors flex items-center justify-between"
+                        style={{ color: 'var(--color-text-primary)', borderBottom: '1px solid ' + OB_LINE }}
+                      >
+                        <div className="flex flex-col min-w-0">
+                          <span className="truncate font-semibold">{exName(ex)}</span>
+                          {(ex.muscle_group || ex.equipment) && (
+                            <span className="text-[10px] truncate" style={{ color: 'var(--color-text-subtle)' }}>
+                              {[ex.muscle_group, ex.equipment].filter(Boolean).join(' \u00B7 ')}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+              {current1RM !== null && (
+                <p className="text-[11px] mt-2 font-semibold" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('goals.current1RM')}: <span style={{ color: 'var(--color-text-primary)', fontFamily: OB_DISPLAY, fontWeight: 800 }}>{Math.round(current1RM)} {unit}</span>
+                </p>
+              )}
             </div>
-            {/* Selected exercise chip */}
-            {selectedExercise && (
-              <div className="flex items-center gap-2 mb-2 bg-white/[0.04] border border-[#D4AF37]/20 rounded-xl px-3 py-2">
-                <Check size={14} className="text-[#D4AF37]" />
-                <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{exName(selectedExercise)}</span>
-                {selectedExercise.muscle_group && (
-                  <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-subtle)' }}>{selectedExercise.muscle_group}</span>
-                )}
-                <button onClick={() => { setExerciseId(''); setSelectedExercise(null); setSearchQuery(''); }} className="ml-1 p-0.5 rounded-full hover:bg-white/[0.1]">
-                  <X size={12} style={{ color: 'var(--color-text-subtle)' }} />
+          )}
+
+          {/* Target value */}
+          <div className="mb-4">
+            <OBLabel>{t('goals.targetValue')}</OBLabel>
+            <div className="flex items-center gap-2 max-w-full">
+              <input
+                type="number"
+                inputMode="decimal"
+                value={targetValue}
+                onChange={e => setTargetValue(e.target.value)}
+                placeholder="0"
+                className="min-w-0 flex-1"
+                style={{ ...OB_INPUT_STYLE, width: 'auto', fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 18, fontVariantNumeric: 'tabular-nums' }}
+              />
+              <span className="flex-shrink-0" style={{ minWidth: 56, maxWidth: 110, textAlign: 'center', fontSize: 12, fontWeight: 800, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {displayUnit}
+              </span>
+            </div>
+          </div>
+
+          {/* Target date */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between" style={{ marginBottom: -4 }}>
+              <OBLabel optional={t('goals.optional')}>{t('goals.targetDate')}</OBLabel>
+              {dateIsSuggested && targetDate && (
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: OB_TEAL_SOFT, color: OB_TEAL_DEEP, letterSpacing: 0.3, marginBottom: 8 }}
+                >
+                  {t('goals.suggestedChip', 'Sugerido')}
+                </span>
+              )}
+            </div>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={e => { setTargetDate(e.target.value); setDateIsSuggested(false); }}
+              min={new Date().toISOString().split('T')[0]}
+              style={{ ...OB_INPUT_STYLE, maxWidth: '100%', boxSizing: 'border-box' }}
+            />
+            {realisticCaption && !dateWarning && (
+              <p className="text-[11px] mt-1.5 flex items-center gap-1.5 font-bold" style={{ color: OB_TEAL_DEEP }}>
+                <Check size={11} strokeWidth={2.8} /> {realisticCaption}
+              </p>
+            )}
+            {dateWarning && (
+              <div
+                className="mt-2"
+                style={{
+                  background: OB_ORANGE_SOFT,
+                  border: '1px solid ' + OB_ORANGE + '33',
+                  borderRadius: 14,
+                  padding: '12px 14px',
+                }}
+              >
+                <div className="flex items-start gap-2 mb-2">
+                  <AlertTriangle size={14} style={{ color: OB_ORANGE, flexShrink: 0, marginTop: 2 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p className="text-[12px] leading-snug" style={{ color: '#7a2910', fontWeight: 700 }}>
+                      {t('goals.tooAggressiveTitle', 'That date is too aggressive')}
+                    </p>
+                    <p className="text-[11px] leading-relaxed mt-1" style={{ color: '#7a2910', fontWeight: 500 }}>
+                      {t('goals.suggestRealistic', {
+                        date: dateWarning.suggestedLabel,
+                        defaultValue: 'Realistic target: {{date}}',
+                      })}
+                      {' · '}
+                      <span style={{ fontWeight: 700 }}>{dateWarning.plan}</span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTargetDate(dateWarning.suggestedDate)}
+                  className="w-full"
+                  style={{
+                    height: 36,
+                    borderRadius: 10,
+                    background: OB_ORANGE,
+                    color: '#fff',
+                    border: 'none',
+                    fontFamily: OB_DISPLAY,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  {t('goals.useRealisticDate', 'Use this date instead')}
                 </button>
               </div>
             )}
-            {/* Exercise list */}
-            {!selectedExercise && (
-              <div className="max-h-[200px] overflow-y-auto rounded-xl border border-white/[0.06]" style={{ background: 'var(--color-bg-input, #111827)' }}>
-                {loadingExercises ? (
-                  <div className="px-4 py-3 text-[12px] text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('goals.loading')}</div>
-                ) : exercises.length === 0 ? (
-                  <div className="px-4 py-3 text-[12px] text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('goals.noExercisesFound')}</div>
-                ) : (
-                  exercises.map(ex => (
-                    <button
-                      key={ex.id}
-                      onClick={() => { setExerciseId(ex.id); setSelectedExercise(ex); setSearchQuery(exName(ex)); }}
-                      className="w-full text-left px-3 py-2 text-[13px] hover:bg-white/[0.04] transition-colors flex items-center justify-between border-b border-white/[0.03] last:border-b-0"
-                      style={{ color: exerciseId === ex.id ? 'var(--color-accent)' : 'var(--color-text-primary)' }}
-                    >
-                      <div className="flex flex-col min-w-0">
-                        <span className="truncate">{exName(ex)}</span>
-                        {(ex.muscle_group || ex.equipment) && (
-                          <span className="text-[10px] truncate" style={{ color: 'var(--color-text-subtle)' }}>
-                            {[ex.muscle_group, ex.equipment].filter(Boolean).join(' \u00B7 ')}
-                          </span>
-                        )}
-                      </div>
-                      {exerciseId === ex.id && <Check size={14} style={{ color: 'var(--color-accent)' }} className="flex-shrink-0 ml-2" />}
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-            {/* Current 1RM display */}
-            {current1RM !== null && (
-              <p className="text-[11px] mt-2" style={{ color: 'var(--color-text-subtle)' }}>
-                {t('goals.current1RM')}: <span className="font-bold" style={{ color: 'var(--color-text-primary)' }}>{Math.round(current1RM)} {unit}</span>
-              </p>
-            )}
           </div>
-        )}
 
-        {/* Target value */}
-        <div className="mb-5">
-          <p className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('goals.targetValue')}</p>
-          <div className="flex items-center gap-2">
+          {/* Title */}
+          <div className="mb-5">
+            <OBLabel>{t('goals.goalTitle')}</OBLabel>
             <input
-              type="number"
-              inputMode="decimal"
-              value={targetValue}
-              onChange={e => setTargetValue(e.target.value)}
-              placeholder="0"
-              className="flex-1 border border-white/[0.08] rounded-xl px-4 py-3 text-[16px] font-bold focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
-              style={{ background: 'var(--color-bg-input, #111827)', color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              maxLength={80}
+              style={OB_INPUT_STYLE}
             />
-            <span className="text-[14px] font-semibold w-16" style={{ color: 'var(--color-text-subtle)' }}>{unit}</span>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setStage('type')}
+              className="transition-colors"
+              style={{ height: 54, padding: '0 20px', borderRadius: 999, background: 'transparent', border: '1px solid ' + OB_LINE_STRONG, fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 15, color: 'var(--color-text-muted)' }}
+            >
+              {t('goals.back', 'Back')}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !canSave}
+              className="flex-1 transition-colors"
+              style={{
+                height: 54, borderRadius: 999,
+                background: saving || !canSave ? OB_TEAL_SOFT : OB_TEAL,
+                color: saving || !canSave ? OB_SUB : '#0A2A2A',
+                fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 15,
+              }}
+            >
+              {saving ? t('goals.saving') : t('goals.createGoal')}
+            </button>
           </div>
         </div>
-
-        {/* Target date (optional) */}
-        <div className="mb-5">
-          <p className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
-            {t('goals.targetDate')} <span className="normal-case" style={{ color: 'var(--color-text-subtle)' }}>({t('goals.optional')})</span>
-          </p>
-          <input
-            type="date"
-            value={targetDate}
-            onChange={e => setTargetDate(e.target.value)}
-            min={new Date().toISOString().split('T')[0]}
-            className="w-full border border-white/[0.08] rounded-xl px-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
-            style={{ background: 'var(--color-bg-input, #111827)', color: 'var(--color-text-primary)' }}
-          />
-          {dateWarning && (
-            <div className="flex items-start gap-2 mt-2 bg-[#F97316]/10 border border-[#F97316]/20 rounded-xl px-3 py-2.5">
-              <AlertTriangle size={14} className="text-[#F97316] flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-[#F97316] leading-relaxed">{dateWarning}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Title (auto-generated but editable) */}
-        <div className="mb-6">
-          <p className="text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('goals.goalTitle')}</p>
-          <input
-            type="text"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            className="w-full border border-white/[0.08] rounded-xl px-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
-            style={{ background: 'var(--color-bg-input, #111827)', color: 'var(--color-text-primary)' }}
-          />
-        </div>
-
-        {/* Save button */}
-        <button
-          onClick={handleSave}
-          disabled={saving || !targetValue || !title.trim() || (needsExercise && !exerciseId)}
-          className="w-full bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold text-[14px] py-4 rounded-2xl transition-colors duration-200"
-        >
-          {saving ? t('goals.saving') : t('goals.createGoal')}
-        </button>
-      </motion.div>
-    </motion.div>
+      )}
+    </ModalShell>
   );
 }

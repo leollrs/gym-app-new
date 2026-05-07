@@ -36,11 +36,11 @@ const REQUIRES_APPROVAL = new Set(['checkin', 'purchase']);
 
 // Action-specific config for display
 const ACTION_CONFIG = {
-  checkin:            { icon: LogIn,       color: '#8B5CF6', label: 'Check-in' },
-  purchase:           { icon: ShoppingBag, color: '#D4AF37', label: 'Purchase' },
-  reward_redemption:  { icon: Gift,        color: '#10B981', label: 'Reward' },
-  referral:           { icon: Users,       color: '#3B82F6', label: 'Referral' },
-  voucher:            { icon: Ticket,      color: '#F59E0B', label: 'Voucher' },
+  checkin:            { icon: LogIn,       color: 'var(--color-coach)', label: 'Check-in' },
+  purchase:           { icon: ShoppingBag, color: 'var(--color-accent)', label: 'Purchase' },
+  reward_redemption:  { icon: Gift,        color: 'var(--color-success)', label: 'Reward' },
+  referral:           { icon: Users,       color: 'var(--color-info)', label: 'Referral' },
+  voucher:            { icon: Ticket,      color: 'var(--color-warning)', label: 'Voucher' },
 };
 
 /**

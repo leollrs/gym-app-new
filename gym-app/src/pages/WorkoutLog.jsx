@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronDown, ChevronRight, Trophy, Dumbbell, Clock, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronRight, Trophy, Dumbbell, Clock, Zap, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
 import { sanitize } from '../lib/sanitize';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
+import BackdatedWorkoutModal from '../components/BackdatedWorkoutModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const formatDuration = (seconds) => {
@@ -27,7 +29,7 @@ const formatMonthYear = (iso) => {
 };
 
 // ── Session Card ──────────────────────────────────────────────────────────────
-const SessionCard = ({ session }) => {
+const SessionCard = ({ session, onEdit }) => {
   const [expanded, setExpanded] = useState(false);
 
   const exercises  = session.session_exercises ?? [];
@@ -96,6 +98,27 @@ const SessionCard = ({ session }) => {
       {/* Expanded exercise list */}
       {expanded && (
         <div className="px-5 pb-4 border-t border-white/[0.06]">
+          <div className="pt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEdit?.(session); }}
+              className="inline-flex items-center gap-1.5 transition-colors active:scale-95"
+              style={{
+                padding: '6px 12px',
+                borderRadius: 999,
+                border: '1px solid var(--color-border-default, rgba(127,127,127,0.18))',
+                background: 'transparent',
+                color: 'var(--color-text-muted)',
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 0.2,
+              }}
+              aria-label="Edit workout"
+            >
+              <Pencil size={11} strokeWidth={2.4} />
+              Edit
+            </button>
+          </div>
           <div className="pt-3 flex flex-col gap-3">
             {sortedExercises
               .map((ex) => {
@@ -172,9 +195,46 @@ const WorkoutLog = ({ embedded = false }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const logCacheKey = `workout-log-${user?.id}`;
+  const [sessions, setSessions] = useCachedState(logCacheKey, []);
+  const [loading, setLoading]   = useState(!hasCachedState(logCacheKey));
   const [visibleCount, setVisibleCount] = useState(embedded ? 5 : 20);
+  const [routines, setRoutines] = useState([]);
+  const [editingSession, setEditingSession] = useState(null);
+
+  // Load the user's routines so the edit modal's routine-mode picker can
+  // resolve names. The set is small and rarely changes, so a single fetch
+  // alongside the session list is fine.
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+    supabase
+      .from('routines')
+      .select('id, name')
+      .eq('profile_id', user.id)
+      .then(({ data }) => { if (alive) setRoutines(data || []); });
+    return () => { alive = false; };
+  }, [user?.id]);
+
+  const handleEditSaved = () => {
+    // The edit flow soft-deletes the original and re-logs — refetch the list.
+    setEditingSession(null);
+    if (!user?.id) return;
+    supabase
+      .from('workout_sessions')
+      .select(`
+        id, name, routine_id, started_at, completed_at, duration_seconds, total_volume_lbs,
+        session_exercises(
+          id, exercise_id, snapshot_name, position,
+          session_sets(set_number, weight_lbs, reps, is_completed, is_pr, rpe, notes)
+        )
+      `)
+      .eq('profile_id', user.id)
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false })
+      .limit(embedded ? 5 : 100)
+      .then(({ data }) => setSessions(data ?? []));
+  };
 
   useEffect(() => { document.title = `Workout Log | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
@@ -187,9 +247,9 @@ const WorkoutLog = ({ embedded = false }) => {
       const { data, error } = await supabase
         .from('workout_sessions')
         .select(`
-          id, name, completed_at, duration_seconds, total_volume_lbs,
+          id, name, routine_id, started_at, completed_at, duration_seconds, total_volume_lbs,
           session_exercises(
-            id, snapshot_name, position,
+            id, exercise_id, snapshot_name, position,
             session_sets(set_number, weight_lbs, reps, is_completed, is_pr, rpe, notes)
           )
         `)
@@ -293,7 +353,7 @@ const WorkoutLog = ({ embedded = false }) => {
             {!isCollapsed && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
                 {grouped[month].map(session => (
-                  <SessionCard key={session.id} session={session} />
+                  <SessionCard key={session.id} session={session} onEdit={setEditingSession} />
                 ))}
               </div>
             )}
@@ -311,6 +371,15 @@ const WorkoutLog = ({ embedded = false }) => {
           Load more ({sessions.length - visibleCount} remaining)
         </button>
       )}
+
+      {/* Edit modal — opens with the chosen session pre-populated. */}
+      <BackdatedWorkoutModal
+        open={!!editingSession}
+        onClose={() => setEditingSession(null)}
+        onSaved={handleEditSaved}
+        routines={routines}
+        editingSession={editingSession}
+      />
     </div>
   );
 };

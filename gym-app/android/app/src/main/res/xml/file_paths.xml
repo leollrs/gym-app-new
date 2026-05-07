@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <external-files-path name="my_images" path="photos/" />
+    <!--
+        Scoped FileProvider entries.
+
+        cache-path is restricted to a single subdirectory (`camera_temp/`) instead
+        of the entire cache root. Exposing the whole cache directory via
+        FileProvider would let any app receiving a granted URI also read other
+        cached files (Capacitor WebView cache, plugin temp files, etc.). The
+        Capacitor Camera plugin only writes its capture intermediates here, so
+        narrowing the scope is safe and required for App Store / Play UGC review.
+    -->
+    <cache-path name="my_cache_images" path="camera_temp/" />
 </paths>

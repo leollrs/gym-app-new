@@ -23,7 +23,7 @@ struct TuGymPRTimelineProvider: TimelineProvider {
         ComplicationEntry(
             date: Date(),
             streak: 12,
-            lastWorkoutName: "Push Day",
+            lastWorkoutName: "Lower Power",
             lastWorkoutDate: "Today",
             weeklyCount: 4
         )
@@ -59,6 +59,12 @@ struct TuGymPRTimelineProvider: TimelineProvider {
 }
 
 // MARK: - Complication Views
+//
+// New visual language (per "Apple Watch · 7 faces" reference):
+//   - Flame / streak numbers use brand orange #FF5A2E
+//   - Secondary metrics use teal #2EC4C4 (brand accent from shared defaults)
+//   - SF Rounded heavy numerals, tabular alignment
+//   - Compact hierarchy: big number · small uppercase label
 
 struct TuGymPRComplicationEntryView: View {
     @Environment(\.widgetFamily) var widgetFamily
@@ -79,97 +85,124 @@ struct TuGymPRComplicationEntryView: View {
         }
     }
 
-    // MARK: - Circular: Streak count with fire icon
+    // MARK: - Circular — orange flame above streak count
 
     private var circularView: some View {
         ZStack {
             AccessoryWidgetBackground()
-            VStack(spacing: 1) {
+            VStack(spacing: 0) {
                 Image(systemName: "flame.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(complicationGold)
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(streakOrange)
                 Text("\(entry.streak)")
-                    .font(.system(.body, design: .rounded).weight(.black))
-                    .minimumScaleFactor(0.6)
+                    .font(.system(.title3, design: .rounded).weight(.black))
+                    .minimumScaleFactor(0.5)
                     .lineLimit(1)
+                    .monospacedDigit()
             }
         }
+        .widgetAccentable()
     }
 
-    // MARK: - Rectangular: App name + streak + last workout date
+    // MARK: - Rectangular — streak headline + weekly count + last workout
 
     private var rectangularView: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 1) {
+            // Brand row
+            HStack(spacing: 3) {
                 Image(systemName: "flame.fill")
-                    .font(.caption2.weight(.bold))
-                    .foregroundColor(complicationGold)
-                Text("TuGymPR")
-                    .font(.caption.weight(.heavy))
-                    .foregroundColor(complicationGold)
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundColor(streakOrange)
+                Text("TUGYMPR")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .kerning(0.6)
+                    .foregroundColor(streakOrange)
+                Spacer(minLength: 0)
+                Text("\(entry.weeklyCount)/wk")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
             }
 
-            HStack(spacing: 4) {
-                Text("\(entry.streak) day streak")
-                    .font(.system(.caption, design: .rounded).weight(.bold))
-                Spacer()
-                Text("\(entry.weeklyCount)/wk")
-                    .font(.caption2.weight(.semibold))
+            // Big streak number + "DAY STREAK" label
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text("\(entry.streak)")
+                    .font(.system(.title2, design: .rounded).weight(.black))
+                    .monospacedDigit()
+                Text(entry.streak == 1 ? "DAY STREAK" : "DAY STREAK")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .kerning(0.5)
                     .foregroundColor(.secondary)
             }
 
-            HStack(spacing: 4) {
+            // Last workout sub line
+            HStack(spacing: 3) {
                 Text(entry.lastWorkoutName)
-                    .font(.caption2.weight(.medium))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                 Text("·")
                     .foregroundColor(.secondary)
                 Text(formatRelativeDate(entry.lastWorkoutDate))
-                    .font(.caption2.weight(.medium))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
         }
+        .widgetAccentable()
     }
 
-    // MARK: - Inline: Emoji + streak + workout name
+    // MARK: - Inline — compact single line w/ flame
 
     private var inlineView: some View {
-        Text("🔥 \(entry.streak) streak • \(entry.lastWorkoutName)")
-            .font(.caption.weight(.semibold))
+        Text("🔥 \(entry.streak) day · \(entry.lastWorkoutName)")
+            .font(.system(.caption, design: .rounded).weight(.semibold))
             .lineLimit(1)
     }
 
-    // MARK: - Corner: Streak number with gauge
+    // MARK: - Corner — streak number anchored in corner + weekly gauge
 
     private var cornerView: some View {
         ZStack {
             AccessoryWidgetBackground()
-            VStack(spacing: 1) {
+            VStack(spacing: 0) {
                 Image(systemName: "flame.fill")
-                    .font(.caption2.weight(.bold))
-                    .foregroundColor(complicationGold)
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundColor(streakOrange)
                 Text("\(entry.streak)")
                     .font(.system(.headline, design: .rounded).weight(.black))
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
+                    .monospacedDigit()
             }
         }
+        .widgetAccentable()
         .widgetLabel {
             Gauge(value: Double(min(entry.weeklyCount, 7)), in: 0...7) {
                 Text("Wk")
             } currentValueLabel: {
-                Text("\(entry.weeklyCount)")
+                Text("\(entry.weeklyCount)/7")
+                    .monospacedDigit()
             }
-            .tint(complicationGold)
+            .tint(accentTeal)
         }
     }
 
     // MARK: - Helpers
 
-    private var complicationGold: Color {
-        Color(red: 212/255, green: 175/255, blue: 55/255)
+    private var streakOrange: Color {
+        Color(red: 255/255, green: 90/255, blue: 46/255)
+    }
+
+    private var accentTeal: Color {
+        // Prefer gym branding color from shared app group if available
+        if let defaults = UserDefaults(suiteName: "group.com.tugympr.app"),
+           let hex = (defaults.string(forKey: "gymAccentHex")
+                      ?? defaults.string(forKey: "accentColorHex")),
+           let c = Color(hex: hex) {
+            return c
+        }
+        return Color(red: 46/255, green: 196/255, blue: 196/255)
     }
 
     private func formatRelativeDate(_ dateString: String) -> String {
@@ -221,8 +254,8 @@ struct TuGymPRComplication_Previews: PreviewProvider {
     static var sampleEntry = ComplicationEntry(
         date: Date(),
         streak: 12,
-        lastWorkoutName: "Push Day",
-        lastWorkoutDate: "2026-03-23",
+        lastWorkoutName: "Lower Power",
+        lastWorkoutDate: "2026-04-22",
         weeklyCount: 4
     )
 

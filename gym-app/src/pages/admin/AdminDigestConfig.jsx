@@ -36,12 +36,12 @@ const SECTION_ICONS = {
 };
 
 const SECTION_COLORS = {
-  include_churn: '#EF4444',
-  include_attendance: '#60A5FA',
+  include_churn: 'var(--color-danger)',
+  include_attendance: 'var(--color-info)',
   include_signups: '#10B981',
   include_challenges: '#D4AF37',
-  include_revenue: '#F97316',
-  include_nps: '#A78BFA',
+  include_revenue: 'var(--color-danger)',
+  include_nps: 'var(--color-coach)',
 };
 
 // ── Preview Modal ──────────────────────────────────────────────────────────
@@ -198,14 +198,15 @@ export default function AdminDigestConfig() {
 
       {/* ── Summary stat cards ──────────────────────────────── */}
       <FadeIn>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-5 mb-6">
+        <span className="admin-eyebrow block mt-5 mb-2">{t('admin.digestConfig.title')}</span>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3 mb-6">
           <StatCard
             label={t('admin.digestConfig.statusLabel', { defaultValue: 'Digest Status' })}
             value={form.enabled ? 1 : 0}
             sub={form.enabled
               ? t('admin.digestConfig.enabledStatus', { defaultValue: 'Active' })
               : t('admin.digestConfig.disabledStatus', { defaultValue: 'Inactive' })}
-            borderColor={form.enabled ? '#10B981' : '#EF4444'}
+            borderColor={form.enabled ? 'var(--color-success)' : 'var(--color-danger)'}
             icon={form.enabled ? Power : PowerOff}
             delay={0}
           />
@@ -213,7 +214,7 @@ export default function AdminDigestConfig() {
             label={t('admin.digestConfig.frequency', { defaultValue: 'Frequency' })}
             value={enabledCount}
             sub={nextSendDescription}
-            borderColor="#D4AF37"
+            borderColor="var(--color-accent)"
             icon={Clock}
             delay={0.05}
           />
@@ -221,7 +222,7 @@ export default function AdminDigestConfig() {
             label={t('admin.digestConfig.sectionsLabel', { defaultValue: 'Active Sections' })}
             value={`${enabledCount}/${SECTION_KEYS.length}`}
             sub={t('admin.digestConfig.sectionsIncluded', { defaultValue: 'sections included' })}
-            borderColor="#60A5FA"
+            borderColor="var(--color-info)"
             icon={Mail}
             delay={0.1}
           />
@@ -230,11 +231,11 @@ export default function AdminDigestConfig() {
 
       {/* ── Enable toggle card ──────────────────────────────── */}
       <FadeIn delay={0.05}>
-        <AdminCard className="mb-5" borderLeft={form.enabled ? '#10B981' : '#EF4444'}>
+        <AdminCard className="mb-5" borderLeft={form.enabled ? 'var(--color-success)' : 'var(--color-danger)'}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: form.enabled ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)' }}>
-                <Mail size={18} style={{ color: form.enabled ? '#10B981' : '#EF4444' }} />
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: form.enabled ? 'var(--color-success-soft)' : 'var(--color-danger-soft)' }}>
+                <Mail size={18} style={{ color: form.enabled ? 'var(--color-success)' : 'var(--color-danger)' }} />
               </div>
               <div>
                 <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('admin.digestConfig.emailDigest')}</p>
@@ -266,10 +267,16 @@ export default function AdminDigestConfig() {
                     {FREQUENCY_KEYS.map(fKey => (
                       <button
                         key={fKey}
-                        onClick={() => set('frequency', fKey)}
-                        className={`py-2.5 rounded-xl text-[13px] font-semibold transition-all ${
+                        onClick={() => {
+                          // Clear day_of_week when switching away from 'weekly' so a stale
+                          // selection (e.g. "Monday") doesn't persist when the cron runs daily/monthly.
+                          set('frequency', fKey);
+                          if (fKey !== 'weekly') set('day_of_week', null);
+                          else if (form.day_of_week == null) set('day_of_week', 1);
+                        }}
+                        className={`py-2.5 rounded-xl text-[13px] font-semibold transition-all min-h-[44px] ${
                           form.frequency === fKey
-                            ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-2 border-[#D4AF37]/30 shadow-[0_0_12px_rgba(212,175,55,0.08)]'
+                            ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-2 border-[#D4AF37]/30 shadow-[0_0_12px_color-mix(in srgb, #D4AF37 20%, transparent)]'
                             : 'bg-[#0F172A] text-[#6B7280] border border-white/6 hover:border-white/10 hover:text-[#9CA3AF]'
                         }`}
                       >
@@ -283,12 +290,12 @@ export default function AdminDigestConfig() {
                 {form.frequency === 'weekly' && (
                   <div>
                     <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2.5">{t('admin.digestConfig.day')}</label>
-                    <div className="flex gap-1.5 flex-wrap">
+                    <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
                       {DAY_KEYS.map((dKey, i) => (
                         <button
                           key={dKey}
                           onClick={() => set('day_of_week', i)}
-                          className={`px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-all ${
+                          className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-all ${
                             form.day_of_week === i
                               ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
                               : 'bg-[#0F172A] text-[#6B7280] border border-white/6 hover:border-white/10'
@@ -320,7 +327,7 @@ export default function AdminDigestConfig() {
 
           {/* ── Content Toggles ─────────────────────────────── */}
           <FadeIn delay={0.15}>
-            <AdminCard className="mb-6" borderLeft="#60A5FA">
+            <AdminCard className="mb-6" borderLeft="var(--color-info)">
               <SectionLabel icon={Bell}>{t('admin.digestConfig.includeInDigest')}</SectionLabel>
 
               <div className="mt-4 space-y-1">
@@ -365,7 +372,8 @@ export default function AdminDigestConfig() {
         <button
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
-          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:brightness-90 disabled:opacity-50 transition-all shadow-[0_0_20px_rgba(212,175,55,0.15)]"
+          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:brightness-90 disabled:opacity-50 transition-all"
+          style={{ boxShadow: '0 0 20px color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
         >
           <Save size={16} />
           {saveMutation.isPending ? tc('saving') : t('admin.digestConfig.saveButton')}

@@ -42,9 +42,10 @@ export default function OnboardingFunnel({ gymId }) {
   if (isLoading) return <CardSkeleton />;
   if (isError) return <ErrorCard message={t('admin.analytics.onboardingError', 'Failed to load onboarding data')} onRetry={refetch} />;
 
+  // Translatable donut slice labels — shown in tooltip + legend.
   const donutData = [
-    { name: 'Onboarded',     value: stats.onboarded },
-    { name: 'Not Onboarded', value: stats.total - stats.onboarded },
+    { name: t('admin.analytics.onboardingOnboarded', 'Onboarded'),    value: stats.onboarded },
+    { name: t('admin.analytics.onboardingNotCompleted', 'Not Onboarded'), value: stats.total - stats.onboarded },
   ];
 
   // Step labels from i18n
@@ -167,7 +168,7 @@ export default function OnboardingFunnel({ gymId }) {
                         className="h-full rounded-full transition-all duration-700 ease-out"
                         style={{
                           width: `${pctOfTotal}%`,
-                          backgroundColor: i === TOTAL_STEPS ? '#34D399' : 'var(--color-accent)',
+                          backgroundColor: i === TOTAL_STEPS ? 'var(--color-success)' : 'var(--color-accent)',
                           opacity: 0.35 + (pctOfTotal / 100) * 0.65,
                         }}
                       />

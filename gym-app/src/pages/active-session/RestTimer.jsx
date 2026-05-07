@@ -1,120 +1,146 @@
-import React from 'react';
-import { SkipForward, Plus, Minus, ChevronRight } from 'lucide-react';
+import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { exName } from '../../lib/exerciseName';
 
+const DISPLAY_FONT = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
+
 const RestTimer = ({ restTimer, currentRestDuration, formatTime, onSkip, onAdjustRest, upcomingExercise }) => {
   const { t } = useTranslation('pages');
-  const progress = currentRestDuration > 0
-    ? ((currentRestDuration - restTimer) / currentRestDuration) * 100
-    : 100;
 
-  const circumference = 2 * Math.PI * 54;
-  const strokeDash = (progress / 100) * circumference;
+  // Body scroll lock while rest overlay is visible
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const total = currentRestDuration > 0 ? currentRestDuration : 1;
+  const pct = Math.max(0, Math.min(1, 1 - restTimer / total));
+
+  // 260px ring dimensions
+  const RING_SIZE = 260;
+  const R = 110;
+  const C = 2 * Math.PI * R;
+  const dash = `${C * pct} ${C}`;
+
+  const mins = Math.floor(Math.max(0, restTimer) / 60);
+  const secs = Math.max(0, restTimer) % 60;
 
   return (
     <div
-      className="fixed inset-0 z-[115] flex flex-col items-center justify-center"
-      style={{ backgroundColor: 'var(--color-bg-primary)' }}
+      className="fixed inset-0 z-[115] flex flex-col animate-fade-in"
+      style={{
+        backgroundColor: 'rgba(10, 13, 16, 0.62)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+      }}
       role="dialog"
-      aria-label="Rest timer"
+      aria-label={t('activeSession.rest', 'Rest')}
     >
-      {/* Label */}
-      <p className="text-[11px] font-bold uppercase tracking-[0.25em] mb-8" style={{ color: 'var(--color-accent)' }}>
-        {t('activeSession.rest')}
-      </p>
-
-      {/* Circular timer */}
-      <div className="relative w-[140px] h-[140px] mb-6">
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-          <circle cx="60" cy="60" r="54" fill="none" stroke="var(--color-border-default))" strokeWidth="6" />
-          <circle cx="60" cy="60" r="54" fill="none" stroke="var(--color-accent)" strokeWidth="6" strokeLinecap="round"
-            strokeDasharray={circumference} strokeDashoffset={circumference - strokeDash}
-            className="transition-all duration-1000 ease-linear"
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[36px] font-black tabular-nums tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
-            {formatTime(restTimer)}
-          </span>
+      {/* Ring + time */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6" style={{ paddingTop: 'var(--safe-area-top, env(safe-area-inset-top, 0px))' }}>
+        <div
+          className="text-[11px] font-bold uppercase tracking-[0.22em] mb-3"
+          style={{ color: 'rgba(255,255,255,0.6)' }}
+        >
+          {t('activeSession.rest', 'REST')}
         </div>
+
+        <div className="relative" style={{ width: RING_SIZE, height: RING_SIZE }}>
+          <svg width={RING_SIZE} height={RING_SIZE} style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
+            <circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={R} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={10} />
+            <circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={R}
+              fill="none"
+              stroke="var(--color-accent)"
+              strokeWidth={10}
+              strokeLinecap="round"
+              strokeDasharray={dash}
+              style={{ transition: 'stroke-dasharray 1s linear' }}
+            />
+          </svg>
+
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <div
+              style={{
+                fontFamily: DISPLAY_FONT,
+                fontWeight: 700,
+                fontSize: 64,
+                color: '#fff',
+                letterSpacing: -2,
+                lineHeight: 1,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {String(mins).padStart(1, '0')}:{String(secs).padStart(2, '0')}
+            </div>
+            {upcomingExercise && (
+              <div
+                className="mt-2 px-3 text-center"
+                style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: 600, letterSpacing: 0.4 }}
+              >
+                {t('activeSession.upcomingExercise', 'Up Next')} · {exName(upcomingExercise)}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ±15s pill buttons */}
+        {onAdjustRest && (
+          <div className="mt-7 flex items-center gap-2">
+            <button
+              onClick={() => onAdjustRest(-15)}
+              className="px-4 py-2.5 rounded-xl active:scale-95 transition-transform focus:outline-none"
+              style={{
+                border: '1px solid rgba(255,255,255,0.2)',
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                color: '#fff',
+                fontFamily: DISPLAY_FONT,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+              aria-label="Reduce rest by 15 seconds"
+            >
+              −15s
+            </button>
+            <button
+              onClick={() => onAdjustRest(15)}
+              className="px-4 py-2.5 rounded-xl active:scale-95 transition-transform focus:outline-none"
+              style={{
+                border: '1px solid rgba(255,255,255,0.2)',
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                color: '#fff',
+                fontFamily: DISPLAY_FONT,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+              aria-label="Add 15 seconds rest"
+            >
+              +15s
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Adjust rest time — +/- 15s buttons */}
-      {onAdjustRest && (
-        <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => onAdjustRest(-15)}
-            className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-90 transition-transform"
-            style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
-            aria-label="Reduce rest 15s"
-          >
-            <Minus size={16} style={{ color: 'var(--color-text-muted)' }} />
-          </button>
-          <span className="text-[12px] font-semibold tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
-            {Math.floor(currentRestDuration / 60)}:{String(currentRestDuration % 60).padStart(2, '0')} {t('activeSession.restTotal', 'total')}
-          </span>
-          <button
-            onClick={() => onAdjustRest(15)}
-            className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-90 transition-transform"
-            style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
-            aria-label="Add rest 15s"
-          >
-            <Plus size={16} style={{ color: 'var(--color-text-muted)' }} />
-          </button>
-        </div>
-      )}
-
-      {/* Info */}
-      <p className="text-[13px] mb-6" style={{ color: 'var(--color-text-muted)' }}>
-        {t('activeSession.nextSetWhenZero')}
-      </p>
-
-      {/* Skip button */}
-      <button
-        onClick={onSkip}
-        className="flex items-center gap-2 px-6 py-3 min-h-[44px] rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-all focus:ring-2 focus:outline-none"
-        style={{
-          color: 'var(--color-accent)',
-          borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)',
-          borderWidth: '1px',
-          borderStyle: 'solid',
-        }}
-      >
-        <SkipForward size={16} />
-        {t('activeSession.skipRest')}
-      </button>
-
-      {/* Upcoming exercise preview — shown on last set of current exercise */}
-      {upcomingExercise && (
-        <div
-          className="mt-6 mx-6 w-[calc(100%-48px)] max-w-sm rounded-2xl px-4 py-3"
+      {/* Bottom: Skip rest (white) */}
+      <div className="px-4 pb-10" style={{ paddingBottom: 'calc(40px + env(safe-area-inset-bottom, 0px))' }}>
+        <button
+          onClick={onSkip}
+          className="w-full h-14 rounded-[18px] active:scale-[0.97] transition-transform focus:outline-none"
           style={{
-            backgroundColor: 'var(--color-bg-card)',
-            border: '1px solid var(--color-border-default)',
+            backgroundColor: '#fff',
+            color: '#0A0D10',
+            fontFamily: DISPLAY_FONT,
+            fontSize: 15,
+            fontWeight: 700,
+            border: 'none',
           }}
         >
-          <div className="flex items-center gap-2 mb-1.5">
-            <ChevronRight size={14} style={{ color: 'var(--color-accent)' }} />
-            <span className="text-[11px] font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--color-accent)' }}>
-              {t('activeSession.upcomingExercise', 'Up Next')}
-            </span>
-          </div>
-          <p className="text-[15px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
-            {exName(upcomingExercise)}
-          </p>
-          {upcomingExercise.suggestion?.suggestedWeight && (
-            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-              {upcomingExercise.targetSets} x {upcomingExercise.suggestion.suggestedReps ?? upcomingExercise.targetReps} @ {upcomingExercise.suggestion.suggestedWeight} lbs
-            </p>
-          )}
-          {!upcomingExercise.suggestion?.suggestedWeight && (
-            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-              {upcomingExercise.targetSets} x {upcomingExercise.targetReps} reps
-            </p>
-          )}
-        </div>
-      )}
+          {t('activeSession.skipRest', 'Skip rest')}
+        </button>
+      </div>
     </div>
   );
 };

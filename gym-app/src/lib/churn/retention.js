@@ -79,9 +79,10 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   // ── 1. Member profiles ───────────────────────────────────────
   const { data: memberRows, error: membersError } = await supabase
     .from('profiles')
-    .select('id, full_name, username, phone_number, created_at, gym_id, preferred_training_days')
+    .select('id, full_name, username, phone_number, created_at, gym_id, preferred_training_days, membership_status')
     .eq('gym_id', gymId)
     .eq('role', 'member')
+    .not('membership_status', 'in', '(cancelled,banned,deactivated)')
     .order('full_name', { ascending: true });
 
   if (membersError || !memberRows?.length) return [];

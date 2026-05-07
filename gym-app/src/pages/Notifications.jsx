@@ -9,16 +9,20 @@ import { formatDistanceToNow, differenceInDays } from 'date-fns';
 import { sanitize } from '../lib/sanitize';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
+import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../contexts/ToastContext';
 
+const DISPLAY_FONT = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
+const CARD_SHADOW = '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)';
+
 const TYPE_META = {
   announcement: { icon: Megaphone, color: 'text-blue-400',    bg: 'bg-blue-500/10'   },
-  pr:           { icon: Trophy,    color: 'text-[#D4AF37]',   bg: 'bg-[#D4AF37]/10'  },
+  pr:           { icon: Trophy,    color: 'text-[#FF5A2E]',   bg: 'bg-[#FF5A2E]/10'  },
   milestone:    { icon: Dumbbell,  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-  challenge:    { icon: Zap,       color: 'text-purple-400',  bg: 'bg-purple-500/10'  },
+  challenge:    { icon: Zap,       color: 'text-[#6D5FDB]',   bg: 'bg-[#6D5FDB]/10'  },
   friend:       { icon: UserPlus,  color: 'text-pink-400',    bg: 'bg-pink-500/10'    },
-  default:      { icon: Bell,      color: 'text-[var(--color-text-muted)]', bg: 'bg-white/6' },
+  default:      { icon: Bell,      color: 'text-[var(--color-text-muted)]', bg: 'bg-[var(--color-bg-card)]' },
 };
 
 const ANN_ACCENT = {
@@ -33,9 +37,10 @@ export default function Notifications() {
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const { showToast } = useToast();
-  const { data: queryItems, isLoading: queryLoading } = useNotifications(user?.id);
+  const { data: queryItems, isLoading: queryLoading } = useNotifications(user?.id, 'member');
   const { invalidateNotifications } = useInvalidate();
-  const [items, setItems]               = useState([]);
+  const cacheKey = `notifications-items-${user?.id || 'anon'}`;
+  const [items, setItems]               = useCachedState(cacheKey, []);
   const [announcements, setAnnouncements] = useState([]);
   const [marking, setMarking]           = useState(false);
   const [displayLimit, setDisplayLimit]   = useState(5);
@@ -43,7 +48,9 @@ export default function Notifications() {
   useEffect(() => { document.title = `${t('notifications.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // Sync TanStack Query data into local state (needed for optimistic updates)
-  const loading = queryLoading && items.length === 0;
+  // Only show a skeleton on the VERY first visit — any cached data (from
+  // previous visit or React Query persist cache) paints immediately.
+  const loading = queryLoading && items.length === 0 && !hasCachedState(cacheKey);
   useEffect(() => {
     if (queryItems) setItems(queryItems);
   }, [queryItems]);
@@ -77,9 +84,16 @@ export default function Notifications() {
         table: 'notifications',
         filter: `profile_id=eq.${user?.id}`,
       }, (payload) => {
-        if (payload.new) {
-          setItems(prev => [payload.new, ...prev].slice(0, 50));
-        }
+        if (!payload.new) return;
+        // Only append rows targeted at the member view (legacy rows had NULL audience).
+        const aud = payload.new.audience;
+        if (aud && aud !== 'member') return;
+        // Dedup by id, keep up to 200 items so realtime inserts don't push
+        // already-loaded older notifications out of the visible list.
+        setItems(prev => {
+          if (prev.some(p => p.id === payload.new.id)) return prev;
+          return [payload.new, ...prev].slice(0, 200);
+        });
       })
       .subscribe();
 
@@ -103,36 +117,60 @@ export default function Notifications() {
       });
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Dismiss a single notification (soft-delete to preserve dedup_key)
+  // Dismiss a single notification. Tries soft-delete (dismissed_at) first,
+  // falls back to hard DELETE if the column isn't present on this DB.
   const deleteNotification = useCallback(async (id) => {
-    const confirmed = window.confirm(t('notifications.deleteConfirm'));
-    if (!confirmed) return;
+    const snapshot = items;
     setItems(prev => prev.filter(n => n.id !== id));
-    const { error } = await supabase.from('notifications').update({ dismissed_at: new Date().toISOString() }).eq('id', id);
+
+    let { error } = await supabase
+      .from('notifications')
+      .update({ dismissed_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error && /dismissed_at/i.test(error.message || '')) {
+      ({ error } = await supabase.from('notifications').delete().eq('id', id));
+    }
+
     if (error) {
       logger.error('Notifications: dismiss failed:', error);
       showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
-      invalidateNotifications(user.id);
-    } else {
-      invalidateNotifications(user.id);
-      refreshNotifications();
-    }
-  }, [user?.id, invalidateNotifications, refreshNotifications]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Clear all notifications (soft-delete to preserve dedup_keys)
-  const clearAllNotifications = useCallback(async () => {
-    if (!items.length) return;
-    const confirmed = window.confirm(t('notifications.deleteAllConfirm', { count: items.length }));
-    if (!confirmed) return;
-    setItems([]);
-    const { error } = await supabase.from('notifications').update({ dismissed_at: new Date().toISOString() }).eq('profile_id', user.id).is('dismissed_at', null);
-    if (error) {
-      logger.error('Notifications: clearAll failed:', error);
-      showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
+      setItems(snapshot); // revert
     }
     invalidateNotifications(user.id);
     refreshNotifications();
-  }, [user?.id, items.length, invalidateNotifications, refreshNotifications]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, items, invalidateNotifications, refreshNotifications]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear all notifications.
+  const clearAllNotifications = useCallback(async () => {
+    if (!items.length) return;
+    const snapshot = items;
+    setItems([]);
+
+    // Mark dismissed AND read so the badge clears regardless of which filter
+    // the count query uses (server-side RPCs historically only checked read_at).
+    const now = new Date().toISOString();
+    let { error } = await supabase
+      .from('notifications')
+      .update({ dismissed_at: now, read_at: now })
+      .eq('profile_id', user.id)
+      .is('dismissed_at', null);
+
+    if (error && /dismissed_at/i.test(error.message || '')) {
+      ({ error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('profile_id', user.id));
+    }
+
+    if (error) {
+      logger.error('Notifications: clearAll failed:', error);
+      showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
+      setItems(snapshot); // revert
+    }
+    invalidateNotifications(user.id);
+    refreshNotifications();
+  }, [user?.id, items, invalidateNotifications, refreshNotifications]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mark a single notification as read
   const markRead = async (id) => {
@@ -184,7 +222,7 @@ export default function Notifications() {
             <button
               type="button"
               onClick={() => navigate(-1)}
-              aria-label="Go back"
+              aria-label={t('notifications.goBack', { defaultValue: 'Go back' })}
               className="p-2 -ml-2 rounded-xl transition-colors flex-shrink-0"
               style={{ color: 'var(--color-text-muted)' }}
             >
@@ -194,7 +232,7 @@ export default function Notifications() {
               <Bell size={18} style={{ color: 'var(--color-accent)' }} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('notifications.title')}</h1>
+              <h1 className="text-[28px] truncate" style={{ color: 'var(--color-text-primary)', fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '-0.4px' }}>{t('notifications.title')}</h1>
               {unreadCount > 0 && (
                 <p className="text-[12px] font-medium" style={{ color: 'var(--color-accent)' }}>
                   {t('notifications.messagesUnread', { count: unreadCount })}
@@ -206,8 +244,8 @@ export default function Notifications() {
             <button
               onClick={markAllRead}
               disabled={marking}
-              className="flex items-center gap-1.5 text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors disabled:opacity-50 min-h-[44px] px-2 rounded-lg focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              style={{ color: 'var(--color-accent)' }}
+              className="flex items-center gap-1.5 text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors disabled:opacity-50 min-h-[44px] px-4 rounded-full focus:ring-2 focus:outline-none"
+              style={{ color: 'var(--color-accent, #2EC4C4)', borderColor: 'var(--color-accent, #2EC4C4)', '--tw-ring-color': 'var(--color-accent, #2EC4C4)' }}
             >
               <CheckCheck size={14} />{' '}{t('notifications.markAllRead')}
             </button>
@@ -219,13 +257,13 @@ export default function Notifications() {
         {/* Gym News */}
         {announcements.length > 0 && (
           <section className="mb-8">
-            <h2 className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)' }}>{t('notifications.gymNews')}</h2>
+            <h2 className="text-[17px] uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)', fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '-0.3px' }}>{t('notifications.gymNews')}</h2>
             <div className="flex flex-col gap-3">
               {announcements.map(ann => (
                 <div
                   key={ann.id}
-                  className="rounded-2xl overflow-hidden transition-colors px-5 py-4 border-l-[3px]"
-                  style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)', borderLeftColor: ANN_ACCENT[ann.type] ?? 'var(--color-blue)' }}
+                  className="rounded-[18px] overflow-hidden transition-colors px-5 py-4 border-l-[3px]"
+                  style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)', borderLeftColor: ANN_ACCENT[ann.type] ?? 'var(--color-blue)', boxShadow: CARD_SHADOW }}
                 >
                   <p className="text-[15px] font-semibold leading-snug" style={{ color: 'var(--color-text-primary)' }}>{sanitize(ann.title)}</p>
                   <p className="text-[13px] mt-1.5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{sanitize(ann.message)}</p>
@@ -238,14 +276,14 @@ export default function Notifications() {
         {/* Your notifications */}
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
+            <h2 className="text-[17px] uppercase tracking-widest" style={{ color: 'var(--color-text-muted)', fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '-0.3px' }}>
               {t('notifications.yourNotifications')}
             </h2>
             {items.length > 0 && (
               <button
                 onClick={clearAllNotifications}
-                className="flex items-center gap-1.5 text-[11px] font-semibold transition-colors min-h-[44px] px-2 rounded-lg focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                style={{ color: 'var(--color-danger)' }}
+                className="flex items-center gap-1.5 text-[11px] font-semibold transition-colors min-h-[44px] px-4 rounded-full focus:ring-2 focus:outline-none"
+                style={{ color: 'var(--color-danger)', '--tw-ring-color': 'var(--color-accent, #2EC4C4)' }}
               >
                 <Trash2 size={12} />{' '}{t('notifications.clearAll')}
               </button>
@@ -268,18 +306,27 @@ export default function Notifications() {
                 return (
                   <div
                     key={n.id}
-                    className={`group relative w-full text-left flex items-start gap-3 p-4 rounded-2xl border overflow-hidden transition-all ${
-                      n.read_at
-                        ? 'border-[var(--color-border-subtle)] opacity-60'
-                        : 'border-[var(--color-border)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-hover)]'
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => !n.read_at && markRead(n.id)}
+                    onKeyDown={(e) => {
+                      if ((e.key === 'Enter' || e.key === ' ') && !n.read_at) {
+                        e.preventDefault();
+                        markRead(n.id);
+                      }
+                    }}
+                    aria-label={n.read_at ? t('notifications.alreadyRead') : t('notifications.markAsRead')}
+                    className={`group relative w-full text-left flex items-start gap-3 p-4 rounded-[18px] overflow-hidden transition-all cursor-pointer ${
+                      n.read_at ? 'opacity-60' : ''
                     }`}
-                    style={{ backgroundColor: 'var(--color-bg-card)' }}
+                    style={{
+                      backgroundColor: 'var(--color-bg-card)',
+                      boxShadow: CARD_SHADOW,
+                      border: n.read_at
+                        ? '1px solid var(--color-border-subtle)'
+                        : '1px solid var(--color-border-default)',
+                    }}
                   >
-                    <button
-                      onClick={() => !n.read_at && markRead(n.id)}
-                      className="absolute inset-0 rounded-2xl"
-                      aria-label={n.read_at ? t('notifications.alreadyRead') : t('notifications.markAsRead')}
-                    />
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${meta.bg}`}>
                       <Icon size={16} className={meta.color} />
                     </div>
@@ -326,11 +373,12 @@ export default function Notifications() {
                 </p>
                 <button
                   onClick={() => setDisplayLimit(prev => prev + 5)}
-                  className="text-[13px] font-semibold px-5 py-2 rounded-xl transition-colors"
+                  className="text-[13px] font-semibold px-5 py-2 rounded-full transition-colors"
                   style={{
-                    color: 'var(--color-accent)',
+                    color: 'var(--color-accent, #2EC4C4)',
                     border: '1px solid var(--color-border-default)',
                     backgroundColor: 'var(--color-bg-card)',
+                    boxShadow: CARD_SHADOW,
                   }}
                 >
                   {t('notifications.seeMore')}

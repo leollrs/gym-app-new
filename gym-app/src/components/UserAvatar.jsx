@@ -117,6 +117,11 @@ export default function UserAvatar({ user, size = 40, className = '', rounded = 
   }
 
   // Color (solid with initials)
+  // Validate avatar_value is a #RGB or #RRGGBB hex color before letting it
+  // through into a CSS style. Without this, user-controlled `avatar_value`
+  // would be interpolated directly into backgroundColor.
+  const HEX_COLOR = /^#[0-9A-Fa-f]{3}([0-9A-Fa-f]{3})?$/;
+  const safeColor = HEX_COLOR.test(value) ? value : '#6366F1';
   return (
     <div
       className={`flex items-center justify-center flex-shrink-0 font-bold text-white select-none ${className}`}
@@ -124,7 +129,7 @@ export default function UserAvatar({ user, size = 40, className = '', rounded = 
         width: size,
         height: size,
         borderRadius,
-        backgroundColor: value,
+        backgroundColor: safeColor,
         fontSize,
         lineHeight: 1,
       }}

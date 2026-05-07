@@ -1,60 +1,173 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Dumbbell, Mail, Lock, User, Hash, AlertCircle, CheckCircle, Gift, Loader2, Camera, Ticket, ChevronDown, Phone, X, Eye, EyeOff } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import {
+  Mail, Lock, User, AlertCircle, CheckCircle, Loader2,
+  Eye, EyeOff, QrCode, ArrowRight, ChevronLeft, Check, Ticket, Gift, Calendar,
+} from 'lucide-react';
+import { useTranslation, Trans } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { validateEmail } from '../lib/validateEmail';
 
-const AREA_CODES = [
-  { code: '+1',   flag: '🇺🇸', label: 'US/CA' },
-  { code: '+1',   flag: '🇵🇷', label: 'PR' },
-  { code: '+52',  flag: '🇲🇽', label: 'MX' },
-  { code: '+57',  flag: '🇨🇴', label: 'CO' },
-  { code: '+34',  flag: '🇪🇸', label: 'ES' },
-  { code: '+44',  flag: '🇬🇧', label: 'UK' },
-  { code: '+55',  flag: '🇧🇷', label: 'BR' },
-  { code: '+56',  flag: '🇨🇱', label: 'CL' },
-  { code: '+58',  flag: '🇻🇪', label: 'VE' },
-  { code: '+54',  flag: '🇦🇷', label: 'AR' },
-  { code: '+51',  flag: '🇵🇪', label: 'PE' },
-  { code: '+593', flag: '🇪🇨', label: 'EC' },
-  { code: '+507', flag: '🇵🇦', label: 'PA' },
-  { code: '+506', flag: '🇨🇷', label: 'CR' },
-  { code: '+502', flag: '🇬🇹', label: 'GT' },
-  { code: '+503', flag: '🇸🇻', label: 'SV' },
-  { code: '+504', flag: '🇭🇳', label: 'HN' },
-  { code: '+505', flag: '🇳🇮', label: 'NI' },
-  { code: '+809', flag: '🇩🇴', label: 'DO' },
-];
+// ─── Warm-paper design tokens (branded auth, pre-gym-theme) ───────────
+const OB = {
+  bg: '#f0eee9',
+  surface: '#ffffff',
+  surface2: '#e8e5de',
+  ink: '#0B0F12',
+  sub: '#6B6A63',
+  mute: '#9A988E',
+  line: 'rgba(11,15,18,0.08)',
+  lineStrong: 'rgba(11,15,18,0.14)',
+  teal: '#2EC4C4',
+  tealDeep: '#0FA5A5',
+  tealSoft: '#D7F1F1',
+  orange: '#FF5A2E',
+  purple: '#6D5FDB',
+  gold: '#E8C547',
+  green: '#5EAA5E',
+  greenSoft: '#DFF0DF',
+};
+const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
+const FONT_BODY = '"Familjen Grotesk", -apple-system, system-ui, sans-serif';
+const FONT_MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
+const CARD_SHADOW = '0 1px 2px rgba(11,15,18,0.04), 0 6px 18px rgba(11,15,18,0.05)';
 
-let fieldIdCounter = 0;
-const Field = ({ label, icon: Icon, error, suffix, id: propId, ...props }) => {
-  const fieldId = propId || `field-${label?.toString().replace(/\s+/g, '-').toLowerCase() || ++fieldIdCounter}`;
-  return (
-    <div>
-      <label htmlFor={fieldId} className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
-        {label}
-      </label>
-      <div className="relative">
-        {Icon && <Icon size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--color-text-muted)" }} />}
-        <input
-          id={fieldId}
-          {...props}
-          className={`w-full bg-[var(--color-bg-input)] border rounded-xl ${Icon ? 'pl-10' : 'pl-4'} ${suffix ? 'pr-10' : 'pr-4'} py-3 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors ${
-            error ? 'border-red-500/40 focus:border-red-500/60' : 'border-white/8 focus:border-[#D4AF37]/40'
-          }`}
-        />
-        {suffix && (
-          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 z-10">
-            {suffix}
-          </div>
-        )}
-      </div>
-      {error && <p className="text-[11px] text-red-400 mt-1.5">{error}</p>}
-    </div>
-  );
+const OBLogo = ({ size = 48 }) => (
+  <img
+    src="/icon-512.png"
+    alt="TuGymPR"
+    width={size}
+    height={size}
+    style={{
+      width: size,
+      height: size,
+      borderRadius: size * 0.26,
+      objectFit: 'cover',
+      display: 'block',
+    }}
+  />
+);
+
+const labelStyle = {
+  display: 'block',
+  fontFamily: FONT_BODY,
+  fontSize: 11,
+  fontWeight: 700,
+  color: OB.sub,
+  textTransform: 'uppercase',
+  letterSpacing: 1.2,
+  marginBottom: 8,
+};
+
+const inputWrap = (hasError = false, hasRight = false) => ({
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+  height: 52,
+  background: OB.surface,
+  border: `1.5px solid ${hasError ? '#FF5A2E' : OB.line}`,
+  borderRadius: 14,
+  paddingLeft: 44,
+  paddingRight: hasRight ? 44 : 12,
+  transition: 'border-color 0.2s ease',
+});
+
+const inputStyle = {
+  flex: 1,
+  height: '100%',
+  background: 'transparent',
+  border: 'none',
+  outline: 'none',
+  fontFamily: FONT_BODY,
+  fontSize: 15,
+  color: OB.ink,
+  width: '100%',
+};
+
+const primaryBtn = (disabled) => ({
+  width: '100%',
+  height: 54,
+  borderRadius: 999,
+  background: OB.teal,
+  color: '#0A2A2A',
+  fontFamily: FONT_DISPLAY,
+  fontWeight: 800,
+  fontSize: 16,
+  border: 'none',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  opacity: disabled ? 0.55 : 1,
+  transition: 'background 0.2s ease',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+});
+
+const darkBtn = (disabled) => ({
+  width: '100%',
+  height: 54,
+  borderRadius: 999,
+  background: OB.ink,
+  color: '#fff',
+  fontFamily: FONT_DISPLAY,
+  fontWeight: 800,
+  fontSize: 16,
+  border: 'none',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  opacity: disabled ? 0.55 : 1,
+  transition: 'background 0.2s ease',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+});
+
+// Minimum age floor for self-signup (no invite code).
+// Under-13 users are still allowed when they have a valid gym invite code:
+// the gym vouches for them and handles real-world parental consent at the
+// membership counter. 13–15 users may self-signup without restriction.
+const MIN_AGE = 13;
+
+// Compute age in whole years from an ISO date string. Returns NaN if invalid.
+const computeAge = (isoDate) => {
+  if (!isoDate) return NaN;
+  const dob = new Date(isoDate);
+  if (Number.isNaN(dob.getTime())) return NaN;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+};
+
+// Today as YYYY-MM-DD for the date picker `max` attribute.
+const todayISO = () => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// Password strength → 0..4 segments
+const passwordStrength = (pw) => {
+  if (!pw) return 0;
+  let s = 0;
+  if (pw.length >= 8) s++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
+  if (/\d/.test(pw)) s++;
+  if (/[^a-zA-Z0-9]/.test(pw) && pw.length >= 10) s++;
+  return s;
+};
+
+const strengthLabel = (s, t) => {
+  if (s === 0) return '';
+  if (s === 1) return t('signup.strengthWeak', 'Weak — add more characters');
+  if (s === 2) return t('signup.strengthFair', 'Fair — mix upper & lowercase');
+  if (s === 3) return t('signup.strengthGood', 'Good — add a number or symbol for stronger');
+  return t('signup.strengthStrong', 'Strong password');
 };
 
 const Signup = () => {
@@ -64,83 +177,150 @@ const Signup = () => {
   const [searchParams] = useSearchParams();
 
   const inviteSlug = searchParams.get('gym') ?? '';
-
-  // Pre-fill referral code from URL param or localStorage (set by deep link)
   const initialRefCode = searchParams.get('ref') ?? localStorage.getItem('pendingReferralCode') ?? '';
-  // Pre-fill invite code from localStorage (set by deep link in App.jsx)
   const initialInviteCode = localStorage.getItem('pendingInviteCode') ?? '';
   const [gymName, setGymName] = useState('');
 
-  // ── Entry mode: 'choose' | 'invite' | 'gymcode' ──
-  const [entryMode, setEntryMode] = useState(
-    inviteSlug ? 'gymcode' : initialInviteCode ? 'invite' : 'choose'
-  );
+  // Entry mode: 'welcome' | 'invite' | 'gymcode' | 'account'
+  const initialMode = inviteSlug
+    ? 'account'
+    : initialInviteCode
+      ? 'invite'
+      : 'welcome';
+  const [entryMode, setEntryMode] = useState(initialMode);
 
-  // ── Invite code state ──
+  // Invite code state
   const [inviteCode, setInviteCode] = useState(initialInviteCode);
-  const [inviteStatus, setInviteStatus] = useState('idle'); // idle | checking | valid | invalid
-  const [inviteData, setInviteData] = useState(null); // { gym_name, member_name, email, phone, gym_slug }
+  const [inviteStatus, setInviteStatus] = useState('idle');
+  const [inviteData, setInviteData] = useState(null);
   const inviteTimer = useRef(null);
 
-  // ── QR Scanner state ──
+  // QR Scanner state
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanError, setScanError] = useState('');
 
   const [form, setForm] = useState({
     fullName: '', username: '', email: '',
-    password: '', confirmPassword: '', gymSlug: inviteSlug,
-    referralCode: initialRefCode, phone: '',
+    password: '', gymSlug: inviteSlug,
+    referralCode: initialRefCode,
   });
-  const [areaCode, setAreaCode] = useState('+1');
-  const [errors,      setErrors]      = useState({});
+  const [errors, setErrors] = useState({});
   const [globalError, setGlobalError] = useState('');
-  const [loading,     setLoading]     = useState(false);
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Referral code validation state
+  // Real-time email validation (debounced)
+  const [emailValidStatus, setEmailValidStatus] = useState('idle'); // 'idle' | 'valid' | 'invalid'
+  const [emailValidReason, setEmailValidReason] = useState('');
+  const emailDebounceRef = useRef(null);
+
+  // HIBP soft warning
+  const [pwnedWarning, setPwnedWarning] = useState(false);
+
+  // Handoff loader state (between signup success and onboarding navigation)
+  const [isHandoff, setIsHandoff] = useState(false);
+
+  // App Store / Play Store compliance: explicit Terms + Privacy acceptance,
+  // and self-attested date-of-birth for age verification (>= MIN_AGE). All
+  // gate the submit button — see `submitDisabled` below.
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [dobError, setDobError] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [termsError, setTermsError] = useState('');
+  const [privacyError, setPrivacyError] = useState('');
+
+  // Referral
   const [referralStatus, setReferralStatus] = useState('idle');
   const [referralData, setReferralData] = useState(null);
   const referralTimer = useRef(null);
 
-  // Anti-enumeration: track failed signup attempts
   const signupAttempts = useRef(0);
   const MAX_SIGNUP_ATTEMPTS = 8;
 
-  // Show form when invite or gym code is validated
-  const showForm = entryMode === 'gymcode' || (entryMode === 'invite' && inviteStatus === 'valid');
+  const goAccount = () => setEntryMode('account');
 
-  // Clear stored codes once we've loaded them
   useEffect(() => {
     if (initialRefCode) localStorage.removeItem('pendingReferralCode');
     if (initialInviteCode) localStorage.removeItem('pendingInviteCode');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // If the referral code was pre-filled, validate it immediately
   useEffect(() => {
     if (initialRefCode) validateReferralCode(initialRefCode);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // If invite code was pre-filled (from deep link), validate immediately
-  useEffect(() => {
     if (initialInviteCode) validateInviteCode(initialInviteCode);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // If coming via invite link (?gym=slug), verify gym exists
   useEffect(() => {
     if (!inviteSlug) return;
+    // gyms_public is a security-barrier view explicitly granted to anon
+    // (see migration 0110). Querying the raw gyms table from a logged-out
+    // signup page can 401 if a stale auth token is still in storage.
     supabase
-      .from('gyms')
+      .from('gyms_public')
       .select('id, name')
       .eq('slug', inviteSlug.toLowerCase())
-      .eq('is_active', true)
       .single()
       .then(({ data }) => { if (data) setGymName(data.name || 'your gym'); });
   }, [inviteSlug]);
 
+  // Auto-advance once invite validates
+  useEffect(() => {
+    if (inviteStatus === 'valid' && entryMode === 'invite') {
+      // Leave user on invite screen briefly so they see the green chip, then move on
+      const tm = setTimeout(() => setEntryMode('account'), 600);
+      return () => clearTimeout(tm);
+    }
+  }, [inviteStatus, entryMode]);
+
+  // ── Real-time email validation (debounced 300ms) ──
+  useEffect(() => {
+    if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current);
+    if (!form.email) {
+      setEmailValidStatus('idle');
+      setEmailValidReason('');
+      return;
+    }
+    emailDebounceRef.current = setTimeout(() => {
+      const result = validateEmail(form.email);
+      if (result.valid) {
+        setEmailValidStatus('valid');
+        setEmailValidReason('');
+      } else {
+        setEmailValidStatus('invalid');
+        setEmailValidReason(result.reason || t('invalidEmail', { defaultValue: 'Invalid email' }));
+      }
+    }, 300);
+    return () => {
+      if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current);
+    };
+  }, [form.email]);
+
+  // ── HIBP password breach check (soft warning, on blur) ──
+  const isPasswordPwned = async (pw) => {
+    try {
+      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pw));
+      const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+      const r = await fetch(`https://api.pwnedpasswords.com/range/${hex.slice(0, 5)}`);
+      if (!r.ok) return false;
+      const text = await r.text();
+      return text.split('\n').some(line => line.startsWith(hex.slice(5)));
+    } catch {
+      return false;
+    }
+  };
+
+  const handlePasswordBlur = async () => {
+    if (!form.password || form.password.length < 8) {
+      setPwnedWarning(false);
+      return;
+    }
+    const pwned = await isPasswordPwned(form.password);
+    setPwnedWarning(pwned);
+  };
+
   const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
 
-  // ── Invite code validation ──
+  // ── Invite code validation (preserves existing RPC flow) ──
   const validateInviteCode = async (code) => {
     const trimmed = code.trim().toUpperCase();
     if (!trimmed) {
@@ -151,19 +331,15 @@ const Signup = () => {
 
     setInviteStatus('checking');
     try {
-      // Use SECURITY DEFINER RPC to look up invite codes (bypasses RLS)
       const { data: lookupResult } = await supabase.rpc('lookup_invite_by_code', {
         p_code: trimmed,
       });
 
       if (lookupResult) {
-        // Found in member_invites via RPC
-        // Fetch gym details for the gym_id
         const { data: gym } = await supabase
-          .from('gyms')
+          .from('gyms_public')
           .select('id, name, slug')
           .eq('id', lookupResult.gym_id)
-          .eq('is_active', true)
           .maybeSingle();
 
         setInviteStatus('valid');
@@ -186,17 +362,15 @@ const Signup = () => {
         return;
       }
 
-      // Not in member_invites — try gym_invites via RPC
       const { data: gymLookup } = await supabase.rpc('lookup_gym_invite_by_code', {
         p_code: trimmed,
       });
 
       if (gymLookup) {
         const { data: gym } = await supabase
-          .from('gyms')
+          .from('gyms_public')
           .select('id, name, slug')
           .eq('id', gymLookup.gym_id)
-          .eq('is_active', true)
           .maybeSingle();
 
         setInviteStatus('valid');
@@ -214,14 +388,12 @@ const Signup = () => {
           ...f,
           fullName: f.fullName || gymLookup.full_name || '',
           email: f.email || gymLookup.email || '',
-          phone: f.phone || gymLookup.phone || '',
           gymSlug: gym?.slug || f.gymSlug,
         }));
         setGymName(gym?.name || '');
         return;
       }
 
-      // Not found in either table
       setInviteStatus('invalid');
       setInviteData(null);
     } catch {
@@ -242,53 +414,35 @@ const Signup = () => {
     inviteTimer.current = setTimeout(() => validateInviteCode(value), 600);
   };
 
-  const handleInviteCodeBlur = () => {
-    if (inviteTimer.current) clearTimeout(inviteTimer.current);
-    if (inviteCode.trim()) validateInviteCode(inviteCode);
-  };
-
   // ── QR Scanner ──
   const handleScanQR = async () => {
     const isNative = Capacitor.isNativePlatform();
-
     if (!isNative) {
       setScanError(t('qrScanRequiresApp'));
       return;
     }
-
     try {
       setScanError('');
       setScannerOpen(true);
-
       const { BarcodeScanner, BarcodeFormat } = await import('@capacitor-mlkit/barcode-scanning');
-
       const { camera } = await BarcodeScanner.requestPermissions();
       if (camera !== 'granted') {
-        setScanError('Camera permission denied. Allow camera access in Settings.');
+        setScanError(t('cameraPermissionDenied', { defaultValue: 'Camera permission denied. Allow camera access in Settings.' }));
         setScannerOpen(false);
         return;
       }
-
-      const { barcodes } = await BarcodeScanner.scan({
-        formats: [BarcodeFormat.QrCode],
-      });
-
+      const { barcodes } = await BarcodeScanner.scan({ formats: [BarcodeFormat.QrCode] });
       setScannerOpen(false);
-
       if (barcodes.length > 0 && barcodes[0].rawValue) {
         const rawValue = barcodes[0].rawValue.trim();
-        // Extract invite code from URL like https://tugympr.app/invite/TGP-7X3K
         const inviteMatch = rawValue.match(/\/invite\/([A-Z0-9-]+)$/i);
         if (inviteMatch) {
           const code = inviteMatch[1].toUpperCase();
           setInviteCode(code);
-          setEntryMode('invite');
           validateInviteCode(code);
         } else if (/^[A-Z0-9]+-[A-Z0-9]+$/i.test(rawValue)) {
-          // Plain invite code (e.g. TGP-7X3K)
           const code = rawValue.toUpperCase();
           setInviteCode(code);
-          setEntryMode('invite');
           validateInviteCode(code);
         } else {
           setScanError(t('qrScanError'));
@@ -296,9 +450,7 @@ const Signup = () => {
       }
     } catch (err) {
       setScannerOpen(false);
-      if (err?.message?.includes('canceled') || err?.message?.includes('cancelled')) {
-        return;
-      }
+      if (err?.message?.includes('canceled') || err?.message?.includes('cancelled')) return;
       setScanError(err?.message || t('qrScanError'));
     }
   };
@@ -309,38 +461,50 @@ const Signup = () => {
     if (!trimmed) {
       setReferralStatus('idle');
       setReferralData(null);
+      try { localStorage.removeItem('referrer_buddy'); } catch { /* ignore */ }
       return;
     }
-
     setReferralStatus('checking');
     try {
-      const { data, error } = await supabase
-        .from('referral_codes')
-        .select('id, profile_id, profiles!referral_codes_profile_id_fkey(full_name)')
-        .eq('code', trimmed.toUpperCase())
-        .eq('is_active', true)
-        .single();
-
-      if (error || !data) {
+      const { data, error } = await supabase.rpc('lookup_referral_code', { p_code: trimmed.toUpperCase() });
+      const row = Array.isArray(data) ? data[0] : data;
+      if (error || !row) {
         setReferralStatus('invalid');
         setReferralData(null);
+        try { localStorage.removeItem('referrer_buddy'); } catch { /* ignore */ }
         return;
       }
-
       setReferralStatus('valid');
       setReferralData({
-        referrer_id: data.profile_id,
-        referrer_name: data.profiles?.full_name || 'Member',
-        code_id: data.id,
+        referrer_id: row.referrer_id,
+        referrer_name: row.referrer_name || 'Member',
+        code_id: row.code_id,
       });
+      try {
+        localStorage.setItem('referrer_buddy', JSON.stringify({
+          id: row.referrer_id,
+          name: row.referrer_name || 'Member',
+        }));
+      } catch { /* ignore */ }
     } catch {
       setReferralStatus('invalid');
       setReferralData(null);
     }
   };
 
+  // Referral codes are stored as REF-XXXX-XXXX (3-4-4 alphanumeric, two dashes).
+  // Auto-format the input as the user types so they never have to type "-":
+  // strip non-alphanumerics, uppercase, then insert dashes at positions 3 and 7.
+  // Cap raw length at 11 so the formatted string maxes out at "REF-XXXX-XXXX" (13 chars).
+  const formatReferralCode = (raw) => {
+    const cleaned = raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 11);
+    if (cleaned.length <= 3) return cleaned;
+    if (cleaned.length <= 7) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+    return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
+  };
+
   const handleReferralChange = (e) => {
-    const value = e.target.value;
+    const value = formatReferralCode(e.target.value);
     setForm(f => ({ ...f, referralCode: value }));
     if (referralTimer.current) clearTimeout(referralTimer.current);
     if (!value.trim()) {
@@ -351,28 +515,21 @@ const Signup = () => {
     referralTimer.current = setTimeout(() => validateReferralCode(value), 600);
   };
 
-  const handleReferralBlur = () => {
-    if (referralTimer.current) clearTimeout(referralTimer.current);
-    if (form.referralCode.trim()) validateReferralCode(form.referralCode);
-  };
-
   const validate = () => {
     const errs = {};
-    if (!form.fullName.trim())              errs.fullName        = t('common:required');
-    if (!form.username.trim())              errs.username        = t('common:required');
+    if (!form.fullName.trim()) errs.fullName = t('common:required');
+    if (!form.username.trim()) errs.username = t('common:required');
     else if (!/^[a-zA-Z0-9_]{3,20}$/.test(form.username.trim()))
-      errs.username = 'Username must be 3-20 characters: letters, numbers, or underscores only';
+      errs.username = t('usernameFormat', { defaultValue: 'Username must be 3-20 characters: letters, numbers, or underscores only' });
     if (!form.email.trim()) {
       errs.email = t('common:required');
     } else {
       const emailCheck = validateEmail(form.email);
       if (!emailCheck.valid) errs.email = emailCheck.reason;
     }
-    if (form.password.length < 8)           errs.password        = t('minChars');
+    if (form.password.length < 8) errs.password = t('minChars');
     else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(form.password))
-      errs.password = 'Password must include uppercase, lowercase, and a number';
-    if (form.password !== form.confirmPassword) errs.confirmPassword = t('passwordsMismatch');
-    // Gym slug required unless invite code is valid (invite provides the gym)
+      errs.password = t('passwordComplexity', { defaultValue: 'Password must include uppercase, lowercase, and a number' });
     if (!form.gymSlug.trim() && inviteStatus !== 'valid') errs.gymSlug = t('common:required');
     return errs;
   };
@@ -380,26 +537,65 @@ const Signup = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setGlobalError('');
+    setDobError('');
+    setTermsError('');
+    setPrivacyError('');
 
-    if (signupAttempts.current >= MAX_SIGNUP_ATTEMPTS) {
-      setGlobalError('Too many attempts. Please try again later.');
+    // DOB validation
+    if (!dateOfBirth) {
+      setDobError(t('dobRequired', 'Date of birth is required'));
+      return;
+    }
+    const age = computeAge(dateOfBirth);
+    if (Number.isNaN(age)) {
+      setDobError(t('dobInvalid', 'Please enter a valid date'));
+      return;
+    }
+    if (new Date(dateOfBirth) > new Date()) {
+      setDobError(t('dobInvalid', 'Please enter a valid date'));
+      return;
+    }
+    if (age < MIN_AGE) {
+      // Under MIN_AGE — only allowed via a verified gym invite code (gym
+      // vouches for parental consent collected at the membership counter).
+      if (inviteStatus !== 'valid') {
+        setDobError(t('dobUnderMinNeedsInvite', {
+          defaultValue: 'You must be {{min}} or older to sign up directly. Ask your gym to send you an invite code to register.',
+          min: MIN_AGE,
+        }));
+        return;
+      }
+      // With a valid invite — gym vouches, allow signup.
+    }
+
+    // ToS / Privacy
+    if (!termsAccepted) {
+      setTermsError(t('termsRequiredError', 'You must accept the Terms of Service'));
+      return;
+    }
+    if (!privacyAccepted) {
+      setPrivacyError(t('privacyRequiredError', 'You must accept the Privacy Policy'));
       return;
     }
 
+    if (signupAttempts.current >= MAX_SIGNUP_ATTEMPTS) {
+      setGlobalError(t('tooManyAttempts', { defaultValue: 'Too many attempts. Please try again later.' }));
+      return;
+    }
     if (form.fullName.trim().length > 100 || form.fullName.trim().length < 1) {
-      setGlobalError('Full name must be between 1 and 100 characters');
+      setGlobalError(t('fullNameLength', { defaultValue: 'Full name must be between 1 and 100 characters' }));
       return;
     }
     if (form.username && form.username.length > 30) {
-      setGlobalError('Username must be 30 characters or less');
+      setGlobalError(t('usernameMaxLength', { defaultValue: 'Username must be 30 characters or less' }));
       return;
     }
     if (form.email.length > 254) {
-      setGlobalError('Email must be 254 characters or less');
+      setGlobalError(t('emailMaxLength', { defaultValue: 'Email must be 254 characters or less' }));
       return;
     }
     if (form.password.length > 128) {
-      setGlobalError('Password must be 128 characters or less');
+      setGlobalError(t('passwordMaxLength', { defaultValue: 'Password must be 128 characters or less' }));
       return;
     }
 
@@ -409,32 +605,28 @@ const Signup = () => {
 
     setLoading(true);
     try {
-      // Use gym slug from invite data if available
       const gymSlug = inviteData?.gym_slug || form.gymSlug;
 
+      const nowIso = new Date().toISOString();
       const signUpResult = await signUp({
         email:    form.email,
         password: form.password,
         fullName: form.fullName,
         username: form.username,
         gymSlug,
+        dateOfBirth,
+        termsAcceptedAt: nowIso,
+        privacyAcceptedAt: nowIso,
+        ageVerifiedAt: nowIso,
       });
 
-      // Save phone number to profile if provided
-      if (form.phone.trim() && signUpResult?.user) {
-        const fullPhone = `${areaCode}${form.phone.trim().replace(/\D/g, '')}`;
-        supabase.from('profiles').update({ phone_number: fullPhone }).eq('id', signUpResult.user.id).then(() => {});
-      }
-
-      // After successful signup, claim the invite to mark it as used
       if (inviteStatus === 'valid' && inviteCode && signUpResult?.user) {
         try {
           if (inviteData?._source === 'gym_invites') {
-            const { data: claimResult, error: claimErr } = await supabase.rpc('claim_invite_code', {
+            const { error: claimErr } = await supabase.rpc('claim_invite_code', {
               p_invite_code: inviteCode.trim().toUpperCase(),
             });
             if (claimErr) console.warn('claim_invite_code error:', claimErr);
-            else if (claimResult && !claimResult.success) console.warn('claim_invite_code failed:', claimResult.error);
           } else {
             const { error: claimErr } = await supabase.rpc('claim_member_invite', {
               p_invite_code: inviteCode.trim().toUpperCase(),
@@ -447,495 +639,818 @@ const Signup = () => {
         }
       }
 
-      // Process referral code
       if (referralStatus === 'valid' && referralData && signUpResult?.user) {
-        try {
-          await processReferral(signUpResult.user.id, gymSlug);
-        } catch {
-          // Don't block signup if referral processing fails
-        }
+        try { await processReferral(signUpResult.user.id); } catch { /* ignore */ }
       }
 
+      // Show full-screen handoff loader while we navigate to onboarding
+      setIsHandoff(true);
       navigate('/onboarding');
     } catch (err) {
       signupAttempts.current += 1;
-      setGlobalError(err.message || t('common:somethingWentWrong'));
+      // Map known Supabase auth errors to generic messages so we don't leak
+      // whether an email is already registered (email-enumeration defense).
+      const rawMsg = (err?.message || '').toLowerCase();
+      const looksLikeAccountExists =
+        rawMsg.includes('already registered') ||
+        rawMsg.includes('already exists') ||
+        rawMsg.includes('user already');
+      if (looksLikeAccountExists) {
+        setGlobalError(
+          t(
+            'signupCouldNotCreateAccount',
+            'Could not create account. If you already have one, please sign in instead.'
+          )
+        );
+      } else {
+        setGlobalError(err.message || t('common:somethingWentWrong'));
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const processReferral = async (newUserId, gymSlug) => {
+  const processReferral = async (newUserId) => {
     if (!referralData) return;
-
-    const { data: gym } = await supabase
-      .from('gyms')
-      .select('id')
-      .eq('slug', gymSlug.toLowerCase().trim())
-      .eq('is_active', true)
-      .single();
-
-    if (!gym) return;
-
-    const { data: referral, error: refError } = await supabase
-      .from('referrals')
-      .insert({
-        referrer_id: referralData.referrer_id,
-        referred_id: newUserId,
-        gym_id: gym.id,
-        referral_code_id: referralData.code_id,
-        status: 'pending',
-      })
-      .select('id')
-      .single();
-
-    if (refError || !referral) return;
-
-    // Auto-add referrer as friend (accepted friendship)
-    try {
-      await supabase.from('friendships').insert({
-        requester_id: referralData.referrer_id,
-        addressee_id: newUserId,
-        status: 'accepted',
-      });
-    } catch {
-      // Don't block if friendship insert fails (e.g., already friends)
-    }
-
-    // Save referrer info to localStorage so onboarding can pre-fill workout buddy
+    const code = (form.referralCode || '').trim().toUpperCase();
+    if (!code) return;
+    const { data, error } = await supabase.rpc('register_referral', {
+      p_code: code,
+      p_referred_id: newUserId,
+    });
+    if (error || !data?.success) return;
     try {
       localStorage.setItem('referrer_buddy', JSON.stringify({
-        id: referralData.referrer_id,
-        name: referralData.referrer_name,
+        id: data.referrer_id, name: data.referrer_name,
       }));
-    } catch {}
-
-    const { data: gymData } = await supabase
-      .from('gyms')
-      .select('referral_config')
-      .eq('id', gym.id)
-      .maybeSingle();
-
-    const requireApproval = gymData?.referral_config?.require_admin_approval;
-    if (requireApproval === false) {
-      await supabase.rpc('safe_complete_referral', { p_referral_id: referral.id });
-    }
+    } catch { /* ignore */ }
   };
 
-  const referralSuffix = () => {
-    if (referralStatus === 'checking') return <Loader2 size={14} className="text-[#D4AF37] animate-spin" />;
-    if (referralStatus === 'valid') return <CheckCircle size={14} className="text-emerald-400" />;
-    return null;
-  };
+  // ── Handoff loader (shown after successful signup, before onboarding mounts) ──
+  if (isHandoff) {
+    return (
+      <main
+        className="min-h-screen flex flex-col items-center justify-center px-6"
+        style={{ backgroundColor: OB.bg, fontFamily: FONT_BODY, color: OB.ink }}
+      >
+        <div style={{
+          width: 56, height: 56, borderRadius: 999,
+          border: `4px solid ${OB.tealSoft}`, borderTopColor: OB.teal,
+          animation: 'spin 1s linear infinite', marginBottom: 22,
+        }} />
+        <h2 style={{
+          fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 24,
+          letterSpacing: -0.8, color: OB.ink, margin: 0, textAlign: 'center',
+        }}>
+          {t('signup.settingUpAccount', 'Setting up your account…')}
+        </h2>
+        <p style={{ fontSize: 14, color: OB.sub, marginTop: 8, textAlign: 'center', maxWidth: 280 }}>
+          {t('signup.settingUpHint', 'Hang tight, we are getting things ready.')}
+        </p>
+      </main>
+    );
+  }
 
-  const inviteSuffix = () => {
-    if (inviteStatus === 'checking') return <Loader2 size={14} className="text-[#D4AF37] animate-spin" />;
-    if (inviteStatus === 'valid') return <CheckCircle size={14} className="text-emerald-400" />;
-    return null;
-  };
-
-  // ── Fullscreen Scanner Overlay (native only, shows spinner while scanning) ──
+  // ── Scanner overlay ──
   if (scannerOpen) {
     return (
-      <div className="fixed inset-0 z-[70] flex flex-col" style={{ backgroundColor: "var(--color-bg-primary)" }}>
-        <div className="relative flex items-center justify-center py-4 px-4 border-b border-white/[0.06]">
+      <div className="fixed inset-0 z-[70] flex flex-col" style={{ backgroundColor: OB.bg }}>
+        <div className="relative flex items-center justify-center py-4 px-4" style={{ borderBottom: `1px solid ${OB.line}` }}>
           <button
             onClick={() => setScannerOpen(false)}
-            aria-label="Close scanner"
-            className="absolute left-4 w-11 h-11 flex items-center justify-center rounded-full bg-white/[0.06] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: "var(--color-text-muted)" }}
+            aria-label={t('closeScanner', { defaultValue: 'Close scanner' })}
+            className="absolute left-4"
+            style={{
+              width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 999, background: OB.surface, border: `1px solid ${OB.line}`, color: OB.ink,
+            }}
           >
-            <X size={18} />
+            <ChevronLeft size={18} />
           </button>
-          <div className="flex items-center gap-2">
-            <Camera size={16} className="text-[#D4AF37]" />
-            <span className="text-[15px] font-bold" style={{ color: "var(--color-text-primary)" }}>{t('scanQR')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <QrCode size={16} color={OB.tealDeep} />
+            <span style={{ fontFamily: FONT_DISPLAY, fontWeight: 800, fontSize: 15, color: OB.ink }}>
+              {t('scanQR')}
+            </span>
           </div>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-8">
-          <div className="w-10 h-10 border-[3px] border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin mb-4" />
-          <p className="text-[14px]" style={{ color: "var(--color-text-muted)" }}>{t('scanningQR')}</p>
+          <div style={{
+            width: 40, height: 40, borderRadius: 999,
+            border: `3px solid ${OB.tealSoft}`, borderTopColor: OB.teal,
+            animation: 'spin 1s linear infinite', marginBottom: 16,
+          }} />
+          <p style={{ fontSize: 14, color: OB.sub }}>{t('scanningQR')}</p>
         </div>
       </div>
     );
   }
 
+  const strength = passwordStrength(form.password);
+
+  // Password rule checklist (rendered upfront under the password field)
+  const pwRules = [
+    { key: 'len', label: t('signup.ruleLength', '8+ characters'), pass: form.password.length >= 8 },
+    { key: 'upper', label: t('signup.ruleUpper', 'Uppercase letter'), pass: /[A-Z]/.test(form.password) },
+    { key: 'lower', label: t('signup.ruleLower', 'Lowercase letter'), pass: /[a-z]/.test(form.password) },
+    { key: 'digit', label: t('signup.ruleDigit', 'Number'), pass: /\d/.test(form.password) },
+  ];
+  const allPwRulesPass = pwRules.every(r => r.pass);
+
+  // Submit disabled when email is being checked / invalid OR pw rules incomplete
+  // OR DOB invalid (missing / future / under MIN_AGE) OR either compliance
+  // checkbox is unchecked. App Store / Play Store require explicit consent.
+  const dobAge = computeAge(dateOfBirth);
+  const dobOk = !!dateOfBirth && !Number.isNaN(dobAge)
+    && (dobAge >= MIN_AGE || inviteStatus === 'valid');
+  const submitDisabled =
+    loading ||
+    emailValidStatus === 'invalid' ||
+    (form.email.length > 0 && emailValidStatus === 'idle') ||
+    !allPwRulesPass ||
+    !dobOk ||
+    !termsAccepted ||
+    !privacyAccepted;
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-10" style={{ backgroundColor: "var(--color-bg-primary)" }}>
-      <div className="w-full max-w-[480px] mx-auto md:max-w-4xl">
+    <main
+      className="min-h-screen flex items-start justify-center px-5 py-10"
+      style={{ backgroundColor: OB.bg, fontFamily: FONT_BODY, color: OB.ink }}
+    >
+      <div className="w-full max-w-[420px]">
 
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-5">
-            <Dumbbell size={26} className="text-[#D4AF37]" strokeWidth={2} />
-          </div>
-          <h1 className="text-[22px] font-bold truncate" style={{ color: "var(--color-text-primary)" }}>{t('createAccount')}</h1>
-          <p className="text-[13px] mt-1" style={{ color: "var(--color-text-subtle)" }}>
-            {gymName ? t('joinGymNameSubtitle', { gymName }) : t('joinGymSubtitle')}
-          </p>
-        </div>
-
-        {/* Welcome banner when invite is validated */}
-        {inviteStatus === 'valid' && inviteData && (
-          <div className="flex items-center gap-2.5 bg-[#D4AF37]/10 border border-[#D4AF37]/25 rounded-xl px-4 py-3 mb-5">
-            <CheckCircle size={15} className="text-[#D4AF37] flex-shrink-0" />
-            <div>
-              <p className="text-[13px] text-[#D4AF37] font-medium">
-                {t('welcomeTo', { gym: inviteData.gym_name })}
-              </p>
-              {inviteData.member_name && (
-                <p className="text-[11px] text-[#D4AF37]/70 mt-0.5">
-                  {t('inviteFor', { name: inviteData.member_name })}
-                </p>
-              )}
+        {/* ─────────────── SCREEN: WELCOME ─────────────── */}
+        {entryMode === 'welcome' && (
+          <div className="animate-fade-in flex flex-col items-center" style={{ paddingTop: 40, minHeight: '80vh', justifyContent: 'center' }}>
+            {/* Back to Login */}
+            <div style={{ position: 'absolute', top: 24, left: 20 }}>
+              <Link
+                to="/login"
+                aria-label={t('common:back', 'Back')}
+                className="flex items-center justify-center"
+                style={{
+                  width: 40, height: 40, borderRadius: 999,
+                  background: OB.surface, border: `1.5px solid ${OB.line}`,
+                  color: OB.ink, textDecoration: 'none',
+                  boxShadow: CARD_SHADOW,
+                }}
+              >
+                <ChevronLeft size={18} strokeWidth={2.2} />
+              </Link>
             </div>
-          </div>
-        )}
-
-        {/* Invite context banner for gym slug links */}
-        {inviteSlug && entryMode === 'gymcode' && (
-          <div className="flex items-center gap-2.5 bg-[#D4AF37]/10 border border-[#D4AF37]/25 rounded-xl px-4 py-3 mb-5">
-            <CheckCircle size={15} className="text-[#D4AF37] flex-shrink-0" />
-            <p className="text-[13px] text-[#D4AF37]">
-              {gymName ? t('joiningGym', { gymName }) : t('joiningGymLoading')}
+            <h1
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontWeight: 900,
+                fontSize: 44,
+                color: OB.ink,
+                letterSpacing: -2,
+                lineHeight: 0.95,
+                marginTop: 28,
+                textAlign: 'center',
+              }}
+            >
+              {t('signup.welcomeTitleL1', 'Train with')}<br />
+              {t('signup.welcomeTitleL2', 'your gym.')}
+            </h1>
+            <p
+              style={{
+                fontSize: 16, color: OB.sub, marginTop: 14,
+                textAlign: 'center', lineHeight: 1.4, maxWidth: 300,
+              }}
+            >
+              {t('signup.welcomeSubtitle', 'Built for the members and coaches at your local gym — not the algorithm.')}
             </p>
+
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 40 }}>
+              <button type="button" onClick={() => setEntryMode('invite')} style={primaryBtn(false)}>
+                <Ticket size={18} strokeWidth={2.2} />
+                {t('haveGymCode', 'I Have a Gym Code')}
+              </button>
+              <button type="button" onClick={() => setEntryMode('gymcode')} style={darkBtn(false)}>
+                {t('noCodeSignup', 'Sign Up Without Code')}
+              </button>
+            </div>
+
+            <div style={{ marginTop: 22, fontSize: 14, color: OB.sub }}>
+              {t('alreadyHaveAccount')}{' '}
+              <Link
+                to="/login"
+                style={{
+                  color: OB.ink, fontWeight: 700, textDecoration: 'underline',
+                  textDecorationColor: OB.teal, textDecorationThickness: 2, textUnderlineOffset: 3,
+                }}
+              >
+                {t('signInLink', 'Sign in')}
+              </Link>
+            </div>
           </div>
         )}
 
-        {/* Card */}
-        <div className="border border-white/6 rounded-2xl p-7 overflow-hidden" style={{ backgroundColor: "var(--color-bg-card)" }}>
-
-          {globalError && (
-            <div className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-              <AlertCircle size={15} className="text-red-400 flex-shrink-0" />
-              <p className="text-[13px] text-red-400">{globalError}</p>
-            </div>
-          )}
-
-          {scanError && (
-            <div className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-              <AlertCircle size={15} className="text-red-400 flex-shrink-0" />
-              <p className="text-[13px] text-red-400">{scanError}</p>
-            </div>
-          )}
-
-          {/* ── ENTRY MODE CHOOSER ── */}
-          {entryMode === 'choose' && (
-            <div className="flex flex-col gap-3">
-
-              {/* 1. Scan QR Code — big prominent button */}
+        {/* ─────────────── SCREEN: INVITE CODE ─────────────── */}
+        {entryMode === 'invite' && (
+          <div className="animate-fade-in">
+            <div className="flex items-center mb-6">
               <button
                 type="button"
-                onClick={handleScanQR}
-                className="w-full flex items-center gap-4 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/15 border border-[#D4AF37]/25 hover:border-[#D4AF37]/40 rounded-xl px-5 py-4 transition-all text-left group"
+                onClick={() => { setEntryMode('welcome'); setInviteCode(''); setInviteStatus('idle'); setInviteData(null); }}
+                aria-label={t('common:back')}
+                style={{
+                  width: 40, height: 40, borderRadius: 999, background: OB.surface,
+                  border: `1.5px solid ${OB.line}`, color: OB.ink, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', boxShadow: CARD_SHADOW, cursor: 'pointer',
+                }}
               >
-                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 flex-shrink-0">
-                  <Camera size={20} className="text-[#D4AF37]" />
-                </div>
-                <div>
-                  <p className="text-[15px] font-bold" style={{ color: "var(--color-text-primary)" }}>{t('scanQR')}</p>
-                  <p className="text-[12px] mt-0.5" style={{ color: "var(--color-text-subtle)" }}>{t('scanQRSubtitle')}</p>
-                </div>
+                <ChevronLeft size={18} strokeWidth={2.2} />
               </button>
+            </div>
 
-              {/* Divider */}
-              <div className="flex items-center gap-3 my-1">
-                <div className="flex-1 h-px bg-white/6" />
-                <span className="text-[11px] uppercase tracking-wider font-medium" style={{ color: "var(--color-text-muted)" }}>{t('orDivider')}</span>
-                <div className="flex-1 h-px bg-white/6" />
+
+            <h1 style={{
+              fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 32,
+              letterSpacing: -1.2, color: OB.ink, lineHeight: 1.05, margin: 0,
+            }}>
+              {t('signup.inviteTitle', 'Got a gym code?')}
+            </h1>
+            <p style={{ fontSize: 15, color: OB.sub, marginTop: 6, lineHeight: 1.4 }}>
+              {t('signup.inviteSubtitle', 'Enter the code from your gym — or scan the QR on the wall at reception.')}
+            </p>
+
+            {scanError && (
+              <div style={{
+                marginTop: 16, display: 'flex', alignItems: 'center', gap: 10,
+                background: '#FDECE7', border: `1px solid #FF5A2E33`, borderRadius: 14, padding: '12px 14px',
+              }}>
+                <AlertCircle size={15} color="#C13B14" />
+                <p style={{ fontSize: 13, color: '#C13B14', margin: 0 }}>{scanError}</p>
+              </div>
+            )}
+
+            <div style={{ marginTop: 26 }}>
+              <label style={labelStyle}>{t('inviteCode')}</label>
+              <div style={{
+                height: 76, borderRadius: 18, background: OB.surface,
+                border: `2px dashed ${inviteStatus === 'invalid' ? OB.orange : OB.teal}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                position: 'relative',
+                transition: 'border-color 0.2s ease',
+              }}>
+                <input
+                  type="text"
+                  value={inviteCode}
+                  onChange={handleInviteCodeChange}
+                  placeholder={t('inviteCodePlaceholder', 'TGP-7X3K')}
+                  maxLength={20}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    textAlign: 'center',
+                    fontFamily: FONT_MONO,
+                    fontSize: 28,
+                    fontWeight: 700,
+                    color: OB.ink,
+                    letterSpacing: 5,
+                    textTransform: 'uppercase',
+                  }}
+                />
+                {inviteStatus === 'checking' && (
+                  <Loader2 size={18} className="animate-spin" color={OB.tealDeep} style={{ position: 'absolute', right: 16 }} />
+                )}
+                {inviteStatus === 'valid' && (
+                  <CheckCircle size={18} color={OB.green} style={{ position: 'absolute', right: 16 }} />
+                )}
               </div>
 
-              {/* 2. Enter invite code */}
-              <button
-                type="button"
-                onClick={() => setEntryMode('invite')}
-                className="w-full flex items-center gap-4 bg-[var(--color-bg-input)] hover:bg-[var(--color-bg-input)]/80 border border-white/8 hover:border-[#D4AF37]/30 rounded-xl px-5 py-4 transition-all text-left group"
-              >
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex-shrink-0">
-                  <Ticket size={18} className="" style={{ color: "var(--color-text-muted)" }} />
-                </div>
-                <div>
-                  <p className="text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>{t('enterInviteCode')}</p>
-                  <p className="text-[12px] mt-0.5" style={{ color: "var(--color-text-subtle)" }}>{t('enterInviteCodeSubtitle')}</p>
-                </div>
-              </button>
-
-              {/* 3. I have a gym code — smaller link */}
-              <button
-                type="button"
-                onClick={() => setEntryMode('gymcode')}
-                className="mt-2 text-center text-[13px] text-[#D4AF37] hover:text-[#E6C766] font-semibold transition-colors"
-              >
-                {t('haveGymCode')}
-              </button>
-            </div>
-          )}
-
-          {/* ── INVITE CODE ENTRY ── */}
-          {entryMode === 'invite' && !showForm && (
-            <div className="flex flex-col gap-4">
-              <Field
-                label={t('inviteCode')}
-                icon={Ticket}
-                type="text"
-                placeholder={t('inviteCodePlaceholder')}
-                value={inviteCode}
-                onChange={handleInviteCodeChange}
-                onBlur={handleInviteCodeBlur}
-                suffix={inviteSuffix()}
-                maxLength={20}
-                autoFocus
-              />
               {inviteStatus === 'valid' && inviteData && (
-                <p className="text-[11px] text-emerald-400 mt-[-8px] flex items-center gap-1">
-                  <CheckCircle size={11} />
+                <p style={{ fontSize: 12, color: OB.green, marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
+                  <CheckCircle size={13} />
                   {t('inviteCodeValid', { gym: inviteData.gym_name })}
                 </p>
               )}
               {inviteStatus === 'invalid' && (
-                <p className="text-[11px] text-red-400 mt-[-8px] flex items-center gap-1">
-                  <AlertCircle size={11} />
+                <p style={{ fontSize: 12, color: OB.orange, marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
+                  <AlertCircle size={13} />
                   {t('inviteCodeInvalid')}
                 </p>
               )}
-              {inviteStatus === 'checking' && (
-                <p className="text-[11px] mt-[-8px]" style={{ color: "var(--color-text-subtle)" }}>
-                  {t('inviteCodeChecking')}
-                </p>
-              )}
+            </div>
 
-              {/* Scan QR as alternative */}
+            {/* Scan QR card */}
+            <button
+              type="button"
+              onClick={handleScanQR}
+              style={{
+                marginTop: 16, padding: '14px 16px', borderRadius: 14,
+                background: OB.tealSoft, display: 'flex', gap: 12, alignItems: 'center',
+                border: 'none', width: '100%', cursor: 'pointer', textAlign: 'left',
+              }}
+            >
+              <div style={{
+                width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                background: OB.teal, color: '#0A2A2A',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <QrCode size={20} strokeWidth={2.2} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 800, fontSize: 15, color: OB.tealDeep }}>
+                  {t('scanQR', 'Scan QR instead')}
+                </div>
+                <div style={{ fontSize: 12, color: OB.tealDeep, opacity: 0.8 }}>
+                  {t('signup.scanQRHint', 'Point your camera at the poster at reception')}
+                </div>
+              </div>
+              <ArrowRight size={18} color={OB.tealDeep} />
+            </button>
+
+            {/* Help card */}
+            <div style={{
+              marginTop: 16, padding: '14px 16px', borderRadius: 14,
+              background: OB.surface, border: `1px solid ${OB.line}`,
+              display: 'flex', gap: 12, alignItems: 'center',
+            }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={OB.mute} strokeWidth="1.8" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h0"/>
+              </svg>
+              <div style={{ fontSize: 13, color: OB.sub, lineHeight: 1.4 }}>
+                <span style={{ color: OB.ink, fontWeight: 700 }}>{t('signup.noCode', 'No code?')}</span>{' '}
+                {t('signup.noCodeHint', 'Ask at the front desk — every TuGymPR gym has one.')}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 26 }}>
               <button
                 type="button"
-                onClick={handleScanQR}
-                className="flex items-center justify-center gap-2 text-[13px] text-[#D4AF37] hover:text-[#E6C766] font-semibold transition-colors mt-1"
+                onClick={() => inviteStatus === 'valid' && goAccount()}
+                disabled={inviteStatus !== 'valid'}
+                style={primaryBtn(inviteStatus !== 'valid')}
               >
-                <Camera size={14} />
-                {t('scanQR')}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => { setEntryMode('choose'); setInviteCode(''); setInviteStatus('idle'); setInviteData(null); }}
-                className="text-[12px] transition-colors text-center" style={{ color: "var(--color-text-muted)" }}
-              >
-                {t('common:back')}
+                {t('common:continue', 'Continue')}
+                <ArrowRight size={18} />
               </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* ── SIGNUP FORM (shown after invite validation or for gym code flow) ── */}
-          {showForm && (
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {/* ─────────────── SCREEN: GYM CODE (no invite) ─────────────── */}
+        {entryMode === 'gymcode' && (
+          <div className="animate-fade-in">
+            <div className="flex items-center mb-6">
+              <button
+                type="button"
+                onClick={() => setEntryMode('welcome')}
+                aria-label={t('common:back')}
+                style={{
+                  width: 40, height: 40, borderRadius: 999, background: OB.surface,
+                  border: `1.5px solid ${OB.line}`, color: OB.ink, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', boxShadow: CARD_SHADOW, cursor: 'pointer',
+                }}
+              >
+                <ChevronLeft size={18} strokeWidth={2.2} />
+              </button>
+            </div>
 
-              <Field
-                label={t('fullName')}
-                icon={User}
-                type="text"
-                placeholder="Alex Johnson"
-                value={form.fullName}
-                onChange={set('fullName')}
-                error={errors.fullName}
-                maxLength={100}
-                autoComplete="name"
-              />
 
-              <Field
-                label={t('username')}
-                icon={User}
-                type="text"
-                placeholder="alexj"
-                value={form.username}
-                onChange={set('username')}
-                error={errors.username}
-                maxLength={30}
-                autoComplete="username"
-              />
+            <h1 style={{
+              fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 32,
+              letterSpacing: -1.2, color: OB.ink, lineHeight: 1.05, margin: 0,
+            }}>
+              {t('signup.gymCodeTitle', 'What\'s your gym?')}
+            </h1>
+            <p style={{ fontSize: 15, color: OB.sub, marginTop: 6, lineHeight: 1.4 }}>
+              {t('gymCodeHint', 'Enter your gym\'s short name (slug). Ask reception if unsure.')}
+            </p>
 
-              <Field
-                label={t('email')}
-                icon={Mail}
-                type="email"
-                placeholder="you@example.com"
-                value={form.email}
-                onChange={set('email')}
-                error={errors.email}
-                maxLength={254}
-                autoComplete="email"
-              />
+            <div style={{ marginTop: 26 }}>
+              <label style={labelStyle}>{t('gymCode')}</label>
+              <div style={inputWrap(!!errors.gymSlug)}>
+                <Ticket size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                <input
+                  type="text"
+                  value={form.gymSlug}
+                  onChange={set('gymSlug')}
+                  placeholder={t('gymSlugPlaceholder', { defaultValue: 'e.g. demo' })}
+                  style={inputStyle}
+                  autoFocus
+                />
+              </div>
+              {errors.gymSlug && <p style={{ fontSize: 12, color: OB.orange, marginTop: 8 }}>{errors.gymSlug}</p>}
+            </div>
 
-              <Field
-                label={t('password')}
-                icon={Lock}
-                type={showPassword ? 'text' : 'password'}
-                placeholder="--------"
-                value={form.password}
-                onChange={set('password')}
-                error={errors.password}
-                maxLength={128}
-                autoComplete="new-password"
-                suffix={
+            <div style={{ marginTop: 26 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!form.gymSlug.trim()) {
+                    setErrors({ gymSlug: t('common:required') });
+                    return;
+                  }
+                  setErrors({});
+                  goAccount();
+                }}
+                style={primaryBtn(false)}
+              >
+                {t('common:continue', 'Continue')}
+                <ArrowRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────── SCREEN: CREATE ACCOUNT ─────────────── */}
+        {entryMode === 'account' && (
+          <div className="animate-fade-in">
+            <div className="flex items-center mb-6">
+              <button
+                type="button"
+                onClick={() => setEntryMode(inviteStatus === 'valid' ? 'invite' : (inviteSlug ? 'welcome' : 'gymcode'))}
+                aria-label={t('common:back')}
+                style={{
+                  width: 40, height: 40, borderRadius: 999, background: OB.surface,
+                  border: `1.5px solid ${OB.line}`, color: OB.ink, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', boxShadow: CARD_SHADOW, cursor: 'pointer',
+                }}
+              >
+                <ChevronLeft size={18} strokeWidth={2.2} />
+              </button>
+            </div>
+
+            {/* Code-valid chip */}
+            {(inviteStatus === 'valid' && inviteData?.gym_name) || (inviteSlug && gymName) ? (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+                background: OB.greenSoft, borderRadius: 999, width: 'fit-content',
+                marginBottom: 18,
+              }}>
+                <div style={{
+                  width: 18, height: 18, borderRadius: 999, background: OB.green,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+                }}>
+                  <Check size={12} strokeWidth={3} />
+                </div>
+                <span style={{
+                  fontSize: 12, fontWeight: 800, color: '#2d5a2d',
+                  letterSpacing: 0.3, textTransform: 'uppercase',
+                }}>
+                  {t('signup.codeValid', 'CODE VALID')} · {(inviteData?.gym_name || gymName).toUpperCase()}
+                </span>
+              </div>
+            ) : null}
+
+            <h1 style={{
+              fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 28,
+              letterSpacing: -1.2, color: OB.ink, lineHeight: 1.05, margin: 0,
+            }}>
+              {t('signup.accountTitle', 'Create your account.')}
+            </h1>
+            <p style={{ fontSize: 14, color: OB.sub, marginTop: 4 }}>
+              {t('signup.accountSubtitle', 'This takes about 40 seconds.')}
+            </p>
+
+            {globalError && (
+              <div style={{
+                marginTop: 18, display: 'flex', alignItems: 'center', gap: 10,
+                background: '#FDECE7', border: `1px solid #FF5A2E33`, borderRadius: 14, padding: '12px 14px',
+              }}>
+                <AlertCircle size={15} color="#C13B14" />
+                <p style={{ fontSize: 13, color: '#C13B14', margin: 0 }}>{globalError}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Full name */}
+              <div>
+                <label htmlFor="su-name" style={labelStyle}>{t('fullName')}</label>
+                <div style={inputWrap(!!errors.fullName)}>
+                  <User size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                  <input
+                    id="su-name"
+                    type="text"
+                    value={form.fullName}
+                    onChange={set('fullName')}
+                    placeholder={t('fullNamePlaceholder', { defaultValue: 'Alex Rivera' })}
+                    maxLength={100}
+                    autoComplete="name"
+                    style={inputStyle}
+                  />
+                </div>
+                {errors.fullName && <p style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>{errors.fullName}</p>}
+              </div>
+
+              {/* Username */}
+              <div>
+                <label htmlFor="su-username" style={labelStyle}>{t('username')}</label>
+                <div style={inputWrap(!!errors.username)}>
+                  <span style={{ position: 'absolute', left: 16, fontSize: 16, color: OB.mute, fontWeight: 700 }}>@</span>
+                  <input
+                    id="su-username"
+                    type="text"
+                    value={form.username}
+                    onChange={set('username')}
+                    placeholder={t('usernamePlaceholder', { defaultValue: 'alexr' })}
+                    maxLength={30}
+                    autoComplete="username"
+                    style={inputStyle}
+                  />
+                </div>
+                {errors.username && <p style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>{errors.username}</p>}
+              </div>
+
+              {/* Email */}
+              <div>
+                <label htmlFor="su-email" style={labelStyle}>{t('email')}</label>
+                <div style={inputWrap(!!errors.email || emailValidStatus === 'invalid', true)}>
+                  <Mail size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                  <input
+                    id="su-email"
+                    type="email"
+                    value={form.email}
+                    onChange={set('email')}
+                    placeholder={t('emailPlaceholder', { defaultValue: 'you@example.com' })}
+                    maxLength={254}
+                    autoComplete="email"
+                    style={inputStyle}
+                  />
+                  {form.email && emailValidStatus === 'valid' && (
+                    <CheckCircle size={16} color={OB.green} style={{ position: 'absolute', right: 14 }} />
+                  )}
+                  {form.email && emailValidStatus === 'invalid' && (
+                    <AlertCircle size={16} color={OB.orange} style={{ position: 'absolute', right: 14 }} />
+                  )}
+                </div>
+                {errors.email && <p style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>{errors.email}</p>}
+                {!errors.email && emailValidStatus === 'invalid' && emailValidReason && (
+                  <p style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>{emailValidReason}</p>
+                )}
+              </div>
+
+              {/* Password */}
+              <div>
+                <label htmlFor="su-password" style={labelStyle}>{t('password')}</label>
+                <div style={inputWrap(!!errors.password, true)}>
+                  <Lock size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                  <input
+                    id="su-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={form.password}
+                    onChange={set('password')}
+                    onBlur={handlePasswordBlur}
+                    placeholder={t('passwordPlaceholder', { defaultValue: '8+ characters' })}
+                    maxLength={128}
+                    autoComplete="new-password"
+                    style={inputStyle}
+                  />
                   <button
                     type="button"
                     onClick={() => setShowPassword(v => !v)}
-                    aria-label="Toggle password visibility"
-                    className="hover:text-[var(--color-text-muted)] transition-colors" style={{ color: "var(--color-text-muted)" }}
+                    aria-label={t('togglePasswordVisibility', { defaultValue: 'Toggle password visibility' })}
+                    style={{
+                      position: 'absolute', right: 12,
+                      background: 'transparent', border: 'none', color: OB.mute,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    }}
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
-                }
-              />
-
-              <Field
-                label={t('confirmPassword')}
-                icon={Lock}
-                type={showConfirmPassword ? 'text' : 'password'}
-                placeholder="--------"
-                value={form.confirmPassword}
-                onChange={set('confirmPassword')}
-                error={errors.confirmPassword}
-                autoComplete="new-password"
-                suffix={
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(v => !v)}
-                    aria-label="Toggle password visibility"
-                    className="hover:text-[var(--color-text-muted)] transition-colors" style={{ color: "var(--color-text-muted)" }}
-                  >
-                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                }
-              />
-
-              {/* Phone number with area code */}
-              <div>
-                <label htmlFor="signup-phone" className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
-                  {t('phoneNumber')}
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-shrink-0">
-                    <select
-                      value={areaCode}
-                      onChange={e => setAreaCode(e.target.value)}
-                      aria-label="Area code"
-                      className="appearance-none w-[90px] bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-3 pr-7 py-3 text-[14px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors cursor-pointer"
-                      style={{ color: "var(--color-text-primary)" }}
-                    >
-                      {AREA_CODES.map((ac, i) => (
-                        <option key={`${ac.code}-${ac.label}-${i}`} value={ac.code}>
-                          {ac.flag} {ac.code}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
-                  </div>
-                  <div className="relative flex-1">
-                    <Phone size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--color-text-muted)" }} />
-                    <input
-                      id="signup-phone"
-                      type="tel"
-                      inputMode="tel"
-                      autoComplete="tel-national"
-                      placeholder="787 555 1234"
-                      value={form.phone}
-                      onChange={set('phone')}
-                      maxLength={15}
-                      className="w-full bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors"
-                      style={{ color: "var(--color-text-primary)" }}
-                    />
-                  </div>
                 </div>
+
+                {/* 4-segment strength bar */}
+                <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                  {[0, 1, 2, 3].map(i => (
+                    <div
+                      key={i}
+                      style={{
+                        flex: 1,
+                        height: 4,
+                        borderRadius: 2,
+                        background: i < strength ? OB.teal : OB.line,
+                        transition: 'background 0.25s ease',
+                      }}
+                    />
+                  ))}
+                </div>
+                {form.password && (
+                  <p style={{ fontSize: 11, color: OB.sub, marginTop: 6 }}>{strengthLabel(strength, t)}</p>
+                )}
+
+                {/* Password rule checklist (always visible, fills in as user types) */}
+                <ul style={{
+                  listStyle: 'none', padding: 0, margin: '10px 0 0',
+                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px',
+                }}>
+                  {pwRules.map(rule => (
+                    <li
+                      key={rule.key}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        fontSize: 12,
+                        color: rule.pass ? OB.green : OB.mute,
+                        fontWeight: rule.pass ? 600 : 500,
+                      }}
+                    >
+                      {rule.pass ? (
+                        <Check size={13} strokeWidth={3} color={OB.green} />
+                      ) : (
+                        <span style={{
+                          width: 10, height: 10, borderRadius: 999,
+                          background: OB.line, display: 'inline-block',
+                        }} />
+                      )}
+                      {rule.label}
+                    </li>
+                  ))}
+                </ul>
+
+                {/* HIBP soft warning (does not block submit) */}
+                {pwnedWarning && (
+                  <p style={{
+                    fontSize: 12, color: '#A66A00', marginTop: 8,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: '#FFF6DB', border: '1px solid #E8C54733',
+                    padding: '8px 10px', borderRadius: 10,
+                  }}>
+                    <AlertCircle size={13} />
+                    {t('signup.pwnedWarning', 'This password has appeared in a known data breach. Consider choosing a different one.')}
+                  </p>
+                )}
+
+                {errors.password && <p style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>{errors.password}</p>}
               </div>
 
-              {/* Gym code — only shown in gymcode mode and when NOT coming from invite link */}
-              {entryMode === 'gymcode' && !inviteSlug && (
-                <div className="border-t border-white/6 pt-4 mt-1">
-                  <Field
-                    label={t('gymCode')}
-                    icon={Hash}
+              {/* Referral (optional, compact) */}
+              <div>
+                <label htmlFor="su-referral" style={labelStyle}>
+                  {t('referralCode')} <span style={{ color: OB.mute, fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>· {t('common:optional', 'optional')}</span>
+                </label>
+                <div style={inputWrap(false, true)}>
+                  <Gift size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                  <input
+                    id="su-referral"
                     type="text"
-                    placeholder="e.g. demo"
-                    value={form.gymSlug}
-                    onChange={set('gymSlug')}
-                    error={errors.gymSlug}
+                    value={form.referralCode}
+                    onChange={handleReferralChange}
+                    placeholder="REF-XXXX-XXXX"
+                    maxLength={13}
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    style={inputStyle}
                   />
-                  <p className="text-[11px] mt-1.5" style={{ color: "var(--color-text-muted)" }}>
-                    {t('gymCodeHint')}
-                  </p>
+                  {referralStatus === 'checking' && (
+                    <Loader2 size={16} className="animate-spin" color={OB.tealDeep} style={{ position: 'absolute', right: 14 }} />
+                  )}
+                  {referralStatus === 'valid' && (
+                    <CheckCircle size={16} color={OB.green} style={{ position: 'absolute', right: 14 }} />
+                  )}
                 </div>
-              )}
-
-              {/* Referral code — optional, always shown */}
-              <div className="border-t border-white/6 pt-4 mt-1">
-                <Field
-                  label={t('referralCode')}
-                  icon={Gift}
-                  type="text"
-                  placeholder={t('referralCodePlaceholder')}
-                  value={form.referralCode}
-                  onChange={handleReferralChange}
-                  onBlur={handleReferralBlur}
-                  suffix={referralSuffix()}
-                  maxLength={30}
-                />
                 {referralStatus === 'valid' && referralData && (
-                  <p className="text-[11px] text-emerald-400 mt-1.5 flex items-center gap-1">
-                    <CheckCircle size={11} />
+                  <p style={{ fontSize: 11, color: OB.green, marginTop: 6, fontWeight: 600 }}>
                     {t('referralCodeValid', { name: referralData.referrer_name })}
                   </p>
                 )}
                 {referralStatus === 'invalid' && (
-                  <p className="text-[11px] mt-1.5" style={{ color: "var(--color-text-muted)" }}>
-                    {t('referralCodeInvalid')}
-                  </p>
+                  <p style={{ fontSize: 11, color: OB.mute, marginTop: 6 }}>{t('referralCodeInvalid')}</p>
                 )}
-                {referralStatus === 'checking' && (
-                  <p className="text-[11px] mt-1.5" style={{ color: "var(--color-text-subtle)" }}>
-                    {t('referralCodeChecking')}
+              </div>
+
+              {/* Date of Birth — App Store / Play Store / GDPR-K age verification */}
+              <div>
+                <label htmlFor="su-dob" style={labelStyle}>{t('dobLabel', 'Date of Birth')}</label>
+                <div style={inputWrap(!!dobError)}>
+                  <Calendar size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                  <input
+                    id="su-dob"
+                    type="date"
+                    value={dateOfBirth}
+                    max={todayISO()}
+                    onChange={(e) => { setDateOfBirth(e.target.value); if (dobError) setDobError(''); }}
+                    autoComplete="bday"
+                    aria-describedby={dobError ? 'su-dob-error' : undefined}
+                    style={inputStyle}
+                  />
+                </div>
+                {dobError && (
+                  <p id="su-dob-error" style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>
+                    {dobError}
                   </p>
                 )}
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="mt-2 w-full bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              >
-                {loading ? t('creatingAccount') : t('createAccountBtn')}
-              </button>
-              <p className="text-[11px] text-center leading-relaxed" style={{ color: "var(--color-text-subtle)" }}>
-                {t('agreeTerms')}{' '}
-                <a href="/terms" className="text-[#D4AF37] hover:underline">{t('common:termsOfService')}</a>
-                {' '}{t('and')}{' '}
-                <a href="/privacy" className="text-[#D4AF37] hover:underline">{t('common:privacyPolicy')}</a>.
-              </p>
-
-              {/* Back to choose entry method (if not from gym slug link) */}
-              {!inviteSlug && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEntryMode('choose');
-                    if (entryMode === 'invite') {
-                      // Keep invite data in case they go back
-                    }
+              <div style={{ marginTop: 12 }}>
+                {/* Terms of Service — explicit consent (App Store 5.1.1(v)) */}
+                <label
+                  htmlFor="su-terms-accept"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    padding: '12px 14px',
+                    borderRadius: 14,
+                    background: OB.surface,
+                    border: `1.5px solid ${termsError ? '#FF5A2E' : OB.line}`,
+                    cursor: 'pointer',
+                    marginBottom: 10,
+                    transition: 'border-color 0.2s ease',
                   }}
-                  className="text-[12px] transition-colors text-center" style={{ color: "var(--color-text-muted)" }}
                 >
-                  {t('common:back')}
-                </button>
-              )}
-            </form>
-          )}
-        </div>
+                  <input
+                    id="su-terms-accept"
+                    type="checkbox"
+                    checked={termsAccepted}
+                    onChange={(e) => { setTermsAccepted(e.target.checked); if (e.target.checked) setTermsError(''); }}
+                    aria-describedby={termsError ? 'su-terms-error' : undefined}
+                    style={{
+                      width: 18, height: 18, marginTop: 2, accentColor: OB.teal,
+                      cursor: 'pointer', flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ fontSize: 12, color: OB.sub, lineHeight: 1.5 }}>
+                    <Trans
+                      i18nKey="auth:termsCheckbox"
+                      defaults="I have read and agree to the <termsLink>Terms of Service</termsLink>"
+                      components={{
+                        termsLink: (
+                          <a
+                            href="https://tugympr.com/terms"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ color: OB.ink, fontWeight: 700, textDecoration: 'underline', textDecorationColor: OB.teal }}
+                          />
+                        ),
+                      }}
+                    />
+                  </span>
+                </label>
+                {termsError && (
+                  <p id="su-terms-error" style={{ fontSize: 12, color: OB.orange, marginTop: -4, marginBottom: 6 }}>
+                    {termsError}
+                  </p>
+                )}
 
-        <p className="text-center text-[13px] mt-6" style={{ color: "var(--color-text-subtle)" }}>
-          {t('alreadyHaveAccount')}{' '}
-          <Link to="/login" className="text-[#D4AF37] hover:text-[#E6C766] font-semibold transition-colors">
-            {t('signInLink')}
-          </Link>
-        </p>
+                {/* Privacy Policy — explicit consent (separate from Terms) */}
+                <label
+                  htmlFor="su-privacy-accept"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    padding: '12px 14px',
+                    borderRadius: 14,
+                    background: OB.surface,
+                    border: `1.5px solid ${privacyError ? '#FF5A2E' : OB.line}`,
+                    cursor: 'pointer',
+                    marginBottom: 14,
+                    transition: 'border-color 0.2s ease',
+                  }}
+                >
+                  <input
+                    id="su-privacy-accept"
+                    type="checkbox"
+                    checked={privacyAccepted}
+                    onChange={(e) => { setPrivacyAccepted(e.target.checked); if (e.target.checked) setPrivacyError(''); }}
+                    aria-describedby={privacyError ? 'su-privacy-error' : undefined}
+                    style={{
+                      width: 18, height: 18, marginTop: 2, accentColor: OB.teal,
+                      cursor: 'pointer', flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ fontSize: 12, color: OB.sub, lineHeight: 1.5 }}>
+                    <Trans
+                      i18nKey="auth:privacyCheckbox"
+                      defaults="I have read and agree to the <privacyLink>Privacy Policy</privacyLink>"
+                      components={{
+                        privacyLink: (
+                          <a
+                            href="https://tugympr.com/privacy"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ color: OB.ink, fontWeight: 700, textDecoration: 'underline', textDecorationColor: OB.teal }}
+                          />
+                        ),
+                      }}
+                    />
+                  </span>
+                </label>
+                {privacyError && (
+                  <p id="su-privacy-error" style={{ fontSize: 12, color: OB.orange, marginTop: -4, marginBottom: 8 }}>
+                    {privacyError}
+                  </p>
+                )}
+
+                <button type="submit" disabled={submitDisabled} style={primaryBtn(submitDisabled)}>
+                  {loading ? t('creatingAccount') : t('createAccountBtn', 'Create Account')}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
-    </div>
+    </main>
   );
 };
 

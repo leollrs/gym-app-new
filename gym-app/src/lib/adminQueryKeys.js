@@ -100,7 +100,10 @@ export const adminKeys = {
   },
 
   classes: {
-    all: (gymId) => ['admin', 'classes', gymId],
+    // v2: bump to invalidate the persisted React Query cache that was holding
+    // expired createSignedUrl() URLs from a previous build (caused 400
+    // InvalidJWT on every <img>). Image URL is now derived at render time.
+    all: (gymId) => ['admin', 'classes', 'v2', gymId],
     detail: (classId) => ['admin', 'class-analytics', classId],
     bookings: (classId, date) => ['admin', 'class-bookings', classId, date],
     bookingsTab: (classId, dateFilter) => ['admin', 'class-bookings-tab', classId, dateFilter],

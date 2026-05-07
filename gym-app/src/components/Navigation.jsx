@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight, QrCode, Gift, Apple, Settings, User, BookOpen, LogOut } from 'lucide-react';
+import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight, QrCode, Gift, Apple, Settings, User, BookOpen, LogOut, Shield, Calendar as CalendarIcon } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import UserAvatar from './UserAvatar';
+import { useCachedState } from '../hooks/useCachedState';
 
 // ── Prefetch map for lazy-loaded route chunks ────────────────────────────────
 const PREFETCH_MAP = {
@@ -84,9 +85,15 @@ const Navigation = () => {
   const { t, i18n } = useTranslation('common');
   const navigate = useNavigate();
   const location = useLocation();
-  const [streak, setStreak] = useState(0);
+  const [streakRaw, setStreakRaw] = useState(0);
   const [streakData, setStreakData] = useState(null);
+  const [streakDerived, setStreakDerived] = useState(null); // null = no override yet
+  const [longestDerived, setLongestDerived] = useState(null);
+  // Prefer calendar-derived value when available; fall back to raw cache.
+  const streak = streakDerived !== null ? streakDerived : streakRaw;
+  const setStreak = setStreakRaw; // so existing setters still feed the raw value
   const [showStreakModal, setShowStreakModal] = useState(false);
+  const streakOpenedAtRef = useRef(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   // Scroll locking for streak modal
   useEffect(() => {
@@ -95,6 +102,9 @@ const Navigation = () => {
       return () => { document.body.style.overflow = ''; };
     }
   }, [showStreakModal]);
+
+  // Defensive: clear any stuck body scroll lock on route change
+  useEffect(() => { document.body.style.overflow = ''; }, [location.pathname]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -147,19 +157,26 @@ const Navigation = () => {
     return () => { clearTimeout(debounceTimer); supabase.removeChannel(channel); };
   }, [user?.id, location.pathname]);
 
-  const [streakMonths, setStreakMonths] = useState([]);
-  const [freezeStatus, setFreezeStatus] = useState(null); // { used, max }
+  const streakCalCacheKey = `streak-calendar-${user?.id || 'anon'}`;
+  const streakFreezeCacheKey = `streak-freeze-${user?.id || 'anon'}`;
+  const [streakMonths, setStreakMonths] = useCachedState(streakCalCacheKey, []);
+  const [freezeStatus, setFreezeStatus] = useCachedState(streakFreezeCacheKey, null);
   const [viewedMonthIndex, setViewedMonthIndex] = useState(0); // 0 = current month
 
   const loadStreakDays = useCallback(async () => {
     if (!user?.id) return;
 
-    const [sessionsRes, profileRes, gymHoursRes, closuresRes, holidaysRes, freezesRes] = await Promise.all([
+    const [sessionsRes, cardioRes, profileRes, gymHoursRes, closuresRes, holidaysRes, freezesRes] = await Promise.all([
       supabase.from('workout_sessions')
         .select('completed_at')
         .eq('profile_id', user.id)
         .eq('status', 'completed')
         .order('completed_at', { ascending: false }),
+      // Cardio is training too — count cardio_sessions toward the calendar
+      // streak so a run on Tuesday doesn't read as a missed day.
+      supabase.from('cardio_sessions')
+        .select('completed_at, started_at')
+        .eq('profile_id', user.id),
       supabase.from('profiles').select('preferred_training_days, created_at').eq('id', user.id).maybeSingle(),
       profile?.gym_id ? supabase.from('gym_hours').select('day_of_week, is_closed').eq('gym_id', profile.gym_id) : Promise.resolve({ data: [] }),
       profile?.gym_id ? supabase.from('gym_closures').select('closure_date').eq('gym_id', profile.gym_id) : Promise.resolve({ data: [] }),
@@ -170,10 +187,17 @@ const Navigation = () => {
     // Helper: date → 'YYYY-MM-DD'
     const toKey = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
-    // Set of all dates with a completed workout
+    // Set of all dates with a completed workout OR cardio session
     const workoutDates = new Set(
       (sessionsRes.data || []).map(s => toKey(new Date(s.completed_at)))
     );
+    for (const c of (cardioRes.data || [])) {
+      const ts = c.completed_at || c.started_at;
+      if (ts) workoutDates.add(toKey(new Date(ts)));
+    }
+    // Sorted ascending — used by the "fallback rest window" logic below to
+    // find the nearest training day for any given gap day.
+    const sortedWorkoutKeys = [...workoutDates].sort();
 
     // Account creation date — nothing before this counts
     const createdAt = profileRes.data?.created_at ? new Date(profileRes.data.created_at) : new Date();
@@ -250,6 +274,27 @@ const Navigation = () => {
           status = 'rest';
         } else if (prefDays.length > 0 && restDowSet.has(dow)) {
           status = 'rest';
+        } else if (prefDays.length === 0) {
+          // Fallback when the user hasn't set preferred_training_days:
+          // mirror the server-side _streak_gap_day_protected logic — if the
+          // gap is within 7 days of a real training day (in either
+          // direction), treat as a rest day. Otherwise it's a real miss.
+          // This matches migration 0352's semantics.
+          const gapMs = 7 * 24 * 60 * 60 * 1000;
+          const dayMs = d.getTime();
+          let nearestKey = null;
+          let nearestDiff = Infinity;
+          for (let i = 0; i < sortedWorkoutKeys.length; i += 1) {
+            const wk = sortedWorkoutKeys[i];
+            const wkDate = new Date(wk + 'T00:00:00');
+            const diff = Math.abs(dayMs - wkDate.getTime());
+            if (diff < nearestDiff) {
+              nearestDiff = diff;
+              nearestKey = wk;
+            }
+            if (wkDate.getTime() > dayMs && diff > gapMs) break; // sorted, can stop
+          }
+          status = nearestKey && nearestDiff <= gapMs ? 'rest' : 'missed';
         } else {
           status = 'missed';
         }
@@ -268,12 +313,81 @@ const Navigation = () => {
     const currentFreeze = freezesByMonth[currentMonthKey];
     setFreezeStatus({
       used: currentFreeze?.used_count || 0,
-      max: currentFreeze?.max_allowed || 2,
+      max: currentFreeze?.max_allowed || 1,
     });
 
     setStreakMonths(months);
     setViewedMonthIndex(0); // Reset to current month when data loads
+
+    // ── DERIVE STREAK FROM CALENDAR ────────────────────────────
+    // streak_cache.current_streak_days can drift from reality (backend cron
+    // edge cases, deleted sessions, stale data). The calendar is the source
+    // of truth — compute the current streak by walking back from today.
+    //
+    // RULE (per product spec): every day counts toward the streak — trained,
+    // rest, frozen, and gym-closed days all add +1. Today (no workout yet)
+    // is not counted but doesn't break. The streak ends only at a `missed`
+    // day or when we reach the account creation date. The chain must contain
+    // at least one trained day.
+    {
+      const STATUS_BY_KEY = new Map();
+      for (const m of months) for (const d of m.days) STATUS_BY_KEY.set(d.key, d.status);
+      let derived = 0;
+      let sawDone = false;
+      let walk = new Date(today);
+      // Safety cap: don't walk further than user creation or 1000 days.
+      for (let i = 0; i < 1000; i++) {
+        const k = toKey(walk);
+        if (k < createdAtKey) break;
+        const s = STATUS_BY_KEY.get(k);
+        if (s === 'missed') break;
+        if (s === 'done') { derived += 1; sawDone = true; }
+        else if (s === 'today') { /* today, no workout yet — neither count nor break */ }
+        else if (s === 'rest' || s === 'frozen') { derived += 1; }
+        else if (s === 'future' || s === 'before-account' || !s) { /* skip */ }
+        walk.setDate(walk.getDate() - 1);
+      }
+      const finalStreak = sawDone ? derived : 0;
+      setStreakDerived((prev) => (prev === finalStreak ? prev : finalStreak));
+    }
+
+    // ── DERIVE LONGEST STREAK FROM CALENDAR ────────────────────
+    try {
+      const allDays = (months || []).slice().reverse().flatMap((m) => (m && m.days) || []);
+      let maxRun = 0;
+      let curRun = 0;
+      let sawDoneInRun = false;
+      const commit = () => {
+        if (sawDoneInRun && curRun > maxRun) maxRun = curRun;
+        curRun = 0;
+        sawDoneInRun = false;
+      };
+      for (const d of allDays) {
+        const s = d && d.status;
+        if (s === 'missed') { commit(); }
+        else if (s === 'done') { curRun += 1; sawDoneInRun = true; }
+        else if (s === 'rest' || s === 'frozen') { curRun += 1; }
+      }
+      commit();
+      setLongestDerived((prev) => (prev === maxRun ? prev : maxRun));
+    } catch (err) {
+      console.error('[streak] longest derivation failed', err);
+    }
   }, [user?.id, profile?.gym_id, streakData, i18n.language]);
+
+  // Listen for external requests to open the streak modal (e.g. from CheckIn page)
+  useEffect(() => {
+    const handler = () => { streakOpenedAtRef.current = Date.now(); loadStreakDays(); setShowStreakModal(true); };
+    window.addEventListener('tugympr:open-streak-modal', handler);
+    return () => window.removeEventListener('tugympr:open-streak-modal', handler);
+  }, [loadStreakDays]);
+
+  // Prewarm the streak calendar data as soon as the user + streakData are known,
+  // so the modal has everything ready instead of waiting on 6 Supabase queries
+  // after the user taps the flame pill.
+  useEffect(() => {
+    if (user?.id && streakData !== null) { loadStreakDays(); }
+  }, [user?.id, streakData, loadStreakDays]);
 
   const isRecordActive =
     location.pathname.startsWith('/record') ||
@@ -317,7 +431,7 @@ const Navigation = () => {
       </div>
 
       {/* Nav sections */}
-      <nav aria-label="Sidebar navigation" className="flex-1 px-3 pb-3 overflow-y-auto">
+      <nav aria-label={t('navigation.sidebarNavigation', { ns: 'pages', defaultValue: 'Sidebar navigation' })} className="flex-1 px-3 pb-3 overflow-y-auto">
         {SIDEBAR_SECTIONS.map((section, idx) => (
           <div key={section.labelKey} className={idx > 0 ? 'mt-5' : ''}>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
@@ -403,7 +517,7 @@ const Navigation = () => {
     </aside>
 
     {/* ── Desktop Top Navigation (md: only, hidden on lg: where sidebar shows) ── */}
-    <nav aria-label="Main navigation" className="hidden md:block lg:hidden sticky top-0 z-50 border-b border-white/6 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
+    <nav aria-label={t('navigation.mainNavigation', { ns: 'pages', defaultValue: 'Main navigation' })} className="hidden md:block lg:hidden sticky top-0 z-50 border-b border-white/6 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
       <div className="container flex justify-between items-center py-3.5">
 
         {/* Brand */}
@@ -473,7 +587,7 @@ const Navigation = () => {
               onClick={() => navigate('/messages')}
               className="relative w-11 h-11 rounded-full bg-white/5 flex items-center justify-center hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{ color: 'var(--color-text-muted)' }}
-              aria-label="Messages"
+              aria-label={t('nav.messages', { defaultValue: 'Messages' })}
             >
               <MessageCircle size={16} />
               {unreadMessages > 0 && (
@@ -487,7 +601,7 @@ const Navigation = () => {
               onClick={() => navigate('/notifications')}
               className="relative w-11 h-11 rounded-full bg-white/5 flex items-center justify-center hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{ color: 'var(--color-text-muted)' }}
-              aria-label="Notifications"
+              aria-label={t('nav.notifications', { defaultValue: 'Notifications' })}
             >
               <Bell size={16} />
               {unreadNotifications > 0 && (
@@ -499,7 +613,7 @@ const Navigation = () => {
             <button
               onClick={() => navigate('/profile')}
               className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform overflow-hidden focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              aria-label="Profile"
+              aria-label={t('nav.profile', { defaultValue: 'Profile' })}
             >
               <UserAvatar user={profile} size={44} />
             </button>
@@ -535,8 +649,8 @@ const Navigation = () => {
         {/* Streak badge */}
         <button
           type="button"
-          onClick={() => { loadStreakDays(); setShowStreakModal(true); }}
-          aria-label="View streak"
+          onClick={() => { streakOpenedAtRef.current = Date.now(); loadStreakDays(); setShowStreakModal(true); }}
+          aria-label={t('navigation.viewStreak', { ns: 'pages', defaultValue: 'View streak' })}
           className={`flex items-center gap-1 px-2.5 py-1 rounded-full shrink-0 active:scale-95 transition-transform min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
           streak > 0
             ? 'bg-orange-500/15 border border-orange-500/25'
@@ -553,7 +667,7 @@ const Navigation = () => {
           onTouchStart={() => prefetchRoute('/rewards')}
           className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{ color: 'var(--color-text-primary)' }}
-          aria-label="Rewards"
+          aria-label={t('nav.rewards', { defaultValue: 'Rewards' })}
         >
           <Trophy size={16} />
         </button>
@@ -585,11 +699,11 @@ const Navigation = () => {
 
     {/* ── Mobile Bottom Navigation (Strava-style 5 tabs with center Record) ─── */}
     <nav
-      aria-label="Mobile navigation"
+      aria-label={t('navigation.mobileNavigation', { ns: 'pages', defaultValue: 'Mobile navigation' })}
       className="md:hidden fixed bottom-0 left-0 right-0 z-50 backdrop-blur-2xl border-t border-white/6 flex items-end justify-around px-2"
       style={{
         backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)',
-        paddingBottom: 'calc(0.25rem + var(--safe-area-bottom, env(safe-area-inset-bottom)))',
+        paddingBottom: 'calc(0.75rem + var(--safe-area-bottom, env(safe-area-inset-bottom)))',
         paddingTop: '0.35rem',
         transform: 'translateZ(0)',
         WebkitTransform: 'translateZ(0)',
@@ -657,136 +771,282 @@ const Navigation = () => {
         );
       })}
     </nav>
-  {/* Streak Detail Modal */}
+  {/* Streak Detail Modal — Liquid Glass / iOS 26 redesign */}
   {showStreakModal && createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="button" tabIndex={-1} aria-label="Close streak details" onClick={() => setShowStreakModal(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowStreakModal(false); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="streak-modal-title" className="rounded-[20px] w-full max-w-sm border overflow-hidden flex flex-col" style={{ maxHeight: '85vh', background: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
-        {/* Header (fixed) */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${streak > 0 ? 'bg-orange-500/15' : 'bg-white/[0.04]'}`}>
-              <Flame size={20} className={streak > 0 ? 'text-orange-400' : ''} style={streak > 0 ? undefined : { color: 'var(--color-text-subtle)' }} />
-            </div>
-            <div>
-              <p id="streak-modal-title" className="text-[18px] font-bold truncate" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-primary)' }}>{t('navigation.streaks.dayStreak', { ns: 'pages', count: streak })}</p>
-              <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('navigation.streaks.longest', { ns: 'pages', count: streakData?.longest_streak_days || streak })}</p>
-            </div>
-          </div>
-          <button onClick={() => setShowStreakModal(false)} aria-label={t('nav.close', { ns: 'common', defaultValue: 'Close' })} className="w-11 h-11 rounded-lg bg-white/[0.04] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-subtle)' }}>
-            <X size={16} />
-          </button>
-        </div>
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center px-3 sm:px-4 animate-fade-in"
+      style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(18px) saturate(160%)', WebkitBackdropFilter: 'blur(18px) saturate(160%)' }}
+      role="button" tabIndex={-1} aria-label={t('navigation.closeStreakDetails', { ns: 'pages', defaultValue: 'Close streak details' })}
+      onClick={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (Date.now() - streakOpenedAtRef.current < 400) return;
+        setShowStreakModal(false);
+      }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowStreakModal(false); }}
+    >
+      <div
+        role="dialog" aria-modal="true" aria-labelledby="streak-modal-title"
+        className="relative rounded-[28px] w-full max-w-[420px] overflow-hidden flex flex-col animate-fade-in"
+        style={{
+          maxHeight: '90vh',
+          background: 'var(--color-bg-card)',
+          border: '1px solid var(--color-border-subtle)',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.12)',
+          fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Close button (floats above the hero) */}
+        <button
+          onClick={() => setShowStreakModal(false)}
+          aria-label={t('nav.close', { ns: 'common', defaultValue: 'Close' })}
+          className="absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center z-10 focus:outline-none focus:ring-2"
+          style={{
+            background: 'rgba(255,255,255,0.18)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.25)',
+            color: '#fff',
+            '--tw-ring-color': 'rgba(255,255,255,0.6)',
+          }}
+        >
+          <X size={16} strokeWidth={2.5} />
+        </button>
 
-        {/* Freeze status */}
-        <div className="px-5 pb-3 flex-shrink-0">
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${freezeStatus?.used >= freezeStatus?.max ? 'bg-blue-500/10' : 'bg-white/[0.04]'}`}>
-            <Snowflake size={14} className={freezeStatus?.used > 0 ? 'text-blue-400' : ''} style={freezeStatus?.used > 0 ? undefined : { color: 'var(--color-text-subtle)' }} />
-            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              {freezeStatus?.used >= freezeStatus?.max
-                ? t('navigation.streaks.monthlyFreezeUsed', { ns: 'pages' })
-                : t('navigation.streaks.freezeAvailable', { ns: 'pages', count: (freezeStatus?.max || 2) - (freezeStatus?.used || 0) })}
-            </span>
-          </div>
-        </div>
+        <div className="overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+          {/* ── Hero: orange gradient with big streak number + flame ─────────── */}
+          <div
+            className="relative overflow-hidden px-5 pt-7 pb-6"
+            style={{
+              background: 'linear-gradient(160deg, #FF8F4A 0%, #FF5A2E 70%, #DA3E10 115%)',
+              color: '#fff',
+            }}
+          >
+            {/* Decorative orbs */}
+            <div aria-hidden className="absolute -top-6 -right-6 w-40 h-40 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} />
+            <div aria-hidden className="absolute -bottom-10 -left-8 w-32 h-32 rounded-full" style={{ background: 'rgba(255,255,255,0.07)' }} />
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 pb-3 flex-shrink-0">
-          {[
-            { color: 'bg-[#10B981]', label: t('navigation.legend.trained', { ns: 'pages' }) },
-            { color: 'bg-[#6B7280]', label: t('navigation.legend.restDay', { ns: 'pages' }) },
-            { color: 'bg-red-500', label: t('navigation.legend.missed', { ns: 'pages' }) },
-            { color: 'bg-blue-400', label: t('navigation.legend.frozen', { ns: 'pages' }) },
-            { color: 'bg-[#D4AF37]', label: t('navigation.legend.today', { ns: 'pages', defaultValue: 'Today' }) },
-          ].map(({ color, label }) => (
-            <span key={label} className="flex items-center gap-1.5 text-[9px]" style={{ color: 'var(--color-text-subtle)' }}>
-              <span className={`w-2 h-2 rounded-sm ${color}`} />
-              {label}
-            </span>
-          ))}
-        </div>
-
-        {/* Single-month calendar with navigation */}
-        <div className="px-5 pb-5">
-          {streakMonths.length > 0 && (() => {
-            const monthData = streakMonths[viewedMonthIndex] || streakMonths[0];
-            const firstDayDow = monthData.days.length > 0 ? monthData.days[0].dow : 0;
-            const padCount = firstDayDow;
-            const canGoBack = viewedMonthIndex < streakMonths.length - 1;
-            const canGoForward = viewedMonthIndex > 0;
-
-            return (
+            <div className="relative flex items-start justify-between">
               <div>
-                {/* Month navigation header */}
-                <div className="flex items-center justify-between mb-3">
-                  <button
-                    type="button"
-                    onClick={() => canGoBack && setViewedMonthIndex(i => i + 1)}
-                    disabled={!canGoBack}
-                    aria-label={t('navigation.streaks.prevMonth', { ns: 'pages', defaultValue: 'Previous month' })}
-                    className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none disabled:opacity-20"
-                    style={{ color: 'var(--color-text-muted)', background: canGoBack ? 'rgba(255,255,255,0.04)' : 'transparent' }}
-                  >
-                    <ChevronLeft size={18} />
-                  </button>
-                  <p className="text-[14px] font-bold capitalize" style={{ color: 'var(--color-text-primary)' }}>
-                    {monthData.label}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => canGoForward && setViewedMonthIndex(i => i - 1)}
-                    disabled={!canGoForward}
-                    aria-label={t('navigation.streaks.nextMonth', { ns: 'pages', defaultValue: 'Next month' })}
-                    className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none disabled:opacity-20"
-                    style={{ color: 'var(--color-text-muted)', background: canGoForward ? 'rgba(255,255,255,0.04)' : 'transparent' }}
-                  >
-                    <ChevronRight size={18} />
-                  </button>
+                <p className="text-[10px] font-extrabold tracking-[1.4px] opacity-85 uppercase">
+                  {t('navigation.streaks.currentStreak', { ns: 'pages', defaultValue: 'Current Streak' })}
+                </p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span id="streak-modal-title" className="text-[64px] leading-none tracking-[-2.5px]" style={{ fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}>
+                    {streak}
+                  </span>
+                  <span className="text-[22px] opacity-80" style={{ fontWeight: 800 }}>
+                    {t('navigation.streaks.days', { ns: 'pages', defaultValue: 'days' })}
+                  </span>
                 </div>
-                {/* Day-of-week labels */}
-                <div className="grid grid-cols-7 gap-1 mb-1">
-                  {(t('days.initials', { returnObjects: true }) || ['S','M','T','W','T','F','S']).map((d, i) => (
-                    <div key={i} className="text-center text-[8px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{d}</div>
-                  ))}
-                </div>
-                {/* Day cells */}
-                <div className="grid grid-cols-7 gap-1">
-                  {Array.from({ length: padCount }, (_, i) => <div key={`pad-${i}`} />)}
-                  {monthData.days.map(day => {
-                    const dayNum = day.date.getDate();
-                    let bg = 'bg-white/[0.04]';
-                    let colorStyle = 'var(--color-text-muted)';
-                    let ring = '';
-                    let opacity = '';
-
-                    if (day.status === 'future') { bg = 'bg-white/[0.06]'; colorStyle = 'var(--color-text-subtle)'; opacity = 'opacity-60'; }
-                    else if (day.status === 'before-account') { bg = 'bg-white/[0.03]'; colorStyle = 'var(--color-text-subtle)'; opacity = 'opacity-30'; }
-                    else if (day.status === 'done') { bg = 'bg-[#10B981]'; colorStyle = '#fff'; }
-                    else if (day.status === 'rest') { bg = 'bg-[#6B7280]/20'; colorStyle = 'var(--color-text-subtle)'; }
-                    else if (day.status === 'broken') { bg = 'bg-red-500/20'; colorStyle = 'rgb(248 113 113)'; ring = 'ring-1 ring-red-500/40'; }
-                    else if (day.status === 'frozen') { bg = 'bg-blue-400/20'; colorStyle = 'rgb(96 165 250)'; }
-                    else if (day.status === 'today') { bg = 'bg-[#D4AF37]/15'; colorStyle = '#D4AF37'; ring = 'ring-2 ring-[#D4AF37]/50'; }
-                    else if (day.status === 'missed') { bg = 'bg-red-500/10'; colorStyle = 'rgb(248 113 113 / 0.6)'; }
-
-                    return (
-                      <div key={day.key} className={`aspect-square rounded-md flex items-center justify-center text-[10px] font-bold ${bg} ${ring} ${opacity}`} style={{ fontVariantNumeric: 'tabular-nums', color: colorStyle }}>
-                        {dayNum}
-                      </div>
-                    );
-                  })}
-                </div>
+                <p className="text-[12px] opacity-85 mt-1" style={{ fontWeight: 600 }}>
+                  {t('navigation.streaks.longest', { ns: 'pages', count: Math.max(longestDerived ?? 0, streakData?.longest_streak_days ?? 0, streak) })}
+                </p>
               </div>
-            );
-          })()}
-        </div>
+              <div
+                className="text-[56px] leading-none"
+                style={{ filter: 'drop-shadow(0 4px 14px rgba(0,0,0,0.25))', opacity: 0.95 }}
+              >
+                <Flame size={64} fill="#FFD27A" color="#FFE9B8" strokeWidth={1.2} />
+              </div>
+            </div>
 
-        {/* Broken at info */}
-        {streakData?.streak_broken_at && (
-          <div className="px-5 pb-4 flex-shrink-0">
-            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-              {t('navigation.streaks.lastBroken', { ns: 'pages' })}: {new Date(streakData.streak_broken_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-            </p>
+            {/* Milestone progress bar — proportional scale (0–100 days) */}
+            {(() => {
+              const milestones = [7, 14, 30, 100];
+              const SCALE_MAX = 100;
+              const pct = Math.max(0, Math.min(100, (streak / SCALE_MAX) * 100));
+              return (
+                <div className="relative mt-5 pb-1">
+                  <div className="relative h-[6px] rounded-full" style={{ background: 'rgba(255,255,255,0.25)' }}>
+                    <div
+                      className="absolute left-0 top-0 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%`, background: '#fff', boxShadow: '0 0 12px rgba(255,255,255,0.55)' }}
+                    />
+                    {milestones.map((m) => (
+                      <div
+                        key={`tick-${m}`}
+                        className="absolute top-1/2 -translate-y-1/2 w-[2px] h-[10px] rounded-full"
+                        style={{ left: `${(m / SCALE_MAX) * 100}%`, transform: 'translate(-50%, -50%)', background: streak >= m ? '#fff' : 'rgba(255,255,255,0.55)' }}
+                      />
+                    ))}
+                  </div>
+                  <div className="relative h-[26px] mt-2 text-[10px]" style={{ fontWeight: 700 }}>
+                    {milestones.map((m) => {
+                      const reached = streak >= m;
+                      return (
+                        <div
+                          key={m}
+                          className="absolute top-0 text-center"
+                          style={{ left: `${(m / SCALE_MAX) * 100}%`, transform: 'translateX(-50%)', opacity: reached ? 1 : 0.65, whiteSpace: 'nowrap' }}
+                        >
+                          <div className="text-[12px]" style={{ fontWeight: 900 }}>{reached ? '✓' : m}</div>
+                          <div style={{ letterSpacing: 0.4, marginTop: 1, fontSize: 9 }}>{t('navigation.streaks.daysUpper', { ns: 'pages', defaultValue: 'DAYS' })}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
-        )}
+
+          {/* ── Stat strip ─────────────────────────────────────────────────── */}
+          <div className="px-4 pt-4 grid grid-cols-3 gap-2.5">
+            {(() => {
+              const monthDone = (streakMonths[0]?.days || []).filter(d => d.status === 'done').length;
+              const freezesLeft = Math.max(0, (freezeStatus?.max || 1) - (freezeStatus?.used || 0));
+              const items = [
+                { l: t('navigation.streaks.longestLabel', { ns: 'pages', defaultValue: 'Longest' }), v: Math.max(longestDerived ?? 0, streakData?.longest_streak_days ?? 0, streak), u: t('navigation.streaks.days', { ns: 'pages', defaultValue: 'days' }), c: '#10B981' },
+                { l: t('navigation.streaks.thisMonthLabel', { ns: 'pages', defaultValue: 'This month' }), v: monthDone, u: t('navigation.streaks.trained', { ns: 'pages', defaultValue: 'trained' }), c: 'var(--color-accent)' },
+                { l: t('navigation.streaks.freezesLabel', { ns: 'pages', defaultValue: 'Freezes' }), v: freezesLeft, u: t('navigation.streaks.left', { ns: 'pages', defaultValue: 'left' }), c: '#60A5FA' },
+              ];
+              return items.map((s) => (
+                <div key={s.l} className="rounded-[16px] p-3"
+                     style={{ background: 'var(--color-bg-elevated, var(--color-surface-hover))', border: '1px solid var(--color-border-subtle)' }}>
+                  <p className="text-[9px] uppercase tracking-[0.6px]" style={{ color: 'var(--color-text-subtle)', fontWeight: 700 }}>{s.l}</p>
+                  <div className="mt-1 flex items-baseline gap-1">
+                    <span className="text-[24px] leading-none tracking-[-0.8px]" style={{ fontWeight: 900, color: s.c, fontVariantNumeric: 'tabular-nums' }}>{s.v}</span>
+                    <span className="text-[10px]" style={{ color: 'var(--color-text-subtle)', fontWeight: 600 }}>{s.u}</span>
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+
+          {/* ── Freeze info card ───────────────────────────────────────────── */}
+          <div className="px-4 pt-3">
+            <div className="flex items-center gap-3 px-3.5 py-3 rounded-[16px]"
+                 style={{ background: 'color-mix(in srgb, #60A5FA 10%, transparent)', border: '1px solid color-mix(in srgb, #60A5FA 25%, transparent)' }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                   style={{ background: 'color-mix(in srgb, #60A5FA 18%, transparent)' }}>
+                <Snowflake size={16} color="#60A5FA" strokeWidth={2.4} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px]" style={{ color: 'var(--color-text-primary)', fontWeight: 800, letterSpacing: '-0.2px' }}>
+                  {t('navigation.streaks.freezeTitle', { ns: 'pages', defaultValue: 'Streak freeze protection' })}
+                </p>
+                <p className="text-[11px]" style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                  {freezeStatus?.used >= freezeStatus?.max
+                    ? t('navigation.streaks.monthlyFreezeUsed', { ns: 'pages' })
+                    : t('navigation.streaks.freezeAvailable', { ns: 'pages', count: Math.max(0, (freezeStatus?.max || 1) - (freezeStatus?.used || 0)) })}
+                </p>
+              </div>
+              <Shield size={14} style={{ color: 'var(--color-text-subtle)' }} />
+            </div>
+          </div>
+
+          {/* ── Calendar card ──────────────────────────────────────────────── */}
+          <div className="px-4 pt-3 pb-4">
+            <div className="rounded-[20px] p-4"
+                 style={{ background: 'var(--color-bg-elevated, var(--color-surface-hover))', border: '1px solid var(--color-border-subtle)' }}>
+              {streakMonths.length > 0 && (() => {
+                const monthData = streakMonths[viewedMonthIndex] || streakMonths[0];
+                const firstDayDow = monthData.days.length > 0 ? monthData.days[0].dow : 0;
+                const padCount = firstDayDow;
+                const canGoBack = viewedMonthIndex < streakMonths.length - 1;
+                const canGoForward = viewedMonthIndex > 0;
+
+                return (
+                  <div>
+                    {/* Month navigation header */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <CalendarIcon size={14} style={{ color: 'var(--color-text-muted)' }} />
+                        <p className="text-[15px] capitalize" style={{ color: 'var(--color-text-primary)', fontWeight: 800, letterSpacing: '-0.3px' }}>
+                          {monthData.label}
+                        </p>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => canGoBack && setViewedMonthIndex(i => i + 1)}
+                          disabled={!canGoBack}
+                          aria-label={t('navigation.streaks.prevMonth', { ns: 'pages', defaultValue: 'Previous month' })}
+                          className="w-8 h-8 min-w-[44px] min-h-[44px] rounded-[10px] inline-flex items-center justify-center transition-opacity focus:outline-none focus:ring-2 disabled:opacity-25"
+                          style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', '--tw-ring-color': 'var(--color-accent)' }}
+                        >
+                          <ChevronLeft size={14} strokeWidth={2.4} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => canGoForward && setViewedMonthIndex(i => i - 1)}
+                          disabled={!canGoForward}
+                          aria-label={t('navigation.streaks.nextMonth', { ns: 'pages', defaultValue: 'Next month' })}
+                          className="w-8 h-8 min-w-[44px] min-h-[44px] rounded-[10px] inline-flex items-center justify-center transition-opacity focus:outline-none focus:ring-2 disabled:opacity-25"
+                          style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', '--tw-ring-color': 'var(--color-accent)' }}
+                        >
+                          <ChevronRight size={14} strokeWidth={2.4} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-3">
+                      {[
+                        { c: '#10B981', ring: false, label: t('navigation.legend.trained', { ns: 'pages' }) },
+                        { c: '#FF5A2E', ring: false, label: t('navigation.legend.missed', { ns: 'pages' }) },
+                        { c: 'var(--color-text-muted)', ring: false, label: t('navigation.legend.restDay', { ns: 'pages' }) },
+                        { c: '#60A5FA', ring: false, label: t('navigation.legend.frozen', { ns: 'pages' }) },
+                        { c: 'var(--color-accent)', ring: true, label: t('navigation.legend.today', { ns: 'pages', defaultValue: 'Today' }) },
+                      ].map(x => (
+                        <div key={x.label} className="flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                          <span className="w-[10px] h-[10px] rounded-[3px]" style={{ background: x.ring ? 'transparent' : x.c, border: x.ring ? `2px solid ${x.c}` : 'none' }} />
+                          {x.label}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Day-of-week labels */}
+                    <div className="grid grid-cols-7 gap-1 mb-1.5">
+                      {(t('days.initials', { returnObjects: true }) || ['S','M','T','W','T','F','S']).map((d, i) => (
+                        <div key={i} className="text-center text-[10px]" style={{ color: 'var(--color-text-muted)', fontWeight: 700, letterSpacing: '0.6px' }}>{d}</div>
+                      ))}
+                    </div>
+
+                    {/* Day cells */}
+                    <div className="grid grid-cols-7 gap-1">
+                      {Array.from({ length: padCount }, (_, i) => <div key={`pad-${i}`} />)}
+                      {monthData.days.map(day => {
+                        const dayNum = day.date.getDate();
+                        let bg = 'var(--color-bg-card)';
+                        let fg = 'var(--color-text-muted)';
+                        let border = 'none';
+                        let opacity = 1;
+                        let dot = null;
+                        let ice = false;
+
+                        if (day.status === 'future') { bg = 'var(--color-bg-card)'; fg = 'var(--color-text-subtle)'; opacity = 0.55; }
+                        else if (day.status === 'before-account') { bg = 'transparent'; fg = 'var(--color-text-subtle)'; opacity = 0.3; }
+                        else if (day.status === 'done') { bg = 'color-mix(in srgb, #10B981 22%, transparent)'; fg = '#10B981'; dot = '#10B981'; }
+                        else if (day.status === 'rest') { bg = 'color-mix(in srgb, var(--color-text-muted) 14%, transparent)'; fg = 'var(--color-text-subtle)'; }
+                        else if (day.status === 'frozen') { bg = 'color-mix(in srgb, #60A5FA 22%, transparent)'; fg = '#60A5FA'; ice = true; }
+                        else if (day.status === 'today') { bg = 'var(--color-bg-card)'; fg = 'var(--color-text-primary)'; border = '2px solid var(--color-accent)'; }
+                        else if (day.status === 'missed') { bg = 'color-mix(in srgb, #FF5A2E 18%, transparent)'; fg = '#FF5A2E'; }
+
+                        return (
+                          <div key={day.key} className="aspect-square rounded-[10px] flex items-center justify-center text-[11px] relative"
+                               style={{ background: bg, color: fg, border, opacity, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+                            {dayNum}
+                            {ice && <span className="absolute top-[2px] right-[3px] text-[8px] leading-none">❄</span>}
+                            {dot && <span className="absolute bottom-[3px] left-1/2 -translate-x-1/2 w-[3px] h-[3px] rounded-full" style={{ background: dot }} />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Broken at info */}
+            {streakData?.streak_broken_at && (
+              <p className="text-[11px] text-center mt-3" style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                {t('navigation.streaks.lastBroken', { ns: 'pages' })}: {new Date(streakData.streak_broken_at).toLocaleDateString(i18n.language || undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     </div>,
     document.body

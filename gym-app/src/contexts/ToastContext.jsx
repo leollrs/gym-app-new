@@ -16,13 +16,18 @@ export const ToastProvider = ({ children }) => {
     };
   }, []);
 
-  const showToast = useCallback((message, type = 'info') => {
+  // Optional 3rd arg: { action: { label, onClick }, durationMs }
+  // - action renders a tappable label inside the toast (e.g. "Undo")
+  // - durationMs overrides the default 3s auto-dismiss
+  const showToast = useCallback((message, type = 'info', opts = null) => {
     const id = ++toastId;
-    setToasts(prev => [...prev, { id, message, type }]);
+    const action = opts?.action || null;
+    const duration = Math.max(1000, opts?.durationMs || 3000);
+    setToasts(prev => [...prev, { id, message, type, action }]);
     const tid = setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
       timeoutIds.current.delete(id);
-    }, 3000);
+    }, duration);
     timeoutIds.current.set(id, tid);
   }, []);
 

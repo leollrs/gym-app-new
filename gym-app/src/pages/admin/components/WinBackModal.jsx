@@ -194,7 +194,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
           </button>
           <button onClick={handleSend} disabled={sending || !msg.trim() || sent}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
-            style={{ background: sent ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)', color: sent ? 'var(--color-success)' : 'var(--color-danger)', border: `1px solid ${sent ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
+            style={{ background: sent ? 'var(--color-success-soft)' : 'var(--color-danger-soft)', color: sent ? 'var(--color-success)' : 'var(--color-danger)', border: `1px solid ${sent ? 'var(--color-success-soft)' : 'var(--color-danger-soft)'}` }}>
             {sent ? <><CheckCircle size={14} /> {t('admin.churn.sent', 'Sent!')}</> : sending ? t('admin.churn.sendingMsg', 'Sending\u2026') : <><RotateCcw size={13} /> {t('admin.churn.sendWinBack', 'Send Win-Back')}</>}
           </button>
         </>
@@ -205,9 +205,9 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
           <SectionLabel className="mb-2">{t('admin.churn.channelLabel', 'Send via')}</SectionLabel>
           <div className="flex gap-2">
             {[
-              { key: 'push', icon: Bell, label: t('admin.churn.channelPush', 'Push'), color: '#10B981', available: true },
-              { key: 'email', icon: Mail, label: t('admin.churn.channelEmail', 'Email'), color: '#60A5FA', available: !!memberEmail },
-              { key: 'sms', icon: Smartphone, label: t('admin.churn.channelSms', 'SMS'), color: '#F59E0B', available: !!memberPhone },
+              { key: 'push', icon: Bell, label: t('admin.churn.channelPush', 'Push'), color: 'var(--color-success)', available: true },
+              { key: 'email', icon: Mail, label: t('admin.churn.channelEmail', 'Email'), color: 'var(--color-info)', available: !!memberEmail },
+              { key: 'sms', icon: Smartphone, label: t('admin.churn.channelSms', 'SMS'), color: 'var(--color-warning)', available: !!memberPhone },
             ].map(ch => (
               <button key={ch.key} onClick={() => setChannel(ch.key)} disabled={!ch.available}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-semibold border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${

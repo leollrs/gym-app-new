@@ -1,35 +1,46 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Bell, Flame, BarChart3, Users, Target } from 'lucide-react';
 
 const PREFS_CONFIG = [
   {
     key: 'workout_reminders',
-    label: 'Workout Reminders',
-    description: 'Get reminded on your training days',
+    labelKey: 'notificationPrefs.workoutReminders.label',
+    labelFallback: 'Workout Reminders',
+    descKey: 'notificationPrefs.workoutReminders.desc',
+    descFallback: 'Get reminded on your training days',
     icon: Bell,
   },
   {
     key: 'streak_alerts',
-    label: 'Streak Alerts',
-    description: 'Warnings when your streak is at risk',
+    labelKey: 'notificationPrefs.streakAlerts.label',
+    labelFallback: 'Streak Alerts',
+    descKey: 'notificationPrefs.streakAlerts.desc',
+    descFallback: 'Warnings when your streak is at risk',
     icon: Flame,
   },
   {
     key: 'weekly_summary',
-    label: 'Weekly Summary',
-    description: 'Sunday recap of your training week',
+    labelKey: 'notificationPrefs.weeklySummary.label',
+    labelFallback: 'Weekly Summary',
+    descKey: 'notificationPrefs.weeklySummary.desc',
+    descFallback: 'Sunday recap of your training week',
     icon: BarChart3,
   },
   {
     key: 'friend_activity',
-    label: 'Friend Activity',
-    description: 'When friends complete workouts',
+    labelKey: 'notificationPrefs.friendActivity.label',
+    labelFallback: 'Friend Activity',
+    descKey: 'notificationPrefs.friendActivity.desc',
+    descFallback: 'When friends complete workouts',
     icon: Users,
   },
   {
     key: 'milestone_alerts',
-    label: 'Milestone Alerts',
-    description: 'Approaching workout and streak milestones',
+    labelKey: 'notificationPrefs.milestoneAlerts.label',
+    labelFallback: 'Milestone Alerts',
+    descKey: 'notificationPrefs.milestoneAlerts.desc',
+    descFallback: 'Approaching workout and streak milestones',
     icon: Target,
   },
 ];
@@ -56,6 +67,7 @@ function savePrefs(userId, prefs) {
 }
 
 const NotificationPreferences = ({ isOpen, onClose, userId }) => {
+  const { t } = useTranslation('pages');
   const [prefs, setPrefs] = useState(DEFAULTS);
   const [saved, setSaved] = useState(false);
 
@@ -73,8 +85,23 @@ const NotificationPreferences = ({ isOpen, onClose, userId }) => {
     setSaved(false);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     savePrefs(userId, prefs);
+    // Mirror to profiles table so other devices and server-side push gating see
+    // the same prefs. Localstorage stays as the fast read path.
+    try {
+      const { supabase } = await import('../lib/supabase');
+      await supabase
+        .from('profiles')
+        .update({
+          notif_workout_reminders: prefs.workout_reminders,
+          notif_streak_alerts:     prefs.streak_alerts,
+          notif_weekly_summary:    prefs.weekly_summary,
+          notif_friend_activity:   prefs.friend_activity,
+          notif_milestone_alerts:  prefs.milestone_alerts,
+        })
+        .eq('id', userId);
+    } catch { /* non-fatal — local cache still wins */ }
     setSaved(true);
     setTimeout(() => onClose(), 600);
   };
@@ -96,7 +123,7 @@ const NotificationPreferences = ({ isOpen, onClose, userId }) => {
           <div className="flex items-center gap-2.5">
             <Bell size={20} className="text-[#D4AF37]" />
             <h2 id="notif-prefs-title" className="text-[17px] font-bold text-[#E5E7EB]">
-              Notification Preferences
+              {t('notificationPrefs.title', 'Notification Preferences')}
             </h2>
           </div>
           <button
@@ -109,7 +136,10 @@ const NotificationPreferences = ({ isOpen, onClose, userId }) => {
 
         {/* Toggles */}
         <div className="p-5 space-y-1">
-          {PREFS_CONFIG.map(({ key, label, description, icon: Icon }) => (
+          {PREFS_CONFIG.map(({ key, labelKey, labelFallback, descKey, descFallback, icon: Icon }) => {
+            const label = t(labelKey, labelFallback);
+            const description = t(descKey, descFallback);
+            return (
             <div
               key={key}
               className="flex items-center justify-between py-3.5 px-1 rounded-lg"
@@ -132,7 +162,7 @@ const NotificationPreferences = ({ isOpen, onClose, userId }) => {
                 className={`relative w-11 h-6 rounded-full flex-shrink-0 ml-3 transition-colors duration-200 ${
                   prefs[key] ? 'bg-[#D4AF37]' : 'bg-white/10'
                 }`}
-                aria-label={`Toggle ${label}`}
+                aria-label={t('notificationPrefs.toggleLabel', { label, defaultValue: 'Toggle {{label}}' })}
               >
                 <span
                   className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
@@ -141,7 +171,8 @@ const NotificationPreferences = ({ isOpen, onClose, userId }) => {
                 />
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Footer */}
@@ -150,11 +181,11 @@ const NotificationPreferences = ({ isOpen, onClose, userId }) => {
             onClick={handleSave}
             className={`w-full py-3 rounded-xl font-semibold text-[15px] transition-all duration-200 ${
               saved
-                ? 'bg-[#10B981] text-white'
-                : 'bg-[#D4AF37] text-[#05070B] hover:bg-[#C9A430] active:scale-[0.98]'
+                ? 'bg-[var(--color-success)] text-white'
+                : 'bg-[var(--color-accent)] text-[var(--color-text-on-accent)] hover:bg-[var(--color-accent-soft)] active:scale-[0.98]'
             }`}
           >
-            {saved ? 'Saved!' : 'Save Preferences'}
+            {saved ? t('notificationPrefs.saved', 'Saved!') : t('notificationPrefs.savePreferences', 'Save Preferences')}
           </button>
         </div>
       </div>

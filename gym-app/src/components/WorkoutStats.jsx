@@ -1,5 +1,6 @@
 import React from 'react';
 import { Zap, Clock, Flame } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const stats = [
   { icon: Zap, color: '#FBBF24', key: 'exercises' },
@@ -8,10 +9,11 @@ const stats = [
 ];
 
 const WorkoutStats = ({ exerciseCount = 0, durationMin = 0, calories = 0 }) => {
+  const { t } = useTranslation('pages');
   const values = {
-    exercises: `${exerciseCount} Exercises`,
-    duration: `${durationMin} Min`,
-    calories: `${calories} Cal`,
+    exercises: t('workoutStats.exercises', { count: exerciseCount, defaultValue: '{{count}} Exercise', defaultValue_plural: '{{count}} Exercises' }),
+    duration: t('workoutStats.duration', { count: durationMin, defaultValue: '{{count}} Min' }),
+    calories: t('workoutStats.calories', { count: calories, defaultValue: '{{count}} Cal' }),
   };
 
   return (

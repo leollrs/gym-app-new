@@ -5,6 +5,7 @@ struct RPEInputView: View {
     let onSelect: (Int) -> Void
     let onSkip: () -> Void
 
+    @EnvironmentObject var session: WatchSessionManager
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @State private var selectedRPE: Int? = nil
 
@@ -12,14 +13,14 @@ struct RPEInputView: View {
         ScrollView {
             VStack(spacing: 10) {
                 // Header
-                Text("HOW HARD?")
+                Text(session.tr("HOW HARD?", "¿QUÉ TAN DURO?"))
                     .font(.headline)
                     .foregroundColor(DS.gold)
                     .tracking(2)
                     .padding(.top, 4)
                     .accessibilityAddTraits(.isHeader)
 
-                Text("Rate of Perceived Exertion")
+                Text(session.tr("Rate of Perceived Exertion", "Esfuerzo percibido"))
                     .font(.caption2.weight(.medium))
                     .foregroundColor(DS.mutedText)
 
@@ -48,7 +49,7 @@ struct RPEInputView: View {
                 }
 
                 // Confirm button
-                GoldButton("Done", icon: "checkmark.circle.fill") {
+                GoldButton(session.tr("Done", "Listo"), icon: "checkmark.circle.fill") {
                     guard let rpe = selectedRPE else { return }
                     WKInterfaceDevice.current().play(.success)
                     onSelect(rpe)
@@ -61,7 +62,7 @@ struct RPEInputView: View {
                     WKInterfaceDevice.current().play(.click)
                     onSkip()
                 }) {
-                    Text("Skip")
+                    Text(session.tr("Skip", "Saltar"))
                         .font(.caption.weight(.semibold))
                         .foregroundColor(DS.mutedText)
                         .frame(maxWidth: .infinity)
@@ -78,10 +79,10 @@ struct RPEInputView: View {
 
     private func effortLabel(for rpe: Int) -> String {
         switch rpe {
-        case 1...3: return "Easy"
-        case 4...6: return "Moderate"
-        case 7, 8:  return "Hard"
-        case 9, 10: return "Max Effort"
+        case 1...3: return session.tr("Easy", "Fácil")
+        case 4...6: return session.tr("Moderate", "Moderado")
+        case 7, 8:  return session.tr("Hard", "Duro")
+        case 9, 10: return session.tr("Max Effort", "Esfuerzo máximo")
         default:    return ""
         }
     }

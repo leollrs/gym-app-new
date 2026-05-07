@@ -15,12 +15,20 @@ import { broadcastNotification } from '../../lib/notifications';
 import { PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton, AdminTabs } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 
+// Hard caps on announcement copy. Keep these in sync with any server-side
+// validation you add later. Caps prevent the worst spam / abuse vectors and
+// keep push payloads under APNs/FCM size limits.
+const TITLE_MAX = 100;
+const BODY_MAX = 500;
+
 // Must match the announcement_type enum in the DB schema
+// Pill tones map to admin-* idiom per HTML reference:
+// News = info (blue), Event = accent (gym-branded), Challenge = coach (purple), Maintenance = warn (amber/red)
 const TYPE_OPTS = [
-  { value: 'news',        labelKey: 'news',        color: 'text-blue-400 bg-blue-500/10' },
-  { value: 'event',       labelKey: 'event',       color: 'text-[#D4AF37] bg-[#D4AF37]/10' },
-  { value: 'challenge',   labelKey: 'challenge',   color: 'text-emerald-400 bg-emerald-500/10' },
-  { value: 'maintenance', labelKey: 'maintenance', color: 'text-red-400 bg-red-500/10' },
+  { value: 'news',        labelKey: 'news',        pill: 'admin-pill--info',  color: 'text-blue-400 bg-blue-500/10' },
+  { value: 'event',       labelKey: 'event',       pill: '',                  color: 'text-[#D4AF37] bg-[#D4AF37]/10' },
+  { value: 'challenge',   labelKey: 'challenge',   pill: 'admin-pill--coach', color: 'text-emerald-400 bg-emerald-500/10' },
+  { value: 'maintenance', labelKey: 'maintenance', pill: 'admin-pill--hot',   color: 'text-red-400 bg-red-500/10' },
 ];
 
 const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
@@ -46,11 +54,25 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!form.title || !form.message) throw new Error(t('admin.announcements.titleMessageRequired', 'Title and message are required.'));
+      // Strip HTML tags via DOMPurify, then enforce length caps. Use the
+      // gentler "truncate with ellipsis" approach so a slightly-too-long
+      // message still publishes rather than blocking the admin.
+      const cleanTitle = sanitize(form.title).trim();
+      const cleanMessage = sanitize(form.message).trim();
+      if (!cleanTitle || !cleanMessage) {
+        throw new Error(t('admin.announcements.titleMessageRequired', 'Title and message are required.'));
+      }
+      const finalTitle = cleanTitle.length > TITLE_MAX
+        ? `${cleanTitle.slice(0, TITLE_MAX - 1).trimEnd()}…`
+        : cleanTitle;
+      const finalMessage = cleanMessage.length > BODY_MAX
+        ? `${cleanMessage.slice(0, BODY_MAX - 1).trimEnd()}…`
+        : cleanMessage;
       const { error: err } = await supabase.from('announcements').insert({
         gym_id:      gymId,
         created_by:  adminId,
-        title:       form.title,
-        message:     form.message,
+        title:       finalTitle,
+        message:     finalMessage,
         type:        form.type,
         published_at: form.scheduled_for
           ? new Date(form.scheduled_for).toISOString()
@@ -61,18 +83,23 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
         recurrence_end: form.is_recurring && form.recurrence_end ? form.recurrence_end : null,
       });
       if (err) throw err;
+      return { finalTitle, finalMessage };
     },
-    onSuccess: () => {
-      logAdminAction('create_announcement', 'announcement', null, { title: form.title });
+    onSuccess: ({ finalTitle, finalMessage }) => {
+      logAdminAction('create_announcement', 'announcement', null, { title: finalTitle });
       posthog?.capture('admin_announcement_sent', { type: form.type });
       queryClient.invalidateQueries({ queryKey: adminKeys.announcements(gymId) });
       showToast(t('admin.announcements.published', 'Announcement published'), 'success');
+      // Forward the form-selected type so per-type opt-outs are honored —
+      // broadcastNotification → sendPushToUser passes `type` through as
+      // `notification_type` to the edge function, which gates on
+      // notif_<type>_enabled per recipient.
       broadcastNotification({
         gymId,
-        type: 'announcement',
-        title: form.title,
-        body: form.message,
-        dedupKey: `announcement_${form.title.replace(/\s+/g, '_').slice(0, 40)}_${Date.now() / 60000 | 0}`,
+        type: form.type || 'announcement',
+        title: finalTitle,
+        body: finalMessage,
+        dedupKey: `announcement_${form.type || 'announcement'}_${finalTitle.replace(/\s+/g, '_').slice(0, 40)}_${Date.now() / 60000 | 0}`,
       });
       onClose();
     },
@@ -93,12 +120,14 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
           <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.titleLabel', 'Title')}</label>
           <input value={form.title} onChange={e => set('title', e.target.value)}
             placeholder={t('admin.announcements.titlePlaceholder')}
+            maxLength={TITLE_MAX}
             className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
         </div>
         <div>
           <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.messageLabel')}</label>
           <textarea value={form.message} onChange={e => set('message', e.target.value)} rows={3}
             placeholder={t('admin.announcements.messagePlaceholder')}
+            maxLength={BODY_MAX}
             className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
         </div>
         <div>
@@ -147,7 +176,7 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
                   <button
                     onClick={() => set('is_recurring', !form.is_recurring)}
                     className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-                    style={{ backgroundColor: form.is_recurring ? '#D4AF37' : '#6B7280' }}
+                    style={{ backgroundColor: form.is_recurring ? '#D4AF37' : 'var(--color-admin-text-sub)' }}
                   >
                     <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
                       style={{ left: form.is_recurring ? 'calc(100% - 18px)' : '2px' }} />
@@ -253,9 +282,20 @@ export default function AdminAnnouncements() {
   const editMutation = useMutation({
     mutationFn: async () => {
       if (!editForm.title || !editForm.message) throw new Error(t('admin.announcements.titleMessageRequired', 'Title and message are required.'));
+      const cleanTitle = sanitize(editForm.title).trim();
+      const cleanMessage = sanitize(editForm.message).trim();
+      if (!cleanTitle || !cleanMessage) {
+        throw new Error(t('admin.announcements.titleMessageRequired', 'Title and message are required.'));
+      }
+      const finalTitle = cleanTitle.length > TITLE_MAX
+        ? `${cleanTitle.slice(0, TITLE_MAX - 1).trimEnd()}…`
+        : cleanTitle;
+      const finalMessage = cleanMessage.length > BODY_MAX
+        ? `${cleanMessage.slice(0, BODY_MAX - 1).trimEnd()}…`
+        : cleanMessage;
       const { error: err } = await supabase
         .from('announcements')
-        .update({ title: editForm.title, message: editForm.message, type: editForm.type, is_recurring: editForm.is_recurring, recurrence_rule: editForm.is_recurring ? editForm.recurrence_rule : null, recurrence_day: editForm.is_recurring ? editForm.recurrence_day : null, recurrence_end: editForm.is_recurring && editForm.recurrence_end ? editForm.recurrence_end : null })
+        .update({ title: finalTitle, message: finalMessage, type: editForm.type, is_recurring: editForm.is_recurring, recurrence_rule: editForm.is_recurring ? editForm.recurrence_rule : null, recurrence_day: editForm.is_recurring ? editForm.recurrence_day : null, recurrence_end: editForm.is_recurring && editForm.recurrence_end ? editForm.recurrence_end : null })
         .eq('id', editingId)
         .eq('gym_id', gymId);
       if (err) throw err;
@@ -289,13 +329,13 @@ export default function AdminAnnouncements() {
     TYPE_OPTS.find(opt => opt.value === type)?.color ?? 'text-[#9CA3AF] bg-white/6';
 
   return (
-    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+    <div className="px-3 sm:px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title={t('admin.announcements.title', 'Announcements')}
         subtitle={t('admin.announcements.subtitle', 'Messages broadcast to all members')}
         actions={
           <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[14px] rounded-xl hover:bg-[#C4A030] transition-colors whitespace-nowrap flex-shrink-0">
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] md:text-[14px] rounded-xl hover:bg-[#C4A030] transition-colors whitespace-nowrap flex-shrink-0">
             <Plus size={15} /> {t('admin.announcements.newAnnouncement', 'New Announcement')}
           </button>
         }
@@ -364,11 +404,13 @@ export default function AdminAnnouncements() {
                             <div>
                               <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.titleLabel', 'Title')}</label>
                               <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
+                                maxLength={TITLE_MAX}
                                 className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
                             </div>
                             <div>
                               <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.messageLabel')}</label>
                               <textarea value={editForm.message} onChange={e => setEditForm(p => ({ ...p, message: e.target.value }))} rows={3}
+                                maxLength={BODY_MAX}
                                 className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
                             </div>
                             <div>
@@ -397,31 +439,38 @@ export default function AdminAnnouncements() {
                           </div>
                         ) : (
                           <div className="flex items-start justify-between gap-3">
+                            <div
+                              className="w-[38px] h-[38px] rounded-[10px] grid place-items-center flex-shrink-0"
+                              style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
+                              aria-hidden="true"
+                            >
+                              <Megaphone size={17} style={{ color: 'var(--color-accent)' }} />
+                            </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{sanitize(a.title)}</p>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${typeStyle(a.type)}`}>
+                                <p className="text-[14.5px] font-extrabold truncate" style={{ color: 'var(--color-admin-text)', letterSpacing: '-0.15px' }}>{sanitize(a.title)}</p>
+                                <span className={`admin-pill ${TYPE_OPTS.find(o => o.value === a.type)?.pill || ''} capitalize`}>
                                   {t(`admin.announcementTypes.${a.type}`, a.type)}
                                 </span>
                                 {isScheduled && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-400 bg-amber-500/10">
+                                  <span className="admin-pill admin-pill--warn">
                                     {t('admin.announcements.scheduled', 'Scheduled')}
                                   </span>
                                 )}
                                 {a.is_recurring && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-blue-400 bg-blue-500/10 flex items-center gap-1">
+                                  <span className="admin-pill admin-pill--info flex items-center gap-1">
                                     <Repeat size={9} /> {t(`admin.announcements.recurrence.${a.recurrence_rule}`, a.recurrence_rule)}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[13px] text-[#9CA3AF] leading-relaxed">{sanitize(a.message)}</p>
+                              <p className="text-[12.5px] leading-relaxed mb-2" style={{ color: 'var(--color-admin-text-sub)' }}>{sanitize(a.message)}</p>
                               {a.published_at && (
-                                <div className="flex items-center gap-1 mt-2">
-                                  <Calendar size={11} className="text-[#6B7280]" />
-                                  <p className="text-[11px] text-[#6B7280]">
+                                <div className="flex items-center gap-4 text-[11px] font-semibold" style={{ color: 'var(--color-admin-text-muted)' }}>
+                                  <span className="flex items-center gap-1">
+                                    <Calendar size={11} />
                                     {isScheduled ? t('admin.announcements.scheduledFor', 'Scheduled for') : t('admin.announcements.publishedOn', 'Published')}{' '}
-                                    {format(new Date(a.published_at), 'MMM d, yyyy · h:mm a', dateFnsLocale)}
-                                  </p>
+                                    {format(new Date(a.published_at), 'MMM d, yyyy', dateFnsLocale)}
+                                  </span>
                                 </div>
                               )}
                             </div>

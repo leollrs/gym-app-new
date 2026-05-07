@@ -30,6 +30,26 @@ export function useDashboardSessions(userId) {
   );
 }
 
+// ── Recent sessions WITH sets (for readiness/recovery analysis) ─────────────
+// Heavier than useDashboardSessions because it pulls workout_sets per session.
+// Use only on screens that actually need set-level detail.
+export function useRecentSessionsWithSets(userId, daysBack = 14) {
+  return useSupabaseQuery(
+    ['recent-sessions-with-sets', userId, daysBack],
+    () => {
+      const since = new Date(Date.now() - daysBack * 86400000).toISOString();
+      return supabase
+        .from('workout_sessions')
+        .select('id, completed_at, total_volume_lbs, duration_seconds, workout_sets(exercise_id, weight_lbs, reps, completed)')
+        .eq('profile_id', userId)
+        .eq('status', 'completed')
+        .gte('completed_at', since)
+        .order('completed_at', { ascending: false });
+    },
+    { enabled: !!userId, staleTime: 5 * 60_000 },
+  );
+}
+
 export function useRoutines(userId) {
   return useSupabaseQuery(
     ['routines', userId],
@@ -40,6 +60,72 @@ export function useRoutines(userId) {
       .eq('is_template', false)
       .order('created_at', { ascending: false }),
     { enabled: !!userId },
+  );
+}
+
+// ── Shape data (rarely changes — treat as immutable until explicitly invalidated) ──
+// Exercise library, food items, program templates, gym info: these only change
+// when an admin edits them. Bump staleTime to Infinity + refetchOnMount:false
+// so we never hit the network after the initial fetch.
+export function useExerciseLibrary() {
+  return useSupabaseQuery(
+    ['exercise-library'],
+    () => supabase
+      .from('exercises')
+      .select('id, name, name_es, muscle_group, equipment, video_url, is_active')
+      .eq('is_active', true)
+      .order('name'),
+    { staleTime: Infinity, refetchOnMount: false },
+  );
+}
+
+export function useFoodItems() {
+  return useSupabaseQuery(
+    ['food-items'],
+    () => supabase
+      .from('food_items')
+      .select('id, name, name_es, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, nutri_score'),
+    { staleTime: Infinity, refetchOnMount: false },
+  );
+}
+
+export function useGymInfo(gymId) {
+  return useSupabaseQuery(
+    ['gym-info', gymId],
+    () => supabase
+      .from('gyms')
+      .select('id, name, slug, is_active, open_days, open_time, close_time, country, address')
+      .eq('id', gymId)
+      .single(),
+    { enabled: !!gymId, staleTime: Infinity, refetchOnMount: false },
+  );
+}
+
+export function useGymHours(gymId) {
+  return useSupabaseQuery(
+    ['gym-hours', gymId],
+    () => supabase
+      .from('gym_hours')
+      .select('day_of_week, is_closed, open_time, close_time')
+      .eq('gym_id', gymId)
+      .order('day_of_week'),
+    { enabled: !!gymId, staleTime: Infinity, refetchOnMount: false },
+  );
+}
+
+export function useAnnouncements(gymId) {
+  return useSupabaseQuery(
+    ['announcements', gymId],
+    () => supabase
+      .from('announcements')
+      .select('id, title, message, type, published_at')
+      .eq('gym_id', gymId)
+      .lte('published_at', new Date().toISOString())
+      .order('published_at', { ascending: false })
+      .limit(10),
+    // Announcements change from time to time but rarely within a session — let
+    // them be considered fresh for 30 minutes.
+    { enabled: !!gymId, staleTime: 30 * 60 * 1000 },
   );
 }
 
@@ -147,17 +233,34 @@ export function useMilestoneFeed(gymId) {
 }
 
 // ── Notifications ───────────────────────────────────────────────────────────
-export function useNotifications(userId) {
+// Audience filter:
+//   'member'  → audience IS NULL OR audience = 'member' (legacy rows had no audience)
+//   'trainer' → audience = 'trainer'
+//   'admin'   → audience = 'admin'  (also matches 'super_admin' for super admins)
+export function useNotifications(userId, audience = 'member') {
   return useSupabaseQuery(
-    ['notifications', userId],
-    () => supabase
-      .from('notifications')
-      .select('id, title, body, type, read_at, created_at, profile_id')
-      .eq('profile_id', userId)
-      .is('dismissed_at', null)
-      .order('created_at', { ascending: false })
-      .limit(50),
-    { enabled: !!userId },
+    ['notifications', userId, audience],
+    () => {
+      let q = supabase
+        .from('notifications')
+        .select('id, title, body, type, read_at, created_at, profile_id, audience, data');
+      if (audience === 'member') {
+        q = q.or('audience.is.null,audience.eq.member');
+      } else if (audience === 'admin') {
+        q = q.in('audience', ['admin', 'super_admin']);
+      } else {
+        q = q.eq('audience', audience);
+      }
+      return q
+        .eq('profile_id', userId)
+        .is('dismissed_at', null)
+        .order('created_at', { ascending: false })
+        .limit(50);
+    },
+    // 5s staleTime overrides the global Infinity. The postgres_changes
+    // subscription pushes live updates; this is just a safety net so a
+    // missed event self-corrects on the next mount/refocus.
+    { enabled: !!userId, staleTime: 5_000 },
   );
 }
 
@@ -196,7 +299,7 @@ export function useInvalidate() {
     invalidateSessions: (userId) => queryClient.invalidateQueries({ queryKey: ['dashboard-sessions', userId] }),
     invalidateRoutines: (userId) => queryClient.invalidateQueries({ queryKey: ['routines', userId] }),
     invalidateLeaderboard: (gymId) => queryClient.invalidateQueries({ queryKey: ['leaderboard', gymId] }),
-    invalidateNotifications: (userId) => queryClient.invalidateQueries({ queryKey: ['notifications', userId] }),
+    invalidateNotifications: (userId) => queryClient.invalidateQueries({ queryKey: ['notifications', userId], exact: false }),
     invalidateChallenges: (gymId) => queryClient.invalidateQueries({ queryKey: ['challenges', gymId] }),
     invalidatePRs: (userId) => queryClient.invalidateQueries({ queryKey: ['personal-records', userId] }),
     // Prefer scoped helpers above (e.g. invalidateSessions, invalidateRoutines) over

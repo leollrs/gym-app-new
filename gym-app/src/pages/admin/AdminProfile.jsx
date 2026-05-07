@@ -1,50 +1,45 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   User, Mail, Shield, Camera, Save, Key, Clock, Activity,
-  Calendar, ChevronRight, LogOut, CheckCircle, AlertTriangle, Pencil, X,
+  Calendar, ChevronRight, LogOut, CheckCircle, AlertTriangle, Pencil, X, Repeat, Settings as Cog,
 } from 'lucide-react';
+import ViewSwitcherModal from '../../components/ViewSwitcherModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { validateImageFile } from '../../lib/validateImage';
 import logger from '../../lib/logger';
 import {
-  PageHeader, AdminPageShell, AdminCard, StatCard,
+  AdminPageShell, AdminCard, StatCard,
   FadeIn, CardSkeleton, SectionLabel,
 } from '../../components/admin';
 import AvatarPicker from '../../components/AvatarPicker';
 import UserAvatar from '../../components/UserAvatar';
 
-const ROLE_LABELS = {
-  super_admin: { en: 'Super Admin', es: 'Super Admin' },
-  admin:       { en: 'Admin',       es: 'Administrador' },
-  trainer:     { en: 'Trainer',     es: 'Entrenador' },
+const ROLE_PILL_CLASS = {
+  super_admin: 'admin-pill admin-pill--warn',
+  admin:       'admin-pill admin-pill--info',
+  trainer:     'admin-pill admin-pill--good',
 };
 
-const ROLE_COLORS = {
-  super_admin: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-  admin:       'text-blue-400 bg-blue-500/10 border-blue-500/20',
-  trainer:     'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-};
-
-const ACTION_COLORS = {
-  member_invited:          'text-blue-400 bg-blue-500/10',
-  member_deleted:          'text-red-400 bg-red-500/10',
-  role_changed:            'text-amber-400 bg-amber-500/10',
-  setting_updated:         'text-amber-400 bg-amber-500/10',
-  challenge_created:       'text-emerald-400 bg-emerald-500/10',
-  announcement_published:  'text-emerald-400 bg-emerald-500/10',
-  class_created:           'text-blue-400 bg-blue-500/10',
-  program_created:         'text-emerald-400 bg-emerald-500/10',
-  store_item_created:      'text-purple-400 bg-purple-500/10',
-  trainer_added:           'text-blue-400 bg-blue-500/10',
-  trainer_demoted:         'text-red-400 bg-red-500/10',
-  moderation_action:       'text-red-400 bg-red-500/10',
+const ACTION_PILL_CLASS = {
+  member_invited:          'admin-pill admin-pill--info',
+  member_deleted:          'admin-pill admin-pill--hot',
+  role_changed:            'admin-pill admin-pill--warn',
+  setting_updated:         'admin-pill admin-pill--warn',
+  challenge_created:       'admin-pill admin-pill--good',
+  announcement_published:  'admin-pill admin-pill--good',
+  class_created:           'admin-pill admin-pill--info',
+  program_created:         'admin-pill admin-pill--good',
+  store_item_created:      'admin-pill admin-pill--coach',
+  trainer_added:           'admin-pill admin-pill--info',
+  trainer_demoted:         'admin-pill admin-pill--hot',
+  moderation_action:       'admin-pill admin-pill--hot',
 };
 
 // ── Compress avatar image ────────────────────────────────────────────────────
@@ -70,12 +65,14 @@ async function compressAvatar(file, maxSize = 256, quality = 0.85) {
 }
 
 export default function AdminProfile() {
-  const { profile, user, gymName, signOut, refreshProfile } = useAuth();
+  const navigate = useNavigate();
+  const { profile, user, gymName, signOut, refreshProfile, availableRoles } = useAuth();
+  const hasMultipleViews = Array.isArray(availableRoles) && availableRoles.length > 1;
+  const [showViewSwitcher, setShowViewSwitcher] = useState(false);
   const { t, i18n } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
   const { showToast } = useToast();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef(null);
   const locale = i18n.language === 'es' ? esLocale : undefined;
 
   const [editing, setEditing] = useState(false);
@@ -88,13 +85,21 @@ export default function AdminProfile() {
   const [deleting, setDeleting] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
+  // Lock body scroll while delete-account confirm modal is open
+  useEffect(() => {
+    if (!showDeleteConfirm) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [showDeleteConfirm]);
+
   const currentAvatar = profile?.avatar_url
     ? { type: 'photo', value: profile.avatar_url }
     : profile?.avatar_color
       ? { type: 'color', value: profile.avatar_color }
       : profile?.avatar_design
         ? { type: 'design', value: profile.avatar_design }
-        : { type: 'color', value: '#6366F1' };
+        : { type: 'color', value: 'var(--color-coach)' };
 
   const handleAvatarSave = async ({ type, value, file }) => {
     setUploading(true);
@@ -124,11 +129,11 @@ export default function AdminProfile() {
       }
       queryClient.invalidateQueries({ queryKey: adminKeys.overview(profile.gym_id) });
       await refreshProfile();
-      showToast(t('admin.profile.avatarUpdated', 'Avatar actualizado'), 'success');
+      showToast(t('admin.profile.avatarUpdated', 'Avatar updated'), 'success');
       setShowAvatarPicker(false);
     } catch (err) {
       logger.error('Avatar save failed', err);
-      showToast(err.message || t('admin.profile.avatarError', 'Error al actualizar avatar'), 'error');
+      showToast(err.message || t('admin.profile.avatarError', 'Failed to update avatar'), 'error');
     } finally {
       setUploading(false);
     }
@@ -153,17 +158,20 @@ export default function AdminProfile() {
     enabled: !!gymId && !!profile?.id,
   });
 
-  // ── Stats: total actions by this admin ──
+  // ── Stats: total actions, member count, plus authoritative created_at ──
   const { data: stats } = useQuery({
     queryKey: ['admin', 'profile-stats', gymId, profile?.id],
     queryFn: async () => {
-      const { count, error } = await supabase
-        .from('admin_audit_log')
-        .select('id', { count: 'exact', head: true })
-        .eq('gym_id', gymId)
-        .eq('actor_id', profile.id);
-      if (error) throw error;
-      return { totalActions: count || 0 };
+      const [actionsRes, membersRes, profileRes] = await Promise.all([
+        supabase.from('admin_audit_log').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('actor_id', profile.id),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('role', 'member'),
+        supabase.from('profiles').select('created_at').eq('id', profile.id).maybeSingle(),
+      ]);
+      return {
+        totalActions: actionsRes.count || 0,
+        memberCount: membersRes.count || 0,
+        createdAt: profileRes.data?.created_at || profile.created_at || null,
+      };
     },
     enabled: !!gymId && !!profile?.id,
   });
@@ -188,47 +196,9 @@ export default function AdminProfile() {
     },
   });
 
-  // ── Avatar upload ──
-  const handleAvatarUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const validation = await validateImageFile(file);
-    if (!validation.valid) {
-      showToast(validation.error, 'error');
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const compressed = await compressAvatar(file);
-      const ext = 'jpg';
-      const path = `avatars/${profile.id}.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('profile-photos')
-        .upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from('profile-photos')
-        .getPublicUrl(path);
-
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: urlData.publicUrl + '?v=' + Date.now() })
-        .eq('id', profile.id);
-      if (updateError) throw updateError;
-
-      queryClient.invalidateQueries({ queryKey: ['admin'] });
-      showToast(t('admin.profile.avatarUpdated', 'Avatar updated'), 'success');
-    } catch (err) {
-      logger.error('Avatar upload failed', err);
-      showToast(t('admin.profile.avatarError', 'Failed to upload avatar'), 'error');
-    } finally {
-      setUploading(false);
-    }
-  };
+  // (Avatar upload is now handled inline by handleAvatarSave above via the
+  // AvatarPicker component — the legacy file-input flow was removed when
+  // the picker was introduced.)
 
   // ── Password change ──
   const handlePasswordChange = async () => {
@@ -241,9 +211,14 @@ export default function AdminProfile() {
       return;
     }
     try {
+      // Always pull email from the live auth session (not stale profile.email)
+      const { data: authData } = await supabase.auth.getUser();
+      const liveEmail = authData?.user?.email;
+      if (!liveEmail) throw new Error('No active session');
+
       // Verify current password before allowing change
       const { error: reAuthError } = await supabase.auth.signInWithPassword({
-        email: profile.email || (await supabase.auth.getUser()).data.user?.email,
+        email: liveEmail,
         password: passwords.current,
       });
       if (reAuthError) {
@@ -253,196 +228,284 @@ export default function AdminProfile() {
 
       const { error } = await supabase.auth.updateUser({ password: passwords.new });
       if (error) throw error;
-      showToast(t('admin.profile.passwordChanged', 'Password changed successfully'), 'success');
+      showToast(t('admin.profile.passwordChanged', 'Password changed successfully. Please sign in again.'), 'success');
       setChangingPassword(false);
       setPasswords({ current: '', new: '', confirm: '' });
+      // Force a fresh session with the new password.
+      await supabase.auth.signOut();
     } catch (err) {
       logger.error('Password change failed', err);
       showToast(err.message || t('admin.profile.passwordError', 'Failed to change password'), 'error');
     }
   };
 
-  const roleBadge = ROLE_LABELS[profile?.role] || { en: profile?.role, es: profile?.role };
-  const roleColor = ROLE_COLORS[profile?.role] || 'text-gray-400 bg-gray-500/10 border-gray-500/20';
-  const memberSince = profile?.created_at
-    ? format(new Date(profile.created_at), 'MMM d, yyyy', { locale })
+  const roleLabel = profile?.role === 'super_admin'
+    ? t('admin.profile.roles.superAdmin', 'Super Admin')
+    : profile?.role === 'admin'
+      ? t('admin.profile.roles.admin', 'Admin')
+      : profile?.role === 'trainer'
+        ? t('admin.profile.roles.trainer', 'Trainer')
+        : profile?.role === 'member'
+          ? t('admin.profile.roles.member', 'Member')
+          : profile?.role;
+  const rolePillClass = ROLE_PILL_CLASS[profile?.role] || 'admin-pill admin-pill--outline';
+  // created_at falls back to the dedicated query so the card never shows "—"
+  // when get_auth_context omits the column.
+  const createdAt = stats?.createdAt || profile?.created_at || null;
+  const memberSince = createdAt
+    ? format(new Date(createdAt), 'MMM d, yyyy', { locale })
+    : '—';
+  const daysAsAdmin = createdAt
+    ? Math.max(0, differenceInDays(new Date(), new Date(createdAt)))
+    : null;
+  const lastSignInLabel = user?.last_sign_in_at
+    ? formatDistanceToNow(new Date(user.last_sign_in_at), { addSuffix: true, locale })
     : '—';
 
   return (
     <AdminPageShell size="narrow">
-      <PageHeader
-        title={t('admin.profile.title', 'My Profile')}
-        subtitle={t('admin.profile.subtitle', 'Manage your admin account')}
-      />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        {/* ── LEFT COLUMN: Profile card ── */}
-        <FadeIn className="lg:col-span-1">
+      <div className="space-y-5 sm:space-y-6">
+        {/* ── HERO ─────────────────────────────────────────────── */}
+        <FadeIn>
           <AdminCard className="p-0 overflow-hidden">
-            {/* Header gradient */}
-            <div className="h-24 relative" style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 60%, #000) 100%)' }}>
-              <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
-                <div className="relative group">
-                  <div className="rounded-2xl overflow-hidden border-4 shadow-xl"
-                       style={{ borderColor: 'var(--color-bg-card)', width: 96, height: 96 }}>
+            {/* Cover with subtle radial highlight + top-right action row */}
+            <div
+              className="relative h-36 sm:h-44"
+              style={{
+                background:
+                  'linear-gradient(135deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 50%, #000) 100%)',
+              }}
+            >
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute', inset: 0,
+                  background:
+                    'radial-gradient(circle at 80% 20%, rgba(255,255,255,0.18), transparent 55%)',
+                }}
+              />
+              {/* Cover icon row — Switch view (when multi-role) + Settings */}
+              <div className="absolute top-3 right-4 flex items-center gap-2">
+                {hasMultipleViews && (
+                  <button
+                    type="button"
+                    onClick={() => setShowViewSwitcher(true)}
+                    aria-label={tc('viewSwitcher.title', 'Switch view')}
+                    title={tc('viewSwitcher.title', 'Switch view')}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+                    style={{
+                      background: 'rgba(255,255,255,0.22)',
+                      backdropFilter: 'blur(8px)',
+                      WebkitBackdropFilter: 'blur(8px)',
+                      color: '#fff',
+                    }}
+                  >
+                    <Repeat className="w-4 h-4" strokeWidth={2.2} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin/settings')}
+                  aria-label={t('admin.profile.openSettings', 'Settings')}
+                  title={t('admin.profile.openSettings', 'Settings')}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+                  style={{
+                    background: 'rgba(255,255,255,0.22)',
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
+                    color: '#fff',
+                  }}
+                >
+                  <Cog className="w-4 h-4" strokeWidth={2.2} />
+                </button>
+              </div>
+            </div>
+
+            {/* Identity row — avatar overlaps cover, name+role+meta to the right */}
+            <div className="px-5 sm:px-6 pb-5 sm:pb-6 -mt-14 sm:-mt-16">
+              <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-5">
+                {/* Avatar */}
+                <div className="relative shrink-0">
+                  <div
+                    className="rounded-3xl overflow-hidden border-4 shadow-xl"
+                    style={{ borderColor: 'var(--color-bg-card)', width: 112, height: 112 }}
+                  >
                     <UserAvatar
                       user={{
                         ...profile,
                         avatar_type: profile?.avatar_url ? 'photo' : profile?.avatar_design ? 'design' : 'color',
-                        avatar_value: profile?.avatar_url || profile?.avatar_design || profile?.avatar_color || '#6366F1',
+                        avatar_value: profile?.avatar_url || profile?.avatar_design || profile?.avatar_color || 'var(--color-coach)',
                       }}
-                      size={88}
-                      rounded="2xl"
+                      size={104}
+                      rounded="3xl"
                     />
                   </div>
                   <button
                     onClick={() => setShowAvatarPicker(true)}
                     disabled={uploading}
                     aria-label={t('admin.profile.changeAvatar', 'Change avatar')}
-                    className="absolute -bottom-1 -right-1 p-1.5 rounded-full shadow-lg transition-all duration-200 hover:scale-110"
+                    className="absolute -bottom-1 -right-1 p-2 rounded-full shadow-lg transition-transform duration-200 hover:scale-110"
                     style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}
                   >
                     <Camera className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </div>
-            </div>
 
-            {/* Profile info */}
-            <div className="pt-16 pb-6 px-6 text-center">
-              {editing ? (
-                <div className="flex items-center gap-2 justify-center mb-2">
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    aria-label={t('admin.profile.fullName', 'Full name')}
-                    className="text-lg font-bold text-center rounded-lg px-3 py-1.5 border transition-colors"
-                    style={{
-                      background: 'var(--color-bg-input, var(--color-bg-elevated))',
-                      borderColor: 'var(--color-border-subtle)',
-                      color: 'var(--color-text-primary)',
-                    }}
-                    autoFocus
-                  />
-                  <button
-                    onClick={() => updateProfileMutation.mutate({ full_name: editName })}
-                    disabled={updateProfileMutation.isPending || !editName.trim()}
-                    aria-label={t('admin.profile.saveName', 'Save name')}
-                    className="p-1.5 rounded-lg transition-colors hover:bg-emerald-500/10"
-                    style={{ color: 'var(--color-success)' }}
-                  >
-                    <CheckCircle className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => { setEditing(false); setEditName(profile?.full_name || ''); }}
-                    aria-label={t('admin.profile.cancelEdit', 'Cancel editing')}
-                    className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
-                    style={{ color: 'var(--color-danger)' }}
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                {/* Name + role + meta */}
+                <div className="flex-1 min-w-0 sm:pb-2">
+                  {editing ? (
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        aria-label={t('admin.profile.fullName', 'Full name')}
+                        className="flex-1 min-w-0 text-xl sm:text-2xl font-bold rounded-lg px-3 py-1.5 border transition-colors"
+                        style={{
+                          background: 'var(--color-bg-input, var(--color-bg-elevated))',
+                          borderColor: 'var(--color-border-subtle)',
+                          color: 'var(--color-text-primary)',
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => updateProfileMutation.mutate({ full_name: editName })}
+                        disabled={updateProfileMutation.isPending || !editName.trim()}
+                        aria-label={t('admin.profile.saveName', 'Save name')}
+                        className="p-2 rounded-lg transition-colors hover:bg-emerald-500/10"
+                        style={{ color: 'var(--color-success)' }}
+                      >
+                        <CheckCircle className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => { setEditing(false); setEditName(profile?.full_name || ''); }}
+                        aria-label={t('admin.profile.cancelEdit', 'Cancel editing')}
+                        className="p-2 rounded-lg transition-colors hover:bg-red-500/10"
+                        style={{ color: 'var(--color-danger)' }}
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <h1
+                        className="text-2xl sm:text-[28px] font-bold leading-tight tracking-tight"
+                        style={{ color: 'var(--color-text-primary)' }}
+                      >
+                        {profile?.full_name || '—'}
+                      </h1>
+                      <button
+                        onClick={() => { setEditing(true); setEditName(profile?.full_name || ''); }}
+                        aria-label={t('admin.profile.editName', 'Edit name')}
+                        className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span className={`${rolePillClass} inline-flex items-center gap-1.5`}>
+                      <Shield className="w-3 h-3" />
+                      {roleLabel}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      <Mail className="w-3 h-3" />
+                      <span className="truncate max-w-[220px]">{user?.email || profile?.email || '—'}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-subtle)' }}>
+                      <Calendar className="w-3 h-3" />
+                      {t('admin.profile.memberSince', 'Member since')} <span className="admin-mono">{memberSince}</span>
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <h2 className="text-xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
-                    {profile?.full_name || '—'}
-                  </h2>
-                  <button
-                    onClick={() => { setEditing(true); setEditName(profile?.full_name || ''); }}
-                    aria-label={t('admin.profile.editName', 'Edit name')}
-                    className="p-1 rounded-lg transition-colors hover:bg-white/5"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
 
-              <div className="flex items-center justify-center gap-1.5 mb-3" style={{ color: 'var(--color-text-muted)' }}>
-                <Mail className="w-3.5 h-3.5" />
-                <span className="text-sm">{user?.email || profile?.email || '—'}</span>
-              </div>
-
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${roleColor}`}>
-                <Shield className="w-3 h-3" />
-                {i18n.language === 'es' ? roleBadge.es : roleBadge.en}
-              </span>
-
-              <div className="mt-4 pt-4 flex items-center justify-center gap-1.5 text-xs"
-                   style={{ borderTop: '1px solid var(--color-border-subtle)', color: 'var(--color-text-subtle)' }}>
-                <Calendar className="w-3 h-3" />
-                {t('admin.profile.memberSince', 'Member since')} {memberSince}
               </div>
             </div>
           </AdminCard>
+        </FadeIn>
 
-          {/* Quick stats */}
-          <div className="grid grid-cols-2 gap-3 mt-4">
+        {/* ── 4-STAT STRIP ─────────────────────────────────────── */}
+        <FadeIn delay={0.05}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              label={t('admin.profile.daysAsAdmin', 'Days as admin')}
+              value={daysAsAdmin != null ? daysAsAdmin : '—'}
+              icon={Calendar}
+              borderColor="var(--color-accent)"
+            />
             <StatCard
               label={t('admin.profile.totalActions', 'Actions')}
               value={stats?.totalActions ?? '—'}
               icon={Activity}
+              borderColor="var(--color-info)"
             />
             <StatCard
-              label={t('admin.profile.gymName', 'Gym')}
-              value={gymName || '—'}
-              icon={User}
+              label={t('admin.profile.lastSignIn', 'Last sign-in')}
+              value={lastSignInLabel}
+              icon={Clock}
               small
+              borderColor="var(--color-warn, var(--color-warning))"
+            />
+            <StatCard
+              label={t('admin.profile.membersManaged', 'Members')}
+              value={stats?.memberCount ?? '—'}
+              icon={User}
+              borderColor="var(--color-success)"
             />
           </div>
         </FadeIn>
 
-        {/* ── RIGHT COLUMN: Security + Activity ── */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* ── TWO-COLUMN: Security + Activity ──────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
           {/* Security section */}
           <FadeIn delay={0.1}>
             <SectionLabel>{t('admin.profile.security', 'Security')}</SectionLabel>
-            <AdminCard className="p-5">
+            <AdminCard className="p-4 sm:p-5">
               <div className="space-y-4">
                 {/* Email row */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-xl" style={{ background: 'var(--color-bg-elevated)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="p-2 rounded-xl flex-shrink-0" style={{ background: 'var(--color-bg-elevated)' }}>
                       <Mail className="w-4 h-4" style={{ color: 'var(--color-accent)' }} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
                         {t('admin.profile.email', 'Email')}
                       </p>
-                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
                         {user?.email || '—'}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
-                       style={{ background: 'var(--color-success)', color: '#fff', opacity: 0.9 }}>
+                  <span className="admin-pill admin-pill--good inline-flex items-center gap-1.5 flex-shrink-0">
                     <CheckCircle className="w-3 h-3" />
                     {t('admin.profile.verified', 'Verified')}
-                  </div>
+                  </span>
                 </div>
 
                 <div style={{ borderBottom: '1px solid var(--color-border-subtle)' }} />
 
                 {/* Password row */}
                 <div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-xl" style={{ background: 'var(--color-bg-elevated)' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="p-2 rounded-xl flex-shrink-0" style={{ background: 'var(--color-bg-elevated)' }}>
                         <Key className="w-4 h-4" style={{ color: 'var(--color-accent)' }} />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
                           {t('admin.profile.password', 'Password')}
                         </p>
-                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
                           {t('admin.profile.passwordHint', 'Last changed — unknown')}
                         </p>
                       </div>
                     </div>
                     <button
                       onClick={() => setChangingPassword(!changingPassword)}
-                      className="text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-200 hover:scale-[1.02]"
+                      className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-200 hover:scale-[1.02]"
                       style={{
                         color: 'var(--color-accent)',
                         background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
@@ -453,7 +516,7 @@ export default function AdminProfile() {
                   </div>
 
                   {changingPassword && (
-                    <div className="mt-4 ml-11 space-y-3">
+                    <div className="mt-4 ml-0 sm:ml-11 space-y-3">
                       <input
                         type="password"
                         placeholder={t('admin.profile.newPassword', 'New password')}
@@ -499,16 +562,16 @@ export default function AdminProfile() {
                 <div style={{ borderBottom: '1px solid var(--color-border-subtle)' }} />
 
                 {/* Last sign in */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-xl" style={{ background: 'var(--color-bg-elevated)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="p-2 rounded-xl flex-shrink-0" style={{ background: 'var(--color-bg-elevated)' }}>
                       <Clock className="w-4 h-4" style={{ color: 'var(--color-accent)' }} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
                         {t('admin.profile.lastSignIn', 'Last Sign In')}
                       </p>
-                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
                         {user?.last_sign_in_at
                           ? formatDistanceToNow(new Date(user.last_sign_in_at), { addSuffix: true, locale })
                           : '—'}
@@ -523,7 +586,7 @@ export default function AdminProfile() {
           {/* Recent activity */}
           <FadeIn delay={0.2}>
             <SectionLabel>{t('admin.profile.recentActivity', 'Recent Activity')}</SectionLabel>
-            <AdminCard className="p-5">
+            <AdminCard className="p-4 sm:p-5">
               {activityLoading ? (
                 <div className="space-y-3">
                   {[...Array(5)].map((_, i) => (
@@ -546,17 +609,16 @@ export default function AdminProfile() {
               ) : (
                 <div className="space-y-1">
                   {recentActivity.map((entry) => {
-                    const actionColor = ACTION_COLORS[entry.action] || 'text-gray-400 bg-gray-500/10';
-                    const actionLabel = entry.action?.replace(/_/g, ' ');
+                    const actionPill = ACTION_PILL_CLASS[entry.action] || 'admin-pill admin-pill--outline';
+                    const actionLabel = t(`admin.profile.actions.${entry.action}`, { defaultValue: entry.action?.replace(/_/g, ' ') });
                     return (
                       <div
                         key={entry.id}
                         className="flex items-center gap-3 px-2 py-2.5 rounded-lg transition-colors duration-200"
-                        style={{ '--hover-bg': 'var(--color-bg-elevated)' }}
                         onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-elevated)'}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
-                        <div className={`p-1.5 rounded-lg ${actionColor}`}>
+                        <div className={`${actionPill} !p-1.5 flex items-center justify-center`}>
                           <Activity className="w-3.5 h-3.5" />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -569,7 +631,7 @@ export default function AdminProfile() {
                             </p>
                           )}
                         </div>
-                        <span className="text-xs whitespace-nowrap" style={{ color: 'var(--color-text-subtle)' }}>
+                        <span className="admin-mono text-xs whitespace-nowrap" style={{ color: 'var(--color-text-subtle)' }}>
                           {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true, locale })}
                         </span>
                       </div>
@@ -580,32 +642,61 @@ export default function AdminProfile() {
             </AdminCard>
           </FadeIn>
 
-          {/* Sign out */}
-          <FadeIn delay={0.3}>
+        </div>
+
+        {/* ── ACCOUNT ACTIONS ─────────────────────────────────── */}
+        <FadeIn delay={0.25}>
+          <SectionLabel>{t('admin.profile.account', 'Account')}</SectionLabel>
+          <AdminCard className="p-0 overflow-hidden">
             <button
               onClick={signOut}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 hover:scale-[1.01] w-full justify-center"
-              style={{
-                color: 'var(--color-danger)',
-                background: 'color-mix(in srgb, var(--color-danger) 8%, transparent)',
-                border: '1px solid color-mix(in srgb, var(--color-danger) 15%, transparent)',
-              }}
+              className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition-colors duration-200 hover:bg-white/[0.04]"
             >
-              <LogOut className="w-4 h-4" />
-              {tc('adminNav.signOut', 'Sign out')}
+              <span className="flex items-center gap-3">
+                <span
+                  className="p-2 rounded-xl flex-shrink-0"
+                  style={{ background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', color: 'var(--color-danger)' }}
+                >
+                  <LogOut className="w-4 h-4" />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                    {tc('adminNav.signOut', 'Sign out')}
+                  </span>
+                  <span className="block text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.profile.signOutSub', 'You can come back anytime')}
+                  </span>
+                </span>
+              </span>
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--color-text-subtle)' }} />
             </button>
 
-            {/* Delete account */}
+            <div style={{ borderTop: '1px solid var(--color-border-subtle)' }} />
+
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[13px] font-semibold transition-colors mt-3"
-              style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}
+              className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition-colors duration-200 hover:bg-red-500/[0.05]"
             >
-              <AlertTriangle className="w-4 h-4" />
-              {t('admin.profile.deleteAccount', 'Delete Account')}
+              <span className="flex items-center gap-3">
+                <span
+                  className="p-2 rounded-xl flex-shrink-0"
+                  style={{ background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)', color: 'var(--color-danger)' }}
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold" style={{ color: 'var(--color-danger)' }}>
+                    {t('admin.profile.deleteAccount', 'Delete account')}
+                  </span>
+                  <span className="block text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.profile.deleteAccountSub', 'Permanent — all your data will be removed')}
+                  </span>
+                </span>
+              </span>
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--color-text-subtle)' }} />
             </button>
-          </FadeIn>
-        </div>
+          </AdminCard>
+        </FadeIn>
       </div>
 
       {/* Delete account confirmation */}
@@ -615,7 +706,7 @@ export default function AdminProfile() {
             onClick={e => e.stopPropagation()}>
             <div className="p-5">
               <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle size={18} style={{ color: '#EF4444' }} />
+                <AlertTriangle size={18} style={{ color: 'var(--color-danger)' }} />
                 <h3 className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.profile.deleteAccount', 'Delete Account')}</h3>
               </div>
               <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
@@ -628,7 +719,7 @@ export default function AdminProfile() {
                 type="text"
                 value={deleteInput}
                 onChange={e => setDeleteInput(e.target.value)}
-                placeholder="ELIMINAR"
+                placeholder={t('admin.profile.deleteTypeConfirmWord', i18n.language === 'es' ? 'ELIMINAR' : 'DELETE')}
                 className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none mb-4"
                 style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
               />
@@ -642,13 +733,21 @@ export default function AdminProfile() {
                   onClick={async () => {
                     setDeleting(true);
                     try {
-                      // Guard: prevent last admin from deleting their account
-                      const { count } = await supabase
+                      // Guard: prevent last admin from deleting their account.
+                      // Fail CLOSED — if the count query errors or returns null, abort
+                      // rather than risk leaving the gym with zero admins.
+                      const { count, error: countErr } = await supabase
                         .from('profiles')
                         .select('id', { count: 'exact', head: true })
                         .eq('gym_id', profile.gym_id)
                         .eq('role', 'admin');
-                      if (count != null && count <= 1) {
+                      if (countErr || count == null) {
+                        logger.error('Last-admin guard failed', countErr);
+                        showToast(tc('error', 'Error'), 'error');
+                        setDeleting(false);
+                        return;
+                      }
+                      if (count <= 1) {
                         showToast(tc('lastAdminCannotDelete'), 'error');
                         setDeleting(false);
                         return;
@@ -657,13 +756,16 @@ export default function AdminProfile() {
                       await signOut();
                     } catch (err) {
                       logger.error('Account deletion failed', err);
-                      showToast(err.message || 'Error', 'error');
+                      showToast(err.message || tc('error', 'Error'), 'error');
                       setDeleting(false);
                     }
                   }}
-                  disabled={deleteInput.toLowerCase() !== 'eliminar' || deleting}
+                  disabled={(() => {
+                    const v = deleteInput.toLowerCase();
+                    return (v !== 'eliminar' && v !== 'delete') || deleting;
+                  })()}
                   className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
-                  style={{ backgroundColor: '#EF4444', color: '#fff' }}>
+                  style={{ backgroundColor: 'var(--color-danger)', color: '#fff' }}>
                   {deleting ? t('admin.profile.deleting', 'Deleting...') : t('admin.profile.deleteConfirmBtn', 'Delete Account')}
                 </button>
               </div>
@@ -681,6 +783,8 @@ export default function AdminProfile() {
         onSave={handleAvatarSave}
         uploading={uploading}
       />
+
+      <ViewSwitcherModal open={showViewSwitcher} onClose={() => setShowViewSwitcher(false)} />
     </AdminPageShell>
   );
 }

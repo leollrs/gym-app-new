@@ -10,11 +10,18 @@ import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import logger from '../../lib/logger';
+
+// Capacitor Keyboard plugin — native only. Same pattern used in member Messages.jsx.
+let Keyboard = null;
+if (Capacitor.isNativePlatform()) {
+  import('@capacitor/keyboard').then((mod) => { Keyboard = mod.Keyboard; }).catch(() => {});
+}
 
 import { PageHeader, AdminCard, AdminModal, FadeIn, AdminTabs } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
@@ -89,13 +96,13 @@ function ConversationActionMenu({ convoId, memberId, isArchived, isBlocked, onAr
     <div className="relative" ref={menuRef}>
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        aria-label="Actions"
+        aria-label={t('admin.messaging.actionsAria', 'Actions')}
         className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.06] transition-colors flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
       >
         <MoreVertical size={14} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-xl shadow-xl overflow-hidden"
+        <div className="absolute right-0 top-full mt-1 z-[80] w-[min(13rem,calc(100vw-32px))] max-w-[13rem] rounded-xl shadow-xl overflow-hidden"
           style={{ backgroundColor: '#fff', border: '1px solid rgba(0,0,0,0.1)' }}
           onClick={(e) => e.stopPropagation()}>
           {isArchived ? (
@@ -152,10 +159,10 @@ export default function AdminMessaging() {
 
   const [activeTab, setActiveTab] = useState('dm');
 
-  useEffect(() => { document.title = `Admin - ${t('admin.messaging.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
+  useEffect(() => { document.title = `${t('admin.messaging.pageTitle', 'Admin - Messaging')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   return (
-    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+    <div className="px-3 sm:px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title={t('admin.messaging.title')}
         subtitle={t('admin.messaging.subtitle')}
@@ -182,7 +189,7 @@ export default function AdminMessaging() {
             <ScheduledMessagesTab gymId={gymId} t={t} />
           );
           if (tabKey === 'broadcast') return (
-            <BroadcastTab gymId={gymId} adminId={adminId} gym={gym} t={t} />
+            <BroadcastTab gymId={gymId} adminId={adminId} gym={gym} t={t} dateFnsLocale={dateFnsLocale} />
           );
           return null;
         }}
@@ -210,6 +217,8 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   const [sending, setSending] = useState(false);
   const [showNewMsg, setShowNewMsg] = useState(false);
   const [newMsgSearch, setNewMsgSearch] = useState('');
+  const [membersError, setMembersError] = useState(null);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [mobileShowThread, setMobileShowThread] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedIds, setArchivedIds] = useState(() => {
@@ -220,6 +229,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const threadEndRef = useRef(null);
+  const [kbHeight, setKbHeight] = useState(0);
   const inputRef = useRef(null);
   const convoIdsRef = useRef([]);
   const seedMapRef = useRef({});
@@ -228,55 +238,56 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   const loadConversations = useCallback(async () => {
     if (!gymId || !adminId) return;
 
-    const [convoRes, memberRes] = await Promise.all([
-      supabase.from('conversations')
-        .select('*, p1:profiles!conversations_participant_1_fkey(id, full_name, username, avatar_url, avatar_type, avatar_value), p2:profiles!conversations_participant_2_fkey(id, full_name, username, avatar_url, avatar_type, avatar_value)')
-        .or(`participant_1.eq.${adminId},participant_2.eq.${adminId}`)
-        .eq('gym_id', gymId)
-        .order('last_message_at', { ascending: false }),
-      supabase.from('profiles')
-        .select('id, full_name, username, email, avatar_url, avatar_type, avatar_value')
-        .eq('gym_id', gymId).eq('role', 'member').order('full_name'),
-    ]);
+    // Members are NOT preloaded here — at 300+ members per gym that's
+    // expensive and almost always wasted. The New Message picker drives
+    // its own debounced server-side search via fetchMembers().
+    const convoRes = await supabase.from('conversations')
+      .select('*, p1:profiles!conversations_participant_1_fkey(id, full_name, username, avatar_url, avatar_type, avatar_value, role), p2:profiles!conversations_participant_2_fkey(id, full_name, username, avatar_url, avatar_type, avatar_value, role)')
+      .or(`participant_1.eq.${adminId},participant_2.eq.${adminId}`)
+      .eq('gym_id', gymId)
+      .order('last_message_at', { ascending: false });
 
     if (convoRes.error) logger.error('AdminMessaging: convos:', convoRes.error);
-    if (memberRes.error) logger.error('AdminMessaging: members:', memberRes.error);
 
     const convos = convoRes.data || [];
 
     const enriched = await Promise.all(convos.map(async (c) => {
-      const [lastMsgRes, unreadRes] = await Promise.all([
-        supabase.from('direct_messages')
-          .select('body, sender_id, created_at')
-          .eq('conversation_id', c.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase.from('direct_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('conversation_id', c.id)
-          .neq('sender_id', adminId)
-          .is('read_at', null),
-      ]);
+      try {
+        const [lastMsgRes, unreadRes] = await Promise.all([
+          supabase.from('direct_messages')
+            .select('body, sender_id, created_at')
+            .eq('conversation_id', c.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase.from('direct_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('conversation_id', c.id)
+            .neq('sender_id', adminId)
+            .is('read_at', null),
+        ]);
 
-      let preview = null;
-      if (lastMsgRes.data?.body) {
-        try { preview = await decryptMessage(lastMsgRes.data.body, c.id, c.encryption_seed); }
-        catch { preview = lastMsgRes.data.body; }
+        let preview = null;
+        if (lastMsgRes.data?.body) {
+          try { preview = await decryptMessage(lastMsgRes.data.body, c.id, c.encryption_seed); }
+          catch { preview = lastMsgRes.data.body; }
+        }
+
+        return {
+          ...c,
+          last_message_preview: preview,
+          last_message_sender_id: lastMsgRes.data?.sender_id || null,
+          unread_count: unreadRes.count || 0,
+        };
+      } catch (err) {
+        logger.error('AdminMessaging: enrich convo failed:', err);
+        return { ...c, last_message_preview: null, last_message_sender_id: null, unread_count: 0 };
       }
-
-      return {
-        ...c,
-        last_message_preview: preview,
-        last_message_sender_id: lastMsgRes.data?.sender_id || null,
-        unread_count: unreadRes.count || 0,
-      };
     }));
 
     setConversations(enriched);
     convoIdsRef.current = enriched.map(c => c.id);
     seedMapRef.current = Object.fromEntries(convos.map(c => [c.id, c.encryption_seed]));
-    setMembers(memberRes.data || []);
     setLoading(false);
 
     // Open specific member conversation from URL params
@@ -295,6 +306,49 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   }, [gymId, adminId, searchParams]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  // ── Server-side member search (used by the New Message modal) ──
+  // Lazy: only runs when the modal is opened. Empty query returns every
+  // profile in the gym (alphabetical); typing narrows it via ILIKE on
+  // full_name + username. The bulk fetch is fine because the upfront
+  // load on every page mount has been removed — a 300-row response only
+  // hits the wire when the admin actually opens the picker.
+  const fetchMembers = useCallback(async (query = '') => {
+    if (!gymId || !adminId) return;
+    setMembersLoading(true);
+    setMembersError(null);
+
+    let req = supabase.from('profiles')
+      .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
+      .eq('gym_id', gymId)
+      .neq('id', adminId)
+      .neq('role', 'super_admin')
+      .order('full_name');
+
+    const q = query.trim();
+    if (q) {
+      // Escape PostgREST special chars so a stray comma doesn't break the .or()
+      const safe = q.replace(/[%,()*]/g, '\\$&');
+      req = req.or(`full_name.ilike.%${safe}%,username.ilike.%${safe}%`);
+    }
+
+    const { data, error } = await req;
+    if (error) {
+      logger.error('AdminMessaging: fetchMembers:', error);
+      setMembersError(error.message || String(error));
+    } else {
+      setMembers(data || []);
+    }
+    setMembersLoading(false);
+  }, [gymId, adminId]);
+
+  // Debounce the search input → server query (300ms). Also fires once on
+  // modal open with an empty query so the picker shows an initial roster.
+  useEffect(() => {
+    if (!showNewMsg) return;
+    const handle = setTimeout(() => { fetchMembers(newMsgSearch); }, 300);
+    return () => clearTimeout(handle);
+  }, [showNewMsg, newMsgSearch, fetchMembers]);
 
   // ── Load blocked users ───────────────────────────────
   useEffect(() => {
@@ -340,11 +394,11 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
     // Delete all messages then the conversation
     const { error: msgErr } = await supabase.from('direct_messages')
       .delete().eq('conversation_id', convoId);
-    if (msgErr) { logger.error('AdminMessaging: delete msgs:', msgErr); showToast('Error', 'error'); return; }
+    if (msgErr) { logger.error('AdminMessaging: delete msgs:', msgErr); showToast(t('common:error', 'Error'), 'error'); return; }
 
     const { error: convoErr } = await supabase.from('conversations')
       .delete().eq('id', convoId).eq('gym_id', gymId);
-    if (convoErr) { logger.error('AdminMessaging: delete convo:', convoErr); showToast('Error', 'error'); return; }
+    if (convoErr) { logger.error('AdminMessaging: delete convo:', convoErr); showToast(t('common:error', 'Error'), 'error'); return; }
 
     logAdminAction('delete_conversation', 'conversation', convoId);
 
@@ -369,7 +423,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
       .insert({ blocker_id: adminId, blocked_id: memberId });
     if (error && !error.message?.includes('duplicate')) {
       logger.error('AdminMessaging: block:', error);
-      showToast('Error', 'error');
+      showToast(t('common:error', 'Error'), 'error');
       return;
     }
     logAdminAction('block_user', 'member', memberId, { conversation_id: convoId });
@@ -386,7 +440,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
       .eq('blocked_id', memberId);
     if (error) {
       logger.error('AdminMessaging: unblock:', error);
-      showToast('Error', 'error');
+      showToast(t('common:error', 'Error'), 'error');
       return;
     }
     logAdminAction('unblock_user', 'member', memberId);
@@ -427,10 +481,37 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
     load();
   }, [activeConvoId, adminId]);
 
-  // Auto-scroll
+  // Auto-scroll on new messages — smooth.
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Auto-scroll on conversation switch — instant, jumps straight to the latest
+  // message so deep-linking from a push notification lands you at the bottom of
+  // the thread, not the top. Retries after the next paint to outlast lazy renders.
+  useEffect(() => {
+    if (!activeConvoId) return;
+    const jumpToBottom = () => threadEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    jumpToBottom();
+    const t1 = setTimeout(jumpToBottom, 50);
+    const t2 = setTimeout(jumpToBottom, 200);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [activeConvoId]);
+
+  // Native keyboard awareness — lift the compose bar above the on-screen
+  // keyboard so the input isn't hidden underneath. Same shape as member Messages.jsx.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || !Keyboard) return;
+    const listeners = [];
+    Keyboard.addListener('keyboardWillShow', (info) => {
+      setKbHeight(info.keyboardHeight);
+      setTimeout(() => threadEndRef.current?.scrollIntoView({ behavior: 'auto' }), 50);
+    }).then((h) => listeners.push(h));
+    Keyboard.addListener('keyboardWillHide', () => {
+      setKbHeight(0);
+    }).then((h) => listeners.push(h));
+    return () => { listeners.forEach((h) => h.remove()); };
+  }, []);
 
   // ── Realtime subscription ─────────────────────────────
   useEffect(() => {
@@ -450,6 +531,18 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
         decryptMessage(newMsg.body, activeConvoId, seedMapRef.current[activeConvoId]).then(decryptedBody => {
           setMessages(prev => {
             if (prev.some(m => m.id === newMsg.id)) return prev;
+            // Reconcile with optimistic temp messages from same sender + body.
+            const tempIdx = prev.findIndex(m =>
+              m._pending
+              && m.sender_id === newMsg.sender_id
+              && m.body === decryptedBody
+              && Math.abs(new Date(m.created_at).getTime() - new Date(newMsg.created_at).getTime()) < 60000
+            );
+            if (tempIdx >= 0) {
+              const next = [...prev];
+              next[tempIdx] = { ...newMsg, body: decryptedBody };
+              return next;
+            }
             return [...prev, { ...newMsg, body: decryptedBody }];
           });
         }).catch(() => {
@@ -537,8 +630,11 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
 
     const tempId = crypto.randomUUID();
     const now = new Date().toISOString();
+    // Mark _pending so the realtime handler swaps the temp row for the
+    // real DB row instead of duplicating it.
     setMessages(prev => [...prev, {
       id: tempId,
+      _pending: true,
       conversation_id: activeConvoId,
       sender_id: adminId,
       body,
@@ -561,18 +657,19 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
       setMessages(prev => prev.filter(m => m.id !== tempId));
       showToast(t('admin.messaging.sendFailed'), 'error');
     } else {
-      // Update conversation timestamp
-      await supabase.from('conversations').update({
-        last_message_at: now,
-      }).eq('id', activeConvoId);
+      // Tail tasks — fire-and-forget so the input becomes interactive again
+      // immediately. Network failures here don't undo the delivered message.
+      supabase.from('conversations')
+        .update({ last_message_at: now })
+        .eq('id', activeConvoId)
+        .then(() => {});
 
-      // Send push notification to recipient
       const recipientId = activeMember.id;
       supabase.functions.invoke('send-push-user', {
         body: {
           profile_id: recipientId,
           gym_id: gymId,
-          title: gym?.name || 'New Message',
+          title: gym?.name || t('admin.messaging.newMessageFallback', 'New Message'),
           body: body.substring(0, 100),
           data: { type: 'direct_message', conversation_id: activeConvoId },
         },
@@ -636,12 +733,12 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   }, [conversations, search, adminId, showArchived, archivedIds]);
 
   const filteredMembers = useMemo(() => {
-    if (!newMsgSearch) return members.slice(0, 20);
-    const q = newMsgSearch.toLowerCase();
-    return members.filter(m =>
-      m.full_name?.toLowerCase().includes(q) || m.username?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q)
-    ).slice(0, 20);
-  }, [members, newMsgSearch]);
+    // Server already does the search and 20-row cap; client just hides blocked users
+    // (small set, no point sending it to the server). They stay unreachable until
+    // the admin unblocks them from the conversation actions menu.
+    const blockedSet = new Set(blockedUserIds);
+    return members.filter(m => !blockedSet.has(m.id));
+  }, [members, blockedUserIds]);
 
   const groupedMessages = useMemo(() => {
     const groups = [];
@@ -661,7 +758,10 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
 
   return (
     <FadeIn>
-      <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden" style={{ height: 'calc(100vh - 260px)', minHeight: '500px' }}>
+      <div
+        className="admin-card overflow-hidden h-[calc(100vh-220px)] md:h-[calc(100vh-260px)]"
+        style={{ minHeight: '500px', padding: 0, backgroundColor: 'var(--color-admin-panel)' }}
+      >
         <div className="flex h-full">
 
           {/* ── Conversation List (left panel) ────────── */}
@@ -687,7 +787,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto" data-scroll-container>
               {loading ? (
                 <div className="space-y-1 p-2">{[...Array(5)].map((_, i) => <div key={i} className="h-16 bg-white/4 rounded-lg animate-pulse" />)}</div>
               ) : filteredConvos.length === 0 ? (
@@ -723,6 +823,21 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                               <p className={`text-[13px] font-semibold truncate ${isActive ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
                                 {member?.full_name || member?.username || t('admin.messaging.unknown')}
                               </p>
+                              {member?.role && member.role !== 'member' && (
+                                <span
+                                  className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                                  style={{
+                                    background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                                    color: 'var(--color-accent)',
+                                  }}
+                                >
+                                  {member.role === 'super_admin'
+                                    ? t('admin.messaging.roleSuperAdmin', 'Super Admin')
+                                    : member.role === 'admin'
+                                      ? t('admin.messaging.roleAdmin', 'Admin')
+                                      : t('admin.messaging.roleTrainer', 'Trainer')}
+                                </span>
+                              )}
                               {isMemberBlocked && (
                                 <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-500/10 text-red-400">
                                   {t('admin.messaging.blocked', 'Bloqueado')}
@@ -792,6 +907,21 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{activeMember?.full_name || activeMember?.username || t('admin.messaging.member')}</p>
+                      {activeMember?.role && activeMember.role !== 'member' && (
+                        <span
+                          className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                          style={{
+                            background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                            color: 'var(--color-accent)',
+                          }}
+                        >
+                          {activeMember.role === 'super_admin'
+                            ? t('admin.messaging.roleSuperAdmin', 'Super Admin')
+                            : activeMember.role === 'admin'
+                              ? t('admin.messaging.roleAdmin', 'Admin')
+                              : t('admin.messaging.roleTrainer', 'Trainer')}
+                        </span>
+                      )}
                       {blockedUserIds.includes(getMemberId(conversations.find(c => c.id === activeConvoId) || {}, adminId)) && (
                         <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-500/10 text-red-400">
                           {t('admin.messaging.blocked', 'Bloqueado')}
@@ -799,7 +929,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                       )}
                     </div>
                     <p className="text-[11px] text-[#6B7280]">
-                      {activeMember?.username ? `@${activeMember.username}` : activeMember?.email || t('admin.messaging.member')}
+                      {activeMember?.username ? `@${activeMember.username}` : t('admin.messaging.member')}
                     </p>
                   </div>
                   {activeConvoId && (() => {
@@ -859,7 +989,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                                 ? 'bg-[#D4AF37]/15 text-[#E5E7EB] rounded-br-md'
                                 : 'bg-[#111827] text-[#E5E7EB] rounded-bl-md'
                             }`}>
-                              <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{sanitize(item.body)}</p>
+                              <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{sanitize(item.body)}</p>
                               <div className={`flex items-center gap-1 mt-1 ${isSent ? 'justify-end' : 'justify-start'}`}>
                                 <p className="text-[10px] text-[#6B7280]">{format(new Date(item.created_at), 'h:mm a')}</p>
                                 {isSent && <ReadIndicator readAt={item.read_at} />}
@@ -878,8 +1008,12 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                   <div ref={threadEndRef} />
                 </div>
 
-                {/* Compose bar */}
-                <div className="px-4 py-3 border-t border-white/6 flex-shrink-0">
+                {/* Compose bar — `transform` lifts it above the on-screen keyboard on
+                    native iOS/Android (kbHeight comes from @capacitor/keyboard). */}
+                <div
+                  className="px-4 py-3 border-t border-white/6 flex-shrink-0 transition-transform duration-150"
+                  style={{ transform: kbHeight > 0 ? `translateY(-${kbHeight}px)` : undefined }}
+                >
                   <div className="flex gap-2">
                     <input ref={inputRef} type="text" aria-label={t('admin.messaging.typeMessage')} value={compose} onChange={e => setCompose(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
@@ -913,17 +1047,42 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
               className="w-full bg-[#111827] border border-white/6 rounded-xl pl-8 pr-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
           </div>
           <div className="max-h-[300px] overflow-y-auto space-y-1">
-            {filteredMembers.map(m => (
+            {membersLoading && (
+              <p className="text-center py-6 text-[13px] text-[#6B7280]">
+                {t('common:loading', 'Cargando...')}
+              </p>
+            )}
+            {!membersLoading && membersError && (
+              <div className="py-4 text-center">
+                <p className="text-[12px] text-red-400 mb-2">
+                  {t('admin.messaging.membersLoadFailed', 'No se pudo cargar la lista. ')}
+                  <span className="opacity-70">{membersError}</span>
+                </p>
+                <button
+                  onClick={() => fetchMembers(newMsgSearch)}
+                  className="text-[12px] font-semibold text-[#D4AF37] hover:underline"
+                >
+                  {t('common:retry', 'Reintentar')}
+                </button>
+              </div>
+            )}
+            {!membersLoading && !membersError && filteredMembers.map(m => (
               <button key={m.id} onClick={() => handleNewConversation(m)}
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/[0.04] transition-colors text-left">
                 <UserAvatar user={m} size={32} />
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{m.full_name}</p>
-                  <p className="text-[10px] text-[#6B7280]">{m.username ? `@${m.username}` : m.email || t('admin.messaging.member')}</p>
+                  <p className="text-[10px] text-[#6B7280]">{m.username ? `@${m.username}` : t('admin.messaging.member')}</p>
                 </div>
+                {m.role && m.role !== 'member' && (
+                  <span className="text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0"
+                    style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', fontWeight: 700 }}>
+                    {m.role}
+                  </span>
+                )}
               </button>
             ))}
-            {filteredMembers.length === 0 && (
+            {!membersLoading && !membersError && filteredMembers.length === 0 && (
               <p className="text-center py-6 text-[13px] text-[#6B7280]">{t('admin.messaging.noMembersFound')}</p>
             )}
           </div>
@@ -1046,17 +1205,17 @@ function ScheduledMessagesTab({ gymId, t }) {
     <FadeIn>
       <AdminCard padding="p-0">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/6">
-          <div>
-            <h2 className="text-[15px] font-bold text-[#E5E7EB]">{t('admin.messaging.automatedTriggers')}</h2>
-            <p className="text-[12px] text-[#6B7280] mt-0.5">{t('admin.messaging.automatedTriggersDesc')}</p>
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-4 border-b border-white/6">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-bold text-[#E5E7EB] truncate">{t('admin.messaging.automatedTriggers')}</h2>
+            <p className="text-[12px] text-[#6B7280] mt-0.5 truncate">{t('admin.messaging.automatedTriggersDesc')}</p>
           </div>
           <button
             onClick={handleAdd}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/18 transition-colors text-[13px] font-semibold min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/18 transition-colors text-[12px] md:text-[13px] font-semibold min-h-[44px] flex-shrink-0 whitespace-nowrap focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           >
             <Plus size={14} />
-            {t('admin.messaging.addTrigger')}
+            <span className="hidden sm:inline">{t('admin.messaging.addTrigger')}</span>
           </button>
         </div>
 
@@ -1211,7 +1370,7 @@ function ScheduledMessageModal({ isOpen, onClose, gymId, editingStep, t }) {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!messageTemplate.trim()) throw new Error('Message template is required');
+      if (!messageTemplate.trim()) throw new Error(t('admin.messaging.templateRequired', 'Message template is required'));
 
       const payload = {
         gym_id: gymId,
@@ -1391,7 +1550,7 @@ function ScheduledMessageModal({ isOpen, onClose, gymId, editingStep, t }) {
 // TAB 3: BROADCAST
 // ════════════════════════════════════════════════════════════
 
-function BroadcastTab({ gymId, adminId, gym, t }) {
+function BroadcastTab({ gymId, adminId, gym, t, dateFnsLocale }) {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
@@ -1417,7 +1576,7 @@ function BroadcastTab({ gymId, adminId, gym, t }) {
   // ── Send broadcast mutation ───────────────────────────
   const broadcastMutation = useMutation({
     mutationFn: async () => {
-      if (!title.trim() || !body.trim()) throw new Error('Title and body are required');
+      if (!title.trim() || !body.trim()) throw new Error(t('admin.messaging.titleBodyRequired', 'Title and body are required'));
 
       // Send push notification to all gym members
       const { error: pushError } = await supabase.functions.invoke('send-push', {
@@ -1425,9 +1584,9 @@ function BroadcastTab({ gymId, adminId, gym, t }) {
       });
       if (pushError) logger.error('Broadcast push error:', pushError);
 
-      // Create in-app notifications via RPC
+      // Create in-app notifications via RPC.
+      // RPC derives gym from auth context (current_gym_id()) — passing p_gym_id is silently ignored.
       const { error: rpcError } = await supabase.rpc('broadcast_notification', {
-        p_gym_id: gymId,
         p_title: title.trim(),
         p_body: body.trim(),
         p_type: 'announcement',
@@ -1542,7 +1701,7 @@ function BroadcastTab({ gymId, adminId, gym, t }) {
                       </span>
                     </div>
                     <p className="text-[10px] text-[#6B7280]">
-                      {log.sent_at ? format(new Date(log.sent_at), 'MMM d, h:mm a') : '-'}
+                      {log.sent_at ? format(new Date(log.sent_at), 'MMM d, h:mm a', dateFnsLocale) : '-'}
                     </p>
                   </div>
                 </div>

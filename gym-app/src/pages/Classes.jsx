@@ -1,13 +1,13 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Clock, Users, CalendarCheck, Dumbbell, Star, X, Repeat } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Users, CalendarCheck, Dumbbell, Star, X, ListChecks } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import EmptyState from '../components/EmptyState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { classImageUrl } from '../lib/classImageUrl';
-import { format, addDays, startOfWeek, isSameDay } from 'date-fns';
+import { format, addDays, startOfWeek, isSameDay, subDays, addWeeks } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 
 const DAY_LABELS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -30,6 +30,7 @@ const durationMinutes = (start, end) => {
 
 /* ---------- Star Rating Component ---------- */
 function StarRating({ value, onChange, size = 28, readOnly = false }) {
+  const { t } = useTranslation('pages');
   return (
     <div className="flex items-center gap-1">
       {[1, 2, 3, 4, 5].map((star) => (
@@ -39,7 +40,7 @@ function StarRating({ value, onChange, size = 28, readOnly = false }) {
           disabled={readOnly}
           onClick={() => onChange?.(star)}
           className={`transition-transform ${readOnly ? '' : 'active:scale-110'}`}
-          aria-label={`${star} star${star > 1 ? 's' : ''}`}
+          aria-label={t('classes.starRating', { count: star, defaultValue: '{{count}} star', defaultValue_plural: '{{count}} stars' })}
         >
           <Star
             size={size}
@@ -92,7 +93,7 @@ function ClassRatingModal({ open, onClose, bookingId, className: classTitle, onS
             onClick={onClose}
             className="p-1 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
             style={{ color: 'var(--color-text-muted)' }}
-            aria-label="Close"
+            aria-label={t('classes.close', { defaultValue: 'Close' })}
           >
             <X size={20} />
           </button>
@@ -193,6 +194,196 @@ function ClassSkeleton() {
   );
 }
 
+/* ---------- Month grid (calendar) ---------- */
+function MonthGridView({ anchor, today, allSchedules, dayLabels, dateFnsLocale, onSelectDate, onShiftMonth, onJumpToday, isCurrentMonth, t }) {
+  const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const monthEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+  // Pad with leading blank days to align the month start to a Sunday-based grid.
+  const startDow = monthStart.getDay(); // 0 = Sun
+  const daysInMonth = monthEnd.getDate();
+  const cells = [];
+  for (let i = 0; i < startDow; i += 1) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d += 1) cells.push(new Date(anchor.getFullYear(), anchor.getMonth(), d));
+  // Pad trailing so the grid is multiple of 7.
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  // Per-DOW + specific-date class indicators. The dot turns on either when
+  // there's a recurring schedule for that DOW or a one-off on that exact date.
+  const countsByDow = useMemo(() => {
+    const m = [0, 0, 0, 0, 0, 0, 0];
+    allSchedules.forEach((s) => { if (!s.specific_date && typeof s.day_of_week === 'number') m[s.day_of_week] += 1; });
+    return m;
+  }, [allSchedules]);
+  const specificDateSet = useMemo(() => {
+    const s = new Set();
+    allSchedules.forEach((sc) => { if (sc.specific_date) s.add(sc.specific_date); });
+    return s;
+  }, [allSchedules]);
+
+  const monthLabel = format(monthStart, 'MMMM yyyy', dateFnsLocale);
+  const todayKey = format(today, 'yyyy-MM-dd');
+
+  return (
+    <div className="rounded-2xl p-3 space-y-3" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 px-1">
+        <button
+          type="button"
+          onClick={() => onShiftMonth(-1)}
+          aria-label={t('classes.prevMonth', { defaultValue: 'Mes anterior' })}
+          className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04] active:scale-95 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={onJumpToday}
+          className="text-[13px] font-bold capitalize tracking-wide hover:underline transition-opacity"
+          style={{ color: isCurrentMonth ? 'var(--color-accent)' : 'var(--color-text-primary)' }}
+          aria-label={t('classes.jumpToToday', { defaultValue: 'Hoy' })}
+        >
+          {monthLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => onShiftMonth(1)}
+          aria-label={t('classes.nextMonth', { defaultValue: 'Mes siguiente' })}
+          className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04] active:scale-95 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          <ChevronLeft size={18} className="rotate-180" />
+        </button>
+      </div>
+
+      {/* DOW header row */}
+      <div className="grid grid-cols-7 gap-1 px-1">
+        {dayLabels.map((lbl, i) => (
+          <div
+            key={i}
+            className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-center"
+            style={{ color: 'var(--color-text-subtle)' }}
+          >
+            {lbl}
+          </div>
+        ))}
+      </div>
+
+      {/* Days grid */}
+      <div className="grid grid-cols-7 gap-1 px-1">
+        {cells.map((d, idx) => {
+          if (!d) return <div key={`pad-${idx}`} />;
+          const key = format(d, 'yyyy-MM-dd');
+          const isToday = key === todayKey;
+          const hasClasses = countsByDow[d.getDay()] > 0 || specificDateSet.has(key);
+          const isPast = key < todayKey;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onSelectDate(d)}
+              className="relative aspect-square rounded-lg flex flex-col items-center justify-center transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+              style={{
+                background: isToday ? 'color-mix(in srgb, var(--color-accent) 18%, transparent)' : 'transparent',
+                border: isToday ? '1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)' : '1px solid transparent',
+              }}
+            >
+              <span
+                className="text-[14px] font-bold tabular-nums"
+                style={{
+                  color: isToday ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                  opacity: isPast && !isToday ? 0.45 : 1,
+                }}
+              >
+                {d.getDate()}
+              </span>
+              {hasClasses && (
+                <span
+                  className="absolute bottom-1.5 w-1 h-1 rounded-full"
+                  style={{ background: isToday ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Week list (vertical day-by-day) ---------- */
+function WeekListView({ weekDays, allSchedules, bookingsByDate, countsByKey, todayStr, fmt, dateFnsLocale, onSelectClass, t }) {
+  return (
+    <div className="space-y-3">
+      {weekDays.map(({ date, isPastDay }) => {
+        const dow = date.getDay();
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const sched = allSchedules
+          .filter((s) => (s.specific_date ? s.specific_date === dateStr : s.day_of_week === dow))
+          .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+        const myDayBookings = bookingsByDate[dateStr] || [];
+        const isToday = dateStr === todayStr;
+        return (
+          <div
+            key={dateStr}
+            className="rounded-2xl p-3"
+            style={{
+              backgroundColor: 'var(--color-bg-card)',
+              border: isToday ? '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' : '1px solid var(--color-border-default)',
+              opacity: isPastDay && !isToday ? 0.55 : 1,
+            }}
+          >
+            <div className="flex items-center justify-between mb-2 px-1">
+              <p className="text-[13px] font-bold capitalize" style={{ color: isToday ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+                {format(date, 'EEEE d MMM', dateFnsLocale)}
+              </p>
+              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                {sched.length === 0 ? t('classes.noClassesShort', { defaultValue: 'Sin clases' }) : t('classes.classCount', { count: sched.length, defaultValue: '{{count}} clases' })}
+              </span>
+            </div>
+            {sched.length === 0 ? null : (
+              <div className="space-y-2">
+                {sched.map((s) => {
+                  const cls = s.gym_classes;
+                  if (!cls) return null;
+                  const booking = myDayBookings.find((b) => b.schedule_id === s.id);
+                  const count = countsByKey[`${s.id}|${dateStr}`] || 0;
+                  const cap = s.override_capacity || cls.max_capacity || 20;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => onSelectClass({ sched: s, cls, booking, dateStr })}
+                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-left transition-colors active:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                      style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{cls.name}</p>
+                        <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{fmt(s.start_time)} · {count}/{cap}</p>
+                      </div>
+                      {booking && (
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                          style={{
+                            background: booking.status === 'waitlisted' ? 'rgba(245,158,11,0.15)' : 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                            color: booking.status === 'waitlisted' ? '#F59E0B' : 'var(--color-accent)',
+                          }}
+                        >
+                          {booking.status === 'waitlisted' ? t('classes.waitlistedShort', { defaultValue: 'Lista' }) : t('classes.bookedShort', { defaultValue: 'Reservada' })}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Classes() {
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language === 'es';
@@ -216,104 +407,214 @@ export default function Classes() {
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => format(today, 'yyyy-MM-dd'), [today]);
   const [selectedDate, setSelectedDate] = useState(today);
-  const [schedules, setSchedules] = useState([]);
-  const [bookings, setBookings] = useState([]);
-  const [bookingCounts, setBookingCounts] = useState({});
+  // Week offset (in weeks) from the current week. 0 = this week, 1 = next, -1 = last.
+  const [weekOffset, setWeekOffset] = useState(0);
+  // Trainer-style view toggle: day | week | month
+  const [viewMode, setViewMode] = useState('day');
+  // ALL schedules for the gym — fetched once. Filtered by day_of_week per view.
+  const [allSchedules, setAllSchedules] = useState([]);
+  // Bookings + counts loaded for a date range; rebuilt when the range changes.
+  // Indexed by date so day clicks are zero-network and can't race.
+  const [bookingsByDate, setBookingsByDate] = useState({});       // { 'YYYY-MM-DD': [booking, ...] }
+  const [countsByKey, setCountsByKey] = useState({});             // { 'sched_id|YYYY-MM-DD': N }
   const [myUpcoming, setMyUpcoming] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null); // schedule_id being acted on
   const [toast, setToast] = useState(null);
-  const [recurringSet, setRecurringSet] = useState(new Set());
+  // (recurring feature removed — too brittle to maintain. Members reserve
+  // specific dates only; future-week navigation is the path forward.)
 
   // Check-in + rating modal state
   const [workoutPrompt, setWorkoutPrompt] = useState(null); // { bookingId, templateId, className }
   const [ratingModal, setRatingModal] = useState(null); // { bookingId, className }
+  // Mis Reservas drawer + class detail modal
+  const [showBookingsSheet, setShowBookingsSheet] = useState(false);
+  const [detailModal, setDetailModal] = useState(null); // { sched, cls, booking?, dateStr }
+  // Scrollable body of the sheet — we reset scrollTop = 0 every time the
+  // sheet opens so it never appears mid-scroll from a previous session.
+  const sheetBodyRef = useRef(null);
 
-  const selectedDow = selectedDate.getDay();
-  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
   const isSelectedToday = isSameDay(selectedDate, today);
+  // selectedDow / selectedDateStr are declared further down once allSchedules
+  // + bookingsByDate are in scope (the page reads from them to slice the
+  // visible day's data without re-querying).
 
-  // Build the week days for the day strip
+  // Build the week days for the day strip — anchored to the offset week.
+  const weekStart = useMemo(() => {
+    const base = startOfWeek(today, { weekStartsOn: 0 }); // Sunday-start (matches trainer calendar)
+    return addWeeks(base, weekOffset);
+  }, [today, weekOffset]);
+
   const weekDays = useMemo(() => {
-    const ws = startOfWeek(today, { weekStartsOn: 1 }); // Monday start
     return Array.from({ length: 7 }, (_, i) => {
-      const d = addDays(ws, i);
+      const d = addDays(weekStart, i);
+      const isPastDay = format(d, 'yyyy-MM-dd') < format(today, 'yyyy-MM-dd');
       return {
         date: d,
         label: dayLabels[d.getDay()],
         dayNum: format(d, 'd'),
         isToday: isSameDay(d, today),
         isSelected: isSameDay(d, selectedDate),
+        isPastDay,
       };
     });
-  }, [today, selectedDate, dayLabels]);
+  }, [weekStart, today, selectedDate, dayLabels]);
 
-  // Fetch schedules for selected day + user bookings
-  const loadData = useCallback(async () => {
+  const weekRangeLabel = useMemo(() => {
+    const end = addDays(weekStart, 6);
+    if (weekStart.getMonth() === end.getMonth()) {
+      return `${format(weekStart, 'd')} – ${format(end, 'd MMM', dateFnsLocale)}`;
+    }
+    return `${format(weekStart, 'd MMM', dateFnsLocale)} – ${format(end, 'd MMM', dateFnsLocale)}`;
+  }, [weekStart, dateFnsLocale]);
+
+  // Visible range — depends on viewMode. Used to fetch bookings + counts.
+  const visibleRange = useMemo(() => {
+    if (viewMode === 'day') {
+      const d = format(selectedDate, 'yyyy-MM-dd');
+      return { start: d, end: d };
+    }
+    if (viewMode === 'week') {
+      return {
+        start: format(weekStart, 'yyyy-MM-dd'),
+        end: format(addDays(weekStart, 6), 'yyyy-MM-dd'),
+      };
+    }
+    // month — anchored to selectedDate's month
+    const monthAnchor = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+    const monthEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+    return {
+      start: format(monthAnchor, 'yyyy-MM-dd'),
+      end: format(monthEnd, 'yyyy-MM-dd'),
+    };
+  }, [viewMode, selectedDate, weekStart]);
+
+  // Stale-token refs — SEPARATE per fetch type. Sharing a single ref between
+  // schedules + bookings caused a race: the bookings effect fires right after
+  // the schedules effect, increments the shared token, and when the schedules
+  // response lands second its myToken doesn't match anymore → response was
+  // dropped and allSchedules stayed empty (no Monday class would show).
+  const schedulesTokenRef = useRef(0);
+  const bookingsTokenRef = useRef(0);
+
+  // ── Fetch schedules ONCE (or when gym changes) ──
+  // No churn on day clicks — the day filter is purely client-side.
+  const loadSchedules = useCallback(async () => {
+    if (!profile?.gym_id) return;
+    const myToken = ++schedulesTokenRef.current;
+    const { data } = await supabase
+      .from('gym_class_schedules')
+      .select('*, gym_classes(*, trainer:profiles!trainer_id(id, full_name, avatar_url, avatar_type, avatar_value, role))')
+      .eq('gym_id', profile.gym_id)
+      .order('start_time');
+    if (myToken !== schedulesTokenRef.current) return; // stale — newer fetch in-flight
+    setAllSchedules(data || []);
+  }, [profile?.gym_id]);
+
+  // ── Fetch bookings + counts for the visible range ──
+  // Re-runs when viewMode / week offset / selected month changes — NOT on
+  // every day click within the same range.
+  const loadBookingsRange = useCallback(async (rangeStart, rangeEnd) => {
     if (!profile?.gym_id || !user?.id) return;
+    const myToken = ++bookingsTokenRef.current;
     setLoading(true);
 
-    const [schedRes, bookRes, countRes, upcomingRes, recurringRes] = await Promise.all([
-      // Schedules for this day of week, joined with class details
-      supabase
-        .from('gym_class_schedules')
-        .select('*, gym_classes(*)')
-        .eq('gym_id', profile.gym_id)
-        .eq('day_of_week', selectedDow)
-        .order('start_time'),
-      // User bookings for this specific date (include rating, notes, status, waitlist_position)
+    // Pad range +/- 14 days for "Mis Reservas" history.
+    const pastStart = format(addDays(new Date(rangeStart), -14), 'yyyy-MM-dd');
+    const futureEnd = format(addDays(new Date(rangeEnd), 30), 'yyyy-MM-dd');
+
+    const [myBookingsRes, countsRes] = await Promise.all([
+      // All my bookings in [rangeStart-14d, rangeEnd+30d] including schedule + class.
       supabase
         .from('gym_class_bookings')
-        .select('id, schedule_id, status, rating, notes, waitlist_position')
-        .eq('user_id', user.id)
-        .eq('booking_date', selectedDateStr)
-        .neq('status', 'cancelled'),
-      // Booking counts per schedule for today (only confirmed)
-      supabase
-        .from('gym_class_bookings')
-        .select('schedule_id')
-        .eq('booking_date', selectedDateStr)
-        .eq('status', 'confirmed'),
-      // Upcoming + recent bookings for "My Bookings" section
-      supabase
-        .from('gym_class_bookings')
-        .select('id, schedule_id, booking_date, status, rating, notes, waitlist_position, gym_class_schedules(*, gym_classes(*))')
-        .eq('user_id', user.id)
-        .neq('status', 'cancelled')
-        .gte('booking_date', format(addDays(today, -14), 'yyyy-MM-dd'))
-        .order('booking_date', { ascending: false })
-        .limit(20),
-      // Recurring bookings
-      supabase
-        .from('gym_class_recurring')
-        .select('schedule_id')
+        .select('id, schedule_id, booking_date, status, rating, notes, waitlist_position, gym_class_schedules(*, gym_classes(*, trainer:profiles!trainer_id(id, full_name, avatar_url, avatar_type, avatar_value, role)))')
         .eq('profile_id', user.id)
-        .eq('is_active', true),
+        .neq('status', 'cancelled')
+        .gte('booking_date', pastStart)
+        .lte('booking_date', futureEnd)
+        .order('booking_date', { ascending: false }),
+      // Confirmed booking counts via SECURITY DEFINER RPC — bypasses the
+      // bookings_select_own RLS that would otherwise hide other members'
+      // bookings from the count. Returns aggregate (schedule_id, date,
+      // confirmed, waitlisted) tuples, no PII.
+      supabase.rpc('get_class_booking_counts', {
+        p_gym_id: profile.gym_id,
+        p_date_from: rangeStart,
+        p_date_to: rangeEnd,
+      }),
     ]);
 
-    setSchedules(schedRes.data || []);
-    setBookings(bookRes.data || []);
+    if (myToken !== bookingsTokenRef.current) return; // stale — drop the response
 
-    // Build counts map: schedule_id -> count
-    const counts = {};
-    (countRes.data || []).forEach(b => {
-      counts[b.schedule_id] = (counts[b.schedule_id] || 0) + 1;
+    // Index my bookings by booking_date for O(1) lookup during render.
+    const byDate = {};
+    (myBookingsRes.data || []).forEach((b) => {
+      (byDate[b.booking_date] = byDate[b.booking_date] || []).push(b);
     });
-    setBookingCounts(counts);
-    setMyUpcoming(upcomingRes.data || []);
-    setRecurringSet(new Set((recurringRes.data || []).map(r => r.schedule_id)));
+    setBookingsByDate(byDate);
+
+    // Indexed counts: 'schedule_id|date' → confirmed count. The RPC returns
+    // aggregated rows so we just map them directly. Waitlisted is available
+    // too (countsRes row has it) — fold it in if/when we surface "X waiting".
+    const counts = {};
+    (countsRes.data || []).forEach((row) => {
+      const key = `${row.schedule_id}|${row.booking_date}`;
+      counts[key] = row.confirmed || 0;
+    });
+    setCountsByKey(counts);
+
+    setMyUpcoming(myBookingsRes.data || []);
     setLoading(false);
-  }, [profile?.gym_id, user?.id, selectedDow, selectedDateStr, today]);
+  }, [profile?.gym_id, user?.id]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // Load schedules once on mount / gym change.
+  useEffect(() => { loadSchedules(); }, [loadSchedules]);
+  // Load bookings + counts whenever the visible range changes (not every day).
+  useEffect(() => {
+    loadBookingsRange(visibleRange.start, visibleRange.end);
+  }, [visibleRange.start, visibleRange.end, loadBookingsRange]);
 
-  // Book a class
-  const handleBook = async (scheduleId, classId) => {
+  // Convenience: bookings + counts + schedules slice for the currently-selected day.
+  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+  const selectedDow = selectedDate.getDay();
+  const bookings = bookingsByDate[selectedDateStr] || [];
+  const schedules = useMemo(
+    // Schedules can be either recurring (day_of_week 0-6, no specific_date)
+    // or one-off (specific_date set, day_of_week may be NULL). Match both:
+    //   • recurring rows where day_of_week === today's DOW, OR
+    //   • one-off rows where specific_date === selected date string.
+    () => allSchedules
+      .filter((s) => {
+        if (s.specific_date) return s.specific_date === selectedDateStr;
+        return s.day_of_week === selectedDow;
+      })
+      .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || '')),
+    [allSchedules, selectedDow, selectedDateStr],
+  );
+  // Per-schedule count helper that respects the selected date.
+  const bookingCounts = useMemo(() => {
+    const m = {};
+    schedules.forEach((s) => { m[s.id] = countsByKey[`${s.id}|${selectedDateStr}`] || 0; });
+    return m;
+  }, [schedules, countsByKey, selectedDateStr]);
+
+  // Reload when an action (book/cancel) finishes. Returns the promise so
+  // callers can `await reloadActive()` and rely on bookings/counts being
+  // up-to-date by the time their next code runs.
+  const reloadActive = useCallback(() => {
+    return loadBookingsRange(visibleRange.start, visibleRange.end);
+  }, [loadBookingsRange, visibleRange.start, visibleRange.end]);
+
+  // Book a class for a specific date. The optional `bookingDate` arg lets
+  // the detail modal pass the date the user is viewing (which can differ
+  // from the day-strip's selectedDate when opened from the Week view).
+  const handleBook = async (scheduleId, classId, bookingDate = null) => {
     setActionLoading(scheduleId);
+    const dateToBook = bookingDate || selectedDateStr;
     const { data, error } = await supabase.rpc('book_class', {
       p_schedule_id: scheduleId,
       p_class_id: classId,
-      p_booking_date: selectedDateStr,
+      p_booking_date: dateToBook,
     });
     if (error) {
       setToast({ msg: error.message, type: 'error' });
@@ -324,11 +625,14 @@ export default function Classes() {
       posthog?.capture('class_booked', { class_id: classId });
       setToast({ msg: t('classes.bookingConfirmed'), type: 'success' });
     }
+    // Wait for the refetch BEFORE clearing the busy spinner so the UI
+    // doesn't briefly snap back to "Reservar" before the new state lands.
+    await reloadActive();
     setActionLoading(null);
-    loadData();
   };
 
-  // Cancel a booking (uses RPC for waitlist promotion)
+  // Cancel a booking (uses RPC for waitlist promotion). Same await-then-
+  // clear ordering as handleBook so the row updates instantly.
   const handleCancel = async (bookingId) => {
     setActionLoading(bookingId);
     const { error } = await supabase.rpc('cancel_class_booking', { p_booking_id: bookingId });
@@ -338,28 +642,13 @@ export default function Classes() {
       posthog?.capture('class_cancelled', { booking_id: bookingId });
       setToast({ msg: t('classes.bookingCancelled'), type: 'info' });
     }
+    await reloadActive();
     setActionLoading(null);
-    loadData();
   };
 
   // Toggle recurring booking
-  const handleToggleRecurring = async (scheduleId, classId) => {
-    const { data, error } = await supabase.rpc('toggle_recurring_class', {
-      p_schedule_id: scheduleId,
-      p_class_id: classId,
-    });
-    if (error) {
-      setToast({ msg: error.message, type: 'error' });
-      return;
-    }
-    if (data?.recurring) {
-      setRecurringSet(prev => new Set([...prev, scheduleId]));
-      setToast({ msg: t('classes.recurringActive'), type: 'success' });
-    } else {
-      setRecurringSet(prev => { const next = new Set(prev); next.delete(scheduleId); return next; });
-      setToast({ msg: t('classes.recurringOff'), type: 'info' });
-    }
-  };
+  // (handleToggleRecurring removed — feature deprecated in favor of
+  // explicit per-date booking with future-week navigation.)
 
   // Check in to a class
   const handleCheckIn = async (bookingId, className) => {
@@ -373,7 +662,7 @@ export default function Classes() {
     }
 
     setToast({ msg: t('classes.checkedIn'), type: 'success' });
-    loadData();
+    reloadActive();
 
     if (data?.has_template) {
       // Class has a workout template — ask member if they want to track it
@@ -406,10 +695,20 @@ export default function Classes() {
     return () => clearTimeout(id);
   }, [toast]);
 
+  // Reset Mis Reservas scroll position whenever the sheet opens.
+  useEffect(() => {
+    if (showBookingsSheet && sheetBodyRef.current) {
+      sheetBodyRef.current.scrollTop = 0;
+    }
+  }, [showBookingsSheet]);
+
   // Helper: get booking for a schedule
   const getBooking = (scheduleId) => bookings.find(b => b.schedule_id === scheduleId);
 
-  // Split myUpcoming into categories
+  // Split myUpcoming into categories. Also synthesize 4 weeks of "virtual"
+  // bookings for any recurring schedule the member has flagged — until a
+  // real booking row gets pre-created server-side, this is what makes the
+  // recurring auto-book visible in the Mis Reservas list.
   const { upcomingBookings, todayBookings, pastBookings } = useMemo(() => {
     const upcoming = [];
     const todayList = [];
@@ -424,58 +723,243 @@ export default function Classes() {
         past.push(b);
       }
     });
-    // Sort upcoming ascending
+
     upcoming.sort((a, b) => a.booking_date.localeCompare(b.booking_date));
-    // Past already descending from query
     return { upcomingBookings: upcoming, todayBookings: todayList, pastBookings: past };
   }, [myUpcoming, todayStr]);
 
   return (
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
-      {/* Header */}
+      {/* Header — back / page title (left) / Mis Reservas pill (right).
+          Title sits inline with the back button so the right-side pill never
+          competes for centered space. Pill shows the full "Mis Reservas"
+          label + count badge. */}
       <div className="sticky top-0 z-20 backdrop-blur-xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
-        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
-          <button onClick={() => navigate(-1)} aria-label="Go back" className="p-2 -ml-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
-            <ChevronLeft size={24} strokeWidth={2} />
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-3 py-3 flex items-center gap-2">
+          <button onClick={() => navigate(-1)} aria-label={t('classes.goBack', { defaultValue: 'Go back' })} className="rounded-xl transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
+            <ChevronLeft size={22} strokeWidth={2} />
           </button>
-          <h1 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('classes.title')}</h1>
+          <h1 className="text-[16px] font-bold flex-1 truncate" style={{ color: 'var(--color-text-primary)' }}>{t('classes.title')}</h1>
+          {(() => {
+            const totalActive = todayBookings.length + upcomingBookings.length;
+            return (
+              <button
+                onClick={() => setShowBookingsSheet(true)}
+                aria-label={t('classes.myBookings')}
+                className="relative inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-bold transition-all active:scale-95 min-h-[40px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37] flex-shrink-0"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                  color: 'var(--color-accent)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)',
+                }}
+              >
+                <ListChecks size={14} />
+                <span>{t('classes.myBookings')}</span>
+                {totalActive > 0 && (
+                  <span
+                    className="px-1.5 rounded-full text-[10px] font-bold tabular-nums"
+                    style={{ background: 'var(--color-accent)', color: '#000', minWidth: 18, height: 18, lineHeight: '18px', textAlign: 'center' }}
+                  >
+                    {totalActive}
+                  </span>
+                )}
+              </button>
+            );
+          })()}
         </div>
       </div>
 
       <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-5 space-y-5">
 
-        {/* Day Strip */}
-        <div className="flex items-center justify-between rounded-2xl p-3" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
-          {weekDays.map(({ date, label, dayNum, isToday, isSelected }) => (
-            <button
-              key={label + dayNum}
-              type="button"
-              onClick={() => setSelectedDate(date)}
-              aria-label={`${label} ${dayNum}`}
-              className="relative flex flex-col items-center flex-1 py-1 transition-all active:scale-95 min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
-            >
-              <span
-                className="text-[9px] font-medium uppercase tracking-[0.08em] mb-1"
-                style={{ color: isSelected ? 'var(--color-accent)' : 'var(--color-text-subtle)' }}
+        {/* View mode segmented — Day / Semana / Mes (matches trainer calendar). */}
+        <div
+          className="grid grid-cols-3 gap-1 p-1 rounded-2xl"
+          style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
+        >
+          {[
+            { key: 'day',   label: t('classes.viewDay',   { defaultValue: 'Día' }) },
+            { key: 'week',  label: t('classes.viewWeek',  { defaultValue: 'Semana' }) },
+            { key: 'month', label: t('classes.viewMonth', { defaultValue: 'Mes' }) },
+          ].map(opt => {
+            const active = viewMode === opt.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setViewMode(opt.key)}
+                className="py-2 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] min-h-[40px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                style={{
+                  background: active ? 'var(--color-accent)' : 'transparent',
+                  color: active ? '#000' : 'var(--color-text-secondary)',
+                }}
               >
-                {label}
-              </span>
-              <div className="relative w-9 h-9 flex items-center justify-center">
-                {isSelected && (
-                  <div className="absolute inset-0 rounded-full" style={{ backgroundColor: 'var(--color-accent)' }} />
-                )}
-                <span
-                  className="relative z-10 text-[14px] font-bold"
-                  style={{ color: isSelected ? '#000' : isToday ? 'var(--color-text-primary)' : 'var(--color-text-subtle)' }}
-                >
-                  {dayNum}
-                </span>
-              </div>
-            </button>
-          ))}
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Class Cards */}
+        {/* Day view header — single big "MARTES 15" centered with prev/next day chevrons. */}
+        {viewMode === 'day' && (
+          <div className="rounded-2xl p-3" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedDate((d) => addDays(d, -1))}
+                aria-label={t('classes.prevDay', { defaultValue: 'Día anterior' })}
+                className="w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04] active:scale-95 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedDate(today)}
+                className="flex flex-col items-center flex-1 transition-opacity active:opacity-70 focus:outline-none"
+                aria-label={t('classes.jumpToToday', { defaultValue: 'Hoy' })}
+              >
+                <span
+                  className="text-[10px] font-bold uppercase tracking-[0.16em]"
+                  style={{ color: isSelectedToday ? 'var(--color-accent)' : 'var(--color-text-subtle)' }}
+                >
+                  {format(selectedDate, 'EEEE', dateFnsLocale)}
+                </span>
+                <span
+                  className="text-[28px] font-bold tabular-nums leading-tight"
+                  style={{ color: 'var(--color-text-primary)' }}
+                >
+                  {format(selectedDate, 'd MMMM', dateFnsLocale)}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedDate((d) => addDays(d, 1))}
+                aria-label={t('classes.nextDay', { defaultValue: 'Día siguiente' })}
+                className="w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04] active:scale-95 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                <ChevronLeft size={20} className="rotate-180" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Week-strip nav — only shown in week view. */}
+        {viewMode === 'week' && (
+        <div className="rounded-2xl p-3 space-y-2" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+          {/* Header: prev / current range / next */}
+          <div className="flex items-center justify-between gap-2 px-1">
+            <button
+              type="button"
+              onClick={() => {
+                setWeekOffset(o => o - 1);
+                setSelectedDate(subDays(weekStart, 7));
+              }}
+              aria-label={t('classes.prevWeek', { defaultValue: 'Semana anterior' })}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04] active:scale-95 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setWeekOffset(0); setSelectedDate(today); }}
+              className="text-[12px] font-semibold tracking-wide truncate text-center hover:underline transition-opacity"
+              style={{ color: weekOffset === 0 ? 'var(--color-accent)' : 'var(--color-text-primary)' }}
+              aria-label={t('classes.jumpToThisWeek', { defaultValue: 'Esta semana' })}
+            >
+              {weekOffset === 0 ? t('classes.thisWeek', { defaultValue: 'Esta semana' }) : weekRangeLabel}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setWeekOffset(o => o + 1);
+                setSelectedDate(addDays(weekStart, 7));
+              }}
+              aria-label={t('classes.nextWeek', { defaultValue: 'Semana siguiente' })}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04] active:scale-95 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              <ChevronLeft size={18} className="rotate-180" />
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            {weekDays.map(({ date, label, dayNum, isToday, isSelected, isPastDay }) => (
+              <button
+                key={label + dayNum + date.toISOString()}
+                type="button"
+                onClick={() => setSelectedDate(date)}
+                aria-label={`${label} ${dayNum}${isPastDay ? ' (pasada)' : ''}`}
+                className="relative flex flex-col items-center flex-1 py-1 transition-all active:scale-95 min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
+              >
+                <span
+                  className="text-[9px] font-medium uppercase tracking-[0.08em] mb-1"
+                  style={{ color: isSelected ? 'var(--color-accent)' : isPastDay ? 'var(--color-text-subtle)' : 'var(--color-text-subtle)', opacity: isPastDay && !isSelected ? 0.45 : 1 }}
+                >
+                  {label}
+                </span>
+                <div className="relative w-9 h-9 flex items-center justify-center">
+                  {isSelected && (
+                    <div className="absolute inset-0 rounded-full" style={{ backgroundColor: 'var(--color-accent)' }} />
+                  )}
+                  <span
+                    className="relative z-10 text-[14px] font-bold"
+                    style={{
+                      color: isSelected ? '#000' : isToday ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
+                      opacity: isPastDay && !isSelected ? 0.45 : 1,
+                      textDecoration: isPastDay && !isSelected ? 'line-through' : 'none',
+                    }}
+                  >
+                    {dayNum}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+        )}
+
+        {/* Month grid — shown in month view. Each cell is a day; the dot shows
+            whether the gym has any classes scheduled for that day-of-week.
+            Tapping a day jumps into Day view for that date. */}
+        {viewMode === 'month' && (
+          <MonthGridView
+            anchor={selectedDate}
+            today={today}
+            allSchedules={allSchedules}
+            dayLabels={dayLabels}
+            dateFnsLocale={dateFnsLocale}
+            onSelectDate={(d) => { setSelectedDate(d); setViewMode('day'); }}
+            onShiftMonth={(delta) => {
+              const next = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + delta, 1);
+              setSelectedDate(next);
+            }}
+            onJumpToday={() => setSelectedDate(today)}
+            isCurrentMonth={selectedDate.getFullYear() === today.getFullYear() && selectedDate.getMonth() === today.getMonth()}
+            t={t}
+          />
+        )}
+
+        {/* Week list — shown in week view. One section per day in the week,
+            each listing the classes scheduled that day. Tapping a class opens
+            the detail modal. */}
+        {viewMode === 'week' && !loading && (
+          <WeekListView
+            weekDays={weekDays}
+            allSchedules={allSchedules}
+            bookingsByDate={bookingsByDate}
+            countsByKey={countsByKey}
+            todayStr={todayStr}
+            fmt={fmt}
+            dateFnsLocale={dateFnsLocale}
+            onSelectClass={(payload) => setDetailModal(payload)}
+            t={t}
+          />
+        )}
+
+        {/* Class Cards — DAY VIEW ONLY */}
+        {viewMode === 'day' && (
+        <>
         {loading ? (
           <div className="space-y-4">
             <ClassSkeleton />
@@ -501,9 +985,12 @@ export default function Classes() {
               const bookingRating = booking?.rating;
               const waitlistPos = booking?.waitlist_position;
               const hasTemplate = !!cls.workout_template_id;
-              const isRecurring = recurringSet.has(sched.id);
               const count = bookingCounts[sched.id] || 0;
-              const capacity = sched.capacity || cls.capacity || 20;
+              // Capacity precedence: per-slot override → class default → 20.
+              // Was reading non-existent columns sched.capacity / cls.capacity
+              // which both returned undefined → fell back to 20 always
+              // (e.g. a 30-cap class showed "20 spaces free" forever).
+              const capacity = sched.override_capacity || cls.max_capacity || 20;
               const isFull = count >= capacity;
               const spotsLeft = capacity - count;
               const dur = durationMinutes(sched.start_time, sched.end_time);
@@ -518,6 +1005,19 @@ export default function Classes() {
               const isAttended = bookingStatus === 'attended';
               const isAttendedNoRating = isAttended && !bookingRating;
               const isAttendedRated = isAttended && !!bookingRating;
+
+              // Past = either a date strictly before today, OR today + start_time already passed.
+              const selectedDateOnly = format(selectedDate, 'yyyy-MM-dd');
+              const todayOnly = format(today, 'yyyy-MM-dd');
+              let isPastClass = selectedDateOnly < todayOnly;
+              if (!isPastClass && selectedDateOnly === todayOnly && sched.end_time) {
+                // class has already ended (use end_time so an in-progress class still
+                // shows as bookable until the bell)
+                const [hh, mm] = String(sched.end_time).split(':');
+                const endDt = new Date(today);
+                endDt.setHours(parseInt(hh, 10) || 0, parseInt(mm, 10) || 0, 0, 0);
+                if (endDt.getTime() < Date.now()) isPastClass = true;
+              }
 
               return (
                 <div
@@ -554,15 +1054,6 @@ export default function Classes() {
                           <span>{t('classes.hasWorkout').split(' ').slice(-1)[0]}</span>
                         </div>
                       )}
-                      {isRecurring && (
-                        <div
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                          style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#10B981' }}
-                        >
-                          <Repeat size={10} />
-                          <span>{t('classes.recurringActive')}</span>
-                        </div>
-                      )}
                     </div>
 
                     <h3 className="text-[17px] font-bold mb-1" style={{ color: '#fff' }}>{cls.name}</h3>
@@ -579,7 +1070,17 @@ export default function Classes() {
                       )}
                     </div>
 
-                    {cls.instructor && (
+                    {cls.trainer?.id ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/trainers/${cls.trainer.id}`); }}
+                        className="text-[12px] mb-3 underline-offset-2 hover:underline active:opacity-80 transition-opacity text-left"
+                        style={{ color: 'rgba(255,255,255,0.85)', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}
+                        aria-label={t('publicTrainerProfile.viewProfile', { defaultValue: 'View profile' })}
+                      >
+                        {t('classes.instructor')}: {cls.trainer.full_name || cls.instructor || ''}
+                      </button>
+                    ) : cls.instructor && (
                       <p className="text-[12px] mb-3" style={{ color: 'rgba(255,255,255,0.6)' }}>
                         {t('classes.instructor')}: {cls.instructor}
                       </p>
@@ -608,7 +1109,20 @@ export default function Classes() {
                     </div>
 
                     {/* Action button — state-based */}
-                    {isAttendedRated ? (
+                    {isPastClass && !isAttended && !isConfirmedFuture ? (
+                      /* Past class with no actionable booking state — render a non-tappable "Passed" pill. */
+                      <div
+                        className="w-full py-2.5 rounded-xl text-[13px] font-semibold text-center min-h-[44px] flex items-center justify-center gap-2"
+                        style={{
+                          background: 'rgba(255,255,255,0.06)',
+                          color: 'rgba(255,255,255,0.5)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                        }}
+                      >
+                        <Clock size={14} />
+                        {t('classes.passed', { defaultValue: 'Pasada' })}
+                      </div>
+                    ) : isAttendedRated ? (
                       /* Attended + rated: show stars */
                       <div className="flex items-center justify-center gap-2 py-2.5">
                         <StarRating value={bookingRating} readOnly size={18} />
@@ -680,35 +1194,62 @@ export default function Classes() {
                       </button>
                     )}
 
-                    {/* Recurring toggle */}
-                    {(isBooked || isRecurring) && !isAttended && (
-                      <button
-                        onClick={() => handleToggleRecurring(sched.id, cls.id)}
-                        className="w-full mt-2 py-2 rounded-xl text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all active:scale-[0.97] min-h-[36px]"
-                        style={{
-                          backgroundColor: isRecurring ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)',
-                          color: isRecurring ? '#10B981' : 'rgba(255,255,255,0.5)',
-                          border: isRecurring ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(255,255,255,0.08)',
-                        }}
-                      >
-                        <Repeat size={12} />
-                        {t('classes.repeatWeekly')}
-                      </button>
-                    )}
                   </div>
                 </div>
               );
             })}
           </div>
         )}
+        </>
+        )}
 
-        {/* My Bookings */}
-        <section className="rounded-2xl p-5" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
-          <div className="flex items-center gap-2 mb-4">
+      </div>
+
+      {/* Mis Reservas — full-screen sheet opened from the top button. */}
+      {showBookingsSheet && (
+      <div
+        className="fixed inset-x-0 z-40 flex flex-col"
+        style={{
+          background: 'var(--color-bg-primary)',
+          // Respect the main app chrome: TOP starts below the app header
+          // (52px + safe-area-top) and BOTTOM ends above the tab bar
+          // (~84px including safe-area-bottom). This keeps the sheet
+          // between them like every other page.
+          top: 'calc(52px + var(--safe-area-top, env(safe-area-inset-top, 0px)))',
+          bottom: 'calc(72px + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
+        }}
+      >
+        {/* Sheet header — 3-column grid: [< Cerrar] | 📅 Mis Reservas (centered) | spacer */}
+        <div
+          className="grid items-center px-3 py-3 flex-shrink-0"
+          style={{
+            background: 'var(--color-bg-nav)',
+            borderBottom: '1px solid var(--color-border-default)',
+            gridTemplateColumns: '1fr auto 1fr',
+            columnGap: '8px',
+          }}
+        >
+          <button
+            onClick={() => setShowBookingsSheet(false)}
+            aria-label={t('classes.close', { defaultValue: 'Cerrar' })}
+            className="justify-self-start inline-flex items-center gap-1 rounded-xl transition-colors min-h-[40px] px-2 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            style={{ color: 'var(--color-accent)' }}
+          >
+            <ChevronLeft size={22} strokeWidth={2.2} />
+            <span className="text-[14px] font-semibold">{t('classes.close', { defaultValue: 'Cerrar' })}</span>
+          </button>
+          <div className="justify-self-center inline-flex items-center gap-1.5 min-w-0">
             <CalendarCheck size={16} style={{ color: 'var(--color-accent)' }} />
-            <h2 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('classes.myBookings')}</h2>
+            <span className="text-[15px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+              {t('classes.myBookings')}
+            </span>
           </div>
+          <span aria-hidden className="block" />
+        </div>
 
+        {/* Sheet body — bookings list directly below the header. */}
+        <div ref={sheetBodyRef} className="flex-1 overflow-y-auto px-4 pt-5 pb-24">
+        <section className="rounded-2xl p-5" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
           {(todayBookings.length + upcomingBookings.length + pastBookings.length) === 0 ? (
             <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('classes.noBookings')}</p>
           ) : (
@@ -717,7 +1258,7 @@ export default function Classes() {
               {todayBookings.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
-                    {isEs ? 'Hoy' : 'Today'}
+                    {t('classes.today', { defaultValue: 'Today' })}
                   </p>
                   {todayBookings.map(b => {
                     const sched = b.gym_class_schedules;
@@ -725,10 +1266,15 @@ export default function Classes() {
                     if (!sched || !cls) return null;
                     const isAttd = b.status === 'attended';
                     const hasRating = !!b.rating;
+                    const openDetail = () => setDetailModal({ booking: b, sched, cls, dateStr: b.booking_date });
                     return (
                       <div
                         key={b.id}
-                        className="flex items-center justify-between px-3 py-3 rounded-xl"
+                        role="button"
+                        tabIndex={0}
+                        onClick={openDetail}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(); } }}
+                        className="flex items-center justify-between px-3 py-3 rounded-xl cursor-pointer transition-colors active:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
                         style={{ backgroundColor: 'var(--color-bg-secondary)' }}
                       >
                         <div className="min-w-0 flex-1">
@@ -746,7 +1292,7 @@ export default function Classes() {
                           </div>
                         ) : isAttd && !hasRating ? (
                           <button
-                            onClick={() => setRatingModal({ bookingId: b.id, className: cls.name })}
+                            onClick={(e) => { e.stopPropagation(); setRatingModal({ bookingId: b.id, className: cls.name }); }}
                             className="text-[11px] px-3 py-1 rounded-full font-semibold flex-shrink-0 min-h-[32px] transition-all active:scale-95"
                             style={{ backgroundColor: '#D4AF37', color: '#000' }}
                           >
@@ -762,7 +1308,7 @@ export default function Classes() {
                           </span>
                         ) : b.status === 'confirmed' ? (
                           <button
-                            onClick={() => handleCheckIn(b.id, cls.name)}
+                            onClick={(e) => { e.stopPropagation(); handleCheckIn(b.id, cls.name); }}
                             disabled={actionLoading === b.id}
                             className="text-[11px] px-3 py-1 rounded-full font-semibold flex-shrink-0 min-h-[32px] transition-all active:scale-95 disabled:opacity-50"
                             style={{ backgroundColor: 'var(--color-success)', color: '#000' }}
@@ -793,10 +1339,15 @@ export default function Classes() {
                     const sched = b.gym_class_schedules;
                     const cls = sched?.gym_classes;
                     if (!sched || !cls) return null;
+                    const openDetail = () => setDetailModal({ booking: b, sched, cls, dateStr: b.booking_date });
                     return (
                       <div
                         key={b.id}
-                        className="flex items-center justify-between px-3 py-3 rounded-xl"
+                        role="button"
+                        tabIndex={0}
+                        onClick={openDetail}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(); } }}
+                        className="flex items-center justify-between px-3 py-3 rounded-xl cursor-pointer transition-colors active:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
                         style={{ backgroundColor: 'var(--color-bg-secondary)' }}
                       >
                         <div className="min-w-0 flex-1">
@@ -841,10 +1392,15 @@ export default function Classes() {
                     const cls = sched?.gym_classes;
                     if (!sched || !cls) return null;
                     const hasRating = !!b.rating;
+                    const openDetail = () => setDetailModal({ booking: b, sched, cls, dateStr: b.booking_date });
                     return (
                       <div
                         key={b.id}
-                        className="flex items-center justify-between px-3 py-3 rounded-xl"
+                        role="button"
+                        tabIndex={0}
+                        onClick={openDetail}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(); } }}
+                        className="flex items-center justify-between px-3 py-3 rounded-xl cursor-pointer transition-colors active:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
                         style={{ backgroundColor: 'var(--color-bg-secondary)' }}
                       >
                         <div className="min-w-0 flex-1">
@@ -862,7 +1418,7 @@ export default function Classes() {
                           </div>
                         ) : b.status === 'attended' ? (
                           <button
-                            onClick={() => setRatingModal({ bookingId: b.id, className: cls.name })}
+                            onClick={(e) => { e.stopPropagation(); setRatingModal({ bookingId: b.id, className: cls.name }); }}
                             className="text-[11px] px-3 py-1 rounded-full font-semibold flex-shrink-0 min-h-[32px] transition-all active:scale-95"
                             style={{ backgroundColor: '#D4AF37', color: '#000' }}
                           >
@@ -884,8 +1440,232 @@ export default function Classes() {
             </div>
           )}
         </section>
-
+        </div>
       </div>
+      )}
+
+      {/* Class detail modal — opened from any booking row in the Mis Reservas
+          sheet. Shows the class image, capacity bar, time/instructor/description
+          and a contextual action button (cancel or check in). */}
+      {detailModal && (() => {
+        const { sched, cls, booking, dateStr } = detailModal;
+        const imgUrl = classImageUrl(cls.image_path);
+        const dur = durationMinutes(sched.start_time, sched.end_time);
+        const accent = cls.color || cls.accent_color || 'var(--color-accent)';
+        const count = bookingCounts[sched.id] || 0;
+        const capacity = sched.override_capacity || cls.max_capacity || 20;
+        const status = booking?.status;
+        const isToday = dateStr === todayStr;
+        const isFuture = dateStr > todayStr;
+        // Past class: either a date strictly before today, OR today + class
+        // already ended. Used to swap the Reserve button for a "ya pasada" pill.
+        let isPastClass = dateStr < todayStr;
+        if (!isPastClass && isToday && sched.end_time) {
+          const [hh, mm] = String(sched.end_time).split(':');
+          const endDt = new Date();
+          endDt.setHours(parseInt(hh, 10) || 0, parseInt(mm, 10) || 0, 0, 0);
+          if (endDt.getTime() < Date.now()) isPastClass = true;
+        }
+        const closeModal = () => setDetailModal(null);
+        return (
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+            onClick={closeModal}
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-[420px] rounded-[28px] overflow-hidden"
+              style={{
+                background: 'var(--color-bg-card)',
+                // Content-sized: only as tall as it needs to be, capped so it
+                // never overflows on small phones (uses 100dvh so iOS safe
+                // area doesn't lop off the action button).
+                maxHeight: 'min(85dvh, 600px)',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+              }}
+            >
+              {/* Hero image */}
+              <div className="relative" style={{ minHeight: 160 }}>
+                {imgUrl ? (
+                  <img src={imgUrl} alt={cls.name} className="absolute inset-0 w-full h-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${accent}66, ${accent}22)` }} />
+                )}
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.15))' }} />
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  aria-label={t('classes.close', { defaultValue: 'Cerrar' })}
+                  className="absolute top-3 right-3 w-9 h-9 rounded-full grid place-items-center"
+                  style={{ background: 'rgba(0,0,0,0.55)', color: '#fff' }}
+                >
+                  <X size={18} />
+                </button>
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-8 h-1 rounded-full" style={{ background: accent }} />
+                    {cls.workout_template_id && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'rgba(212,175,55,0.18)', color: '#D4AF37' }}>
+                        <Dumbbell size={10} /> {t('classes.hasWorkout', { defaultValue: 'Workout' }).split(' ').slice(-1)[0]}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-[20px] font-bold" style={{ color: '#fff' }}>{cls.name}</h3>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {/* Time + duration */}
+                <div className="flex items-center gap-3 flex-wrap text-[13px]" style={{ color: 'var(--color-text-secondary)' }}>
+                  <span className="inline-flex items-center gap-1">
+                    <Clock size={14} />
+                    {format(new Date(dateStr + 'T00:00:00'), 'EEE, d MMM', dateFnsLocale)} · {fmt(sched.start_time)} – {fmt(sched.end_time)}
+                  </span>
+                  {dur && (
+                    <span style={{ color: 'var(--color-text-muted)' }}>{t('classes.minutes', { count: dur })}</span>
+                  )}
+                </div>
+
+                {/* Instructor */}
+                {(cls.trainer?.full_name || cls.instructor) && (
+                  <p className="text-[13px]" style={{ color: 'var(--color-text-secondary)' }}>
+                    {t('classes.instructor')}: {cls.trainer?.full_name || cls.instructor}
+                  </p>
+                )}
+
+                {/* Capacity bar */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                      <Users size={12} />
+                      {count}/{capacity}
+                    </span>
+                    <span className="text-[12px]" style={{ color: count >= capacity ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
+                      {count >= capacity ? t('classes.full') : t('classes.spotsLeft', { count: capacity - count })}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${Math.min((count / capacity) * 100, 100)}%`, background: count >= capacity ? 'var(--color-danger)' : accent }}
+                    />
+                  </div>
+                </div>
+
+                {/* Description (es/en aware) */}
+                {(cls.description_es && isEs ? cls.description_es : cls.description) && (
+                  <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                    {(isEs && cls.description_es) ? cls.description_es : cls.description}
+                  </p>
+                )}
+
+
+
+                {/* Status pill */}
+                {status && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] uppercase tracking-wider font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                      {t('classes.statusLabel', { defaultValue: 'Estado' })}:
+                    </span>
+                    <span
+                      className="text-[12px] px-2 py-0.5 rounded-full font-semibold"
+                      style={{
+                        background: status === 'waitlisted'
+                          ? 'rgba(245,158,11,0.15)'
+                          : status === 'attended'
+                            ? 'color-mix(in srgb, var(--color-success) 15%, transparent)'
+                            : 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                        color: status === 'waitlisted' ? '#F59E0B' : status === 'attended' ? 'var(--color-success)' : 'var(--color-accent)',
+                      }}
+                    >
+                      {status === 'waitlisted'
+                        ? t('classes.waitlisted', { position: booking?.waitlist_position || 1 })
+                        : status === 'attended'
+                          ? t('classes.attended')
+                          : t('classes.booked')}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer action — flex-shrink-0 so the body scrolls but the
+                  Reserve / Cancel button can never get pushed off-screen. */}
+              <div className="p-4 pt-3 flex gap-2 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}>
+                {/* Cancel button for any active booking. */}
+                {(status === 'confirmed' || status === 'waitlisted') && (
+                  <button
+                    onClick={async () => {
+                      closeModal();
+                      await handleCancel(booking.id);
+                    }}
+                    disabled={actionLoading === booking?.id}
+                    className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+                    style={{
+                      background: 'rgba(239,68,68,0.12)',
+                      color: 'var(--color-danger)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                    }}
+                  >
+                    {t('classes.cancelBooking')}
+                  </button>
+                )}
+                {status === 'confirmed' && isToday && (
+                  <button
+                    onClick={() => { handleCheckIn(booking.id, cls.name); closeModal(); }}
+                    disabled={actionLoading === booking?.id}
+                    className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+                    style={{ background: 'var(--color-success)', color: '#000' }}
+                  >
+                    {t('classes.checkIn')}
+                  </button>
+                )}
+                {status === 'attended' && !booking?.rating && (
+                  <button
+                    onClick={() => { setRatingModal({ bookingId: booking.id, className: cls.name }); closeModal(); }}
+                    className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98]"
+                    style={{ background: '#D4AF37', color: '#000' }}
+                  >
+                    {t('classes.rateClass')}
+                  </button>
+                )}
+                {/* Bookable: future date OR today's class that hasn't ended yet, with no existing booking.
+                    Pass the modal's dateStr explicitly so the booking lands
+                    on the date the user is viewing — not the day-strip's
+                    selected date (they can differ in Week / Month views). */}
+                {!status && !isPastClass && (isFuture || isToday) && (
+                  <button
+                    onClick={() => { handleBook(sched.id, cls.id, dateStr); closeModal(); }}
+                    disabled={actionLoading === sched.id}
+                    className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+                    style={{ background: accent, color: '#000' }}
+                  >
+                    {count >= capacity ? t('classes.joinWaitlist') : t('classes.book')}
+                  </button>
+                )}
+                {/* Past class with no booking — no action button, just an
+                    informational pill so the user knows why. */}
+                {!status && isPastClass && (
+                  <div
+                    className="flex-1 py-3 rounded-xl text-[13px] font-semibold text-center inline-flex items-center justify-center gap-2"
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'var(--color-text-muted)',
+                      border: '1px solid var(--color-border-subtle)',
+                    }}
+                  >
+                    <Clock size={14} />
+                    {t('classes.alreadyPassed', { defaultValue: 'Esta clase ya pasó' })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Toast */}
       {toast && (
@@ -912,7 +1692,7 @@ export default function Classes() {
         onClose={() => setRatingModal(null)}
         bookingId={ratingModal?.bookingId}
         className={ratingModal?.className}
-        onSubmitted={loadData}
+        onSubmitted={reloadActive}
       />
     </div>
   );

@@ -10,22 +10,36 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { downloadCSV } from '../../lib/exportData';
 import {
-  PageHeader, AdminCard, SectionLabel, FadeIn, AdminPageShell,
+  PageHeader, FadeIn, AdminPageShell,
 } from '../../components/admin';
 
 // ── CSV helpers ──────────────────────────────────────────────
+// Cells starting with =, +, -, @, tab, or CR are interpreted as formulas by
+// Excel/Sheets/LibreOffice — prefix with `'` to neutralize (OWASP CSV Injection).
+const CSV_FORMULA_PREFIX_RE = /^[=+\-@\t\r]/;
+
 function esc(value) {
   if (value == null || value === '') return '';
-  const str = String(value);
+  let str = String(value);
+  if (CSV_FORMULA_PREFIX_RE.test(str)) {
+    str = `'${str}`;
+  }
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
 }
 
+// ISO yyyy-mm-dd in the user's local timezone — locale-independent so the CSV
+// is consistent regardless of where the admin clicks Export.
 function fmtDate(iso) {
   if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-CA');
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function todayISO() {
@@ -93,10 +107,10 @@ function applyDateFilter(query, dateCol, from, to) {
 }
 
 // ── Export functions ─────────────────────────────────────────
-async function exportMembers(gymId, from, to) {
+async function exportMembers(gymId, from, to, t) {
   let query = supabase
     .from('profiles')
-    .select('id, full_name, email, role, fitness_level, goal, created_at, last_workout_at, current_streak')
+    .select('id, full_name, email, role, fitness_level, goal, created_at, last_workout_at, streak_cache(current_streak_days)')
     .eq('gym_id', gymId)
     .order('full_name', { ascending: true })
     .limit(10000);
@@ -113,11 +127,22 @@ async function exportMembers(gymId, from, to) {
     for (const s of (scores || [])) churnMap[s.profile_id] = s;
   } catch (err) { console.warn('Failed to fetch churn scores for export', err); }
 
-  const header = ['Name', 'Email', 'Role', 'Fitness Level', 'Goal', 'Joined', 'Last Workout', 'Streak', 'Churn Score', 'Risk Tier'].map(esc).join(',');
+  const header = [
+    t('admin.reports.csv.name', 'Name'),
+    t('admin.reports.csv.email', 'Email'),
+    t('admin.reports.csv.role', 'Role'),
+    t('admin.reports.csv.fitnessLevel', 'Fitness Level'),
+    t('admin.reports.csv.goal', 'Goal'),
+    t('admin.reports.csv.joined', 'Joined'),
+    t('admin.reports.csv.lastWorkout', 'Last Workout'),
+    t('admin.reports.csv.streak', 'Streak'),
+    t('admin.reports.csv.churnScore', 'Churn Score'),
+    t('admin.reports.csv.riskTier', 'Risk Tier'),
+  ].map(esc).join(',');
   const rows = (data ?? []).map(p => [
     p.full_name || '', p.email || '', p.role || '', p.fitness_level || '',
     p.goal || '', fmtDate(p.created_at), fmtDate(p.last_workout_at),
-    p.current_streak ?? '', churnMap[p.id]?.score ?? '', churnMap[p.id]?.risk_tier ?? '',
+    p.streak_cache?.current_streak_days ?? p.streak_cache?.[0]?.current_streak_days ?? '', churnMap[p.id]?.score ?? '', churnMap[p.id]?.risk_tier ?? '',
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
   const filename = `members_${todayISO()}.csv`;
@@ -125,7 +150,7 @@ async function exportMembers(gymId, from, to) {
   return { filename, rows: rows.length };
 }
 
-async function exportWorkouts(gymId, from, to) {
+async function exportWorkouts(gymId, from, to, t) {
   let query = supabase
     .from('workout_sessions')
     .select('profile_id, name, completed_at, duration_seconds, total_volume_lbs, status, profiles!inner(full_name, gym_id), session_exercises(id)')
@@ -137,7 +162,15 @@ async function exportWorkouts(gymId, from, to) {
   const { data, error } = await query;
   if (error) throw error;
 
-  const header = ['Member', 'Date', 'Routine', 'Duration (min)', 'Total Volume (lbs)', 'Exercises', 'Status'].map(esc).join(',');
+  const header = [
+    t('admin.reports.csv.member', 'Member'),
+    t('admin.reports.csv.date', 'Date'),
+    t('admin.reports.csv.routine', 'Routine'),
+    t('admin.reports.csv.durationMin', 'Duration (min)'),
+    t('admin.reports.csv.totalVolumeLbs', 'Total Volume (lbs)'),
+    t('admin.reports.csv.exercises', 'Exercises'),
+    t('admin.reports.csv.status', 'Status'),
+  ].map(esc).join(',');
   const rows = (data ?? []).map(s => [
     s.profiles?.full_name || '', fmtDate(s.completed_at), s.name || '',
     s.duration_seconds ? Math.round(s.duration_seconds / 60) : '',
@@ -149,7 +182,7 @@ async function exportWorkouts(gymId, from, to) {
   return { filename, rows: rows.length };
 }
 
-async function exportPRs(gymId, from, to) {
+async function exportPRs(gymId, from, to, t) {
   let query = supabase
     .from('personal_records')
     .select('weight_lbs, reps, estimated_1rm, achieved_at, profiles!inner(full_name, gym_id), exercises(name)')
@@ -160,7 +193,14 @@ async function exportPRs(gymId, from, to) {
   const { data, error } = await query;
   if (error) throw error;
 
-  const header = ['Member', 'Exercise', 'Weight (lbs)', 'Reps', 'Estimated 1RM', 'Date Achieved'].map(esc).join(',');
+  const header = [
+    t('admin.reports.csv.member', 'Member'),
+    t('admin.reports.csv.exercise', 'Exercise'),
+    t('admin.reports.csv.weightLbs', 'Weight (lbs)'),
+    t('admin.reports.csv.reps', 'Reps'),
+    t('admin.reports.csv.estimated1RM', 'Estimated 1RM'),
+    t('admin.reports.csv.dateAchieved', 'Date Achieved'),
+  ].map(esc).join(',');
   const rows = (data ?? []).map(pr => [
     pr.profiles?.full_name || '', pr.exercises?.name || '',
     pr.weight_lbs ?? '', pr.reps ?? '', pr.estimated_1rm ?? '', fmtDate(pr.achieved_at),
@@ -171,7 +211,7 @@ async function exportPRs(gymId, from, to) {
   return { filename, rows: rows.length };
 }
 
-async function exportAttendance(gymId, from, to) {
+async function exportAttendance(gymId, from, to, t, locale) {
   let query = supabase
     .from('check_ins')
     .select('profile_id, checked_in_at, method, profiles!inner(full_name, gym_id)')
@@ -182,13 +222,18 @@ async function exportAttendance(gymId, from, to) {
   const { data, error } = await query;
   if (error) throw error;
 
-  const header = ['Member', 'Date', 'Time', 'Method'].map(esc).join(',');
+  const header = [
+    t('admin.reports.csv.member', 'Member'),
+    t('admin.reports.csv.date', 'Date'),
+    t('admin.reports.csv.time', 'Time'),
+    t('admin.reports.csv.method', 'Method'),
+  ].map(esc).join(',');
   const rows = (data ?? []).map(c => {
     const d = c.checked_in_at ? new Date(c.checked_in_at) : null;
     return [
       c.profiles?.full_name || '',
       d ? fmtDate(c.checked_in_at) : '',
-      d ? d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '',
+      d ? d.toLocaleTimeString(locale || undefined, { hour: '2-digit', minute: '2-digit' }) : '',
       c.method || '',
     ].map(esc).join(',');
   });
@@ -198,7 +243,7 @@ async function exportAttendance(gymId, from, to) {
   return { filename, rows: rows.length };
 }
 
-async function exportBodyMetrics(gymId, from, to) {
+async function exportBodyMetrics(gymId, from, to, t) {
   const [{ data: weights, error: wErr }, { data: measurements, error: mErr }] = await Promise.all([
     applyDateFilter(
       supabase.from('body_weight_logs')
@@ -233,7 +278,19 @@ async function exportBodyMetrics(gymId, from, to) {
   }
   const sorted = Object.values(byKey).sort((a, b) => a.member.localeCompare(b.member) || a.date.localeCompare(b.date));
 
-  const header = ['Member', 'Date', 'Weight (lbs)', 'Body Fat %', 'Chest (cm)', 'Waist (cm)', 'Hips (cm)', 'Left Arm (cm)', 'Right Arm (cm)', 'Left Thigh (cm)', 'Right Thigh (cm)'].map(esc).join(',');
+  const header = [
+    t('admin.reports.csv.member', 'Member'),
+    t('admin.reports.csv.date', 'Date'),
+    t('admin.reports.csv.weightLbs', 'Weight (lbs)'),
+    t('admin.reports.csv.bodyFatPct', 'Body Fat %'),
+    t('admin.reports.csv.chestCm', 'Chest (cm)'),
+    t('admin.reports.csv.waistCm', 'Waist (cm)'),
+    t('admin.reports.csv.hipsCm', 'Hips (cm)'),
+    t('admin.reports.csv.leftArmCm', 'Left Arm (cm)'),
+    t('admin.reports.csv.rightArmCm', 'Right Arm (cm)'),
+    t('admin.reports.csv.leftThighCm', 'Left Thigh (cm)'),
+    t('admin.reports.csv.rightThighCm', 'Right Thigh (cm)'),
+  ].map(esc).join(',');
   const rows = sorted.map(r => [
     r.member, r.date, r.weight_lbs ?? '', r.body_fat_pct ?? '', r.chest_cm ?? '', r.waist_cm ?? '', r.hips_cm ?? '', r.left_arm_cm ?? '', r.right_arm_cm ?? '', r.left_thigh_cm ?? '', r.right_thigh_cm ?? '',
   ].map(esc).join(','));
@@ -243,7 +300,7 @@ async function exportBodyMetrics(gymId, from, to) {
   return { filename, rows: rows.length };
 }
 
-async function exportChallenges(gymId, from, to) {
+async function exportChallenges(gymId, from, to, t) {
   let query = supabase
     .from('challenge_participants')
     .select('score, joined_at, challenges!inner(id, title, type, status, gym_id), profiles!inner(full_name)')
@@ -254,7 +311,14 @@ async function exportChallenges(gymId, from, to) {
   const { data, error } = await query;
   if (error) throw error;
 
-  const header = ['Challenge', 'Type', 'Status', 'Member', 'Score', 'Joined'].map(esc).join(',');
+  const header = [
+    t('admin.reports.csv.challenge', 'Challenge'),
+    t('admin.reports.csv.type', 'Type'),
+    t('admin.reports.csv.status', 'Status'),
+    t('admin.reports.csv.member', 'Member'),
+    t('admin.reports.csv.score', 'Score'),
+    t('admin.reports.csv.joined', 'Joined'),
+  ].map(esc).join(',');
   const rows = (data ?? []).map(cp => [
     cp.challenges?.title || '', cp.challenges?.type || '', cp.challenges?.status || '',
     cp.profiles?.full_name || '', cp.score ?? '', fmtDate(cp.joined_at),
@@ -265,7 +329,7 @@ async function exportChallenges(gymId, from, to) {
   return { filename, rows: rows.length };
 }
 
-async function exportPurchases(gymId, from, to) {
+async function exportPurchases(gymId, from, to, t) {
   let query = supabase
     .from('member_purchases')
     .select('quantity, total_price, created_at, profiles!inner(full_name, gym_id), gym_products!inner(name, category)')
@@ -276,7 +340,14 @@ async function exportPurchases(gymId, from, to) {
   const { data, error } = await query;
   if (error) throw error;
 
-  const header = ['Member', 'Product', 'Category', 'Quantity', 'Total Price', 'Date'].map(esc).join(',');
+  const header = [
+    t('admin.reports.csv.member', 'Member'),
+    t('admin.reports.csv.product', 'Product'),
+    t('admin.reports.csv.category', 'Category'),
+    t('admin.reports.csv.quantity', 'Quantity'),
+    t('admin.reports.csv.totalPrice', 'Total Price'),
+    t('admin.reports.csv.date', 'Date'),
+  ].map(esc).join(',');
   const rows = (data ?? []).map(p => [
     p.profiles?.full_name || '', p.gym_products?.name || '', p.gym_products?.category || '',
     p.quantity ?? '', p.total_price ?? '', fmtDate(p.created_at),
@@ -287,7 +358,7 @@ async function exportPurchases(gymId, from, to) {
   return { filename, rows: rows.length };
 }
 
-async function exportClassBookings(gymId, from, to) {
+async function exportClassBookings(gymId, from, to, t) {
   let query = supabase
     .from('gym_class_bookings')
     .select('status, booked_at, checked_in_at, rating, gym_class_schedules!inner(day_of_week, start_time, gym_classes!inner(name, gym_id)), profiles!inner(full_name)')
@@ -298,7 +369,16 @@ async function exportClassBookings(gymId, from, to) {
   const { data, error } = await query;
   if (error) throw error;
 
-  const header = ['Member', 'Class', 'Day', 'Time', 'Status', 'Booked At', 'Checked In', 'Rating'].map(esc).join(',');
+  const header = [
+    t('admin.reports.csv.member', 'Member'),
+    t('admin.reports.csv.class', 'Class'),
+    t('admin.reports.csv.day', 'Day'),
+    t('admin.reports.csv.time', 'Time'),
+    t('admin.reports.csv.status', 'Status'),
+    t('admin.reports.csv.bookedAt', 'Booked At'),
+    t('admin.reports.csv.checkedIn', 'Checked In'),
+    t('admin.reports.csv.rating', 'Rating'),
+  ].map(esc).join(',');
   const rows = (data ?? []).map(b => [
     b.profiles?.full_name || '', b.gym_class_schedules?.gym_classes?.name || '',
     b.gym_class_schedules?.day_of_week ?? '', b.gym_class_schedules?.start_time || '',
@@ -321,47 +401,72 @@ const EXPORT_FNS = {
   class_bookings: exportClassBookings,
 };
 
+// ── Tone → CSS var mapping ─────────────────────────────────
+const TONE_VARS = {
+  teal:  { bg: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',  fg: 'var(--color-accent)' },
+  coach: { bg: 'var(--color-coach-soft)',   fg: 'var(--color-coach)' },
+  warn:  { bg: 'var(--color-warning-soft)', fg: 'var(--color-warning)' },
+  hot:   { bg: 'var(--color-danger-soft)',  fg: 'var(--color-danger)' },
+  good:  { bg: 'var(--color-success-soft)', fg: 'var(--color-success)' },
+  info:  { bg: 'var(--color-info-soft)',    fg: 'var(--color-info)' },
+};
+
+// Assign a tone per export key (matches reference palette)
+const EXPORT_TONE = {
+  members: 'teal',
+  workouts: 'coach',
+  prs: 'warn',
+  attendance: 'teal',
+  body_metrics: 'hot',
+  challenges: 'coach',
+  purchases: 'good',
+  class_bookings: 'warn',
+};
+
 // ── Report Card ─────────────────────────────────────────────
 function ReportCard({ def, exporting, onExport, t, delay }) {
   const { key, icon: Icon, labelKey, descKey } = def;
   const isActive = exporting === key;
+  const tone = TONE_VARS[EXPORT_TONE[key] || 'teal'];
 
   return (
     <FadeIn delay={delay}>
-      <AdminCard hover className="flex flex-col h-full">
-        {/* Icon + Title */}
-        <div className="flex items-start gap-3 mb-3">
-          <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-            <Icon size={18} className="text-[#D4AF37]" />
+      <div className="admin-card flex flex-col h-full" style={{ padding: 16 }}>
+        <div className="flex items-start gap-2.5 mb-2.5">
+          <div
+            className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center flex-shrink-0"
+            style={{ background: tone.bg }}
+          >
+            <Icon size={15} style={{ color: tone.fg }} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-semibold text-[#E5E7EB] leading-tight mb-0.5">
+            <p className="text-[13.5px] font-extrabold leading-tight" style={{ color: 'var(--color-admin-text)', fontFamily: 'Archivo, sans-serif' }}>
               {t(labelKey)}
             </p>
-            <p className="text-[12px] text-[#6B7280] leading-relaxed">
+            <p className="text-[11px] mt-[3px] leading-[1.4]" style={{ color: 'var(--color-admin-text-muted)' }}>
               {t(descKey)}
             </p>
           </div>
         </div>
 
-        {/* Spacer to push button to bottom */}
         <div className="flex-1" />
 
-        {/* Export button */}
         <button
           onClick={() => onExport(key)}
           disabled={!!exporting}
-          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all mt-3 ${
-            isActive
-              ? 'bg-[#D4AF37]/20 text-[#D4AF37] cursor-wait'
-              : exporting
-                ? 'bg-white/[0.02] text-[#6B7280] cursor-not-allowed opacity-50'
-                : 'bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/20 border border-[#D4AF37]/20 hover:border-[#D4AF37]/40'
-          }`}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-[10px] text-[12px] font-bold transition-all mt-2 disabled:opacity-50"
+          style={{
+            background: isActive
+              ? 'color-mix(in srgb, var(--color-accent) 22%, transparent)'
+              : 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+            color: 'var(--color-accent)',
+            border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+            cursor: isActive ? 'wait' : exporting ? 'not-allowed' : 'pointer',
+          }}
         >
           {isActive ? (
             <>
-              <div className="w-3.5 h-3.5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+              <div className="w-3.5 h-3.5 rounded-full animate-spin" style={{ border: '2px solid color-mix(in srgb, var(--color-accent) 30%, transparent)', borderTopColor: 'var(--color-accent)' }} />
               {t('admin.reports.exporting')}
             </>
           ) : (
@@ -371,14 +476,14 @@ function ReportCard({ def, exporting, onExport, t, delay }) {
             </>
           )}
         </button>
-      </AdminCard>
+      </div>
     </FadeIn>
   );
 }
 
 // ── Component ────────────────────────────────────────────────
 export default function AdminReports() {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { profile } = useAuth();
   const { showToast } = useToast();
   const gymId = profile?.gym_id;
@@ -393,11 +498,20 @@ export default function AdminReports() {
 
   const handleExport = useCallback(async (key) => {
     if (!gymId || exporting) return;
+    if (rangeKey === 'custom' && (!customFrom || !customTo)) {
+      showToast(t('admin.reports.pickBothDates', { defaultValue: 'Pick both start and end dates.' }), 'error');
+      return;
+    }
+    // Sanity-check the custom range: from must be on/before to.
+    if (rangeKey === 'custom' && customFrom && customTo && new Date(customFrom) > new Date(customTo)) {
+      showToast(t('admin.reports.invalidDateRange', { defaultValue: 'Start date must be on or before end date.' }), 'error');
+      return;
+    }
     setExporting(key);
     try {
       const { from, to } = getDateRange(rangeKey, customFrom ? new Date(customFrom).toISOString() : null, customTo ? new Date(customTo).toISOString() : null);
       const exportFn = EXPORT_FNS[key];
-      const result = await exportFn(gymId, from, to);
+      const result = await exportFn(gymId, from, to, t, i18n.language);
 
       const entry = {
         key,
@@ -432,24 +546,21 @@ export default function AdminReports() {
         />
       </FadeIn>
 
-      <div className="mt-6 space-y-8">
+      <div className="mt-6">
         {/* ── Global Date Range ─────────────────────────────── */}
         <FadeIn delay={0.05}>
-          <AdminCard>
-            <div className="flex items-center gap-2 mb-4">
-              <CalendarRange size={16} className="text-[#D4AF37]" />
-              <SectionLabel>{t('admin.reports.dateRange')}</SectionLabel>
+          <div className="admin-card mb-[18px]" style={{ padding: 16 }}>
+            <div className="flex items-center gap-2 mb-3">
+              <CalendarRange size={14} style={{ color: 'var(--color-admin-text-muted)' }} />
+              <span className="admin-eyebrow">{t('admin.reports.dateRange')}</span>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1 md:mx-0 md:px-0 md:flex-wrap">
               {RANGE_PRESETS.map(preset => (
                 <button
                   key={preset.key}
                   onClick={() => setRangeKey(preset.key)}
-                  className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all ${
-                    rangeKey === preset.key
-                      ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
-                      : 'bg-white/[0.03] text-[#9CA3AF] border border-white/6 hover:border-white/10 hover:text-[#E5E7EB]'
-                  }`}
+                  className={`admin-pill flex-shrink-0 ${rangeKey === preset.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
+                  style={{ padding: '0 16px', fontSize: 12, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                 >
                   {t(preset.labelKey)}
                 </button>
@@ -458,35 +569,37 @@ export default function AdminReports() {
             {rangeKey === 'custom' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 max-w-md">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[11px] text-[#6B7280] uppercase tracking-wide">{t('admin.reports.from')}</label>
+                  <label className="admin-eyebrow">{t('admin.reports.from')}</label>
                   <input
                     type="date"
                     value={customFrom}
                     onChange={e => setCustomFrom(e.target.value)}
-                    className="w-full bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
+                    className="w-full rounded-lg px-3 py-1.5 text-[13px]"
+                    style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[11px] text-[#6B7280] uppercase tracking-wide">{t('admin.reports.to')}</label>
+                  <label className="admin-eyebrow">{t('admin.reports.to')}</label>
                   <input
                     type="date"
                     value={customTo}
                     onChange={e => setCustomTo(e.target.value)}
-                    className="w-full bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
+                    className="w-full rounded-lg px-3 py-1.5 text-[13px]"
+                    style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
                   />
                 </div>
               </div>
             )}
-          </AdminCard>
+          </div>
         </FadeIn>
 
-        {/* ── Report Cards Grid ────────────────────────────── */}
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <FileSpreadsheet size={16} className="text-[#D4AF37]" />
-            <SectionLabel>{t('admin.reports.quickExports')}</SectionLabel>
+        {/* ── Quick Exports grid ────────────────────────────── */}
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-2.5">
+            <FileSpreadsheet size={13} style={{ color: 'var(--color-admin-text-muted)' }} />
+            <span className="admin-eyebrow">{t('admin.reports.quickExports')}</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 md:gap-3">
             {EXPORT_DEFS.map((def, idx) => (
               <ReportCard
                 key={def.key}
@@ -500,69 +613,83 @@ export default function AdminReports() {
           </div>
         </div>
 
-        {/* ── Export History ────────────────────────────────── */}
-        <FadeIn delay={0.2}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Clock size={16} className="text-[#D4AF37]" />
-              <SectionLabel>{t('admin.reports.exportHistory')}</SectionLabel>
-            </div>
-            {history.length > 0 && (
-              <button
-                onClick={handleClearHistory}
-                className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-[#EF4444] transition-colors"
-              >
-                <Trash2 size={12} />
-                {t('admin.reports.clearHistory')}
-              </button>
-            )}
-          </div>
-          <AdminCard>
-            {history.length === 0 ? (
-              <div className="py-8 text-center">
-                <Clock size={24} className="mx-auto mb-2 text-[#6B7280]/40" />
-                <p className="text-[13px] text-[#6B7280]">{t('admin.reports.noHistory')}</p>
+        {/* ── 2-col: History + Scheduled ────────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Export History */}
+          <FadeIn delay={0.2}>
+            <div className="admin-card" style={{ padding: 20 }}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-[13px] font-extrabold" style={{ color: 'var(--color-admin-text)', fontFamily: 'Archivo, sans-serif' }}>{t('admin.reports.exportHistory')}</p>
+                  <p className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>
+                    {history.length === 0 ? t('admin.reports.noHistory') : `${history.length}`}
+                  </p>
+                </div>
+                {history.length > 0 && (
+                  <button
+                    onClick={handleClearHistory}
+                    className="flex items-center gap-1 text-[11px] transition-colors"
+                    style={{ color: 'var(--color-admin-text-muted)' }}
+                  >
+                    <Trash2 size={12} />
+                    {t('admin.reports.clearHistory')}
+                  </button>
+                )}
               </div>
-            ) : (
-              <div className="divide-y divide-white/6">
-                {history.map((entry, idx) => {
-                  const def = EXPORT_DEFS.find(d => d.key === entry.key);
-                  const EntryIcon = def?.icon || FileSpreadsheet;
-                  return (
-                    <div key={idx} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                      <div className="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
-                        <EntryIcon size={14} className="text-[#9CA3AF]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{entry.filename}</p>
-                        <p className="text-[11px] text-[#6B7280]">
-                          {entry.rows} {t('admin.reports.rows')} &middot; {new Date(entry.exportedAt).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </AdminCard>
-        </FadeIn>
 
-        {/* ── Scheduled Reports (Coming Soon) ──────────────── */}
-        <FadeIn delay={0.25}>
-          <div className="flex items-center gap-2 mb-4">
-            <Timer size={16} className="text-[#D4AF37]" />
-            <SectionLabel>{t('admin.reports.scheduledReports')}</SectionLabel>
-          </div>
-          <AdminCard>
-            <div className="py-10 text-center">
-              <div className="w-12 h-12 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-3">
-                <Timer size={24} className="text-[#D4AF37]/50" />
-              </div>
-              <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">{t('admin.reports.comingSoon')}</p>
-              <p className="text-[12px] text-[#6B7280] max-w-xs mx-auto">{t('admin.reports.scheduledDesc')}</p>
+              {history.length === 0 ? (
+                <div className="text-center" style={{ padding: '28px 0', color: 'var(--color-admin-text-muted)', fontSize: 12.5 }}>
+                  <div
+                    className="flex items-center justify-center mx-auto mb-2.5"
+                    style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--color-admin-panel)' }}
+                  >
+                    <Clock size={18} style={{ color: 'var(--color-admin-text-muted)' }} />
+                  </div>
+                  {t('admin.reports.noHistory')}
+                </div>
+              ) : (
+                <div className="divide-y" style={{ borderColor: 'var(--color-admin-border)' }}>
+                  {history.map((entry, idx) => {
+                    const def = EXPORT_DEFS.find(d => d.key === entry.key);
+                    const EntryIcon = def?.icon || FileSpreadsheet;
+                    return (
+                      <div key={idx} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--color-admin-panel)' }}>
+                          <EntryIcon size={14} style={{ color: 'var(--color-admin-text-sub)' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-medium truncate" style={{ color: 'var(--color-admin-text)' }}>{entry.filename}</p>
+                          <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                            {entry.rows} {t('admin.reports.rows')} &middot; {new Date(entry.exportedAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </AdminCard>
-        </FadeIn>
+          </FadeIn>
+
+          {/* Scheduled Reports */}
+          <FadeIn delay={0.25}>
+            <div className="admin-card" style={{ padding: 20 }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[13px] font-extrabold" style={{ color: 'var(--color-admin-text)', fontFamily: 'Archivo, sans-serif' }}>{t('admin.reports.scheduledReports')}</p>
+                <span className="admin-pill admin-pill--warn">{t('admin.reports.comingSoon', 'COMING SOON')}</span>
+              </div>
+              <div className="text-center" style={{ padding: '28px 0', color: 'var(--color-admin-text-muted)', fontSize: 12.5 }}>
+                <div
+                  className="flex items-center justify-center mx-auto mb-2.5"
+                  style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--color-admin-panel)' }}
+                >
+                  <Timer size={18} style={{ color: 'var(--color-admin-text-muted)' }} />
+                </div>
+                {t('admin.reports.scheduledDesc')}
+              </div>
+            </div>
+          </FadeIn>
+        </div>
       </div>
     </AdminPageShell>
   );

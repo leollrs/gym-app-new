@@ -25,11 +25,11 @@ export default function GymSettingsTab({
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4">
         <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
           <Settings className="w-4 h-4 text-[#D4AF37]" />
-          Gym Info
+          {t('platform.gymDetail.settings.gymInfo')}
         </h3>
 
         <div>
-          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Name</label>
+          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.nameLabel')}</label>
           <input
             type="text"
             value={editingGym.name}
@@ -39,7 +39,7 @@ export default function GymSettingsTab({
         </div>
 
         <div>
-          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Slug</label>
+          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.slugLabel')}</label>
           <input
             type="text"
             value={editingGym.slug}
@@ -49,12 +49,12 @@ export default function GymSettingsTab({
         </div>
 
         <div>
-          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Timezone</label>
+          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.timezoneLabel')}</label>
           <p className="text-[13px] text-[#E5E7EB]">{gym.timezone ?? t('platform.gymDetail.settings.notSet')}</p>
         </div>
 
         <div>
-          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Owner</label>
+          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.ownerLabel')}</label>
           <p className="text-[13px] text-[#9CA3AF] font-mono text-[11px]">{gym.owner_user_id ?? t('platform.gymDetail.people.unknown')}</p>
         </div>
 
@@ -71,14 +71,14 @@ export default function GymSettingsTab({
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4">
         <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
           <Palette className="w-4 h-4 text-[#D4AF37]" />
-          Branding
+          {t('platform.gymDetail.settings.branding')}
         </h3>
 
         {branding ? (
           <>
             <div className="flex items-center gap-3">
               <div>
-                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Primary Color</label>
+                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.primaryColor')}</label>
                 <div className="flex items-center gap-2">
                   <div
                     className="w-8 h-8 rounded-lg border border-white/10"
@@ -88,7 +88,7 @@ export default function GymSettingsTab({
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Accent Color</label>
+                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.accentColor')}</label>
                 <div className="flex items-center gap-2">
                   <div
                     className="w-8 h-8 rounded-lg border border-white/10"
@@ -101,24 +101,24 @@ export default function GymSettingsTab({
 
             {branding.custom_app_name && (
               <div>
-                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Custom App Name</label>
+                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.customAppName')}</label>
                 <p className="text-[13px] text-[#E5E7EB]">{branding.custom_app_name}</p>
               </div>
             )}
 
             {logoUrl && (
               <div>
-                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Logo</label>
+                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.logo')}</label>
                 <img
                   src={logoUrl}
-                  alt={`${gym.name} logo`}
+                  alt={t('platform.gymDetail.settings.logoAlt', { name: gym.name })}
                   className="h-12 w-auto rounded-lg border border-white/6 bg-white/[0.03] p-1"
                 />
               </div>
             )}
           </>
         ) : (
-          <p className="text-[#6B7280] text-sm">No branding configured for this gym.</p>
+          <p className="text-[#6B7280] text-sm">{t('platform.gymDetail.settings.noBranding')}</p>
         )}
       </div>
 
@@ -126,24 +126,24 @@ export default function GymSettingsTab({
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4 lg:col-span-2">
         <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
           <QrCode className="w-4 h-4 text-[#D4AF37]" />
-          QR Code Check-In
+          {t('platform.gymDetail.settings.qrCheckIn')}
         </h3>
         <p className="text-[12px] text-[#6B7280]">
-          Generate unique QR codes for members to scan at this gym's existing access system
+          {t('platform.gymDetail.settings.qrDesc')}
         </p>
 
         {/* Enable toggle */}
         <div className="flex items-center justify-between p-3 bg-[#111827] rounded-xl border border-white/6">
           <div>
-            <p className="text-[13px] font-semibold text-[#E5E7EB]">Enable QR Codes</p>
-            <p className="text-[11px] text-[#6B7280]">Members will see a "Show QR" button on the check-in screen</p>
+            <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.settings.enableQr')}</p>
+            <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.settings.enableQrDesc')}</p>
           </div>
           <button
             onClick={() => setEditingGym(prev => ({ ...prev, qr_enabled: !prev.qr_enabled }))}
             className={`relative w-11 h-6 rounded-full transition-colors ${editingGym.qr_enabled ? 'bg-[#D4AF37]' : 'bg-[#374151]'}`}
             role="switch"
             aria-checked={editingGym.qr_enabled}
-            aria-label="Toggle QR codes"
+            aria-label={t('platform.gymDetail.settings.toggleQrCodes')}
           >
             <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editingGym.qr_enabled ? 'left-[22px]' : 'left-0.5'}`} />
           </button>
@@ -153,7 +153,7 @@ export default function GymSettingsTab({
           <div className="space-y-4">
             {/* Payload type */}
             <div>
-              <label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">Code Type</label>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">{t('platform.gymDetail.settings.codeType')}</label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {[
                   { key: 'auto_id', label: t('platform.gymDetail.settings.autoGenerated'), desc: t('platform.gymDetail.settings.autoGeneratedDesc') },
@@ -178,15 +178,15 @@ export default function GymSettingsTab({
             {/* Custom template input */}
             {editingGym.qr_payload_type === 'custom_template' && (
               <div>
-                <label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">Template</label>
+                <label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">{t('platform.gymDetail.settings.templateLabel')}</label>
                 <input
                   value={editingGym.qr_payload_template}
                   onChange={e => setEditingGym(prev => ({ ...prev, qr_payload_template: e.target.value }))}
-                  placeholder="e.g. GYM-{member_id} or {external_id}"
+                  placeholder={t('platform.gymDetail.settings.templatePlaceholder')}
                   className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 font-mono"
                 />
                 <p className="text-[11px] text-[#6B7280] mt-1.5">
-                  Variables: <span className="font-mono text-[#D4AF37]/70">{'{member_id}'}</span>, <span className="font-mono text-[#D4AF37]/70">{'{external_id}'}</span>, <span className="font-mono text-[#D4AF37]/70">{'{full_name}'}</span>, <span className="font-mono text-[#D4AF37]/70">{'{username}'}</span>
+                  {t('platform.gymDetail.settings.templateVariables')} <span className="font-mono text-[#D4AF37]/70">{'{member_id}'}</span>, <span className="font-mono text-[#D4AF37]/70">{'{external_id}'}</span>, <span className="font-mono text-[#D4AF37]/70">{'{full_name}'}</span>, <span className="font-mono text-[#D4AF37]/70">{'{username}'}</span>
                 </p>
               </div>
             )}
@@ -194,17 +194,17 @@ export default function GymSettingsTab({
             {editingGym.qr_payload_type === 'external_id' && (
               <div className="p-3 bg-[#111827] rounded-xl border border-white/6">
                 <p className="text-[12px] text-[#9CA3AF]">
-                  Set each member's external code in the <span className="font-semibold text-[#E5E7EB]">Members</span> tab {'\u2192'} click member {'\u2192'} External ID field.
+                  {t('platform.gymDetail.settings.externalIdHelpPlain')}
                 </p>
               </div>
             )}
 
             {/* Display format */}
             <div>
-              <label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">Display Format</label>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">{t('platform.gymDetail.settings.displayFormat')}</label>
               <div className="flex gap-2">
                 {[
-                  { key: 'qr_code', label: 'QR Code' },
+                  { key: 'qr_code', label: t('platform.gymDetail.settings.qrCode') },
                   { key: 'barcode_128', label: t('platform.gymDetail.settings.barcode128') },
                   { key: 'barcode_39', label: t('platform.gymDetail.settings.barcode39') },
                 ].map(opt => (
@@ -227,22 +227,22 @@ export default function GymSettingsTab({
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-3">
         <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
           <CalendarDays className="w-4 h-4 text-[#D4AF37]" />
-          Class Booking
+          {t('platform.gymDetail.settings.classBooking')}
         </h3>
         <p className="text-[11px] text-[#6B7280]">
-          Allow members to book scheduled classes at this gym
+          {t('platform.gymDetail.settings.classBookingDesc')}
         </p>
         <div className="flex items-center justify-between p-3 bg-[#111827] rounded-xl border border-white/6">
           <div>
-            <p className="text-[13px] font-semibold text-[#E5E7EB]">Enable Class Booking</p>
-            <p className="text-[11px] text-[#6B7280]">Members will see a Classes tab in the app</p>
+            <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.settings.enableClassBooking')}</p>
+            <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.settings.enableClassBookingDesc')}</p>
           </div>
           <button
             onClick={() => setEditingGym(prev => ({ ...prev, classes_enabled: !prev.classes_enabled }))}
             className={`relative w-11 h-6 rounded-full transition-colors ${editingGym.classes_enabled ? 'bg-[#D4AF37]' : 'bg-[#374151]'}`}
             role="switch"
             aria-checked={editingGym.classes_enabled}
-            aria-label="Toggle class booking"
+            aria-label={t('platform.gymDetail.settings.toggleClassBooking')}
           >
             <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editingGym.classes_enabled ? 'left-[22px]' : 'left-0.5'}`} />
           </button>
@@ -253,14 +253,14 @@ export default function GymSettingsTab({
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4">
         <div className="flex items-center justify-between py-3 border-b border-white/4">
           <div>
-            <p className="text-[13px] font-medium text-[#E5E7EB]">Multi-Admin</p>
-            <p className="text-[11px] text-[#6B7280]">Allow multiple admin accounts for this gym</p>
+            <p className="text-[13px] font-medium text-[#E5E7EB]">{t('platform.gymDetail.settings.multiAdmin')}</p>
+            <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.settings.multiAdminDesc')}</p>
           </div>
           <button onClick={() => setEditingGym(p => ({ ...p, multi_admin_enabled: !p.multi_admin_enabled }))}
             className="w-10 h-5.5 rounded-full relative flex-shrink-0 transition-colors"
             role="switch"
             aria-checked={editingGym.multi_admin_enabled}
-            aria-label="Toggle multi-admin"
+            aria-label={t('platform.gymDetail.settings.toggleMultiAdmin')}
             style={{ backgroundColor: editingGym.multi_admin_enabled ? '#D4AF37' : '#6B7280' }}>
             <span className="absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-transform"
               style={{ left: editingGym.multi_admin_enabled ? 'calc(100% - 20px)' : '2px' }} />
@@ -269,12 +269,12 @@ export default function GymSettingsTab({
         {editingGym.multi_admin_enabled && (
           <div className="flex items-center justify-between py-3 border-b border-white/4">
             <div>
-              <p className="text-[13px] font-medium text-[#E5E7EB]">Max Admin Seats</p>
-              <p className="text-[11px] text-[#6B7280]">Maximum number of admin accounts</p>
+              <p className="text-[13px] font-medium text-[#E5E7EB]">{t('platform.gymDetail.settings.maxAdminSeats')}</p>
+              <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.settings.maxAdminSeatsDesc')}</p>
             </div>
             <input type="number" min="1" max="20" value={editingGym.max_admin_seats}
               onChange={e => setEditingGym(p => ({ ...p, max_admin_seats: parseInt(e.target.value) || 1 }))}
-              aria-label="Max admin seats"
+              aria-label={t('platform.gymDetail.settings.maxAdminSeatsAria')}
               className="w-16 bg-[#111827] border border-white/6 rounded-lg px-2 py-1.5 text-[13px] text-[#E5E7EB] text-center outline-none focus:border-[#D4AF37]/40" />
           </div>
         )}
@@ -293,7 +293,7 @@ export default function GymSettingsTab({
           <input
             type="text"
             placeholder="+1XXXXXXXXXX"
-            aria-label="SMS phone number"
+            aria-label={t('platform.gymDetail.settings.smsPhoneAria')}
             value={editingGym.sms_phone_number}
             onChange={e => setEditingGym(p => ({ ...p, sms_phone_number: e.target.value }))}
             className="w-full bg-[#111827] border rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none transition-colors"
@@ -370,11 +370,11 @@ export default function GymSettingsTab({
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4 lg:col-span-2">
         <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
           <Link2 className="w-4 h-4 text-[#D4AF37]" />
-          Invite Links
+          {t('platform.gymDetail.settings.inviteLinks')}
         </h3>
 
         {invites.length === 0 ? (
-          <p className="text-[#6B7280] text-sm">No invite links found.</p>
+          <p className="text-[#6B7280] text-sm">{t('platform.gymDetail.settings.noInviteLinks')}</p>
         ) : (
           <div className="space-y-2">
             {invites.map(inv => {

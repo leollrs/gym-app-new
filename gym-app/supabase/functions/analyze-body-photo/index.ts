@@ -97,6 +97,88 @@ if (!ALLOWED_ORIGIN) {
   console.error('FATAL: ALLOWED_ORIGIN environment variable is not set');
 }
 
+// ── Strict allowlist schema validator ──────────────────────────
+type SchemaEntry = {
+  type: 'number' | 'string' | 'boolean' | 'array';
+  min?: number;
+  max?: number;
+  allowed?: string[];
+  maxLength?: number;
+  required?: boolean;
+  nullable?: boolean;
+  items?: Record<string, SchemaEntry>;
+  maxItems?: number;
+};
+
+/**
+ * Validates `data` against `schema` allowlist:
+ *  - drops unknown keys with console.warn
+ *  - enforces type / range / allowed / maxLength
+ *  - returns { valid: boolean, value: any, missing: string[] }
+ */
+function validateSchema(
+  data: any,
+  schema: Record<string, SchemaEntry>
+): { valid: boolean; value: Record<string, any>; missing: string[] } {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { valid: false, value: {}, missing: ['<root>'] };
+  }
+  const out: Record<string, any> = {};
+  const missing: string[] = [];
+
+  // Drop unknown keys
+  for (const k of Object.keys(data)) {
+    if (!(k in schema)) {
+      console.warn(`validateSchema: dropping unknown key "${k}"`);
+    }
+  }
+
+  for (const [key, rule] of Object.entries(schema)) {
+    const v = data[key];
+    const isNullish = v === null || v === undefined;
+    if (isNullish) {
+      if (rule.required) missing.push(key);
+      out[key] = rule.nullable ? null : undefined;
+      continue;
+    }
+
+    if (rule.type === 'number') {
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        if (rule.required) missing.push(key);
+        out[key] = rule.nullable ? null : undefined;
+        continue;
+      }
+      if (rule.min != null && v < rule.min) { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      if (rule.max != null && v > rule.max) { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      out[key] = v;
+    } else if (rule.type === 'string') {
+      if (typeof v !== 'string') { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      let s = v;
+      if (rule.maxLength != null) s = s.slice(0, rule.maxLength);
+      if (rule.allowed && !rule.allowed.includes(s)) { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      out[key] = s;
+    } else if (rule.type === 'boolean') {
+      if (typeof v !== 'boolean') { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      out[key] = v;
+    } else if (rule.type === 'array') {
+      if (!Array.isArray(v)) { if (rule.required) missing.push(key); out[key] = []; continue; }
+      const limited = rule.maxItems != null ? v.slice(0, rule.maxItems) : v;
+      if (rule.items) {
+        const cleaned: any[] = [];
+        for (const it of limited) {
+          const r = validateSchema(it, rule.items);
+          if (r.valid) cleaned.push(r.value);
+        }
+        out[key] = cleaned;
+      } else {
+        out[key] = limited;
+      }
+    }
+  }
+
+  return { valid: missing.length === 0, value: out, missing };
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -141,6 +223,35 @@ serve(async (req) => {
       );
     }
     // ── END AUTH CHECK ─────────────────────────────────────────
+
+    // ── GYM USAGE CAP CHECK (must run BEFORE any expensive call) ──
+    {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('gym_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      const gymId = profile?.gym_id;
+      if (gymId) {
+        const { data: cap } = await supabase
+          .from('gym_usage_caps').select('*').eq('gym_id', gymId).maybeSingle();
+        const limit = cap?.ai_vision_monthly_cap ?? 5000;
+        const { data: ok } = await supabase.rpc('check_and_increment_gym_usage', {
+          p_gym_id: gymId,
+          p_endpoint: 'analyze-body-photo',
+          p_profile_id: user.id,
+          p_window: '30 days',
+          p_limit: limit,
+        });
+        if (!ok) {
+          return new Response(
+            JSON.stringify({ error: 'gym_monthly_cap_exceeded' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+    // ── END GYM USAGE CAP CHECK ─────────────────────────────────
 
     if (!OPENAI_API_KEY) {
       console.error('OPENAI_API_KEY not configured');
@@ -345,30 +456,45 @@ Analyze body composition and estimate measurements. Return JSON with these field
       );
     }
 
-    // Validate numeric fields
+    // ── STRICT ALLOWLIST VALIDATION ─────────────────────────────
+    const bodySchema: Record<string, SchemaEntry> = {
+      body_fat_pct: { type: 'number', min: 3, max: 60, required: true, nullable: false },
+      chest_cm: { type: 'number', min: 30, max: 250, nullable: true },
+      waist_cm: { type: 'number', min: 30, max: 250, nullable: true },
+      hips_cm: { type: 'number', min: 30, max: 250, nullable: true },
+      left_arm_cm: { type: 'number', min: 15, max: 100, nullable: true },
+      right_arm_cm: { type: 'number', min: 15, max: 100, nullable: true },
+      left_thigh_cm: { type: 'number', min: 20, max: 150, nullable: true },
+      right_thigh_cm: { type: 'number', min: 20, max: 150, nullable: true },
+      neck_cm: { type: 'number', min: 20, max: 80, nullable: true },
+      shoulder_cm: { type: 'number', min: 30, max: 100, nullable: true },
+      muscle_quality: { type: 'string', allowed: ['low', 'moderate', 'athletic', 'muscular'], required: true },
+      scan_quality: { type: 'string', allowed: ['good', 'fair', 'poor'], required: true },
+      scan_notes: { type: 'string', maxLength: 200, nullable: true },
+    };
+
+    const { valid, value: validated, missing } = validateSchema(estimates, bodySchema);
+    if (!valid) {
+      console.warn('analyze-body-photo: ai_output_invalid, missing/invalid:', missing);
+      return new Response(
+        JSON.stringify({ error: 'ai_output_invalid' }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const clean: Record<string, any> = {};
     const numericFields = [
       'body_fat_pct', 'chest_cm', 'waist_cm', 'hips_cm',
       'left_arm_cm', 'right_arm_cm', 'left_thigh_cm', 'right_thigh_cm',
       'neck_cm', 'shoulder_cm',
     ];
-
     for (const f of numericFields) {
-      const val = estimates[f];
-      if (val != null && typeof val === 'number' && val > 0 && val < 500) {
-        clean[f] = Math.round(val * 10) / 10;
-      } else {
-        clean[f] = null;
-      }
+      const v = validated[f];
+      clean[f] = (typeof v === 'number') ? Math.round(v * 10) / 10 : null;
     }
-
-    // Pass through string fields
-    clean.muscle_quality = ['low', 'moderate', 'athletic', 'muscular'].includes(estimates.muscle_quality)
-      ? estimates.muscle_quality : 'moderate';
-    clean.scan_quality = ['good', 'fair', 'poor'].includes(estimates.scan_quality)
-      ? estimates.scan_quality : 'fair';
-    clean.scan_notes = typeof estimates.scan_notes === 'string'
-      ? estimates.scan_notes.slice(0, 100) : '';
+    clean.muscle_quality = validated.muscle_quality;
+    clean.scan_quality = validated.scan_quality;
+    clean.scan_notes = typeof validated.scan_notes === 'string' ? validated.scan_notes : '';
 
     // Calculate derived metrics
     if (weight && clean.body_fat_pct != null) {

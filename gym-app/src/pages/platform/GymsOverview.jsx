@@ -16,6 +16,7 @@ import { format, subDays, formatDistanceToNow } from 'date-fns';
 import FadeIn from '../../components/platform/FadeIn';
 import StatCard from '../../components/platform/StatCard';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
+import GymCreateModal from './components/GymCreateModal';
 
 const PLAN_COLORS = {
   starter:    { bg: 'bg-[#3B82F6]/15', text: 'text-[#60A5FA]', labelKey: 'platform.gyms.planStarter',    fallback: 'Starter' },
@@ -363,7 +364,7 @@ export default function GymsOverview() {
       </FadeIn>
 
       {showCreateModal && (
-        <CreateGymModal
+        <GymCreateModal
           onClose={() => setShowCreateModal(false)}
           onCreated={() => { setShowCreateModal(false); fetchData(); }}
           t={t}

@@ -8,12 +8,12 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
-import { createNotification } from '../../lib/notifications';
+import { sendNotification } from '../../lib/notifications';
 import { format, subDays, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { getRiskTier, fetchMembersWithChurnScores } from '../../lib/churnScore';
 import { exportCSV } from '../../lib/csvExport';
-import { exportGymWorkoutHistory, exportGymPersonalRecords, exportGymBodyMetrics } from '../../lib/exportData';
+import { exportGymWorkoutHistory, exportGymPersonalRecords, exportGymBodyMetrics, exportSelectedMembersCSV } from '../../lib/exportData';
 import { logAdminAction } from '../../lib/adminAudit';
 import posthog from 'posthog-js';
 import { useQuery } from '@tanstack/react-query';
@@ -38,15 +38,15 @@ export { translateChurnSignal };
 const ChurnRiskBadge = ({ member, navigate }) => {
   const score = member.score ?? 0;
   const tier = getRiskTier(score);
-  if (score < 31) return null;
+  if (score < 30) return null;
+  const toneClass = score >= 80 ? 'admin-pill--hot' : score >= 55 ? 'admin-pill--hot' : 'admin-pill--warn';
   return (
     <span onClick={e => { e.stopPropagation(); navigate('/admin/churn'); }}
       role="link"
       tabIndex={0}
-      title={`${tier.label} — click to view in Churn Intel`}
-      className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors hover:opacity-80 flex-shrink-0 cursor-pointer"
-      style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}>
-      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
+      title={i18n.t('admin.members.churnTooltip', { ns: 'pages', defaultValue: '{{label}} — click to view in Churn Intel', label: tier.label })}
+      className={`admin-pill ${toneClass} flex items-center gap-1 cursor-pointer hover:opacity-80 flex-shrink-0`}>
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'currentColor' }} />
       {tier.label}
     </span>
   );
@@ -60,7 +60,8 @@ function estimateChurnScore(daysInactive, recentWorkouts, neverActive) {
   else if (daysInactive > 7) score = recentWorkouts === 0 ? 45 : 30;
   else score = Math.max(0, 20 - recentWorkouts * 5);
   score = Math.min(100, Math.max(0, score));
-  const risk_tier = score >= 80 ? 'critical' : score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low';
+  // Thresholds aligned with churn engine (lib/churn/riskScoring.js): 80 / 55 / 30
+  const risk_tier = score >= 80 ? 'critical' : score >= 55 ? 'high' : score >= 30 ? 'medium' : 'low';
   const key_signals = [];
   if (neverActive) key_signals.push('Never logged a workout');
   else if (daysInactive > 30) key_signals.push('No activity in 30+ days');
@@ -166,6 +167,11 @@ export default function AdminMembers() {
 
   const [tab, setTab] = useState('members'); // 'members' | 'invites' | 'resets'
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState(null);
   const [showInvite, setShowInvite] = useState(false);
@@ -181,7 +187,6 @@ export default function AdminMembers() {
   const [hasMoreMembers, setHasMoreMembers] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [quickMsgMemberId, setQuickMsgMemberId] = useState(null);
-  const [visibleCount, setVisibleCount] = useState(10);
 
   // Auto-open member detail from ?member=ID query param
   useEffect(() => {
@@ -211,7 +216,7 @@ export default function AdminMembers() {
 
   const clearSelection = () => { setSelectedIds(new Set()); setBulkAction(null); };
 
-  useEffect(() => { document.title = `Admin - Members | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
+  useEffect(() => { document.title = `${t('admin.members.pageTitle', 'Admin - Members')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   const { data: initialMembers = [], isLoading, refetch } = useQuery({
     queryKey: adminKeys.members.all(gymId),
@@ -235,7 +240,12 @@ export default function AdminMembers() {
       const nextPage = membersPage + 1;
       const moreMembers = await fetchMembers(gymId, nextPage);
       setMembersPage(nextPage);
-      setHasMoreMembers(moreMembers.length >= MEMBERS_PAGE_SIZE);
+      // Strict `>` so a page that returns exactly MEMBERS_PAGE_SIZE doesn't keep
+      // showing "Load more" with no actual remaining rows — server returns at most
+      // PAGE_SIZE items per fetch, so a full page is the only signal we have that
+      // *more* might exist. False positives mean one extra empty fetch; that's
+      // acceptable. The previous `>=` always over-promised by one fetch.
+      setHasMoreMembers(moreMembers.length > 0 && moreMembers.length === MEMBERS_PAGE_SIZE);
       // NOTE: allMembers grows unbounded across pages. If gyms reach very high member counts,
       // consider capping or virtualizing the list to avoid excessive memory usage.
       setAllMembers(prev => [...prev, ...moreMembers]);
@@ -285,6 +295,15 @@ export default function AdminMembers() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exporting, setExporting] = useState(null);
   const exportMenuRef = useRef(null);
+
+  // Lock body scroll while any bulk action / quick message / QR invite modal is open
+  const anyAdminMembersModalOpen = !!qrInvite || !!bulkAction || !!quickMsgMemberId;
+  useEffect(() => {
+    if (!anyAdminMembersModalOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [anyAdminMembersModalOpen]);
 
   // Close export menu on outside click
   useEffect(() => {
@@ -344,30 +363,34 @@ export default function AdminMembers() {
     setSelected(prev => prev?.id === memberId ? { ...prev, membership_status: newStatus } : prev);
   };
 
-  const atRiskCount = members.filter(m => m.score >= 61).length;
-  const watchCount = members.filter(m => m.score >= 31 && m.score < 61).length;
+  // Thresholds aligned with churn engine (lib/churn/riskScoring.js): 80 / 55 / 30.
+  // Critical (>=80) + High (>=55) both count as "at risk", matching AdminOverview.
+  const atRiskCount = members.filter(m => m.score >= 55).length;
+  const watchCount = members.filter(m => m.score >= 30 && m.score < 55).length;
   const frozenCount = members.filter(m => m.membership_status === 'frozen').length;
-  // "Low Risk" count: members with churn score < 31 (consistent with the filter logic)
-  const lowRiskCount = members.filter(m => m.score < 31).length;
+  const lowRiskCount = members.filter(m => m.score < 30).length;
 
   const filtered = useMemo(() => {
     let list = members;
-    if (search) {
-      const q = search.toLowerCase();
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
       list = list.filter(m => (m.full_name || '').toLowerCase().includes(q) || (m.username || '').toLowerCase().includes(q));
     }
-    if (filter === 'at-risk') list = list.filter(m => m.score >= 61);
-    else if (filter === 'watch') list = list.filter(m => m.score >= 31 && m.score < 61);
-    else if (filter === 'healthy') list = list.filter(m => m.score < 31);
+    if (filter === 'at-risk') list = list.filter(m => m.score >= 55);
+    else if (filter === 'watch') list = list.filter(m => m.score >= 30 && m.score < 55);
+    else if (filter === 'healthy') list = list.filter(m => m.score < 30);
     return list;
-  }, [members, search, filter]);
+  }, [members, debouncedSearch, filter]);
 
-  // Reset visible count when filters change
-  useEffect(() => { setVisibleCount(10); }, [search, filter]);
-
+  // Local pagination on top of server pagination: render in chunks of 10 from the
+  // already-loaded `filtered` set; when the user runs out of locally-cached rows,
+  // the same "Load more" button falls through to handleLoadMore to fetch the next
+  // server page.
+  const [visibleCount, setVisibleCount] = useState(10);
+  useEffect(() => { setVisibleCount(10); }, [debouncedSearch, filter]);
   const visibleMembers = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
-  const atRiskFiltered = filtered.filter(m => m.score >= 61);
+  const atRiskFiltered = filtered.filter(m => m.score >= 55);
 
   const handleBulkFollowup = async () => {
     if (!gymId) return;
@@ -377,8 +400,9 @@ export default function AdminMembers() {
     const succeeded = [];
     for (const m of atRiskFiltered) {
       try {
-        const msg = `Hey ${(m.full_name || 'Member').split(' ')[0]}, we noticed you haven't been in for a while. We miss you! Come back and let's get back on track together.`;
-        await createNotification({ profileId: m.id, gymId, type: 'churn_followup', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: msg, data: { source: 'admin_bulk_followup' } });
+        const first = (m.full_name || 'Member').split(' ')[0];
+        const msg = t('admin.members.followUpBody', `Hey {{first}}, we noticed you haven't been in for a while. We miss you! Come back and let's get back on track together.`, { first });
+        await sendNotification(m.id, gymId, { type: 'churn_followup', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: msg, data: { source: 'admin_bulk_followup' }, dedupKey: `admin_followup_${m.id}_${new Date().toISOString().slice(0, 10)}` });
         logAdminAction('bulk_followup', 'member', m.id);
         successCount++;
         succeeded.push(m);
@@ -414,10 +438,25 @@ export default function AdminMembers() {
 
   const handleBulkFreeze = async () => {
     const ids = [...selectedIds];
+    if (ids.length === 0) { setBulkAction(null); return; }
     try {
-      const { error } = await supabase.from('profiles').update({ membership_status: 'frozen' }).in('id', ids).eq('gym_id', gymId);
-      if (error) {
-        logger.error('Bulk freeze failed', error);
+      // Prefer RPC if available so freeze logic stays server-side.
+      // TODO: add `admin_bulk_freeze(p_ids uuid[])` RPC to centralise audit
+      // logging + status transitions; for now we fall back to a direct update
+      // (RLS already restricts this to gym admins).
+      const { error: rpcError } = await supabase.rpc('admin_bulk_freeze', { p_ids: ids });
+      let updateError = null;
+      if (rpcError) {
+        // Fallback: direct profile update gated by RLS + explicit gym_id check
+        const { error } = await supabase
+          .from('profiles')
+          .update({ membership_status: 'frozen' })
+          .in('id', ids)
+          .eq('gym_id', gymId);
+        updateError = error;
+      }
+      if (updateError) {
+        logger.error('Bulk freeze failed', updateError);
         showToast(t('admin.members.bulkFreezeError', { defaultValue: 'Failed to freeze members. Please try again.' }), 'error');
         return;
       }
@@ -426,26 +465,24 @@ export default function AdminMembers() {
       showToast(t('admin.members.bulkFreezeSuccess', { count: ids.length, defaultValue: '{{count}} members frozen' }), 'success');
       refetch();
       clearSelection();
+      setBulkAction(null);
     } catch (err) {
       logger.error('Bulk freeze failed', err);
       showToast(t('admin.members.bulkFreezeError', { defaultValue: 'Failed to freeze members. Please try again.' }), 'error');
     }
   };
 
-  const handleBulkExportSelected = () => {
-    const selected = filtered.filter(m => selectedIds.has(m.id));
-    exportCSV({
-      filename: 'selected_members',
-      columns: [
-        { key: 'full_name', label: t('admin.members.csvName', 'Name') },
-        { key: 'membership_status', label: t('admin.members.csvStatus', 'Status') },
-        { key: 'created_at', label: t('admin.members.csvJoined', 'Joined') },
-        { key: 'last_active_at', label: t('admin.members.csvLastActive', 'Last Active') },
-        { key: 'score', label: t('admin.members.csvChurnScore', 'Churn Score') },
-        { key: 'risk_tier', label: t('admin.members.csvRiskTier', 'Risk Tier') },
-      ],
-      data: selected,
-    });
+  const handleBulkExportSelected = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    try {
+      await exportSelectedMembersCSV(ids);
+      ids.forEach(id => logAdminAction('bulk_export', 'member', id));
+      showToast(t('admin.members.bulkExportSuccess', { count: ids.length, defaultValue: 'Exported {{count}} members' }), 'success');
+    } catch (err) {
+      logger.error('Bulk export failed', err);
+      showToast(t('admin.members.bulkExportError', { defaultValue: 'Failed to export members. Please try again.' }), 'error');
+    }
     clearSelection();
   };
 
@@ -455,7 +492,7 @@ export default function AdminMembers() {
     let successCount = 0;
     for (const id of ids) {
       try {
-        await createNotification({ profileId: id, gymId, type: 'admin_message', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: message, data: { source: 'admin_bulk_message' } });
+        await sendNotification(id, gymId, { type: 'admin_message', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: message, data: { source: 'admin_bulk_message' } });
         logAdminAction('bulk_message', 'member', id);
         successCount++;
       } catch (err) {
@@ -468,12 +505,13 @@ export default function AdminMembers() {
       showToast(t('admin.members.bulkMessageSuccess', { count: successCount, defaultValue: 'Message sent to {{count}} members' }), 'success');
     }
     clearSelection();
+    setBulkAction(null);
   };
 
   const handleQuickMessage = async (memberId, message) => {
     if (!message?.trim()) return;
     try {
-      await createNotification({ profileId: memberId, gymId, type: 'admin_message', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: message, data: { source: 'admin_quick_message' } });
+      await sendNotification(memberId, gymId, { type: 'admin_message', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: message, data: { source: 'admin_quick_message' } });
       logAdminAction('quick_message', 'member', memberId);
       showToast(t('admin.members.messageSent', { defaultValue: 'Message sent' }), 'success');
     } catch (err) {
@@ -525,11 +563,12 @@ export default function AdminMembers() {
       render: (m) => (
         <button
           onClick={(e) => { e.stopPropagation(); toggleSelect(m.id); }}
-          className="text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
-          aria-label={selectedIds.has(m.id) ? 'Deselect member' : 'Select member'}
+          className="transition-colors"
+          style={{ color: 'var(--color-admin-text-muted)' }}
+          aria-label={selectedIds.has(m.id) ? t('admin.members.deselectMember', 'Deselect member') : t('admin.members.selectMember', 'Select member')}
         >
           {selectedIds.has(m.id) ? (
-            <CheckSquare size={16} className="text-[#D4AF37]" />
+            <CheckSquare size={16} style={{ color: 'var(--color-accent)' }} />
           ) : (
             <Square size={16} />
           )}
@@ -545,8 +584,8 @@ export default function AdminMembers() {
         <div className="flex items-center gap-3 min-w-0">
           <Avatar name={m.full_name} />
           <div className="min-w-0">
-            <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</p>
-            <p className="text-[12px] text-[#6B7280] truncate">
+            <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>{m.full_name}</p>
+            <p className="text-[12px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
               {(m.last_active_at || m.lastSessionAt)
                 ? t('admin.members.activeAgo', { time: formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true, ...dateFnsLocale }), defaultValue: 'Active {{time}}' })
                 : t('admin.members.neverActive', 'Never active')}
@@ -569,13 +608,10 @@ export default function AdminMembers() {
       sortable: true,
       sortValue: (m) => m.score ?? 0,
       render: (m) => {
-        const tier = getRiskTier(m.score);
+        const toneClass = m.score >= 55 ? 'admin-pill--hot' : m.score >= 30 ? 'admin-pill--warn' : 'admin-pill--good';
         return (
-          <span
-            className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
-            style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}
-          >
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: tier.color }} />
+          <span className={`admin-pill ${toneClass} admin-mono inline-flex items-center gap-1.5`}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'currentColor' }} />
             {m.score}%
           </span>
         );
@@ -587,7 +623,7 @@ export default function AdminMembers() {
       sortable: true,
       sortValue: (m) => new Date(m.last_active_at ?? m.lastSessionAt ?? m.created_at).getTime(),
       render: (m) => (
-        <span className="text-[12px] text-[#9CA3AF]">
+        <span className="text-[12px]" style={{ color: 'var(--color-admin-text-sub)' }}>
           {(m.last_active_at || m.lastSessionAt)
             ? formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true, ...dateFnsLocale })
             : t('admin.members.never', 'Never')}
@@ -629,23 +665,24 @@ export default function AdminMembers() {
         title={`${t('admin.members.title', 'Members')} (${members.length})`}
         subtitle={t('admin.members.subtitle', { total: members.length, atRisk: atRiskCount, defaultValue: '{{total}} total \u00b7 {{atRisk}} at risk' })}
         actions={
-          <>
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap pb-1 md:pb-0">
             {tab === 'members' && filter === 'at-risk' && atRiskFiltered.length > 0 && (
               bulkConfirm ? (
-                <div className="flex items-center gap-2">
-                  <p className="text-[12px] text-[#9CA3AF]">{t('admin.members.sendToCount', { count: atRiskFiltered.length })}</p>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <p className="text-[12px] hidden sm:block" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.members.sendToCount', { count: atRiskFiltered.length })}</p>
                   <button onClick={handleBulkFollowup} disabled={bulkSending}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors disabled:opacity-40">
+                    className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap disabled:opacity-40"
+                    style={{ color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
                     {bulkSending ? t('admin.members.sending', 'Sending\u2026') : t('admin.members.confirm', 'Confirm')}
                   </button>
                   <button onClick={() => setBulkConfirm(false)}
-                    className="px-3 py-2 rounded-xl text-[12px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors">
+                    className="admin-pill admin-pill--outline flex-shrink-0 whitespace-nowrap">
                     {t('admin.members.cancel')}
                   </button>
                 </div>
               ) : (
                 <button onClick={() => setBulkConfirm(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors">
+                  className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap">
                   <Users size={13} /> {t('admin.members.bulkFollowup', 'Bulk Follow-up')}
                 </button>
               )
@@ -653,40 +690,40 @@ export default function AdminMembers() {
             {(tab === 'members' || tab === 'invites') && (
               <>
                 <button onClick={() => setShowInvite(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors">
+                  className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap"
+                  style={{ color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
                   <Link size={13} /> {k('inviteMember')}
                 </button>
                 <button onClick={() => setShowCreateInvite(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37] transition-colors"
-                  style={{ color: '#000' }}>
+                  className="admin-pill admin-pill--dark flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap">
                   <UserPlus size={13} /> {k('addMember')}
                 </button>
               </>
             )}
-          </>
+          </div>
         }
       />
 
       {/* Top summary row -- visible on all tabs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mt-6 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 md:gap-3 mt-6 mb-6">
         <StatCard
           label={t('admin.members.statTotal', 'Total Members')}
           value={members.length}
-          borderColor="#60A5FA"
+          borderColor="var(--color-info)"
           icon={Users}
           delay={0}
         />
         <StatCard
           label={t('admin.members.statAtRisk', 'At Risk')}
           value={atRiskCount}
-          borderColor="#EF4444"
+          borderColor="var(--color-danger)"
           icon={AlertTriangle}
           delay={0.05}
         />
         <StatCard
           label={t('admin.members.statFrozen', 'Frozen')}
           value={frozenCount}
-          borderColor="#60A5FA"
+          borderColor="var(--color-info)"
           icon={Snowflake}
           delay={0.1}
         />
@@ -694,7 +731,7 @@ export default function AdminMembers() {
           <StatCard
             label={t('admin.members.statPendingInvites', 'Pending Invites')}
             value={pendingCount}
-            borderColor="#D4AF37"
+            borderColor="var(--color-accent)"
             icon={UserPlus}
             delay={0.15}
           />
@@ -703,7 +740,7 @@ export default function AdminMembers() {
           <StatCard
             label={t('admin.members.statPendingResets', 'Pending Resets')}
             value={resetCount}
-            borderColor="#8B5CF6"
+            borderColor="var(--color-coach)"
             icon={KeyRound}
             delay={0.2}
           />
@@ -734,8 +771,10 @@ export default function AdminMembers() {
                 className="w-full rounded-xl pl-9 pr-4 py-2.5 text-[13px] outline-none transition-all duration-200"
                 style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
             </div>
-            <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
-            <div className="relative" ref={exportMenuRef}>
+            <div className="overflow-x-auto scrollbar-hide -mx-4 px-4 lg:mx-0 lg:px-0 lg:overflow-visible">
+              <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
+            </div>
+            <div className="relative flex-shrink-0" ref={exportMenuRef}>
               <button onClick={() => setShowExportMenu(v => !v)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium transition-all duration-200 hover:scale-[1.02]"
                 style={{ border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
@@ -769,36 +808,36 @@ export default function AdminMembers() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-3 rounded-xl mb-4 transition-all duration-300"
+          <div className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-3 rounded-xl mb-4 transition-all duration-300 overflow-x-auto scrollbar-hide"
             style={{
               backgroundColor: selectedIds.size > 0 ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'var(--color-bg-deep)',
               border: selectedIds.size > 0 ? '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' : '1px solid var(--color-border-subtle)',
             }}>
-            <span className="text-[12px] md:text-[13px] font-semibold" style={{ color: selectedIds.size > 0 ? 'var(--color-accent)' : 'var(--color-text-faint)' }}>
+            <span className="text-[12px] md:text-[13px] font-semibold flex-shrink-0 whitespace-nowrap" style={{ color: selectedIds.size > 0 ? 'var(--color-accent)' : 'var(--color-text-faint)' }}>
               {selectedIds.size > 0
                 ? t('admin.members.selectedCount', { count: selectedIds.size, defaultValue: '{{count}} selected' })
                 : t('admin.members.bulkActions', { defaultValue: 'Select members for bulk actions' })}
             </span>
-            <div className="flex-1" />
+            <div className="flex-1 hidden md:block" />
             <button onClick={handleBulkExportSelected} disabled={selectedIds.size === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold flex-shrink-0 whitespace-nowrap transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
               style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
               <Download size={12} /> {t('admin.members.export', 'Export')}
             </button>
             <button onClick={() => setBulkAction('message')} disabled={selectedIds.size === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold flex-shrink-0 whitespace-nowrap transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
               style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
               <Mail size={12} /> {t('admin.members.message', 'Message')}
             </button>
             <button onClick={() => setBulkAction('freeze')} disabled={selectedIds.size === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold flex-shrink-0 whitespace-nowrap transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
               style={{ backgroundColor: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', color: 'var(--color-danger)' }}>
               {t('admin.members.freeze', 'Freeze')}
             </button>
             {selectedIds.size > 0 && (
               <button onClick={clearSelection}
                 aria-label={t('admin.members.clearSelection', 'Clear selection')}
-                className="transition-colors p-1"
+                className="transition-colors p-1 flex-shrink-0"
                 style={{ color: 'var(--color-text-muted)' }}>
                 <X size={14} />
               </button>
@@ -818,7 +857,7 @@ export default function AdminMembers() {
               {/* Showing X of Y */}
               <div className="flex items-center justify-between mb-3 px-1">
                 <p className="text-[12px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.members.showingCount', { visible: visibleMembers.length, total: filtered.length, defaultValue: 'Showing {{visible}} of {{total}} members' })}
+                  {t('admin.members.showingCount', { shown: visibleMembers.length, total: filtered.length, defaultValue: 'Showing {{shown}} of {{total}}' })}
                 </p>
               </div>
               <div className="hidden lg:block">
@@ -839,7 +878,7 @@ export default function AdminMembers() {
                         onKeyDown={e => { if (e.key === 'Enter') setSelected(m); }}
                         className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-all duration-200 text-left group cursor-pointer">
                         <div onClick={e => { e.stopPropagation(); toggleSelect(m.id); }}
-                          role="button" tabIndex={0} aria-label={selectedIds.has(m.id) ? 'Deselect member' : 'Select member'}
+                          role="button" tabIndex={0} aria-label={selectedIds.has(m.id) ? t('admin.members.deselectMember', 'Deselect member') : t('admin.members.selectMember', 'Select member')}
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleSelect(m.id); } }}
                           className="flex items-center justify-center w-5 h-5 flex-shrink-0 cursor-pointer">
                           {selectedIds.has(m.id) ? (
@@ -863,9 +902,8 @@ export default function AdminMembers() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2.5 flex-shrink-0">
-                          <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
-                            style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}>
-                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
+                          <span className={`admin-pill admin-mono flex items-center gap-1.5 ${m.score >= 55 ? 'admin-pill--hot' : m.score >= 30 ? 'admin-pill--warn' : 'admin-pill--good'}`}>
+                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'currentColor' }} />
                             {m.score}%
                           </span>
                           <button
@@ -884,27 +922,20 @@ export default function AdminMembers() {
                   })}
                 </div>
               </div>
-              {/* Show more paginated members */}
-              {visibleCount < filtered.length && (
-                <div className="flex justify-center mt-4">
-                  <button
-                    onClick={() => setVisibleCount(v => v + 10)}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 hover:scale-[1.02]"
-                    style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}
-                  >
-                    <ChevronDown size={14} />
-                    {t('admin.members.showMore', { count: Math.min(10, filtered.length - visibleCount), defaultValue: 'Show {{count}} more' })}
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
-          {/* Load More button */}
-          {hasMoreMembers && !isLoading && filtered.length > 0 && (
+          {/* Load More — reveals next 10 locally, falls through to server fetch when local cache is exhausted */}
+          {!isLoading && filtered.length > 0 && (visibleCount < filtered.length || hasMoreMembers) && (
             <div className="flex justify-center mt-4 mb-2">
               <button
-                onClick={handleLoadMore}
+                onClick={() => {
+                  if (visibleCount < filtered.length) {
+                    setVisibleCount(v => v + 10);
+                  } else if (hasMoreMembers) {
+                    handleLoadMore();
+                  }
+                }}
                 disabled={loadingMore}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 hover:scale-[1.02] disabled:opacity-50"
                 style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}
@@ -917,7 +948,7 @@ export default function AdminMembers() {
                 ) : (
                   <>
                     <ChevronDown size={14} />
-                    {t('admin.members.loadMore', 'Load More Members')}
+                    {t('admin.members.showMore', { count: Math.min(10, Math.max(0, filtered.length - visibleCount)) || 10, defaultValue: 'Show {{count}} more' })}
                   </>
                 )}
               </button>
@@ -931,7 +962,7 @@ export default function AdminMembers() {
         ) : (
           <div className="space-y-4">
             {/* Invite sub-filter tabs */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 pb-1">
               {[
                 { key: 'pending', label: k('filterPending'), count: pendingInvites.length },
                 { key: 'claimed', label: k('filterClaimed'), count: claimedInvites.length },
@@ -940,7 +971,7 @@ export default function AdminMembers() {
                 <button
                   key={opt.key}
                   onClick={() => setInviteFilter(opt.key)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors border ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold flex-shrink-0 whitespace-nowrap transition-colors border ${
                     inviteFilter === opt.key
                       ? 'bg-[#D4AF37]/12 text-[#D4AF37] border-[#D4AF37]/25'
                       : 'bg-white/4 text-[#6B7280] border-white/6 hover:text-[#9CA3AF]'
@@ -1015,7 +1046,7 @@ export default function AdminMembers() {
                             {copiedId === inv.id ? k('copied') : k('copy')}
                           </button>
                           <button onClick={() => setQrInvite(inv)}
-                            title="QR Code"
+                            title={t('admin.members.qrCodeTitle', 'QR Code')}
                             className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
                             <QrCode size={12} />
                           </button>
@@ -1059,7 +1090,7 @@ export default function AdminMembers() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">
-                        {r.profiles?.full_name || 'Unknown'}
+                        {r.profiles?.full_name || t('admin.members.unknown', 'Unknown')}
                       </p>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25">
                         {t('admin.members.pendingReset', 'Pending Reset')}
@@ -1098,7 +1129,7 @@ export default function AdminMembers() {
 
       {/* QR Code modal for invites */}
       {qrInvite && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setQrInvite(null)}>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4 pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:p-6 px-4" onClick={() => setQrInvite(null)}>
           <div className="w-full max-w-[320px] p-6 rounded-2xl text-center" onClick={e => e.stopPropagation()}
             style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
             <p className="text-[15px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>{qrInvite.member_name}</p>
@@ -1138,7 +1169,7 @@ export default function AdminMembers() {
       )}
 
       {bulkAction === 'message' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4 pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:p-6">
           <div className="w-full max-w-md mx-4 p-6 rounded-2xl shadow-2xl"
             style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
             <h3 className="text-[16px] font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>{t('admin.members.messageCount', { count: selectedIds.size })}</h3>
@@ -1158,7 +1189,7 @@ export default function AdminMembers() {
       )}
 
       {bulkAction === 'freeze' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4 pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:p-6">
           <div className="w-full max-w-md mx-4 p-6 rounded-2xl shadow-2xl"
             style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
             <h3 className="text-[16px] font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>{t('admin.members.freezeConfirmTitle', { count: selectedIds.size, defaultValue: 'Freeze {{count}} members?' })}</h3>
@@ -1179,7 +1210,7 @@ export default function AdminMembers() {
       {quickMsgMemberId && (() => {
         const targetMember = members.find(m => m.id === quickMsgMemberId);
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4 pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:p-6"
             onClick={() => setQuickMsgMemberId(null)}>
             <div className="w-full max-w-md mx-4 p-6 rounded-2xl shadow-2xl"
               style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}

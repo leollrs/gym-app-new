@@ -75,7 +75,7 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       body: { text: t?.('admin.emailTemplates.prebuilt.welcomeBody', `Hi {{member_name}},\n\nWelcome to the team. We built this app to help you train smarter, stay consistent, and celebrate every win along the way.\n\nHere\u2019s what\u2019s waiting for you:\n- Personalised workout tracking with progressive overload\n- Challenges and leaderboards to keep you motivated\n- Achievement badges and rewards for consistency\n\nYour first workout is the hardest. After that, it\u2019s just momentum.`) },
       cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.welcomeCta', 'Open the App') || 'Open the App', url: '#', color: pc },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: pc, background: '#ffffff', text: '#2D3142' },
+      colors: { primary: pc, background: '#ffffff', text: 'var(--color-bg-inset)' },
     }),
 
     // 2. Weekly Digest
@@ -88,7 +88,7 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       body: { text: t?.('admin.emailTemplates.prebuilt.digestBody', `Hi {{member_name}},\n\nHere\u2019s your week at {{gym_name}} at a glance:\n\n--- This Week\u2019s Stats ---\n\u{1F3CB}\u{FE0F} Workouts completed: {{workout_count}}\n\u{1F525} Current streak: {{streak_count}} days\n\n--- Coming Up ---\nCheck the app for this week\u2019s class schedule and new challenges.\n\nConsistency compounds. Every session you log is building something.`) },
       cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.digestCta', 'View Dashboard') || 'View Dashboard', url: '#', color: pc },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: pc, background: '#F8F9FA', text: '#2D3142' },
+      colors: { primary: pc, background: '#F8F9FA', text: 'var(--color-bg-inset)' },
     }),
 
     // 3. Win-Back
@@ -101,7 +101,7 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       body: { text: t?.('admin.emailTemplates.prebuilt.winbackBody', `Hey {{member_name}},\n\nYour {{streak_count}}-day streak is still on the books \u2014 waiting to be reignited.\n\nWe know life gets in the way. No guilt, no pressure. But your goals are still there, and so are we.\n\nSometimes all it takes is showing up once. Let\u2019s make it happen.`) },
       cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.winbackCta', 'Come Back Today') || 'Come Back Today', url: '#', color: pc },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: '#6C63FF', background: '#ffffff', text: '#2D3142' },
+      colors: { primary: '#6C63FF', background: '#ffffff', text: 'var(--color-bg-inset)' },
     }),
 
     // 4. Class Reminder
@@ -114,7 +114,7 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       body: { text: t?.('admin.emailTemplates.prebuilt.classReminderBody', `Hi {{member_name}},\n\nJust a heads-up \u2014 your class is coming up soon.\n\n--- Class Details ---\n\u{1F4CB} Class: [Class Name]\n\u{1F464} Instructor: [Instructor Name]\n\u{1F552} Time: [Class Time]\n\u{1F4CD} Location: {{gym_name}}\n\nArrive a few minutes early to warm up. Don\u2019t forget to check in when you get there!`) },
       cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.classReminderCta', 'Check In') || 'Check In', url: '#', color: pc },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: pc, background: '#ffffff', text: '#2D3142' },
+      colors: { primary: pc, background: '#ffffff', text: 'var(--color-bg-inset)' },
     }),
 
     // 5. New Member Onboarding Series
@@ -127,7 +127,7 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       body: { text: t?.('admin.emailTemplates.prebuilt.onboardingBody', `Hi {{member_name}},\n\nWelcome aboard. Here\u2019s a quick guide to get you started:\n\n--- Track Your Workouts ---\n- Log every set, rep, and weight \u2014 the app handles progressive overload for you\n- Watch your estimated 1RM climb over time\n\n--- Stay Accountable ---\n- Check in at the gym to build your streak\n- Join challenges and compete with other members\n\n--- Earn Rewards ---\n- Every workout earns you points toward real rewards\n- Unlock achievement badges as you hit milestones\n\n--- Connect ---\n- Add friends, share PRs, and stay motivated together\n\nThe best time to start was yesterday. The second best time is right now.`) },
       cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.onboardingCta', 'Open App') || 'Open App', url: '#', color: '#10B981' },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: '#10B981', background: '#ffffff', text: '#1F2937' },
+      colors: { primary: '#10B981', background: '#ffffff', text: 'var(--color-bg-card)' },
     }),
 
     // 6. Milestone Celebration
@@ -138,9 +138,9 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       header: { enabled: true, showLogo: true, text: '' },
       hero: { enabled: true, imageUrl: '', headline: t?.('admin.emailTemplates.prebuilt.milestoneHeadline', '\u{1F389} Milestone unlocked!') || '\u{1F389} Milestone unlocked!', subtitle: t?.('admin.emailTemplates.prebuilt.milestoneSubtitle', 'You just did something incredible.') || 'You just did something incredible.' },
       body: { text: t?.('admin.emailTemplates.prebuilt.milestoneBody', `Hey {{member_name}},\n\nYou just hit {{workout_count}} workouts at {{gym_name}}. That\u2019s not luck \u2014 that\u2019s dedication.\n\nMost people never get this far. You did. And every single session has been building a stronger version of yourself.\n\nKeep that momentum going. The next milestone is closer than you think.`) },
-      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.milestoneCta', 'See Your Stats') || 'See Your Stats', url: '#', color: '#F59E0B' },
+      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.milestoneCta', 'See Your Stats') || 'See Your Stats', url: '#', color: 'var(--color-warning)' },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: '#F59E0B', background: '#FFFBEB', text: '#1F2937' },
+      colors: { primary: 'var(--color-warning)', background: '#FFFBEB', text: 'var(--color-bg-card)' },
     }),
 
     // 7. Challenge Invitation
@@ -151,9 +151,9 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       header: { enabled: true, showLogo: true, text: '' },
       hero: { enabled: true, imageUrl: '', headline: t?.('admin.emailTemplates.prebuilt.challengeHeadline', 'A new challenge awaits') || 'A new challenge awaits', subtitle: t?.('admin.emailTemplates.prebuilt.challengeSubtitle', 'Starts this week. Are you in?') || 'Starts this week. Are you in?' },
       body: { text: t?.('admin.emailTemplates.prebuilt.challengeBody', `Hi {{member_name}},\n\nWe\u2019re launching a brand new challenge at {{gym_name}}, and we want you on the leaderboard.\n\n--- Challenge Details ---\n\u{1F3C6} Name: [Challenge Name]\n\u{1F4C5} Dates: [Start Date] \u2013 [End Date]\n\u{1F3AF} Goal: [Challenge Goal]\n\u{1F381} Prizes: [Prize Details]\n\nChallenges are where ordinary members become legends. Top performers earn rewards, badges, and serious bragging rights.\n\nSpots are filling up. Don\u2019t miss out.`) },
-      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.challengeCta', 'Join Challenge') || 'Join Challenge', url: '#', color: '#8B5CF6' },
+      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.challengeCta', 'Join Challenge') || 'Join Challenge', url: '#', color: 'var(--color-coach)' },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: '#8B5CF6', background: '#FAF5FF', text: '#1F2937' },
+      colors: { primary: 'var(--color-coach)', background: '#FAF5FF', text: 'var(--color-bg-card)' },
     }),
 
     // 8. Monthly Report
@@ -164,9 +164,9 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       header: { enabled: true, showLogo: true, text: t?.('admin.emailTemplates.prebuilt.monthlyReportHeader', 'Your Monthly Report') || 'Your Monthly Report' },
       hero: { enabled: false, imageUrl: '', headline: '', subtitle: '' },
       body: { text: t?.('admin.emailTemplates.prebuilt.monthlyReportBody', `Hi {{member_name}},\n\nYour monthly report for {{gym_name}} is ready. Here\u2019s how you performed:\n\n--- Workouts ---\n\u{1F4AA} Total sessions: {{workout_count}}\n\u{1F525} Longest streak: {{streak_count}} days\n\n--- Personal Records ---\nYou crushed new PRs this month. Check the app for the full breakdown.\n\n--- Attendance ---\nYour check-in consistency was strong. Keep showing up \u2014 it\u2019s the single best predictor of results.\n\n--- What\u2019s Next ---\nSet a new goal for next month. Small targets lead to big transformations.`) },
-      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.monthlyReportCta', 'View Full Report') || 'View Full Report', url: '#', color: '#0EA5E9' },
+      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.monthlyReportCta', 'View Full Report') || 'View Full Report', url: '#', color: 'var(--color-info)' },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: '#0EA5E9', background: '#F0F9FF', text: '#1E293B' },
+      colors: { primary: 'var(--color-info)', background: '#F0F9FF', text: 'var(--color-bg-inset)' },
     }),
 
     // 9. Special Offer / Promotion
@@ -177,9 +177,9 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       header: { enabled: true, showLogo: true, text: '' },
       hero: { enabled: true, imageUrl: '', headline: t?.('admin.emailTemplates.prebuilt.promoHeadline', 'Exclusive member offer') || 'Exclusive member offer', subtitle: t?.('admin.emailTemplates.prebuilt.promoSubtitle', 'For a limited time only.') || 'For a limited time only.' },
       body: { text: t?.('admin.emailTemplates.prebuilt.promoBody', `Hi {{member_name}},\n\nAs a valued member of {{gym_name}}, we have something special just for you.\n\n--- The Offer ---\n[Describe your offer here \u2014 discount, free sessions, merchandise, etc.]\n\n\u{23F3} Valid until: [Expiry Date]\n\nThis is our way of saying thank you for being part of the community. Don\u2019t let it expire.`) },
-      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.promoCta', 'Claim Offer') || 'Claim Offer', url: '#', color: '#EF4444' },
+      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.promoCta', 'Claim Offer') || 'Claim Offer', url: '#', color: 'var(--color-danger)' },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: '#EF4444', background: '#FFF1F2', text: '#1F2937' },
+      colors: { primary: 'var(--color-danger)', background: '#FFF1F2', text: 'var(--color-bg-card)' },
     }),
 
     // 10. Referral Reward
@@ -190,9 +190,9 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       header: { enabled: true, showLogo: true, text: '' },
       hero: { enabled: true, imageUrl: '', headline: t?.('admin.emailTemplates.prebuilt.referralHeadline', 'You earned a reward!') || 'You earned a reward!', subtitle: t?.('admin.emailTemplates.prebuilt.referralSubtitle', 'Your referral just signed up.') || 'Your referral just signed up.' },
       body: { text: t?.('admin.emailTemplates.prebuilt.referralBody', `Hey {{member_name}},\n\nGreat news \u2014 someone you referred just joined {{gym_name}}, and you\u2019ve earned a reward.\n\nYour generosity helps our community grow, and we don\u2019t take that for granted. Here\u2019s what you\u2019ve unlocked:\n\n\u{1F381} [Reward Details]\n\nKeep sharing your referral code \u2014 the more friends you bring, the more you earn.`) },
-      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.referralCta', 'See Your Rewards') || 'See Your Rewards', url: '#', color: '#14B8A6' },
+      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.referralCta', 'See Your Rewards') || 'See Your Rewards', url: '#', color: 'var(--color-info)' },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: '#14B8A6', background: '#F0FDFA', text: '#1F2937' },
+      colors: { primary: 'var(--color-info)', background: '#F0FDFA', text: 'var(--color-bg-card)' },
     }),
 
     // 11. Re-engagement (Gentle)
@@ -203,9 +203,9 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       header: { enabled: true, showLogo: true, text: '' },
       hero: { enabled: false, imageUrl: '', headline: '', subtitle: '' },
       body: { text: t?.('admin.emailTemplates.prebuilt.reengagementBody', `Hey {{member_name}},\n\nIt\u2019s been a while since we\u2019ve seen you at {{gym_name}}, and we just wanted to check in.\n\nNo sales pitch, no pressure. Life happens, and we get it.\n\nBut if you\u2019re ready to come back \u2014 even for just one session \u2014 we\u2019re here. Your data is saved, your progress is waiting, and the community would love to see you again.\n\nSometimes the hardest part is just walking through the door.`) },
-      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.reengagementCta', 'Come Back') || 'Come Back', url: '#', color: '#6366F1' },
+      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.reengagementCta', 'Come Back') || 'Come Back', url: '#', color: 'var(--color-coach)' },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: '#6366F1', background: '#ffffff', text: '#374151' },
+      colors: { primary: 'var(--color-coach)', background: '#ffffff', text: 'var(--color-bg-input)' },
     }),
 
     // 12. Event Announcement
@@ -216,9 +216,9 @@ function getPrebuiltTemplates(gymName, primaryColor, t) {
       header: { enabled: true, showLogo: true, text: '' },
       hero: { enabled: true, imageUrl: '', headline: t?.('admin.emailTemplates.prebuilt.eventHeadline', 'You\u2019re invited!') || 'You\u2019re invited!', subtitle: t?.('admin.emailTemplates.prebuilt.eventSubtitle', 'An event you won\u2019t want to miss.') || 'An event you won\u2019t want to miss.' },
       body: { text: t?.('admin.emailTemplates.prebuilt.eventBody', `Hi {{member_name}},\n\nWe\u2019re hosting something special at {{gym_name}}, and you\u2019re on the list.\n\n--- Event Details ---\n\u{1F389} Event: [Event Name]\n\u{1F4C5} Date: [Event Date]\n\u{1F552} Time: [Event Time]\n\u{1F4CD} Location: [Event Location]\n\nWhether you\u2019re a regular or haven\u2019t been in a while, this is a perfect reason to come through. Bring a friend \u2014 everyone\u2019s welcome.\n\nSpaces are limited. Reserve yours now.`) },
-      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.eventCta', 'RSVP Now') || 'RSVP Now', url: '#', color: '#EC4899' },
+      cta: { enabled: true, text: t?.('admin.emailTemplates.prebuilt.eventCta', 'RSVP Now') || 'RSVP Now', url: '#', color: 'var(--color-coach)' },
       footer: { enabled: true, text: `\u00A9 ${yr} ${gn}`, unsubscribeText: unsub },
-      colors: { primary: '#EC4899', background: '#FDF2F8', text: '#1F2937' },
+      colors: { primary: 'var(--color-coach)', background: '#FDF2F8', text: 'var(--color-bg-card)' },
     }),
   ];
 }
@@ -359,7 +359,7 @@ function VariablePill({ token, label, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20 hover:bg-[var(--color-accent)]/20 transition-colors"
+      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/20 transition-colors"
     >
       <span>{label}</span>
     </button>
@@ -373,7 +373,7 @@ function SectionBlock({ title, icon: Icon, enabled, onToggle, children }) {
     <div className="border border-white/6 rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 bg-white/[0.02]">
         <div className="flex items-center gap-2.5">
-          <Icon size={15} className="text-[var(--color-accent)]" />
+          <Icon size={15} className="text-[#D4AF37]" />
           <span className="text-[13px] font-semibold text-[#E5E7EB]">{title}</span>
         </div>
         {onToggle && <Toggle value={enabled} onChange={onToggle} label={`Toggle ${title}`} />}
@@ -393,7 +393,7 @@ function Field({ label, children }) {
   );
 }
 
-const inputClass = 'w-full bg-[#111827] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[var(--color-accent)]/40 transition-colors';
+const inputClass = 'w-full bg-[#111827] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/40 transition-colors';
 
 // ── Live Preview Panel ───────────────────────────────────────────
 function LivePreview({ template, gymName, gymLogoUrl }) {
@@ -417,7 +417,7 @@ function LivePreview({ template, gymName, gymLogoUrl }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-white/6">
-        <Eye size={14} className="text-[var(--color-accent)]" />
+        <Eye size={14} className="text-[#D4AF37]" />
         <span className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider">
           {t('admin.emailTemplates.preview')}
         </span>
@@ -501,11 +501,11 @@ function LivePreview({ template, gymName, gymLogoUrl }) {
             <>
               <div style={{ margin: '0 32px', height: 1, background: '#f0f0f0' }} />
               <div style={{ padding: '20px 32px 24px', textAlign: 'center' }}>
-                <p style={{ margin: '0 0 4px', fontSize: 11, color: '#9CA3AF', lineHeight: 1.5 }}>
+                <p style={{ margin: '0 0 4px', fontSize: 11, color: 'var(--color-admin-text-muted)', lineHeight: 1.5 }}>
                   {replaceVariables(template.footer.text, gymName)}
                 </p>
                 {template.footer.unsubscribeText && (
-                  <span style={{ fontSize: 10, color: '#D1D5DB', textDecoration: 'underline' }}>
+                  <span style={{ fontSize: 10, color: 'var(--color-admin-text-sub)', textDecoration: 'underline' }}>
                     {template.footer.unsubscribeText}
                   </span>
                 )}
@@ -527,6 +527,9 @@ function TemplateEditor({ initial, onSave, onCancel, gymName, gymLogoUrl, primar
   const bodyRef = useRef(null);
   const [testEmail, setTestEmail] = useState(user?.email || '');
   const [sendingTest, setSendingTest] = useState(false);
+  // Mobile preview drawer — desktop has the side panel; below `lg` we surface
+  // a fullscreen preview behind a button so admins can actually see what they're editing.
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
 
   const set = useCallback((path, value) => {
     setTemplate(prev => {
@@ -580,12 +583,15 @@ function TemplateEditor({ initial, onSave, onCancel, gymName, gymLogoUrl, primar
     setSendingTest(true);
     try {
       const html = generateEmailHtml(template, gymName, gymLogoUrl);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('No active session');
       const { error } = await supabase.functions.invoke('send-admin-email', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
         body: {
+          testMode: true,
           to: testEmail.trim(),
           subject: `[Test] ${template.name || 'Email Template'}`,
           html,
-          gym_id: profile?.gym_id,
         },
       });
       if (error) throw error;
@@ -613,6 +619,13 @@ function TemplateEditor({ initial, onSave, onCancel, gymName, gymLogoUrl, primar
           <h2 className="text-[16px] font-bold text-[#E5E7EB] flex-1">
             {initial.name ? t('admin.emailTemplates.editTemplate') : t('admin.emailTemplates.newTemplate')}
           </h2>
+          {/* Mobile-only preview trigger — desktop has the side panel. */}
+          <button
+            onClick={() => setMobilePreviewOpen(true)}
+            className="lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 min-h-[44px]"
+          >
+            <Eye size={14} /> {t('admin.emailTemplates.preview', 'Preview')}
+          </button>
         </div>
 
         {/* Name & Type */}
@@ -634,7 +647,7 @@ function TemplateEditor({ initial, onSave, onCancel, gymName, gymLogoUrl, primar
                     onClick={() => set('type', key)}
                     className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors ${
                       template.type === key
-                        ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/25'
+                        ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25'
                         : 'bg-[#111827] text-[#6B7280] border border-white/6'
                     }`}
                   >
@@ -678,7 +691,7 @@ function TemplateEditor({ initial, onSave, onCancel, gymName, gymLogoUrl, primar
             <input
               value={template.hero.imageUrl}
               onChange={e => set('hero.imageUrl', e.target.value)}
-              placeholder="https://..."
+              placeholder={t('admin.emailTemplates.urlPlaceholder', 'https://...')}
               className={inputClass}
             />
           </Field>
@@ -745,7 +758,7 @@ function TemplateEditor({ initial, onSave, onCancel, gymName, gymLogoUrl, primar
             <input
               value={template.cta.url}
               onChange={e => set('cta.url', e.target.value)}
-              placeholder="https://..."
+              placeholder={t('admin.emailTemplates.urlPlaceholder', 'https://...')}
               className={inputClass}
             />
           </Field>
@@ -793,7 +806,7 @@ function TemplateEditor({ initial, onSave, onCancel, gymName, gymLogoUrl, primar
             <input
               value={template.reward?.code || ''}
               onChange={e => set('reward.code', e.target.value)}
-              placeholder="COMEBACK20"
+              placeholder={t('admin.emailTemplates.promoCodePlaceholder', 'COMEBACK20')}
               className={inputClass}
             />
           </Field>
@@ -957,30 +970,53 @@ function TemplateEditor({ initial, onSave, onCancel, gymName, gymLogoUrl, primar
         </div>
       </div>
 
-      {/* Right: Live Preview */}
+      {/* Right: Live Preview (desktop) */}
       <div className="hidden lg:flex flex-col w-[480px] flex-shrink-0 border-l border-white/6 bg-[#0a0a1a]">
         <LivePreview template={template} gymName={gymName} gymLogoUrl={gymLogoUrl} />
       </div>
+
+      {/* Mobile preview overlay — fullscreen drawer slides in from the right */}
+      {mobilePreviewOpen && (
+        <div className="lg:hidden fixed inset-0 z-[120] flex flex-col bg-[#0a0a1a]" role="dialog" aria-modal="true">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-white/6 flex-shrink-0"
+            style={{ paddingTop: 'calc(12px + env(safe-area-inset-top))' }}>
+            <button
+              onClick={() => setMobilePreviewOpen(false)}
+              className="p-2 -ml-2 rounded-lg text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/[0.06]"
+              aria-label={t('admin.emailTemplates.back', 'Back')}
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <p className="text-[14px] font-semibold text-[#E5E7EB] flex-1">
+              {t('admin.emailTemplates.preview', 'Preview')}
+            </p>
+          </div>
+          <div className="flex-1 overflow-y-auto"
+            style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
+            <LivePreview template={template} gymName={gymName} gymLogoUrl={gymLogoUrl} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Template Card ────────────────────────────────────────────────
-function TemplateCard({ template, onEdit, onDelete, onDuplicate, t }) {
+function TemplateCard({ template, onEdit, onDelete, onDuplicate, t, lang }) {
   const typeInfo = TEMPLATE_TYPES.find(tt => tt.key === template.type) || TEMPLATE_TYPES[5];
   const updated = new Date(template.updatedAt || template.updated_at);
-  const dateStr = updated.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const dateStr = updated.toLocaleDateString(lang, { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
-    <AdminCard className="group hover:border-[var(--color-accent)]/20 transition-colors cursor-pointer" onClick={() => onEdit(template)}>
+    <AdminCard className="group hover:border-[#D4AF37]/20 transition-colors cursor-pointer" onClick={() => onEdit(template)}>
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-[var(--color-accent)]/10 flex items-center justify-center flex-shrink-0 text-lg">
+        <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 text-lg">
           {typeInfo.icon}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{template.name}</p>
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-[11px] font-medium text-[var(--color-accent)]/80 bg-[var(--color-accent)]/8 px-2 py-0.5 rounded-full">
+            <span className="text-[11px] font-medium text-[#D4AF37]/80 bg-[#D4AF37]/8 px-2 py-0.5 rounded-full">
               {t(`admin.emailTemplates.types.${template.type}`)}
             </span>
             <span className="text-[11px] text-[#6B7280]">{dateStr}</span>
@@ -989,7 +1025,7 @@ function TemplateCard({ template, onEdit, onDelete, onDuplicate, t }) {
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={e => { e.stopPropagation(); onDuplicate(template); }}
-            className="p-1.5 rounded-lg text-[#6B7280] hover:text-[var(--color-accent)] hover:bg-white/[0.04] transition-colors"
+            className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#D4AF37] hover:bg-white/[0.04] transition-colors"
             aria-label={t('admin.emailTemplates.duplicate')}
             title={t('admin.emailTemplates.duplicate')}
           >
@@ -997,7 +1033,7 @@ function TemplateCard({ template, onEdit, onDelete, onDuplicate, t }) {
           </button>
           <button
             onClick={e => { e.stopPropagation(); onEdit(template); }}
-            className="p-1.5 rounded-lg text-[#6B7280] hover:text-[var(--color-accent)] hover:bg-white/[0.04] transition-colors"
+            className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#D4AF37] hover:bg-white/[0.04] transition-colors"
             aria-label={t('admin.emailTemplates.edit')}
           >
             <Pencil size={14} />
@@ -1019,9 +1055,9 @@ function TemplateCard({ template, onEdit, onDelete, onDuplicate, t }) {
 function PrebuiltCard({ template, onUse, t }) {
   const typeInfo = TEMPLATE_TYPES.find(tt => tt.key === template.type) || TEMPLATE_TYPES[5];
   return (
-    <AdminCard className="hover:border-[var(--color-accent)]/20 transition-colors">
+    <AdminCard className="hover:border-[#D4AF37]/20 transition-colors">
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-[var(--color-accent)]/10 flex items-center justify-center flex-shrink-0 text-lg">
+        <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 text-lg">
           {typeInfo.icon}
         </div>
         <div className="flex-1 min-w-0">
@@ -1032,7 +1068,7 @@ function PrebuiltCard({ template, onUse, t }) {
         </div>
         <button
           onClick={() => onUse(template)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-[var(--color-accent)] bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20 hover:bg-[var(--color-accent)]/20 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/20 hover:bg-[#D4AF37]/20 transition-colors"
         >
           <Sparkles size={13} /> {t('admin.emailTemplates.useTemplate')}
         </button>
@@ -1082,7 +1118,7 @@ function templateToDbPayload(tpl, gymId) {
 export default function AdminEmailTemplates() {
   const { gymName, gymLogoUrl, profile } = useAuth();
   const { showToast } = useToast();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
 
@@ -1095,7 +1131,7 @@ export default function AdminEmailTemplates() {
   const [editing, setEditing] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  useEffect(() => { document.title = `Admin - Email Templates | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
+  useEffect(() => { document.title = `${t('admin.emailTemplates.title', 'Admin - Email Templates')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // ── Supabase query ─────────────────────────────────────────
   const { data: dbTemplates = [], isLoading } = useQuery({
@@ -1289,13 +1325,13 @@ export default function AdminEmailTemplates() {
                     <p className="text-[14px] text-[#9CA3AF]">{t('admin.emailTemplates.noTemplates')}</p>
                     <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.emailTemplates.noTemplatesHint')}</p>
                     <button onClick={handleNewTemplate}
-                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[var(--color-accent)] hover:brightness-90 transition-colors">
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:brightness-90 transition-colors">
                       <Plus size={14} /> {t('admin.emailTemplates.createNew')}
                     </button>
                   </div>
                 </AdminCard>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3">
                   {sortedTemplates.map(tpl => (
                     <TemplateCard
                       key={tpl.id}
@@ -1304,6 +1340,7 @@ export default function AdminEmailTemplates() {
                       onDelete={id => setDeleteConfirm(id)}
                       onDuplicate={handleDuplicate}
                       t={t}
+                      lang={i18n.language}
                     />
                   ))}
                 </div>
@@ -1319,7 +1356,7 @@ export default function AdminEmailTemplates() {
                   </div>
                 </AdminCard>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3">
                   {recentTemplates.map(tpl => (
                     <TemplateCard
                       key={tpl.id}
@@ -1328,6 +1365,7 @@ export default function AdminEmailTemplates() {
                       onDelete={id => setDeleteConfirm(id)}
                       onDuplicate={handleDuplicate}
                       t={t}
+                      lang={i18n.language}
                     />
                   ))}
                 </div>

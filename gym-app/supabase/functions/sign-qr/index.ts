@@ -5,20 +5,14 @@ const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-// Fail closed: QR_SIGNING_SECRET must be explicitly configured.
-const QR_SIGNING_SECRET = Deno.env.get('QR_SIGNING_SECRET');
-if (!QR_SIGNING_SECRET) {
-  throw new Error('QR_SIGNING_SECRET environment variable is required');
-}
-
-// Fail closed: ALLOWED_ORIGIN must be explicitly configured.
+// Read env at module level but DO NOT throw — throwing here would crash the
+// worker boot, returning 500 on every request (including OPTIONS preflight).
+// Return a clean 503 inside the handler when these aren't configured.
+const QR_SIGNING_SECRET = Deno.env.get('QR_SIGNING_SECRET') || '';
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
-if (!ALLOWED_ORIGIN) {
-  throw new Error('ALLOWED_ORIGIN environment variable is required');
-}
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN ?? '',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -45,12 +39,26 @@ async function hmacSign(payload: string): Promise<string> {
 }
 
 serve(async (req) => {
+  if (!ALLOWED_ORIGIN) {
+    console.error('[sign-qr] FATAL: ALLOWED_ORIGIN env not set');
+    return new Response(JSON.stringify({ error: 'misconfigured' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
+  }
+
+  // Fail loudly but cleanly when secrets aren't configured — caller gets a
+  // proper 503 with a clear message instead of a worker crash.
+  if (!QR_SIGNING_SECRET) {
+    return new Response(JSON.stringify({
+      error: 'sign-qr is not configured',
+      hint: 'Set the QR_SIGNING_SECRET secret in Supabase project settings.',
+    }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
   try {
@@ -73,7 +81,7 @@ serve(async (req) => {
         .select('*', { count: 'exact', head: true })
         .eq('profile_id', user.id)
         .eq('endpoint', 'sign-qr')
-        .gte('created_at', oneHourAgo);
+        .gte('requested_at', oneHourAgo);
       if ((count ?? 0) >= 60) {
         return jsonResp({ error: 'Rate limit exceeded — too many QR sign requests' }, 429);
       }

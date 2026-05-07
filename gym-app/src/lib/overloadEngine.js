@@ -237,6 +237,11 @@ export const computeIntraSessionSuggestion = (completedSetsThisSession, onboardi
  * @param {number} targetReps  from routine config (nullable)
  * @param {number} [consecutiveSessions=0]  number of consecutive progressive sessions
  * @param {Object} [exerciseMeta]  { movementPattern } from exercise library
+ * @param {Object} [personalRecord]  { weight, reps } — the user's PR for this
+ *   exercise from personal_records. When the recorded PR has a higher
+ *   estimated 1RM than the best set in `history` (e.g. the PR was set on a
+ *   different day than the most recent session), we use the PR as the floor
+ *   so the next suggestion progresses FROM the PR, not from a maintenance set.
  *
  * @returns {{
  *   suggestedWeight: number|null,
@@ -245,7 +250,7 @@ export const computeIntraSessionSuggestion = (completedSetsThisSession, onboardi
  *   label: string   // human-readable hint
  * }}
  */
-export const computeSuggestion = (history, onboarding, targetReps, consecutiveSessions = 0, exerciseMeta = null) => {
+export const computeSuggestion = (history, onboarding, targetReps, consecutiveSessions = 0, exerciseMeta = null, personalRecord = null) => {
   const goal  = onboarding?.primary_goal  ?? 'general_fitness';
   const level = onboarding?.fitness_level ?? 'intermediate';
 
@@ -300,9 +305,24 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
   }
 
   // Best working set = highest estimated 1RM from last session
-  const best = completedSets.reduce((top, s) =>
+  let best = completedSets.reduce((top, s) =>
     epley1RM(s.weight, s.reps) > epley1RM(top.weight, top.reps) ? s : top
   );
+
+  // ── PR floor ──────────────────────────────────────────────────────────────
+  // If the recorded personal_records.estimated_1rm is higher than the best
+  // set from the most-recent session, the PR was set on a different day and
+  // the most recent session was a maintenance/deload day. Progress from the
+  // PR — not from a lighter set — so the suggestion doesn't drift backwards.
+  // We treat the PR as the "best" for progression purposes but keep the
+  // session's `avgReps` to decide between weight-up vs reps-up.
+  if (personalRecord && personalRecord.weight > 0 && personalRecord.reps > 0) {
+    const prE1RM = epley1RM(personalRecord.weight, personalRecord.reps);
+    const bestE1RM = epley1RM(best.weight, best.reps);
+    if (prE1RM > bestE1RM) {
+      best = { weight: personalRecord.weight, reps: personalRecord.reps };
+    }
+  }
 
   // Average completed reps across last session's sets
   const avgReps = Math.round(

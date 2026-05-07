@@ -56,10 +56,10 @@ export const cmToIn = (cm) => cm != null ? Math.round(cm / 2.54 * 10) / 10 : nul
 export const inToCm = (inches) => inches != null ? Math.round(inches * 2.54 * 10) / 10 : null;
 
 export const PERIOD_OPTIONS = [
-  { label: '1M', days: 30 },
-  { label: '3M', days: 90 },
-  { label: '6M', days: 180 },
-  { label: '1Y', days: 365 },
+  { label: '1M', days: 30, labelKey: 'progressBody.period1M' },
+  { label: '3M', days: 90, labelKey: 'progressBody.period3M' },
+  { label: '6M', days: 180, labelKey: 'progressBody.period6M' },
+  { label: '1Y', days: 365, labelKey: 'progressBody.period1Y' },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@
     "verifying": "Verificando...",
     "success": "\u00a1Cuenta vinculada!",
     "skip": "Saltar \u2014 no tengo un c\u00f3digo",
+    "placeholder": "ej. ABC123",
     "errors": {
       "invalidCode": "C\u00f3digo inv\u00e1lido. Revisa e intenta de nuevo.",
       "alreadyUsed": "Este c\u00f3digo ya fue utilizado.",
@@ -16,6 +17,16 @@
       "wrongGym": "Este c\u00f3digo es para otro gym.",
       "rateLimited": "Demasiados intentos. Espera un momento e intenta de nuevo."
     }
+  },
+
+  "stepHead": {
+    "lets": "Vamos a configurarte",
+    "takes": "Toma 2 minutos \u00b7 puedes editarlo despu\u00e9s"
+  },
+
+  "healthRationale": {
+    "title": "Conectar {{healthPlatformName}}",
+    "body": "Usamos {{healthPlatformName}} para autocompletar tu peso y estatura, sincronizar entrenamientos y leer tu ritmo card\u00edaco durante las sesiones. Nunca escribimos datos sin tu permiso, y puedes desconectarlo cuando quieras en Ajustes."
   },
 
   "langStep": {
@@ -83,7 +94,12 @@
     "bodyweight": "Peso Corporal",
     "kettlebells": "Kettlebells",
     "resistanceBands": "Bandas de Resistencia",
-    "smithMachine": "Smith Machine"
+    "smithMachine": "Smith Machine",
+    "selected": "seleccionado",
+    "dayLabel": "día",
+    "daysLabel": "días",
+    "pulledFrom": "Desde",
+    "updatedByYourGym": " — actualizado por tu gimnasio."
   },
 
   "schedule": {
@@ -94,6 +110,16 @@
     "selectAtLeast": "Selecciona al menos un día para continuar.",
     "daysSelected": "{{count}} día seleccionado",
     "daysSelected_plural": "{{count}} días seleccionados",
+    "durationTitle": "Duración del Entrenamiento",
+    "durationHint": "¿Cuánto quieres que dure cada sesión?",
+    "duration30": "30 min",
+    "duration30Sub": "Express — enfocado en compuestos, rápido y eficiente",
+    "duration45": "45 min",
+    "duration45Sub": "Corto — entrenamiento eficiente, descanso mínimo",
+    "duration60": "60 min",
+    "duration60Sub": "Estándar — volumen y descanso equilibrados",
+    "duration90": "90 min",
+    "duration90Sub": "Extendido — volumen completo con accesorios",
     "preferTime": "Prefiero entrenar en la...",
     "timeHint": "Programaremos tus recordatorios para que coincidan.",
     "morning": "Mañana",
@@ -105,7 +131,12 @@
     "workoutPartner": "Compañero de entrenamiento",
     "partnerQuestion": "¿Tienes un compañero de entrenamiento en este gimnasio?",
     "partnerPlaceholder": "Su nombre de usuario (opcional)",
-    "findPartner": "Te ayudaremos a encontrar uno"
+    "findPartner": "Te ayudaremos a encontrar uno",
+    "closed": "CERRADO",
+    "custom": "Personalizado",
+    "customMinutes": "Minutos",
+    "closeLabel": "cierre",
+    "gymLabel": "Gimnasio"
   },
 
   "bodyStats": {
@@ -131,6 +162,7 @@
     "sex": "Sexo Biológico",
     "male": "Masculino",
     "female": "Femenino",
+    "other": "Otro",
     "sexHint": "Se usa para cálculos precisos de calorías",
     "age": "Edad",
     "height": "Estatura"
@@ -161,13 +193,24 @@
     "prefillHint": "Regresa a Datos Corporales para revisar o cambiar estos valores."
   },
 
+  "phoneStep": {
+    "title": "Tu número de teléfono",
+    "subtitle": "Opcional. Para recordatorios de racha, no se comparte.",
+    "countryCode": "Código de país",
+    "phonePlaceholder": "787 555 1234",
+    "skip": "Saltar",
+    "continue": "Continuar"
+  },
+
   "social": {
     "title": "Encuentra Tu Grupo del Gym",
     "subtitle": "Los miembros con 3+ amigos en el gym se quedan un 56% más",
     "hint": "Ve a la pestaña Social después de la configuración para agregar amigos — los que entrenan juntos, permanecen juntos.",
     "feedPreview": "Lo que verás en tu feed social",
     "mockPR": "logró un nuevo PR",
+    "mockPRDetail": "Press de Banca · 225 lb × 5",
     "mockSession": "completó una sesión",
+    "mockSessionDetail": "Tren Superior · 14 series · 42 min",
     "mockStreak": "lleva una",
     "mockStreakDays": "racha de 14 días",
     "mockStreakDesc": "No ha faltado un día en dos semanas",
@@ -176,7 +219,12 @@
     "hrAgo": "hace 1 hr",
     "nice": "Bien",
     "crushIt": "Dale duro",
-    "insane": "Increíble"
+    "insane": "Increíble",
+    "referredBy": "Referido por",
+    "referralApplied": "Amigo agregado por referido",
+    "referralCode": "Código de Referido",
+    "referralCodePlaceholder": "ej. REF-ALEX",
+    "referralWillConnect": "¡Quedarán conectados como amigos y ambos ganarán recompensas!"
   },
 
   "generatePlan": {
@@ -184,8 +232,14 @@
     "desc": "Generaremos un programa de entrenamiento basado en tus objetivos, nivel de experiencia y horario. Listo en segundos.",
     "generate": "Generar Mi Plan",
     "generating": "Creando tu plan...",
+    "preparing": "Preparando tu plan\u2026",
     "ready": "\u00a1Tu plan est\u00e1 listo! \ud83c\udf89",
     "readyDesc": "Hemos creado rutinas personalizadas basadas en tu perfil. Puedes verlas e iniciarlas desde tu panel principal.",
+    "readyHeadline": "Aqu\u00ed est\u00e1 tu semana.",
+    "looksGood": "Se ve bien",
+    "pill": "PLAN GENERADO",
+    "dayFallback": "D\u00eda {{n}}",
+    "dayCounter": "D\u00cdA {{current}} / {{total}}",
     "goToDashboard": "Vamos",
     "skip": "Lo configuro despu\u00e9s"
   },
@@ -231,12 +285,26 @@
     "mealsAvailable": "{{count}} comidas coinciden con tus preferencias",
     "tooFewMeals": "Muy pocas comidas coinciden \u2014 considera relajar algunas restricciones.",
     "dayLabel": "D\u00eda {{day}}",
-    "mealCount": "{{count}} comidas por d\u00eda"
+    "mealCount": "{{count}} comidas por d\u00eda",
+    "clearSearch": "Limpiar",
+    "mealFallback": "Comida {{n}}",
+    "breakfast": "Desayuno",
+    "lunch": "Almuerzo",
+    "snack": "Merienda",
+    "dinner": "Cena",
+    "caloriesLabel": "Calor\u00edas",
+    "pill": "PLAN DE COMIDAS LISTO \u00b7 7 D\u00cdAS",
+    "readyHeadline": "Listo para cocinar."
   },
 
   "dataConsent": {
     "title": "C\u00f3mo Usamos Tus Datos",
     "subtitle": "Estamos comprometidos con proteger tu privacidad",
+    "heroTitle": "Tus datos, tus reglas.",
+    "heroSub": "Tres cosas que usaremos. Rechaza lo que quieras, c\u00e1mbialo cuando sea.",
+    "healthTitle": "Salud y Fitness",
+    "cameraTitle": "C\u00e1mara y Fotos",
+    "analyticsTitle": "Anal\u00edtica",
     "health": "Registramos tus entrenamientos y medidas corporales para personalizar tu entrenamiento. Los datos de salud se sincronizan con Apple Health / Google Fit.",
     "location": "Usamos tu ubicaci\u00f3n solo para verificar check-ins en el gimnasio. Nunca te rastreamos en segundo plano.",
     "camera": "Usamos tu c\u00e1mara para escanear c\u00f3digos QR y analizar fotos de comida. Las fotos se procesan de forma segura y se eliminan los metadatos.",
@@ -250,5 +318,6 @@
 
   "disclaimer": "Esta aplicaci\u00f3n provee herramientas de seguimiento fitness \u00fanicamente y no constituye consejo m\u00e9dico. Consulta a un profesional de salud antes de comenzar cualquier programa de ejercicios.",
   "finish": "\u00a1Listo, vamos!",
-  "initialWeightNote": "Peso inicial al registrarse"
+  "initialWeightNote": "Peso inicial al registrarse",
+  "onboardingAgeUnder13": "Debes tener al menos 13 a\u00f1os para usar TuGymPR. Por favor contacta a tu gimnasio para asistencia."
 }

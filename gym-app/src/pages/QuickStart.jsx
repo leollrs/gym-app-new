@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Play, Plus, Dumbbell, ChevronRight, ChevronDown, Clock, X, CheckCircle2, Zap, Pencil, Trophy, Moon } from 'lucide-react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { Play, Plus, Dumbbell, ChevronRight, ChevronDown, Clock, X, CheckCircle2, Zap, Pencil, Trophy, Moon, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,6 +9,7 @@ import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
 import { exercises as exerciseLibrary } from '../data/exercises';
 import { localizeRoutineName } from '../lib/exerciseName';
+import { hasCardioLoggedAfter, hasRecentCardioLog } from '../lib/cardioLedger';
 import { useTranslation } from 'react-i18next';
 import CreateRoutineModal from '../components/CreateRoutineModal';
 
@@ -28,6 +29,40 @@ const readActiveDrafts = () => {
   return sessions;
 };
 
+/** Read the live cardio draft (mirrors Dashboard's logic).
+ *  Entries are killed if the per-user cardio ledger has any "logged" event
+ *  newer than the draft's startedAt — that ledger is an append-only tombstone
+ *  written every time LiveCardio.handleSubmit succeeds, so a finished run
+ *  can't come back from the dead even if its localStorage draft persists. */
+const LIVE_CARDIO_STALE_MS = 12 * 60 * 60 * 1000;
+const readLiveCardio = (uid) => {
+  try {
+    const lc = JSON.parse(localStorage.getItem('tugympr_live_cardio'));
+    if (!lc) return null;
+    const isLive = (lc.accumulatedSec > 0 || lc.running) && lc.phase === 'tracking';
+    const isFresh = lc.lastUpdate && (Date.now() - lc.lastUpdate) < LIVE_CARDIO_STALE_MS;
+    const supersededByLog = lc.startedAt
+      ? hasCardioLoggedAfter(uid, lc.startedAt)
+      : hasRecentCardioLog(uid, 6 * 60 * 60 * 1000);
+    if (!isLive || !isFresh || supersededByLog) {
+      localStorage.removeItem('tugympr_live_cardio');
+      return null;
+    }
+    return lc;
+  } catch {
+    return null;
+  }
+};
+
+const fmtElapsed = (sec) => {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(s / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  if (m < 60) return `${m}:${ss}`;
+  const h = Math.floor(m / 60);
+  return `${h}:${String(m % 60).padStart(2, '0')}:${ss}`;
+};
+
 // Video lookup
 const videoMap = {};
 for (const ex of exerciseLibrary) {
@@ -36,15 +71,39 @@ for (const ex of exerciseLibrary) {
 
 const CYCLE_MS = 3500;
 
+// Stale-while-revalidate cache — painted on mount so the page feels instant
+// on repeat visits. Background fetch replaces the data once complete.
+const cacheKey = (userId) => `qs_cache_v1_${userId}`;
+const readCache = (userId) => {
+  if (!userId) return null;
+  try { return JSON.parse(localStorage.getItem(cacheKey(userId))); } catch { return null; }
+};
+const writeCache = (userId, payload) => {
+  if (!userId) return;
+  try { localStorage.setItem(cacheKey(userId), JSON.stringify(payload)); } catch {}
+};
+
 const QuickStart = () => {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation('pages');
-  const [routines, setRoutines] = useState([]);
-  const [todayRoutine, setTodayRoutine] = useState(null);
-  const [todayExercises, setTodayExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Hydrate from cache synchronously so the initial paint has real data and
+  // `loading` starts false whenever we have any cached state at all.
+  const cachedInit = typeof user?.id === 'string' ? readCache(user.id) : null;
+  const [routines, setRoutines] = useState(cachedInit?.routines || []);
+  const [todayRoutine, setTodayRoutine] = useState(cachedInit?.todayRoutine || null);
+  const [todayExercises, setTodayExercises] = useState(cachedInit?.todayExercises || []);
+  const [loading, setLoading] = useState(!cachedInit);
   const [activeDrafts] = useState(() => readActiveDrafts());
+  const [liveCardio, setLiveCardio] = useState(() => readLiveCardio(user?.id));
+  // Refresh on visibility — handles returning from the LiveCardio screen.
+  useEffect(() => {
+    const refresh = () => setLiveCardio(readLiveCardio(user?.id));
+    refresh();
+    document.addEventListener('visibilitychange', refresh);
+    return () => document.removeEventListener('visibilitychange', refresh);
+  }, [user?.id]);
   const [showOther, setShowOther] = useState(false);
   const [cycleIndex, setCycleIndex] = useState(0);
   const [todayCompleted, setTodayCompleted] = useState(false);
@@ -55,6 +114,7 @@ const QuickStart = () => {
   const [loadingExercises, setLoadingExercises] = useState(false);
   const [isRestDay, setIsRestDay] = useState(false);
   const [isGymClosed, setIsGymClosed] = useState(false);
+  const [includeWarmUp, setIncludeWarmUp] = useState(true);
 
   useEffect(() => {
     if (!user) return;
@@ -185,13 +245,61 @@ const QuickStart = () => {
         );
         setTodayCompleted(!!doneSession);
         if (doneSession) setCompletedSession(doneSession);
+
+        // Snapshot to localStorage for the next mount — makes the page feel
+        // instant (no spinner) when the user returns to /record.
+        writeCache(user.id, {
+          routines: enriched,
+          todayRoutine: todayR,
+          todayExercises: exs,
+        });
+      } else {
+        // No today routine — still cache routines list so picker paints fast
+        writeCache(user.id, {
+          routines: enriched,
+          todayRoutine: null,
+          todayExercises: [],
+        });
       }
 
       setLoading(false);
     };
 
     load();
-  }, [user]);
+  }, [user, location.key]);
+
+  // Also revalidate whenever the tab becomes visible again (e.g. user returns
+  // to the app after finishing a workout so the completed state shows up).
+  useEffect(() => {
+    if (!user) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        // Trigger re-run by bumping a dummy state via location key is cleanest
+        // but location.key doesn't change on visibilitychange. Instead, fetch
+        // only the completion status here — cheap query.
+        (async () => {
+          const todayStr = new Date().toDateString();
+          const { data } = await supabase
+            .from('workout_sessions')
+            .select('id, routine_id, name, completed_at, duration_seconds, total_volume_lbs')
+            .eq('profile_id', user.id)
+            .eq('status', 'completed')
+            .order('completed_at', { ascending: false })
+            .limit(10);
+          const sessions = data || [];
+          const done = sessions.find(
+            s => s.routine_id === todayRoutine?.id && new Date(s.completed_at).toDateString() === todayStr
+          );
+          if (done) {
+            setTodayCompleted(true);
+            setCompletedSession(done);
+          }
+        })();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [user, todayRoutine?.id]);
 
   // Cycle through exercises for hero preview
   useEffect(() => {
@@ -297,7 +405,7 @@ const QuickStart = () => {
             </div>
             <p className="font-bold text-[18px]" style={{ color: 'var(--color-text-primary)' }}>{t('quickStart.workoutAlreadyCompleted', 'Workout Already Completed')}</p>
             <p className="text-[13px] mt-1.5 mb-5" style={{ color: 'var(--color-text-subtle)' }}>
-              Great job today! Your <span className="text-[#10B981] font-semibold">{todayRoutine.name?.replace('Auto: ', '').replace(/ [AB]$/, '')}</span> session is done.
+              {t('quickStart.greatJobPrefix', 'Great job today! Your')} <span className="text-[#10B981] font-semibold">{todayRoutine.name?.replace('Auto: ', '').replace(/ [AB]$/, '')}</span> {t('quickStart.greatJobSuffix', 'session is done.')}
             </p>
 
             {/* Link to session summary */}
@@ -328,7 +436,7 @@ const QuickStart = () => {
                       <span>{volStr} lbs</span>
                     </div>
                   </div>
-                  <span className="text-[10px] font-medium text-[#10B981]">View summary</span>
+                  <span className="text-[10px] font-medium text-[#10B981]">{t('quickStart.viewSummary', 'View summary')}</span>
                 </Link>
               );
             })()}
@@ -344,7 +452,7 @@ const QuickStart = () => {
         ) : todayRoutine ? (
           <button
             type="button"
-            onClick={() => navigate(`/session/${todayRoutine.id}`)}
+            onClick={() => navigate(`/session/${todayRoutine.id}`, { state: { skipWarmUp: !includeWarmUp } })}
             className="relative w-full rounded-2xl overflow-hidden text-left active:scale-[0.98] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             style={{ aspectRatio: '4 / 3', color: '#ffffff' }}
           >
@@ -449,20 +557,46 @@ const QuickStart = () => {
           </div>
         )}
 
-        {/* ── START ANOTHER — two big cards ──────────────────── */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* ── WARM-UP TOGGLE ─────────────────────────────────── */}
+        <label className="flex items-center justify-between px-4 py-3 rounded-2xl border border-white/[0.06] cursor-pointer" style={{ background: 'var(--color-bg-card)' }}>
+          <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            {t('quickStart.includeWarmUp', 'Include Warm-Up')}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={includeWarmUp}
+            onClick={() => setIncludeWarmUp(v => !v)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${includeWarmUp ? 'bg-[#D4AF37]' : 'bg-white/[0.12]'}`}
+          >
+            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${includeWarmUp ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </label>
+
+        {/* ── START ANOTHER — three cards ────────────────────── */}
+        <div className="grid grid-cols-3 gap-3">
           {/* Choose Existing */}
           <button
             type="button"
             onClick={() => setShowOther(v => !v)}
-            className="rounded-[16px] border border-white/[0.06] hover:border-white/[0.12] p-4 text-left transition-colors active:scale-[0.97] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-            style={{ background: 'var(--color-bg-card)' }}
+            className="rounded-[16px] p-3.5 text-left active:scale-[0.97] focus:ring-2 focus:outline-none"
+            style={{
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border-subtle)',
+              boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)',
+              '--tw-ring-color': 'var(--color-accent)',
+            }}
           >
-            <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-3">
-              <Dumbbell size={20} style={{ color: 'var(--color-text-muted)' }} />
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center mb-2.5"
+              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
+            >
+              <Dumbbell size={18} style={{ color: 'var(--color-text-muted)' }} />
             </div>
-            <p className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('quickStart.chooseRoutine')}</p>
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+            <p className="text-[13px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui', fontWeight: 800, letterSpacing: -0.2 }}>
+              {t('quickStart.chooseRoutine')}
+            </p>
+            <p className="text-[10.5px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
               {otherRoutines.length} {t('quickStart.available')}
             </p>
           </button>
@@ -470,17 +604,84 @@ const QuickStart = () => {
           {/* Quick Start Empty */}
           <button
             type="button"
-            onClick={() => navigate('/session/empty')}
-            className="rounded-[16px] border border-dashed border-[#D4AF37]/20 hover:border-[#D4AF37]/40 p-4 text-left transition-colors active:scale-[0.97] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-            style={{ background: 'var(--color-bg-card)' }}
+            onClick={() => navigate('/session/empty', { state: { skipWarmUp: !includeWarmUp } })}
+            className="rounded-[16px] p-3.5 text-left active:scale-[0.97] focus:ring-2 focus:outline-none"
+            style={{
+              background: 'var(--color-bg-card)',
+              border: '1.5px dashed color-mix(in srgb, var(--color-accent) 35%, transparent)',
+              boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)',
+              '--tw-ring-color': 'var(--color-accent)',
+            }}
           >
-            <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center mb-3">
-              <Zap size={20} className="text-[#D4AF37]" />
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center mb-2.5"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
+            >
+              <Zap size={18} style={{ color: 'var(--color-accent)' }} />
             </div>
-            <p className="text-[14px] font-bold text-[#D4AF37]">{t('quickStart.startEmptyWorkout')}</p>
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+            <p className="text-[13px]" style={{ color: 'var(--color-accent)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui', fontWeight: 800, letterSpacing: -0.2 }}>
+              {t('quickStart.startEmptyWorkout')}
+            </p>
+            <p className="text-[10.5px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
               {t('quickStart.addExercisesAsYouGo')}
             </p>
+          </button>
+
+          {/* Cardio Session — GPS-tracked runs, walks, bikes.
+              When a live cardio session is in progress, this card flips to a
+              "Resume" state so the user can jump back into the run instead of
+              starting a new one. */}
+          <button
+            type="button"
+            onClick={() => navigate('/cardio-live')}
+            className="rounded-[16px] p-3.5 text-left active:scale-[0.97] focus:ring-2 focus:outline-none relative overflow-hidden"
+            style={{
+              background: liveCardio
+                ? 'color-mix(in srgb, #FF5A2E 12%, var(--color-bg-card))'
+                : 'var(--color-bg-card)',
+              border: '1px solid color-mix(in srgb, #FF5A2E ' + (liveCardio ? '50' : '22') + '%, transparent)',
+              boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)',
+              '--tw-ring-color': '#FF5A2E',
+            }}
+          >
+            {liveCardio && (
+              <div
+                className="absolute top-3 right-3 flex items-center gap-1"
+                style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.6, color: '#FF5A2E', textTransform: 'uppercase' }}
+              >
+                <span
+                  style={{
+                    width: 6, height: 6, borderRadius: 999, background: '#FF5A2E',
+                    boxShadow: '0 0 0 0 rgba(255,90,46,0.6)',
+                    animation: 'qs-pulse 1.6s ease-out infinite',
+                  }}
+                />
+                Live
+              </div>
+            )}
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center mb-2.5"
+              style={{ background: 'color-mix(in srgb, #FF5A2E 10%, transparent)', border: '1px solid color-mix(in srgb, #FF5A2E 20%, transparent)' }}
+            >
+              <Activity size={18} style={{ color: '#FF5A2E' }} />
+            </div>
+            <p className="text-[13px]" style={{ color: '#FF5A2E', fontFamily: '"Familjen Grotesk", "Archivo", system-ui', fontWeight: 800, letterSpacing: -0.2 }}>
+              {liveCardio
+                ? t('quickStart.resumeCardio', 'Resume Cardio')
+                : t('quickStart.cardioSession', 'Cardio Session')}
+            </p>
+            <p className="text-[10.5px] mt-0.5" style={{ color: liveCardio ? '#FF5A2E' : 'var(--color-text-subtle)' }}>
+              {liveCardio
+                ? `${fmtElapsed(liveCardio.accumulatedSec)} · ${liveCardio.running ? t('quickStart.cardioRunning', 'running') : t('quickStart.cardioPaused', 'paused')}`
+                : t('quickStart.runBikeTrack', 'Run, bike, track GPS')}
+            </p>
+            <style>{`
+              @keyframes qs-pulse {
+                0% { box-shadow: 0 0 0 0 rgba(255,90,46,0.5); }
+                70% { box-shadow: 0 0 0 6px rgba(255,90,46,0); }
+                100% { box-shadow: 0 0 0 0 rgba(255,90,46,0); }
+              }
+            `}</style>
           </button>
         </div>
 
@@ -534,9 +735,9 @@ const QuickStart = () => {
                           >
                             <div className="mt-1 ml-2 mr-2 rounded-xl border border-white/[0.04] p-4" style={{ background: 'var(--color-bg-card)' }}>
                               {loadingExercises ? (
-                                <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>Loading...</p>
+                                <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('quickStart.loadingExercises', 'Loading...')}</p>
                               ) : expandedExercises.length === 0 ? (
-                                <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>No exercises yet. Tap Edit to add some.</p>
+                                <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('quickStart.noExercisesYet', 'No exercises yet. Tap Edit to add some.')}</p>
                               ) : (
                                 <div className="space-y-1.5 mb-4">
                                   {expandedExercises.map((ex, i) => (
@@ -554,14 +755,14 @@ const QuickStart = () => {
                                   style={{ color: 'var(--color-text-primary)' }}
                                 >
                                   <Pencil size={14} />
-                                  Edit
+                                  {t('quickStart.edit', 'Edit')}
                                 </button>
                                 <button
-                                  onClick={() => navigate(`/session/${r.id}`)}
+                                  onClick={() => navigate(`/session/${r.id}`, { state: { skipWarmUp: !includeWarmUp } })}
                                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                                 >
                                   <Play size={14} fill="black" strokeWidth={0} />
-                                  Start
+                                  {t('quickStart.start', 'Start')}
                                 </button>
                               </div>
                             </div>

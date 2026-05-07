@@ -1,21 +1,23 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle, XCircle, Info, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useToast } from '../contexts/ToastContext';
 
 const icons = {
-  success: <CheckCircle size={18} className="text-[#10B981] flex-shrink-0" />,
-  error:   <XCircle    size={18} className="text-[#EF4444] flex-shrink-0" />,
-  info:    <Info        size={18} className="text-[#D4AF37] flex-shrink-0" />,
+  success: <CheckCircle size={18} className="text-[var(--color-success)] flex-shrink-0" />,
+  error:   <XCircle    size={18} className="text-[var(--color-danger)] flex-shrink-0" />,
+  info:    <Info        size={18} className="text-[var(--color-accent)] flex-shrink-0" />,
 };
 
 const accents = {
-  success: 'border-[#10B981]/20',
-  error:   'border-[#EF4444]/20',
-  info:    'border-[#D4AF37]/20',
+  success: 'border-[var(--color-success)]/20',
+  error:   'border-[var(--color-danger)]/20',
+  info:    'border-[var(--color-accent)]/20',
 };
 
 const Toast = () => {
   const { toasts, dismissToast } = useToast();
+  const { t } = useTranslation('pages');
 
   return (
     <div aria-live="polite" className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-[9999] flex flex-col-reverse gap-2 items-end max-sm:left-4 max-sm:right-4 max-sm:items-stretch">
@@ -39,9 +41,22 @@ const Toast = () => {
           >
             {icons[toast.type]}
             <p className="text-[13px] flex-1 leading-snug" style={{ color: 'var(--color-text-primary)' }}>{toast.message}</p>
+            {toast.action && (
+              <button
+                onClick={() => { try { toast.action.onClick?.(); } finally { dismissToast(toast.id); } }}
+                className="px-3 min-h-[36px] rounded-lg text-[12px] font-bold transition-colors flex-shrink-0"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                  color: 'var(--color-accent)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)',
+                }}
+              >
+                {toast.action.label}
+              </button>
+            )}
             <button
               onClick={() => dismissToast(toast.id)}
-              aria-label="Dismiss"
+              aria-label={t('achievementToast.dismiss', { defaultValue: 'Dismiss' })}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
               style={{ color: 'var(--color-text-subtle)' }}
             >

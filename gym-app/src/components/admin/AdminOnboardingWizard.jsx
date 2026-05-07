@@ -14,9 +14,9 @@ import { validateImageFile } from '../../lib/validateImage';
 const TOTAL_STEPS = 7;
 
 const PRESET_COLORS = [
-  '#D4AF37', '#EF4444', '#F97316', '#EAB308',
-  '#22C55E', '#10B981', '#06B6D4', '#3B82F6',
-  '#8B5CF6', '#EC4899',
+  'var(--color-accent)', 'var(--color-danger)', 'var(--color-danger)', 'var(--color-warning)',
+  'var(--color-success)', 'var(--color-success)', 'var(--color-info)', 'var(--color-info)',
+  'var(--color-coach)', 'var(--color-coach)',
 ];
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -254,7 +254,7 @@ function StepFeatures({ features, toggleFeature, t }) {
             <button
               onClick={() => toggleFeature(key)}
               className="w-11 h-6 rounded-full relative flex-shrink-0 transition-colors"
-              style={{ backgroundColor: features[key] ? '#D4AF37' : '#4B5563' }}
+              style={{ backgroundColor: features[key] ? 'var(--color-accent)' : 'var(--color-admin-text-sub)' }}
             >
               <span
                 className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
@@ -420,7 +420,7 @@ export default function AdminOnboardingWizard({ onComplete }) {
 
   // Step 2: Branding state
   const [gymName, setGymName] = useState(authGymName || '');
-  const [primaryColor, setPrimaryColor] = useState('#D4AF37');
+  const [primaryColor, setPrimaryColor] = useState('var(--color-accent)');
   const [customColor, setCustomColor] = useState('');
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState('');
@@ -703,7 +703,7 @@ export default function AdminOnboardingWizard({ onComplete }) {
               className="h-1.5 rounded-full transition-all duration-300"
               style={{
                 width: i === step ? 24 : 8,
-                backgroundColor: i <= step ? '#D4AF37' : 'rgba(255,255,255,0.08)',
+                backgroundColor: i <= step ? 'var(--color-accent)' : 'rgba(255,255,255,0.08)',
               }}
             />
           ))}

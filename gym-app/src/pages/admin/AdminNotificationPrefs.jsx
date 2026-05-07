@@ -89,7 +89,7 @@ function EventRow({ pref, onToggle, onChannelsChange, t }) {
               key={ch.key}
               onClick={(e) => { e.stopPropagation(); toggleChannel(ch.key); }}
               disabled={!pref.enabled}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all ${
+              className={`flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 sm:px-2 rounded-lg text-[10.5px] sm:text-[11px] font-semibold transition-all whitespace-nowrap ${
                 !pref.enabled ? 'opacity-30 pointer-events-none' : 'active:scale-95'
               }`}
               style={isOn
@@ -107,7 +107,10 @@ function EventRow({ pref, onToggle, onChannelsChange, t }) {
       </div>
 
       {/* Description — always visible on desktop, expandable on mobile */}
-      <p className={`text-[11px] text-[#6B7280] leading-snug mt-1 ${expanded ? '' : 'hidden md:block'}`}>
+      <p
+        className={`text-[11px] leading-snug mt-1 ${expanded ? '' : 'hidden md:block'}`}
+        style={{ color: 'var(--color-text-muted)' }}
+      >
         {desc}
       </p>
     </div>
@@ -239,11 +242,14 @@ export default function AdminNotificationPrefs() {
   return (
     <div className="space-y-4">
       {/* Reset button — title is already in the parent collapsible header */}
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-2">
+        <span className="admin-eyebrow truncate">
+          {t('admin.notificationPrefs.title', { defaultValue: 'Notification Preferences' })}
+        </span>
         <button
           onClick={() => setShowResetConfirm(true)}
           disabled={resetMutation.isPending}
-          className="flex items-center gap-1.5 text-[11px] text-[#6B7280] hover:text-[#D4AF37] transition-colors disabled:opacity-40"
+          className="admin-pill admin-pill--outline flex-shrink-0 flex items-center gap-1.5 disabled:opacity-40"
         >
           <RotateCcw size={12} className={resetMutation.isPending ? 'animate-spin' : ''} />
           {t('admin.notificationPrefs.resetDefaults')}
@@ -264,20 +270,25 @@ export default function AdminNotificationPrefs() {
                 onClick={() => toggleCategory(cat.key)}
                 className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
               >
-                <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                  <Icon size={14} className="text-[#D4AF37]" />
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
+                >
+                  <Icon size={14} style={{ color: 'var(--color-accent)' }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[#E5E7EB]">
+                  <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                     {t(`admin.notificationPrefs.categories.${cat.key}`)}
                   </p>
-                  <p className="text-[11px] text-[#6B7280]">
-                    {t('admin.notificationPrefs.activeCount', { enabled: enabledCount, total: catPrefs.length, defaultValue: '{{enabled}}/{{total}} active' })}
+                  <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                    <span className="admin-mono">{enabledCount}/{catPrefs.length}</span>
+                    {' '}
+                    {t('admin.notificationPrefs.activeSuffix', { defaultValue: 'active' })}
                   </p>
                 </div>
                 {isExpanded
-                  ? <ChevronUp size={16} className="text-[#6B7280]" />
-                  : <ChevronDown size={16} className="text-[#6B7280]" />
+                  ? <ChevronUp size={16} style={{ color: 'var(--color-text-muted)' }} />
+                  : <ChevronDown size={16} style={{ color: 'var(--color-text-muted)' }} />
                 }
               </button>
 
@@ -325,8 +336,8 @@ export default function AdminNotificationPrefs() {
               disabled={resetMutation.isPending}
               className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap disabled:opacity-40"
               style={{
-                backgroundColor: 'var(--color-danger, #EF4444)',
-                color: '#FFFFFF',
+                backgroundColor: 'var(--color-danger)',
+                color: 'var(--color-text-on-accent, #fff)',
               }}
             >
               {t('admin.notificationPrefs.resetDefaults')}

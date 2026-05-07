@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft, Archive, Trash2 } from 'lucide-react';
+import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft, Archive, Trash2, MoreHorizontal, Ban, Lock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
 import UserAvatar from '../components/UserAvatar';
 import EmptyState from '../components/EmptyState';
+import ContentActionMenu from '../components/ContentActionMenu';
 import { encryptMessage, decryptMessage } from '../lib/messageEncryption';
+import { checkContentBeforeSend } from '../lib/moderationFilter';
 import { sanitize } from '../lib/sanitize';
 import { Capacitor } from '@capacitor/core';
 import { usePostHog } from '@posthog/react';
@@ -16,6 +20,9 @@ let Keyboard = null;
 if (Capacitor.isNativePlatform()) {
   import('@capacitor/keyboard').then(mod => { Keyboard = mod.Keyboard; }).catch(() => {});
 }
+
+// One-time DM encryption disclosure key (localStorage)
+const DM_DISCLOSURE_KEY = 'dm_encryption_disclosure_seen_v1';
 
 // ── Helpers ──────────────────────────────────────────────────────
 const formatTime = (dateStr, t) => {
@@ -65,6 +72,69 @@ const shouldShowTimestamp = (prevDateStr, currDateStr) => {
   return diff >= 5 * 60 * 1000;
 };
 
+// ── Block User Confirm Modal (center-aligned) ──────────────────────
+const BlockUserModal = ({ open, name, onClose, onConfirm, t }) => {
+  const [submitting, setSubmitting] = useState(false);
+  if (!open) return null;
+  const firstName = name?.split(' ')[0] ?? '';
+  const handleConfirm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    await onConfirm();
+    setSubmitting(false);
+  };
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('social.confirmBlock.title', { name: firstName })}
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
+      <div
+        className="relative w-full max-w-[420px] rounded-[28px] border border-white/10 overflow-hidden"
+        style={{ background: 'var(--color-bg-card)', boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+          <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
+            <Ban size={20} className="text-red-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+              {t('social.confirmBlock.title', { name: firstName })}
+            </h3>
+            <p className="text-[13px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {t('social.confirmBlock.subtitle')}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-3 px-5 pb-5 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold bg-white/[0.06] hover:bg-white/[0.08] transition-colors disabled:opacity-50"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {t('social.report.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={submitting}
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-50"
+          >
+            {submitting ? t('social.report.submitting') : t('social.confirmBlock.confirm')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // ── Member Picker Modal ──────────────────────────────────────────
 const MemberPicker = ({ isOpen, onClose, onSelect }) => {
   const { t } = useTranslation('pages');
@@ -72,10 +142,33 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  // Set of user ids the viewer has blocked OR who have blocked the viewer.
+  // Loaded once on mount so blocked members can never appear in the friend
+  // picker for starting a new conversation.
+  const [hiddenIds, setHiddenIds] = useState(() => new Set());
 
   useEffect(() => {
     if (!isOpen) { setQuery(''); setResults([]); return; }
   }, [isOpen]);
+
+  // Load blocked-user ids (both directions) so the friend picker can
+  // exclude them from search results.
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      const [outgoing, incoming] = await Promise.all([
+        supabase.from('blocked_users').select('blocked_id').eq('blocker_id', user.id),
+        supabase.from('blocked_users').select('blocker_id').eq('blocked_id', user.id),
+      ]);
+      if (cancelled) return;
+      const ids = new Set();
+      (outgoing.data || []).forEach((r) => r.blocked_id && ids.add(r.blocked_id));
+      (incoming.data || []).forEach((r) => r.blocker_id && ids.add(r.blocker_id));
+      setHiddenIds(ids);
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!query.trim() || query.trim().length < 2) { setResults([]); return; }
@@ -107,11 +200,14 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
         .in('id', friendIds)
         .or(`full_name.ilike.%${safeQuery}%,username.ilike.%${safeQuery}%`)
         .limit(20);
-      setResults(data || []);
+      // Belt-and-suspenders client filter: blocked users (either direction)
+      // must never appear in the new-conversation picker.
+      const filtered = (data || []).filter((m) => !hiddenIds.has(m.id));
+      setResults(filtered);
       setLoading(false);
     }, 300);
     return () => clearTimeout(timeout);
-  }, [query, user.id]);
+  }, [query, user.id, hiddenIds]);
 
   if (!isOpen) return null;
 
@@ -189,7 +285,8 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
 // ── Chat View (iMessage style) ──────────────────────────────────
 const ChatView = ({ conversationId, onBack }) => {
   const { t } = useTranslation('pages');
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const { showToast } = useToast();
   const posthog = usePostHog();
   const [messages, setMessages] = useState([]);
   const [otherUser, setOtherUser] = useState(null);
@@ -201,6 +298,42 @@ const ChatView = ({ conversationId, onBack }) => {
   const inputRef = useRef(null);
   const [kbHeight, setKbHeight] = useState(0);
   const encryptionSeedRef = useRef(null);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [confirmBlock, setConfirmBlock] = useState(false);
+  const headerMenuRef = useRef(null);
+  const [showDisclosure, setShowDisclosure] = useState(() => {
+    try { return !localStorage.getItem(DM_DISCLOSURE_KEY); } catch { return false; }
+  });
+  const dismissDisclosure = useCallback(() => {
+    try { localStorage.setItem(DM_DISCLOSURE_KEY, '1'); } catch {}
+    setShowDisclosure(false);
+  }, []);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!showHeaderMenu) return;
+    const handleClick = (e) => {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target)) {
+        setShowHeaderMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showHeaderMenu]);
+
+  const handleBlockOther = useCallback(async () => {
+    if (!otherUser?.id || !user?.id) return;
+    await supabase.from('blocked_users').upsert(
+      { blocker_id: user.id, blocked_id: otherUser.id },
+      { onConflict: 'blocker_id,blocked_id' }
+    );
+    // Drop friendship if any (mirrors SocialFeed behavior)
+    await supabase.from('friendships').delete()
+      .or(`and(requester_id.eq.${user.id},addressee_id.eq.${otherUser.id}),and(requester_id.eq.${otherUser.id},addressee_id.eq.${user.id})`);
+    showToast(t('social.userBlocked', { name: otherUser?.full_name?.split(' ')[0] ?? '' }), 'success');
+    setConfirmBlock(false);
+    onBack();
+  }, [otherUser, user?.id, showToast, t, onBack]);
 
   // Native keyboard events — get exact height from Capacitor plugin
   useEffect(() => {
@@ -288,7 +421,22 @@ const ChatView = ({ conversationId, onBack }) => {
         (payload) => {
           decryptMessage(payload.new.body, conversationId, encryptionSeedRef.current).then(decryptedBody => {
             setMessages(prev => {
+              // Already inserted via realtime
               if (prev.some(m => m.id === payload.new.id)) return prev;
+              // Reconcile with optimistic temp messages: if we sent something
+              // moments ago that matches this real row, swap the temp for the
+              // real one instead of duplicating.
+              const tempIdx = prev.findIndex(m =>
+                m._pending
+                && m.sender_id === payload.new.sender_id
+                && m.body === decryptedBody
+                && Math.abs(new Date(m.created_at).getTime() - new Date(payload.new.created_at).getTime()) < 60000
+              );
+              if (tempIdx >= 0) {
+                const next = [...prev];
+                next[tempIdx] = { ...payload.new, body: decryptedBody };
+                return next;
+              }
               return [...prev, { ...payload.new, body: decryptedBody }];
             });
           });
@@ -323,38 +471,91 @@ const ChatView = ({ conversationId, onBack }) => {
     const plaintext = input.trim();
     if (!plaintext || sending) return;
 
-    setSending(true);
+    // Optimistic-first: clear the input + render the bubble before any await,
+    // so the UI feels instant. We mark the temp message as _pending so the
+    // realtime handler can swap it for the real row when the insert lands.
+    const tempId = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+    const tempMessage = {
+      id: tempId,
+      _pending: true,
+      conversation_id: conversationId,
+      sender_id: user.id,
+      body: plaintext,
+      read_at: null,
+      created_at: nowIso,
+    };
+    setMessages(prev => [...prev, tempMessage]);
     setInput('');
-
-    // Reset textarea height
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
     }
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    setSending(true);
 
-    const body = await encryptMessage(plaintext, conversationId, encryptionSeedRef.current);
+    // Pre-publication content moderation. DMs are encrypted at rest, so a DB
+    // trigger cannot scan them — we run the same wordlist via RPC before
+    // encrypt + insert. Severity 2 hard-blocks; severity 1 lets it through
+    // (admin sees it post-hoc via the regular report flow if a recipient flags).
+    const moderation = await checkContentBeforeSend(supabase, plaintext);
+    if (!moderation.allowed) {
+      // Roll back the optimistic bubble + restore the input so the user can edit.
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setInput(plaintext);
+      setSending(false);
+      showToast(
+        t('moderation.contentBlocked', { defaultValue: 'Message blocked: content violates community guidelines.' }),
+        'error',
+      );
+      return;
+    }
+
+    let body;
+    try {
+      body = await encryptMessage(plaintext, conversationId, encryptionSeedRef.current);
+    } catch {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setInput(plaintext);
+      setSending(false);
+      showToast(t('messages.sendFailed', { defaultValue: 'Could not send message.' }), 'error');
+      return;
+    }
+
     const { error } = await supabase.from('direct_messages').insert({
       conversation_id: conversationId,
       sender_id: user.id,
       body,
     });
 
-    if (!error) {
-      posthog?.capture('dm_sent', { is_first_message: messages.length === 0 });
-      // Optimistic: add to local state immediately
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(), // temp ID, will be replaced by realtime
-        conversation_id: conversationId,
-        sender_id: user.id,
-        body: plaintext, // Show the decrypted text locally
-        read_at: null,
-        created_at: new Date().toISOString(),
-      }]);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    if (error) {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setInput(plaintext);
+      setSending(false);
+      showToast(t('messages.sendFailed', { defaultValue: 'Could not send message.' }), 'error');
+      return;
+    }
 
-      await supabase
-        .from('conversations')
-        .update({ last_message_at: new Date().toISOString() })
-        .eq('id', conversationId);
+    posthog?.capture('dm_sent', { is_first_message: messages.length === 0 });
+
+    // Best-effort tail tasks — don't block the user. Conversation timestamp
+    // bump + push to recipient. Errors are logged but not surfaced; the
+    // message is already delivered.
+    supabase
+      .from('conversations')
+      .update({ last_message_at: nowIso })
+      .eq('id', conversationId)
+      .then(() => {});
+
+    if (otherUser?.id) {
+      supabase.functions.invoke('send-push-user', {
+        body: {
+          profile_id: otherUser.id,
+          gym_id: profile?.gym_id,
+          title: profile?.full_name || t('messages.newMessage', { defaultValue: 'New message' }),
+          body: plaintext.substring(0, 100),
+          data: { type: 'direct_message', conversation_id: conversationId },
+        },
+      }).catch(() => { /* non-fatal */ });
     }
 
     setSending(false);
@@ -419,14 +620,97 @@ const ChatView = ({ conversationId, onBack }) => {
           <p className="text-[17px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
             {displayName}
           </p>
-          {otherUser?.role === 'trainer' && (
-            <p className="text-[11px] font-semibold" style={{ color: 'var(--color-accent, #D4AF37)' }}>{t('messages.trainer', { defaultValue: 'Trainer' })}</p>
+          {(() => {
+            const role = otherUser?.role;
+            if (!role || role === 'member') return null;
+            const labelKey = role === 'super_admin'
+              ? 'messages.superAdmin'
+              : role === 'admin'
+                ? 'messages.admin'
+                : 'messages.trainer';
+            const label = role === 'super_admin'
+              ? t(labelKey, { defaultValue: 'Super Admin' })
+              : role === 'admin'
+                ? t(labelKey, { defaultValue: 'Admin' })
+                : t(labelKey, { defaultValue: 'Trainer' });
+            return (
+              <p className="text-[11px] font-semibold" style={{ color: 'var(--color-accent, #D4AF37)' }}>
+                {label}
+              </p>
+            );
+          })()}
+        </div>
+        <div className="flex-shrink-0 flex items-center gap-1">
+          {otherUser && <UserAvatar user={otherUser} size={32} />}
+          {otherUser && (
+            <div className="relative" ref={headerMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowHeaderMenu(s => !s)}
+                aria-label={t('social.moreOptions')}
+                aria-haspopup="menu"
+                aria-expanded={showHeaderMenu}
+                className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-white/[0.06] transition-colors"
+                style={{ color: 'var(--color-text-subtle)' }}
+              >
+                <MoreHorizontal size={18} />
+              </button>
+              {showHeaderMenu && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-12 z-30 w-52 rounded-xl border border-white/10 shadow-xl overflow-hidden"
+                  style={{ background: 'var(--color-bg-card)' }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setShowHeaderMenu(false); setConfirmBlock(true); }}
+                    className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-red-400 hover:bg-red-500/10 transition-colors text-left"
+                  >
+                    <Ban size={15} className="text-red-400" />
+                    {t('social.blockUser', { name: otherUser?.full_name?.split(' ')[0] ?? '' })}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
-        <div className="flex-shrink-0 w-[44px] flex justify-center">
-          {otherUser && <UserAvatar user={otherUser} size={32} />}
-        </div>
       </div>
+
+      <BlockUserModal
+        open={confirmBlock}
+        name={otherUser?.full_name}
+        onClose={() => setConfirmBlock(false)}
+        onConfirm={handleBlockOther}
+        t={t}
+      />
+
+      {/* First-DM-open encryption disclosure banner (one-time) */}
+      {showDisclosure && (
+        <div
+          className="flex items-start gap-2.5 mx-3 mt-2 mb-1 px-3 py-2.5 rounded-xl border"
+          style={{
+            background: 'var(--color-bg-card)',
+            borderColor: 'var(--color-border-subtle, rgba(127,127,127,0.18))',
+          }}
+          role="status"
+        >
+          <Lock size={14} style={{ color: 'var(--color-accent, #D4AF37)', marginTop: 2, flexShrink: 0 }} />
+          <p className="text-[12px] leading-snug flex-1" style={{ color: 'var(--color-text-muted)' }}>
+            {t('dm.encryptionBannerBody', {
+              defaultValue: 'Messages are encrypted at rest. They are accessible to TuGymPR for safety and moderation, not to other gyms or third parties.',
+            })}
+          </p>
+          <button
+            type="button"
+            onClick={dismissDisclosure}
+            className="text-[12px] font-semibold flex-shrink-0 px-2 py-1 rounded-md hover:bg-white/[0.06] transition-colors"
+            style={{ color: 'var(--color-accent, #D4AF37)' }}
+          >
+            {t('dm.encryptionBannerDismiss', { defaultValue: 'Got it' })}
+          </button>
+        </div>
+      )}
 
       {/* Messages area */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 py-2">
@@ -465,17 +749,19 @@ const ChatView = ({ conversationId, onBack }) => {
 
             return (
               <div key={item.key} className={`${marginTop}`}>
-                <div className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
+                <div className={`flex items-end gap-1 ${isSent ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`px-3.5 py-2 text-[15px] leading-relaxed break-words max-w-[75%] ${
                       isSent
                         ? 'bg-[var(--color-accent,#D4AF37)] text-black rounded-2xl rounded-br-sm'
                         : 'bg-white/[0.08] rounded-2xl rounded-bl-sm'
-                    }`}
-                    style={!isSent ? { color: 'var(--color-text-primary)' } : undefined}
+                    } ${msg._pending ? 'opacity-60' : ''}`}
+                    style={isSent ? undefined : { color: 'var(--color-text-primary)' }}
                   >
                     {sanitize(msg.body)}
                   </div>
+                  {/* Per-message Report lives in the header overflow now —
+                      the per-bubble dots felt cluttered on every message. */}
                 </div>
                 {/* Read receipt — only on the last sent message */}
                 {isLastSent && (
@@ -970,11 +1256,29 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
 
                   {/* Content */}
                   <div className="min-w-0 flex-1">
-                    {/* Name + time on same line */}
+                    {/* Name + role + time on same line */}
                     <div className="flex items-center justify-between gap-2">
-                      <p className={`text-[16px] truncate ${hasUnread ? 'font-bold' : 'font-semibold'}`} style={{ color: 'var(--color-text-primary)' }}>
-                        {displayName}
-                      </p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className={`text-[16px] truncate ${hasUnread ? 'font-bold' : 'font-semibold'}`} style={{ color: 'var(--color-text-primary)' }}>
+                          {displayName}
+                        </p>
+                        {other?.role && other.role !== 'member' && (
+                          <span
+                            className="text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-md flex-shrink-0"
+                            style={{
+                              background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                              color: 'var(--color-accent, #D4AF37)',
+                              fontWeight: 700,
+                            }}
+                          >
+                            {other.role === 'super_admin'
+                              ? t('messages.superAdmin', { defaultValue: 'Super Admin' })
+                              : other.role === 'admin'
+                                ? t('messages.admin', { defaultValue: 'Admin' })
+                                : t('messages.trainer', { defaultValue: 'Trainer' })}
+                          </span>
+                        )}
+                      </div>
                       {conv.lastMessage && (
                         <span className="text-[12px] flex-shrink-0" style={{ color: hasUnread ? 'var(--color-accent, #D4AF37)' : 'var(--color-text-muted)' }}>
                           {formatTime(conv.lastMessage.created_at, t)}

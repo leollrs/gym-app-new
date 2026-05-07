@@ -20,18 +20,18 @@ import CreateCampaignModal from './components/CreateCampaignModal';
 
 // ── Constants ──────────────────────────────────────────────
 const EXPERIMENT_TYPES = {
-  win_back:          { color: '#EF4444', icon: TrendingUp },
-  push_notification: { color: '#10B981', icon: Bell },
-  email:             { color: '#3B82F6', icon: Mail },
-  offer:             { color: '#F59E0B', icon: Tag },
-  challenge:         { color: '#8B5CF6', icon: Zap },
-  class_promo:       { color: '#D4AF37', icon: Dumbbell },
+  win_back:          { color: 'var(--color-danger)', icon: TrendingUp },
+  push_notification: { color: 'var(--color-success)', icon: Bell },
+  email:             { color: 'var(--color-info)', icon: Mail },
+  offer:             { color: 'var(--color-warning)', icon: Tag },
+  challenge:         { color: 'var(--color-coach)', icon: Zap },
+  class_promo:       { color: 'var(--color-accent)', icon: Dumbbell },
 };
 
 const TIER_COLORS = {
-  critical: { bg: 'rgba(239,68,68,0.12)', text: '#EF4444', border: 'rgba(239,68,68,0.25)' },
-  high:     { bg: 'rgba(245,158,11,0.12)', text: '#F59E0B', border: 'rgba(245,158,11,0.25)' },
-  medium:   { bg: 'rgba(59,130,246,0.12)', text: '#3B82F6', border: 'rgba(59,130,246,0.25)' },
+  critical: { bg: 'var(--color-danger-soft)', text: 'var(--color-danger)', border: 'var(--color-danger-soft)' },
+  high:     { bg: 'var(--color-warning-soft)', text: 'var(--color-warning)', border: 'var(--color-warning-soft)' },
+  medium:   { bg: 'var(--color-info-soft)', text: 'var(--color-info)', border: 'var(--color-info-soft)' },
 };
 
 // ── Data fetcher ───────────────────────────────────────────
@@ -71,16 +71,74 @@ function calcVariantStats(attempts, campaignId, variant) {
   };
 }
 
+// Two-proportion z-test (one-sided / two-sided gives the same |z|).
+// Returns { significant, marginal, winner, zScore, requiresMoreData, perArmSize }.
+//
+// Significance rule:
+//   - Each arm needs ≥30 samples (rule of thumb for normal approximation
+//     and to keep early stopping from declaring noise as a winner).
+//   - |z| ≥ 1.96 → significant at 95% (p ≈ 0.05).
+//   - |z| ≥ 1.645 → marginal (90% confidence).
+//
+// metric: 'response' or 'return' — picks which numerator to use.
+function abSignificance(statsA, statsB, metric = 'return') {
+  const xA = metric === 'response' ? statsA.responded : statsA.returned;
+  const xB = metric === 'response' ? statsB.responded : statsB.returned;
+  const nA = statsA.sent;
+  const nB = statsB.sent;
+  const MIN_PER_ARM = 30;
+
+  if (nA < MIN_PER_ARM || nB < MIN_PER_ARM) {
+    return {
+      significant: false,
+      marginal: false,
+      winner: null,
+      zScore: null,
+      requiresMoreData: true,
+      perArmSize: { a: nA, b: nB, min: MIN_PER_ARM },
+    };
+  }
+
+  const pA = xA / nA;
+  const pB = xB / nB;
+  const pPooled = (xA + xB) / (nA + nB);
+  const seSquared = pPooled * (1 - pPooled) * ((1 / nA) + (1 / nB));
+  // Edge case: pPooled is 0 or 1 → SE is 0 → variance is undefined. Treat as
+  // not enough variation to call it.
+  if (seSquared <= 0) {
+    return { significant: false, marginal: false, winner: null, zScore: 0, requiresMoreData: false, perArmSize: { a: nA, b: nB, min: MIN_PER_ARM } };
+  }
+  const z = (pA - pB) / Math.sqrt(seSquared);
+  const absZ = Math.abs(z);
+
+  return {
+    significant: absZ >= 1.96,
+    marginal: absZ >= 1.645 && absZ < 1.96,
+    winner: absZ >= 1.645 ? (z > 0 ? 'A' : 'B') : null,
+    zScore: z,
+    requiresMoreData: false,
+    perArmSize: { a: nA, b: nB, min: MIN_PER_ARM },
+  };
+}
+
 function getExperimentType(campaign) {
   return campaign.type
     || campaign.variant_a?.experiment_type
     || 'win_back';
 }
 
-function getVariantSummary(variant) {
+function getVariantSummary(variant, t) {
   if (!variant) return '—';
   const parts = [];
-  if (variant.offer_type) parts.push(variant.offer_type);
+  if (variant.offer_type) {
+    // Translate stable enum key (e.g., 'pt_session'); falls back to raw value
+    // for any legacy rows that stored an English label directly.
+    parts.push(
+      t
+        ? t(`admin.churn.campaign.offer.${variant.offer_type}`, variant.offer_type)
+        : variant.offer_type,
+    );
+  }
   if (variant.discount_pct) parts.push(`${variant.discount_pct}%`);
   if (variant.free_days) parts.push(`${variant.free_days}d free`);
   if (parts.length > 0) return parts.join(' · ');
@@ -154,14 +212,14 @@ function ComparisonBar({ valueA, valueB, label }) {
       <div className="flex items-center gap-2">
         <span className="text-[10px] text-[#D4AF37] font-bold w-4 shrink-0">A</span>
         <div className="flex-1 h-1.5 bg-white/4 rounded-full overflow-hidden">
-          <div className="h-full rounded-full" style={{ width: `${pctA}%`, background: 'rgba(212,175,55,0.6)' }} />
+          <div className="h-full rounded-full" style={{ width: `${pctA}%`, background: 'color-mix(in srgb, var(--color-accent) 20%, transparent)' }} />
         </div>
         <span className="text-[11px] text-[#E5E7EB] font-semibold w-12 text-right">{valueA}%</span>
       </div>
       <div className="flex items-center gap-2">
         <span className="text-[10px] text-[#8B5CF6] font-bold w-4 shrink-0">B</span>
         <div className="flex-1 h-1.5 bg-white/4 rounded-full overflow-hidden">
-          <div className="h-full rounded-full" style={{ width: `${pctB}%`, background: 'rgba(139,92,246,0.6)' }} />
+          <div className="h-full rounded-full" style={{ width: `${pctB}%`, background: 'var(--color-coach-soft)' }} />
         </div>
         <span className="text-[11px] text-[#E5E7EB] font-semibold w-12 text-right">{valueB}%</span>
       </div>
@@ -178,11 +236,16 @@ function ExperimentCard({ campaign, attempts, onEnd, onReactivate, t }) {
   const statsA = calcVariantStats(attempts, campaign.id, 'A');
   const statsB = calcVariantStats(attempts, campaign.id, 'B');
   const totalAttempts = statsA.sent + statsB.sent;
-  const showWinner = totalAttempts > 20 && !isActive;
   const metric = getKeyMetric(type, statsA, statsB);
-  const winnerVariant = showWinner
-    ? Number(metric.a) >= Number(metric.b) ? 'A' : 'B'
-    : null;
+
+  // Statistical significance (two-proportion z-test, return-rate is the
+  // primary metric). Replaces the old "absolute diff > 5%" heuristic which
+  // was both noisy on small samples and overconfident on large ones.
+  const sig = abSignificance(statsA, statsB, 'return');
+  // Only declare a winner when the test reaches significance AND the campaign
+  // is no longer active (so admins don't act on early peeks).
+  const showWinner = !isActive && (sig.significant || sig.marginal);
+  const winnerVariant = showWinner ? sig.winner : null;
 
   const dateLabel = isActive
     ? `${t('admin.abTesting.runningSince', 'Running since')} ${format(new Date(campaign.started_at || campaign.created_at), 'MMM d, yyyy')}`
@@ -228,9 +291,9 @@ function ExperimentCard({ campaign, attempts, onEnd, onReactivate, t }) {
 
           {/* Row 3: variant pills side by side */}
           <div className="flex items-center gap-2 flex-wrap">
-            <VariantPill label="A" summary={getVariantSummary(campaign.variant_a)} color="#D4AF37" />
+            <VariantPill label="A" summary={getVariantSummary(campaign.variant_a, t)} color="var(--color-accent)" />
             <span className="text-[10px] text-[#4B5563] font-medium">vs</span>
-            <VariantPill label="B" summary={getVariantSummary(campaign.variant_b)} color="#8B5CF6" />
+            <VariantPill label="B" summary={getVariantSummary(campaign.variant_b, t)} color="var(--color-coach)" />
           </div>
 
           {/* Row 4: key metric (only if data) */}
@@ -258,7 +321,7 @@ function ExperimentCard({ campaign, attempts, onEnd, onReactivate, t }) {
       {expanded && (
         <div className="px-4 pb-4 space-y-3 border-t border-white/6 pt-3">
           {/* Full stats grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
             {['sent', 'responded', 'returned'].map((key) => (
               <div key={key} className="bg-[#0F172A] rounded-lg px-3 py-2 border border-white/4">
                 <p className="text-[10px] text-[#6B7280] capitalize">{t(`admin.abTesting.${key}`, key)}</p>
@@ -269,14 +332,26 @@ function ExperimentCard({ campaign, attempts, onEnd, onReactivate, t }) {
                 </div>
               </div>
             ))}
-            {totalAttempts > 20 && (
+            {(sig.requiresMoreData || totalAttempts > 0) && (
               <div className="bg-[#0F172A] rounded-lg px-3 py-2 border border-white/4">
                 <p className="text-[10px] text-[#6B7280]">{t('admin.abTesting.significance', 'Significance')}</p>
-                <p className="text-[13px] font-bold text-emerald-400 mt-0.5">
-                  {Math.abs(Number(metric.a) - Number(metric.b)) > 5
-                    ? t('admin.abTesting.significant', 'Significant')
-                    : t('admin.abTesting.inconclusive', 'Inconclusive')}
-                </p>
+                {sig.requiresMoreData ? (
+                  <p className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">
+                    {t('admin.abTesting.moreDataNeeded', { min: sig.perArmSize.min, defaultValue: 'Need {{min}}+ per arm' })}
+                  </p>
+                ) : sig.significant ? (
+                  <p className="text-[13px] font-bold text-emerald-400 mt-0.5">
+                    {t('admin.abTesting.significantP05', 'Significant (p<0.05)')}
+                  </p>
+                ) : sig.marginal ? (
+                  <p className="text-[13px] font-bold text-amber-400 mt-0.5">
+                    {t('admin.abTesting.marginalP10', 'Marginal (p<0.10)')}
+                  </p>
+                ) : (
+                  <p className="text-[13px] font-bold text-[#6B7280] mt-0.5">
+                    {t('admin.abTesting.inconclusive', 'Inconclusive')}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -311,7 +386,7 @@ function ExperimentCard({ campaign, attempts, onEnd, onReactivate, t }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {['a', 'b'].map((v) => {
                 const variant = v === 'a' ? campaign.variant_a : campaign.variant_b;
-                const color = v === 'a' ? '#D4AF37' : '#8B5CF6';
+                const color = v === 'a' ? 'var(--color-accent)' : 'var(--color-coach)';
                 if (!variant?.message) return null;
                 return (
                   <div key={v} className="bg-[#0F172A] border border-white/4 rounded-lg p-2.5">
@@ -450,6 +525,12 @@ export default function AdminABTesting() {
 
   const handleReactivate = useCallback(
     async (campaignId) => {
+      // Confirm: reactivating resets `started_at` to now, which means previous-period
+      // attempt data still exists but the displayed time window shifts. Make sure the
+      // admin understands they're effectively starting a fresh test window.
+      if (!window.confirm(t('admin.abTesting.reactivateConfirm', 'Reactivating resets the test start time to now. Old attempts stay in the data but the time window restarts. Continue?'))) {
+        return;
+      }
       try {
         const { error } = await supabase
           .from('winback_campaigns')
@@ -480,7 +561,12 @@ export default function AdminABTesting() {
         actions={
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-colors"
+            style={{
+              background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+              color: 'var(--color-accent)',
+              border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+            }}
           >
             <Plus size={14} />
             {t('admin.abTesting.newExperiment', 'New Experiment')}
@@ -491,7 +577,7 @@ export default function AdminABTesting() {
       {/* Summary stats — only when experiments exist */}
       {!isLoading && summary && (
         <FadeIn delay={0}>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-5">
             <StatCard
               label={t('admin.abTesting.totalExperiments', 'Total Experiments')}
               value={summary.totalExperiments}
@@ -550,28 +636,74 @@ export default function AdminABTesting() {
                 ))}
               </div>
             ) : (
-              <AdminCard className="p-10 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-3">
-                  <FlaskConical size={22} className="text-[#D4AF37]" />
+              <>
+                <div className="admin-card text-center" style={{ padding: 30 }}>
+                  <div
+                    className="flex items-center justify-center mx-auto mb-3.5"
+                    style={{ width: 64, height: 64, borderRadius: 16, background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}
+                  >
+                    <FlaskConical size={28} style={{ color: 'var(--color-accent)' }} />
+                  </div>
+                  <div
+                    className="mb-1.5"
+                    style={{ fontFamily: 'Archivo, sans-serif', fontSize: 18, fontWeight: 800, color: 'var(--color-admin-text)' }}
+                  >
+                    {tabKey === 'active'
+                      ? t('admin.abTesting.noActive', 'No active experiments')
+                      : tabKey === 'completed'
+                      ? t('admin.abTesting.noCompleted', 'No completed experiments yet')
+                      : t('admin.abTesting.noExperiments', 'No experiments yet')}
+                  </div>
+                  <div className="text-[13px] mb-4" style={{ color: 'var(--color-admin-text-muted)' }}>
+                    {t('admin.abTesting.emptyHint', 'Create your first A/B experiment to start optimizing')}
+                  </div>
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold transition-colors"
+                    style={{ background: 'var(--color-accent)', color: '#fff' }}
+                  >
+                    <Plus size={14} />
+                    {t('admin.abTesting.createFirst', 'Create Experiment')}
+                  </button>
                 </div>
-                <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">
-                  {tabKey === 'active'
-                    ? t('admin.abTesting.noActive', 'No active experiments')
-                    : tabKey === 'completed'
-                    ? t('admin.abTesting.noCompleted', 'No completed experiments yet')
-                    : t('admin.abTesting.noExperiments', 'No experiments yet')}
-                </p>
-                <p className="text-[12px] text-[#6B7280] mb-4">
-                  {t('admin.abTesting.emptyHint', 'Create your first A/B experiment to start optimizing')}
-                </p>
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors"
-                >
-                  <Plus size={14} />
-                  {t('admin.abTesting.createFirst', 'Create Experiment')}
-                </button>
-              </AdminCard>
+
+                {/* Ideas to try — dashed-border idea cards */}
+                <div style={{ height: 20 }} />
+                <div className="mb-2.5">
+                  <span className="admin-eyebrow">{t('admin.abTesting.ideasToTry', 'Ideas to try')}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {[
+                    { title: t('admin.abTesting.idea1Title', 'Push copy for inactives'), desc: t('admin.abTesting.idea1Desc', '"We miss you" vs "Your streak is waiting"') },
+                    { title: t('admin.abTesting.idea2Title', 'Onboarding length'), desc: t('admin.abTesting.idea2Desc', '3 steps vs 5 steps') },
+                    { title: t('admin.abTesting.idea3Title', 'Referral reward tier'), desc: t('admin.abTesting.idea3Desc', '250 pts vs 500 pts') },
+                  ].map((idea, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        background: 'var(--color-bg-card)',
+                        borderRadius: 12,
+                        border: '1px dashed var(--color-admin-border)',
+                        padding: 14,
+                      }}
+                    >
+                      <div className="mb-1" style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-admin-text)' }}>
+                        {idea.title}
+                      </div>
+                      <div className="mb-2.5 text-[11.5px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                        {idea.desc}
+                      </div>
+                      <button
+                        onClick={() => setShowCreateModal(true)}
+                        className="text-[11.5px] font-semibold transition-colors"
+                        style={{ color: 'var(--color-accent)' }}
+                      >
+                        {t('admin.abTesting.useIdea', 'Use idea')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
             );
           }}
         </SwipeableTabContent>

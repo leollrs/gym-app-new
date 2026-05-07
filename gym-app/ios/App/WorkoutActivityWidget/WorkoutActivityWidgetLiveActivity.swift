@@ -59,19 +59,68 @@ private struct LockScreenView: View {
         // Lock Screen always uses dark styling — light text is unreadable on light wallpapers
         let colors = AdaptiveColors(scheme: .dark)
         VStack(spacing: 6) {
-            LockScreenLabel(context: context, colors: colors)
-            LockScreenContent(context: context, colors: colors)
-            Text(context.state.currentExerciseName)
-                .font(.system(.caption, design: .rounded).weight(.medium))
-                .foregroundColor(colors.secondaryText)
-                .lineLimit(1)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
+            if context.state.totalSets == 0 {
+                // Cardio mode — no sets counter, show activity name + big timer + distance
+                CardioLockScreen(context: context, colors: colors)
+            } else {
+                LockScreenLabel(context: context, colors: colors)
+                LockScreenContent(context: context, colors: colors)
+                Text(context.state.currentExerciseName)
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundColor(colors.secondaryText)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
         }
         .padding()
         .frame(maxWidth: .infinity)
         .activityBackgroundTint(colors.background)
         .activitySystemActionForegroundColor(colors.gold)
+    }
+}
+
+// MARK: - Cardio Mode Views
+
+private struct CardioLockScreen: View {
+    let context: ActivityViewContext<WorkoutActivityAttributes>
+    let colors: AdaptiveColors
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 6) {
+                if !context.state.isPaused {
+                    Circle()
+                        .fill(colors.green)
+                        .frame(width: 7, height: 7)
+                }
+                Text(context.attributes.routineName.uppercased())
+                    .font(.caption2.weight(.bold))
+                    .tracking(2.0)
+                    .foregroundColor(context.state.isPaused ? colors.pauseSubtle : colors.greenSubtle)
+            }
+
+            if context.state.isPaused {
+                Text(formatElapsed(context.state.elapsedSeconds))
+                    .font(.system(size: 46, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(colors.pause)
+            } else {
+                Text(context.attributes.startedAt, style: .timer)
+                    .font(.system(size: 46, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(colors.primaryText)
+                    .multilineTextAlignment(.center)
+            }
+
+            if let km = context.state.distanceKm, km > 0 {
+                Text(String(format: "%.2f km", km))
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundColor(colors.secondaryText)
+                    .monospacedDigit()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
@@ -152,6 +201,12 @@ private struct IslandLeading: View {
              + Text(formatElapsed(context.state.elapsedSeconds)).foregroundColor(colors.pause))
                 .font(.system(.caption, design: .rounded).weight(.semibold))
                 .monospacedDigit()
+        } else if context.state.totalSets == 0 {
+            // Cardio mode — running man + elapsed timer
+            (Text("🏃 ").foregroundColor(colors.secondaryText)
+             + Text(context.attributes.startedAt, style: .timer).foregroundColor(colors.primaryText))
+                .font(.system(.caption, design: .rounded).weight(.semibold))
+                .monospacedDigit()
         } else if let restEnd = context.state.restEndDate, restEnd > Date() {
             (Text("Rest ").foregroundColor(colors.gold.opacity(0.7))
              + Text(timerInterval: Date()...restEnd, countsDown: true).foregroundColor(colors.gold))
@@ -171,11 +226,28 @@ private struct IslandBottom: View {
 
     var body: some View {
         let colors = AdaptiveColors(scheme: .dark)
-        Text("\(context.state.completedSets)/\(context.attributes.totalSets) sets · \(context.state.currentExerciseName)")
-            .font(.caption2.weight(.medium))
-            .foregroundColor(colors.secondaryText)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .center)
+        if context.state.totalSets == 0 {
+            // Cardio mode — show distance if available, otherwise routine name
+            if let km = context.state.distanceKm, km > 0 {
+                Text(String(format: "%@ · %.2f km", context.attributes.routineName, km))
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(colors.secondaryText)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                Text(context.attributes.routineName)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(colors.secondaryText)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        } else {
+            Text("\(context.state.completedSets)/\(context.state.totalSets) sets · \(context.state.currentExerciseName)")
+                .font(.caption2.weight(.medium))
+                .foregroundColor(colors.secondaryText)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
     }
 }
 
@@ -211,9 +283,24 @@ private struct IslandTrailing: View {
 
     var body: some View {
         let colors = AdaptiveColors(scheme: .dark)
-        Text("\(context.state.completedSets)/\(context.attributes.totalSets) sets")
-            .font(.system(.caption, design: .rounded).weight(.semibold))
-            .foregroundColor(colors.secondaryText)
+        if context.state.totalSets == 0 {
+            // Cardio mode — show distance in trailing slot
+            if let km = context.state.distanceKm, km > 0 {
+                Text(String(format: "%.2f km", km))
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundColor(colors.primaryText)
+                    .monospacedDigit()
+            } else {
+                Text("GPS")
+                    .font(.system(.caption2, design: .rounded).weight(.semibold))
+                    .foregroundColor(colors.secondaryText)
+                    .tracking(1.5)
+            }
+        } else {
+            Text("\(context.state.completedSets)/\(context.state.totalSets) sets")
+                .font(.system(.caption, design: .rounded).weight(.semibold))
+                .foregroundColor(colors.secondaryText)
+        }
     }
 }
 

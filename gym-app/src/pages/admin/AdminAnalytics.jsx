@@ -104,24 +104,24 @@ function KPITargets({ gymId }) {
   };
 
   return (
-    <div className="mb-8">
+    <div className="mb-5">
       {/* Section header */}
-      <div className="flex items-center gap-2.5 mb-4">
-        <div className="w-8 h-8 rounded-xl bg-[color:var(--color-accent)]/10 flex items-center justify-center">
-          <Target className="w-4 h-4 text-[color:var(--color-accent)]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-white font-semibold text-[16px] tracking-tight">
-            {t('admin.analytics.kpiTargets', 'KPI Targets')}
-          </h3>
-        </div>
-        <span className="text-white/60 text-[12px] tabular-nums">
+      <div className="flex items-center gap-2 mb-3">
+        <Target size={14} style={{ color: 'var(--color-accent)' }} />
+        <span
+          className="text-[14px] font-extrabold"
+          style={{ color: 'var(--color-admin-text)' }}
+        >
+          {t('admin.analytics.kpiTargets', 'KPI Targets')}
+        </span>
+        <div className="flex-1" />
+        <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--color-admin-text-muted)' }}>
           {format(new Date(), 'MMMM yyyy', dateFnsLocale)}
         </span>
       </div>
 
-      {/* KPI Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      {/* KPI Grid — 3 cols */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3">
         {KPI_METRICS.map((m) => {
           const row = targets[m.key];
           const current = row?.current_value;
@@ -132,22 +132,26 @@ function KPITargets({ gymId }) {
           return (
             <div
               key={m.key}
-              className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-3.5 md:p-5
-                hover:border-white/[0.08] hover:bg-[#111827]/80
-                transition-all duration-200 group overflow-hidden"
+              className="admin-card p-3 sm:p-4 transition-all duration-200 group overflow-hidden"
             >
               {/* Label row */}
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-2.5">
                 <span className="text-base leading-none">{m.icon}</span>
-                <span className="text-white/60 text-[10px] md:text-[11.5px] font-medium leading-tight tracking-wide uppercase">
+                <span
+                  className="admin-eyebrow"
+                  style={{ fontSize: '10.5px' }}
+                >
                   {t(m.labelKey)}
                 </span>
               </div>
 
               {/* Current value + delta indicator */}
               <div className="flex items-baseline gap-2 mb-3">
-                <span className={`text-[22px] md:text-[28px] font-bold leading-none tabular-nums tracking-tight ${getTextColor(current, target, m.invertColor)}`}>
-                  {current != null ? `${current}${m.unit}` : '--'}
+                <span
+                  className={`admin-kpi text-[22px] md:text-[28px] leading-none tabular-nums ${getTextColor(current, target, m.invertColor)}`}
+                  style={{ letterSpacing: '-0.8px' }}
+                >
+                  {current != null ? `${current}${m.unit}` : '——'}
                 </span>
                 {current != null && target != null && (() => {
                   const diff = current - target;
@@ -171,7 +175,7 @@ function KPITargets({ gymId }) {
               </div>
 
               {/* Progress bar */}
-              <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden mb-3">
+              <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: 'var(--color-admin-panel)' }}>
                 <div
                   className={`h-full rounded-full transition-all duration-700 ease-out ${getStatusColor(current, target, m.invertColor)}`}
                   style={{ width: `${Math.min(pct, 100)}%` }}
@@ -235,14 +239,15 @@ function KPITargets({ gymId }) {
 // ── Section Divider ──────────────────────────────────────
 function SectionDivider({ label }) {
   return (
-    <div className="flex items-center gap-3 mb-5 mt-2">
-      <div className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent" />
+    <div className="flex items-center justify-center mb-3 mt-2">
       {label && (
-        <span className="text-[10.5px] font-semibold text-[#D4AF37]/60 uppercase tracking-[0.12em] flex-shrink-0">
+        <span
+          className="admin-eyebrow text-center"
+          style={{ fontSize: '10.5px', letterSpacing: '1.1px' }}
+        >
           {label}
         </span>
       )}
-      <div className="h-px flex-1 bg-gradient-to-l from-white/[0.08] to-transparent" />
     </div>
   );
 }
@@ -258,17 +263,13 @@ const PERIODS = [
 function PeriodSelector({ value, onChange }) {
   const { t } = useTranslation('pages');
   return (
-    <div className="grid gap-1 rounded-xl p-1" style={{ gridTemplateColumns: `repeat(${PERIODS.length}, 1fr)`, backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+    <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1 sm:mx-0 sm:px-0 sm:flex-wrap">
       {PERIODS.map((p) => (
         <button
           key={p.key}
           onClick={() => onChange(p.key)}
-          className={`py-2 rounded-lg text-[12px] font-semibold text-center transition-all duration-200 ${
-            value === p.key
-              ? 'text-[#D4AF37]'
-              : 'text-[#9CA3AF]'
-          }`}
-          style={value === p.key ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)' } : {}}
+          className={`admin-pill flex-shrink-0 inline-flex items-center justify-center min-h-[44px] ${value === p.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
+          style={{ padding: '0 16px', fontSize: 12 }}
         >
           {t(p.labelKey, p.fallback)}
         </button>
@@ -335,81 +336,89 @@ export default function AdminAnalytics() {
       </FadeIn>
 
       {/* ── Tab Content ── */}
-      <SwipeableTabContent tabs={ANALYTICS_TABS} active={activeTab} onChange={setActiveTab}>
-        {(tabKey) => {
-          if (tabKey === 'overview') return (
-            <>
-              <FadeIn delay={30}>
-                <KPITargets gymId={gymId} />
-              </FadeIn>
-              <FadeIn delay={50}>
-                <SectionDivider label={t('admin.analytics.sectionLifecycle', 'Lifecycle')} />
-              </FadeIn>
-              <FadeIn delay={60}>
-                <div className="mb-8">
-                  <LifecycleStages gymId={gymId} />
-                </div>
-              </FadeIn>
-            </>
-          );
-          if (tabKey === 'growth') return (
-            <FadeIn delay={30}>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-                <GrowthChart gymId={gymId} />
-                <RetentionChart gymId={gymId} />
-              </div>
-            </FadeIn>
-          );
-          if (tabKey === 'engagement') return (
-            <>
-              <FadeIn delay={30}>
-                <SectionDivider label={t('admin.analytics.sectionOnboarding', 'Onboarding & Challenges')} />
-              </FadeIn>
-              <FadeIn delay={40}>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-                  <OnboardingFunnel gymId={gymId} />
-                  <ChallengeStats gymId={gymId} />
-                </div>
-              </FadeIn>
-              <FadeIn delay={60}>
-                <SectionDivider label={t('admin.analytics.sectionActivity', 'Activity')} />
-              </FadeIn>
-              <FadeIn delay={70}>
-                <div className="mb-8">
-                  <ActivityChart gymId={gymId} />
-                </div>
-              </FadeIn>
-            </>
-          );
-          if (tabKey === 'deep-dives') return (
-            <>
-              <FadeIn delay={30}>
-                <SectionDivider label={t('admin.analytics.sectionCohortRetention', 'Cohort Retention')} />
-              </FadeIn>
-              <FadeIn delay={40}>
-                <div className="mb-8">
-                  <CohortTable gymId={gymId} />
-                </div>
-              </FadeIn>
-              <FadeIn delay={60}>
-                <SectionDivider label={t('admin.analytics.sectionTrainerPerformance', 'Trainer Performance')} />
-              </FadeIn>
-              <FadeIn delay={70}>
-                <div className="mb-8">
-                  <TrainerPerformance gymId={gymId} />
-                </div>
-              </FadeIn>
-              <FadeIn delay={90}>
-                <SectionDivider label={t('admin.analytics.sectionMonthlySummary', 'Monthly Summary')} />
-              </FadeIn>
-              <FadeIn delay={100}>
-                <MonthlySummary gymId={gymId} />
-              </FadeIn>
-            </>
-          );
-          return null;
-        }}
-      </SwipeableTabContent>
+      {/* Each child receives the selected period so its query window matches what
+          the admin picked. PERIODS map: 7d/30d/90d → days; 'all' → null (component
+          interprets null as "no upper bound"). */}
+      {(() => {
+        const periodDays = (PERIODS.find((p) => p.key === period) || {}).days ?? null;
+        return (
+          <SwipeableTabContent tabs={ANALYTICS_TABS} active={activeTab} onChange={setActiveTab}>
+            {(tabKey) => {
+              if (tabKey === 'overview') return (
+                <>
+                  <FadeIn delay={30}>
+                    <KPITargets gymId={gymId} period={period} periodDays={periodDays} />
+                  </FadeIn>
+                  <FadeIn delay={50}>
+                    <SectionDivider label={t('admin.analytics.sectionLifecycle', 'Lifecycle')} />
+                  </FadeIn>
+                  <FadeIn delay={60}>
+                    <div className="mb-8">
+                      <LifecycleStages gymId={gymId} period={period} periodDays={periodDays} />
+                    </div>
+                  </FadeIn>
+                </>
+              );
+              if (tabKey === 'growth') return (
+                <FadeIn delay={30}>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+                    <GrowthChart gymId={gymId} period={period} periodDays={periodDays} />
+                    <RetentionChart gymId={gymId} period={period} periodDays={periodDays} />
+                  </div>
+                </FadeIn>
+              );
+              if (tabKey === 'engagement') return (
+                <>
+                  <FadeIn delay={30}>
+                    <SectionDivider label={t('admin.analytics.sectionOnboarding', 'Onboarding & Challenges')} />
+                  </FadeIn>
+                  <FadeIn delay={40}>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+                      <OnboardingFunnel gymId={gymId} period={period} periodDays={periodDays} />
+                      <ChallengeStats gymId={gymId} period={period} periodDays={periodDays} />
+                    </div>
+                  </FadeIn>
+                  <FadeIn delay={60}>
+                    <SectionDivider label={t('admin.analytics.sectionActivity', 'Activity')} />
+                  </FadeIn>
+                  <FadeIn delay={70}>
+                    <div className="mb-8">
+                      <ActivityChart gymId={gymId} period={period} periodDays={periodDays} />
+                    </div>
+                  </FadeIn>
+                </>
+              );
+              if (tabKey === 'deep-dives') return (
+                <>
+                  <FadeIn delay={30}>
+                    <SectionDivider label={t('admin.analytics.sectionCohortRetention', 'Cohort Retention')} />
+                  </FadeIn>
+                  <FadeIn delay={40}>
+                    <div className="mb-8">
+                      <CohortTable gymId={gymId} period={period} periodDays={periodDays} />
+                    </div>
+                  </FadeIn>
+                  <FadeIn delay={60}>
+                    <SectionDivider label={t('admin.analytics.sectionTrainerPerformance', 'Trainer Performance')} />
+                  </FadeIn>
+                  <FadeIn delay={70}>
+                    <div className="mb-8">
+                      <TrainerPerformance gymId={gymId} period={period} periodDays={periodDays} />
+                    </div>
+                  </FadeIn>
+                  <FadeIn delay={90}>
+                    <SectionDivider label={t('admin.analytics.sectionMonthlySummary', 'Monthly Summary')} />
+                  </FadeIn>
+                  <FadeIn delay={100}>
+                    <MonthlySummary gymId={gymId} period={period} periodDays={periodDays} />
+                  </FadeIn>
+                </>
+              );
+              return null;
+            }}
+          </SwipeableTabContent>
+        );
+      })()}
 
     </AdminPageShell>
   );

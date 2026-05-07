@@ -33,12 +33,17 @@ export default function TrainerLayout({ children }) {
 
   useEffect(() => {
     if (!profile?.id) return;
-    supabase
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('profile_id', profile.id)
-      .is('read_at', null)
-      .then(({ count }) => setUnreadNotifs(count || 0));
+    const refreshUnread = () => {
+      supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', profile.id)
+        .eq('audience', 'trainer')
+        .is('read_at', null)
+        .is('dismissed_at', null)
+        .then(({ count }) => setUnreadNotifs(count || 0));
+    };
+    refreshUnread();
     supabase
       .from('direct_messages')
       .select('id, conversation_id, conversations!inner(participant_1, participant_2)', { count: 'exact', head: true })
@@ -46,6 +51,18 @@ export default function TrainerLayout({ children }) {
       .is('read_at', null)
       .or(`participant_1.eq.${profile.id},participant_2.eq.${profile.id}`, { referencedTable: 'conversations' })
       .then(({ count }) => setUnreadMessages(count || 0));
+
+    // Live update the trainer bell badge.
+    const ch = supabase
+      .channel(`trainer-notifs-${profile.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'notifications',
+        filter: `profile_id=eq.${profile.id}`,
+      }, refreshUnread)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [profile?.id]);
 
   const handleSignOut = async () => {
@@ -160,7 +177,7 @@ export default function TrainerLayout({ children }) {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto pt-[calc(52px+env(safe-area-inset-top))] pb-[calc(68px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+        <div className="flex-1 overflow-y-auto pt-[calc(52px+env(safe-area-inset-top))] pb-[calc(76px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
           {children}
         </div>
       </main>

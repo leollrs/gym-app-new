@@ -140,40 +140,52 @@ export function generateDayPlan({
     const idealC = remaining.carbs / slotsLeft;
     const idealF = remaining.fat / slotsLeft;
 
-    // Score candidates for this slot
-    const candidates = available
-      .filter(m => !used.has(m.id))
-      .filter(m => !recentMealIds.includes(m.id) || slot > 1)
-      .map(m => {
-        const calDiff = Math.abs((m.calories || 0) - idealCal) / Math.max(idealCal, 1);
-        const pDiff = Math.abs((m.protein || 0) - idealP) / Math.max(idealP, 1);
-        const cDiff = Math.abs((m.carbs || 0) - idealC) / Math.max(idealC, 1);
-        const fDiff = Math.abs((m.fat || 0) - idealF) / Math.max(idealF, 1);
+    // Score candidates for this slot. `recentMealIds` is now enforced for ALL
+    // slots (was previously only slots 0-1), with a graceful fallback below if
+    // the strict pool is empty — this prevents "same meal every day" when the
+    // top-scored meal would otherwise repeat at slot 2+.
+    const recentSet = new Set(recentMealIds);
+    const scoreOf = (m) => {
+      const calDiff = Math.abs((m.calories || 0) - idealCal) / Math.max(idealCal, 1);
+      const pDiff = Math.abs((m.protein || 0) - idealP) / Math.max(idealP, 1);
+      const cDiff = Math.abs((m.carbs || 0) - idealC) / Math.max(idealC, 1);
+      const fDiff = Math.abs((m.fat || 0) - idealF) / Math.max(idealF, 1);
+      const macroScore = 1 - (calDiff * 0.25 + pDiff * 0.35 + cDiff * 0.2 + fDiff * 0.2);
+      const prefBoost = scoreByPreference(m, affinities) * 0.15;
+      const favBoost = favorites.includes(m.id) ? 0.1 : 0;
+      const allPlanMeals = [...planMealsSoFar, ...plan];
+      const groceryBoost = allPlanMeals.length > 0
+        ? groceryOverlapScore(m, allPlanMeals) * 0.08
+        : 0;
+      // Small random jitter so two consecutive regenerations don't pick the
+      // exact same top meal when scores are near-tied. Deliberately small —
+      // doesn't override macro fit, just breaks ties.
+      const jitter = (Math.random() - 0.5) * 0.08;
+      return Math.max(0, macroScore) + prefBoost + favBoost + groceryBoost + jitter;
+    };
 
-        // Macro fit score (0-1)
-        const macroScore = 1 - (calDiff * 0.25 + pDiff * 0.35 + cDiff * 0.2 + fDiff * 0.2);
-
-        // Preference score from learned affinities (-0.15 to +0.15)
-        const prefBoost = scoreByPreference(m, affinities) * 0.15;
-
-        // Favorites boost
-        const favBoost = favorites.includes(m.id) ? 0.1 : 0;
-
-        // Grocery overlap: prefer meals sharing ingredients with the rest of the plan
-        const allPlanMeals = [...planMealsSoFar, ...plan];
-        const groceryBoost = allPlanMeals.length > 0
-          ? groceryOverlapScore(m, allPlanMeals) * 0.08
-          : 0;
-
-        return {
-          meal: m,
-          score: Math.max(0, macroScore) + prefBoost + favBoost + groceryBoost,
-        };
-      })
+    const baseUnused = available.filter(m => !used.has(m.id));
+    let candidates = baseUnused
+      .filter(m => !recentSet.has(m.id))
+      .map(m => ({ meal: m, score: scoreOf(m) }))
       .sort((a, b) => b.score - a.score);
 
+    // Fallback: if the strict (non-recent) pool is empty, allow recent meals
+    // back in rather than producing an empty slot.
+    if (candidates.length === 0) {
+      candidates = baseUnused
+        .map(m => ({ meal: m, score: scoreOf(m) }))
+        .sort((a, b) => b.score - a.score);
+    }
+
     if (candidates.length > 0) {
-      const pick = candidates[0].meal;
+      // Pick randomly among the top N candidates instead of always #1.
+      // With 300 meals in the pool, this guarantees real variation across
+      // regenerations and across days within a week, while still keeping
+      // the picks among the best macro fits.
+      const TOP_N = Math.min(8, candidates.length);
+      const idx = Math.floor(Math.random() * TOP_N);
+      const pick = candidates[idx].meal;
       plan.push(pick);
       used.add(pick.id);
       totalCal += pick.calories || 0;
@@ -220,7 +232,10 @@ export function generateWeekPlan({
       slots: 3,
       excludeIds: [],
       favorites,
-      recentMealIds: recentIds.slice(-9), // last 3 days × 3 meals
+      // Penalize ALL meals already used earlier in the week so days don't
+      // repeat each other. The graceful fallback in generateDayPlan will
+      // relax this if the meal pool is too small.
+      recentMealIds: recentIds.slice(),
       allergies,
       restrictions,
       affinities,

@@ -33,8 +33,8 @@ const ICON_MAP = {
 const ICON_OPTIONS = Object.keys(ICON_MAP);
 
 const COLOR_OPTIONS = [
-  '#D4AF37', '#EF4444', '#F97316', '#22C55E', '#3B82F6',
-  '#8B5CF6', '#EC4899', '#14B8A6', '#F59E0B', '#6366F1',
+  'var(--color-accent)', 'var(--color-danger)', 'var(--color-danger)', 'var(--color-success)', 'var(--color-info)',
+  'var(--color-coach)', 'var(--color-coach)', 'var(--color-info)', 'var(--color-warning)', 'var(--color-coach)',
 ];
 
 // ── Pre-built segment suggestions ───────────────────────────
@@ -45,7 +45,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Members who haven\'t logged a workout in 14+ days',
     descriptionKey: 'admin.segments.prebuilt.atRiskDesc',
     filters: { last_workout_days_ago_gt: 14 },
-    color: '#EF4444',
+    color: 'var(--color-danger)',
     icon: 'alert-triangle',
   },
   {
@@ -54,7 +54,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Members who joined in the last 30 days',
     descriptionKey: 'admin.segments.prebuilt.newMembersDesc',
     filters: { joined_after: format(subDays(new Date(), 30), 'yyyy-MM-dd') },
-    color: '#3B82F6',
+    color: 'var(--color-info)',
     icon: 'user-plus',
   },
   {
@@ -63,7 +63,7 @@ const PREBUILT_SEGMENTS = [
     description: '10+ workouts with an active streak',
     descriptionKey: 'admin.segments.prebuilt.powerUsersDesc',
     filters: { workout_count_gt: 10, streak_gt: 3 },
-    color: '#22C55E',
+    color: 'var(--color-success)',
     icon: 'zap',
   },
   {
@@ -72,7 +72,7 @@ const PREBUILT_SEGMENTS = [
     description: 'No workout in 30+ days — high churn risk',
     descriptionKey: 'admin.segments.prebuilt.inactiveDesc',
     filters: { last_workout_days_ago_gt: 30 },
-    color: '#F97316',
+    color: 'var(--color-danger)',
     icon: 'clock',
   },
   {
@@ -81,7 +81,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Members with a 7+ day streak',
     descriptionKey: 'admin.segments.prebuilt.consistentTrainersDesc',
     filters: { streak_gt: 7 },
-    color: '#22C55E',
+    color: 'var(--color-success)',
     icon: 'flame',
   },
   {
@@ -90,7 +90,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Churn score critical tier',
     descriptionKey: 'admin.segments.prebuilt.atRiskCriticalDesc',
     filters: { churn_tier: ['critical'] },
-    color: '#EF4444',
+    color: 'var(--color-danger)',
     icon: 'shield',
   },
   {
@@ -99,7 +99,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Churn score high tier',
     descriptionKey: 'admin.segments.prebuilt.atRiskHighDesc',
     filters: { churn_tier: ['high'] },
-    color: '#F97316',
+    color: 'var(--color-danger)',
     icon: 'alert-triangle',
   },
   {
@@ -108,7 +108,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Fitness level beginner',
     descriptionKey: 'admin.segments.prebuilt.beginnersDesc',
     filters: { fitness_level: ['beginner'] },
-    color: '#3B82F6',
+    color: 'var(--color-info)',
     icon: 'target',
   },
   {
@@ -117,7 +117,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Fitness level advanced',
     descriptionKey: 'admin.segments.prebuilt.advancedAthletesDesc',
     filters: { fitness_level: ['advanced'] },
-    color: '#8B5CF6',
+    color: 'var(--color-coach)',
     icon: 'star',
   },
   {
@@ -126,7 +126,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Last workout within 3 days',
     descriptionKey: 'admin.segments.prebuilt.recentlyActiveDesc',
     filters: { last_workout_days_ago_lt: 3 },
-    color: '#14B8A6',
+    color: 'var(--color-info)',
     icon: 'activity',
   },
   {
@@ -135,7 +135,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Members who never logged a workout',
     descriptionKey: 'admin.segments.prebuilt.noWorkoutsDesc',
     filters: { workout_count_lt: 1 },
-    color: '#6366F1',
+    color: 'var(--color-coach)',
     icon: 'eye',
   },
   {
@@ -144,7 +144,7 @@ const PREBUILT_SEGMENTS = [
     description: 'Joined 6+ months ago',
     descriptionKey: 'admin.segments.prebuilt.longTermMembersDesc',
     filters: { joined_before: format(subMonths(new Date(), 6), 'yyyy-MM-dd') },
-    color: '#D4AF37',
+    color: 'var(--color-accent)',
     icon: 'heart',
   },
 ];
@@ -153,7 +153,7 @@ const PREBUILT_SEGMENTS = [
 async function applySegmentFilters(gymId, filters) {
   let query = supabase
     .from('profiles')
-    .select('id, full_name, username, created_at, last_active_at, fitness_level, avatar_type, avatar_value')
+    .select('id, full_name, username, created_at, last_active_at, fitness_level, avatar_type, avatar_value, streak_cache(current_streak_days)')
     .eq('gym_id', gymId)
     .eq('role', 'member');
 
@@ -164,7 +164,9 @@ async function applySegmentFilters(gymId, filters) {
     query = query.lte('created_at', filters.joined_before);
   }
   if (filters.fitness_level?.length) {
-    query = query.in('fitness_level', filters.fitness_level);
+    const ALLOWED_LEVELS = ['beginner', 'intermediate', 'advanced'];
+    const safe = filters.fitness_level.filter(l => ALLOWED_LEVELS.includes(l));
+    if (safe.length) query = query.in('fitness_level', safe);
   }
   // Note: streak filtering requires join to streak_cache table
   // These filters are applied client-side after fetch if needed
@@ -224,8 +226,19 @@ async function applySegmentFilters(gymId, filters) {
         ...m,
         _workoutCount: sessionMap[m.id] || 0,
         _lastWorkoutAt: lastSessionMap[m.id] || null,
+        _currentStreak: m.streak_cache?.current_streak_days ?? m.streak_cache?.[0]?.current_streak_days ?? 0,
+      }));
+    } else {
+      filtered = filtered.map(m => ({
+        ...m,
+        _currentStreak: m.streak_cache?.current_streak_days ?? m.streak_cache?.[0]?.current_streak_days ?? 0,
       }));
     }
+  } else {
+    filtered = filtered.map(m => ({
+      ...m,
+      _currentStreak: m.streak_cache?.current_streak_days ?? m.streak_cache?.[0]?.current_streak_days ?? 0,
+    }));
   }
 
   // Churn tier filter
@@ -351,7 +364,8 @@ export default function AdminSegments() {
               {segments.length > 0 && (
                 <button
                   onClick={() => setShowSuggestions(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium transition-all rounded-lg"
+                  style={{ color: 'var(--color-admin-text-sub)', background: 'var(--color-bg-input)', border: '1px solid var(--color-admin-border)' }}
                 >
                   <Sparkles size={14} />
                   {t('admin.segments.suggestions', 'Suggestions')}
@@ -359,7 +373,8 @@ export default function AdminSegments() {
               )}
               <button
                 onClick={() => setEditModal('new')}
-                className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-bold text-[#05070B] bg-[#D4AF37] hover:bg-[#C5A028] rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-bold rounded-lg transition-colors"
+                style={{ background: 'var(--color-accent)', color: '#fff' }}
               >
                 <Plus size={14} />
                 {t('admin.segments.create', 'New Segment')}
@@ -370,10 +385,10 @@ export default function AdminSegments() {
       </FadeIn>
 
       {/* ── Stats row ────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 mt-5">
-        <StatCard label={t('admin.segments.totalSegments', 'Segments')} value={segments.length} icon={Filter} borderColor="#D4AF37" delay={0} />
-        <StatCard label={t('admin.segments.pinned', 'Pinned')} value={pinnedCount} icon={Pin} borderColor="#3B82F6" delay={50} />
-        <StatCard label={t('admin.segments.totalTracked', 'Members Tracked')} value={totalMembers} icon={Users} borderColor="#22C55E" delay={100} />
+      <div className="grid grid-cols-3 gap-2.5 md:gap-3 mt-5">
+        <StatCard label={t('admin.segments.totalSegments', 'Segments')} value={segments.length} icon={Filter} borderColor="var(--color-accent)" delay={0} />
+        <StatCard label={t('admin.segments.pinned', 'Pinned')} value={pinnedCount} icon={Pin} borderColor="var(--color-info)" delay={50} />
+        <StatCard label={t('admin.segments.totalTracked', 'Members Tracked')} value={totalMembers} icon={Users} borderColor="var(--color-success)" delay={100} />
       </div>
 
       {/* ── Main layout: segment list + detail ───────────── */}
@@ -381,26 +396,38 @@ export default function AdminSegments() {
         {/* Empty state */}
         {!isLoading && segments.length === 0 && (
           <FadeIn>
-            <AdminCard className="text-center py-12">
-              <div className="w-14 h-14 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4">
-                <Filter size={24} className="text-[#D4AF37]" />
+            {/* "No segments yet" hero card */}
+            <div className="admin-card text-center mb-4" style={{ padding: 22 }}>
+              <div
+                className="flex items-center justify-center mx-auto mb-3"
+                style={{ width: 52, height: 52, borderRadius: 14, background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}
+              >
+                <Filter size={22} style={{ color: 'var(--color-accent)' }} />
               </div>
-              <p className="text-[15px] font-bold text-[#E5E7EB] mb-1">
+              <div
+                className="mb-1"
+                style={{ fontFamily: 'Archivo, sans-serif', fontSize: 15, fontWeight: 800, color: 'var(--color-admin-text)' }}
+              >
                 {t('admin.segments.emptyTitle', 'No segments yet')}
-              </p>
-              <p className="text-[13px] text-[#6B7280] mb-6 max-w-sm mx-auto">
-                {t('admin.segments.emptyDesc', 'Create smart lists to group members by behavior, risk level, or activity patterns.')}
-              </p>
-
-              <SectionLabel icon={Sparkles} className="justify-center mb-3">
-                {t('admin.segments.quickStart', 'Quick Start')}
-              </SectionLabel>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {PREBUILT_SEGMENTS.map((seg, i) => (
-                  <PrebuiltCard key={i} segment={seg} gymId={gymId} adminId={adminId} onCreated={refetch} t={t} />
-                ))}
               </div>
-            </AdminCard>
+              <div className="text-[12.5px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                {t('admin.segments.emptyDesc', 'Create your first segment to group members by behavior or attributes')}
+              </div>
+            </div>
+
+            {/* "Use template" eyebrow with divider */}
+            <div className="flex items-center gap-2 mt-[18px] mb-2.5">
+              <Sparkles size={12} style={{ color: 'var(--color-admin-text-muted)' }} />
+              <span className="admin-eyebrow">{t('admin.segments.quickStart', 'Use template')}</span>
+              <div className="flex-1 h-px" style={{ background: 'var(--color-admin-border)' }} />
+            </div>
+
+            {/* 2-col template grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {PREBUILT_SEGMENTS.map((seg, i) => (
+                <PrebuiltCard key={i} segment={seg} gymId={gymId} adminId={adminId} onCreated={refetch} t={t} />
+              ))}
+            </div>
           </FadeIn>
         )}
 
@@ -580,6 +607,7 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
   const { i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
+  const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -627,7 +655,7 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
         { key: 'created_at', label: t('admin.segments.csvJoined', 'Joined'), format: v => v ? format(new Date(v), 'yyyy-MM-dd') : '' },
         { key: '_lastWorkoutAt', label: t('admin.segments.csvLastWorkout', 'Last Workout'), format: v => v ? format(new Date(v), 'yyyy-MM-dd') : t('admin.segments.never', 'Never') },
         { key: '_workoutCount', label: t('admin.segments.csvWorkouts', 'Workouts'), format: v => v ?? 0 },
-        { key: 'current_streak', label: t('admin.segments.csvStreak', 'Streak'), format: v => v ?? 0 },
+        { key: '_currentStreak', label: t('admin.segments.csvStreak', 'Streak'), format: v => v ?? 0 },
       ],
       data: filtered,
     });
@@ -638,22 +666,54 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
     const message = prompt(t('admin.segments.messagePrompt', 'Message to send to all members in this segment:'));
     if (!message?.trim()) return;
 
-    for (const m of filtered) {
+    // Throttle: send in batches of 10 in parallel, then a short pause before the
+    // next batch. This avoids hammering Supabase with hundreds of sequential
+    // RPC calls and keeps the gym from looking like a spam source.
+    const BATCH_SIZE = 10;
+    const PAUSE_MS = 250;
+    const total = filtered.length;
+    let sent = 0;
+    let failed = 0;
+
+    const sendOne = async (m) => {
       try {
         const { data: convoId } = await supabase.rpc('get_or_create_conversation', { p_other_user: m.id });
-        if (!convoId) continue;
+        if (!convoId) { failed++; return; }
         const { data: convo } = await supabase.from('conversations').select('encryption_seed').eq('id', convoId).single();
         const seed = convo?.encryption_seed || convoId;
         const encrypted = await encryptMessage(message.trim(), convoId, seed);
         await supabase.from('direct_messages').insert({ conversation_id: convoId, sender_id: authUser?.id, body: encrypted });
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
+        sent++;
       } catch (err) {
+        failed++;
         logger.error('Segment DM failed for:', m.id, err);
       }
+    };
+
+    for (let i = 0; i < total; i += BATCH_SIZE) {
+      const batch = filtered.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(sendOne));
+      if (i + BATCH_SIZE < total) {
+        await new Promise(r => setTimeout(r, PAUSE_MS));
+      }
+    }
+
+    // Surface partial failures so the admin can retry rather than discover later.
+    if (failed > 0) {
+      showToast(
+        t('admin.segments.bulkPartialFailure', { sent, failed, total, defaultValue: 'Sent {{sent}}/{{total}} — {{failed}} failed' }),
+        'warning'
+      );
+    } else {
+      showToast(
+        t('admin.segments.bulkSent', { count: sent, defaultValue: 'Sent to {{count}} members' }),
+        'success'
+      );
     }
   };
 
-  const RISK_COLORS = { low: '#22C55E', medium: '#F59E0B', high: '#F97316', critical: '#EF4444' };
+  const RISK_COLORS = { low: 'var(--color-success)', medium: 'var(--color-warning)', high: 'var(--color-danger)', critical: 'var(--color-danger)' };
 
   return (
     <AdminCard padding="p-0" className="overflow-hidden">
@@ -734,15 +794,15 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {member.current_streak > 0 && (
-                      <span className="text-[11px] text-[#F59E0B] font-medium">{member.current_streak}d</span>
+                    {member._currentStreak > 0 && (
+                      <span className="text-[11px] text-[#F59E0B] font-medium">{t('admin.segments.streakDays', '{{count}}d', { count: member._currentStreak })}</span>
                     )}
                     {churn && (
                       <span
                         className="text-[10px] font-bold px-1.5 py-0.5 rounded-full border"
                         style={{ color: riskColor, background: `${riskColor}15`, borderColor: `${riskColor}30` }}
                       >
-                        {churn.risk_tier}
+                        {t(`admin.riskLabels.${churn.risk_tier}`, churn.risk_tier)}
                       </span>
                     )}
                   </div>
@@ -802,42 +862,58 @@ function PrebuiltCard({ segment, gymId, adminId, onCreated, t }) {
   if (f.workout_count_gt) filterLabels.push(`${f.workout_count_gt}+ ${t('admin.segments.filterWorkouts', 'workouts')}`);
   if (f.workout_count_lt != null) filterLabels.push(`<${f.workout_count_lt} ${t('admin.segments.filterWorkouts', 'workouts')}`);
   if (f.streak_gt) filterLabels.push(`${f.streak_gt}+ ${t('admin.segments.filterStreak', 'day streak')}`);
-  if (f.churn_tier?.length) filterLabels.push(f.churn_tier.join(', '));
-  if (f.fitness_level?.length) filterLabels.push(f.fitness_level.join(', '));
+  if (f.churn_tier?.length) filterLabels.push(f.churn_tier.map(tier => t(`admin.riskLabels.${tier}`, tier)).join(', '));
+  if (f.fitness_level?.length) filterLabels.push(f.fitness_level.map(level => t(`admin.segments.fitnessLevel.${level}`, level)).join(', '));
   if (f.joined_after) filterLabels.push(t('admin.segments.filterJoinedAfter', 'Joined recently'));
   if (f.joined_before) filterLabels.push(t('admin.segments.filterLongTerm', 'Long-term'));
 
   return (
     <>
-      <button onClick={handleOpen} className="w-full text-left bg-[#0F172A] border border-white/6 rounded-xl overflow-hidden hover:border-white/12 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 group">
-        {/* Colored top accent bar */}
-        <div className="h-1" style={{ background: segment.color }} />
-
-        {/* Header: icon + name */}
-        <div className="flex items-center gap-3 px-4 pt-3.5 pb-2.5">
+      <button
+        onClick={handleOpen}
+        className="w-full text-left rounded-xl transition-all duration-200 group hover:-translate-y-0.5"
+        style={{
+          background: 'var(--color-bg-card)',
+          border: '1px solid var(--color-admin-border)',
+          borderLeft: `3px solid ${segment.color}`,
+          padding: 14,
+          display: 'flex',
+          gap: 12,
+        }}
+      >
+        <div
+          className="flex items-center justify-center flex-shrink-0"
+          style={{ width: 34, height: 34, borderRadius: 9, background: `color-mix(in srgb, ${segment.color} 18%, transparent)` }}
+        >
+          <IconComp size={15} style={{ color: segment.color }} />
+        </div>
+        <div className="flex-1 min-w-0">
           <div
-            className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: `${segment.color}15` }}
+            className="mb-[3px]"
+            style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-admin-text)' }}
           >
-            <IconComp size={16} style={{ color: segment.color }} />
+            {name}
           </div>
-          <p className="text-[14px] font-bold text-[#E5E7EB]">{name}</p>
-        </div>
-
-        {/* Description */}
-        <div className="px-4 pb-3 border-b border-white/4">
-          <p className="text-[12px] text-[#9CA3AF] leading-relaxed">{desc}</p>
-        </div>
-
-        {/* Filters */}
-        <div className="px-4 py-2.5 bg-white/[0.015]">
+          <div className="mb-[7px] text-[11.5px] leading-[1.4]" style={{ color: 'var(--color-admin-text-muted)' }}>
+            {desc}
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {filterLabels.map((fl, i) => (
-              <span key={i} className="text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: segment.color, background: `${segment.color}12` }}>
+              <span
+                key={i}
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-md"
+                style={{ color: segment.color, background: `color-mix(in srgb, ${segment.color} 12%, transparent)` }}
+              >
                 {fl}
               </span>
             ))}
           </div>
+        </div>
+        <div
+          className="flex-shrink-0 flex items-center justify-center"
+          style={{ width: 28, height: 28, borderRadius: 7, color: 'var(--color-admin-text-muted)' }}
+        >
+          <Plus size={14} />
         </div>
       </button>
 
@@ -861,6 +937,7 @@ function PrebuiltCard({ segment, gymId, adminId, onCreated, t }) {
             <div>
               <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.segments.segmentName', 'Name')}</label>
               <input value={editName} onChange={e => setEditName(e.target.value)}
+                maxLength={80}
                 className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 transition-colors" />
             </div>
             <div>
@@ -893,7 +970,7 @@ function SegmentEditorModal({ segment, gymId, adminId, onClose, onSaved }) {
 
   const [name, setName] = useState(segment?.name || '');
   const [description, setDescription] = useState(segment?.description || '');
-  const [color, setColor] = useState(segment?.color || '#D4AF37');
+  const [color, setColor] = useState(segment?.color || 'var(--color-accent)');
   const [icon, setIcon] = useState(segment?.icon || 'users');
   const [filters, setFilters] = useState(segment?.filters || {});
   const [saving, setSaving] = useState(false);
@@ -1123,7 +1200,7 @@ function SegmentEditorModal({ segment, gymId, adminId, onClose, onSaved }) {
             <div className="flex flex-wrap gap-1.5">
               {['low', 'medium', 'high', 'critical'].map(tier => {
                 const active = (filters.churn_tier || []).includes(tier);
-                const tierColors = { low: '#22C55E', medium: '#F59E0B', high: '#F97316', critical: '#EF4444' };
+                const tierColors = { low: 'var(--color-success)', medium: 'var(--color-warning)', high: 'var(--color-danger)', critical: 'var(--color-danger)' };
                 return (
                   <button
                     key={tier}

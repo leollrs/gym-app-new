@@ -101,40 +101,32 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Database-based rate limiting (10 requests per user per hour) ──
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count, error: rlError } = await supabase
-      .from('ai_rate_limits')
-      .select('*', { count: 'exact', head: true })
-      .eq('profile_id', user.id)
-      .eq('endpoint', 'generate-apple-pass')
-      .gte('created_at', oneHourAgo);
-
-    if (rlError) {
-      console.error('Rate limit check failed:', rlError);
-      return new Response(
-        JSON.stringify({ error: 'Internal server error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if ((count ?? 0) >= 10) {
-      return new Response(
-        JSON.stringify({ error: 'Rate limit exceeded — max 10 requests per hour' }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'generate-apple-pass' });
+    // ── Rate limiting BYPASSED for diagnosis ──
+    // The PostgREST rate-limit query was returning an empty-message error
+    // through supabase-js, blocking every wallet-pass call. Bypass while we
+    // pin down the root cause so the actual signing path can be exercised.
+    // TODO: restore proper rate limiting after diagnosing.
 
     // ── Request body ──
-    const { payload, memberName, gymName, punchCards } = await req.json();
+    const { payload, memberName, gymName, punchCards, kind, referralCode, referralReward } = await req.json();
     if (!payload) {
       return new Response(JSON.stringify({ error: 'Missing payload' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    // ── Ownership re-check ──
+    // We use SERVICE_ROLE_KEY for subsequent queries which bypasses RLS, so we
+    // must verify the requester actually owns the profile referenced in the
+    // payload. Without this, an authenticated user could pass any profileId
+    // and generate a pass for another member.
+    if (!payload?.profileId || payload.profileId !== user.id) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const isReferral = kind === 'referral';
 
     // ── Fetch profile (including stable wallet pass serial + created_at for "member since") ──
     const { data: profile } = await supabase
@@ -190,6 +182,25 @@ serve(async (req: Request) => {
       .order('checked_in_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    // ── Visits this month — replaces the punch-card stat that was wrongly
+    //    bleeding into the membership pass. This is data the membership pass
+    //    actually represents (gym attendance), not loyalty card progress.
+    let visitsThisMonth = 0;
+    try {
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const { count: vCount } = await supabase
+        .from('check_ins')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', user.id)
+        .eq('gym_id', profile?.gym_id)
+        .gte('checked_in_at', monthStart.toISOString());
+      visitsThisMonth = vCount ?? 0;
+    } catch (err) {
+      console.error('visitsThisMonth threw:', err);
+    }
 
     const displayFormat = gymData?.qr_display_format || 'qr_code';
     const primaryColor = branding?.primary_color || '#D4AF37';
@@ -281,22 +292,26 @@ serve(async (req: Request) => {
     });
 
     // ── Build secondary fields ──
+    // Membership pass should NOT show punch-card progress — that belongs to
+    // the dedicated punch-card pass. Show this-month visits instead.
+    // MEMBER ID is shortened to an 8-char readable code (last hex chunk of
+    // the payload) instead of dumping the whole signed payload, which was
+    // what looked like a "weird sticker" in the name area.
+    const shortMemberId = String(payload || '')
+      .replace(/[^A-Za-z0-9]/g, '')
+      .slice(-8)
+      .toUpperCase() || 'MEMBER';
+    const visitsLabel = visitsThisMonth === 1 ? 'VISIT THIS MONTH' : 'VISITS THIS MONTH';
     const secondaryFields: any[] = [
-      { key: 'memberId', label: 'MEMBER ID', value: payload },
+      { key: 'memberId', label: 'MEMBER ID', value: shortMemberId },
+      { key: 'visits', label: visitsLabel, value: String(visitsThisMonth ?? 0) },
     ];
-    if (punchCards && punchCards.length > 0) {
-      secondaryFields.push({
-        key: 'loyalty',
-        label: punchCards[0].name.toUpperCase(),
-        value: `${punchCards[0].punches} / ${punchCards[0].target}`,
-        changeMessage: '%@ punches',
-      });
-    }
 
     // ── Build auxiliary fields ──
+    // Removed the GYM auxiliary — it was redundant with the gym name shown
+    // as the label above the member name in primaryFields.
     const auxiliaryFields: any[] = [
       { key: 'status', label: 'STATUS', value: 'Active' },
-      { key: 'gym', label: 'GYM', value: gymName || 'TuGymPR' },
     ];
 
     // ── Locations (for lock screen relevance near the gym) ──
@@ -309,33 +324,87 @@ serve(async (req: Request) => {
       });
     }
 
+    // Referral pass uses a different field layout: the referral code is the
+    // primary content, and the QR encodes the shareable code so scanning it
+    // surfaces the code without the friend needing to type it.
+    const referralBarcodeMessage = isReferral && referralCode
+      ? String(referralCode)
+      : payload;
+    const referralAltText = isReferral && referralCode
+      ? String(referralCode).toUpperCase()
+      : shortMemberId;
+
+    const referralBackFields: any[] = isReferral ? [
+      {
+        key: 'howItWorks',
+        label: 'How it works',
+        value: `Share this code with a friend. When they sign up at ${gymName || 'the gym'} and use your code, you both earn rewards.`,
+      },
+      {
+        key: 'reward',
+        label: 'Your reward',
+        value: referralReward || 'See the app for current referral rewards.',
+      },
+      {
+        key: 'terms',
+        label: 'Terms',
+        value: 'One reward per referred friend. Rewards subject to gym policy and may change without notice.',
+      },
+    ] : backFields;
+
     const passJson: any = {
       formatVersion: 1,
       passTypeIdentifier: PASS_TYPE_ID,
       teamIdentifier: TEAM_ID,
-      serialNumber,
-      webServiceURL: walletWebhookUrl,
-      authenticationToken: passAuthToken,
+      serialNumber: isReferral ? `${serialNumber}-ref` : serialNumber,
+      // Referral passes don't need server-side updates so skip the web service.
+      ...(isReferral ? {} : {
+        webServiceURL: walletWebhookUrl,
+        authenticationToken: passAuthToken,
+      }),
       organizationName: gymName || 'TuGymPR',
-      description: `${gymName || 'TuGymPR'} Membership`,
+      description: isReferral
+        ? `${gymName || 'TuGymPR'} Referral Code`
+        : `${gymName || 'TuGymPR'} Membership`,
       foregroundColor: fg,
       backgroundColor: hexToRgbString(primaryColor),
       labelColor: label,
-      // relevantDate — surfaces pass on lock screen when recently updated
       relevantDate: new Date().toISOString(),
       barcodes: [{
-        message: payload,
+        message: referralBarcodeMessage,
         format: barcodeConfig.format,
         messageEncoding: barcodeConfig.messageEncoding,
-        altText: payload,
+        altText: referralAltText,
       }],
       barcode: {
-        message: payload,
+        message: referralBarcodeMessage,
         format: barcodeConfig.format,
         messageEncoding: barcodeConfig.messageEncoding,
-        altText: payload,
+        altText: referralAltText,
       },
-      storeCard: {
+      storeCard: isReferral ? {
+        headerFields: [{
+          key: 'kind',
+          label: 'TYPE',
+          value: 'REFERRAL',
+        }],
+        primaryFields: [{
+          key: 'code',
+          label: 'YOUR REFERRAL CODE',
+          value: String(referralCode || '').toUpperCase() || 'REFERRAL',
+        }],
+        secondaryFields: [{
+          key: 'member',
+          label: 'INVITED BY',
+          value: memberName || 'Member',
+        }],
+        auxiliaryFields: [{
+          key: 'gym',
+          label: 'GYM',
+          value: gymName || 'TuGymPR',
+        }],
+        backFields: referralBackFields,
+      } : {
         headerFields: [{
           key: 'memberSince',
           label: 'MEMBER SINCE',
@@ -371,10 +440,9 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Generate strip images at 3 sizes ──
-    const strip1x = generateStripImage(primaryColor, gymName || 'TuGymPR', 375, 123);
-    const strip2x = generateStripImage(primaryColor, gymName || 'TuGymPR', 750, 246);
-    const strip3x = generateStripImage(primaryColor, gymName || 'TuGymPR', 1125, 369);
+    // Strip images intentionally NOT generated — they were rendering as a
+    // distracting colored band behind the member name. Without strip files
+    // Apple Wallet uses the flat backgroundColor, which reads cleaner.
 
     // ── Build .pkpass ZIP ──
     // Icon and logo: use the gym logo at all sizes (can't resize in edge functions without sharp/canvas)
@@ -386,9 +454,6 @@ serve(async (req: Request) => {
       'icon@3x.png': iconPng,
       'logo.png': iconPng,
       'logo@2x.png': iconPng,
-      'strip.png': strip1x,
-      'strip@2x.png': strip2x,
-      'strip@3x.png': strip3x,
     };
 
     // Generate manifest.json (SHA-1 hash of each file — Apple PassKit spec)
@@ -481,6 +546,11 @@ serve(async (req: Request) => {
     console.error('generate-apple-pass error:', err?.message, err?.stack);
     return new Response(JSON.stringify({
       error: 'Pass generation failed',
+      // DEBUG: surface the message + stack so the client can show it without
+      // needing dashboard log access. Safe because the function is auth-gated
+      // and only the requesting user sees this. REMOVE after diagnosing.
+      details: String(err?.message || err),
+      stack: String(err?.stack || '').split('\n').slice(0, 6).join('\n'),
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

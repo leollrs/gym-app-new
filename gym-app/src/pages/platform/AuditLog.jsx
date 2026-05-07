@@ -225,12 +225,19 @@ export default function AuditLog() {
 
   // Helper to apply shared filters to a query builder
   const applyFilters = useCallback((query) => {
+    const now = new Date();
     if (dateRange === '24h') {
-      query = query.gte('created_at', subHours(new Date(), 24).toISOString());
+      query = query
+        .gte('created_at', subHours(now, 24).toISOString())
+        .lte('created_at', now.toISOString());
     } else if (dateRange === '7d') {
-      query = query.gte('created_at', subDays(new Date(), 7).toISOString());
+      query = query
+        .gte('created_at', subDays(now, 7).toISOString())
+        .lte('created_at', now.toISOString());
     } else if (dateRange === '30d') {
-      query = query.gte('created_at', subDays(new Date(), 30).toISOString());
+      query = query
+        .gte('created_at', subDays(now, 30).toISOString())
+        .lte('created_at', now.toISOString());
     }
     if (actionType !== 'all') {
       query = query.eq('action', actionType);
@@ -239,7 +246,9 @@ export default function AuditLog() {
       query = query.eq('gym_id', gymFilter);
     }
     if (debouncedSearch.trim()) {
-      query = query.ilike('action', `%${debouncedSearch.trim()}%`);
+      // Search action key (actor name search would require joining profiles via RPC)
+      const safe = debouncedSearch.trim().replace(/[%_\\,()."']/g, '');
+      query = query.ilike('action', `%${safe}%`);
     }
     return query;
   }, [dateRange, actionType, gymFilter, debouncedSearch]);
@@ -393,7 +402,7 @@ export default function AuditLog() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
             <input
               type="text"
-              placeholder={t('platform.audit.searchPlaceholder', 'Search by actor name...')}
+              placeholder={t('platform.audit.searchPlaceholder', 'Search by action...')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-[#111827] border border-white/6 rounded-lg pl-9 pr-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/40 transition-colors"

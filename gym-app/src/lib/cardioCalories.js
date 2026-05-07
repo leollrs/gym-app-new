@@ -43,7 +43,7 @@ const CAL_PER_KM_PER_KG = {
  * If distance is provided for supported types, uses distance-based formula
  * (more accurate). Otherwise falls back to MET × time.
  */
-export function estimateCardioCalories(cardioType, durationSeconds, weightLbs, distanceKm = null) {
+export function estimateCardioCalories(cardioType, durationSeconds, weightLbs, distanceKm = null, { requireMovement = false } = {}) {
   const weightKg = weightLbs / 2.20462;
   const durationHours = durationSeconds / 3600;
 
@@ -57,6 +57,12 @@ export function estimateCardioCalories(cardioType, durationSeconds, weightLbs, d
     const intensityMult = 0.7 + 0.6 * Math.min(speedRatio, 2); // 0.7x slow to 1.9x fast
     return Math.round(baseCal * intensityMult);
   }
+
+  // Nike Run Club–style behavior for GPS-tracked activities: if the user
+  // hasn't moved (distance is 0 or null), calories do not accumulate from
+  // time alone. Only time-based fallback for non-GPS activities that are
+  // genuinely time-measured (HIIT, yoga, indoor cycling w/o GPS).
+  if (requireMovement) return 0;
 
   // Time-based fallback: MET × weight × time
   const met = MET_VALUES[cardioType] || MET_VALUES.other;

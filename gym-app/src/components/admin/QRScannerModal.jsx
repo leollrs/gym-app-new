@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Camera, ScanLine } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { handleScannedValue as routerHandleScannedValue } from '../../lib/scanRouter';
@@ -11,6 +11,14 @@ import { handleScannedValue as routerHandleScannedValue } from '../../lib/scanRo
 export default function QRScannerModal({ isOpen, onClose, onScan }) {
   const [error, setError] = useState('');
   const [scanning, setScanning] = useState(false);
+
+  // Lock body scroll while scanner modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [isOpen]);
 
   const startNativeScan = async () => {
     try {

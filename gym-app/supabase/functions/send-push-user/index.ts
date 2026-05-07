@@ -11,7 +11,9 @@ const APNS_KEY_ID      = Deno.env.get('APNS_KEY_ID') || '';
 const APNS_TEAM_ID     = Deno.env.get('APNS_TEAM_ID') || '';
 const APNS_PRIVATE_KEY = Deno.env.get('APNS_PRIVATE_KEY') || '';
 const APNS_BUNDLE_ID   = 'com.tugympr.app';
-const APNS_HOST = Deno.env.get('APNS_HOST') || 'api.sandbox.push.apple.com';
+// Default to APNs PRODUCTION host. Sandbox (api.sandbox.push.apple.com) is
+// for dev builds only and MUST be set explicitly via the APNS_HOST env var.
+const APNS_HOST = Deno.env.get('APNS_HOST') || 'api.push.apple.com';
 
 // FCM v1
 const FCM_PROJECT_ID   = Deno.env.get('FCM_PROJECT_ID') || '';
@@ -60,6 +62,25 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 
 function stripHtml(s: string): string {
   return s.replace(/<[^>]*>/g, '');
+}
+
+// ── Quiet hours helper ──────────────────────────────────────
+// Apple G4.5.4 + general UX: skip pushes between 10pm and 7am local time.
+// Timezone source priority: profiles.timezone (TODO: not yet a column —
+// migration agent will add it) → gyms.timezone → 'America/New_York'.
+// Returns true if the push should be SKIPPED.
+function isQuietHours(timezone: string): boolean {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric', hour12: false, timeZone: timezone,
+    }).formatToParts(new Date());
+    const hourStr = parts.find(p => p.type === 'hour')?.value ?? '0';
+    let hour = parseInt(hourStr, 10);
+    if (hour === 24) hour = 0;
+    return hour >= 22 || hour < 7;
+  } catch {
+    return false;
+  }
 }
 
 function jsonResp(data: unknown, status = 200) {
@@ -206,10 +227,31 @@ async function getFCMAccessToken(): Promise<string> {
   return access_token;
 }
 
+// ── Per-category notification preferences ───────────────────────
+// Maps the optional `notification_type` payload field to the column on
+// `profiles` that gates this category. Apple Guideline 4.5.4 / G5.1.1
+// require honoring the recipient's notification preferences server-side
+// — Settings toggles MUST suppress sends, not just hide UI.
+//
+// `notif_push_enabled` is the master toggle and is checked separately.
+// Callers that omit `notification_type` still respect the master toggle
+// but skip the per-category check (backward compatible).
+const NOTIFICATION_TYPE_COLUMNS: Record<string, string> = {
+  workout:   'notif_workout_reminders',
+  streak:    'notif_streak_alerts',
+  summary:   'notif_weekly_summary',
+  friend:    'notif_friend_activity',
+  milestone: 'notif_milestone_alerts',
+  challenge: 'notif_challenge_updates',
+  reward:    'notif_reward_reminders',
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Main Handler — send push to a single user's devices
-//  Accepts: { profile_id, gym_id, title, body, data }
+//  Accepts: { profile_id, gym_id, title, body, data, notification_type? }
 //  Auth: the caller must be the same user (self-push) OR an admin/trainer
+//  Preferences: respects profiles.notif_push_enabled (master) and the
+//  per-category column derived from `notification_type` (when provided).
 // ═══════════════════════════════════════════════════════════════════════════
 
 serve(async (req) => {
@@ -249,10 +291,17 @@ serve(async (req) => {
       userId = user.id;
     }
 
-    let { profile_id, gym_id, title, body, data: pushData } = await req.json();
+    let { profile_id, gym_id, title, body, data: pushData, notification_type } = await req.json();
 
     if (!title) return jsonResp({ error: 'title is required' }, 400);
     if (!profile_id) return jsonResp({ error: 'profile_id is required' }, 400);
+
+    // Validate notification_type if provided (silently ignored if unknown,
+    // so callers passing forward-compatible types don't 400).
+    let preferenceColumn: string | null = null;
+    if (typeof notification_type === 'string' && notification_type.length > 0) {
+      preferenceColumn = NOTIFICATION_TYPE_COLUMNS[notification_type] || null;
+    }
 
     // Input validation
     if (typeof title !== 'string' || title.length > 200) {
@@ -278,7 +327,7 @@ serve(async (req) => {
         .select('*', { count: 'exact', head: true })
         .eq('profile_id', profile_id)
         .eq('endpoint', 'send-push-user')
-        .gte('created_at', oneHourAgo);
+        .gte('requested_at', oneHourAgo);
       if ((count ?? 0) >= 20) {
         return jsonResp({ error: 'Rate limit exceeded — too many pushes to this user' }, 429);
       }
@@ -316,9 +365,66 @@ serve(async (req) => {
     // Service client to read tokens (bypasses RLS)
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+    // ── Per-category notification preference gate ─────────────────────
+    // Apple G4.5.4 / G5.1.1 — recipient toggles MUST suppress sends.
+    // Always check the master toggle; check the category column when the
+    // caller specified `notification_type`. Returns success (no-op) so
+    // upstream callers don't treat a suppressed push as an error.
+    //
+    // We also fetch gym_id so we can resolve the recipient's timezone for
+    // server-side quiet-hours enforcement (10pm–7am local). When
+    // profiles.timezone is added in a future migration it should be added
+    // to prefCols and preferred over gyms.timezone.
+    {
+      const prefCols = ['gym_id', 'notif_push_enabled'];
+      if (preferenceColumn) prefCols.push(preferenceColumn);
+      const { data: prefs, error: prefsErr } = await supabase
+        .from('profiles')
+        .select(prefCols.join(', '))
+        .eq('id', profile_id)
+        .single();
+      if (prefsErr) {
+        console.error('Failed to fetch notification preferences:', prefsErr);
+        // Fail closed-but-quiet: treat as suppressed so we don't spam users
+        // when the prefs row can't be read.
+        return jsonResp({ message: 'Notifications disabled', sent: 0, failed: 0, suppressed: 'preferences_fetch_failed' });
+      }
+      // Master toggle: undefined/null treated as enabled (legacy rows).
+      const master = (prefs as Record<string, unknown>)?.notif_push_enabled;
+      if (master === false) {
+        return jsonResp({ message: 'Push disabled by user', sent: 0, failed: 0, suppressed: 'notif_push_enabled' });
+      }
+      if (preferenceColumn) {
+        const categoryEnabled = (prefs as Record<string, unknown>)?.[preferenceColumn];
+        if (categoryEnabled === false) {
+          return jsonResp({ message: 'Category disabled by user', sent: 0, failed: 0, suppressed: preferenceColumn });
+        }
+      }
+
+      // ── Quiet hours suppression (server-side) ────────────────────
+      // profiles.timezone (TODO: not yet a column — migration agent will
+      // add it) → gyms.timezone → 'America/New_York'. The DB notification
+      // row is written by the caller (or upstream code) regardless; only
+      // the push delivery is suppressed here, mirroring the client-side
+      // pattern.
+      const recipientGymId = (prefs as Record<string, unknown>)?.gym_id as string | undefined;
+      let timezone = 'America/New_York';
+      if (recipientGymId) {
+        const { data: gymRow } = await supabase
+          .from('gyms')
+          .select('timezone')
+          .eq('id', recipientGymId)
+          .single();
+        if (gymRow?.timezone) timezone = gymRow.timezone as string;
+      }
+      if (isQuietHours(timezone)) {
+        return jsonResp({ message: 'Quiet hours — push suppressed', sent: 0, failed: 0, suppressed: 'quiet_hours' });
+      }
+    }
+
     const { data: tokens, error: tokensErr } = await supabase
       .from('push_tokens')
-      .select('token, platform')
+      .select('token, platform, apns_env')
       .eq('profile_id', profile_id);
 
     if (tokensErr) {
@@ -330,7 +436,9 @@ serve(async (req) => {
       return jsonResp({ message: 'No devices registered', sent: 0, failed: 0 });
     }
 
-    const iosTokens = tokens.filter((t: { platform: string }) => t.platform === 'ios').map((t: { token: string }) => t.token);
+    const iosTokens: Array<{ token: string; apns_env: 'production' | 'sandbox' | null }> = tokens
+      .filter((t: { platform: string }) => t.platform === 'ios')
+      .map((t: { token: string; apns_env: string | null }) => ({ token: t.token, apns_env: (t.apns_env as 'production' | 'sandbox' | null) || null }));
     const androidTokens = tokens.filter((t: { platform: string }) => t.platform === 'android').map((t: { token: string }) => t.token);
 
     console.log(`[send-push-user] Sending to profile ${profile_id}: ${iosTokens.length} iOS, ${androidTokens.length} Android`);
@@ -350,29 +458,66 @@ serve(async (req) => {
         ...(pushData || {}),
       });
 
+      // Sends to a specific APNs host (production or sandbox).
+      // Returns: 'sent' | 'invalid' (drop the token) | 'wrong-env' (retry on the other host) | 'failed'
+      const sendOnce = async (token: string, host: string): Promise<'sent' | 'invalid' | 'wrong-env' | 'failed'> => {
+        const res = await fetch(`https://${host}/3/device/${token}`, {
+          method: 'POST',
+          headers: {
+            'authorization': `bearer ${jwt}`,
+            'apns-topic': APNS_BUNDLE_ID,
+            'apns-push-type': 'alert',
+            'apns-priority': '10',
+            'apns-expiration': '0',
+            'content-type': 'application/json',
+          },
+          body: payload,
+        });
+        if (res.ok) return 'sent';
+        const errBody = await res.text().catch(() => '');
+        // Apple returns "BadDeviceToken" when a sandbox token hits the
+        // production host or vice versa — that's specifically a wrong-env
+        // signal, not an invalid token. Anything else (Unregistered,
+        // ExpiredToken) means the token is dead.
+        const isWrongEnv = res.status === 400 && /BadDeviceToken/i.test(errBody);
+        console.error(`APNs error (${host}): ${res.status} ${errBody}`);
+        if (isWrongEnv) return 'wrong-env';
+        if (res.status === 410 || res.status === 400) return 'invalid';
+        return 'failed';
+      };
+
       const results = await Promise.allSettled(
-        iosTokens.map(async (token: string) => {
-          const res = await fetch(`https://${APNS_HOST}/3/device/${token}`, {
-            method: 'POST',
-            headers: {
-              'authorization': `bearer ${jwt}`,
-              'apns-topic': APNS_BUNDLE_ID,
-              'apns-push-type': 'alert',
-              'apns-priority': '10',
-              'apns-expiration': '0',
-              'content-type': 'application/json',
-            },
-            body: payload,
-          });
-          if (!res.ok) {
-            const errBody = await res.text();
-            console.error(`APNs error: ${res.status} ${errBody}`);
-            if (res.status === 410 || res.status === 400) {
-              const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
-              if (deleteErr) console.error(`Failed to remove invalid iOS token ${token.substring(0, 10)}...: ${deleteErr.message}`);
-            }
-            throw new Error(`APNs ${res.status}`);
+        iosTokens.map(async ({ token, apns_env }) => {
+          // Honour a previously-known env when we have one — saves the round
+          // trip. Default to production for unknown tokens (matches the prior
+          // single-host behaviour) but allow falling back to sandbox.
+          const primaryHost = apns_env === 'sandbox' ? 'api.sandbox.push.apple.com' : APNS_HOST;
+          const fallbackHost = apns_env === 'sandbox' ? APNS_HOST : 'api.sandbox.push.apple.com';
+
+          let outcome = await sendOnce(token, primaryHost);
+          let workingHost = primaryHost;
+          if (outcome === 'wrong-env') {
+            outcome = await sendOnce(token, fallbackHost);
+            workingHost = fallbackHost;
           }
+
+          if (outcome === 'sent') {
+            // Persist the working environment so the next push goes
+            // straight to the right host. Best-effort; ignore failures.
+            const env = workingHost.includes('sandbox') ? 'sandbox' : 'production';
+            if (apns_env !== env) {
+              supabase.from('push_tokens').update({ apns_env: env }).eq('token', token).then(({ error }) => {
+                if (error) console.warn(`Failed to persist apns_env for token ${token.substring(0, 10)}...: ${error.message}`);
+              });
+            }
+            return;
+          }
+
+          if (outcome === 'invalid' || outcome === 'wrong-env') {
+            const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
+            if (deleteErr) console.error(`Failed to remove invalid iOS token ${token.substring(0, 10)}...: ${deleteErr.message}`);
+          }
+          throw new Error(`APNs send failed (${outcome})`);
         }),
       );
       for (const r of results) {

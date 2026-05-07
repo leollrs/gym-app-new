@@ -1,19 +1,30 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useCachedState, hasCachedState } from '../hooks/useCachedState';
+import { tg } from '../lib/genderText';
 import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift, Swords, CheckCircle2, XCircle, Target, UserPlus, Crown, Search } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { format, isPast, isFuture, formatDistanceToNow, startOfDay, differenceInDays } from 'date-fns';
+import { es as esLocale, enUS } from 'date-fns/locale';
 import { addPoints } from '../lib/rewardsEngine';
 import { sendNotification, NOTIFICATION_TYPES } from '../lib/notifications';
 import SwipeableTabView from '../components/SwipeableTabView';
-import UnderlineTabs from '../components/UnderlineTabs';
+
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import { sanitize } from '../lib/sanitize';
 import { useToast } from '../contexts/ToastContext';
 import { DAILY_CHALLENGES, seededIndex } from '../lib/dailyChallenges';
+
+// ── Design tokens ─────────────────────────────────────────
+const DISPLAY_FONT = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
+const CARD_SHADOW = '0 2px 8px rgba(15,20,25,0.06), 0 12px 32px rgba(15,20,25,0.08)';
+const HERO_GRADIENT = 'linear-gradient(135deg, #6D5FDB 0%, #4a3fc8 60%, #FF5A2E 110%)';
+const COACH_PURPLE = '#6D5FDB';
 
 // ── Helpers ────────────────────────────────────────────────
 const statusOf = (c) => {
@@ -68,7 +79,7 @@ const ParticipantList = ({ challengeId, t }) => {
 
   if (loading) return (
     <div className="py-5 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
-      <div className="w-5 h-5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+      <div className="w-5 h-5 border-2 border-[var(--color-accent,#2EC4C4)]/30 border-t-[var(--color-accent,#2EC4C4)] rounded-full animate-spin" />
     </div>
   );
 
@@ -81,12 +92,111 @@ const ParticipantList = ({ challengeId, t }) => {
       <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest mb-2">{t('challenges.signedUp')}</p>
       {names.map((name, i) => (
         <div key={`${name}-${i}`} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border)]">
-          <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-            <span className="text-[12px] font-bold text-[#D4AF37]">{name[0]}</span>
+          <div className="w-8 h-8 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
+            <span className="text-[12px] font-bold text-[var(--color-accent,#2EC4C4)]">{name[0]}</span>
           </div>
           <p className="text-[14px] font-medium text-[var(--color-text-primary)]">{name}</p>
         </div>
       ))}
+    </div>
+  );
+};
+
+// ── Past-Challenge Participants (everyone who joined but DNF) ────
+// Shown below the podium/leaderboard in the ended-challenge modal.
+// For individual/milestone challenges: shows participants who did not post a score
+// (score null or 0 — i.e. "Didn't post"). For team challenges: shows teams that
+// did not accumulate any score.
+const PastChallengeParticipants = ({ challenge, t }) => {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const isTeam = challenge.type === 'team';
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (isTeam) {
+        // Teams that have zero team_score
+        const { data } = await supabase.rpc('get_team_leaderboard', { p_challenge_id: challenge.id });
+        if (cancelled) return;
+        const dnfTeams = (data || []).filter(tm => !tm.team_score || Math.round(tm.team_score) === 0);
+        setRows(dnfTeams.map(team => ({
+          id: team.team_id,
+          name: team.team_name,
+          memberCount: team.member_count,
+          isTeam: true,
+        })));
+      } else {
+        // Participants with null/0 score and their profile info
+        const { data } = await supabase
+          .from('challenge_participants')
+          .select('profile_id, score, profiles(full_name, username, avatar_url)')
+          .eq('challenge_id', challenge.id)
+          .order('created_at', { ascending: true })
+          .limit(500);
+        if (cancelled) return;
+        const dnf = (data || []).filter(p => !p.score || Math.round(p.score) === 0);
+        setRows(dnf.map(p => ({
+          id: p.profile_id,
+          name: p.profiles?.full_name ?? p.profiles?.username ?? '—',
+          avatar: p.profiles?.avatar_url || null,
+          isTeam: false,
+        })));
+      }
+      setLoading(false);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [challenge.id, isTeam]);
+
+  if (loading) {
+    return (
+      <div className="py-6 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
+        <div className="w-5 h-5 border-2 border-[var(--color-accent,#2EC4C4)]/30 border-t-[var(--color-accent,#2EC4C4)] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--color-border-subtle, var(--color-border))' }}>
+      <div className="flex items-center gap-2 mb-3">
+        <Users size={13} className="text-[var(--color-text-muted)]" />
+        <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+          {t('challenges.participants', 'Participants')} · {rows.length}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {rows.map(r => (
+          <div
+            key={r.id}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl"
+            style={{ background: 'var(--color-bg-secondary, rgba(0,0,0,0.03))', border: '1px solid var(--color-border-subtle, var(--color-border))' }}
+          >
+            <div
+              className="flex items-center justify-center flex-shrink-0 rounded-full overflow-hidden"
+              style={{ width: 28, height: 28, background: 'var(--color-accent-soft, rgba(46,196,196,0.1))' }}
+            >
+              {!r.isTeam && r.avatar ? (
+                <img src={r.avatar} alt={`${r.name} avatar`} className="w-full h-full object-cover" />
+              ) : r.isTeam ? (
+                <Users size={12} className="text-[var(--color-text-muted)]" />
+              ) : (
+                <span className="text-[10px] font-bold text-[var(--color-accent,#2EC4C4)]">{r.name?.[0]?.toUpperCase() || '?'}</span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{r.name}</p>
+              <p className="text-[10px] truncate" style={{ color: 'var(--color-text-muted)' }}>
+                {r.isTeam
+                  ? `${r.memberCount || 0} ${t('challenges.team.members', 'members')}`
+                  : t('challenges.didntPost', "Didn't post")}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -105,6 +215,125 @@ function parseRewards(challenge) {
   } catch {}
   return DEFAULT_REWARDS;
 }
+
+// ── Podium (matches Leaderboard page) ──────────────────────
+const ChallengePodium = ({ entries, unit }) => {
+  if (!entries || entries.length < 3) return null;
+  const top3 = entries.slice(0, 3);
+  const podiumOrder = [top3[1], top3[0], top3[2]]; // 2nd | 1st | 3rd
+  const PODIUM_HEIGHTS = [60, 80, 45];
+  const PODIUM_BG = [
+    'var(--color-border-strong, #888)',
+    '#FFD166',
+    'color-mix(in srgb, var(--color-accent, #2EC4C4) 18%, var(--color-bg-card))',
+  ];
+  const AVATAR_SIZES = [44, 54, 44];
+  const RANKS_ORDERED = [2, 1, 3];
+  const AVATAR_COLORS = ['#6B7280', '#F59E0B', '#2EC4C4'];
+  const MEDALS_ORDERED = ['🥈', '🥇', '🥉'];
+  // Animation order: 3rd first, then 2nd, then 1st (crescendo)
+  const ANIM_DELAY = [0.12, 0.24, 0.06];
+
+  return (
+    <div
+      className="mb-4 overflow-hidden border"
+      style={{
+        borderRadius: 22,
+        padding: 20,
+        background: 'var(--color-bg-card)',
+        borderColor: 'var(--color-border, rgba(200,200,200,0.1))',
+        boxShadow: CARD_SHADOW,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 8 }}>
+        {podiumOrder.map((entry, i) => {
+          const rank = RANKS_ORDERED[i];
+          const avatarSize = AVATAR_SIZES[i];
+          const isFirst = rank === 1;
+          return (
+            <motion.div
+              key={entry.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28, delay: ANIM_DELAY[i], ease: 'easeOut' }}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+            >
+              {/* Medal above avatar */}
+              <span style={{ fontSize: isFirst ? 18 : 14, lineHeight: 1, marginBottom: 2 }}>{MEDALS_ORDERED[i]}</span>
+              {/* Avatar */}
+              <div
+                style={{
+                  width: avatarSize,
+                  height: avatarSize,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                  marginBottom: 6,
+                  background: AVATAR_COLORS[i],
+                  ...(isFirst ? { border: '3px solid #FFD166' } : {}),
+                }}
+              >
+                <span style={{ fontSize: isFirst ? 18 : 14, fontWeight: 800, color: '#fff' }}>
+                  {entry.name?.charAt(0)?.toUpperCase() ?? '?'}
+                </span>
+              </div>
+              {/* Name + score */}
+              <p
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: 'var(--color-text-primary)',
+                  textAlign: 'center',
+                  lineHeight: 1.2,
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {entry.name}
+              </p>
+              <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textAlign: 'center', marginTop: 2 }}>
+                {entry.score?.toLocaleString?.() ?? entry.score}
+                {unit ? <span style={{ marginLeft: 3, opacity: 0.7 }}>{unit}</span> : null}
+              </p>
+              {/* Pedestal bar */}
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: PODIUM_HEIGHTS[i] }}
+                transition={{ duration: 0.32, delay: ANIM_DELAY[i] + 0.05, ease: 'easeOut' }}
+                style={{
+                  width: '100%',
+                  marginTop: 8,
+                  background: PODIUM_BG[i],
+                  borderRadius: '8px 8px 0 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: DISPLAY_FONT,
+                    fontSize: 22,
+                    fontWeight: 800,
+                    color: isFirst ? '#000' : 'var(--color-text-primary)',
+                    opacity: isFirst ? 0.7 : 0.5,
+                  }}
+                >
+                  {rank}
+                </span>
+              </motion.div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 // ── Leaderboard ────────────────────────────────────────────
 const Leaderboard = ({ challenge, gymId, myId, t }) => {
@@ -156,10 +385,10 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
     <div className="mt-4">
       {/* My rank callout */}
       {myEntry && (
-        <div className="flex items-center justify-between rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-5 py-4 mb-4">
+        <div className="flex items-center justify-between rounded-2xl bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30 px-5 py-4 mb-4">
           <div>
-            <p className="text-[11px] text-[#D4AF37] font-semibold uppercase tracking-widest">{t('challenges.yourRank')}</p>
-            <p className="text-[24px] font-bold text-[#D4AF37] leading-tight mt-0.5 tabular-nums">
+            <p className="text-[11px] text-[var(--color-accent,#2EC4C4)] font-semibold uppercase tracking-widest">{t('challenges.yourRank')}</p>
+            <p className="text-[24px] leading-tight mt-0.5 tabular-nums" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, color: 'var(--color-accent, #2EC4C4)' }}>
               #{myRank + 1}
               {myRank < 3 && <span className="ml-1.5 text-[20px]">{MEDAL[myRank]}</span>}
             </p>
@@ -171,11 +400,11 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
             </p>
             {status === 'ended' && myRank < 3 && rewards[myRank] && (
               <div className="mt-1">
-                <p className="text-[12px] font-semibold text-[#D4AF37]">
+                <p className="text-[12px] font-semibold text-[var(--color-accent,#2EC4C4)]">
                   {t('challenges.youEarned', { points: rewards[myRank].points })}
                 </p>
                 {rewards[myRank].prize && (
-                  <p className="text-[11px] text-[#D4AF37]/80">+ {sanitize(rewards[myRank].prize)}</p>
+                  <p className="text-[11px] text-[var(--color-accent,#2EC4C4)]/80">+ {sanitize(rewards[myRank].prize)}</p>
                 )}
               </div>
             )}
@@ -185,7 +414,7 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
 
       {loading ? (
         <div className="py-8 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
-          <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-[var(--color-accent,#2EC4C4)]/30 border-t-[var(--color-accent,#2EC4C4)] rounded-full animate-spin" />
         </div>
       ) : entries.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-muted)] text-center py-6">
@@ -193,7 +422,12 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
         </p>
       ) : (
         <div className="space-y-3">
-          {entries.slice(0, 10).map((e, i) => {
+          {/* Podium for ended challenges with ≥3 entries */}
+          {status === 'ended' && entries.length >= 3 && (
+            <ChallengePodium entries={entries} unit={unit} />
+          )}
+          {(status === 'ended' && entries.length >= 3 ? entries.slice(3, 10) : entries.slice(0, 10)).map((e, idx) => {
+            const i = status === 'ended' && entries.length >= 3 ? idx + 3 : idx;
             const isMe = e.id === myId;
             const top = entries[0]?.score || 1;
             const barPct = Math.max((e.score / top) * 100, 2);
@@ -205,7 +439,7 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
               <div key={e.id}
                 className={`relative flex items-center gap-4 px-4 py-4 rounded-2xl overflow-hidden transition-colors ${
                   isMe
-                    ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30'
+                    ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30'
                     : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
                 }`}
               >
@@ -223,18 +457,18 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
                   )}
                 </div>
                 {/* Name */}
-                <p className={`flex-1 text-[14px] font-semibold truncate relative z-10 ${isMe ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
-                  {e.name}{isMe && <span className="ml-1.5 text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
+                <p className={`flex-1 text-[14px] font-semibold truncate relative z-10 ${isMe ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>
+                  {e.name}{isMe && <span className="ml-1.5 text-[10px] font-bold text-[var(--color-accent,#2EC4C4)] bg-[var(--color-accent,#2EC4C4)]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
                 </p>
                 {/* Score */}
                 <div className="relative z-10 text-right flex-shrink-0">
-                  <span className={`text-[14px] font-bold ${isMe ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
+                  <span className={`text-[14px] font-bold ${isMe ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>
                     {e.score.toLocaleString()}
                   </span>
                   <span className="text-[11px] font-medium text-[var(--color-text-muted)] ml-1">{unit}</span>
                 </div>
                 {status === 'ended' && i < 3 && rewards[i] && (
-                  <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full relative z-10 flex-shrink-0">
+                  <span className="text-[10px] font-bold text-[var(--color-accent,#2EC4C4)] bg-[var(--color-accent,#2EC4C4)]/10 px-2 py-0.5 rounded-full relative z-10 flex-shrink-0">
                     {rewards[i].prize ? `${rewards[i].points} pts + ${sanitize(rewards[i].prize)}` : `${MEDAL[i]} ${rewards[i].points} pts`}
                   </span>
                 )}
@@ -242,13 +476,13 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
             );
           })}
           {entries.length > 10 && myRank >= 10 && myEntry && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30">
-              <span className="text-[14px] font-bold w-6 text-center text-[#D4AF37]">#{myRank + 1}</span>
-              <p className="flex-1 text-[14px] font-semibold text-[#D4AF37] truncate">
-                {myEntry.name} <span className="ml-1.5 text-[10px] font-bold text-[#D4AF37]">{t('challenges.you')}</span>
+            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30">
+              <span className="text-[14px] font-bold w-6 text-center text-[var(--color-accent,#2EC4C4)]">#{myRank + 1}</span>
+              <p className="flex-1 text-[14px] font-semibold text-[var(--color-accent,#2EC4C4)] truncate">
+                {myEntry.name} <span className="ml-1.5 text-[10px] font-bold text-[var(--color-accent,#2EC4C4)]">{t('challenges.you')}</span>
               </p>
-              <p className="text-[13px] font-bold text-[#D4AF37]">
-                {myEntry.score.toLocaleString()} <span className="text-[11px] font-medium text-[#D4AF37]/70">{unit}</span>
+              <p className="text-[13px] font-bold text-[var(--color-accent,#2EC4C4)]">
+                {myEntry.score.toLocaleString()} <span className="text-[11px] font-medium text-[var(--color-accent,#2EC4C4)]/70">{unit}</span>
               </p>
             </div>
           )}
@@ -289,10 +523,10 @@ const TeamLeaderboard = ({ challenge, gymId, myId, t }) => {
   return (
     <div className="mt-4">
       {myTeam && (
-        <div className="flex items-center justify-between rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-5 py-4 mb-4">
+        <div className="flex items-center justify-between rounded-2xl bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30 px-5 py-4 mb-4">
           <div>
-            <p className="text-[11px] text-[#D4AF37] font-semibold uppercase tracking-widest">{t('challenges.team.yourTeam', 'Your Team')}</p>
-            <p className="text-[18px] font-bold text-[#D4AF37] leading-tight mt-0.5">{myTeam.team_name}</p>
+            <p className="text-[11px] text-[var(--color-accent,#2EC4C4)] font-semibold uppercase tracking-widest">{t('challenges.team.yourTeam', 'Your Team')}</p>
+            <p className="text-[18px] font-bold text-[var(--color-accent,#2EC4C4)] leading-tight mt-0.5">{myTeam.team_name}</p>
           </div>
           <div className="text-right">
             <p className="text-[11px] text-[var(--color-text-muted)] font-medium">{t('challenges.team.combinedScore', 'Combined Score')}</p>
@@ -305,19 +539,31 @@ const TeamLeaderboard = ({ challenge, gymId, myId, t }) => {
 
       {loading ? (
         <div className="py-8 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
-          <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-[var(--color-accent,#2EC4C4)]/30 border-t-[var(--color-accent,#2EC4C4)] rounded-full animate-spin" />
         </div>
       ) : teams.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-muted)] text-center py-6">{t('challenges.team.noTeamsYet', 'No teams yet')}</p>
       ) : (
         <div className="space-y-3">
-          {teams.map((team, i) => {
+          {/* Podium for ended team challenges with ≥3 teams */}
+          {status === 'ended' && teams.length >= 3 && (
+            <ChallengePodium
+              entries={teams.slice(0, 3).map(team => ({
+                id: team.team_id,
+                name: team.team_name,
+                score: Math.round(team.team_score || 0),
+              }))}
+              unit={metricLabel}
+            />
+          )}
+          {(status === 'ended' && teams.length >= 3 ? teams.slice(3) : teams).map((team, idx) => {
+            const i = status === 'ended' && teams.length >= 3 ? idx + 3 : idx;
             const isMyTeam = team.team_id === myTeam?.team_id;
             const isExpanded = expandedTeam === team.team_id;
             return (
               <div key={team.team_id}
                 className={`rounded-2xl overflow-hidden transition-colors ${
-                  isMyTeam ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
+                  isMyTeam ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
                 }`}>
                 <button type="button" onClick={() => setExpandedTeam(isExpanded ? null : team.team_id)}
                   className="w-full flex items-center gap-4 px-4 py-4 text-left">
@@ -325,15 +571,15 @@ const TeamLeaderboard = ({ challenge, gymId, myId, t }) => {
                     {i < 3 ? <span className="text-[22px]">{MEDAL[i]}</span> : <span className="text-[16px] font-bold text-[var(--color-text-muted)]">{i + 1}</span>}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-[14px] font-semibold truncate ${isMyTeam ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
+                    <p className={`text-[14px] font-semibold truncate ${isMyTeam ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>
                       {team.team_name}
-                      {isMyTeam && <span className="ml-1.5 text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
+                      {isMyTeam && <span className="ml-1.5 text-[10px] font-bold text-[var(--color-accent,#2EC4C4)] bg-[var(--color-accent,#2EC4C4)]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
                     </p>
                     <p className="text-[11px] text-[var(--color-text-muted)]">
                       <Users size={10} className="inline mr-1" />{team.member_count}/{challenge.team_size || '?'} {t('challenges.team.members', 'members')}
                     </p>
                   </div>
-                  <p className={`text-[14px] font-bold flex-shrink-0 ${isMyTeam ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
+                  <p className={`text-[14px] font-bold flex-shrink-0 ${isMyTeam ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>
                     {Math.round(team.team_score).toLocaleString()} <span className="text-[11px] font-medium text-[var(--color-text-muted)]">{metricLabel}</span>
                   </p>
                   <ChevronDown size={16} className={`text-[var(--color-text-muted)] flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -342,10 +588,10 @@ const TeamLeaderboard = ({ challenge, gymId, myId, t }) => {
                   <div className="px-4 pb-4 space-y-2 border-t border-[var(--color-border)]">
                     {team.members.map(m => (
                       <div key={m.profile_id} className="flex items-center gap-3 px-3 py-2">
-                        <div className="w-7 h-7 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                          {m.avatar_url ? <img src={m.avatar_url} alt={`${m.display_name || t('challenges.team.member', 'Team member')} avatar`} className="w-7 h-7 rounded-full object-cover" /> : <span className="text-[10px] font-bold text-[#D4AF37]">{(m.display_name || '?')[0]}</span>}
+                        <div className="w-7 h-7 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
+                          {m.avatar_url ? <img src={m.avatar_url} alt={`${m.display_name || t('challenges.team.member', 'Team member')} avatar`} className="w-7 h-7 rounded-full object-cover" /> : <span className="text-[10px] font-bold text-[var(--color-accent,#2EC4C4)]">{(m.display_name || '?')[0]}</span>}
                         </div>
-                        <p className={`flex-1 text-[13px] font-medium truncate ${m.profile_id === myId ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>{m.display_name || '—'}</p>
+                        <p className={`flex-1 text-[13px] font-medium truncate ${m.profile_id === myId ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>{m.display_name || '—'}</p>
                         <p className="text-[12px] text-[var(--color-text-muted)]">{Math.round(m.score || 0).toLocaleString()}</p>
                       </div>
                     ))}
@@ -402,13 +648,13 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t }) => {
     <div className="mt-4">
       {/* My progress card */}
       {myEntry && (
-        <div className={`rounded-2xl px-5 py-4 mb-4 ${madeClub ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-[#D4AF37]/10 border border-[#D4AF37]/30'}`}>
+        <div className={`rounded-2xl px-5 py-4 mb-4 ${madeClub ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30'}`}>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className={`text-[11px] font-semibold uppercase tracking-widest ${madeClub ? 'text-emerald-400' : 'text-[#D4AF37]'}`}>
+              <p className={`text-[11px] font-semibold uppercase tracking-widest ${madeClub ? 'text-emerald-400' : 'text-[var(--color-accent,#2EC4C4)]'}`}>
                 {madeClub ? t('challenges.club.achieved', 'Club Member!') : t('challenges.club.progress', 'Your Progress')}
               </p>
-              <p className={`text-[24px] font-bold leading-tight mt-0.5 ${madeClub ? 'text-emerald-400' : 'text-[#D4AF37]'}`}>
+              <p className={`text-[24px] font-bold leading-tight mt-0.5 ${madeClub ? 'text-emerald-400' : 'text-[var(--color-accent,#2EC4C4)]'}`}>
                 {myEntry.score.toLocaleString()} <span className="text-[14px] font-normal">lbs</span>
               </p>
             </div>
@@ -424,7 +670,7 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t }) => {
                 <span className="text-[11px] text-[var(--color-text-muted)]">{Math.min(100, Math.round((myEntry.score / threshold) * 100))}%</span>
               </div>
               <div className="h-2 bg-[var(--color-bg-secondary)] rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-500 ${madeClub ? 'bg-emerald-500' : 'bg-[#D4AF37]'}`}
+                <div className={`h-full rounded-full transition-all duration-500 ${madeClub ? 'bg-emerald-500' : 'bg-[var(--color-accent,#2EC4C4)]'}`}
                   style={{ width: `${Math.min(100, (myEntry.score / threshold) * 100)}%` }} />
               </div>
             </div>
@@ -434,40 +680,45 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t }) => {
 
       {loading ? (
         <div className="py-8 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
-          <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-[var(--color-accent,#2EC4C4)]/30 border-t-[var(--color-accent,#2EC4C4)] rounded-full animate-spin" />
         </div>
       ) : entries.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-muted)] text-center py-6">{t('challenges.noOneJoined')}</p>
       ) : (
         <div className="space-y-3">
-          {entries.slice(0, 20).map((e, i) => {
+          {/* Podium for ended club challenges with ≥3 entries */}
+          {status === 'ended' && entries.length >= 3 && (
+            <ChallengePodium entries={entries} unit="lbs" />
+          )}
+          {(status === 'ended' && entries.length >= 3 ? entries.slice(3, 20) : entries.slice(0, 20)).map((e, idx) => {
+            const i = status === 'ended' && entries.length >= 3 ? idx + 3 : idx;
             const isMe = e.id === myId;
             const aboveThreshold = threshold && e.score >= threshold;
             return (
               <div key={e.id}
                 className={`flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-colors ${
-                  isMe ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
+                  isMe ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
                 }`}>
                 <div className="flex-shrink-0 w-8 text-center">
                   {i < 3 ? <span className="text-[22px]">{MEDAL[i]}</span> : <span className="text-[16px] font-bold text-[var(--color-text-muted)]">{i + 1}</span>}
                 </div>
-                <p className={`flex-1 text-[14px] font-semibold truncate ${isMe ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
+                <p className={`flex-1 text-[14px] font-semibold truncate ${isMe ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>
                   {e.name}
-                  {isMe && <span className="ml-1.5 text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
+                  {isMe && <span className="ml-1.5 text-[10px] font-bold text-[var(--color-accent,#2EC4C4)] bg-[var(--color-accent,#2EC4C4)]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
                 </p>
-                <p className={`text-[14px] font-bold flex-shrink-0 ${isMe ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
+                <p className={`text-[14px] font-bold flex-shrink-0 ${isMe ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>
                   {e.score.toLocaleString()} <span className="text-[11px] font-medium text-[var(--color-text-muted)]">lbs</span>
                 </p>
-                {aboveThreshold && <span className="text-[14px] flex-shrink-0" title="Club member">✅</span>}
+                {aboveThreshold && <span className="text-[14px] flex-shrink-0" title={t('challenges.club.clubMember', { defaultValue: 'Club member' })}>✅</span>}
               </div>
             );
           })}
           {/* Threshold line indicator */}
           {threshold && entries.some(e => e.score >= threshold) && entries.some(e => e.score < threshold) && (
             <div className="flex items-center gap-3 py-1">
-              <div className="flex-1 h-px bg-[#D4AF37]/30" />
-              <span className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-wider whitespace-nowrap">— {threshold.toLocaleString()} lb {t('challenges.club.clubLine', 'Club')} —</span>
-              <div className="flex-1 h-px bg-[#D4AF37]/30" />
+              <div className="flex-1 h-px bg-[var(--color-accent,#2EC4C4)]/30" />
+              <span className="text-[10px] font-bold text-[var(--color-accent,#2EC4C4)] uppercase tracking-wider whitespace-nowrap">— {threshold.toLocaleString()} lb {t('challenges.club.clubLine', 'Club')} —</span>
+              <div className="flex-1 h-px bg-[var(--color-accent,#2EC4C4)]/30" />
             </div>
           )}
         </div>
@@ -487,6 +738,13 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const maxMembers = challenge.team_size || 2;
+
+  // Lock body scroll while team formation modal is mounted
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -560,16 +818,16 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
   };
 
   if (loading) return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={t('challenges.team.joinTeam', 'Join Team Challenge')}>
-      <div className="w-full max-w-[480px] bg-[var(--color-bg-card)] rounded-t-3xl p-6 pb-10">
-        <div className="flex justify-center py-8" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}><div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" /></div>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4" role="dialog" aria-modal="true" aria-label={t('challenges.team.joinTeam', 'Join Team Challenge')}>
+      <div className="w-full max-w-[480px] bg-[var(--color-bg-card)] rounded-3xl p-6 pb-10">
+        <div className="flex justify-center py-8" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}><div className="w-6 h-6 border-2 border-[var(--color-accent,#2EC4C4)]/30 border-t-[var(--color-accent,#2EC4C4)] rounded-full animate-spin" /></div>
       </div>
     </div>
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={step === 'create' ? t('challenges.team.createTeam', 'Create Team') : t('challenges.team.joinTeam', 'Join Team Challenge')} onClick={onClose}>
-      <div className="w-full max-w-[480px] bg-[var(--color-bg-card)] rounded-t-3xl p-6 pb-10 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4" role="dialog" aria-modal="true" aria-label={step === 'create' ? t('challenges.team.createTeam', 'Create Team') : t('challenges.team.joinTeam', 'Join Team Challenge')} onClick={onClose}>
+      <div className="w-full max-w-[480px] bg-[var(--color-bg-card)] rounded-3xl p-6 pb-10 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[18px] font-bold text-[var(--color-text-primary)]">
             {step === 'create' ? t('challenges.team.createTeam', 'Create Team') : t('challenges.team.joinTeam', 'Join Team Challenge')}
@@ -580,20 +838,20 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
         {/* Incoming invites */}
         {myInvites.length > 0 && step === 'choose' && (
           <div className="mb-5">
-            <p className="text-[12px] font-semibold text-[#D4AF37] uppercase tracking-wider mb-3">{t('challenges.team.pendingInvites', 'Pending Invites')}</p>
+            <p className="text-[12px] font-semibold text-[var(--color-accent,#2EC4C4)] uppercase tracking-wider mb-3">{t('challenges.team.pendingInvites', 'Pending Invites')}</p>
             {myInvites.map(inv => (
-              <div key={inv.id} className="flex items-center justify-between bg-[#D4AF37]/5 border border-[#D4AF37]/20 rounded-xl px-4 py-3 mb-2">
+              <div key={inv.id} className="flex items-center justify-between bg-[var(--color-accent,#2EC4C4)]/5 border border-[var(--color-accent,#2EC4C4)]/20 rounded-xl px-4 py-3 mb-2">
                 <div>
                   <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">{inv.team?.name}</p>
                   <p className="text-[11px] text-[var(--color-text-muted)]">{t('challenges.team.invitedYou', 'Invited you to join')}</p>
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => handleAcceptInvite(inv)} disabled={saving}
-                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#D4AF37] text-black disabled:opacity-50">
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[var(--color-accent,#2EC4C4)] text-black disabled:opacity-50">
                     {t('challenges.team.accept', 'Accept')}
                   </button>
                   <button type="button" onClick={() => handleDeclineInvite(inv)}
-                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-white/5 text-[var(--color-text-muted)] border border-[var(--color-border)]">
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border)]">
                     {t('challenges.team.decline', 'Decline')}
                   </button>
                 </div>
@@ -605,9 +863,9 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
         {step === 'choose' && (
           <div className="space-y-3">
             <button type="button" onClick={() => setStep('create')}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[#D4AF37]/5 border border-[#D4AF37]/20 hover:bg-[#D4AF37]/10 transition-colors text-left">
-              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center">
-                <UserPlus size={18} className="text-[#D4AF37]" />
+              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[var(--color-accent,#2EC4C4)]/5 border border-[var(--color-accent,#2EC4C4)]/20 hover:bg-[var(--color-accent,#2EC4C4)]/10 transition-colors text-left">
+              <div className="w-10 h-10 rounded-xl bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center">
+                <UserPlus size={18} className="text-[var(--color-accent,#2EC4C4)]" />
               </div>
               <div>
                 <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">{t('challenges.team.createNew', 'Create a New Team')}</p>
@@ -623,7 +881,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
               <label className="block text-[12px] font-medium text-[var(--color-text-muted)] mb-1.5">{t('challenges.team.teamName', 'Team Name')}</label>
               <input value={teamName} onChange={e => setTeamName(e.target.value)} maxLength={30}
                 placeholder={t('challenges.team.teamNamePlaceholder', 'e.g. Iron Warriors')}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl px-4 py-2.5 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[#D4AF37]/40" />
+                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl px-4 py-2.5 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent,#2EC4C4)]/40" />
             </div>
             <div>
               <label className="block text-[12px] font-medium text-[var(--color-text-muted)] mb-1.5">
@@ -639,13 +897,13 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                     <button key={f.id} type="button" disabled={isFull}
                       onClick={() => setSelectedFriends(prev => isSelected ? prev.filter(id => id !== f.id) : [...prev, f.id])}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left ${
-                        isSelected ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border)] hover:bg-white/5'
+                        isSelected ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]'
                       } ${isFull ? 'opacity-40' : ''}`}>
-                      <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                        {f.avatar_url ? <img src={f.avatar_url} alt={`${f.full_name || t('challenges.team.member', 'Team member')} avatar`} className="w-8 h-8 rounded-full object-cover" /> : <span className="text-[11px] font-bold text-[#D4AF37]">{(f.full_name || '?')[0]}</span>}
+                      <div className="w-8 h-8 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
+                        {f.avatar_url ? <img src={f.avatar_url} alt={`${f.full_name || t('challenges.team.member', 'Team member')} avatar`} className="w-8 h-8 rounded-full object-cover" /> : <span className="text-[11px] font-bold text-[var(--color-accent,#2EC4C4)]">{(f.full_name || '?')[0]}</span>}
                       </div>
                       <p className="flex-1 text-[13px] font-medium text-[var(--color-text-primary)] truncate">{f.full_name}</p>
-                      {isSelected && <Check size={16} className="text-[#D4AF37]" />}
+                      {isSelected && <Check size={16} className="text-[var(--color-accent,#2EC4C4)]" />}
                     </button>
                   );
                 })}
@@ -653,11 +911,11 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
             </div>
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setStep('choose')}
-                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-muted)] bg-white/5 border border-[var(--color-border)]">
+                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)] border border-[var(--color-border)]">
                 {t('common.back', 'Back')}
               </button>
               <button type="button" onClick={handleCreateTeam} disabled={!teamName.trim() || saving}
-                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] disabled:opacity-50">
+                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-black bg-[var(--color-accent,#2EC4C4)] disabled:opacity-50">
                 {saving ? '...' : t('challenges.team.create', 'Create & Join')}
               </button>
             </div>
@@ -673,6 +931,8 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
 
 const DailyChallenge = ({ userId, gymId, t }) => {
   const posthogDaily = usePostHog();
+  const { i18n } = useTranslation('pages');
+  const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
   const today = new Date();
   const dateString = format(today, 'yyyy-MM-dd');
   const todayStart = startOfDay(today).toISOString();
@@ -797,27 +1057,31 @@ const DailyChallenge = ({ userId, gymId, t }) => {
   }, [userId, gymId, challenge, todayStart, completed, storageKey]);
 
   const pct = Math.min((progress / challenge.target) * 100, 100);
+  const localizedUnit = t(`challenges.units.${challenge.unit}`, challenge.unit);
   const progressLabel = challenge.target >= 1000
-    ? `${progress.toLocaleString()} / ${challenge.target.toLocaleString()} ${challenge.unit}`
-    : `${progress} / ${challenge.target} ${challenge.unit}`;
+    ? `${progress.toLocaleString()} / ${challenge.target.toLocaleString()} ${localizedUnit}`
+    : `${progress} / ${challenge.target} ${localizedUnit}`;
 
   return (
-    <div className="rounded-2xl bg-[var(--color-bg-card)] border border-[#D4AF37]/20 p-5 mb-6">
+    <div style={{ borderRadius: 22, padding: 16, marginBottom: 24, background: 'var(--color-bg-card)', boxShadow: CARD_SHADOW }}>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-widest">{t('challenges.dailyChallenge')}</p>
-        <span className="text-[10px] text-[var(--color-text-muted)] font-medium">{format(today, 'MMM d')}</span>
+        <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-accent, #2EC4C4)' }}>{t('challenges.dailyChallenge')}</p>
+        <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 500 }}>{format(today, 'MMM d', { locale: dfLocale })}</span>
       </div>
 
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-10 h-10 rounded-[12px] bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+        <div className="flex items-center justify-center flex-shrink-0" style={{
+          width: 40, height: 40, borderRadius: 12,
+          background: 'var(--color-accent-soft, rgba(46,196,196,0.1))',
+        }}>
           {completed
             ? <Check size={20} className="text-emerald-400" strokeWidth={2.5} />
-            : <Flame size={20} className="text-[#D4AF37]" strokeWidth={2} />
+            : <Flame size={20} className="text-[var(--color-accent,#2EC4C4)]" strokeWidth={2} />
           }
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[16px] font-bold text-[var(--color-text-primary)]">{challenge.nameKey ? t(`challenges.dailyChallengeNames.${challenge.nameKey}`, sanitize(challenge.name)) : sanitize(challenge.name)}</p>
-          <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">{challenge.descKey ? t(`challenges.dailyChallengeDescs.${challenge.descKey}`, challenge.desc) : challenge.desc}</p>
+          <p style={{ fontFamily: DISPLAY_FONT, fontSize: 14, fontWeight: 800, letterSpacing: '-0.2px', color: 'var(--color-text-primary)' }}>{challenge.nameKey ? tg(t, `challenges.dailyChallengeNames.${challenge.nameKey}`, { defaultValue: sanitize(challenge.name) }) : sanitize(challenge.name)}</p>
+          <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>{challenge.descKey ? t(`challenges.dailyChallengeDescs.${challenge.descKey}`, challenge.desc) : challenge.desc}</p>
         </div>
       </div>
 
@@ -832,13 +1096,160 @@ const DailyChallenge = ({ userId, gymId, t }) => {
             <span className="text-[12px] text-[var(--color-text-muted)] font-medium">{loading ? '...' : progressLabel}</span>
             <span className="text-[12px] text-[var(--color-text-muted)] font-medium">{Math.round(pct)}%</span>
           </div>
-          <div className="h-2 bg-[var(--color-bg-secondary)] rounded-full overflow-hidden">
+          <div style={{ height: 6, borderRadius: 999, background: 'var(--color-bg-secondary)', overflow: 'hidden' }}>
             <div
-              className="h-full bg-[#D4AF37] rounded-full transition-all duration-500"
-              style={{ width: `${pct}%` }}
+              style={{ height: '100%', borderRadius: 999, background: 'var(--color-accent, #2EC4C4)', width: `${pct}%`, transition: 'width 0.5s ease' }}
             />
           </div>
         </div>
+      )}
+    </div>
+  );
+};
+
+// ── Featured Hero Card ────────────────────────────────────
+const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, onJoin, onLeave, t }) => {
+  const [open, setOpen] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const { i18n } = useTranslation('pages');
+  const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
+  const status = statusOf(challenge);
+  const meta = TYPE_META[challenge.type] ?? {};
+  const Icon = meta.icon ?? Trophy;
+  const isTeam = challenge.type === 'team';
+
+  const handleJoin = async (e) => {
+    e.stopPropagation();
+    if (isTeam) { setShowTeamModal(true); return; }
+    setJoining(true);
+    await onJoin(challenge.id);
+    setJoining(false);
+  };
+
+  const handleLeave = async (e) => {
+    e.stopPropagation();
+    if (!window.confirm(t('challenges.leaveConfirm'))) return;
+    setLeaving(true);
+    await onLeave(challenge.id);
+    setLeaving(false);
+  };
+
+  return (
+    <div className="mb-6">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`${sanitize(challenge.name)} - ${t('challenges.featured', 'Featured')}`}
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
+        style={{
+          borderRadius: 22,
+          overflow: 'hidden',
+          position: 'relative',
+          background: HERO_GRADIENT,
+          cursor: 'pointer',
+        }}
+      >
+        {/* Decorative circle */}
+        <div style={{
+          position: 'absolute', top: -40, right: -40,
+          width: 180, height: 180, borderRadius: 999,
+          background: 'rgba(255,255,255,0.08)',
+        }} />
+
+        <div style={{ position: 'relative', padding: '24px 22px 22px' }}>
+          {/* Flag label */}
+          <div className="flex items-center gap-2 mb-3">
+            <span style={{ fontSize: 12 }}>🏴</span>
+            <span style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: 1.2,
+              color: '#fff', textTransform: 'uppercase',
+            }}>
+              {t('challenges.featuredLabel', 'FEATURED')} · {t(`challenges.typeLabels.${meta.labelKey ?? challenge.type}`, meta.labelKey ?? 'CHALLENGE')}
+            </span>
+          </div>
+
+          {/* Challenge name */}
+          <h2 style={{
+            fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 800,
+            letterSpacing: -0.8, lineHeight: 1.05, color: '#fff',
+            margin: '0 0 6px',
+          }}>
+            {sanitize(challenge.name)}
+          </h2>
+
+          {/* Subtitle */}
+          <p style={{ fontSize: 12, color: '#fff', opacity: 0.8, margin: '0 0 16px' }}>
+            {participantCount > 0 && <><Users size={11} style={{ display: 'inline', verticalAlign: '-1px' }} /> {participantCount} · </>}
+            {status === 'live' && <><Clock size={11} style={{ display: 'inline', verticalAlign: '-1px' }} /> {formatDistanceToNow(new Date(challenge.end_date), { addSuffix: false, locale: dfLocale })} {t('challenges.timeLeft', 'left')}</>}
+            {status === 'upcoming' && <><Clock size={11} style={{ display: 'inline', verticalAlign: '-1px' }} /> {t('challenges.startsIn')} {formatDistanceToNow(new Date(challenge.start_date), { addSuffix: false, locale: dfLocale })}</>}
+          </p>
+
+          {/* Join / Leave button */}
+          {status !== 'ended' && (
+            joined ? (
+              <button
+                type="button"
+                onClick={handleLeave}
+                disabled={leaving}
+                style={{
+                  borderRadius: 12, background: 'rgba(255,255,255,0.2)',
+                  color: '#fff', fontSize: 13, fontWeight: 800,
+                  padding: '10px 24px', border: 'none', cursor: 'pointer',
+                }}
+              >
+                {leaving ? '...' : t('challenges.leave')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleJoin}
+                disabled={joining}
+                style={{
+                  borderRadius: 12, background: '#fff',
+                  color: COACH_PURPLE, fontSize: 13, fontWeight: 800,
+                  padding: '10px 24px', border: 'none', cursor: 'pointer',
+                }}
+              >
+                {joining ? '...' : t('challenges.join')}
+              </button>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* Expanded detail */}
+      {open && (
+        <div style={{
+          borderRadius: '0 0 22px 22px', marginTop: -4,
+          background: 'var(--color-bg-card)', padding: '20px',
+          boxShadow: CARD_SHADOW,
+        }}>
+          {challenge.description && (
+            <p className="text-[14px] text-[var(--color-text-muted)] leading-relaxed mb-3">{sanitize(challenge.description)}</p>
+          )}
+          <div className="text-[12px] text-[var(--color-text-muted)] font-medium mb-2">
+            {format(new Date(challenge.start_date), 'MMM d', { locale: dfLocale })} – {format(new Date(challenge.end_date), 'MMM d, yyyy', { locale: dfLocale })}
+          </div>
+          {status === 'upcoming'
+            ? <ParticipantList challengeId={challenge.id} t={t} />
+            : challenge.type === 'team'
+              ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+              : challenge.type === 'milestone'
+                ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+          }
+        </div>
+      )}
+
+      {showTeamModal && (
+        <TeamFormationModal
+          challenge={challenge} gymId={gymId} userId={myId}
+          onTeamJoined={() => { setShowTeamModal(false); onJoin(null); }}
+          onClose={() => setShowTeamModal(false)} t={t}
+        />
       )}
     </div>
   );
@@ -860,7 +1271,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   const statusStyle = {
     live:     'text-emerald-400 bg-emerald-500/10',
     upcoming: 'text-blue-400 bg-blue-500/10',
-    ended:    'text-[var(--color-text-muted)] bg-white/[0.06]',
+    ended:    'text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)]',
   }[status];
 
   const statusLabel = t(`challenges.tabs.${status}`);
@@ -885,61 +1296,47 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   };
 
   return (
-    <div className="bg-white/[0.04] rounded-2xl border border-[var(--color-border)] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
+    <div style={{ borderRadius: 22, overflow: 'hidden', background: 'var(--color-bg-card)', boxShadow: CARD_SHADOW }} className="transition-colors duration-200">
       <div
         role="button"
         tabIndex={0}
         aria-expanded={open}
         aria-label={`${sanitize(challenge.name)} - ${statusLabel}`}
-        className="w-full flex items-center gap-4 p-5 text-left hover:bg-white/[0.06] active:bg-white/[0.06] transition-colors cursor-pointer"
+        className="w-full flex items-center gap-3 text-left transition-colors cursor-pointer"
+        style={{ padding: 16 }}
         onClick={() => setOpen(o => !o)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
       >
-        <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-          <Icon size={22} className="text-[#D4AF37]" strokeWidth={2} />
+        {/* Icon — 40x40 rounded-12 */}
+        <div className="flex items-center justify-center flex-shrink-0" style={{
+          width: 40, height: 40, borderRadius: 12,
+          background: 'var(--color-accent-soft, rgba(46,196,196,0.1))',
+        }}>
+          <Icon size={20} className="text-[var(--color-accent,#2EC4C4)]" strokeWidth={2} />
         </div>
+
+        {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <p className="text-[16px] font-semibold text-[var(--color-text-primary)] truncate">{sanitize(challenge.name)}</p>
-            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${statusStyle}`}>
+          {/* Name — display font, 14, 800 */}
+          <p className="truncate text-[var(--color-text-primary)]" style={{
+            fontFamily: DISPLAY_FONT, fontSize: 14, fontWeight: 800,
+            letterSpacing: '-0.2px', lineHeight: 1.2,
+          }}>{sanitize(challenge.name)}</p>
+
+          {/* Meta line */}
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${statusStyle}`}>
               {statusLabel}
             </span>
-          </div>
-          <div className="flex items-center gap-3 mt-1 flex-wrap">
-            <span className="text-[12px] text-[var(--color-text-muted)]">{t(`challenges.typeLabels.${meta.labelKey ?? challenge.type}`, meta.labelKey ?? '')}</span>
-            {challenge.type === 'team' && challenge.team_size && (
-              <>
-                <span className="text-[var(--color-text-muted)]">·</span>
-                <span className="text-[11px] text-[#D4AF37] font-medium">{challenge.team_size === 2 ? t('challenges.team.duos', 'Duos') : challenge.team_size === 3 ? t('challenges.team.trios', 'Trios') : `${challenge.team_size}-${t('challenges.team.person', 'person')}`}</span>
-              </>
-            )}
-            {challenge.type === 'milestone' && challenge.milestone_target && (
-              <>
-                <span className="text-[var(--color-text-muted)]">·</span>
-                <span className="text-[11px] text-[#D4AF37] font-medium">{Number(challenge.milestone_target).toLocaleString()} lb {t('challenges.club.clubLine', 'Club')}</span>
-              </>
-            )}
             {participantCount > 0 && (
-              <>
-                <span className="text-[var(--color-text-muted)]">·</span>
-                <span className="flex items-center gap-1 text-[12px] text-[var(--color-text-muted)]">
-                  <Users size={12} /> {participantCount}
-                </span>
-              </>
+              <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                <Users size={10} /> {participantCount}
+              </span>
             )}
-            {hasRewards && (
-              <>
-                <span className="text-[var(--color-text-muted)]">·</span>
-                <span className="flex items-center gap-1 text-[11px] text-[#D4AF37] font-medium">
-                  <Gift size={11} /> {t('challenges.rewards')}
-                </span>
-              </>
-            )}
-            <span className="text-[var(--color-text-muted)]">·</span>
             {status === 'live' && <Countdown date={challenge.end_date} prefix={t('challenges.endsIn')} />}
             {status === 'upcoming' && <Countdown date={challenge.start_date} prefix={t('challenges.startsIn')} />}
             {status === 'ended' && (
-              <span className="text-[12px] text-[var(--color-text-muted)]">
+              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
                 {t('challenges.ended', { date: format(new Date(challenge.end_date), 'MMM d') })}
               </span>
             )}
@@ -953,7 +1350,12 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
               type="button"
               onClick={handleLeave}
               disabled={leaving}
-              className="flex items-center gap-1 text-[10px] font-semibold flex-shrink-0 px-2.5 py-1.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 active:scale-95 transition-all disabled:opacity-50"
+              className="flex-shrink-0 active:scale-95 transition-all disabled:opacity-50"
+              style={{
+                fontSize: 10, fontWeight: 700, padding: '5px 10px',
+                borderRadius: 999, background: 'rgba(239,68,68,0.1)',
+                color: '#f87171', border: 'none', cursor: 'pointer',
+              }}
             >
               {leaving ? '...' : t('challenges.leave')}
             </button>
@@ -962,41 +1364,46 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
               type="button"
               onClick={handleJoin}
               disabled={joining}
-              className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-bold transition-all active:scale-95 disabled:opacity-50 bg-[#D4AF37] text-black hover:bg-[#E6C766] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/50"
+              className="flex-shrink-0 active:scale-95 transition-all disabled:opacity-50"
+              style={{
+                fontSize: 13, fontWeight: 800, padding: '8px 18px',
+                borderRadius: 12, background: 'var(--color-accent, #2EC4C4)',
+                color: '#000', border: 'none', cursor: 'pointer',
+              }}
             >
-              {joining ? '…' : t('challenges.join')}
+              {joining ? '...' : t('challenges.join')}
             </button>
           )
         )}
 
-        <ChevronDown size={20} className={`text-[var(--color-text-muted)] flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={18} className={`flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
       </div>
 
       {open && (
-        <div className="px-5 pb-5 pt-1 border-t border-[var(--color-border)] bg-[var(--color-bg-card)]">
+        <div style={{ padding: '4px 16px 16px', background: 'var(--color-bg-card)', borderTop: '1px solid var(--color-border-subtle, var(--color-border))' }}>
           {challenge.description && (
-            <p className="text-[14px] text-[var(--color-text-muted)] leading-relaxed mt-4">{sanitize(challenge.description)}</p>
+            <p className="text-[13px] leading-relaxed mt-3" style={{ color: 'var(--color-text-muted)' }}>{sanitize(challenge.description)}</p>
           )}
-          <div className="mt-3 text-[12px] text-[var(--color-text-muted)] font-medium">
+          <div className="mt-2" style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 500 }}>
             {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
           </div>
 
           {/* Rewards section */}
           {hasRewards && (
-            <div className="mt-4 rounded-2xl bg-gradient-to-r from-[#D4AF37]/5 to-[#D4AF37]/10 border border-[#D4AF37]/20 p-4">
+            <div className="mt-4" style={{ borderRadius: 16, padding: 14, background: 'var(--color-accent-soft, rgba(46,196,196,0.06))' }}>
               <div className="flex items-center gap-2 mb-3">
-                <Gift size={14} className="text-[#D4AF37]" />
-                <p className="text-[12px] font-bold text-[#D4AF37] uppercase tracking-widest">{t('challenges.rewards')}</p>
+                <Gift size={13} className="text-[var(--color-accent,#2EC4C4)]" />
+                <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-accent, #2EC4C4)' }}>{t('challenges.rewards')}</p>
               </div>
               <div className="space-y-2">
                 {cardRewards.map((r, i) => {
                   const medals = ['🥇', '🥈', '🥉'];
                   return (
                     <div key={i} className="flex items-center gap-3">
-                      <span className="text-[18px]">{medals[i]}</span>
+                      <span style={{ fontSize: 16 }}>{medals[i]}</span>
                       <div className="flex-1">
-                        <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{r.points} pts</span>
-                        {r.prize && <span className="text-[13px] text-[#D4AF37] ml-2">+ {sanitize(r.prize)}</span>}
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{r.points} pts</span>
+                        {r.prize && <span style={{ fontSize: 13, color: 'var(--color-accent, #2EC4C4)', marginLeft: 8 }}>+ {sanitize(r.prize)}</span>}
                       </div>
                     </div>
                   );
@@ -1023,14 +1430,191 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
           userId={myId}
           onTeamJoined={() => {
             setShowTeamModal(false);
-            // Refresh participant data
-            onJoin(null); // Signal parent to refresh
+            onJoin(null);
           }}
           onClose={() => setShowTeamModal(false)}
           t={t}
         />
       )}
     </div>
+  );
+};
+
+// ── Discover Card (2-col grid) ────────────────────────────
+const DISCOVER_COLORS = ['#6D5FDB', '#FF5A2E', '#2EC4C4', '#E84393', '#0984E3', '#00B894'];
+
+const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin, onLeave, t }) => {
+  const [open, setOpen] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const status = statusOf(challenge);
+  const meta = TYPE_META[challenge.type] ?? {};
+  const Icon = meta.icon ?? Trophy;
+  const isTeam = challenge.type === 'team';
+
+  // Lock body scroll while the expanded past-challenge modal is visible.
+  // The upcoming bottom-sheet variant also benefits from the lock.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+  // Stable color from challenge id
+  const colorIdx = (challenge.id?.charCodeAt?.(0) ?? 0) % DISCOVER_COLORS.length;
+  const accentColor = DISCOVER_COLORS[colorIdx];
+
+  const handleJoin = async (e) => {
+    e.stopPropagation();
+    if (isTeam) { setShowTeamModal(true); return; }
+    setJoining(true);
+    await onJoin(challenge.id);
+    setJoining(false);
+  };
+
+  return (
+    <>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={sanitize(challenge.name)}
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
+        style={{
+          borderRadius: 22, padding: 14,
+          background: 'var(--color-bg-card)', boxShadow: CARD_SHADOW,
+          cursor: 'pointer',
+        }}
+      >
+        {/* Icon — 34x34 rounded-10 */}
+        <div className="flex items-center justify-center" style={{
+          width: 34, height: 34, borderRadius: 10,
+          background: accentColor + '22', marginBottom: 10,
+        }}>
+          <Icon size={17} style={{ color: accentColor }} strokeWidth={2} />
+        </div>
+
+        {/* Name */}
+        <p className="truncate" style={{
+          fontFamily: DISPLAY_FONT, fontSize: 13, fontWeight: 800,
+          color: 'var(--color-text-primary)', lineHeight: 1.2,
+          marginBottom: 4,
+        }}>{sanitize(challenge.name)}</p>
+
+        {/* Sub */}
+        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
+          {participantCount > 0 && <>{participantCount} joined · </>}
+          {status === 'upcoming'
+            ? `${t('challenges.startsIn')} ${formatDistanceToNow(new Date(challenge.start_date), { addSuffix: false })}`
+            : t('challenges.ended', { date: format(new Date(challenge.end_date), 'MMM d') })
+          }
+        </p>
+
+        {/* Join button for upcoming */}
+        {status === 'upcoming' && !joined && (
+          <button
+            type="button"
+            onClick={handleJoin}
+            disabled={joining}
+            className="mt-2 active:scale-95 transition-all disabled:opacity-50"
+            style={{
+              fontSize: 11, fontWeight: 800, padding: '5px 12px',
+              borderRadius: 10, background: accentColor + '18',
+              color: accentColor, border: 'none', cursor: 'pointer',
+            }}
+          >
+            {joining ? '...' : t('challenges.join')}
+          </button>
+        )}
+      </div>
+
+      {/* Expanded modal-style detail — portaled to body to escape overflow:hidden */}
+      {open && createPortal(
+        status === 'ended' ? (
+          // Past challenge: centered modal
+          <AnimatePresence>
+            <motion.div
+              key="past-modal-backdrop"
+              className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={() => setOpen(false)}
+            >
+              <motion.div
+                className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl"
+                style={{ background: 'var(--color-bg-card)', padding: 20 }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.28, ease: 'easeOut' }}
+                onClick={e => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-label={sanitize(challenge.name)}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{sanitize(challenge.name)}</p>
+                  <button type="button" onClick={() => setOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-muted)' }}>✕</button>
+                </div>
+                {challenge.description && (
+                  <p style={{ fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5, marginBottom: 12 }}>{sanitize(challenge.description)}</p>
+                )}
+                <p style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 500, marginBottom: 8 }}>
+                  {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
+                </p>
+                {challenge.type === 'team'
+                  ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                  : challenge.type === 'milestone'
+                    ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                    : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                }
+                {/* Everyone who joined but didn't post / DNF teams */}
+                <PastChallengeParticipants challenge={challenge} t={t} />
+              </motion.div>
+            </motion.div>
+          </AnimatePresence>
+        ) : (
+          // Upcoming challenge: existing bottom sheet (unchanged)
+          <div className="fixed inset-0 z-[150] flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }} onClick={() => setOpen(false)}>
+            <div className="w-full max-w-[480px] max-h-[80vh] overflow-y-auto" style={{
+              background: 'var(--color-bg-card)',
+              borderRadius: 22, padding: 20,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+            }} onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{sanitize(challenge.name)}</p>
+                <button type="button" onClick={() => setOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-muted)' }}>✕</button>
+              </div>
+              {challenge.description && (
+                <p style={{ fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5, marginBottom: 12 }}>{sanitize(challenge.description)}</p>
+              )}
+              <p style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 500, marginBottom: 8 }}>
+                {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
+              </p>
+              {status === 'upcoming'
+                ? <ParticipantList challengeId={challenge.id} t={t} />
+                : challenge.type === 'team'
+                  ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                  : challenge.type === 'milestone'
+                    ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                    : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+              }
+            </div>
+          </div>
+        ),
+        document.body
+      )}
+
+      {showTeamModal && (
+        <TeamFormationModal
+          challenge={challenge} gymId={gymId} userId={myId}
+          onTeamJoined={() => { setShowTeamModal(false); onJoin(null); }}
+          onClose={() => setShowTeamModal(false)} t={t}
+        />
+      )}
+    </>
   );
 };
 
@@ -1114,10 +1698,10 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
   if (duels.length === 0) return null;
 
   return (
-    <div className="mb-6">
-      <div className="flex items-center gap-2 mb-3">
-        <Swords size={14} className="text-[#D4AF37]" />
-        <p className="text-[12px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">{t('challenges.friendDuels.title')}</p>
+    <div style={{ marginBottom: 24 }}>
+      <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+        <Swords size={14} className="text-[var(--color-accent,#2EC4C4)]" />
+        <p style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800, letterSpacing: '-0.3px', color: 'var(--color-text-primary)' }}>{t('challenges.friendDuels.title')}</p>
       </div>
 
       <div className="space-y-2">
@@ -1125,13 +1709,13 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
         {pending.filter(d => d.challenged_id === userId).map(duel => {
           const opponentName = duel.challenger?.full_name || 'Someone';
           return (
-            <div key={duel.id} className="rounded-2xl bg-white/[0.04] border border-[#D4AF37]/20 p-4">
+            <div key={duel.id} className="rounded-[18px] p-4" style={{ background: 'var(--color-bg-card)', boxShadow: CARD_SHADOW }}>
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {duel.challenger?.avatar_url ? (
                     <img src={duel.challenger.avatar_url} alt={`${opponentName} avatar`} className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-[12px] font-bold text-[#D4AF37]">{opponentName.charAt(0)}</span>
+                    <span className="text-[12px] font-bold text-[var(--color-accent,#2EC4C4)]">{opponentName.charAt(0)}</span>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1148,7 +1732,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
                   type="button"
                   onClick={() => handleDecline(duel)}
                   disabled={processing === duel.id}
-                  className="flex-1 py-2.5 rounded-xl bg-white/[0.06] text-[12px] font-semibold text-[var(--color-text-muted)] transition-colors hover:bg-white/[0.08] min-h-[44px] flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 rounded-xl bg-[var(--color-bg-secondary)] text-[12px] font-semibold text-[var(--color-text-muted)] transition-colors hover:opacity-80 min-h-[44px] flex items-center justify-center gap-1.5"
                 >
                   <XCircle size={13} /> {t('challenges.friendDuels.decline')}
                 </button>
@@ -1170,9 +1754,9 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
         {pending.filter(d => d.challenger_id === userId).map(duel => {
           const opponentName = duel.challenged?.full_name || 'Someone';
           return (
-            <div key={duel.id} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-4">
+            <div key={duel.id} className="rounded-[18px] p-4" style={{ background: 'var(--color-bg-card)', boxShadow: CARD_SHADOW }}>
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center overflow-hidden flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-[var(--color-bg-secondary)] flex items-center justify-center overflow-hidden flex-shrink-0">
                   {duel.challenged?.avatar_url ? (
                     <img src={duel.challenged.avatar_url} alt={`${opponentName} avatar`} className="w-full h-full object-cover" />
                   ) : (
@@ -1203,11 +1787,11 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
           const daysLeft = Math.max(0, differenceInDays(new Date(duel.end_date), new Date()));
 
           return (
-            <div key={duel.id} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-4">
+            <div key={duel.id} className="rounded-[18px] p-4" style={{ background: 'var(--color-bg-card)', boxShadow: CARD_SHADOW }}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <Swords size={13} className="text-[#D4AF37]" />
-                  <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wider">
+                  <Swords size={13} className="text-[var(--color-accent,#2EC4C4)]" />
+                  <p className="text-[11px] font-semibold text-[var(--color-accent,#2EC4C4)] uppercase tracking-wider">
                     {t(`challenges.friendDuels.${METRIC_LABELS[duel.metric]}`)}
                   </p>
                 </div>
@@ -1245,14 +1829,14 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
           const isDraw = !duel.winner_id && duel.status === 'completed';
 
           return (
-            <div key={duel.id} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-4 opacity-70">
+            <div key={duel.id} className="rounded-[18px] p-4 opacity-70" style={{ background: 'var(--color-bg-card)', boxShadow: CARD_SHADOW }}>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
                   {t(`challenges.friendDuels.${METRIC_LABELS[duel.metric]}`)}
                 </p>
                 <span className={`text-[11px] font-bold ${iWon ? 'text-[#10B981]' : isDraw ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-subtle)]'}`}>
                   {iWon ? t('challenges.friendDuels.winner') : isDraw ? t('challenges.friendDuels.draw') : opponentName}
-                  {iWon && <span className="text-[#D4AF37] ml-1">{t('challenges.friendDuels.bonusPoints')}</span>}
+                  {iWon && <span className="text-[var(--color-accent,#2EC4C4)] ml-1">{t('challenges.friendDuels.bonusPoints')}</span>}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-[12px] text-[var(--color-text-muted)]">
@@ -1272,12 +1856,14 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
 const TABS = ['live', 'upcoming', 'ended'];
 
 export default function Challenges({ embedded = false }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
   const { profile, user } = useAuth();
   const posthog = usePostHog();
-  const [challenges, setChallenges]       = useState([]);
-  const [participants, setParticipants]   = useState([]);
-  const [loading, setLoading]             = useState(true);
+  const chalCacheKey = `challenges-${profile?.gym_id}`;
+  const [challenges, setChallenges]       = useCachedState(chalCacheKey, []);
+  const [participants, setParticipants]   = useCachedState(`${chalCacheKey}-parts`, []);
+  const [loading, setLoading]             = useState(!hasCachedState(chalCacheKey));
   const [tab, setTab]                     = useState('live');
   const chalTabIndex = TABS.indexOf(tab);
   const handleChalSwipe = (i) => setTab(TABS[i]);
@@ -1375,40 +1961,79 @@ export default function Challenges({ embedded = false }) {
 
   const liveCount = challenges.filter(c => statusOf(c) === 'live').length;
 
+  // Split first live challenge as featured hero
+  const liveChallenges = challenges.filter(c => statusOf(c) === 'live');
+  const featuredChallenge = liveChallenges[0] || null;
+  const remainingLive = liveChallenges.slice(1);
+
   return (
-    <div className={`${embedded ? '' : 'min-h-screen bg-[var(--color-bg-primary)] pb-28 md:pb-12'}`}>
+    <div className={`${embedded ? '' : 'min-h-screen pb-28 md:pb-12'}`} style={{ background: 'var(--color-bg-primary)' }}>
       {/* Header */}
       {!embedded && (
-      <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-[var(--color-border)]">
-        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 pt-6 pb-5">
-          <div className="flex items-center gap-4 mb-5">
-            <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center">
-              <Trophy size={24} className="text-[#D4AF37]" strokeWidth={2} />
+      <div className="sticky top-0 z-20" style={{
+        background: 'var(--color-bg-primary)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+      }}>
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 pt-6 pb-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center justify-center" style={{
+              width: 44, height: 44, borderRadius: 14,
+              background: 'var(--color-accent-soft, rgba(46,196,196,0.1))',
+            }}>
+              <Trophy size={22} className="text-[var(--color-accent,#2EC4C4)]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[22px] font-bold text-[var(--color-text-primary)] tracking-tight truncate">{t('challenges.title')}</h1>
-              <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">{t('challenges.subtitle')}</p>
+              <h1 className="text-[var(--color-text-primary)] truncate" style={{
+                fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 800,
+                letterSpacing: '-0.5px',
+              }}>{t('challenges.title')}</h1>
+              <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 2 }}>{t('challenges.subtitle')}</p>
             </div>
           </div>
         </div>
       </div>
       )}
 
-      {/* Tab bar — always visible */}
+      {/* Pill tabs — rounded-full style */}
       <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4'}`}>
-        {!embedded && <div className="h-0" />}
-        <UnderlineTabs
-          tabs={TABS.map(tabKey => ({
-            key: tabKey,
-            label: t(`challenges.tabs.${tabKey}`),
-            count: tabKey === 'live' ? liveCount : null,
-          }))}
-          activeIndex={chalTabIndex}
-          onChange={handleChalSwipe}
-        />
+        <div className="flex gap-2 py-2" role="tablist">
+          {TABS.map((tabKey, i) => {
+            const isActive = i === chalTabIndex;
+            return (
+              <button
+                key={tabKey}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => handleChalSwipe(i)}
+                style={{
+                  flex: 1,
+                  textAlign: 'center',
+                  padding: '8px 0',
+                  borderRadius: 999,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: isActive ? 'none' : '1px solid var(--color-border-subtle, var(--color-border))',
+                  background: isActive ? 'var(--color-accent, #2EC4C4)' : 'transparent',
+                  color: isActive ? '#000' : 'var(--color-text-muted)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {t(`challenges.tabs.${tabKey}`)}
+                {tabKey === 'live' && liveCount > 0 && (
+                  <span style={{
+                    marginLeft: 6, fontSize: 11, fontWeight: 800,
+                    opacity: isActive ? 0.7 : 0.5,
+                  }}>{liveCount}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className={`${embedded ? '' : 'max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-6'}`}>
+      <div className={`${embedded ? '' : 'max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-5'}`}>
         {tab === 'live' && user?.id && profile?.gym_id && (
           <DailyChallenge userId={user.id} gymId={profile.gym_id} t={t} />
         )}
@@ -1427,35 +2052,83 @@ export default function Challenges({ embedded = false }) {
         ) : (
           <SwipeableTabView activeIndex={chalTabIndex} onChangeIndex={handleChalSwipe} tabKeys={TABS}>
             {TABS.map(tabKey => {
-              const items = challenges.filter(c => statusOf(c) === tabKey);
+              const isLive = tabKey === 'live';
+              const isDiscover = tabKey === 'upcoming' || tabKey === 'ended';
+              const items = isLive ? remainingLive : challenges.filter(c => statusOf(c) === tabKey);
+
               return (
                 <div key={tabKey}>
-                  {items.length === 0 ? (
+                  {/* Featured hero for first live challenge */}
+                  {isLive && featuredChallenge && (
+                    <FeaturedHeroCard
+                      challenge={featuredChallenge}
+                      gymId={profile.gym_id}
+                      myId={user.id}
+                      joined={myJoinedIds.has(featuredChallenge.id)}
+                      participantCount={countMap[featuredChallenge.id] ?? 0}
+                      onJoin={handleJoin}
+                      onLeave={handleLeave}
+                      t={t}
+                    />
+                  )}
+
+                  {/* Section header for active challenges */}
+                  {isLive && remainingLive.length > 0 && (
+                    <p style={{
+                      fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800,
+                      letterSpacing: '-0.3px', color: 'var(--color-text-primary)',
+                      marginBottom: 12,
+                    }}>{t('challenges.tabs.live', 'Active Challenges')}</p>
+                  )}
+
+                  {(isLive ? items : []).length === 0 && !featuredChallenge && isLive ? (
                     <EmptyState
                       icon={Trophy}
-                      title={
-                        tabKey === 'live'     ? t('challenges.noActiveChallenges') :
-                        tabKey === 'upcoming' ? t('challenges.noUpcomingChallenges') :
-                        t('challenges.noPastChallenges')
-                      }
-                      description={tabKey === 'live' ? t('challenges.adminPostsHere') : undefined}
+                      title={t('challenges.noActiveChallenges')}
+                      description={t('challenges.adminPostsHere')}
+                    />
+                  ) : isDiscover && items.length === 0 ? (
+                    <EmptyState
+                      icon={Trophy}
+                      title={tabKey === 'upcoming' ? t('challenges.noUpcomingChallenges') : t('challenges.noPastChallenges')}
                     />
                   ) : (
-                    <div className="space-y-4 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:space-y-0">
-                      {items.map(c => (
-                        <ChallengeCard
-                          key={c.id}
-                          challenge={c}
-                          gymId={profile.gym_id}
-                          myId={user.id}
-                          joined={myJoinedIds.has(c.id)}
-                          participantCount={countMap[c.id] ?? 0}
-                          onJoin={handleJoin}
-                          onLeave={handleLeave}
-                          t={t}
-                        />
-                      ))}
-                    </div>
+                    <>
+                      {/* Discover grid (2-col) for upcoming/ended */}
+                      {isDiscover ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                          {items.map(c => (
+                            <DiscoverCard
+                              key={c.id}
+                              challenge={c}
+                              gymId={profile.gym_id}
+                              myId={user.id}
+                              joined={myJoinedIds.has(c.id)}
+                              participantCount={countMap[c.id] ?? 0}
+                              onJoin={handleJoin}
+                              onLeave={handleLeave}
+                              t={t}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {items.map(c => (
+                            <ChallengeCard
+                              key={c.id}
+                              challenge={c}
+                              gymId={profile.gym_id}
+                              myId={user.id}
+                              joined={myJoinedIds.has(c.id)}
+                              participantCount={countMap[c.id] ?? 0}
+                              onJoin={handleJoin}
+                              onLeave={handleLeave}
+                              t={t}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );

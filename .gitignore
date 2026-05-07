@@ -24,3 +24,10 @@ GoogleService-Info.plist
 # Private keys
 *.key
 *.pem
+*.keystore
+*.jks
+
+# Claude Code
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.audit-findings.md

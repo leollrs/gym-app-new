@@ -1,7 +1,7 @@
 /**
  * Create / Edit program modal with full week/day/exercise builder.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, ChevronLeft, ChevronRight, Trash2, Copy, Clock, MoreHorizontal } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -27,6 +27,13 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
   const [copyWeekMenu, setCopyWeekMenu] = useState(null);
   const [copyDayMenu, setCopyDayMenu]   = useState(null);
   const [localError, setLocalError]     = useState('');
+
+  // Lock body scroll while program builder is mounted
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   // Fetch exercises for the picker
   const { data: exercises = [] } = useQuery({
@@ -56,7 +63,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
   // ── Day operations ──
   const addDay = (wk) => setWeeks(prev => ({
     ...prev,
-    [wk]: [...(prev[wk] || []), { name: `Day ${(prev[wk] || []).length + 1}`, exercises: [] }],
+    [wk]: [...(prev[wk] || []), { name: t('admin.programs.builder.dayDefault', 'Day {{n}}', { n: (prev[wk] || []).length + 1 }), exercises: [] }],
   }));
 
   const removeDay = (wk, di) => setWeeks(prev => ({
@@ -74,7 +81,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
     setWeeks(prev => {
       const targetDays = [...(prev[toWk] || [])];
       if (toDi === 'new') {
-        targetDays.push({ ...cloned, name: `Day ${targetDays.length + 1}` });
+        targetDays.push({ ...cloned, name: t('admin.programs.builder.dayDefault', 'Day {{n}}', { n: targetDays.length + 1 }) });
       } else {
         targetDays[toDi] = { ...cloned };
       }
@@ -170,7 +177,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
               </p>
             )}
           </div>
-          <button onClick={onClose} aria-label="Close dialog" className="min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"><X size={20} className="text-[#6B7280]" /></button>
+          <button onClick={onClose} aria-label={t('common:closeDialog', 'Close dialog')} className="min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"><X size={20} className="text-[#6B7280]" /></button>
         </div>
 
         {/* Scrollable body */}
@@ -280,7 +287,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                       <input
                         value={day.name}
                         onChange={e => updateDayName(currentWeek, di, e.target.value)}
-                        placeholder={`Day ${di + 1}`}
+                        placeholder={t('admin.programs.builder.dayDefault', 'Day {{n}}', { n: di + 1 })}
                         aria-label={`${t('admin.programs.dayName', 'Day name')} ${di + 1}`}
                         className="flex-1 bg-transparent text-[13px] font-semibold text-[#E5E7EB] placeholder-[#9CA3AF] outline-none"
                       />
@@ -349,7 +356,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                               onClick={() => updateExercise(currentWeek, di, ei, 'rest_seconds', Math.max(0, (ex.rest_seconds ?? DEFAULT_REST) - 15))}
                               className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
                             >{'\u2212'}</button>
-                            <span className="text-[11px] text-[#E5E7EB] w-7 text-center">{ex.rest_seconds ?? DEFAULT_REST}s</span>
+                            <span className="text-[11px] text-[#E5E7EB] w-7 text-center">{t('admin.programs.builder.restSeconds', '{{n}}s', { n: ex.rest_seconds ?? DEFAULT_REST })}</span>
                             <button
                               onClick={() => updateExercise(currentWeek, di, ei, 'rest_seconds', (ex.rest_seconds ?? DEFAULT_REST) + 15)}
                               className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
@@ -399,7 +406,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
           <button onClick={handleSave} disabled={saving}
             className="w-full py-3.5 rounded-xl font-bold text-[14px] disabled:opacity-50 transition-colors"
             style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}>
-            {saving ? t('admin.programs.builder.saving', 'Guardando…') : isEdit ? t('admin.programs.builder.saveChanges', 'Guardar Cambios') : t('admin.programs.builder.createProgram', 'Crear Programa')}
+            {saving ? t('admin.programs.builder.saving', 'Saving…') : isEdit ? t('admin.programs.builder.saveChanges', 'Save Changes') : t('admin.programs.builder.createProgram', 'Create Program')}
           </button>
         </div>
       </div>

@@ -7,7 +7,7 @@ import { subDays } from 'date-fns';
 import { exportCSV } from '../../lib/csvExport';
 import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, FadeIn, FilterBar, AdminTabs, AdminPageShell, ErrorCard } from '../../components/admin';
+import { PageHeader, FadeIn, FilterBar, AdminTabs, AdminPageShell, ErrorCard, Avatar } from '../../components/admin';
 
 const METRIC_KEYS = ['volume', 'workouts', 'pr_count', 'checkins', 'improved', 'consistency'];
 const PERIOD_KEYS = ['7', '30', 'all'];
@@ -24,7 +24,7 @@ export default function AdminLeaderboard() {
   const [period, setPeriod] = useState('30');
   const [tier, setTier]     = useState('all');
 
-  useEffect(() => { document.title = `Admin - Leaderboard | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
+  useEffect(() => { document.title = `${t('admin.leaderboard.title', 'Admin - Leaderboard')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // Clamp period for boards that don't support all-time
   const effectivePeriod = (['improved', 'consistency'].includes(metric) && period === 'all') ? '30' : period;
@@ -139,12 +139,18 @@ export default function AdminLeaderboard() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium whitespace-nowrap transition-colors"
+              style={{ border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-sub)', background: 'var(--color-bg-card)' }}
             >
               <Download size={13} />
               {t('admin.leaderboard.export')}
             </button>
-            <button onClick={() => refetch()} aria-label={t('admin.leaderboard.refresh', 'Refresh')} className="p-2 rounded-xl bg-[#0F172A] border border-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+            <button
+              onClick={() => refetch()}
+              aria-label={t('admin.leaderboard.refresh', 'Refresh')}
+              className="p-2 rounded-xl transition-colors"
+              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-sub)' }}
+            >
               <RefreshCw size={15} />
             </button>
           </div>
@@ -161,9 +167,9 @@ export default function AdminLeaderboard() {
       />
 
       {/* Secondary filters — period & tier */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6B7280] shrink-0">
+      <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 md:gap-x-6 md:gap-y-3 mb-4">
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:overflow-visible">
+          <span className="admin-eyebrow shrink-0">
             {t('admin.leaderboard.periodLabel', 'Period')}
           </span>
           <FilterBar
@@ -172,9 +178,9 @@ export default function AdminLeaderboard() {
             onChange={setPeriod}
           />
         </div>
-        <div className="hidden md:block w-px h-5 bg-white/[0.08]" />
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6B7280] shrink-0">
+        <div className="hidden md:block w-px h-5" style={{ background: 'var(--color-admin-border)' }} />
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:overflow-visible">
+          <span className="admin-eyebrow shrink-0">
             {t('admin.leaderboard.tierLabel', 'Tier')}
           </span>
           <FilterBar
@@ -185,19 +191,64 @@ export default function AdminLeaderboard() {
         </div>
       </div>
 
-      {/* Table */}
-      <FadeIn>
-        {/* Member count context */}
-        {!isLoading && entries.length > 0 && totalMembers != null && (
-          <p className="text-[11px] text-[#6B7280] mb-2">
-            {t('admin.leaderboard.showingContext', {
-              defaultValue: 'Showing top {{count}} of {{total}} members',
-              count: entries.length,
-              total: totalMembers,
+      {/* Member count context */}
+      {!isLoading && entries.length > 0 && totalMembers != null && (
+        <p className="text-[11px] mb-3" style={{ color: 'var(--color-admin-text-muted)' }}>
+          {t('admin.leaderboard.showingContext', {
+            defaultValue: 'Showing top {{count}} of {{total}} members',
+            count: entries.length,
+            total: totalMembers,
+          })}
+        </p>
+      )}
+
+      {/* Podium — top 3 */}
+      {!isLoading && !isError && entries.length >= 3 && (
+        <FadeIn>
+          <div className="grid gap-2 sm:gap-[14px] mb-[18px] items-end" style={{ gridTemplateColumns: '1fr 1.1fr 1fr' }}>
+            {[entries[1], entries[0], entries[2]].map((r, i) => {
+              const order = [1, 0, 2][i];
+              const h = [140, 170, 120][i];
+              const mobileH = [100, 120, 88][i];
+              const bg = order === 0
+                ? 'linear-gradient(180deg, #F2D07A, #E2B84A)'
+                : order === 1
+                  ? 'linear-gradient(180deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 75%, black))'
+                  : 'linear-gradient(180deg, #D4AF88, #B88A60)';
+              return (
+                <div key={i} className="text-center">
+                  <div className="flex flex-col items-center gap-1.5 mb-2.5">
+                    <span style={{ fontSize: 28 }}>{MEDAL[order]}</span>
+                    <Avatar name={r.name} size="lg" variant={order === 0 ? 'warn' : order === 1 ? 'accent' : 'neutral'} />
+                    <div style={{ fontFamily: 'Archivo, sans-serif', fontSize: 14, fontWeight: 800, color: 'var(--color-admin-text)' }}>
+                      {r.name}
+                    </div>
+                    {r.tier && (
+                      <span className="admin-pill admin-pill--outline" style={{ fontSize: 9.5 }}>
+                        {t(`admin.leaderboard.tiers.${r.tier}`, r.tier)}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="flex flex-col items-center justify-center text-white font-extrabold"
+                    style={{ height: `clamp(${mobileH}px, ${h * 0.6}px + 5vw, ${h}px)`, borderRadius: '14px 14px 6px 6px', background: bg, padding: '10px 8px' }}
+                  >
+                    <div style={{ fontFamily: 'Archivo, sans-serif', fontSize: 'clamp(15px, 4vw, 22px)', lineHeight: 1 }} className="admin-mono">
+                      {formatScore(r)}
+                    </div>
+                    <div className="hidden sm:block" style={{ fontSize: 11, letterSpacing: 0.8, opacity: 0.8, marginTop: 4 }}>{scoreLabel.toUpperCase()}</div>
+                    <div style={{ fontFamily: 'Archivo, sans-serif', fontSize: 'clamp(20px, 5vw, 32px)', fontWeight: 800, marginTop: 6 }}>{order + 1}</div>
+                  </div>
+                </div>
+              );
             })}
-          </p>
-        )}
-        <AdminCard className="overflow-hidden !p-0">
+          </div>
+        </FadeIn>
+      )}
+
+      {/* Ranked list */}
+      <FadeIn>
+        <div className="admin-card overflow-hidden" style={{ padding: 0 }}>
           {isLoading ? (
             <div className="flex justify-center py-16">
               <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)', borderTopColor: 'var(--color-accent)' }} />
@@ -206,58 +257,127 @@ export default function AdminLeaderboard() {
             <div className="p-4"><ErrorCard message={t('common:failedToLoadData')} onRetry={refetch} /></div>
           ) : entries.length === 0 ? (
             <div className="text-center py-16">
-              <Trophy size={28} className="text-[#4B5563] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.leaderboard.noData', 'No data yet for this period')}</p>
+              <Trophy size={28} className="mx-auto mb-2" style={{ color: 'var(--color-admin-text-muted)' }} />
+              <p className="text-[13px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                {t('admin.leaderboard.noData', 'No data yet for this period')}
+              </p>
             </div>
           ) : (
-            <div className="divide-y divide-white/4">
-              {/* Column header */}
-              <div className="flex items-center gap-4 px-5 py-2 bg-white/[0.02]">
-                <div className="w-8 text-center text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">#</div>
-                <div className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">
-                  {t('admin.leaderboard.member', 'Member')}
+            <>
+              {/* Desktop table */}
+              <div className="hidden md:block">
+                <div
+                  className="grid items-center"
+                  style={{
+                    gridTemplateColumns: '40px 1fr 1.5fr 110px',
+                    padding: '11px 16px',
+                    background: 'var(--color-admin-panel)',
+                    borderBottom: '1px solid var(--color-admin-border)',
+                  }}
+                >
+                  <span className="admin-eyebrow">#</span>
+                  <span className="admin-eyebrow">{t('admin.leaderboard.member', 'Member')}</span>
+                  <span className="admin-eyebrow">{columnUnit}</span>
+                  <span />
                 </div>
-                <div className="hidden md:block w-24" />
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#4B5563] flex-shrink-0">
-                  {columnUnit}
-                </div>
-              </div>
-              {entries.map((e, i) => (
-                <div key={e.id} className={`flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.03] transition-all ${i < 3 ? 'bg-[#D4AF37]/3' : ''}`}>
-                  <div className="w-8 text-center">
-                    {i < 3 ? (
-                      <span className="text-[18px]">{MEDAL[i]}</span>
-                    ) : (
-                      <span className="text-[13px] font-bold text-[#4B5563]">{i + 1}</span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-[14px] font-semibold truncate ${i === 0 ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
-                      {e.name}
-                    </p>
-                    {e.tier && (
-                      <span className="text-[10px] text-[#4B5563] capitalize">{t(`admin.leaderboard.tiers.${e.tier}`, e.tier)}</span>
-                    )}
-                  </div>
-                  <div className="hidden md:block w-24 flex-shrink-0">
-                    <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${entries[0]?.score ? Math.round((e.score / entries[0].score) * 100) : 0}%`, background: i === 0 ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)' }} />
+                {entries.map((e, i) => (
+                  <div
+                    key={e.id}
+                    className="grid items-center"
+                    style={{
+                      gridTemplateColumns: '40px 1fr 1.5fr 110px',
+                      padding: '11px 16px',
+                      borderBottom: i === entries.length - 1 ? 'none' : '1px solid var(--color-admin-border)',
+                    }}
+                  >
+                    <span className="admin-mono" style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-admin-text-muted)' }}>
+                      {i + 1}
+                    </span>
+                    <div className="flex gap-2.5 items-center">
+                      <Avatar name={e.name} size="sm" variant={i < 3 ? 'accent' : 'neutral'} />
+                      <div>
+                        <div className="text-[13px] font-bold" style={{ color: i < 3 ? 'var(--color-accent)' : 'var(--color-admin-text)' }}>
+                          {e.name}
+                        </div>
+                        {e.tier && (
+                          <div className="text-[10.5px] font-semibold" style={{ color: 'var(--color-admin-text-muted)' }}>
+                            {t(`admin.leaderboard.tiers.${e.tier}`, e.tier)}
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-admin-panel)', maxWidth: 280 }}>
+                        <div
+                          className="h-full"
+                          style={{
+                            width: `${entries[0]?.score ? Math.round((e.score / entries[0].score) * 100) : 0}%`,
+                            background: 'linear-gradient(90deg, var(--color-accent), var(--color-coach))',
+                            opacity: e.score ? 1 : 0,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <span
+                      className="admin-mono text-right"
+                      style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-admin-text)' }}
+                    >
+                      {formatScore(e)}
+                      {!['improved', 'consistency'].includes(metric) && (
+                        <span className="text-[11px] font-normal ml-1" style={{ color: 'var(--color-admin-text-muted)' }}>{scoreLabel}</span>
+                      )}
+                    </span>
                   </div>
-                  <p className="text-[14px] font-bold text-[#9CA3AF] flex-shrink-0">
-                    {formatScore(e)}
-                    {!['improved', 'consistency'].includes(metric) && (
-                      <span className="text-[11px] font-normal text-[#6B7280] ml-1">{scoreLabel}</span>
-                    )}
-                  </p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+
+              {/* Mobile card list */}
+              <div className="md:hidden">
+                {entries.map((e, i) => (
+                  <div
+                    key={e.id}
+                    className="flex items-center gap-3 px-3 py-3"
+                    style={{
+                      borderBottom: i === entries.length - 1 ? 'none' : '1px solid var(--color-admin-border)',
+                    }}
+                  >
+                    <span
+                      className="admin-mono flex-shrink-0 w-6 text-center"
+                      style={{ fontSize: 13, fontWeight: 800, color: i < 3 ? 'var(--color-accent)' : 'var(--color-admin-text-muted)' }}
+                    >
+                      {i + 1}
+                    </span>
+                    <Avatar name={e.name} size="sm" variant={i < 3 ? 'accent' : 'neutral'} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-bold truncate" style={{ color: i < 3 ? 'var(--color-accent)' : 'var(--color-admin-text)' }}>
+                        {e.name}
+                      </div>
+                      {e.tier && (
+                        <div className="text-[10.5px] font-semibold" style={{ color: 'var(--color-admin-text-muted)' }}>
+                          {t(`admin.leaderboard.tiers.${e.tier}`, e.tier)}
+                        </div>
+                      )}
+                    </div>
+                    <span
+                      className="admin-mono text-right flex-shrink-0"
+                      style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-admin-text)' }}
+                    >
+                      {formatScore(e)}
+                      {!['improved', 'consistency'].includes(metric) && (
+                        <span className="text-[10px] font-normal ml-1" style={{ color: 'var(--color-admin-text-muted)' }}>{scoreLabel}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
-        </AdminCard>
+        </div>
       </FadeIn>
 
-      <p className="text-[11px] text-center mt-3" style={{ color: 'var(--color-text-faint)' }}>{t('admin.leaderboard.realtimeHint', 'Updates in real time as members log workouts')}</p>
+      <p className="text-[11px] text-center mt-3" style={{ color: 'var(--color-admin-text-faint)' }}>
+        {t('admin.leaderboard.realtimeHint', 'Updates in real time as members log workouts')}
+      </p>
     </AdminPageShell>
   );
 }

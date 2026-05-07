@@ -3,21 +3,29 @@ import {
   Plus, X, ChevronDown, ChevronRight, Trash2, Copy, Clock, Dumbbell, Users,
   ClipboardList, Search, ToggleLeft, ToggleRight, ArrowLeft, StickyNote,
   ChevronUp, FileText, Calendar, Zap, Loader2, GripVertical, RefreshCw, Pencil,
+  Activity, Target, Flame, MoreHorizontal,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
+import { enUS as enLocale } from 'date-fns/locale/en-US';
 import { useTranslation } from 'react-i18next';
 import { generateProgram } from '../../lib/workoutGenerator';
 import { calculateMacros } from '../../lib/macroCalculator';
 import { generateWeekPlan, generateDayPlan } from '../../lib/mealPlanner';
 import { MEALS } from '../../data/meals';
 import { foodImageUrl } from '../../lib/imageUrl';
+import { motion } from 'framer-motion';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import SwipeableTabView from '../../components/SwipeableTabView';
 import { UtensilsCrossed } from 'lucide-react';
+import Skeleton from '../../components/Skeleton';
+import TrainerEmptyState from './components/TrainerEmptyState';
+import { TT, TFont, avatarIdx } from './components/designTokens';
+import { TCard, TAvatar, TEyebrow, TPageTitle, TDarkButton, TTabPill } from './components/designPrimitives';
 
 // ── Data helpers ──────────────────────────────────────────
 const DEFAULT_SETS = 3;
@@ -237,7 +245,7 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
                   <button onClick={() => updateExercise(wk, di, ei, 'sets', Math.max(1, (ex.sets ?? DEFAULT_SETS) - 1))}
                     className="min-w-[36px] min-h-[36px] rounded-lg bg-white/6 text-[var(--color-text-secondary)] hover:bg-white/10 text-[12px] flex items-center justify-center active:scale-95 transition-all">&minus;</button>
                   <span className="text-[12px] font-medium text-[var(--color-text-primary)] w-5 text-center">{ex.sets ?? DEFAULT_SETS}</span>
-                  <button onClick={() => updateExercise(wk, di, ei, 'sets', (ex.sets ?? DEFAULT_SETS) + 1)}
+                  <button onClick={() => updateExercise(wk, di, ei, 'sets', Math.min(10, (ex.sets ?? DEFAULT_SETS) + 1))}
                     className="min-w-[36px] min-h-[36px] rounded-lg bg-white/6 text-[var(--color-text-secondary)] hover:bg-white/10 text-[12px] flex items-center justify-center active:scale-95 transition-all">+</button>
                 </div>
                 {/* Reps */}
@@ -246,7 +254,7 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
                   <input value={ex.reps ?? DEFAULT_REPS}
                     onChange={e => updateExercise(wk, di, ei, 'reps', e.target.value)}
                     className="w-16 bg-white/6 rounded-lg px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] text-center outline-none focus:bg-white/10 min-h-[36px]"
-                    placeholder="8-12" />
+                    placeholder={t('trainerPlans.repsPlaceholder', '8-12')} />
                 </div>
                 {/* Rest */}
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -254,7 +262,7 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
                   <button onClick={() => updateExercise(wk, di, ei, 'rest_seconds', Math.max(0, (ex.rest_seconds ?? DEFAULT_REST) - 15))}
                     className="min-w-[36px] min-h-[36px] rounded-lg bg-white/6 text-[var(--color-text-secondary)] hover:bg-white/10 text-[12px] flex items-center justify-center active:scale-95 transition-all">&minus;</button>
                   <span className="text-[12px] font-medium text-[var(--color-text-primary)] w-8 text-center">{ex.rest_seconds ?? DEFAULT_REST}s</span>
-                  <button onClick={() => updateExercise(wk, di, ei, 'rest_seconds', (ex.rest_seconds ?? DEFAULT_REST) + 15)}
+                  <button onClick={() => updateExercise(wk, di, ei, 'rest_seconds', Math.min(600, (ex.rest_seconds ?? DEFAULT_REST) + 15))}
                     className="min-w-[36px] min-h-[36px] rounded-lg bg-white/6 text-[var(--color-text-secondary)] hover:bg-white/10 text-[12px] flex items-center justify-center active:scale-95 transition-all">+</button>
                 </div>
               </div>
@@ -946,8 +954,9 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
 // ── Main ──────────────────────────────────────────────────
 export default function TrainerPlans() {
   const { profile } = useAuth();
-  const { t, i18n } = useTranslation('pages');
+  const { t, i18n } = useTranslation(['pages', 'common']);
   const { showToast } = useToast();
+  const dateFnsLocale = i18n.language?.startsWith('es') ? esLocale : enLocale;
 
   // Section toggle: Training vs Nutrition
   const SECTION_TABS = [
@@ -1160,8 +1169,8 @@ export default function TrainerPlans() {
     const activePlans = loadedPlans.filter(p => p.is_active && p.client_id);
     if (activePlans.length > 0) {
       const now = new Date();
-      const wkStart = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
-      const wkEnd = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
+      const wkStart = startOfWeek(now, { weekStartsOn: 0 }).toISOString();
+      const wkEnd = endOfWeek(now, { weekStartsOn: 0 }).toISOString();
       const clientIds = [...new Set(activePlans.map(p => p.client_id))];
 
       const { data: weekSessions } = await supabase
@@ -1336,213 +1345,447 @@ export default function TrainerPlans() {
     );
   }
 
+  // ── Plan tone mapping (Strength/Hypertrophy/Conditioning/Onboarding) ──
+  const planTone = (plan) => {
+    const dur = plan.duration_weeks || 0;
+    const totalEx = countExercises(plan);
+    const days = Object.values(plan.weeks || {}).flat().length;
+    if (dur >= 8 && totalEx > 30) {
+      return { tone: TT.accent, soft: TT.accentSoft, type: t('trainerPlans.typeStrength', 'Strength') };
+    }
+    if (dur >= 8) {
+      return { tone: TT.coach, soft: TT.coachSoft, type: t('trainerPlans.typeHypertrophy', 'Hypertrophy') };
+    }
+    if (days <= 8) {
+      return { tone: TT.warn, soft: TT.warnSoft, type: t('trainerPlans.typeOnboarding', 'Onboarding') };
+    }
+    return { tone: TT.hot, soft: TT.hotSoft, type: t('trainerPlans.typeConditioning', 'Conditioning') };
+  };
+
+  // ── Fast track templates → opens the builder pre-seeded ─────
+  // Each entry returns a starter plan-shaped object that pre-fills the builder
+  // with a name, duration, and labelled day scaffolding for each week. The
+  // trainer fills in actual exercises from there.
+  const buildScaffold = (durationWeeks, dayLabels) => {
+    const weeks = {};
+    for (let w = 1; w <= durationWeeks; w++) {
+      weeks[String(w)] = dayLabels.map(label => ({ name: label, exercises: [] }));
+    }
+    return weeks;
+  };
+
+  const FAST_TRACK = [
+    {
+      l: t('trainerPlans.tplPPL', 'PPL'),
+      s: t('trainerPlans.tplPPLSub', '8wk · strength'),
+      icon: Dumbbell, c: TT.accent,
+      makePlan: () => ({
+        name: t('trainerPlans.tplPPLName', 'Push / Pull / Legs'),
+        description: t('trainerPlans.tplPPLDesc', '6-day push/pull/legs split for hypertrophy & strength.'),
+        duration_weeks: 8,
+        weeks: buildScaffold(8, [
+          t('trainerPlans.day_push', 'Push'),
+          t('trainerPlans.day_pull', 'Pull'),
+          t('trainerPlans.day_legs', 'Legs'),
+          t('trainerPlans.day_push', 'Push'),
+          t('trainerPlans.day_pull', 'Pull'),
+          t('trainerPlans.day_legs', 'Legs'),
+        ]),
+      }),
+    },
+    {
+      l: t('trainerPlans.tplUL', 'Upper/Lower'),
+      s: t('trainerPlans.tplULSub', '6wk · hypertrophy'),
+      icon: Activity, c: TT.coach,
+      makePlan: () => ({
+        name: t('trainerPlans.tplULName', 'Upper / Lower'),
+        description: t('trainerPlans.tplULDesc', '4-day upper/lower split for balanced hypertrophy.'),
+        duration_weeks: 6,
+        weeks: buildScaffold(6, [
+          t('trainerPlans.day_upper', 'Upper'),
+          t('trainerPlans.day_lower', 'Lower'),
+          t('trainerPlans.day_upper', 'Upper'),
+          t('trainerPlans.day_lower', 'Lower'),
+        ]),
+      }),
+    },
+    {
+      l: t('trainerPlans.tplBoot', 'Bootcamp'),
+      s: t('trainerPlans.tplBootSub', '4wk · group'),
+      icon: Zap, c: TT.hot,
+      makePlan: () => ({
+        name: t('trainerPlans.tplBootName', 'Bootcamp'),
+        description: t('trainerPlans.tplBootDesc', '4-week group conditioning circuit.'),
+        duration_weeks: 4,
+        weeks: buildScaffold(4, [
+          t('trainerPlans.day_strength', 'Strength'),
+          t('trainerPlans.day_conditioning', 'Conditioning'),
+          t('trainerPlans.day_circuit', 'Circuit'),
+        ]),
+      }),
+    },
+    {
+      l: t('trainerPlans.tplBeg', 'Beginner'),
+      s: t('trainerPlans.tplBegSub', '4wk · onboard'),
+      icon: Target, c: TT.warn,
+      makePlan: () => ({
+        name: t('trainerPlans.tplBegName', 'Beginner Foundations'),
+        description: t('trainerPlans.tplBegDesc', '4-week onboarding plan to build movement patterns.'),
+        duration_weeks: 4,
+        weeks: buildScaffold(4, [
+          t('trainerPlans.day_fullBodyA', 'Full Body A'),
+          t('trainerPlans.day_fullBodyB', 'Full Body B'),
+          t('trainerPlans.day_fullBodyC', 'Full Body C'),
+        ]),
+      }),
+    },
+  ];
+
   // ── List view ──
   if (loading) {
     return (
-      <div className="px-4 md:px-6 py-6 max-w-5xl mx-auto pb-28 md:pb-12">
-        <h1 className="text-[22px] font-bold text-[var(--color-text-primary)] mb-6 truncate">{t('trainerPlans.title', 'Workout Plans')}</h1>
-        <div className="flex justify-center py-20">
-          <div className="w-8 h-8 border-2 border-[var(--color-accent)]/30 border-t-[var(--color-accent)] rounded-full animate-spin" />
+      <div style={{ background: TT.bg, minHeight: '100%' }} className="pb-2">
+        <div style={{ padding: '6px 16px 12px' }}>
+          <TEyebrow>{t('trainerPlans.heroLabel', 'Library')}</TEyebrow>
+          <TPageTitle>{t('trainerPlans.title', 'Plans')}</TPageTitle>
+          <div className="space-y-3 mt-4">
+            <Skeleton variant="card" height="h-[120px]" />
+            <Skeleton variant="list-item" />
+            <Skeleton variant="list-item" />
+            <Skeleton variant="list-item" />
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="px-4 md:px-6 py-6 max-w-5xl mx-auto pb-28 md:pb-12">
-      {/* Header */}
-      <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-4 md:-mx-6 px-4 md:px-6 py-3 mb-4"
-        style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--color-border-subtle) 50%, transparent)' }}>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>
-          {t('trainerPlans.subtitle', 'Training & Nutrition')}
-        </p>
-        <div className="flex items-center justify-between">
-          <h1 className="text-[22px] font-black tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
-            {t('trainerPlans.title', 'Plans')}
-          </h1>
-          <button
+    <div style={{ background: TT.bg, minHeight: '100%' }} className="pb-2">
+      <div style={{ padding: '6px 16px 12px' }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
+          <div>
+            <TEyebrow>{t('trainerPlans.heroLabel', 'Library')}</TEyebrow>
+            <TPageTitle>{t('trainerPlans.title', 'Plans')}</TPageTitle>
+          </div>
+          <TDarkButton
             onClick={() => section === 'training' ? openBuilder() : setShowMealModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[14px] font-bold transition-colors flex-shrink-0 whitespace-nowrap min-h-[44px]"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+            aria-label={section === 'training' ? t('trainerPlans.createPlan', 'New plan') : t('trainerPlans.createMealPlan', 'New meal plan')}
           >
-            <Plus size={16} /> {section === 'training' ? t('trainerPlans.createPlan', 'Create Plan') : t('trainerPlans.createMealPlan', 'Create Meal Plan')}
-          </button>
+            <Plus size={15} strokeWidth={2.4} />
+            {section === 'training'
+              ? t('trainerPlans.newPlan', 'New plan')
+              : t('trainerPlans.newMealPlan', 'New meal plan')}
+          </TDarkButton>
         </div>
-      </div>
 
-      {/* Training / Nutrition section toggle */}
-      <div className="mb-4">
-        <UnderlineTabs
-          tabs={SECTION_TABS}
-          activeIndex={sectionIndex}
-          onChange={setSectionIndex}
-        />
-      </div>
-
-      <SwipeableTabView activeIndex={sectionIndex} onChangeIndex={setSectionIndex} tabKeys={['training', 'nutrition']}>
-        {/* ═══════════ TRAINING SECTION ═══════════ */}
-        <div>
-      {/* Filters row */}
-      <div className="space-y-3 mb-5">
-        {/* Status filter */}
-        {(() => {
-          const STATUS_FILTERS = [
-            { key: 'active', label: t('trainerPlans.active', 'Active') },
-            { key: 'all', label: t('trainerPlans.statusAll', 'All') },
-            { key: 'archived', label: t('trainerPlans.archives', 'Archives') },
-          ];
-          return (
-            <UnderlineTabs
-              tabs={STATUS_FILTERS}
-              activeIndex={Math.max(0, STATUS_FILTERS.findIndex(s => s.key === filterStatus))}
-              onChange={(i) => setFilterStatus(STATUS_FILTERS[i].key)}
-            />
-          );
-        })()}
-
-        {/* Client filter */}
-        {clients.length > 0 && plans.length > 0 && (() => {
-          const CLIENT_TABS = [
-            { key: 'all', label: t('trainerPlans.allClients', 'All Clients') },
-            ...clients.map(c => ({ key: c.id, label: c.full_name?.split(' ')[0] })),
-          ];
-          return (
-            <UnderlineTabs
-              tabs={CLIENT_TABS}
-              activeIndex={Math.max(0, CLIENT_TABS.findIndex(ct => ct.key === filterClient))}
-              onChange={(i) => setFilterClient(CLIENT_TABS[i].key)}
-              scrollable
-            />
-          );
-        })()}
-      </div>
-
-      {/* Plans list */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-20">
-          <ClipboardList size={32} className="text-[var(--color-text-muted)] mx-auto mb-3" />
-          <p className="text-[14px] text-[var(--color-text-muted)]">
-            {plans.length === 0
-              ? t('trainerPlans.noPlansYet', 'No workout plans yet')
-              : t('trainerPlans.noPlansFiltered', 'No plans match these filters')}
-          </p>
-          {plans.length === 0 && (
-            <p className="text-[12px] text-[var(--color-text-muted)] mt-1">{t('trainerPlans.createHint', 'Create a custom workout plan for your clients')}</p>
-          )}
+        {/* Section tabs (Training / Nutrition) */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {SECTION_TABS.map((tab, i) => (
+            <TTabPill
+              key={tab.key}
+              active={sectionIndex === i}
+              accent={sectionIndex === i}
+              onClick={() => setSectionIndex(i)}
+            >
+              {tab.label}
+            </TTabPill>
+          ))}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filtered.map(plan => {
-            const isExpanded = expandedPlan === plan.id;
-            const totalEx = countExercises(plan);
-            const allDays = Object.values(plan.weeks || {}).flat();
-            const totalDays = allDays.length;
 
-            return (
-              <div key={plan.id} className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
-                {/* Plan header */}
-                <button onClick={() => setExpandedPlan(isExpanded ? null : plan.id)}
-                  className="w-full flex items-center gap-3 p-4 sm:p-5 text-left hover:bg-white/2 transition-colors min-h-[44px]">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                    plan.is_active ? 'bg-[var(--color-accent)]/12' : 'bg-white/4'
-                  }`}>
-                    <Dumbbell size={18} className={plan.is_active ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'} />
+        <SwipeableTabView activeIndex={sectionIndex} onChangeIndex={setSectionIndex} tabKeys={['training', 'nutrition']}>
+          {/* ═══════════ TRAINING SECTION ═══════════ */}
+          <div>
+            {/* Fast track templates */}
+            <TCard
+              dark
+              padded={14}
+              style={{ marginBottom: 14 }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: TT.accent, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+                    {t('trainerPlans.fastTrack', 'Fast track')}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-[14px] font-semibold text-[var(--color-text-primary)] truncate">{plan.name}</p>
-                      {!plan.is_active && (
-                        <span className="text-[9px] font-bold text-[var(--color-text-muted)] bg-white/4 px-1.5 py-0.5 rounded-full flex-shrink-0">{t('trainerPlans.inactiveBadge', 'INACTIVE')}</span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-[var(--color-text-muted)]">
-                      {plan.profiles?.full_name || t('trainerPlans.client', 'Client')} · {plan.duration_weeks}{t('trainerPlans.wSuffix', 'w')} · {totalDays} {t('trainerPlans.daysAbbrev', 'days')} · {totalEx} {t('trainerPlans.ex', 'ex')}
-                    </p>
-                    {/* Adherence indicator */}
-                    {adherenceMap[plan.id] && (() => {
-                      const { completed, expected } = adherenceMap[plan.id];
-                      const pct = expected > 0 ? Math.round((completed / expected) * 100) : 0;
-                      const color = pct >= 80 ? 'text-emerald-400' : pct >= 50 ? 'text-amber-400' : 'text-red-400';
-                      const dotColor = pct >= 80 ? 'bg-emerald-400' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400';
-                      return (
-                        <p className={`text-[11px] font-medium ${color} flex items-center gap-1.5 mt-0.5`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0`} />
-                          {t('trainer.clientCompletedXOfY', '{{completed}} of {{expected}} sessions this week', { completed, expected })}
-                        </p>
-                      );
-                    })()}
-                    {/* Last updated */}
-                    {plan.updated_at && plan.updated_at !== plan.created_at && (
-                      <p className="text-[10px] text-[var(--color-text-faint)] mt-0.5">
-                        {t('trainerPlans.updated', 'Updated')} {format(new Date(plan.updated_at), 'MMM d')}
-                      </p>
-                    )}
+                  <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, marginTop: 4, letterSpacing: -0.3, color: '#fff' }}>
+                    {t('trainerPlans.fastTrackTitle', 'Start from a template')}
                   </div>
-                  <ChevronDown size={16} className={`text-[var(--color-text-muted)] transition-transform flex-shrink-0 ${isExpanded ? '' : '-rotate-90'}`} />
-                </button>
+                </div>
+                <ChevronRight size={18} color="rgba(255,255,255,0.5)" />
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12, overflowX: 'auto' }} className="scrollbar-hide">
+                {FAST_TRACK.map((tmpl, i) => {
+                  const Icon = tmpl.icon;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => openBuilder(tmpl.makePlan ? tmpl.makePlan() : null)}
+                      style={{
+                        minWidth: 120,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon size={20} color={tmpl.c} strokeWidth={2.2} />
+                      <div style={{ fontSize: 13, fontWeight: 800, marginTop: 8, color: '#fff' }}>{tmpl.l}</div>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{tmpl.s}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </TCard>
 
-                {/* Expanded details */}
-                {isExpanded && (
-                  <div className="border-t border-white/4 p-4 sm:p-5 space-y-3">
-                    {plan.description && (
-                      <p className="text-[12px] text-[var(--color-text-secondary)]">{plan.description}</p>
-                    )}
+            {/* Status filter strip (small, above plans) */}
+            {plans.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto' }} className="scrollbar-hide">
+                {[
+                  { key: 'active',   label: t('trainerPlans.active', 'Active') },
+                  { key: 'all',      label: t('trainerPlans.statusAll', 'All') },
+                  { key: 'archived', label: t('trainerPlans.archives', 'Archives') },
+                ].map((tab) => (
+                  <TTabPill
+                    key={tab.key}
+                    active={filterStatus === tab.key}
+                    onClick={() => setFilterStatus(tab.key)}
+                  >
+                    {tab.label}
+                  </TTabPill>
+                ))}
+              </div>
+            )}
 
-                    {/* Week preview */}
-                    <div className="space-y-1.5">
-                      {Object.entries(plan.weeks || {}).slice(0, 2).map(([wk, days]) => (
-                        <div key={wk}>
-                          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] mb-1">{t('trainerPlans.weekLabel', 'Week')} {wk}</p>
-                          <div className="flex gap-1.5 flex-wrap">
-                            {(days || []).map((d, di) => (
-                              <span key={di} className="px-2.5 py-1 bg-[var(--color-bg-secondary)] rounded-lg text-[11px] text-[var(--color-text-secondary)]">
-                                {d.name || t('trainerPlans.dayPrefix', 'Day {{num}}', { num: di + 1 })}
-                                <span className="text-[var(--color-text-muted)] ml-1">({d.exercises?.length || 0} {t('trainerPlans.ex', 'ex')})</span>
-                              </span>
-                            ))}
+            {/* "Your plans · n" header */}
+            <div style={{
+              fontFamily: TFont.display, fontSize: 14, fontWeight: 800,
+              color: TT.text, letterSpacing: -0.2, marginBottom: 8,
+            }}>
+              {t('trainerPlans.yourPlans', 'Your plans')} · {filtered.length}
+            </div>
+
+            {/* Plans list */}
+            {filtered.length === 0 ? (
+              plans.length === 0 ? (
+                <TrainerEmptyState
+                  icon={ClipboardList}
+                  title={t('trainerPlans.noPlansYet', 'No workout plans yet')}
+                  description={t('trainerPlans.createHint', 'Create a custom workout plan for your clients')}
+                  actionLabel={t('trainerPlans.createPlan', 'Create plan')}
+                  actionIcon={Plus}
+                  onAction={openBuilder}
+                />
+              ) : (
+                <TrainerEmptyState
+                  icon={ClipboardList}
+                  title={t('trainerPlans.noPlansFiltered', 'No plans match these filters')}
+                  description={t('trainerPlans.tryAdjustingFilters', 'Try adjusting the status or client filter to see more.')}
+                  compact
+                />
+              )
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+                {filtered.map((plan, idx) => {
+                  const { tone, soft, type } = planTone(plan);
+                  const allDays = Object.values(plan.weeks || {}).flat();
+                  const totalDays = allDays.length;
+                  // Assigned clients = unique client_ids from this plan + (single client from plan.client_id if present)
+                  const assignedIds = plan.client_id ? [plan.client_id] : [];
+                  const assignedNames = plan.profiles?.full_name ? [plan.profiles.full_name] : [];
+                  const assignedCount = assignedIds.length;
+                  const isExpanded = expandedPlan === plan.id;
+                  return (
+                    <motion.div
+                      key={plan.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.22, delay: Math.min(idx * 0.03, 0.3) }}
+                    >
+                      <TCard padded={0} style={{ overflow: 'hidden' }}>
+                        {/* Top half — tinted with accent tone */}
+                        <div style={{
+                          padding: '14px 16px',
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          background: soft,
+                          borderBottom: `1px solid ${TT.border}`,
+                        }}>
+                          <div style={{
+                            width: 40, height: 40, borderRadius: 12,
+                            background: tone, display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            <ClipboardList size={20} color="#fff" strokeWidth={2.2} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{
+                              fontFamily: TFont.display, fontSize: 15, fontWeight: 800,
+                              color: TT.text, letterSpacing: -0.3,
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            }}>
+                              {plan.name}
+                              {!plan.is_active && (
+                                <span style={{
+                                  marginLeft: 6, fontSize: 9, fontWeight: 800,
+                                  padding: '2px 6px', borderRadius: 999,
+                                  background: TT.surface2, color: TT.textSub,
+                                  letterSpacing: 0.5, textTransform: 'uppercase',
+                                }}>
+                                  {t('trainerPlans.inactiveBadge', 'INACTIVE')}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11, color: TT.textSub, marginTop: 2 }}>
+                              {type} · {plan.duration_weeks || 0} {t('trainerPlans.weeks', 'weeks')} · {totalDays} {t('trainerPlans.daysAbbrev', 'days')}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedPlan(isExpanded ? null : plan.id)}
+                            aria-label={t('trainerPlans.moreOptions', 'More options')}
+                            style={{
+                              width: 32, height: 32, borderRadius: 8,
+                              background: 'transparent', border: 'none',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              color: TT.textSub, cursor: 'pointer', flexShrink: 0,
+                            }}
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
+                        </div>
+
+                        {/* Bottom half — white, avatars + actions */}
+                        <div style={{
+                          padding: '10px 16px',
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          justifyContent: 'space-between', flexWrap: 'wrap',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                            <div style={{ display: 'flex' }}>
+                              {assignedIds.length > 0 ? assignedIds.slice(0, 3).map((cid, j) => (
+                                <div key={cid} style={{
+                                  marginLeft: j ? -6 : 0,
+                                  border: '2px solid #fff',
+                                  borderRadius: 999,
+                                }}>
+                                  <TAvatar
+                                    name={assignedNames[j] || '?'}
+                                    size={20}
+                                    idx={avatarIdx(cid)}
+                                  />
+                                </div>
+                              )) : (
+                                <div style={{
+                                  width: 20, height: 20, borderRadius: 999,
+                                  background: TT.surface2, border: `2px solid #fff`,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                  <Users size={10} color={TT.textMute} />
+                                </div>
+                              )}
+                            </div>
+                            <span style={{ fontSize: 11, color: TT.textSub, fontWeight: 700 }}>
+                              {assignedCount === 1
+                                ? t('trainerPlans.assigned_one', '{{count}} client', { count: assignedCount })
+                                : t('trainerPlans.assigned_other', '{{count}} clients', { count: assignedCount })}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              type="button"
+                              onClick={() => openBuilder(plan)}
+                              style={{
+                                padding: '6px 10px', borderRadius: 8,
+                                border: `1px solid ${TT.borderSolid}`,
+                                background: '#fff', fontSize: 11, fontWeight: 700,
+                                color: TT.text, cursor: 'pointer',
+                              }}
+                            >
+                              {t('trainerPlans.edit', 'Edit')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openBuilder(plan)}
+                              style={{
+                                padding: '6px 10px', borderRadius: 8, border: 'none',
+                                background: TT.accent, fontSize: 11, fontWeight: 700,
+                                color: '#06363B', cursor: 'pointer',
+                              }}
+                            >
+                              {t('trainerPlans.assign', 'Assign')}
+                            </button>
                           </div>
                         </div>
-                      ))}
-                      {Object.keys(plan.weeks || {}).length > 2 && (
-                        <p className="text-[10px] text-[var(--color-text-muted)]">+ {Object.keys(plan.weeks).length - 2} {t('trainerPlans.moreWeeks', 'more weeks')}</p>
-                      )}
-                    </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 pt-2 border-t border-white/4 flex-wrap">
-                      <button onClick={() => openBuilder(plan)}
-                        className="px-3 py-1.5 rounded-xl text-[12px] font-medium bg-[var(--color-accent)]/15 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/25 transition-colors min-h-[44px]">
-                        {t('trainerPlans.edit', 'Edit')}
-                      </button>
-                      <button onClick={() => duplicatePlan(plan)}
-                        className="px-3 py-1.5 rounded-xl text-[12px] font-medium bg-white/4 text-[var(--color-text-secondary)] hover:bg-white/8 transition-colors flex items-center gap-1 min-h-[44px]">
-                        <Copy size={11} /> {t('trainerPlans.duplicate', 'Duplicate')}
-                      </button>
-                      <button onClick={() => toggleActive(plan)}
-                        className="px-3 py-1.5 rounded-xl text-[12px] font-medium bg-white/4 text-[var(--color-text-secondary)] hover:bg-white/8 transition-colors flex items-center gap-1 min-h-[44px]">
-                        {plan.is_active
-                          ? <><ToggleRight size={12} /> {t('trainerPlans.deactivate', 'Deactivate')}</>
-                          : <><ToggleLeft size={12} /> {t('trainerPlans.activate', 'Activate')}</>}
-                      </button>
-                      <div className="flex-1" />
-                      <button onClick={() => setConfirmDeletePlan(plan)}
-                        className="px-3 py-1.5 rounded-xl text-[12px] font-medium text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors min-h-[44px]">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-
-                    <p className="text-[10px] text-[var(--color-text-faint)]">
-                      {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy')}
-                      {plan.updated_at !== plan.created_at && ` · ${t('trainerPlans.updated', 'Updated')} ${format(new Date(plan.updated_at), 'MMM d, yyyy')}`}
-                    </p>
-                  </div>
-                )}
+                        {/* Expanded detail strip — keeps existing options accessible */}
+                        {isExpanded && (
+                          <div style={{
+                            padding: '10px 16px 14px',
+                            borderTop: `1px solid ${TT.border}`,
+                            display: 'flex', flexWrap: 'wrap', gap: 6,
+                            background: TT.surface,
+                          }}>
+                            <button
+                              type="button"
+                              onClick={() => duplicatePlan(plan)}
+                              style={{
+                                padding: '6px 10px', borderRadius: 8,
+                                border: `1px solid ${TT.borderSolid}`,
+                                background: TT.surface2, fontSize: 11, fontWeight: 700,
+                                color: TT.text, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                              }}
+                            >
+                              <Copy size={11} /> {t('trainerPlans.duplicate', 'Duplicate')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleActive(plan)}
+                              style={{
+                                padding: '6px 10px', borderRadius: 8,
+                                border: `1px solid ${TT.borderSolid}`,
+                                background: TT.surface2, fontSize: 11, fontWeight: 700,
+                                color: TT.text, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                              }}
+                            >
+                              {plan.is_active
+                                ? <><ToggleRight size={11} /> {t('trainerPlans.deactivate', 'Deactivate')}</>
+                                : <><ToggleLeft size={11} /> {t('trainerPlans.activate', 'Activate')}</>}
+                            </button>
+                            <div style={{ flex: 1 }} />
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeletePlan(plan)}
+                              aria-label={t('trainerPlans.delete', 'Delete')}
+                              style={{
+                                padding: '6px 10px', borderRadius: 8, border: 'none',
+                                background: TT.hotSoft, fontSize: 11, fontWeight: 700,
+                                color: TT.hot, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                              }}
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                            <p style={{
+                              width: '100%', fontSize: 10, color: TT.textMute, marginTop: 4,
+                            }}>
+                              {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
+                              {plan.updated_at !== plan.created_at && ` · ${t('trainerPlans.updated', 'Updated')} ${format(new Date(plan.updated_at), 'MMM d, yyyy', { locale: dateFnsLocale })}`}
+                            </p>
+                          </div>
+                        )}
+                      </TCard>
+                    </motion.div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-      )}
-        </div>
+            )}
+          </div>
 
         {/* ═══════════ NUTRITION SECTION ═══════════ */}
         <div>
@@ -1601,13 +1844,13 @@ export default function TrainerPlans() {
                     <p className="text-[12px] mb-2 line-clamp-2" style={{ color: 'var(--color-text-secondary)' }}>{plan.description}</p>
                   )}
                   <div className="flex items-center gap-4 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                    {plan.target_calories && <span>{plan.target_calories} cal</span>}
-                    {plan.target_protein_g && <span>P: {plan.target_protein_g}g</span>}
-                    {plan.target_carbs_g && <span>C: {plan.target_carbs_g}g</span>}
-                    {plan.target_fat_g && <span>F: {plan.target_fat_g}g</span>}
+                    {plan.target_calories && <span>{plan.target_calories} {t('common:cal', 'cal')}</span>}
+                    {plan.target_protein_g && <span>{t('trainerPlans.proteinShort', 'P:')} {plan.target_protein_g}g</span>}
+                    {plan.target_carbs_g && <span>{t('trainerPlans.carbsShort', 'C:')} {plan.target_carbs_g}g</span>}
+                    {plan.target_fat_g && <span>{t('trainerPlans.fatShort', 'F:')} {plan.target_fat_g}g</span>}
                   </div>
                   <p className="text-[10px] mt-2" style={{ color: 'var(--color-text-faint)' }}>
-                    {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy')}
+                    {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
                   </p>
                 </div>
               ))}
@@ -1615,6 +1858,7 @@ export default function TrainerPlans() {
           )}
         </div>
       </SwipeableTabView>
+      </div>
 
       {/* ── Meal Plan Creation Modal (2-step: Settings → Meals) ── */}
       {showMealModal && (
@@ -1658,10 +1902,10 @@ export default function TrainerPlans() {
                       <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-accent)' }}>{t('trainerPlans.clientProfile', 'Client Profile')}</p>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] mb-3">
                         <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.level', 'Level')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{mealClientProfile.onboarding.fitness_level || '—'}</span></span>
-                        <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{mealClientProfile.onboarding.primary_goal?.replace(/_/g, ' ') || '—'}</span></span>
+                        <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{mealClientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${mealClientProfile.onboarding.primary_goal}`, mealClientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'}</span></span>
                         <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.daysWeek', 'Days/wk')}:</span> <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{mealClientProfile.onboarding.training_days_per_week || '—'}</span></span>
                         {mealClientProfile.latestWeight && (
-                          <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.weight', 'Weight')}:</span> <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{Math.round(mealClientProfile.latestWeight)} lbs</span></span>
+                          <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.weight', 'Weight')}:</span> <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{Math.round(mealClientProfile.latestWeight)} {t('common:lbs', 'lbs')}</span></span>
                         )}
                       </div>
                       <div className="pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
@@ -1674,7 +1918,7 @@ export default function TrainerPlans() {
                               <button key={g} onClick={() => setMealGoalOverride(g === clientGoal ? null : g)}
                                 className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all relative ${isActive ? 'text-black' : ''}`}
                                 style={isActive ? { backgroundColor: 'var(--color-accent)' } : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }}>
-                                {g.replace(/_/g, ' ')}
+                                {t(`trainerNotes.goals.${g}`, g.replace(/_/g, ' '))}
                                 {!mealGoalOverride && clientGoal === g && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400" />}
                               </button>
                             );
@@ -1765,10 +2009,10 @@ export default function TrainerPlans() {
                   {generatedMeals[mealPreviewDay] && (
                     <div className="px-4 pt-3">
                       <div className="flex items-center gap-3 mb-3 text-[11px]">
-                        <span style={{ color: 'var(--color-accent)' }} className="font-bold">{generatedMeals[mealPreviewDay].totals?.calories || 0} cal</span>
-                        <span style={{ color: '#60A5FA' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.protein || 0}g P</span>
-                        <span style={{ color: '#34D399' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.carbs || 0}g C</span>
-                        <span style={{ color: '#F472B6' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.fat || 0}g F</span>
+                        <span style={{ color: 'var(--color-accent)' }} className="font-bold">{generatedMeals[mealPreviewDay].totals?.calories || 0} {t('common:cal', 'cal')}</span>
+                        <span style={{ color: '#60A5FA' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.protein || 0}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
+                        <span style={{ color: '#34D399' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.carbs || 0}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
+                        <span style={{ color: '#F472B6' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.fat || 0}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
                         {generatedMeals[mealPreviewDay].fits && (
                           <span className="text-emerald-400 text-[10px] font-bold ml-auto">✓ {t('trainerPlans.macrosFit', 'Macros fit')}</span>
                         )}
@@ -1812,10 +2056,10 @@ export default function TrainerPlans() {
                                 </div>
                                 <p className="text-[13px] font-semibold truncate mb-1" style={{ color: 'var(--color-text-primary)' }}>{mealTitle}</p>
                                 <div className="flex items-center gap-2.5 text-[10px]">
-                                  <span style={{ color: 'var(--color-accent)' }}>{meal.calories} cal</span>
-                                  <span style={{ color: '#60A5FA' }}>{meal.protein}g P</span>
-                                  <span style={{ color: '#34D399' }}>{meal.carbs}g C</span>
-                                  <span style={{ color: '#F472B6' }}>{meal.fat}g F</span>
+                                  <span style={{ color: 'var(--color-accent)' }}>{meal.calories} {t('common:cal', 'cal')}</span>
+                                  <span style={{ color: '#60A5FA' }}>{meal.protein}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
+                                  <span style={{ color: '#34D399' }}>{meal.carbs}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
+                                  <span style={{ color: '#F472B6' }}>{meal.fat}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
                                 </div>
                               </div>
                             </div>
@@ -1862,13 +2106,13 @@ export default function TrainerPlans() {
                                     <div className="flex-1 min-w-0">
                                       <p className="text-[13px] font-semibold truncate">{title}</p>
                                       <div className="flex items-center gap-2.5 mt-0.5 text-[10px]">
-                                        <span style={{ color: 'var(--color-accent)' }}>{meal.calories} cal</span>
-                                        <span style={{ color: '#60A5FA' }}>{meal.protein}g P</span>
-                                        <span style={{ color: '#34D399' }}>{meal.carbs}g C</span>
-                                        <span style={{ color: '#F472B6' }}>{meal.fat}g F</span>
+                                        <span style={{ color: 'var(--color-accent)' }}>{meal.calories} {t('common:cal', 'cal')}</span>
+                                        <span style={{ color: '#60A5FA' }}>{meal.protein}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
+                                        <span style={{ color: '#34D399' }}>{meal.carbs}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
+                                        <span style={{ color: '#F472B6' }}>{meal.fat}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
                                       </div>
                                       <span className="text-[9px] font-medium capitalize mt-0.5 block" style={{ color: 'var(--color-text-muted)' }}>
-                                        {meal.category?.replace(/_/g, ' ')}
+                                        {meal.category ? t(`trainerClientDetail.mealCategories.${meal.category}`, meal.category.replace(/_/g, ' ')) : ''}
                                       </span>
                                     </div>
                                   </button>

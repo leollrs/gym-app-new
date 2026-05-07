@@ -54,7 +54,14 @@ export default function AdminModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto"
+      style={{
+        // Keep modal clear of admin sticky mobile header (~56px + safe-area) and bottom nav (~80px + safe-area).
+        paddingTop: 'calc(56px + env(safe-area-inset-top) + 12px)',
+        paddingBottom: 'calc(80px + env(safe-area-inset-bottom) + 12px)',
+        paddingLeft: '16px',
+        paddingRight: '16px',
+      }}
       onClick={onClose}
       onTouchStart={(e) => e.stopPropagation()}
       onTouchMove={(e) => e.stopPropagation()}
@@ -64,7 +71,7 @@ export default function AdminModal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`rounded-[14px] w-full ${maxWidths[size] || maxWidths.md} overflow-hidden max-h-[85vh] flex flex-col`}
+        className={`rounded-[14px] w-full ${maxWidths[size] || maxWidths.md} overflow-hidden max-h-[min(85vh,100%)] flex flex-col my-auto`}
         style={{ backgroundColor: 'var(--color-bg-card, #0F172A)', border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))' }}
         onClick={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}

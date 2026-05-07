@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, Mail, Bell, Phone, CheckCircle, X, Send, Gift, Smartphone } from 'lucide-react';
+import { MessageSquare, Mail, Phone, CheckCircle, Send, Gift, Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
 import { encryptMessage } from '../../../lib/messageEncryption';
@@ -14,7 +14,7 @@ export default function ContactPanel({
   member, gymId, adminId,
   isContacted, contactedAt,
   onMarkContacted, onUnmarkContacted,
-  onOpenMessage, onClose,
+  onClose,
 }) {
   const { t } = useTranslation('pages');
   const { showToast } = useToast();
@@ -23,15 +23,20 @@ export default function ContactPanel({
   const [notifSent, setNotifSent] = useState(false);
   const [email, setEmail] = useState(null);
 
+  // Single source of truth for which inline channel is open. Mutually exclusive.
+  const [activeChannel, setActiveChannel] = useState(null); // 'message' | 'email' | 'sms' | null
+  const openChannel = (ch) => setActiveChannel(prev => (prev === ch ? null : ch));
+  const messageMode = activeChannel === 'message';
+  const emailMode = activeChannel === 'email';
+  const smsMode = activeChannel === 'sms';
+
   // SMS state
-  const [smsMode, setSmsMode] = useState(false);
   const [smsBody, setSmsBody] = useState('');
   const [smsSending, setSmsSending] = useState(false);
   const [smsSent, setSmsSent] = useState(false);
   const [smsUsage, setSmsUsage] = useState(null); // { used, limit }
 
   // Email state (must be before useEffect that references setEmailTo)
-  const [emailMode, setEmailMode] = useState(false);
   const [emailTo, setEmailTo] = useState(email || '');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
@@ -85,7 +90,7 @@ export default function ContactPanel({
       logAdminAction('send_message', 'member', member.id);
       setNotifSent(true);
       onMarkContacted(member.id, 'message', notifMsg);
-      setTimeout(() => setNotifSent(false), 2000);
+      setTimeout(() => { setNotifSent(false); setActiveChannel(null); }, 1500);
       setNotifMsg('');
       showToast(t('admin.churn.messageSent', 'Message sent!'), 'success');
     } catch (err) {
@@ -116,7 +121,7 @@ export default function ContactPanel({
       if (data?.usage) setSmsUsage(data.usage);
       showToast(t('admin.churn.smsSent', 'SMS sent!'), 'success');
       onMarkContacted(member.id, 'sms', smsBody.trim());
-      setTimeout(() => { setSmsSent(false); setSmsMode(false); setSmsBody(''); }, 1500);
+      setTimeout(() => { setSmsSent(false); setActiveChannel(null); setSmsBody(''); }, 1500);
     } catch (err) {
       logger.error('ContactPanel: send SMS failed:', err);
       showToast(t('admin.churn.smsSendFailed', 'Failed to send SMS. Please try again.'), 'error');
@@ -162,18 +167,13 @@ export default function ContactPanel({
       setEmailSent(true);
       showToast(t('admin.churn.emailSentSuccess', 'Email sent successfully'), 'success');
       onMarkContacted(member.id, 'email', `${emailSubject.trim()}\n---\n${emailBody.trim()}`);
-      setTimeout(() => { setEmailSent(false); setEmailMode(false); setEmailSubject(''); setEmailBody(''); setRewardType('none'); }, 1500);
+      setTimeout(() => { setEmailSent(false); setActiveChannel(null); setEmailSubject(''); setEmailBody(''); setRewardType('none'); }, 1500);
     } catch (err) {
       logger.error('ContactPanel: send email failed:', err);
       showToast(t('admin.churn.emailSendFailed', 'Failed to send email. Please try again.'), 'error');
     } finally {
       setEmailSending(false);
     }
-  };
-
-  const handleMessageClick = () => {
-    onMarkContacted(member.id, 'in_app_message');
-    onOpenMessage();
   };
 
   const contactedLabel = contactedAt
@@ -198,21 +198,21 @@ export default function ContactPanel({
         {/* Contact methods */}
         <div>
           <SectionLabel className="mb-2.5">{t('admin.churn.contactMethods', 'Contact Methods')}</SectionLabel>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {/* In-App Message */}
-            <button onClick={handleMessageClick}
-              className="flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border border-white/6 rounded-xl hover:border-[#D4AF37]/30 hover:bg-[#D4AF37]/5 transition-all group">
+          <div className="grid grid-cols-3 gap-2.5">
+            {/* In-App Message (also pushes to app) */}
+            <button onClick={() => openChannel('message')}
+              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group ${messageMode ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-white/6 hover:border-[#D4AF37]/30 hover:bg-[#D4AF37]/5'}`}>
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center group-hover:bg-[#D4AF37]/20 transition-colors">
                 <MessageSquare size={18} className="text-[#D4AF37]" />
               </div>
               <div className="text-center min-w-0 w-full">
                 <p className="text-[11px] sm:text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactMessage', 'Message')}</p>
-                <p className="text-[10px] text-[#6B7280] truncate">{t('admin.churn.contactInApp', 'In-app message')}</p>
+                <p className="text-[10px] text-[#6B7280] truncate">{t('admin.churn.contactInAppPush', 'In-app + push')}</p>
               </div>
             </button>
 
             {/* Email */}
-            <button onClick={() => setEmailMode(true)} disabled={!email}
+            <button onClick={() => openChannel('email')} disabled={!email}
               className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/6 disabled:hover:bg-[#111827] ${emailMode ? 'border-[#60A5FA]/40 bg-[#60A5FA]/5' : 'border-white/6 hover:border-[#60A5FA]/30 hover:bg-[#60A5FA]/5'}`}>
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#60A5FA]/10 flex items-center justify-center group-hover:bg-[#60A5FA]/20 transition-colors">
                 <Mail size={18} className="text-[#60A5FA]" />
@@ -223,20 +223,8 @@ export default function ContactPanel({
               </div>
             </button>
 
-            {/* Push Notification */}
-            <button onClick={() => document.getElementById('notif-input')?.focus()}
-              className="flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border border-white/6 rounded-xl hover:border-[#10B981]/30 hover:bg-[#10B981]/5 transition-all group">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center group-hover:bg-[#10B981]/20 transition-colors">
-                <Bell size={18} className="text-[#10B981]" />
-              </div>
-              <div className="text-center min-w-0 w-full">
-                <p className="text-[11px] sm:text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactNotification', 'Notification')}</p>
-                <p className="text-[10px] text-[#6B7280] truncate">{t('admin.churn.contactPushToApp', 'Push to app')}</p>
-              </div>
-            </button>
-
             {/* SMS */}
-            <button onClick={() => setSmsMode(true)} disabled={!memberPhone}
+            <button onClick={() => openChannel('sms')} disabled={!memberPhone}
               className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/6 disabled:hover:bg-[#111827] ${smsMode ? 'border-[#F59E0B]/40 bg-[#F59E0B]/5' : 'border-white/6 hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5'}`}>
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center group-hover:bg-[#F59E0B]/20 transition-colors">
                 <Smartphone size={18} className="text-[#F59E0B]" />
@@ -334,10 +322,10 @@ export default function ContactPanel({
               <div className="flex items-center gap-2">
                 <button onClick={handleSendEmail} disabled={emailSending || !emailSubject.trim() || !emailBody.trim() || emailSent}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
-                  style={{ background: emailSent ? 'rgba(16,185,129,0.12)' : 'rgba(96,165,250,0.12)', color: emailSent ? '#10B981' : '#60A5FA', border: `1px solid ${emailSent ? 'rgba(16,185,129,0.25)' : 'rgba(96,165,250,0.25)'}` }}>
+                  style={{ background: emailSent ? 'var(--color-success-soft)' : 'var(--color-info-soft)', color: emailSent ? 'var(--color-success)' : 'var(--color-info)', border: `1px solid ${emailSent ? 'var(--color-success-soft)' : 'var(--color-info-soft)'}` }}>
                   {emailSent ? <><CheckCircle size={14} /> {t('admin.churn.emailSent', 'Sent!')}</> : emailSending ? '...' : <><Send size={14} /> {t('admin.churn.sendEmail', 'Send Email')}</>}
                 </button>
-                <button onClick={() => { setEmailMode(false); setEmailSubject(''); setEmailBody(''); setRewardType('none'); }}
+                <button onClick={() => { setActiveChannel(null); setEmailSubject(''); setEmailBody(''); setRewardType('none'); }}
                   className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/4 border border-white/6 transition-colors">
                   {t('common:cancel', 'Cancel')}
                 </button>
@@ -416,10 +404,10 @@ export default function ContactPanel({
               <div className="flex items-center gap-2">
                 <button onClick={handleSendSms} disabled={smsSending || !smsBody.trim() || smsSent}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
-                  style={{ background: smsSent ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)', color: smsSent ? '#10B981' : '#F59E0B', border: `1px solid ${smsSent ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}` }}>
+                  style={{ background: smsSent ? 'var(--color-success-soft)' : 'var(--color-warning-soft)', color: smsSent ? 'var(--color-success)' : 'var(--color-warning)', border: `1px solid ${smsSent ? 'var(--color-success-soft)' : 'var(--color-warning-soft)'}` }}>
                   {smsSent ? <><CheckCircle size={14} /> {t('admin.churn.smsSent', 'Sent!')}</> : smsSending ? '...' : <><Send size={14} /> {t('admin.churn.sendSms', 'Send SMS')}</>}
                 </button>
-                <button onClick={() => { setSmsMode(false); setSmsBody(''); }}
+                <button onClick={() => { setActiveChannel(null); setSmsBody(''); }}
                   className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/4 border border-white/6 transition-colors">
                   {t('common:cancel', 'Cancel')}
                 </button>
@@ -458,27 +446,33 @@ export default function ContactPanel({
           </button>
         </div>
 
-        {/* Quick message compose */}
-        <div>
-          <SectionLabel icon={MessageSquare} className="mb-2">{t('admin.churn.quickMessage', 'Send Message')}</SectionLabel>
-          <div className="flex gap-2">
-            <input id="notif-input" type="text" value={notifMsg} onChange={e => setNotifMsg(e.target.value)}
-              placeholder={t('admin.churn.msgPlaceholder', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you!` })}
-              aria-label={t('admin.churn.quickMessage', 'Send Message')}
-              onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-              className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
-            <button onClick={handleSendMessage} disabled={notifSending || !notifMsg.trim() || notifSent}
-              className="px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors disabled:opacity-40"
-              style={{
-                background: notifSent ? 'rgba(16,185,129,0.12)' : 'rgba(212,175,55,0.10)',
-                color: notifSent ? 'var(--color-success)' : '#D4AF37',
-                border: `1px solid ${notifSent ? 'rgba(16,185,129,0.3)' : 'rgba(212,175,55,0.2)'}`,
-              }}>
-              {notifSent ? <CheckCircle size={14} /> : notifSending ? '...' : <Send size={14} />}
-            </button>
+        {/* Quick message compose (in-app + push) */}
+        {messageMode && (
+          <div>
+            <SectionLabel icon={MessageSquare} className="mb-2">{t('admin.churn.quickMessage', 'Send Message')}</SectionLabel>
+            <div className="flex gap-2">
+              <input id="notif-input" type="text" value={notifMsg} onChange={e => setNotifMsg(e.target.value)}
+                placeholder={t('admin.churn.msgPlaceholder', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you!` })}
+                aria-label={t('admin.churn.quickMessage', 'Send Message')}
+                onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+                className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
+              <button onClick={handleSendMessage} disabled={notifSending || !notifMsg.trim() || notifSent}
+                className="px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors disabled:opacity-40"
+                style={{
+                  background: notifSent ? 'var(--color-success-soft)' : 'color-mix(in srgb, var(--color-accent) 20%, transparent)',
+                  color: notifSent ? 'var(--color-success)' : 'var(--color-accent)',
+                  border: `1px solid ${notifSent ? 'var(--color-success-soft)' : 'color-mix(in srgb, var(--color-accent) 20%, transparent)'}`,
+                }}>
+                {notifSent ? <CheckCircle size={14} /> : notifSending ? '...' : <Send size={14} />}
+              </button>
+              <button onClick={() => { setActiveChannel(null); setNotifMsg(''); }}
+                className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/4 border border-white/6 transition-colors">
+                {t('common:cancel', 'Cancel')}
+              </button>
+            </div>
+            <p className="text-[10px] text-[#4B5563] mt-1.5 px-1">{t('admin.churn.msgNote', "Shows in member's Messages page + sends push notification")}</p>
           </div>
-          <p className="text-[10px] text-[#4B5563] mt-1.5 px-1">{t('admin.churn.msgNote', 'Shows in member\'s Messages page + sends push notification')}</p>
-        </div>
+        )}
       </div>
     </AdminModal>
   );

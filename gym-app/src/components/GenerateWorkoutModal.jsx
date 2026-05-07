@@ -30,7 +30,7 @@ const StepCustomize = ({ form, onChange, onToggleMuscle }) => {
   const set = (k, v) => onChange(k, v);
 
   const accentSel = { backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)', color: 'var(--color-accent)' };
-  const defaultSel = { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' };
+  const defaultSel = { backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-subtle)' };
 
   return (
     <div className="space-y-4">
@@ -58,10 +58,10 @@ const StepCustomize = ({ form, onChange, onToggleMuscle }) => {
       </div>
 
       {/* Schedule section — grouped card */}
-      <div className="rounded-2xl p-4 space-y-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid rgba(255,255,255,0.04)' }}>
+      <div className="rounded-2xl p-4 space-y-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
         {/* Training days */}
         <div>
-          <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.trainingDays')}</label>
+          <label className="block text-[12px] uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800 }}>{t('generateWorkout.trainingDays')}</label>
           <div className="flex gap-1.5">
             {[1, 2, 3, 4, 5, 6, 7].map(n => (
               <button key={n} type="button" onClick={() => set('training_days', n)}
@@ -75,19 +75,19 @@ const StepCustomize = ({ form, onChange, onToggleMuscle }) => {
         {/* Duration + Intensity row */}
         <div className="flex gap-3">
           <div className="flex-1">
-            <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.sessionDuration')}</label>
+            <label className="block text-[12px] uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800 }}>{t('generateWorkout.sessionDuration')}</label>
             <div className="relative">
-              <input type="number" inputMode="numeric" min="10" placeholder="45"
+              <input type="number" inputMode="numeric" min="10" max="180" placeholder="60"
                 value={form.session_duration_min}
                 onChange={e => set('session_duration_min', e.target.value === '' ? '' : parseInt(e.target.value, 10) || '')}
-                className="w-full border rounded-xl px-3 py-2.5 outline-none pr-12"
-                style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', borderColor: 'rgba(255,255,255,0.06)', fontSize: '16px' }}
+                className="w-full rounded-[14px] px-3 py-2.5 outline-none pr-12 focus:ring-2 focus:ring-[#6D5FDB]"
+                style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)', border: 'none', fontSize: '16px' }}
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] pointer-events-none" style={{ color: 'var(--color-text-muted)' }}>min</span>
             </div>
           </div>
           <div className="flex-1">
-            <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.programLength')}</label>
+            <label className="block text-[12px] uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800 }}>{t('generateWorkout.programLength')}</label>
             <div className="flex gap-1">
               {[4, 6, 8, 12].map(n => (
                 <button key={n} type="button" onClick={() => set('program_weeks', n)}
@@ -101,7 +101,7 @@ const StepCustomize = ({ form, onChange, onToggleMuscle }) => {
 
         {/* Intensity */}
         <div>
-          <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.intensity')}</label>
+          <label className="block text-[12px] uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800 }}>{t('generateWorkout.intensity')}</label>
           <div className="flex gap-2">
             {[
               { value: 'low',      label: t('generateWorkout.intensityLow', 'Low') },
@@ -119,16 +119,15 @@ const StepCustomize = ({ form, onChange, onToggleMuscle }) => {
 
       {/* Target Areas — strength/hybrid only */}
       {form.program_type !== 'cardio' && (
-        <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid rgba(255,255,255,0.04)' }}>
-          <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.targetAreas')}</label>
+        <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+          <label className="block text-[12px] uppercase tracking-[0.15em] mb-1" style={{ color: 'var(--color-text-muted)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800 }}>{t('generateWorkout.targetAreas')}</label>
           <p className="text-[10px] mb-3" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.priorityMusclesDesc')}</p>
           <div className="flex flex-wrap gap-1.5">
             {MUSCLE_OPTIONS.map(m => {
               const active = form.priority_muscles.includes(m.value);
-              const atMax  = !active && form.priority_muscles.length >= 3;
               return (
-                <button key={m.value} type="button" onClick={() => !atMax && onToggleMuscle(m.value)}
-                  className={`text-[12px] font-semibold px-3 py-1.5 rounded-full border transition-all ${atMax && !active ? 'opacity-30' : ''}`}
+                <button key={m.value} type="button" onClick={() => onToggleMuscle(m.value)}
+                  className="text-[12px] font-semibold px-3 py-1.5 rounded-full border transition-all"
                   style={active ? accentSel : defaultSel}
                 >{t(`generateWorkout.muscleOptions.${m.value.toLowerCase()}`)}</button>
               );
@@ -139,8 +138,8 @@ const StepCustomize = ({ form, onChange, onToggleMuscle }) => {
 
       {/* Cardio focus — cardio only */}
       {form.program_type === 'cardio' && (
-        <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid rgba(255,255,255,0.04)' }}>
-          <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioFocus', 'Focus')}</label>
+        <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+          <label className="block text-[12px] uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800 }}>{t('generateWorkout.cardioFocus', 'Focus')}</label>
           <div className="flex flex-wrap gap-1.5">
             {[
               { value: 'mixed', label: t('generateWorkout.cardioMixed', 'Mixed') },
@@ -186,7 +185,7 @@ const StepPreview = ({ result, programWeeks }) => {
     <div className="space-y-5">
       <div>
         <div className="flex items-center gap-2 mb-0.5">
-          <h2 className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(splitLabel)}</h2>
+          <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{localizeRoutineName(splitLabel)}</h2>
         </div>
       </div>
 
@@ -197,9 +196,9 @@ const StepPreview = ({ result, programWeeks }) => {
             <button
               onClick={() => setViewWeek(w => Math.max(1, w - 1))}
               disabled={viewWeek <= 1}
-              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
               style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
-              aria-label="Previous week"
+              aria-label={t('generateWorkout.ariaPreviousWeek', 'Previous week')}
             >
               <ChevronLeft size={16} />
             </button>
@@ -214,9 +213,9 @@ const StepPreview = ({ result, programWeeks }) => {
             <button
               onClick={() => setViewWeek(w => Math.min(totalWeeks, w + 1))}
               disabled={viewWeek >= totalWeeks}
-              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
               style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
-              aria-label="Next week"
+              aria-label={t('generateWorkout.ariaNextWeek', 'Next week')}
             >
               <ChevronRight size={16} />
             </button>
@@ -354,10 +353,17 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
   const [result, setResult] = useState(null);
   const focusTrapRef = useFocusTrap(true, onClose);
 
+  // Lock body scroll while modal is mounted
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   const [form, setForm] = useState({
     program_type:       'strength',
     training_days:      onboarding?.training_days_per_week || 3,
-    session_duration_min: 45,
+    session_duration_min: parseInt(localStorage.getItem('tugympr_workout_duration') || '60', 10),
     intensity:          'moderate',
     program_weeks:      6,
     priority_muscles:   onboarding?.priority_muscles || [],
@@ -453,13 +459,11 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
           cardioResult.template_weeks = buildTemplateWeeks(cardioResult.routinesA, cardioResult.routinesB, form.program_weeks, profile?.preferred_training_days);
           setResult(cardioResult);
         } else {
-          // Map intensity to short_workout flag
-          const shortWorkout = form.intensity === 'low';
           const r = generateProgram({
             ...onboarding,
             training_days_per_week: form.training_days,
             priority_muscles: form.priority_muscles,
-            short_workout:   shortWorkout,
+            workout_duration_min: form.session_duration_min || 60,
           });
           // For hybrid: append a cardio finisher to each routine
           if (form.program_type === 'hybrid') {
@@ -675,7 +679,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
@@ -683,30 +687,35 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="generate-workout-title"
-        className="border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden"
+        className="rounded-[22px] w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden"
         style={{ background: 'var(--color-bg-card)' }}
         onClick={e => e.stopPropagation()}
       >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+          <div style={{ width: 36, height: 4, borderRadius: 999, background: 'var(--color-border-subtle)' }} />
+        </div>
+
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/6 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 pb-4 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#D4AF37]/12 flex items-center justify-center">
-              <Zap size={15} className="text-[#D4AF37]" />
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(109, 95, 219, 0.12)' }}>
+              <Zap size={15} style={{ color: '#6D5FDB' }} />
             </div>
             <div>
-              <p id="generate-workout-title" className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.generateMyProgram')}</p>
+              <p id="generate-workout-title" className="text-[15px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('generateWorkout.generateMyProgram')}</p>
               <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.stepXOfY', { current: step + 1, total: 2 })}</p>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close dialog" className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
-            <X size={18} style={{ color: 'var(--color-text-subtle)' }} />
+          <button onClick={onClose} aria-label={t('generateWorkout.ariaCloseDialog', 'Close dialog')} className="w-9 h-9 rounded-full flex items-center justify-center focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+            <X size={18} style={{ color: 'var(--color-text-muted)' }} />
           </button>
         </div>
 
         {/* Step indicator */}
         <div className="flex gap-1 px-5 pt-3 flex-shrink-0">
           {[0, 1].map(i => (
-            <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= step ? 'bg-[#D4AF37]' : 'bg-white/10'}`} />
+            <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= step ? 'bg-[#6D5FDB]' : ''}`} style={i > step ? { backgroundColor: 'var(--color-border-subtle)' } : undefined} />
           ))}
         </div>
 
@@ -721,7 +730,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         </div>
 
         {/* Footer */}
-        <div className="px-5 pb-5 pt-3 border-t border-white/6 flex-shrink-0 space-y-2">
+        <div className="px-5 pb-5 pt-3 border-t flex-shrink-0 space-y-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
           {gymHoursWarnings.length > 0 && (
             <div className="space-y-1">
               {gymHoursWarnings.map((w, i) => (
@@ -737,8 +746,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
             {step > 0 && (
               <button
                 onClick={() => setStep(s => s - 1)}
-                className="flex items-center gap-1.5 px-4 py-3 rounded-xl border border-white/10 transition-colors text-[13px] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                style={{ color: 'var(--color-text-muted)' }}
+                className="flex items-center gap-1.5 px-4 py-3 rounded-full transition-colors text-[13px] font-semibold focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
+                style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-hover)' }}
               >
                 <ChevronLeft size={15} /> {t('generateWorkout.back')}
               </button>
@@ -747,7 +756,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
               <button
                 onClick={() => setStep(1)}
                 disabled={!canAdvance}
-                className="flex-1 flex items-center justify-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold text-[14px] py-3 rounded-xl transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                className="flex-1 flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[14px] py-3 rounded-[16px] transition-all focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
+                style={{ backgroundColor: '#6D5FDB', fontWeight: 800 }}
               >
                 {t('generateWorkout.previewProgram')} <ChevronRight size={15} />
               </button>
@@ -755,7 +765,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
               <button
                 onClick={handleGenerate}
                 disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-black font-bold text-[14px] py-3 rounded-xl transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                className="flex-1 flex items-center justify-center gap-2 disabled:opacity-50 text-white text-[14px] py-3 rounded-[16px] transition-all focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
+                style={{ backgroundColor: '#6D5FDB', fontWeight: 800 }}
               >
                 {saving ? t('generateWorkout.generating') : <><Check size={15} strokeWidth={2.5} /> {t('generateWorkout.generateMyProgram')}</>}
               </button>

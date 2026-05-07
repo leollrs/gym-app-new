@@ -11,8 +11,9 @@ const APNS_KEY_ID      = Deno.env.get('APNS_KEY_ID') || '';
 const APNS_TEAM_ID     = Deno.env.get('APNS_TEAM_ID') || '';
 const APNS_PRIVATE_KEY = Deno.env.get('APNS_PRIVATE_KEY') || '';
 const APNS_BUNDLE_ID   = 'com.tugympr.app';
-// Use sandbox for dev builds, production for App Store
-const APNS_HOST = Deno.env.get('APNS_HOST') || 'api.sandbox.push.apple.com';
+// Default to APNs PRODUCTION host. Sandbox (api.sandbox.push.apple.com) is
+// for dev builds only and MUST be set explicitly via the APNS_HOST env var.
+const APNS_HOST = Deno.env.get('APNS_HOST') || 'api.push.apple.com';
 
 // FCM v1 — Google (for Android)
 const FCM_PROJECT_ID   = Deno.env.get('FCM_PROJECT_ID') || '';
@@ -139,7 +140,7 @@ async function getAPNsJWT(): Promise<string> {
 }
 
 async function sendAPNs(
-  tokens: string[],
+  iosTokens: Array<{ token: string; apns_env: 'production' | 'sandbox' | null }>,
   title: string,
   body: string,
   data: Record<string, string> = {},
@@ -152,6 +153,7 @@ async function sendAPNs(
   const jwt = await getAPNsJWT();
   let sent = 0;
   let failed = 0;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   // APNs payload — alert type for visible notifications
   const payload = JSON.stringify({
@@ -164,43 +166,69 @@ async function sendAPNs(
     ...data,
   });
 
-  // Send concurrently in batches
+  // Sends to a specific APNs host. Returns:
+  //   'sent' | 'invalid' (drop) | 'wrong-env' (retry on other host) | 'failed'
+  // BadDeviceToken on production almost always means the token is sandbox
+  // (Debug-signed dev builds register with sandbox even when entitlements
+  // declare production), so we treat that as a retry signal rather than as
+  // an invalid token. Same logic in send-push-user.
+  const sendOnce = async (token: string, host: string): Promise<'sent' | 'invalid' | 'wrong-env' | 'failed'> => {
+    const res = await fetch(`https://${host}/3/device/${token}`, {
+      method: 'POST',
+      headers: {
+        'authorization': `bearer ${jwt}`,
+        'apns-topic': APNS_BUNDLE_ID,
+        'apns-push-type': 'alert',
+        'apns-priority': '10',
+        'apns-expiration': '0',
+        'content-type': 'application/json',
+      },
+      body: payload,
+    });
+    if (res.ok) return 'sent';
+    const errBody = await res.text().catch(() => '');
+    const isWrongEnv = res.status === 400 && /BadDeviceToken/i.test(errBody);
+    console.error(`APNs error (${host}) for ${token.substring(0, 10)}...: ${res.status} ${errBody}`);
+    if (isWrongEnv) return 'wrong-env';
+    if (res.status === 410 || res.status === 400) return 'invalid';
+    return 'failed';
+  };
+
   const batchSize = 50;
-  for (let i = 0; i < tokens.length; i += batchSize) {
-    const batch = tokens.slice(i, i + batchSize);
+  for (let i = 0; i < iosTokens.length; i += batchSize) {
+    const batch = iosTokens.slice(i, i + batchSize);
 
     const results = await Promise.allSettled(
-      batch.map(async (token) => {
-        const res = await fetch(`https://${APNS_HOST}/3/device/${token}`, {
-          method: 'POST',
-          headers: {
-            'authorization': `bearer ${jwt}`,
-            'apns-topic': APNS_BUNDLE_ID,
-            'apns-push-type': 'alert',
-            'apns-priority': '10',
-            'apns-expiration': '0',
-            'content-type': 'application/json',
-          },
-          body: payload,
-        });
+      batch.map(async ({ token, apns_env }) => {
+        const primaryHost = apns_env === 'sandbox' ? 'api.sandbox.push.apple.com' : APNS_HOST;
+        const fallbackHost = apns_env === 'sandbox' ? APNS_HOST : 'api.sandbox.push.apple.com';
 
-        if (!res.ok) {
-          const errBody = await res.text();
-          console.error(`APNs error for token ${token.substring(0, 10)}...: ${res.status} ${errBody}`);
-
-          // Clean up invalid tokens
-          if (res.status === 410 || res.status === 400) {
-            const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-            const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
-            if (deleteErr) {
-              console.error(`Failed to remove invalid iOS token ${token.substring(0, 10)}...: ${deleteErr.message}`);
-            } else {
-              console.log(`Removed invalid iOS token: ${token.substring(0, 10)}...`);
-            }
-          }
-          throw new Error(`APNs ${res.status}: ${errBody}`);
+        let outcome = await sendOnce(token, primaryHost);
+        let workingHost = primaryHost;
+        if (outcome === 'wrong-env') {
+          outcome = await sendOnce(token, fallbackHost);
+          workingHost = fallbackHost;
         }
-        return true;
+
+        if (outcome === 'sent') {
+          const env = workingHost.includes('sandbox') ? 'sandbox' : 'production';
+          if (apns_env !== env) {
+            supabase.from('push_tokens').update({ apns_env: env }).eq('token', token).then(({ error }) => {
+              if (error) console.warn(`Failed to persist apns_env for token ${token.substring(0, 10)}...: ${error.message}`);
+            });
+          }
+          return true;
+        }
+
+        if (outcome === 'invalid' || outcome === 'wrong-env') {
+          const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
+          if (deleteErr) {
+            console.error(`Failed to remove invalid iOS token ${token.substring(0, 10)}...: ${deleteErr.message}`);
+          } else {
+            console.log(`Removed invalid iOS token: ${token.substring(0, 10)}...`);
+          }
+        }
+        throw new Error(`APNs send failed (${outcome})`);
       }),
     );
 
@@ -348,6 +376,21 @@ async function sendFCM(
   return { sent, failed };
 }
 
+// ── Per-category notification preferences (broadcast) ─────────
+// Mirrors the mapping used by send-push-user. When a broadcast omits
+// `notification_type`, only the master `notif_push_enabled` toggle is
+// honored. Apple G4.5.4 / G5.1.1 require server-side suppression of
+// pushes for users who have opted out.
+const NOTIFICATION_TYPE_COLUMNS: Record<string, string> = {
+  workout:   'notif_workout_reminders',
+  streak:    'notif_streak_alerts',
+  summary:   'notif_weekly_summary',
+  friend:    'notif_friend_activity',
+  milestone: 'notif_milestone_alerts',
+  challenge: 'notif_challenge_updates',
+  reward:    'notif_reward_reminders',
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Main Handler — routes iOS tokens to APNs, Android to FCM
 // ═══════════════════════════════════════════════════════════════════════════
@@ -394,8 +437,14 @@ serve(async (req) => {
     // Service client — for reading all tokens (bypasses RLS)
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    const { gym_id, title, body, data: pushData } = await req.json();
+    const { gym_id, title, body, data: pushData, notification_type } = await req.json();
     let targetGymId = gym_id;
+
+    // Resolve optional category column for per-type opt-out gating.
+    let preferenceColumn: string | null = null;
+    if (typeof notification_type === 'string' && notification_type.length > 0) {
+      preferenceColumn = NOTIFICATION_TYPE_COLUMNS[notification_type] || null;
+    }
 
     if (!isServiceRole) {
       const { data: callerProfile } = await supabase
@@ -460,10 +509,12 @@ serve(async (req) => {
       return jsonResp({ error: 'data payload too large' }, 400);
     }
 
-    // Fetch all push tokens WITH platform info
-    const { data: tokens, error: tokensErr } = await supabase
+    // Fetch all push tokens WITH platform info, profile_id, and apns_env
+    // (profile_id gates per-user prefs; apns_env routes iOS tokens to the
+    // right APNs host without a wrong-env round trip)
+    const { data: tokensRaw, error: tokensErr } = await supabase
       .from('push_tokens')
-      .select('token, platform')
+      .select('token, platform, profile_id, apns_env')
       .eq('gym_id', targetGymId);
 
     if (tokensErr) {
@@ -471,13 +522,65 @@ serve(async (req) => {
       return jsonResp({ error: 'Failed to fetch tokens' }, 500);
     }
 
-    if (!tokens || tokens.length === 0) {
+    if (!tokensRaw || tokensRaw.length === 0) {
       return jsonResp({ message: 'No devices registered', sent: 0, failed: 0 });
     }
 
-    // Split by platform
-    const iosTokens = tokens.filter((t: { platform: string }) => t.platform === 'ios').map((t: { token: string }) => t.token);
-    const androidTokens = tokens.filter((t: { platform: string }) => t.platform === 'android').map((t: { token: string }) => t.token);
+    // ── Per-user preference gating (Apple G4.5.4 / G5.1.1) ──
+    // Admin broadcasts MUST honor each recipient's notification settings.
+    // Filter out tokens whose owner has notif_push_enabled = false, and
+    // (when a notification_type is supplied) the corresponding category
+    // column = false. NULL is treated as enabled for legacy rows.
+    const recipientIds = Array.from(new Set(
+      (tokensRaw as Array<{ profile_id: string | null }>).map(t => t.profile_id).filter(Boolean)
+    )) as string[];
+
+    const prefCols = ['id', 'notif_push_enabled'];
+    if (preferenceColumn) prefCols.push(preferenceColumn);
+
+    const allowedRecipientIds = new Set<string>();
+    if (recipientIds.length > 0) {
+      const { data: prefRows, error: prefErr } = await supabase
+        .from('profiles')
+        .select(prefCols.join(', '))
+        .in('id', recipientIds);
+
+      if (prefErr) {
+        console.error('Failed to fetch notification preferences:', prefErr);
+        return jsonResp({ error: 'Failed to fetch preferences' }, 500);
+      }
+
+      for (const row of (prefRows || []) as Array<Record<string, unknown>>) {
+        const id = row.id as string;
+        const master = row.notif_push_enabled;
+        // master: null/undefined = legacy enabled, false = opted out
+        if (master === false) continue;
+        if (preferenceColumn) {
+          const cat = row[preferenceColumn];
+          if (cat === false) continue;
+        }
+        allowedRecipientIds.add(id);
+      }
+    }
+
+    const tokens = (tokensRaw as Array<{ token: string; platform: string; profile_id: string | null; apns_env: string | null }>)
+      .filter(t => t.profile_id && allowedRecipientIds.has(t.profile_id));
+
+    if (tokens.length === 0) {
+      return jsonResp({
+        message: 'All recipients have opted out of push notifications',
+        sent: 0,
+        failed: 0,
+        suppressed: tokensRaw.length,
+      });
+    }
+
+    // Split by platform — keep apns_env on the iOS side so sendAPNs can
+    // route to the right host.
+    const iosTokens = tokens
+      .filter((t) => t.platform === 'ios')
+      .map((t) => ({ token: t.token, apns_env: (t.apns_env as 'production' | 'sandbox' | null) || null }));
+    const androidTokens = tokens.filter((t) => t.platform === 'android').map((t) => t.token);
 
     console.log(`Sending push: ${iosTokens.length} iOS, ${androidTokens.length} Android`);
 

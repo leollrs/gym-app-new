@@ -237,6 +237,113 @@ export async function exportGymBodyMetrics(gymId) {
   downloadCSV(`gym_body_metrics_${fmtDate(new Date().toISOString())}.csv`, csv);
 }
 
+// ── Admin: Export Selected Members CSV (by IDs) ────────────────────────────
+// Used by bulk-export action in AdminMembers. Pulls fresh data so the export
+// is consistent regardless of what's currently rendered in the table.
+export async function exportSelectedMembersCSV(selectedIds) {
+  const ids = Array.isArray(selectedIds) ? selectedIds : [...(selectedIds || [])];
+  if (ids.length === 0) return;
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, username, membership_status, created_at, last_active_at')
+    .in('id', ids)
+    .limit(10000);
+
+  if (error) throw error;
+
+  const header = ['Name', 'Username', 'Status', 'Joined', 'Last Active'].map(esc).join(',');
+  const rows = (data ?? []).map(m => [
+    m.full_name || '',
+    m.username || '',
+    m.membership_status || 'active',
+    fmtDate(m.created_at),
+    fmtDate(m.last_active_at),
+  ].map(esc).join(','));
+
+  const csv = [header, ...rows].join('\n');
+  await downloadCSV(`selected_members_${fmtDate(new Date().toISOString())}.csv`, csv);
+}
+
+// ── Admin: Export Challenge Results (per-gym) ──────────────────────────────
+// Note: challenge_participants doesn't track per-participant completion
+// timestamps; we use joined_at as a proxy. TODO: if a `completed_at` column
+// is added to challenge_participants, prefer that.
+export async function exportChallengeResults(gymId) {
+  const { data, error } = await supabase
+    .from('challenge_participants')
+    .select('score, joined_at, challenges!inner(name, type, status, end_date, gym_id), profiles!inner(full_name)')
+    .eq('challenges.gym_id', gymId)
+    .order('score', { ascending: false })
+    .limit(10000);
+
+  if (error) throw error;
+
+  const header = ['Challenge', 'Member', 'Score', 'Completed At'].map(esc).join(',');
+  const rows = (data ?? []).map(cp => [
+    cp.challenges?.name || '',
+    cp.profiles?.full_name || '',
+    cp.score ?? '',
+    // Use end_date if challenge is completed, else joined_at as proxy.
+    fmtDate(cp.challenges?.status === 'completed' ? cp.challenges?.end_date : cp.joined_at),
+  ].map(esc).join(','));
+
+  const csv = [header, ...rows].join('\n');
+  await downloadCSV(`challenge_results_${fmtDate(new Date().toISOString())}.csv`, csv);
+}
+
+// ── Admin: Export Store Purchases / Reward Redemptions (per-gym) ───────────
+// Reads from member_purchases (the reward/store purchase table per the
+// 0081_gym_store_purchases migration). points_earned is per the schema
+// (positive points awarded for the purchase).
+export async function exportStorePurchases(gymId) {
+  const { data, error } = await supabase
+    .from('member_purchases')
+    .select('quantity, total_price, points_earned, created_at, profiles!inner(full_name, gym_id), gym_products!inner(name)')
+    .eq('profiles.gym_id', gymId)
+    .order('created_at', { ascending: false })
+    .limit(10000);
+
+  if (error) throw error;
+
+  const header = ['Member', 'Item', 'Points', 'Redeemed At'].map(esc).join(',');
+  const rows = (data ?? []).map(p => [
+    p.profiles?.full_name || '',
+    p.gym_products?.name || '',
+    p.points_earned ?? '',
+    fmtDate(p.created_at),
+  ].map(esc).join(','));
+
+  const csv = [header, ...rows].join('\n');
+  await downloadCSV(`store_purchases_${fmtDate(new Date().toISOString())}.csv`, csv);
+}
+
+// ── Admin: Export Class Bookings (per-gym) ─────────────────────────────────
+// Reads from gym_class_bookings (per migration 0157_class_booking).
+// "attended" is derived from the booking status enum
+// (status IN ('confirmed', 'cancelled', 'attended')).
+export async function exportClassBookings(gymId) {
+  const { data, error } = await supabase
+    .from('gym_class_bookings')
+    .select('status, booked_at, gym_class_schedules!inner(gym_classes!inner(name, gym_id)), profiles!inner(full_name)')
+    .eq('gym_class_schedules.gym_classes.gym_id', gymId)
+    .order('booked_at', { ascending: false })
+    .limit(10000);
+
+  if (error) throw error;
+
+  const header = ['Class Name', 'Member', 'Booked At', 'Attended'].map(esc).join(',');
+  const rows = (data ?? []).map(b => [
+    b.gym_class_schedules?.gym_classes?.name || '',
+    b.profiles?.full_name || '',
+    fmtDate(b.booked_at),
+    b.status === 'attended' ? 'yes' : 'no',
+  ].map(esc).join(','));
+
+  const csv = [header, ...rows].join('\n');
+  await downloadCSV(`class_bookings_${fmtDate(new Date().toISOString())}.csv`, csv);
+}
+
 // ── Export Body Metrics ─────────────────────────────────────────────────────
 export async function exportBodyMetrics(userId) {
   const [{ data: weights, error: wErr }, { data: measurements, error: mErr }] = await Promise.all([

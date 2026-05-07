@@ -3,6 +3,7 @@ import WatchKit
 
 struct PRCelebrationView: View {
     @Binding var isPresented: Bool
+    @EnvironmentObject var session: WatchSessionManager
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @State private var trophyScale: CGFloat = 0.3
     @State private var trophyRotation: Double = -30
@@ -26,17 +27,17 @@ struct PRCelebrationView: View {
                     .scaleEffect(trophyScale)
                     .rotationEffect(.degrees(trophyRotation))
                     .shadow(color: DS.gold.opacity(0.6), radius: 16)
-                    .accessibilityLabel("New personal record")
+                    .accessibilityLabel(session.tr("New personal record", "Nuevo récord personal"))
 
                 // NEW PR text
-                Text("NEW PR!")
+                Text(session.tr("NEW PR!", "¡NUEVO PR!"))
                     .font(.system(.title3, design: .rounded).weight(.black))
                     .foregroundColor(DS.gold)
                     .tracking(2)
                     .opacity(textOpacity)
 
                 // Subtitle
-                Text("Personal Record")
+                Text(session.tr("Personal Record", "Récord personal"))
                     .font(.caption.weight(.semibold))
                     .foregroundColor(DS.mutedText)
                     .opacity(textOpacity)

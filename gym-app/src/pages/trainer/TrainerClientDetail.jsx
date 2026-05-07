@@ -1,28 +1,32 @@
 import { useEffect, useReducer, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Save, Scale, Ruler, TrendingUp, StickyNote, Calendar, BarChart3,
+  ArrowLeft, Save, Scale, Ruler, TrendingUp, TrendingDown, Minus, StickyNote, Calendar, BarChart3,
   MessageSquare, Bell, Phone, Mail, UserCheck, Plus, X, Dumbbell, Trophy,
   Target, Activity, Clock, AlertTriangle, BookOpen, ChevronRight, ChevronDown, Flame,
   ClipboardList, Heart, Zap, RefreshCw, Apple, Camera, MapPin, UtensilsCrossed,
-  Loader2,
+  Loader2, MoreHorizontal, Play, Eye, History as HistoryIcon, User as UserIcon,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
-import { format, subWeeks, subDays, startOfWeek, differenceInWeeks } from 'date-fns';
+import { format, subWeeks, subDays, startOfWeek, differenceInWeeks, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { enUS } from 'date-fns/locale/en-US';
 import { useTranslation } from 'react-i18next';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import MonthlyProgressReport from '../../components/MonthlyProgressReport';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import ChartTooltip from '../../components/ChartTooltip';
 import { calculateMacros } from '../../lib/macroCalculator';
 import { generateDayPlan } from '../../lib/mealPlanner';
+import AnimatedCounter from '../../components/AnimatedCounter';
+import TrainerStatCard from './components/TrainerStatCard';
+import { TT, TFont, avatarIdx, avatarGradient } from './components/designTokens';
+import { TCard, TPill, TPrimaryButton } from './components/designPrimitives';
 
-const TAB_KEYS = ['overview', 'notesFollowUp', 'programNutrition'];
+const TAB_KEYS = ['overview', 'history', 'body', 'notesFollowUp', 'programNutrition'];
 
 // --- Reducer ---
 const initialState = {
@@ -85,6 +89,18 @@ const initialState = {
   showReport: false,
   showMeasurements: false,
   showPhotos: false,
+
+  // Live session indicator
+  liveDraft: null, // { profile_id, started_at, is_paused, ... } when client has an active draft
+
+  // Body tab state (period selector for weight chart, photo viewer)
+  bodyPeriod: 90, // 30 / 90 / 180 / 365
+  viewingPhoto: null,
+
+  // History tab state
+  historyLoaded: false,
+  allSessions: [], // completed workout_sessions (extended list)
+  expandedSessionId: null,
 };
 
 function reducer(state, action) {
@@ -109,7 +125,7 @@ export default function TrainerClientNotes() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { showToast } = useToast();
-  const { t, i18n } = useTranslation('pages');
+  const { t, i18n } = useTranslation(['pages', 'common']);
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const [state, dispatch] = useReducer(reducer, initialState);
   const notesSavedTimerRef = useRef(null);
@@ -124,6 +140,8 @@ export default function TrainerClientNotes() {
     availablePrograms, assigningProgram,
     nutritionTargets, foodLogSummary, activeMealPlan, savingMealPlan, mealPlanForm, showMealPlanForm, nutritionLoaded, sampleMeals, generatingMeals,
     activeTab, showReport, showMeasurements, showPhotos,
+    liveDraft, bodyPeriod, viewingPhoto,
+    historyLoaded, allSessions, expandedSessionId,
   } = state;
 
   useEffect(() => { document.title = t('trainerNotes.pageTitle'); }, [t]);
@@ -165,7 +183,7 @@ export default function TrainerClientNotes() {
   const loadClientData = useCallback(async () => {
     const assignmentNotes = state._assignmentNotes;
     try {
-      const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+      const weekStart = startOfWeek(new Date(), { weekStartsOn: 0 });
       const eightWeeksAgo = subWeeks(new Date(), 8).toISOString();
 
       const [
@@ -295,12 +313,12 @@ export default function TrainerClientNotes() {
       if (weeklyRes.data) {
         const weekMap = {};
         for (let i = 7; i >= 0; i--) {
-          const wk = startOfWeek(subWeeks(new Date(), i), { weekStartsOn: 1 });
+          const wk = startOfWeek(subWeeks(new Date(), i), { weekStartsOn: 0 });
           const key = format(wk, 'MMM d', { locale: dateFnsLocale });
           weekMap[key] = 0;
         }
         weeklyRes.data.forEach((s) => {
-          const wk = startOfWeek(new Date(s.started_at), { weekStartsOn: 1 });
+          const wk = startOfWeek(new Date(s.started_at), { weekStartsOn: 0 });
           const key = format(wk, 'MMM d', { locale: dateFnsLocale });
           if (weekMap[key] !== undefined) weekMap[key]++;
         });
@@ -380,6 +398,86 @@ export default function TrainerClientNotes() {
       loadClientData();
     }
   }, [isAssigned, loadClientData]);
+
+  // Bug 3: one-time check for an active session_drafts row for this client.
+  // Drives the "Watch live" pill + the "Start" button precheck.
+  const checkLiveDraft = useCallback(async () => {
+    if (!clientId) return;
+    try {
+      const { data } = await supabase
+        .from('session_drafts')
+        .select('profile_id, routine_id, started_at, updated_at, is_paused')
+        .eq('profile_id', clientId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      dispatch({ type: 'SET', payload: { liveDraft: data || null } });
+    } catch (err) {
+      logger.error('Error checking live draft:', err);
+    }
+  }, [clientId]);
+
+  useEffect(() => {
+    if (isAssigned) checkLiveDraft();
+  }, [isAssigned, checkLiveDraft]);
+
+  // Bug 3: Start/Watch live session — precheck draft first.
+  // - If a draft exists -> navigate to /trainer/live/:clientId (spectator)
+  // - If no draft -> show toast and stay put (no auto-redirect)
+  const handleStartLiveSession = useCallback(async () => {
+    try {
+      const { data: latest } = await supabase
+        .from('session_drafts')
+        .select('profile_id')
+        .eq('profile_id', clientId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latest) {
+        navigate(`/trainer/live/${clientId}`);
+      } else {
+        showToast(
+          t('trainerClientDetail.live.noActiveSession', "Client hasn't started a session yet"),
+          'info'
+        );
+      }
+    } catch (err) {
+      logger.error('Error starting live session:', err);
+      showToast(t('trainerNotes.errors.genericError', 'Something went wrong'), 'error');
+    }
+  }, [clientId, navigate, showToast, t]);
+
+  // History tab: load extended workout history on first activation
+  const loadHistoryData = useCallback(async () => {
+    if (historyLoaded || !clientId) return;
+    try {
+      const sixMonthsAgo = subWeeks(new Date(), 26).toISOString();
+      const { data: sessions } = await supabase
+        .from('workout_sessions')
+        .select('id, name, started_at, ended_at, duration_seconds, total_volume_lbs, status')
+        .eq('profile_id', clientId)
+        .eq('status', 'completed')
+        .gte('started_at', sixMonthsAgo)
+        .order('started_at', { ascending: false })
+        .limit(200);
+      dispatch({
+        type: 'SET',
+        payload: {
+          allSessions: sessions || [],
+          historyLoaded: true,
+        },
+      });
+    } catch (err) {
+      logger.error('Error loading history data:', err);
+      dispatch({ type: 'SET', payload: { historyLoaded: true } });
+    }
+  }, [clientId, historyLoaded]);
+
+  useEffect(() => {
+    if (activeTab === 'history' && clientId && isAssigned) {
+      loadHistoryData();
+    }
+  }, [activeTab, clientId, isAssigned, loadHistoryData]);
 
   const loadNutritionData = useCallback(async () => {
     if (nutritionLoaded) return;
@@ -705,7 +803,152 @@ export default function TrainerClientNotes() {
       date: format(new Date(w.logged_at), 'MMM d', { locale: dateFnsLocale }),
       weight: w.weight_lbs,
     }));
-  }, [weights]);
+  }, [weights, dateFnsLocale]);
+
+  // Body tab — period-filtered weight chart data
+  const bodyWeightChart = useMemo(() => {
+    if (weights.length === 0) return [];
+    const cutoff = subDays(new Date(), bodyPeriod).getTime();
+    const within = weights.filter(w => new Date(w.logged_at).getTime() >= cutoff);
+    return [...within].reverse().map(w => ({
+      date: format(new Date(w.logged_at), 'MMM d', { locale: dateFnsLocale }),
+      weight: parseFloat(w.weight_lbs),
+    }));
+  }, [weights, bodyPeriod, dateFnsLocale]);
+
+  // Body tab — current weight + delta over selected period
+  const bodyWeightStats = useMemo(() => {
+    if (weights.length === 0) return { current: null, delta: null, count: 0 };
+    const cutoff = subDays(new Date(), bodyPeriod).getTime();
+    const within = weights.filter(w => new Date(w.logged_at).getTime() >= cutoff);
+    if (within.length === 0) {
+      return { current: parseFloat(weights[0].weight_lbs), delta: null, count: 0 };
+    }
+    const current = parseFloat(within[0].weight_lbs);
+    const earliest = parseFloat(within[within.length - 1].weight_lbs);
+    const delta = within.length > 1 ? current - earliest : null;
+    return { current, delta, count: within.length };
+  }, [weights, bodyPeriod]);
+
+  // Body tab — group photos by month
+  const photosByMonth = useMemo(() => {
+    if (!progressPhotos?.length) return [];
+    const groups = {};
+    progressPhotos.forEach(p => {
+      const key = format(new Date(p.taken_at), 'yyyy-MM');
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(p);
+    });
+    return Object.entries(groups)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, photos]) => ({
+        key,
+        label: format(new Date(key + '-01T12:00:00'), 'MMMM yyyy', { locale: dateFnsLocale }),
+        photos,
+      }));
+  }, [progressPhotos, dateFnsLocale]);
+
+  // History tab — best 1RM per exercise per session for top 5 lifts (PR timeline)
+  const prTimelineData = useMemo(() => {
+    if (!personalRecords?.length) return { lifts: [], series: [] };
+    const TOP_LIFT_HINTS = ['bench', 'squat', 'deadlift', 'overhead', 'press', 'row'];
+    // Group PRs by exercise name
+    const byExercise = {};
+    personalRecords.forEach(pr => {
+      const name = pr.exercises?.name;
+      if (!name) return;
+      if (!byExercise[name]) byExercise[name] = [];
+      byExercise[name].push(pr);
+    });
+    // Pick top 5: prefer canonical lifts, then by record count
+    const ranked = Object.entries(byExercise)
+      .map(([name, recs]) => {
+        const lower = name.toLowerCase();
+        const matchScore = TOP_LIFT_HINTS.findIndex(h => lower.includes(h));
+        const priority = matchScore === -1 ? 99 : matchScore;
+        return { name, recs, priority, count: recs.length };
+      })
+      .sort((a, b) => a.priority - b.priority || b.count - a.count)
+      .slice(0, 5);
+    // Build per-month series: latest 1RM per month per lift
+    const allDates = new Set();
+    ranked.forEach(({ recs }) => recs.forEach(r => allDates.add(format(new Date(r.achieved_at), 'yyyy-MM'))));
+    const sortedDates = Array.from(allDates).sort();
+    const series = sortedDates.map(month => {
+      const point = { month: format(new Date(month + '-01T12:00:00'), 'MMM yy', { locale: dateFnsLocale }) };
+      ranked.forEach(({ name, recs }) => {
+        const inMonth = recs.filter(r => format(new Date(r.achieved_at), 'yyyy-MM') === month);
+        if (inMonth.length) {
+          const best = Math.max(...inMonth.map(r => Number(r.estimated_1rm) || Number(r.weight_lbs) || 0));
+          if (best > 0) point[name] = Math.round(best);
+        }
+      });
+      return point;
+    });
+    return { lifts: ranked.map(r => r.name), series };
+  }, [personalRecords, dateFnsLocale]);
+
+  // History tab — 12-week rolling volume
+  const volumeTrendData = useMemo(() => {
+    if (!allSessions?.length) return [];
+    const weekMap = {};
+    for (let i = 11; i >= 0; i--) {
+      const wk = startOfWeek(subWeeks(new Date(), i), { weekStartsOn: 0 });
+      const key = format(wk, 'MMM d', { locale: dateFnsLocale });
+      weekMap[key] = 0;
+    }
+    allSessions.forEach(s => {
+      const wk = startOfWeek(new Date(s.started_at), { weekStartsOn: 0 });
+      const key = format(wk, 'MMM d', { locale: dateFnsLocale });
+      if (weekMap[key] !== undefined) weekMap[key] += Number(s.total_volume_lbs) || 0;
+    });
+    return Object.entries(weekMap).map(([week, volume]) => ({ week, volume: Math.round(volume) }));
+  }, [allSessions, dateFnsLocale]);
+
+  // History tab — 90-day attendance heatmap (workouts + check-ins)
+  const attendanceHeatmap = useMemo(() => {
+    const days = eachDayOfInterval({ start: subDays(new Date(), 89), end: new Date() });
+    const dayMap = {};
+    days.forEach(d => {
+      dayMap[format(d, 'yyyy-MM-dd')] = 0;
+    });
+    (allSessions || []).forEach(s => {
+      const key = format(new Date(s.started_at), 'yyyy-MM-dd');
+      if (key in dayMap) dayMap[key] += 1;
+    });
+    (checkIns || []).forEach(c => {
+      const key = format(new Date(c.checked_in_at), 'yyyy-MM-dd');
+      if (key in dayMap) dayMap[key] += 1;
+    });
+    return days.map(d => {
+      const key = format(d, 'yyyy-MM-dd');
+      const v = dayMap[key];
+      return { date: key, value: v, label: format(d, 'EEE, MMM d', { locale: dateFnsLocale }) };
+    });
+  }, [allSessions, checkIns, dateFnsLocale]);
+
+  // History tab — streaks (current from streak_cache; longest from sessions)
+  const streakStats = useMemo(() => {
+    const current = streak?.current_streak_days || 0;
+    if (!allSessions?.length) return { current, longest: current };
+    // Build set of distinct training days, find longest run
+    const dayKeys = Array.from(
+      new Set(allSessions.map(s => format(new Date(s.started_at), 'yyyy-MM-dd')))
+    ).sort();
+    let longest = 0;
+    let run = 0;
+    let prev = null;
+    for (const k of dayKeys) {
+      if (!prev) { run = 1; }
+      else {
+        const diff = (new Date(k) - new Date(prev)) / 86400000;
+        run = diff === 1 ? run + 1 : 1;
+      }
+      if (run > longest) longest = run;
+      prev = k;
+    }
+    return { current, longest: Math.max(longest, current) };
+  }, [streak, allSessions]);
 
   if (loading) {
     return (
@@ -761,121 +1004,930 @@ export default function TrainerClientNotes() {
     );
   }
 
+  // ── Hero gradient + status pill mapping ─────────────────
+  const heroIdx = avatarIdx(client.id);
+  const [heroA, heroB] = avatarGradient(heroIdx);
+  const daysQuiet = client.last_active_at
+    ? Math.floor((Date.now() - new Date(client.last_active_at).getTime()) / 86400000)
+    : null;
+  const churnFlag = daysQuiet !== null && daysQuiet > 30;
+  const riskFlag = !churnFlag && daysQuiet !== null && daysQuiet > 14;
+  const heroStatus = churnFlag ? 'churn' : riskFlag ? 'risk' : 'on';
+  const heroStatusLabel = churnFlag
+    ? t('trainerClientDetail.statusChurn', 'Churn')
+    : riskFlag
+      ? t('trainerClientDetail.statusAtRisk', 'At risk')
+      : t('trainerClientDetail.statusOnTrack', 'On track');
+  const heroStatusTone = heroStatus === 'churn' ? 'hot' : heroStatus === 'risk' ? 'warn' : 'invert';
+
+  // Split name for two-line hero display
+  const nameParts = (client.full_name || t('trainerNotes.unnamedClient', 'Client')).trim().split(/\s+/);
+  const firstName = nameParts[0] || '';
+  const lastName = nameParts.slice(1).join(' ');
+
+  // Pinned note from notesData (if any text present)
+  const pinnedNote = (notesData?.notes || '').trim();
+  const injuriesNote = (notesData?.injuries || '').trim();
+
+  // Map first 3 PRs into the "Personal records" grid
+  const topPRs = (personalRecords || []).slice(0, 4);
+
   return (
-    <div className="min-h-screen bg-[var(--color-bg-primary)] px-4 sm:px-5 md:px-6 py-4 sm:py-6 max-w-5xl mx-auto pb-28 md:pb-12">
-      {/* Back button */}
-      <button
-        onClick={() => navigate('/trainer/clients')}
-        className="flex items-center gap-2 text-[var(--color-text-secondary)] text-[13px] sm:text-[14px] mb-4 sm:mb-6 hover:text-[var(--color-text-primary)] transition-colors whitespace-nowrap min-h-[44px]"
+    <div style={{ background: TT.bg, minHeight: '100%' }}>
+      {/* ── Hero header (gradient) ──────────────────────────── */}
+      <div
+        style={{
+          background: `linear-gradient(135deg, ${heroA} 0%, ${heroB} 100%)`,
+          padding: '12px 16px 90px',
+          position: 'relative',
+          zIndex: 1,
+        }}
       >
-        <ArrowLeft className="w-4 h-4 flex-shrink-0" />
-        {t('trainerNotes.backToClients')}
-      </button>
-
-      {/* Client header with badges */}
-      <div className="mb-4">
-        <h1 className="text-[18px] sm:text-[20px] md:text-[22px] font-bold text-[var(--color-text-primary)] truncate">
-          {client.full_name || t('trainerNotes.unnamedClient')}
-        </h1>
-        {client.username && (
-          <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">@{client.username}</p>
-        )}
-        {/* Status badges */}
-        <div className="flex flex-wrap items-center gap-2 mt-2">
-          {streak && streak.current_streak_days >= 7 && (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">
-              {streak.current_streak_days} {t('trainerNotes.dayStreak')}
-            </span>
-          )}
-          {onboarding?.fitness_level && (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/[0.06] text-[var(--color-text-secondary)] capitalize">
-              {t(`trainerNotes.fitnessLevels.${onboarding.fitness_level}`, onboarding.fitness_level)}
-            </span>
-          )}
-          {programName && (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-accent)]/10 text-[var(--color-accent)]">
-              {programName}
-            </span>
-          )}
-          {getDaysSince(client.last_active_at) > 14 && (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">
-              {t('trainerNotes.atRisk')}
-            </span>
-          )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <button
+            type="button"
+            onClick={() => navigate('/trainer/clients')}
+            aria-label={t('trainerNotes.backToClients', 'Back')}
+            style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: 'rgba(255,255,255,0.25)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: 'none', cursor: 'pointer', color: '#fff',
+            }}
+          >
+            <ArrowLeft size={18} strokeWidth={2.2} />
+          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
+                  if (convId) navigate(`/trainer/messages/${convId}`);
+                } catch (err) { logger.error('Error opening conversation:', err); }
+              }}
+              aria-label={t('trainerNotes.actions.messageClient', 'Message')}
+              style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: 'rgba(255,255,255,0.25)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', cursor: 'pointer', color: '#fff',
+              }}
+            >
+              <MessageSquare size={18} strokeWidth={2.2} />
+            </button>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
+              aria-label={t('trainerNotes.actions.monthlyReport', 'More')}
+              style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: 'rgba(255,255,255,0.25)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', cursor: 'pointer', color: '#fff',
+              }}
+            >
+              <MoreHorizontal size={18} strokeWidth={2.2} />
+            </button>
+          </div>
+        </div>
+        <div style={{ color: '#fff' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <TPill tone={heroStatusTone} size="s">
+              {heroStatusLabel} · {adherencePercent}% {t('trainerClientDetail.adhAbbr', 'adh')}
+            </TPill>
+            {liveDraft && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trainer/live/${clientId}`)}
+                aria-label={t('trainerClientDetail.live.watchLive', '● Live')}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '3px 10px', borderRadius: 999,
+                  background: TT.hot, color: '#fff',
+                  fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4,
+                  textTransform: 'uppercase', border: 'none', cursor: 'pointer',
+                  animation: 'pulse 1.6s ease-in-out infinite',
+                  whiteSpace: 'nowrap',
+                  minHeight: 22,
+                }}
+              >
+                {t('trainerClientDetail.live.watchLive', '● Live')}
+              </button>
+            )}
+          </div>
+          <div style={{
+            fontFamily: TFont.display, fontSize: 32, fontWeight: 800,
+            letterSpacing: -1.2, lineHeight: 1.05, marginTop: 12,
+          }}>
+            {firstName}{lastName ? <><br/>{lastName}</> : null}
+          </div>
+          <div style={{ fontSize: 13, marginTop: 6, opacity: 0.85, fontWeight: 600 }}>
+            {programName || t('trainerClientDetail.noProgram', 'No program')}
+            {programProgress && (
+              <> · {t('trainerClientDetail.weekOf', 'Week {{w}} of {{t}}', {
+                w: programProgress.currentWeek,
+                t: programProgress.totalWeeks,
+              })}</>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Quick actions row — removed duplicate "Meal Plan" button */}
-      <div className="flex flex-wrap gap-2 mb-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible scrollbar-hide">
-        <button
-          onClick={() => { dispatch({ type: 'SET', payload: { activeTab: 'notesFollowUp', showFollowupModal: true } }); }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/30 transition-colors whitespace-nowrap min-h-[44px]"
-        >
-          <Phone className="w-3.5 h-3.5" />
-          {t('trainerNotes.actions.logFollowUp')}
-        </button>
-        <button
-          onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'programNutrition' } })}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/30 transition-colors whitespace-nowrap min-h-[44px]"
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          {t('trainerNotes.actions.assignProgram')}
-        </button>
-        <button
-          onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/30 transition-colors whitespace-nowrap min-h-[44px]"
-        >
-          <BarChart3 className="w-3.5 h-3.5" />
-          {t('trainerNotes.actions.monthlyReport')}
-        </button>
-        <button
-          onClick={async () => {
-            try {
-              const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
-              if (convId) navigate(`/trainer/messages/${convId}`);
-            } catch (err) { logger.error('Error opening conversation:', err); }
-          }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/30 transition-colors whitespace-nowrap min-h-[44px]"
-        >
-          <MessageSquare className="w-3.5 h-3.5" />
-          {t('trainerNotes.actions.messageClient', 'Message')}
-        </button>
+      {/* ── Snapshot card overlapping ──────────────────────── */}
+      <div style={{ padding: '0 16px', marginTop: -70, position: 'relative', zIndex: 2 }}>
+        <TCard padded={16}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            {[
+              { l: t('trainerClientDetail.snapshot.adherence', 'Adherence'), v: `${adherencePercent}%`, sub: t('trainerClientDetail.snapshot.last30d', 'Last 30d'), tone: TT.good },
+              { l: t('trainerClientDetail.snapshot.sessions', 'Sessions'), v: `${workoutsThisWeek}/${stats.count}`, sub: t('trainerClientDetail.snapshot.thisBlock', 'This block'), tone: TT.accent },
+              { l: t('trainerClientDetail.snapshot.streak', 'Streak'), v: `${streak?.current_streak_days || 0}d`, sub: t('trainerClientDetail.snapshot.active', 'Active'), tone: TT.hot },
+            ].map((s, i) => (
+              <div key={i} style={{
+                padding: 10, borderRadius: 12, background: TT.surface2,
+                textAlign: 'center',
+              }}>
+                <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: s.tone, letterSpacing: -0.5 }}>
+                  {s.v}
+                </div>
+                <div style={{ fontSize: 10, color: TT.textSub, fontWeight: 700, marginTop: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                  {s.l}
+                </div>
+                <div style={{ fontSize: 9, color: TT.textMute, marginTop: 2 }}>{s.sub}</div>
+              </div>
+            ))}
+          </div>
+        </TCard>
       </div>
 
-      {/* Summary strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-5 sm:mb-6">
-        <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border-subtle)] px-3 py-2.5">
-          <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.strip.lastActive')}</p>
-          <p className="text-[13px] sm:text-[14px] font-semibold text-[var(--color-text-primary)] truncate">
-            {client.last_active_at ? format(new Date(client.last_active_at), 'MMM d', { locale: dateFnsLocale }) : '--'}
-          </p>
-        </div>
-        <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border-subtle)] px-3 py-2.5">
-          <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.strip.thisWeek')}</p>
-          <p className="text-[13px] sm:text-[14px] font-semibold text-[var(--color-text-primary)]">{workoutsThisWeek}</p>
-        </div>
-        <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border-subtle)] px-3 py-2.5">
-          <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.strip.streak')}</p>
-          <p className="text-[13px] sm:text-[14px] font-semibold text-[var(--color-text-primary)]">{streak ? streak.current_streak_days : 0} <span className="text-[11px] font-normal text-[var(--color-text-muted)]">{t('trainerNotes.strip.days')}</span></p>
-        </div>
-        <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border-subtle)] px-3 py-2.5">
-          <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.strip.totalWorkouts')}</p>
-          <p className="text-[13px] sm:text-[14px] font-semibold text-[var(--color-text-primary)]">{stats.count}</p>
-        </div>
-        <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border-subtle)] px-3 py-2.5 col-span-2 sm:col-span-1">
-          <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.strip.adherence')}</p>
-          <p className="text-[13px] sm:text-[14px] font-semibold text-[var(--color-text-primary)]">{adherencePercent}%</p>
+      {/* ── Tab strip ──────────────────────────────────────── */}
+      <div style={{ padding: '14px 16px 0' }}>
+        <div style={{
+          display: 'flex', gap: 4, padding: 4, background: TT.surface,
+          borderRadius: 12, border: `1px solid ${TT.border}`, marginBottom: 14,
+        }}>
+          {[
+            { l: t('trainerClientDetail.tabs.overview', 'Overview'), tab: 'overview' },
+            { l: t('trainerClientDetail.tabs.plan', 'Plan'), tab: 'programNutrition' },
+            { l: t('trainerClientDetail.tabs.history', 'History'), tab: 'history' },
+            { l: t('trainerClientDetail.tabs.notes', 'Notes'), tab: 'notesFollowUp' },
+            { l: t('trainerClientDetail.tabs.body', 'Body'), tab: 'body' },
+          ].map((t2) => {
+            const isActive = activeTab === t2.tab;
+            return (
+              <button
+                key={t2.tab}
+                type="button"
+                onClick={() => dispatch({ type: 'SET', payload: { activeTab: t2.tab } })}
+                style={{
+                  flex: 1, padding: '8px 4px', borderRadius: 8, textAlign: 'center',
+                  background: isActive ? TT.text : 'transparent',
+                  color: isActive ? '#fff' : TT.textSub,
+                  fontSize: 11.5, fontWeight: 700,
+                  border: 'none', cursor: 'pointer',
+                  minHeight: 36,
+                }}
+              >
+                {t2.l}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="mb-5 sm:mb-6">
-        <UnderlineTabs
-          tabs={TAB_KEYS.map(key => ({ key, label: t(`trainerNotes.tabs.${key}`) }))}
-          activeIndex={TAB_KEYS.indexOf(activeTab)}
-          onChange={i => dispatch({ type: 'SET', payload: { activeTab: TAB_KEYS[i] } })}
-        />
-      </div>
+      {/* ── Overview tab content (new visual layer) ────────── */}
+      {activeTab === 'overview' && (
+        <div style={{ padding: '0 16px 14px' }} className="md:max-w-[860px] md:mx-auto">
+          {/* Next session */}
+          {(programName || recentSessions.length > 0) && (
+            <>
+              <div style={{
+                fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+                letterSpacing: -0.2, marginBottom: 8,
+              }}>
+                {t('trainerClientDetail.nextSession', 'Next session')}
+              </div>
+              <TCard padded={14} style={{ marginBottom: 14, borderLeft: `3px solid ${TT.accent}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontFamily: TFont.display, fontSize: 22, fontWeight: 800, color: TT.text, letterSpacing: -0.5, lineHeight: 1 }}>
+                      {recentSessions[0]?.duration_seconds
+                        ? formatDuration(recentSessions[0].duration_seconds)
+                        : t('trainerClientDetail.scheduled', 'Soon')}
+                    </div>
+                    <div style={{ fontSize: 11, color: TT.textSub, marginTop: 2 }}>
+                      {t('trainerClientDetail.sessionMins', '{{m}} min', { m: 60 })}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, paddingLeft: 14, borderLeft: `1px solid ${TT.border}`, marginLeft: 8, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {programName || t('trainerClientDetail.activeWorkout', 'Workout')}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 2 }}>
+                      {programProgress
+                        ? t('trainerClientDetail.weekDay', 'Week {{w}} · day {{d}}', { w: programProgress.currentWeek, d: programProgress.daysPerWeek })
+                        : recentSessions[0]?.name || ''}
+                    </div>
+                  </div>
+                  <TPrimaryButton onClick={handleStartLiveSession} aria-label={t('trainerClientDetail.live.startSession', 'Start session')}>
+                    <Play size={13} strokeWidth={2.4} />
+                    {t('trainerClientDetail.start', 'Start')}
+                  </TPrimaryButton>
+                </div>
+              </TCard>
+            </>
+          )}
+
+          {/* Recent log */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.recentLog', 'Recent log')}
+          </div>
+          {recentSessions.length === 0 ? (
+            <TCard padded={14} style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 13, color: TT.textMute }}>
+                {t('trainerNotes.overview.noRecentWorkouts', 'No recent workouts')}
+              </p>
+            </TCard>
+          ) : (
+            <TCard padded={0} style={{ marginBottom: 14 }}>
+              {recentSessions.slice(0, 5).map((s, i) => (
+                <div
+                  key={s.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                    borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
+                  }}
+                >
+                  <div style={{ width: 36, textAlign: 'center', flexShrink: 0 }}>
+                    <div style={{
+                      fontSize: 10, fontWeight: 700, color: TT.textMute,
+                      letterSpacing: 0.4, textTransform: 'uppercase',
+                    }}>
+                      {format(new Date(s.started_at), 'EEE', { locale: dateFnsLocale })}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {s.name || t('trainerNotes.overview.workout', 'Workout')}
+                    </div>
+                    <div style={{ fontSize: 11, color: TT.textSub, marginTop: 1 }}>
+                      {format(new Date(s.started_at), 'MMM d', { locale: dateFnsLocale })}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 11.5, fontFamily: TFont.mono, fontWeight: 700, color: TT.text }}>
+                      {s.total_volume_lbs >= 1000
+                        ? `${(s.total_volume_lbs / 1000).toFixed(1)}${t('trainerClientDetail.body.kLbs', 'k lbs')}`
+                        : `${s.total_volume_lbs || 0} ${t('common:lb', 'lb')}`}
+                    </div>
+                    <div style={{ fontSize: 10, color: TT.textMute, marginTop: 1 }}>
+                      {formatDuration(s.duration_seconds)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </TCard>
+          )}
+
+          {/* Personal records */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.prs', 'Personal records')}
+          </div>
+          {topPRs.length === 0 ? (
+            <TCard padded={14} style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 13, color: TT.textMute }}>
+                {t('trainerNotes.progress.noPRs', 'No PRs yet')}
+              </p>
+            </TCard>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+              {topPRs.map((pr, i) => (
+                <TCard key={i} padded={12}>
+                  <div style={{
+                    fontSize: 10, color: TT.textMute, fontWeight: 700,
+                    letterSpacing: 0.5, textTransform: 'uppercase',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {pr.exercises?.name || t('trainerNotes.overview.unknownExercise', 'Lift')}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+                    <div style={{
+                      fontFamily: TFont.display, fontSize: 18, fontWeight: 800,
+                      color: TT.text, letterSpacing: -0.5,
+                    }}>
+                      {pr.weight_lbs} {t('common:lb', 'lb')}
+                    </div>
+                    <span style={{ fontSize: 10, color: TT.good, fontWeight: 800 }}>
+                      {t('trainerClientDetail.pr.up', '↑ PR')}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 10, color: TT.textMute, marginTop: 2 }}>
+                    {format(new Date(pr.achieved_at), 'MMM d', { locale: dateFnsLocale })}
+                  </div>
+                </TCard>
+              ))}
+            </div>
+          )}
+
+          {/* Pinned notes (post-it style) */}
+          {(pinnedNote || injuriesNote) && (
+            <>
+              <div style={{
+                fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+                letterSpacing: -0.2, marginBottom: 8,
+              }}>
+                {t('trainerClientDetail.pinnedNotes', 'Pinned notes')}
+              </div>
+              {injuriesNote && (
+                <TCard padded={14} style={{
+                  background: '#FEF4A8', borderColor: '#F2DC6E', marginBottom: 8,
+                }}>
+                  <div style={{ fontSize: 12.5, color: '#5A4A2A', lineHeight: 1.5, fontFamily: TFont.body, fontStyle: 'italic' }}>
+                    "{injuriesNote}"
+                  </div>
+                  <div style={{ fontSize: 10, color: '#8A7A4A', marginTop: 6, fontWeight: 700 }}>
+                    {t('trainerClientDetail.injuriesPinned', 'Injuries · Pinned')}
+                  </div>
+                </TCard>
+              )}
+              {pinnedNote && (
+                <TCard padded={14} style={{
+                  background: '#FEF4A8', borderColor: '#F2DC6E', marginBottom: 14,
+                }}>
+                  <div style={{ fontSize: 12.5, color: '#5A4A2A', lineHeight: 1.5, fontFamily: TFont.body, fontStyle: 'italic' }}>
+                    "{pinnedNote.length > 240 ? pinnedNote.slice(0, 240) + '…' : pinnedNote}"
+                  </div>
+                  <div style={{ fontSize: 10, color: '#8A7A4A', marginTop: 6, fontWeight: 700 }}>
+                    {t('trainerClientDetail.coachPinned', 'Coach notes · Pinned')}
+                  </div>
+                </TCard>
+              )}
+            </>
+          )}
+
+          {/* Quick action row — keep access to follow-up/report */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'notesFollowUp', showFollowupModal: true } })}
+              style={{
+                padding: '10px 14px', borderRadius: 12,
+                border: `1px solid ${TT.borderSolid}`, background: TT.surface,
+                fontSize: 12, fontWeight: 700, color: TT.text, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <Phone size={13} />
+              {t('trainerNotes.actions.logFollowUp', 'Log follow-up')}
+            </button>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
+              style={{
+                padding: '10px 14px', borderRadius: 12,
+                border: `1px solid ${TT.borderSolid}`, background: TT.surface,
+                fontSize: 12, fontWeight: 700, color: TT.text, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <BarChart3 size={13} />
+              {t('trainerNotes.actions.monthlyReport', 'Monthly report')}
+            </button>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'programNutrition' } })}
+              style={{
+                padding: '10px 14px', borderRadius: 12,
+                border: `1px solid ${TT.borderSolid}`, background: TT.surface,
+                fontSize: 12, fontWeight: 700, color: TT.text, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <BookOpen size={13} />
+              {t('trainerNotes.actions.assignProgram', 'Assign program')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== TAB: BODY (read-only client mirror of BodyMetrics) =====================
+          Option A: read-only. RLS on body_measurements / progress_photos / body_weight_logs ties writes to
+          profile_id = auth.uid(), which would block trainers. Adding new RLS policies + RPCs (Option B) is
+          additional backend scope; this read-only mirror satisfies the v1 requirement and is safe to ship.
+          Trainer still sees the full picture (weight trend, body comp, measurements grid, photo timeline). */}
+      {activeTab === 'body' && (
+        <div style={{ padding: '0 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
+          {/* View-only banner */}
+          <div style={{
+            background: TT.warnSoft, color: TT.warnInk,
+            borderRadius: 12, padding: '8px 12px', marginBottom: 14,
+            fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <Eye size={14} />
+            {t('trainerClientDetail.body.viewOnly', 'View only — client owns these records.')}
+          </div>
+
+          {/* Body composition summary */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.body.composition', 'Body composition')}
+          </div>
+          <TCard padded={14} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {[
+                {
+                  l: t('trainerClientDetail.body.weight', 'Weight'),
+                  v: bodyWeightStats.current != null ? `${bodyWeightStats.current.toFixed(1)}` : '—',
+                  u: t('common:lb', 'lb'),
+                },
+                {
+                  l: t('trainerClientDetail.body.age', 'Age'),
+                  v: onboarding?.age || '—',
+                  u: '',
+                },
+                {
+                  l: t('trainerClientDetail.body.height', 'Height'),
+                  v: onboarding?.height_inches
+                    ? `${Math.floor(onboarding.height_inches / 12)}'${onboarding.height_inches % 12}"`
+                    : (onboarding?.height_cm ? `${onboarding.height_cm}` : '—'),
+                  u: onboarding?.height_inches ? '' : (onboarding?.height_cm ? t('common:cm', 'cm') : ''),
+                },
+                {
+                  l: t('trainerClientDetail.body.bodyFat', 'Body fat'),
+                  v: measurements?.body_fat_pct != null ? `${parseFloat(measurements.body_fat_pct).toFixed(1)}` : '—',
+                  u: measurements?.body_fat_pct != null ? '%' : '',
+                },
+              ].map((s, i) => (
+                <div key={i} style={{ padding: 10, borderRadius: 12, background: TT.surface2, textAlign: 'center' }}>
+                  <div style={{
+                    fontFamily: TFont.display, fontSize: 18, fontWeight: 800,
+                    color: TT.text, letterSpacing: -0.5,
+                  }}>
+                    {s.v}{s.u && <span style={{ fontSize: 11, fontWeight: 700, color: TT.textSub, marginLeft: 2 }}>{s.u}</span>}
+                  </div>
+                  <div style={{
+                    fontSize: 9.5, color: TT.textMute, fontWeight: 700,
+                    letterSpacing: 0.4, textTransform: 'uppercase', marginTop: 4,
+                  }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+          </TCard>
+
+          {/* Weight trend with period selector */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+            <div style={{
+              fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+              letterSpacing: -0.2,
+            }}>
+              {t('trainerClientDetail.body.weightTrend', 'Weight trend')}
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[
+                { l: '30d', v: 30 },
+                { l: '90d', v: 90 },
+                { l: '180d', v: 180 },
+                { l: '1y', v: 365 },
+              ].map(p => (
+                <button
+                  key={p.v}
+                  type="button"
+                  onClick={() => dispatch({ type: 'SET', payload: { bodyPeriod: p.v } })}
+                  aria-pressed={bodyPeriod === p.v}
+                  style={{
+                    padding: '4px 9px', borderRadius: 8,
+                    background: bodyPeriod === p.v ? TT.text : 'transparent',
+                    color: bodyPeriod === p.v ? '#fff' : TT.textSub,
+                    fontSize: 10.5, fontWeight: 700,
+                    border: bodyPeriod === p.v ? 'none' : `1px solid ${TT.borderSolid}`,
+                    cursor: 'pointer', minHeight: 28,
+                  }}
+                >{p.l}</button>
+              ))}
+            </div>
+          </div>
+          <TCard padded={14} style={{ marginBottom: 14 }}>
+            {bodyWeightStats.current != null && (
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+                <span style={{ fontFamily: TFont.display, fontSize: 28, fontWeight: 800, color: TT.text, letterSpacing: -1 }}>
+                  {bodyWeightStats.current.toFixed(1)}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: TT.textSub }}>{t('common:lb', 'lb')}</span>
+                {bodyWeightStats.delta != null && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 700,
+                    color: bodyWeightStats.delta > 0 ? TT.hot : bodyWeightStats.delta < 0 ? TT.good : TT.textMute,
+                    marginLeft: 6,
+                  }}>
+                    {bodyWeightStats.delta > 0 ? '+' : ''}{bodyWeightStats.delta.toFixed(1)} {t('common:lb', 'lb')}
+                  </span>
+                )}
+              </div>
+            )}
+            {bodyWeightChart.length > 1 ? (
+              <div style={{ height: 180, marginLeft: -10 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={bodyWeightChart} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="bodyWeightGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={TT.accent} stopOpacity={0.3} />
+                        <stop offset="100%" stopColor={TT.accent} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={TT.border} />
+                    <XAxis dataKey="date" tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                    <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} width={32} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => `${v} lb`} nameLabel={t('trainerClientDetail.body.weight', 'Weight')} />} />
+                    <Area type="monotone" dataKey="weight" stroke={TT.accent} strokeWidth={2} fill="url(#bodyWeightGrad)" name={t('trainerClientDetail.body.weight', 'Weight')} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: TT.textMute }}>
+                {t('trainerClientDetail.body.notEnoughLogs', 'Not enough weight logs to show a trend yet.')}
+              </p>
+            )}
+          </TCard>
+
+          {/* Measurements grid */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.body.measurements', 'Measurements')}
+          </div>
+          {measurements ? (
+            <TCard padded={14} style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: TT.textMute, fontWeight: 600, marginBottom: 8 }}>
+                {t('trainerClientDetail.body.lastUpdated', 'Last updated')}{' '}
+                {format(new Date(measurements.measured_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                {[
+                  { k: 'chest_cm', l: t('trainerClientDetail.body.chest', 'Chest') },
+                  { k: 'waist_cm', l: t('trainerClientDetail.body.waist', 'Waist') },
+                  { k: 'hips_cm', l: t('trainerClientDetail.body.hips', 'Hips') },
+                  { k: 'left_arm_cm', l: t('trainerClientDetail.body.leftArm', 'Left arm') },
+                  { k: 'right_arm_cm', l: t('trainerClientDetail.body.rightArm', 'Right arm') },
+                  { k: 'left_thigh_cm', l: t('trainerClientDetail.body.leftThigh', 'Left thigh') },
+                  { k: 'right_thigh_cm', l: t('trainerClientDetail.body.rightThigh', 'Right thigh') },
+                ]
+                  .filter(m => measurements[m.k] != null)
+                  .map(m => (
+                    <div key={m.k} style={{
+                      padding: 10, borderRadius: 12, background: TT.surface2,
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                    }}>
+                      <span style={{ fontSize: 11.5, color: TT.textSub, fontWeight: 600 }}>{m.l}</span>
+                      <span style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text }}>
+                        {parseFloat(measurements[m.k]).toFixed(1)}
+                        <span style={{ fontSize: 10, fontWeight: 600, color: TT.textMute, marginLeft: 2 }}>{t('common:cm', 'cm')}</span>
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </TCard>
+          ) : (
+            <TCard padded={14} style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 13, color: TT.textMute }}>
+                {t('trainerClientDetail.body.noMeasurements', 'No measurements recorded yet.')}
+              </p>
+            </TCard>
+          )}
+
+          {/* Progress photos timeline (month-grouped, read-only) */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.body.photos', 'Progress photos')}
+          </div>
+          {photosByMonth.length === 0 ? (
+            <TCard padded={14}>
+              <p style={{ fontSize: 13, color: TT.textMute }}>
+                {t('trainerClientDetail.body.noPhotos', 'No progress photos yet.')}
+              </p>
+            </TCard>
+          ) : (
+            photosByMonth.map(grp => (
+              <div key={grp.key} style={{ marginBottom: 14 }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 700, color: TT.textSub,
+                  letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6,
+                }}>{grp.label}</div>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6,
+                }}>
+                  {grp.photos.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => dispatch({ type: 'SET', payload: { viewingPhoto: p } })}
+                      aria-label={t('trainerClientDetail.body.viewPhoto', 'View progress photo')}
+                      style={{
+                        aspectRatio: '3/4', borderRadius: 12, overflow: 'hidden',
+                        background: TT.surface2, border: `1px solid ${TT.border}`,
+                        position: 'relative', cursor: 'pointer', padding: 0,
+                      }}
+                    >
+                      <img
+                        src={p.signedUrl}
+                        alt={p.view_angle || t('trainerClientDetail.photos.alt', 'Progress photo')}
+                        loading="lazy"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      <span style={{
+                        position: 'absolute', bottom: 4, left: 4,
+                        fontSize: 9, fontWeight: 700, color: '#fff',
+                        background: 'rgba(0,0,0,0.55)', padding: '1px 6px',
+                        borderRadius: 6, textTransform: 'capitalize',
+                      }}>
+                        {p.view_angle || format(new Date(p.taken_at), 'MMM d', { locale: dateFnsLocale })}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ===================== TAB: HISTORY (full client history) ===================== */}
+      {activeTab === 'history' && (
+        <div style={{ padding: '0 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
+          {/* Streak summary */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.history.streaks', 'Streaks')}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+            <TCard padded={12}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                {t('trainerClientDetail.history.currentStreak', 'Current streak')}
+              </div>
+              <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.hot, letterSpacing: -0.5, marginTop: 2 }}>
+                {streakStats.current}<span style={{ fontSize: 13, color: TT.textSub, fontWeight: 700, marginLeft: 4 }}>d</span>
+              </div>
+            </TCard>
+            <TCard padded={12}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                {t('trainerClientDetail.history.longestStreak', 'Longest streak')}
+              </div>
+              <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.accent, letterSpacing: -0.5, marginTop: 2 }}>
+                {streakStats.longest}<span style={{ fontSize: 13, color: TT.textSub, fontWeight: 700, marginLeft: 4 }}>d</span>
+              </div>
+            </TCard>
+          </div>
+
+          {/* PR timeline */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.history.prTimeline', 'PR timeline')}
+          </div>
+          <TCard padded={14} style={{ marginBottom: 14 }}>
+            {prTimelineData.series.length > 1 ? (
+              <div style={{ height: 200, marginLeft: -10 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={prTimelineData.series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={TT.border} />
+                    <XAxis dataKey="month" tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} width={36} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => `${v} lb`} />} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    {prTimelineData.lifts.map((lift, i) => {
+                      const palette = [TT.accent, TT.hot, TT.coach, TT.warn, TT.good];
+                      return (
+                        <Line
+                          key={lift}
+                          type="monotone"
+                          dataKey={lift}
+                          stroke={palette[i % palette.length]}
+                          strokeWidth={2}
+                          dot={{ r: 3 }}
+                          connectNulls
+                        />
+                      );
+                    })}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: TT.textMute }}>
+                {t('trainerClientDetail.history.notEnoughPrs', 'Not enough PR data yet.')}
+              </p>
+            )}
+          </TCard>
+
+          {/* Volume trend */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.history.volumeTrend', 'Volume trend')}
+          </div>
+          <TCard padded={14} style={{ marginBottom: 14 }}>
+            {volumeTrendData.some(d => d.volume > 0) ? (
+              <div style={{ height: 180, marginLeft: -10 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={volumeTrendData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="histVolGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={TT.accent} stopOpacity={0.3} />
+                        <stop offset="100%" stopColor={TT.accent} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={TT.border} />
+                    <XAxis dataKey="week" tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                    <YAxis tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} width={48} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => `${Number(v).toLocaleString()} lb`} nameLabel={t('trainerClientDetail.history.volume', 'Volume')} />} />
+                    <Area type="monotone" dataKey="volume" stroke={TT.accent} strokeWidth={2} fill="url(#histVolGrad)" name={t('trainerClientDetail.history.volume', 'Volume')} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: TT.textMute }}>
+                {t('trainerClientDetail.history.noVolume', 'No volume recorded in the last 12 weeks.')}
+              </p>
+            )}
+          </TCard>
+
+          {/* Attendance heatmap (90-day) */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.history.attendance', 'Attendance')}
+          </div>
+          <TCard padded={14} style={{ marginBottom: 14 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(15, 1fr)',
+              gap: 3,
+              maxWidth: 360,
+            }}>
+              {attendanceHeatmap.map((d, i) => {
+                const intensity = d.value === 0 ? 0 : Math.min(d.value, 3);
+                const colors = [TT.surface2, TT.accentSoft, '#7FE3C4', TT.accent];
+                return (
+                  <div
+                    key={i}
+                    title={`${d.label}: ${t('trainerClientDetail.heatmap.event', '{{count}} events', { count: d.value })}`}
+                    aria-label={`${d.label}: ${t('trainerClientDetail.heatmap.event', '{{count}} events', { count: d.value })}`}
+                    style={{
+                      aspectRatio: '1/1',
+                      borderRadius: 3,
+                      background: colors[intensity],
+                      border: `1px solid ${TT.border}`,
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 10, color: TT.textMute, fontWeight: 600 }}>
+              <span>{t('trainerClientDetail.history.less', 'Less')}</span>
+              {[TT.surface2, TT.accentSoft, '#7FE3C4', TT.accent].map((c, i) => (
+                <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: c, border: `1px solid ${TT.border}` }} />
+              ))}
+              <span>{t('trainerClientDetail.history.more', 'More')}</span>
+            </div>
+          </TCard>
+
+          {/* Workouts log */}
+          <div style={{
+            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
+            letterSpacing: -0.2, marginBottom: 8,
+          }}>
+            {t('trainerClientDetail.history.workouts', 'Workouts')}
+          </div>
+          {!historyLoaded ? (
+            <TCard padded={14}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+                <Loader2 size={18} className="animate-spin" />
+              </div>
+            </TCard>
+          ) : allSessions.length === 0 ? (
+            <TCard padded={14}>
+              <p style={{ fontSize: 13, color: TT.textMute }}>
+                {t('trainerClientDetail.history.noWorkouts', 'No completed workouts yet.')}
+              </p>
+            </TCard>
+          ) : (
+            <TCard padded={0}>
+              {allSessions.slice(0, 30).map((s, i) => {
+                const isOpen = expandedSessionId === s.id;
+                return (
+                  <div key={s.id} style={{ borderTop: i > 0 ? `1px solid ${TT.border}` : 'none' }}>
+                    <button
+                      type="button"
+                      onClick={() => dispatch({ type: 'SET', payload: { expandedSessionId: isOpen ? null : s.id } })}
+                      aria-expanded={isOpen}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '12px 14px', background: 'transparent', border: 'none',
+                        cursor: 'pointer', textAlign: 'left', minHeight: 44,
+                      }}
+                    >
+                      <div style={{ width: 36, textAlign: 'center', flexShrink: 0 }}>
+                        <div style={{
+                          fontSize: 10, fontWeight: 700, color: TT.textMute,
+                          letterSpacing: 0.4, textTransform: 'uppercase',
+                        }}>
+                          {format(new Date(s.started_at), 'MMM', { locale: dateFnsLocale })}
+                        </div>
+                        <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, lineHeight: 1 }}>
+                          {format(new Date(s.started_at), 'd', { locale: dateFnsLocale })}
+                        </div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {s.name || t('trainerNotes.overview.workout', 'Workout')}
+                        </div>
+                        <div style={{ fontSize: 11, color: TT.textSub, marginTop: 1 }}>
+                          {format(new Date(s.started_at), 'EEE · h:mm a', { locale: dateFnsLocale })}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: 11.5, fontFamily: TFont.mono, fontWeight: 700, color: TT.text }}>
+                          {s.total_volume_lbs >= 1000
+                            ? `${(s.total_volume_lbs / 1000).toFixed(1)}${t('trainerClientDetail.body.kLbs', 'k lbs')}`
+                            : `${s.total_volume_lbs || 0} ${t('common:lb', 'lb')}`}
+                        </div>
+                        <div style={{ fontSize: 10, color: TT.textMute, marginTop: 1 }}>
+                          {formatDuration(s.duration_seconds)}
+                        </div>
+                      </div>
+                      <ChevronDown
+                        size={14}
+                        style={{
+                          color: TT.textMute, flexShrink: 0,
+                          transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 150ms',
+                        }}
+                      />
+                    </button>
+                    {isOpen && (
+                      <div style={{
+                        padding: '0 14px 12px',
+                        fontSize: 12, color: TT.textSub,
+                        background: TT.surface2,
+                        borderBottom: i === Math.min(allSessions.length, 30) - 1 ? 'none' : 'none',
+                      }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, paddingTop: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 9.5, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                              {t('trainerClientDetail.history.duration', 'Duration')}
+                            </div>
+                            <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, marginTop: 2 }}>
+                              {formatDuration(s.duration_seconds)}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 9.5, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                              {t('trainerClientDetail.history.volume', 'Volume')}
+                            </div>
+                            <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, marginTop: 2 }}>
+                              {s.total_volume_lbs >= 1000
+                                ? `${(s.total_volume_lbs / 1000).toFixed(1)}${t('trainerClientDetail.body.kLbs', 'k lbs')}`
+                                : `${s.total_volume_lbs || 0} ${t('common:lb', 'lb')}`}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 9.5, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                              {t('trainerClientDetail.history.date', 'Date')}
+                            </div>
+                            <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, marginTop: 2 }}>
+                              {format(new Date(s.started_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </TCard>
+          )}
+        </div>
+      )}
+
+      {/* ── Existing legacy tab content for non-overview tabs ── */}
+      <div style={{ padding: '0 16px 14px' }} className="md:max-w-[860px] md:mx-auto">
+        <div style={{
+          display: (activeTab === 'overview' || activeTab === 'body' || activeTab === 'history') ? 'none' : 'block',
+        }}>
 
       {/* ===================== TAB 1: OVERVIEW (merged Overview + Progress) ===================== */}
       {activeTab === 'overview' && (
@@ -949,7 +2001,7 @@ export default function TrainerClientNotes() {
                       <span className="text-[12px] text-[var(--color-text-secondary)]">
                         {s.total_volume_lbs >= 1000
                           ? `${(s.total_volume_lbs / 1000).toFixed(1)}k`
-                          : s.total_volume_lbs || 0} lbs
+                          : s.total_volume_lbs || 0} {t('common:lbs', 'lbs')}
                       </span>
                     </div>
                   </div>
@@ -978,9 +2030,9 @@ export default function TrainerClientNotes() {
                       <p className="text-[11px] text-[var(--color-text-muted)]">{format(new Date(pr.achieved_at), 'MMM d, yyyy', { locale: dateFnsLocale })}</p>
                     </div>
                     <div className="text-right shrink-0 ml-3">
-                      <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">{pr.weight_lbs} lbs x {pr.reps}</p>
+                      <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">{pr.weight_lbs} {t('common:lbs', 'lbs')} x {pr.reps}</p>
                       {pr.estimated_1rm && (
-                        <p className="text-[11px] text-[var(--color-accent)]">1RM: {Math.round(pr.estimated_1rm)} lbs</p>
+                        <p className="text-[11px] text-[var(--color-accent)]">1RM: {Math.round(pr.estimated_1rm)} {t('common:lbs', 'lbs')}</p>
                       )}
                     </div>
                   </div>
@@ -1051,7 +2103,7 @@ export default function TrainerClientNotes() {
                   <p className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1">{t('trainerNotes.progress.latestWeight')}</p>
                   <div className="flex items-baseline gap-2">
                     <span className="text-[20px] sm:text-[24px] font-bold text-[var(--color-text-primary)]">{weights[0].weight_lbs}</span>
-                    <span className="text-[14px] text-[var(--color-text-muted)]">lbs</span>
+                    <span className="text-[14px] text-[var(--color-text-muted)]">{t('common:lbs', 'lbs')}</span>
                     {weights.length >= 2 && (
                       <span className={`text-[13px] font-medium ml-2 ${
                         weights[0].weight_lbs - weights[1].weight_lbs > 0
@@ -1061,7 +2113,7 @@ export default function TrainerClientNotes() {
                             : 'text-[var(--color-text-muted)]'
                       }`}>
                         {weights[0].weight_lbs - weights[1].weight_lbs > 0 ? '+' : ''}
-                        {(weights[0].weight_lbs - weights[1].weight_lbs).toFixed(1)} lbs
+                        {(weights[0].weight_lbs - weights[1].weight_lbs).toFixed(1)} {t('common:lbs', 'lbs')}
                       </span>
                     )}
                   </div>
@@ -1154,7 +2206,7 @@ export default function TrainerClientNotes() {
                         >
                           <span className="text-[13px] text-[var(--color-text-secondary)]">{m.label}</span>
                           <span className="text-[14px] font-medium text-[var(--color-text-primary)]">
-                            {m.value} cm
+                            {m.value} {t('common:cm', 'cm')}
                           </span>
                         </div>
                       ))}
@@ -1637,10 +2689,10 @@ export default function TrainerClientNotes() {
                           <div key={day.date} className="flex items-center gap-2 md:gap-3 py-2 px-2 md:px-3 rounded-xl bg-[var(--color-bg-secondary)]/60 overflow-hidden">
                             <span className="text-[11px] text-[var(--color-text-muted)] w-8 shrink-0">{format(new Date(day.date + 'T00:00:00'), 'EEE', { locale: dateFnsLocale })}</span>
                             <div className="flex-1 flex items-center gap-1.5 md:gap-3 text-[10px] md:text-[11px] min-w-0 flex-wrap">
-                              <span className="text-[var(--color-text-primary)] font-medium whitespace-nowrap">{Math.round(day.calories)} cal</span>
-                              <span className="text-blue-400 whitespace-nowrap">P {Math.round(day.protein)}g</span>
-                              <span className="text-amber-400 whitespace-nowrap">C {Math.round(day.carbs)}g</span>
-                              <span className="text-rose-400 whitespace-nowrap">F {Math.round(day.fat)}g</span>
+                              <span className="text-[var(--color-text-primary)] font-medium whitespace-nowrap">{Math.round(day.calories)} {t('common:cal', 'cal')}</span>
+                              <span className="text-blue-400 whitespace-nowrap">{t('trainerClientDetail.macros.gramsProtein', 'P')} {Math.round(day.protein)}g</span>
+                              <span className="text-amber-400 whitespace-nowrap">{t('trainerClientDetail.macros.gramsCarbs', 'C')} {Math.round(day.carbs)}g</span>
+                              <span className="text-rose-400 whitespace-nowrap">{t('trainerClientDetail.macros.gramsFat', 'F')} {Math.round(day.fat)}g</span>
                             </div>
                             {calPct !== null && (
                               <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${
@@ -1699,6 +2751,8 @@ export default function TrainerClientNotes() {
           )}
         </div>
       )}
+        </div>
+      </div>
 
       {/* Monthly Report Modal */}
       <MonthlyProgressReport
@@ -1709,8 +2763,8 @@ export default function TrainerClientNotes() {
 
       {/* Log Follow-Up Modal */}
       {showFollowupModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:px-4">
-          <div className="bg-[var(--color-bg-card)] rounded-t-2xl sm:rounded-2xl border border-[var(--color-border-default)] w-full max-h-[90vh] overflow-y-auto sm:max-w-md p-5 sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-default)] w-full max-h-[90vh] overflow-y-auto sm:max-w-md p-5 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[16px] sm:text-[17px] font-semibold text-[var(--color-text-primary)]">
                 {t('trainerNotes.followUp.logFollowUp')}
@@ -1793,6 +2847,64 @@ export default function TrainerClientNotes() {
           </div>
         </div>
       )}
+
+      {/* Body tab — full-image photo viewer (read-only) */}
+      {viewingPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('trainerClientDetail.body.viewPhoto', 'View progress photo')}
+          onClick={() => dispatch({ type: 'SET', payload: { viewingPhoto: null } })}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 60,
+            background: 'rgba(0,0,0,0.92)',
+            display: 'flex', flexDirection: 'column',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '16px 20px', color: '#fff',
+          }} onClick={e => e.stopPropagation()}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'capitalize' }}>
+                {viewingPhoto.view_angle || t('trainerClientDetail.photos.headerFallback', 'Photo')}
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>
+                {format(new Date(viewingPhoto.taken_at), 'MMMM d, yyyy', { locale: dateFnsLocale })}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'SET', payload: { viewingPhoto: null } })}
+              aria-label={t('trainerNotes.followUp.cancel', 'Close')}
+              style={{
+                width: 44, height: 44, borderRadius: 12,
+                background: 'rgba(255,255,255,0.12)', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', cursor: 'pointer',
+              }}
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <img
+              src={viewingPhoto.signedUrl}
+              alt={viewingPhoto.view_angle || t('trainerClientDetail.photos.alt', 'Progress photo')}
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 16 }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Pulsing-pill keyframes (live indicator) */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255,90,46,0.45); }
+          50%      { opacity: 0.85; box-shadow: 0 0 0 6px rgba(255,90,46,0); }
+        }
+      `}</style>
     </div>
   );
 }

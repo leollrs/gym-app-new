@@ -6,6 +6,7 @@ import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
+import PhoneInput from '../../../components/admin/PhoneInput';
 import logger from '../../../lib/logger';
 import { logAdminAction } from '../../../lib/adminAudit';
 import posthog from 'posthog-js';
@@ -73,7 +74,7 @@ export default function InviteModal({ gymId, onClose }) {
       }, 500); // slight delay to let the result render first
     } catch (err) {
       logger.error('InviteModal: generate failed:', err);
-      setError(err.message || 'Something went wrong');
+      setError(err.message || t('common:somethingWentWrong', 'Something went wrong'));
     } finally {
       setLoading(false);
     }
@@ -150,19 +151,19 @@ export default function InviteModal({ gymId, onClose }) {
     : null;
 
   return (
-    <AdminModal isOpen onClose={onClose} title={t('admin.inviteModal.inviteTitle', 'Invitar Miembro')} titleIcon={Mail} size="sm">
+    <AdminModal isOpen onClose={onClose} title={t('admin.inviteModal.inviteTitle', 'Invite Member')} titleIcon={Mail} size="sm">
       {!result ? (
         <div className="space-y-4">
           {/* Name */}
           <div>
             <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.inviteModal.memberName', 'Nombre')} <span style={{ color: 'var(--color-danger)' }}>*</span>
+              {t('admin.inviteModal.memberName', 'Name')} <span style={{ color: 'var(--color-danger)' }}>*</span>
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={t('admin.inviteModal.memberNamePlaceholder', 'Nombre completo')}
+              placeholder={t('admin.inviteModal.memberNamePlaceholder', 'Full name')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
               style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
             />
@@ -171,13 +172,13 @@ export default function InviteModal({ gymId, onClose }) {
           {/* Email */}
           <div>
             <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.inviteModal.email', 'Correo electrónico')}
+              {t('admin.inviteModal.email', 'Email')}
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={t('admin.inviteModal.emailPlaceholder', 'correo@ejemplo.com')}
+              placeholder={t('admin.inviteModal.emailPlaceholder', 'email@example.com')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
               style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
             />
@@ -186,42 +187,40 @@ export default function InviteModal({ gymId, onClose }) {
           {/* Phone */}
           <div>
             <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.inviteModal.phone', 'Teléfono')}
+              {t('admin.inviteModal.phone', 'Phone')}
             </label>
-            <input
-              type="tel"
+            <PhoneInput
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+34 612 345 678"
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+              onChange={setPhone}
+              placeholder={t('admin.inviteModal.phonePlaceholderShort', '555 123 4567')}
+              ariaLabel={t('admin.inviteModal.phone', 'Phone')}
             />
             <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
-              {t('admin.inviteModal.phoneHintText', 'Formato internacional para SMS')}
+              {t('admin.inviteModal.phoneHintText', 'International format for SMS')}
             </p>
           </div>
 
           {/* How to send? */}
           <div>
             <label className="block text-[12px] font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.inviteModal.howToSend', '¿Cómo enviar la invitación?')}
+              {t('admin.inviteModal.howToSend', 'How to send the invitation?')}
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setSendMethod('email')}
                 className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
                 style={sendMethod === 'email'
-                  ? { background: 'color-mix(in srgb, #3B82F6 12%, transparent)', color: '#3B82F6', border: '1px solid color-mix(in srgb, #3B82F6 30%, transparent)' }
+                  ? { background: 'color-mix(in srgb, #3B82F6 12%, transparent)', color: 'var(--color-info)', border: '1px solid color-mix(in srgb, #3B82F6 30%, transparent)' }
                   : { background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
                 }>
-                <Mail size={14} /> Email
+                <Mail size={14} /> {t('admin.inviteModal.channelEmail', 'Email')}
               </button>
               <button type="button" onClick={() => setSendMethod('phone')}
                 className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
                 style={sendMethod === 'phone'
-                  ? { background: 'color-mix(in srgb, #10B981 12%, transparent)', color: '#10B981', border: '1px solid color-mix(in srgb, #10B981 30%, transparent)' }
+                  ? { background: 'color-mix(in srgb, #10B981 12%, transparent)', color: 'var(--color-success)', border: '1px solid color-mix(in srgb, #10B981 30%, transparent)' }
                   : { background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
                 }>
-                <Smartphone size={14} /> SMS
+                <Smartphone size={14} /> {t('admin.inviteModal.channelSms', 'SMS')}
               </button>
             </div>
           </div>
@@ -235,9 +234,9 @@ export default function InviteModal({ gymId, onClose }) {
             style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
           >
             {loading ? (
-              <><Loader2 size={14} className="animate-spin" /> {t('admin.inviteModal.generating', 'Generando...')}</>
+              <><Loader2 size={14} className="animate-spin" /> {t('admin.inviteModal.generating', 'Generating...')}</>
             ) : (
-              <><Mail size={14} /> {t('admin.inviteModal.sendInvitation', 'Enviar Invitación')}</>
+              <><Mail size={14} /> {t('admin.inviteModal.sendInvitation', 'Send Invitation')}</>
             )}
           </button>
         </div>
@@ -277,30 +276,30 @@ export default function InviteModal({ gymId, onClose }) {
               border: '1px solid var(--color-border-subtle)',
             }}
           >
-            <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-subtle)' }}>{t('admin.inviteModal.inviteLink', 'Link de invitación')}</p>
+            <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-subtle)' }}>{t('admin.inviteModal.inviteLink', 'Invite link')}</p>
             <p className="text-[12px] font-mono break-all select-all" style={{ color: 'var(--color-accent)' }}>{inviteUrl}</p>
           </div>
 
           {/* Send actions */}
           <div className="space-y-2">
             <p className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.inviteModal.sendVia', 'Enviar invitación vía')}
+              {t('admin.inviteModal.sendVia', 'Send invitation via')}
             </p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={handleEmail}
                 className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
-                style={{ background: 'color-mix(in srgb, #3B82F6 12%, transparent)', color: '#3B82F6', border: '1px solid color-mix(in srgb, #3B82F6 25%, transparent)' }}>
-                <Mail size={13} /> Email
+                style={{ background: 'color-mix(in srgb, #3B82F6 12%, transparent)', color: 'var(--color-info)', border: '1px solid color-mix(in srgb, #3B82F6 25%, transparent)' }}>
+                <Mail size={13} /> {t('admin.inviteModal.channelEmail', 'Email')}
               </button>
               <button onClick={handleSMS}
                 className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
                 style={{ background: 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
-                <Smartphone size={13} /> SMS
+                <Smartphone size={13} /> {t('admin.inviteModal.channelSms', 'SMS')}
               </button>
               <button onClick={handleShare}
                 className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
                 style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-                <Share2 size={13} /> {t('admin.inviteModal.share', 'Compartir')}
+                <Share2 size={13} /> {t('admin.inviteModal.share', 'Share')}
               </button>
             </div>
           </div>
@@ -314,7 +313,7 @@ export default function InviteModal({ gymId, onClose }) {
                 : { background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }
               }>
               {copiedCode ? <Check size={13} /> : <Copy size={13} />}
-              {copiedCode ? t('admin.inviteModal.copied', 'Copiado') : t('admin.inviteModal.copyCode', 'Copiar Código')}
+              {copiedCode ? t('admin.inviteModal.copied', 'Copied') : t('admin.inviteModal.copyCode', 'Copy Code')}
             </button>
             <button onClick={handleCopyLink}
               className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
@@ -323,14 +322,14 @@ export default function InviteModal({ gymId, onClose }) {
                 : { background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }
               }>
               {copiedLink ? <Check size={13} /> : <Link size={13} />}
-              {copiedLink ? t('admin.inviteModal.copied', 'Copiado') : t('admin.inviteModal.copyLink', 'Copiar Link')}
+              {copiedLink ? t('admin.inviteModal.copied', 'Copied') : t('admin.inviteModal.copyLink', 'Copy Link')}
             </button>
           </div>
 
           {/* Expiry */}
           {expiryDate && (
             <p className="text-center text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>
-              {t('admin.inviteModal.expires', 'Expira')} {expiryDate}
+              {t('admin.inviteModal.expires', 'Expires')} {expiryDate}
             </p>
           )}
 
@@ -339,12 +338,12 @@ export default function InviteModal({ gymId, onClose }) {
             <button onClick={handleAnother}
               className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
               style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
-              {t('admin.inviteModal.addAnother', 'Invitar Otro')}
+              {t('admin.inviteModal.addAnother', 'Invite Another')}
             </button>
             <button onClick={onClose}
               className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-              {t('admin.inviteModal.done', 'Listo')}
+              {t('admin.inviteModal.done', 'Done')}
             </button>
           </div>
         </div>

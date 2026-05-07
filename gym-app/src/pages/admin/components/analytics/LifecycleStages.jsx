@@ -60,13 +60,16 @@ async function fetchLifecycleData(gymId) {
   // Build win-back set
   const wonBackSet = new Set((winBacks || []).map(w => w.profile_id));
 
-  // Need all-time sessions for "total < 3" check
+  // Need recent sessions for "total < 3" check (90-day window — long enough
+  // for new-onboarding bucket without unbounded scans on huge gyms).
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const { data: allSessions, error: allSessError } = await supabase
     .from('workout_sessions')
     .select('profile_id')
     .eq('gym_id', gymId)
     .eq('status', 'completed')
-    .limit(5000);
+    .gte('started_at', ninetyDaysAgo)
+    .limit(20000);
   if (allSessError) logger.error('LifecycleStages: failed to load all sessions:', allSessError);
 
   const totalSessionMap = {};
@@ -102,12 +105,12 @@ async function fetchLifecycleData(gymId) {
 
   const total = (members || []).length;
   return [
-    { key: 'new',        labelKey: 'lifecycleNew',        color: '#7B9EFF', count: counts.new },
-    { key: 'onboarding', labelKey: 'lifecycleOnboarding', color: '#9B8AFB', count: counts.onboarding },
-    { key: 'active',     labelKey: 'lifecycleActive',     color: '#34D399', count: counts.active },
-    { key: 'atRisk',     labelKey: 'lifecycleAtRisk',     color: '#FBBF24', count: counts.atRisk },
-    { key: 'churned',    labelKey: 'lifecycleChurned',    color: '#F87171', count: counts.churned },
-    { key: 'wonBack',    labelKey: 'lifecycleWonBack',    color: '#C9A84C', count: counts.wonBack },
+    { key: 'new',        labelKey: 'lifecycleNew',        color: 'var(--color-info)', count: counts.new },
+    { key: 'onboarding', labelKey: 'lifecycleOnboarding', color: 'var(--color-coach)', count: counts.onboarding },
+    { key: 'active',     labelKey: 'lifecycleActive',     color: 'var(--color-success)', count: counts.active },
+    { key: 'atRisk',     labelKey: 'lifecycleAtRisk',     color: 'var(--color-warning)', count: counts.atRisk },
+    { key: 'churned',    labelKey: 'lifecycleChurned',    color: 'var(--color-danger)', count: counts.churned },
+    { key: 'wonBack',    labelKey: 'lifecycleWonBack',    color: 'var(--color-accent-soft)', count: counts.wonBack },
   ].map(s => ({
     ...s,
     pct: total > 0 ? Math.round((s.count / total) * 100) : 0,

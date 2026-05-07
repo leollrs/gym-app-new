@@ -44,6 +44,69 @@ const addMutedUser = (userId) => {
 // ── Report reasons ──────────────────────────────────────────────────────────
 const REPORT_REASONS = ['spam', 'inappropriate', 'harassment', 'other'];
 
+// ── Block User Confirm Modal (center-aligned) ──────────────────────────────
+const BlockUserModal = ({ open, name, onClose, onConfirm, t }) => {
+  const [submitting, setSubmitting] = useState(false);
+  if (!open) return null;
+  const firstName = name?.split(' ')[0] ?? '';
+  const handleConfirm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    await onConfirm();
+    setSubmitting(false);
+  };
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('social.confirmBlock.title')}
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
+      <div
+        className="relative w-full max-w-[420px] rounded-[28px] border border-white/10 overflow-hidden"
+        style={{ background: 'var(--color-bg-card)', boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+          <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
+            <Ban size={20} className="text-red-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+              {t('social.confirmBlock.title', { name: firstName })}
+            </h3>
+            <p className="text-[13px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {t('social.confirmBlock.subtitle')}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-3 px-5 pb-5 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold bg-white/[0.06] hover:bg-white/[0.08] transition-colors disabled:opacity-50"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {t('social.report.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={submitting}
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-50"
+          >
+            {submitting ? t('social.report.submitting') : t('social.confirmBlock.confirm')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // ── Report Modal ────────────────────────────────────────────────────────────
 const ReportModal = ({ open, onClose, onSubmit, t }) => {
   const [selected, setSelected] = useState(null);
@@ -65,10 +128,10 @@ const ReportModal = ({ open, onClose, onSubmit, t }) => {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label={t('social.report.title')} onClick={handleClose}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center" role="dialog" aria-modal="true" aria-label={t('social.report.title')} onClick={handleClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
       <div
-        className="relative w-full max-w-[420px] mx-4 mb-4 sm:mb-0 rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
+        className="relative w-full max-w-[420px] mx-4 rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
         style={{ background: 'var(--color-bg-card)' }}
         onClick={e => e.stopPropagation()}
       >
@@ -330,6 +393,7 @@ const FeedContent = ({ type, data, t }) => {
             alt={data.body ? `${t('social.postImage')}: ${data.body.slice(0, 80)}` : t('social.postImage')}
             className="w-full rounded-xl object-cover max-h-[400px]"
             loading="lazy"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
         )}
         {data.workout_name && (
@@ -406,21 +470,25 @@ const FriendButton = ({ status, onAdd, onAccept, t }) => {
 };
 
 // ── Comment Item ──────────────────────────────────────────────────────────────
-const CommentRow = ({ comment }) => (
+const CommentRow = ({ comment }) => {
+  const { t } = useTranslation('pages');
+  return (
   <div className="flex gap-3 py-2">
     <Avatar src={comment.profiles?.avatar_url} name={comment.profiles?.full_name ?? '?'} size={32} avatarType={comment.profiles?.avatar_type} avatarValue={comment.profiles?.avatar_value} />
     <div className="flex-1 rounded-2xl px-4 py-2.5 border border-white/[0.06]" style={{ background: 'var(--color-bg-card)' }}>
       <span className="font-semibold text-[13px]" style={{ color: 'var(--color-text-primary)' }}>
-        {comment.profiles?.full_name ?? 'Member'}{' '}
+        {comment.profiles?.full_name ?? t('social.memberFallback', { defaultValue: 'Member' })}{' '}
       </span>
       <span className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}><RichText text={sanitize(comment.content)} /></span>
     </div>
   </div>
-);
+  );
+};
 
 // ── Feed Card ─────────────────────────────────────────────────────────────────
 const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onReport, onHide, onMute, onBlock, onDelete, onProfilePreview, reportedIds, t }) => {
   const posthogCard = usePostHog();
+  const { showToast } = useToast();
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments]         = useState(null);
   const [commentText, setCommentText]   = useState('');
@@ -429,6 +497,9 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
   const [showMenu, setShowMenu]         = useState(false);
   const [mentionQuery, setMentionQuery] = useState(null);
   const [mentionResults, setMentionResults] = useState([]);
+  // Set of user ids the viewer has blocked OR who have blocked the viewer.
+  // Used to exclude blocked users from the @mention autocomplete dropdown.
+  const [hiddenIds, setHiddenIds] = useState(() => new Set());
   const inputRef = useRef(null);
   const lastCommentTime = useRef(0);
   const menuRef = useRef(null);
@@ -442,6 +513,24 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showMenu]);
 
+  // Load blocked-user ids (both directions) so mention autocomplete can filter them.
+  useEffect(() => {
+    if (!currentUserId) return;
+    let cancelled = false;
+    (async () => {
+      const [outgoing, incoming] = await Promise.all([
+        supabase.from('blocked_users').select('blocked_id').eq('blocker_id', currentUserId),
+        supabase.from('blocked_users').select('blocker_id').eq('blocked_id', currentUserId),
+      ]);
+      if (cancelled) return;
+      const ids = new Set();
+      (outgoing.data || []).forEach((r) => r.blocked_id && ids.add(r.blocked_id));
+      (incoming.data || []).forEach((r) => r.blocker_id && ids.add(r.blocker_id));
+      setHiddenIds(ids);
+    })();
+    return () => { cancelled = true; };
+  }, [currentUserId]);
+
   // Mention autocomplete — search friends when user types @
   useEffect(() => {
     if (mentionQuery === null || mentionQuery.length < 1) { setMentionResults([]); return; }
@@ -454,10 +543,13 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
         .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
         .ilike('username', pattern)
         .limit(5);
-      setMentionResults(data ?? []);
+      // Belt-and-suspenders client filter: blocked users (either direction)
+      // must never surface in the @mention dropdown.
+      const filtered = (data ?? []).filter((u) => !hiddenIds.has(u.id));
+      setMentionResults(filtered);
     }, 200);
     return () => clearTimeout(timer);
-  }, [mentionQuery]);
+  }, [mentionQuery, hiddenIds]);
 
   const handleCommentChange = (e) => {
     const val = e.target.value;
@@ -532,6 +624,9 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
       .insert({ feed_item_id: item.id, profile_id: currentUserId, content })
       .select('id, content, created_at, profiles(full_name, avatar_url)')
       .single();
+    if (error && (error.code === '23514' || error.message?.includes('community guidelines'))) {
+      showToast(t('moderation.contentBlocked', { defaultValue: 'Comment blocked: content violates community guidelines.' }), 'error');
+    }
     if (!error && newComment) {
       posthogCard?.capture('social_comment_added');
       setComments(prev => [...(prev ?? []), newComment]);
@@ -794,6 +889,28 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
   const [searching, setSearching] = useState(false);
   const [addingId, setAddingId] = useState(null);
   const [acceptingId, setAcceptingId] = useState(null);
+  // Set of user ids the viewer has blocked OR who have blocked the viewer.
+  // Loaded once on mount and used to exclude search results so blocked
+  // members can't appear in friend-search at all (write paths were already
+  // blocked, but visibility wasn't).
+  const [hiddenIds, setHiddenIds] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      const [outgoing, incoming] = await Promise.all([
+        supabase.from('blocked_users').select('blocked_id').eq('blocker_id', userId),
+        supabase.from('blocked_users').select('blocker_id').eq('blocked_id', userId),
+      ]);
+      if (cancelled) return;
+      const ids = new Set();
+      (outgoing.data || []).forEach((r) => r.blocked_id && ids.add(r.blocked_id));
+      (incoming.data || []).forEach((r) => r.blocker_id && ids.add(r.blocker_id));
+      setHiddenIds(ids);
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
 
   const accepted = friendships.filter((f) => f.status === 'accepted');
   const incoming = friendships.filter((f) => f.addressee_id === userId && f.status === 'pending');
@@ -832,7 +949,9 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
       });
   }, [incoming]);
 
-  // Search gym members — debounced 300ms to reduce egress
+  // Search gym members — debounced 300ms to reduce egress.
+  // Filters out users in either direction of a block relationship so they
+  // never surface in the friend-search list.
   useEffect(() => {
     if (!gymId || !searchQuery.trim()) {
       setSearchResults([]);
@@ -853,12 +972,15 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
         .then(({ data, error }) => {
           setSearching(false);
           if (error) return;
-          setSearchResults(data ?? []);
+          // Belt-and-suspenders client filter: even if RLS later allows the row
+          // through, we don't want blocked users in the picker.
+          const filtered = (data ?? []).filter((p) => !hiddenIds.has(p.id));
+          setSearchResults(filtered);
         })
         .catch(() => setSearching(false));
     }, 300);
     return () => clearTimeout(timer);
-  }, [gymId, userId, searchQuery]);
+  }, [gymId, userId, searchQuery, hiddenIds]);
 
   const handleAccept = async (friendshipId) => {
     setAcceptingId(friendshipId);
@@ -1082,6 +1204,7 @@ const SocialFeed = ({ embedded = false }) => {
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [previewUserId, setPreviewUserId] = useState(null);
   const [reportTarget, setReportTarget] = useState(null);
+  const [blockTarget, setBlockTarget] = useState(null); // { id, name }
   const feedTabIndex = FEED_TABS.indexOf(tab);
   const handleFeedSwipe = (i) => setTab(FEED_TABS[i]);
 
@@ -1113,6 +1236,18 @@ const SocialFeed = ({ embedded = false }) => {
       .eq('blocker_id', user.id)
       .then(({ data }) => {
         if (data?.length) setBlockedUsers(new Set(data.map(b => b.blocked_id)));
+      });
+  }, [user?.id]);
+
+  // Load hidden posts from DB
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('hidden_posts')
+      .select('feed_item_id')
+      .eq('profile_id', user.id)
+      .then(({ data }) => {
+        if (data?.length) setHiddenIds(new Set(data.map(h => h.feed_item_id)));
       });
   }, [user?.id]);
 
@@ -1159,10 +1294,19 @@ const SocialFeed = ({ embedded = false }) => {
     const enrichmentMap = {};
     (enrichment ?? []).forEach(e => { enrichmentMap[e.feed_item_id] = e; });
 
-    // Sign photo URLs for items that have storage paths (not full URLs)
-    const photoPaths = items
-      .filter(i => i.photo_url && !i.photo_url.startsWith('http'))
-      .map(i => i.photo_url);
+    // Sign photo URLs for items that have storage paths (not full URLs).
+    // Older posts store the photo as a storage path inside `item.data.photo_url`
+    // (rendered by FeedContent), while the top-level `item.photo_url` column was
+    // added later. Collect both so all images render correctly across versions.
+    const collectPath = (url) => url && !url.startsWith('http') ? url : null;
+    const pathSet = new Set();
+    items.forEach(i => {
+      const top = collectPath(i.photo_url);
+      if (top) pathSet.add(top);
+      const nested = collectPath(i?.data?.photo_url);
+      if (nested) pathSet.add(nested);
+    });
+    const photoPaths = Array.from(pathSet);
     const signedUrlMap = {};
     if (photoPaths.length > 0) {
       const { data: signedUrls } = await supabase.storage.from('social-posts').createSignedUrls(photoPaths, 3600);
@@ -1173,12 +1317,22 @@ const SocialFeed = ({ embedded = false }) => {
 
     const enriched = items.map(item => {
       const e = enrichmentMap[item.id] ?? {};
+      // Replace storage paths with signed URLs; leave full URLs (legacy) as-is.
+      // Both the top-level column and the JSONB-nested copy must be re-signed
+      // so feed cards and post-content cards display the same image.
+      const topSigned = item.photo_url
+        ? (signedUrlMap[item.photo_url] || item.photo_url)
+        : null;
+      const nestedRaw = item?.data?.photo_url;
+      const nestedSigned = nestedRaw
+        ? (signedUrlMap[nestedRaw] || nestedRaw)
+        : nestedRaw;
       return {
         ...item,
-        // Replace storage paths with signed URLs; leave full URLs (legacy) as-is
-        photo_url: item.photo_url
-          ? (signedUrlMap[item.photo_url] || item.photo_url)
-          : null,
+        photo_url: topSigned,
+        data: item.data
+          ? { ...item.data, ...(nestedRaw ? { photo_url: nestedSigned } : {}) }
+          : item.data,
         reactionCounts:  e.reaction_counts ?? {},
         currentReaction: e.my_reaction ?? null,
         commentCount:    e.comment_count ?? 0,
@@ -1317,26 +1471,40 @@ const SocialFeed = ({ embedded = false }) => {
     setReportTarget(null);
   };
 
-  const handleHide = useCallback((itemId) => {
+  const handleHide = useCallback(async (itemId) => {
     setHiddenIds(prev => new Set([...prev, itemId]));
-  }, []);
+    if (!user?.id) return;
+    await supabase.from('hidden_posts').upsert(
+      { profile_id: user.id, feed_item_id: itemId },
+      { onConflict: 'profile_id,feed_item_id' }
+    );
+    showToast(t('social.postHidden'), 'success');
+  }, [user?.id, showToast, t]);
 
   const handleMute = useCallback((userId) => {
     const updated = addMutedUser(userId);
     setMutedUsers(new Set(updated));
   }, []);
 
-  const handleBlock = useCallback(async (userId, name) => {
+  // Open the confirmation modal — actual block runs in confirmBlock
+  const handleBlock = useCallback((userId, name) => {
+    setBlockTarget({ id: userId, name: name ?? '' });
+  }, []);
+
+  const confirmBlock = useCallback(async () => {
+    if (!blockTarget || !user?.id) return;
+    const { id: targetId, name } = blockTarget;
     await supabase.from('blocked_users').upsert(
-      { blocker_id: user.id, blocked_id: userId },
+      { blocker_id: user.id, blocked_id: targetId },
       { onConflict: 'blocker_id,blocked_id' }
     );
-    setBlockedUsers(prev => new Set([...prev, userId]));
+    setBlockedUsers(prev => new Set([...prev, targetId]));
     // Also remove from friends if they were friends
     await supabase.from('friendships').delete()
-      .or(`and(requester_id.eq.${user.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${user.id})`);
+      .or(`and(requester_id.eq.${user.id},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${user.id})`);
     showToast(t('social.userBlocked', { name: name?.split(' ')[0] ?? '' }), 'success');
-  }, [user?.id, showToast, t]);
+    setBlockTarget(null);
+  }, [blockTarget, user?.id, showToast, t]);
 
   const handleDelete = useCallback(async (itemId) => {
     const { error } = await supabase
@@ -1398,12 +1566,19 @@ const SocialFeed = ({ embedded = false }) => {
       })
       .select('id, actor_id, gym_id, type, data, body, photo_url, created_at, post_type, profiles(full_name, username, avatar_url, avatar_type, avatar_value)')
       .single();
+    if (error && (error.code === '23514' || error.message?.includes('community guidelines'))) {
+      showToast(t('moderation.contentBlocked', { defaultValue: 'Post blocked: content violates community guidelines.' }), 'error');
+    }
     if (!error && newItem) {
       posthog?.capture('social_post_created', { has_photo: !!photoFile });
       setFeed(prev => [{
         ...newItem,
-        // Use signed URL in state for immediate display
+        // Use signed URL in state for immediate display (both top-level and
+        // the data.photo_url copy that FeedContent reads from).
         photo_url: signedPhotoUrl || newItem.photo_url,
+        data: newItem.data
+          ? { ...newItem.data, ...(newItem.data.photo_url ? { photo_url: signedPhotoUrl || newItem.data.photo_url } : {}) }
+          : newItem.data,
         reactionCounts: {},
         currentReaction: null,
         commentCount: 0,
@@ -1688,6 +1863,15 @@ const SocialFeed = ({ embedded = false }) => {
           onSubmit={handleReportSubmit}
           t={t}
         />}
+
+        {/* Block User Confirm Modal */}
+        <BlockUserModal
+          open={!!blockTarget}
+          name={blockTarget?.name}
+          onClose={() => setBlockTarget(null)}
+          onConfirm={confirmBlock}
+          t={t}
+        />
       </div>
     </div>
   );

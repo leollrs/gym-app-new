@@ -1,9 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Dumbbell, Mail, Lock, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Mail, Lock, AlertCircle, ChevronLeft, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { PROD_RESET_URL } from '../lib/appUrls';
+
+const LOCKOUT_KEY = 'tugympr_login_lockout';
+
+// ─── Warm-paper design tokens (branded auth, pre-gym-theme) ───────────
+const OB = {
+  bg: '#f0eee9',
+  surface: '#ffffff',
+  surface2: '#e8e5de',
+  ink: '#0B0F12',
+  sub: '#6B6A63',
+  mute: '#9A988E',
+  line: 'rgba(11,15,18,0.08)',
+  lineStrong: 'rgba(11,15,18,0.14)',
+  teal: '#2EC4C4',
+  tealDeep: '#0FA5A5',
+  tealSoft: '#D7F1F1',
+};
+const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
+const FONT_BODY = '"Familjen Grotesk", -apple-system, system-ui, sans-serif';
+const CARD_SHADOW = '0 1px 2px rgba(11,15,18,0.04), 0 6px 18px rgba(11,15,18,0.05)';
+
+// Inline logo (gold-teal PR monogram mark on dark ink background)
+const OBLogo = ({ size = 48 }) => (
+  <img
+    src="/icon-512.png"
+    alt="TuGymPR"
+    width={size}
+    height={size}
+    style={{
+      width: size,
+      height: size,
+      borderRadius: size * 0.26,
+      objectFit: 'cover',
+      display: 'block',
+    }}
+  />
+);
 
 const Login = () => {
   const { signIn } = useAuth();
@@ -16,21 +54,51 @@ const Login = () => {
   const [loading,  setLoading]  = useState(false);
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Forgot password state
-  const [forgotMode,    setForgotMode]    = useState(false);
-  const [resetEmail,    setResetEmail]    = useState('');
-  const [resetError,    setResetError]    = useState('');
-  const [resetSuccess,  setResetSuccess]  = useState(false);
-  const [resetLoading,  setResetLoading]  = useState(false);
+  const [forgotMode,   setForgotMode]   = useState(false);
+  const [resetEmail,   setResetEmail]   = useState('');
+  const [resetError,   setResetError]   = useState('');
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  // ── Persist lockout / failCount in localStorage so it survives refresh ──
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOCKOUT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.failCount === 'number') {
+          setLoginAttempts(parsed.failCount);
+        }
+        if (typeof parsed.lockedUntil === 'number' && parsed.lockedUntil > Date.now()) {
+          setLockoutUntil(parsed.lockedUntil);
+        } else if (parsed.lockedUntil) {
+          // expired lock — clear it
+          localStorage.removeItem(LOCKOUT_KEY);
+        }
+      }
+    } catch { /* ignore corrupt storage */ }
+  }, []);
+
+  const persistLockout = (failCount, lockedUntil) => {
+    try {
+      if (!failCount && !lockedUntil) {
+        localStorage.removeItem(LOCKOUT_KEY);
+      } else {
+        localStorage.setItem(LOCKOUT_KEY, JSON.stringify({ failCount, lockedUntil }));
+      }
+    } catch { /* ignore */ }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Rate limiting
     if (lockoutUntil && Date.now() < lockoutUntil) {
       const secondsLeft = Math.ceil((lockoutUntil - Date.now()) / 1000);
-      setError(`Too many attempts. Try again in ${secondsLeft}s`);
+      setError(t('lockoutRetry', { defaultValue: 'Too many attempts. Try again in {{seconds}}s', seconds: secondsLeft }));
       return;
     }
 
@@ -39,14 +107,20 @@ const Login = () => {
     try {
       await signIn({ email, password });
       setLoginAttempts(0);
+      setLockoutUntil(null);
+      persistLockout(0, null);
       navigate('/');
-    } catch (err) {
+    } catch {
       setError(t('invalidCredentials'));
       const attempts = loginAttempts + 1;
-      setLoginAttempts(attempts);
       if (attempts >= 5) {
-        setLockoutUntil(Date.now() + 30000); // 30 second lockout after 5 fails
+        const until = Date.now() + 30000;
+        setLockoutUntil(until);
         setLoginAttempts(0);
+        persistLockout(0, until);
+      } else {
+        setLoginAttempts(attempts);
+        persistLockout(attempts, lockoutUntil);
       }
     } finally {
       setLoading(false);
@@ -59,8 +133,22 @@ const Login = () => {
     setResetSuccess(false);
     setResetLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail);
-      if (error) throw error;
+      // Always send users to the production HTTPS reset page. The email link
+      // travels across devices (phone vs laptop, mail app vs browser) — pinning
+      // it to a public URL avoids the "tap email, hits localhost" trap.
+      //
+      // NOTE: PROD_RESET_URL must also be added to Supabase Dashboard → Auth →
+      // URL Configuration → Redirect URLs, otherwise Supabase silently
+      // substitutes the Site URL.
+      const redirectTo = import.meta.env.PROD
+        ? PROD_RESET_URL
+        : `${window.location.origin}/auth/reset-password`;
+
+      const { error: err } = await supabase.auth.resetPasswordForEmail(
+        resetEmail,
+        { redirectTo }
+      );
+      if (err) throw err;
       setResetSuccess(true);
     } catch (err) {
       setResetError(err.message || t('resetFailed'));
@@ -71,7 +159,7 @@ const Login = () => {
 
   const enterForgotMode = () => {
     setForgotMode(true);
-    setResetEmail(email); // pre-fill with login email if entered
+    setResetEmail(email);
     setResetError('');
     setResetSuccess(false);
   };
@@ -82,167 +170,304 @@ const Login = () => {
     setResetSuccess(false);
   };
 
-  return (
-    <main className="min-h-screen flex items-center justify-center px-5" style={{ backgroundColor: "var(--color-bg-primary)" }}>
-      <div className="w-full max-w-[400px]">
+  // ── Shared field styles ─────────────────────────────────────
+  const inputWrap = {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    height: 52,
+    background: OB.surface,
+    border: `1.5px solid ${OB.line}`,
+    borderRadius: 14,
+    paddingLeft: 44,
+    paddingRight: 12,
+    transition: 'border-color 0.2s ease',
+  };
 
-        {/* Logo */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-5">
-            <Dumbbell size={26} className="text-[#D4AF37]" strokeWidth={2} aria-hidden="true" />
-          </div>
-          <h1 className="text-[26px] font-bold" style={{ color: "var(--color-text-primary)" }}>
-            {forgotMode ? t('resetPassword') : t('welcomeBack')}
-          </h1>
-          <p className="text-[13px] mt-1" style={{ color: "var(--color-text-subtle)" }}>
-            {forgotMode ? t('resetSubtitle') : t('signInSubtitle')}
-          </p>
-        </div>
+  const inputStyle = {
+    flex: 1,
+    height: '100%',
+    background: 'transparent',
+    border: 'none',
+    outline: 'none',
+    fontFamily: FONT_BODY,
+    fontSize: 15,
+    color: OB.ink,
+    letterSpacing: 0,
+  };
+
+  const labelStyle = {
+    display: 'block',
+    fontFamily: FONT_BODY,
+    fontSize: 11,
+    fontWeight: 700,
+    color: OB.sub,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  };
+
+  const primaryBtn = (disabled) => ({
+    width: '100%',
+    height: 54,
+    borderRadius: 999,
+    background: OB.teal,
+    color: '#0A2A2A',
+    fontFamily: FONT_DISPLAY,
+    fontWeight: 800,
+    fontSize: 16,
+    border: 'none',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.55 : 1,
+    transition: 'background 0.2s ease, transform 0.1s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  });
+
+  return (
+    <main
+      className="min-h-screen flex items-center justify-center px-5 py-10"
+      style={{ backgroundColor: OB.bg, fontFamily: FONT_BODY, color: OB.ink }}
+    >
+      <div className="w-full max-w-[420px] animate-fade-in">
+        {/* Default entry — no back button, no logo, go straight into welcome back */}
+        <div style={{ height: 8 }} />
+
+        {/* Heading */}
+        <h1
+          style={{
+            fontFamily: FONT_DISPLAY,
+            fontWeight: 900,
+            fontSize: 34,
+            letterSpacing: -1.4,
+            color: OB.ink,
+            lineHeight: 1.02,
+            margin: 0,
+          }}
+        >
+          {forgotMode ? t('resetPassword') : t('welcomeBack')}
+        </h1>
+        <p style={{ fontSize: 15, color: OB.sub, marginTop: 6 }}>
+          {forgotMode ? t('resetSubtitle') : t('signInSubtitle')}
+        </p>
 
         {/* Card */}
-        <div className="border border-white/6 rounded-2xl p-7" style={{ backgroundColor: "var(--color-bg-card)" }}>
-
+        <div style={{ marginTop: 28 }}>
           {forgotMode ? (
             <>
-              {/* Reset success */}
               {resetSuccess && (
-                <div role="status" className="flex items-center gap-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3 mb-6">
-                  <CheckCircle size={15} className="text-emerald-400 flex-shrink-0" aria-hidden="true" />
-                  <p className="text-[13px] text-emerald-400">{t('resetSuccess')}</p>
+                <div
+                  role="status"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    background: '#E7F5E7',
+                    border: `1px solid #5EAA5E33`,
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    marginBottom: 18,
+                  }}
+                >
+                  <CheckCircle size={15} color="#3E7A3E" />
+                  <p style={{ fontSize: 13, color: '#2d5a2d', margin: 0 }}>
+                    {t('resetSuccess')}
+                  </p>
                 </div>
               )}
 
-              {/* Reset error */}
               {resetError && (
-                <div role="alert" className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-                  <AlertCircle size={15} className="text-red-400 flex-shrink-0" aria-hidden="true" />
-                  <p className="text-[13px] text-red-400">{resetError}</p>
+                <div
+                  role="alert"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    background: '#FDECE7',
+                    border: `1px solid #FF5A2E33`,
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    marginBottom: 18,
+                  }}
+                >
+                  <AlertCircle size={15} color="#C13B14" />
+                  <p style={{ fontSize: 13, color: '#C13B14', margin: 0 }}>{resetError}</p>
                 </div>
               )}
 
-              <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
-                {/* Email */}
+              <form onSubmit={handleResetPassword} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 <div>
-                  <label htmlFor="reset-email" className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
-                    {t('email')}
-                  </label>
-                  <div className="relative">
-                    <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" aria-hidden="true" />
+                  <label htmlFor="reset-email" style={labelStyle}>{t('email')}</label>
+                  <div style={inputWrap}>
+                    <Mail size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
                     <input
                       id="reset-email"
                       type="email"
                       value={resetEmail}
                       onChange={e => setResetEmail(e.target.value)}
                       required
-                      placeholder="you@example.com"
-                      className="w-full bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors" style={{ color: "var(--color-text-primary)" }}
+                      placeholder={t('emailPlaceholder', { defaultValue: 'you@example.com' })}
+                      style={inputStyle}
                     />
                   </div>
                 </div>
 
-                {/* Submit */}
-                <button
-                  type="submit"
-                  disabled={resetLoading}
-                  className="mt-2 w-full bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold text-[15px] py-3.5 rounded-xl transition-colors"
-                >
+                <button type="submit" disabled={resetLoading} style={primaryBtn(resetLoading)}>
                   {resetLoading ? t('sendingReset') : t('sendResetLink')}
                 </button>
               </form>
 
-              {/* Back to login */}
               <button
                 type="button"
                 onClick={exitForgotMode}
-                className="mt-4 w-full flex items-center justify-center gap-1.5 text-[13px] text-[#D4AF37] hover:text-[#E6C766] font-semibold transition-colors"
+                style={{
+                  marginTop: 16,
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  background: 'transparent',
+                  border: 'none',
+                  color: OB.tealDeep,
+                  fontFamily: FONT_DISPLAY,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
               >
-                <ArrowLeft size={14} aria-hidden="true" />
+                <ChevronLeft size={14} />
                 {t('backToLogin')}
               </button>
             </>
           ) : (
             <>
-              {/* Error */}
               {error && (
-                <div role="alert" className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-                  <AlertCircle size={15} className="text-red-400 flex-shrink-0" aria-hidden="true" />
-                  <p className="text-[13px] text-red-400">{error}</p>
+                <div
+                  role="alert"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    background: '#FDECE7',
+                    border: `1px solid #FF5A2E33`,
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    marginBottom: 18,
+                  }}
+                >
+                  <AlertCircle size={15} color="#C13B14" />
+                  <p style={{ fontSize: 13, color: '#C13B14', margin: 0 }}>{error}</p>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 {/* Email */}
                 <div>
-                  <label htmlFor="login-email" className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
-                    {t('email')}
-                  </label>
-                  <div className="relative">
-                    <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" aria-hidden="true" />
+                  <label htmlFor="login-email" style={labelStyle}>{t('email')}</label>
+                  <div style={inputWrap}>
+                    <Mail size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
                     <input
                       id="login-email"
                       type="email"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       required
-                      placeholder="you@example.com"
-                      className="w-full bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors" style={{ color: "var(--color-text-primary)" }}
+                      placeholder={t('emailPlaceholder', { defaultValue: 'you@example.com' })}
+                      autoComplete="email"
+                      style={inputStyle}
                     />
                   </div>
                 </div>
 
                 {/* Password */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label htmlFor="login-password" className="block text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <label htmlFor="login-password" style={{ ...labelStyle, marginBottom: 0 }}>
                       {t('password')}
                     </label>
                     <button
                       type="button"
                       onClick={enterForgotMode}
-                      className="text-[11px] text-[#D4AF37] hover:text-[#E6C766] font-semibold transition-colors"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: OB.tealDeep,
+                        fontFamily: FONT_DISPLAY,
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        padding: 0,
+                        marginBottom: 8,
+                      }}
                     >
                       {t('forgotPassword')}
                     </button>
                   </div>
-                  <div className="relative">
-                    <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" aria-hidden="true" />
+                  <div style={{ ...inputWrap, paddingRight: 44 }}>
+                    <Lock size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
                     <input
                       id="login-password"
-                      type="password"
+                      type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       required
                       placeholder="••••••••"
-                      className="w-full bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors" style={{ color: "var(--color-text-primary)" }}
+                      autoComplete="current-password"
+                      style={inputStyle}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(p => !p)}
+                      aria-label={showPassword ? t('hidePassword', { defaultValue: 'Hide password' }) : t('showPassword', { defaultValue: 'Show password' })}
+                      style={{
+                        position: 'absolute',
+                        right: 12,
+                        background: 'transparent',
+                        border: 'none',
+                        color: OB.mute,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
                 </div>
 
-                {/* Submit */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="mt-2 w-full bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold text-[15px] py-3.5 rounded-xl transition-colors"
-                >
+                <button type="submit" disabled={loading} style={primaryBtn(loading)}>
                   {loading ? t('signingIn') : t('signIn')}
                 </button>
               </form>
+
             </>
           )}
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[13px] mt-6" style={{ color: "var(--color-text-subtle)" }}>
+        <p style={{ textAlign: 'center', fontSize: 13, color: OB.sub, marginTop: 28 }}>
           {t('dontHaveAccount')}{' '}
-          <Link to="/signup" className="text-[#D4AF37] hover:text-[#E6C766] font-semibold transition-colors">
+          <Link
+            to="/signup"
+            style={{
+              color: OB.ink,
+              fontWeight: 700,
+              textDecoration: 'underline',
+              textDecorationColor: OB.teal,
+              textDecorationThickness: 2,
+              textUnderlineOffset: 3,
+            }}
+          >
             {t('signUp')}
           </Link>
         </p>
-        <p className="text-center text-[11px] mt-3" style={{ color: "var(--color-text-subtle)" }}>
-          <a href="/privacy" className="hover:underline" style={{ color: "var(--color-text-muted)" }}>{t('common:privacyPolicy')}</a>
+        <p style={{ textAlign: 'center', fontSize: 11, color: OB.mute, marginTop: 10 }}>
+          <a href="/privacy" style={{ color: OB.mute, textDecoration: 'none' }}>{t('common:privacyPolicy')}</a>
           {' · '}
-          <a href="/terms" className="hover:underline" style={{ color: "var(--color-text-muted)" }}>{t('common:termsOfService')}</a>
+          <a href="/terms" style={{ color: OB.mute, textDecoration: 'none' }}>{t('common:termsOfService')}</a>
         </p>
       </div>
     </main>

@@ -3,7 +3,21 @@ import QRCode from 'https://esm.sh/qrcode@1.5.4';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const QR_SIGNING_SECRET = Deno.env.get('QR_SIGNING_SECRET');
+
+// CORS — mirrors the pattern used by analyze-body-photo / send-push.
+// ALLOWED_ORIGIN is required so this function cannot be called from
+// arbitrary origins via XHR/fetch in a third-party browser context.
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const ADMIN_ROLES = new Set(['owner', 'admin', 'super_admin']);
 
 async function hmacSign(payload: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -21,40 +35,95 @@ async function hmacSign(payload: string): Promise<string> {
 }
 
 Deno.serve(async (req) => {
+  // ── CORS preflight ─────────────────────────────────────────
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { status: 204, headers: corsHeaders });
+  }
+
   const url = new URL(req.url);
   const redemptionId = url.searchParams.get('id');
 
   if (!redemptionId) {
-    return new Response('Missing redemption ID', { status: 400 });
+    return new Response('Missing redemption ID', { status: 400, headers: corsHeaders });
   }
 
+  // ── Auth: verify JWT from Authorization header ──────────
+  const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
+  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+    return new Response(renderError('Authentication required'), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
+
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  if (userErr || !userData?.user) {
+    return new Response(renderError('Invalid or expired session'), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
+  const callerId = userData.user.id;
+
+  // Service-role client for trusted lookups
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   // Look up the redemption
   const { data: redemption, error } = await supabase
     .from('reward_redemptions')
-    .select('id, profile_id, gym_id, reward_name, points_spent, status, created_at')
+    .select('id, profile_id, gym_id, reward_id, reward_name, points_spent, status, created_at')
     .eq('id', redemptionId)
     .single();
 
   if (error || !redemption) {
     return new Response(renderError('Reward not found'), {
       status: 404,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
+
+  // ── Authorization: caller must own the redemption OR be admin in same gym ──
+  const isOwner = redemption.profile_id === callerId;
+  let isAuthorized = isOwner;
+
+  if (!isAuthorized) {
+    const { data: callerProfile } = await supabase
+      .from('profiles')
+      .select('id, role, gym_id')
+      .eq('id', callerId)
+      .single();
+
+    if (
+      callerProfile &&
+      ADMIN_ROLES.has(callerProfile.role) &&
+      callerProfile.gym_id === redemption.gym_id
+    ) {
+      isAuthorized = true;
+    }
+  }
+
+  if (!isAuthorized) {
+    return new Response(renderError('You are not authorized to view this reward'), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
     });
   }
 
   if (redemption.status === 'claimed') {
     return new Response(renderClaimed(redemption.reward_name), {
       status: 200,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
     });
   }
 
   if (redemption.status === 'cancelled') {
     return new Response(renderError('This reward was cancelled'), {
       status: 200,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
     });
   }
 
@@ -102,13 +171,14 @@ Deno.serve(async (req) => {
       return new Response(binary, {
         status: 200,
         headers: {
+          ...corsHeaders,
           'Content-Type': 'image/png',
           'Cache-Control': 'no-store',
         },
       });
     } catch (e) {
       console.error('QR PNG generation failed:', e);
-      return new Response('Failed to generate QR image', { status: 500 });
+      return new Response('Failed to generate QR image', { status: 500, headers: corsHeaders });
     }
   }
 
@@ -117,6 +187,7 @@ Deno.serve(async (req) => {
     {
       status: 200,
       headers: {
+        ...corsHeaders,
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
       },

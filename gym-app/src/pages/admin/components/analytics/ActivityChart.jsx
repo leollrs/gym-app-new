@@ -139,7 +139,7 @@ function ActivityChart({ gymId }) {
             />
             <Bar
               dataKey="engagement"
-              fill="#6889FF"
+              fill="var(--color-info)"
               radius={[6, 6, 0, 0]}
               maxBarSize={36}
               animationDuration={1000}

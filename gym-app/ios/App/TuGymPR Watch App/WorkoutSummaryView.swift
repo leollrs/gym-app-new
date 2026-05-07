@@ -16,7 +16,7 @@ struct WorkoutSummaryView: View {
                     .padding(.top, 4)
                     .accessibilityLabel("Workout complete")
 
-                Text("Workout Complete!")
+                Text(session.tr("Workout Complete!", "¡Entrenamiento completo!"))
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(.white)
 
@@ -25,21 +25,21 @@ struct WorkoutSummaryView: View {
                     StatCard(
                         icon: "clock.fill",
                         value: DS.formatTime(session.endedDuration),
-                        label: "Duration",
+                        label: session.tr("Duration", "Duración"),
                         color: .blue
                     )
 
                     StatCard(
                         icon: "scalemass.fill",
                         value: DS.formatVolume(session.endedVolume),
-                        label: "Volume",
+                        label: session.tr("Volume", "Volumen"),
                         color: .green
                     )
 
                     StatCard(
                         icon: "checkmark.circle.fill",
                         value: "\(session.endedSetsCompleted)",
-                        label: "Sets",
+                        label: session.tr("Sets", "Series"),
                         color: DS.gold
                     )
 
@@ -47,21 +47,21 @@ struct WorkoutSummaryView: View {
                         StatCard(
                             icon: "trophy.fill",
                             value: "\(session.endedPRs)",
-                            label: "PRs",
+                            label: session.tr("PRs", "PRs"),
                             color: DS.gold
                         )
                     } else {
                         StatCard(
                             icon: "heart.fill",
                             value: workoutSession.averageHeartRate > 0 ? "\(Int(workoutSession.averageHeartRate))" : "--",
-                            label: "Avg BPM",
+                            label: session.tr("Avg BPM", "FC promedio"),
                             color: .red
                         )
                     }
                 }
 
                 // Done button
-                GoldButton("Done", icon: "hand.thumbsup.fill") {
+                GoldButton(session.tr("Done", "Listo"), icon: "hand.thumbsup.fill") {
                     session.dismissSummary()
                     WKInterfaceDevice.current().play(.success)
                 }

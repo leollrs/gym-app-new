@@ -15,13 +15,14 @@ import { useQuery } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
 
 // Shared admin components
-import { FadeIn, StatCard, AdminCard, CardSkeleton, Avatar, AdminPageShell, PageHeader } from '../../components/admin';
+import { FadeIn, StatCard, AdminCard, CardSkeleton, Avatar, AdminPageShell, PageHeader, AdminModal } from '../../components/admin';
 
 // Sub-components (kept)
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
 
 // ── Helpers ──────────────────────────────────────────────
 import { getRiskTier } from '../../lib/churnScore';
+import { translateSignal } from '../../lib/churn/signalI18n';
 
 // ── Data fetching function ────────────────────────────────
 async function fetchOverviewData(gymId) {
@@ -34,24 +35,30 @@ async function fetchOverviewData(gymId) {
     membersRes, sessionsRes, churnScoresRes,
     notOnboardedRes, checkInsRes,
   ] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member'),
+    supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').limit(2000),
     supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).limit(1000),
     supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).limit(2000),
     supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).gte('created_at', fortyEightHoursAgo).limit(500),
     supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).limit(1000),
   ]);
 
-  const { data: todayCheckins } = await supabase.from('check_ins').select('id, profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', todayStart).order('checked_in_at', { ascending: false });
+  const { data: todayCheckins, error: todayCheckinsErr } = await supabase
+    .from('check_ins').select('id, profile_id, checked_in_at')
+    .eq('gym_id', gymId).gte('checked_in_at', todayStart)
+    .order('checked_in_at', { ascending: false }).limit(500);
+  if (todayCheckinsErr) logger.error('AdminOverview todayCheckins:', todayCheckinsErr);
 
   // Fetch today's classes count (gym_classes with a schedule matching today's day_of_week OR specific_date)
   const todayDow = now.getDay(); // 0=Sun
   const todayDate = format(now, 'yyyy-MM-dd');
-  const { data: classSchedules } = await supabase
+  const { data: classSchedules, error: classSchedulesErr } = await supabase
     .from('gym_class_schedules')
     .select('id, gym_class:gym_classes!inner(id, gym_id, is_active)')
     .eq('gym_class.gym_id', gymId)
     .eq('gym_class.is_active', true)
-    .or(`day_of_week.eq.${todayDow},specific_date.eq.${todayDate}`);
+    .or(`day_of_week.eq.${todayDow},specific_date.eq.${todayDate}`)
+    .limit(200);
+  if (classSchedulesErr) logger.error('AdminOverview classSchedules:', classSchedulesErr);
 
   // Log errors
   [membersRes, sessionsRes, churnScoresRes, notOnboardedRes, checkInsRes]
@@ -91,8 +98,11 @@ async function fetchOverviewData(gymId) {
     else if (daysInactive > 7) score = recentWorkouts === 0 ? 45 : 30;
     else score = Math.max(0, 20 - recentWorkouts * 5);
     score = Math.min(100, Math.max(0, score));
-    const risk_tier = score >= 80 ? 'critical' : score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low';
+    // Thresholds aligned with churn engine (lib/churn/riskScoring.js): 80 / 55 / 30
+    const risk_tier = score >= 80 ? 'critical' : score >= 55 ? 'high' : score >= 30 ? 'medium' : 'low';
     const key_signals = [];
+    // Note: signal strings are stored in raw English form here so that translateSignal()
+    // (lib/churn/signalI18n.js) can map them to admin.churnSignals.* i18n keys at render time.
     if (neverActive) key_signals.push('Never logged a workout');
     else if (daysInactive > 30) key_signals.push('No activity in 30+ days');
     else if (daysInactive > 14) key_signals.push('No activity in 14+ days');
@@ -106,13 +116,19 @@ async function fetchOverviewData(gymId) {
 
   // Merge DB scores with fallback estimates
   const nowMs = Date.now();
+  // daysInactive helper — falls back to 0 when the source date is missing/invalid,
+  // and uses Math.max so DST shifts can't ever produce a negative day count.
+  const daysSince = (iso) => {
+    if (!iso) return 0;
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return 0;
+    return Math.max(0, Math.floor((nowMs - t) / 86400000));
+  };
   const allMemberScores = members.map(m => {
     const dbRow = latestScoreMap[m.id];
     const lastSeenAt = m.last_active_at || lastSessionAt[m.id] || null;
     const neverActive = !lastSeenAt;
-    const daysInactive = lastSeenAt
-      ? Math.floor((nowMs - new Date(lastSeenAt)) / 86400000)
-      : Math.floor((nowMs - new Date(m.created_at)) / 86400000);
+    const daysInactive = lastSeenAt ? daysSince(lastSeenAt) : daysSince(m.created_at);
     const recentWorkouts = sessionsLast14[m.id] ?? 0;
 
     if (dbRow) {
@@ -162,12 +178,12 @@ async function fetchOverviewData(gymId) {
   const todayCheckinsData = todayCheckins || [];
   const recentCheckins = todayCheckinsData.slice(0, 10).map(c => ({
     type: 'checkin', profile_id: c.profile_id, timestamp: c.checked_in_at,
-    memberName: memberMap[c.profile_id]?.full_name || 'Unknown',
+    memberName: memberMap[c.profile_id]?.full_name || null,
     avatarUrl: memberMap[c.profile_id]?.avatar_url || null,
   }));
   const recentWorkouts = sessions.slice(0, 10).map(s => ({
     type: 'workout', profile_id: s.profile_id, timestamp: s.started_at,
-    memberName: memberMap[s.profile_id]?.full_name || 'Unknown',
+    memberName: memberMap[s.profile_id]?.full_name || null,
     avatarUrl: memberMap[s.profile_id]?.avatar_url || null,
     total_volume_lbs: s.total_volume_lbs,
   }));
@@ -178,7 +194,7 @@ async function fetchOverviewData(gymId) {
     .slice(0, 5)
     .map(m => ({
       type: 'signup', profile_id: m.id, timestamp: m.created_at,
-      memberName: m.full_name || 'Unknown',
+      memberName: m.full_name || null,
       avatarUrl: m.avatar_url || null,
     }));
 
@@ -202,7 +218,11 @@ async function fetchOverviewData(gymId) {
   return {
     stats: {
       totalMembers: total,
-      atRiskCount: riskTiers.critical + riskTiers.high,
+      // Make the two cards mutually exclusive — when crítico = 26 and en
+      // riesgo = 27, the previous count was 26 + 1, so it looked like the
+      // critical bucket was nested inside at-risk. Now atRiskCount is only
+      // the `high` tier; criticalCount is shown separately.
+      atRiskCount: riskTiers.high,
       criticalCount: riskTiers.critical,
       checkInsToday: todayCheckinsData.length,
       checkInsYesterday,
@@ -222,10 +242,10 @@ async function fetchOverviewData(gymId) {
 function OverviewSkeleton() {
   return (
     <AdminPageShell className="space-y-6">
-      <div className="h-8 bg-white/[0.04] rounded-lg w-64 animate-pulse" />
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="h-8 rounded-lg w-64 animate-pulse" style={{ background: 'var(--color-admin-panel)' }} />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 md:gap-4">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-[#0F172A] border border-white/[0.06] rounded-2xl p-5 h-[90px] animate-pulse" />
+          <div key={i} className="admin-card p-3 sm:p-4 md:p-5 h-[80px] md:h-[90px] animate-pulse" />
         ))}
       </div>
       <div className="grid lg:grid-cols-[1fr_340px] gap-5">
@@ -244,16 +264,16 @@ function AlertBanner({ icon: Icon, text, actionLabel, color, onClick }) {
       className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-left
         transition-all duration-200 hover:brightness-110 hover:translate-x-0.5
         active:scale-[0.995]"
-      style={{ background: `${color}08`, border: `1px solid ${color}18` }}
+      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-admin-border)' }}
     >
       <div
         className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
           transition-transform duration-200 group-hover:scale-110"
-        style={{ background: `${color}15` }}
+        style={{ background: `color-mix(in srgb, ${color} 15%, transparent)` }}
       >
         <Icon size={14} style={{ color }} />
       </div>
-      <p className="flex-1 text-[12.5px] text-[#E5E7EB] leading-snug">{text}</p>
+      <p className="flex-1 text-[12.5px] leading-snug" style={{ color: 'var(--color-admin-text)' }}>{text}</p>
       <span
         className="text-[11px] font-semibold flex items-center gap-0.5 flex-shrink-0
           transition-transform duration-200 hover:translate-x-0.5"
@@ -266,72 +286,80 @@ function AlertBanner({ icon: Icon, text, actionLabel, color, onClick }) {
 }
 
 // ── Activity Feed Item ──────────────────────────────────
-function ActivityItem({ item, dateFnsLocale }) {
+function ActivityItem({ item, dateFnsLocale, t, onClick }) {
   const actionMap = {
-    checkin: { label: 'checked in', color: '#8B5CF6', icon: CalendarCheck },
-    workout: { label: 'completed workout', color: '#3B82F6', icon: Dumbbell },
-    signup: { label: 'joined', color: '#10B981', icon: UserPlus },
+    checkin: { label: t('admin.overview.actions.checkin', 'checked in'), color: 'var(--color-coach)', icon: CalendarCheck },
+    workout: { label: t('admin.overview.actions.workout', 'completed workout'), color: 'var(--color-info)', icon: Dumbbell },
+    signup: { label: t('admin.overview.actions.joined', 'joined'), color: 'var(--color-success)', icon: UserPlus },
   };
   const meta = actionMap[item.type] || actionMap.checkin;
   const Icon = meta.icon;
+  const displayName = item.memberName || t('admin.overview.unknownMember', 'Unknown');
 
   return (
-    <div className="flex items-center gap-3 py-2.5 group hover:bg-white/[0.015]      -mx-1 px-1 rounded-lg transition-colors duration-150">
+    <button
+      type="button"
+      onClick={() => onClick?.(item)}
+      className="w-full flex items-center gap-3 py-2.5 group -mx-1 px-1 rounded-lg transition-colors duration-150 hover:bg-[color:var(--color-admin-panel)] text-left"
+    >
       <div className="relative flex-shrink-0">
-        <Avatar name={item.memberName} size="sm" src={item.avatarUrl} />
+        <Avatar name={displayName} size="sm" src={item.avatarUrl} />
         <div
-          className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center
-            border-2 border-[#0F172A]"
-          style={{ background: `${meta.color}20` }}
+          className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center border-2"
+          style={{ background: `color-mix(in srgb, ${meta.color} 20%, transparent)`, borderColor: 'var(--color-bg-card)' }}
         >
           <Icon size={8} style={{ color: meta.color }} />
         </div>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12.5px] text-[#E5E7EB] truncate">
-          <span className="font-medium">{item.memberName}</span>
-          <span className="text-[#6B7280] ml-1.5">{meta.label}</span>
+        <p className="text-[12.5px] truncate" style={{ color: 'var(--color-admin-text)' }}>
+          <span className="font-medium">{displayName}</span>
+          <span className="ml-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{meta.label}</span>
         </p>
       </div>
-      <span className="text-[10px] text-[#4B5563] flex-shrink-0 tabular-nums
-        opacity-60 group-hover:opacity-100 transition-opacity duration-150">
+      <span className="admin-mono text-[10px] flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity duration-150"
+        style={{ color: 'var(--color-admin-text-faint)' }}>
         {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true, ...(dateFnsLocale || {}) })}
       </span>
-    </div>
+    </button>
   );
 }
 
 // ── Watchlist Row ────────────────────────────────────────
-function WatchlistRow({ member, t, onMessage }) {
+function WatchlistRow({ member, t, onMessage, onClick }) {
   const tier = getRiskTier(member.score);
   return (
-    <div className="flex items-center gap-3 py-2.5 hover:bg-white/[0.015]      -mx-1 px-1 rounded-lg transition-colors duration-150">
+    <button
+      type="button"
+      onClick={() => onClick?.(member)}
+      className="w-full flex items-center gap-3 py-2.5 -mx-1 px-1 rounded-lg transition-colors duration-150 hover:bg-[color:var(--color-admin-panel)] text-left"
+    >
       <Avatar name={member.full_name} size="sm" src={member.avatar_url} />
       <div className="flex-1 min-w-0">
-        <p className="text-[12.5px] font-medium text-[#E5E7EB] truncate">{member.full_name}</p>
-        <p className="text-[10.5px] text-[#6B7280]">
+        <p className="text-[12.5px] font-medium truncate" style={{ color: 'var(--color-admin-text)' }}>{member.full_name}</p>
+        <p className="text-[10.5px]" style={{ color: 'var(--color-admin-text-muted)' }}>
           {member.neverActive
             ? t('admin.overview.neverLogged')
             : t('admin.overview.daysInactive', { count: member.daysInactive })}
         </p>
       </div>
-      <button
+      <span
         onClick={(e) => { e.stopPropagation(); onMessage?.(member); }}
-        className="flex-shrink-0 w-7 h-7 rounded-lg bg-white/[0.04] border border-white/[0.06]
-          flex items-center justify-center
-          hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/20
-          active:scale-95 transition-all duration-150"
+        role="button"
+        tabIndex={0}
+        className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center
+          active:scale-95 transition-all duration-150 cursor-pointer"
+        style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}
         title={t('admin.overview.navMessages', 'Message')}
       >
-        <MessageSquare size={12} className="text-[#6B7280] hover:text-[#D4AF37]" />
-      </button>
+        <MessageSquare size={12} style={{ color: 'var(--color-admin-text-sub)' }} />
+      </span>
       <span
-        className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0 tabular-nums"
-        style={{ color: tier.color, background: tier.bg }}
+        className="admin-pill admin-pill--hot admin-mono flex-shrink-0"
       >
         {member.score}%
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -351,10 +379,10 @@ function DeltaSub({ delta, invert = false }) {
   if (!delta) return null;
   const isPositive = invert ? !delta.positive : delta.positive;
   const color = delta.positive === null
-    ? 'var(--color-text-muted)'
-    : isPositive ? 'var(--color-success, #10B981)' : 'var(--color-danger, #EF4444)';
+    ? 'var(--color-admin-text-muted)'
+    : isPositive ? 'var(--color-success)' : 'var(--color-danger)';
   return (
-    <span className="text-[10.5px] font-medium tabular-nums" style={{ color }}>
+    <span className="admin-mono text-[10.5px] font-medium" style={{ color }}>
       {delta.text}
     </span>
   );
@@ -366,15 +394,7 @@ function QuickActionButton({ icon: Icon, label, onClick, disabled = false }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[11.5px] font-semibold
-        border transition-all duration-200
-        ${disabled
-          ? 'text-[#4B5563] bg-white/[0.02] border-white/[0.04] cursor-not-allowed opacity-50'
-          : `text-[#9CA3AF] bg-white/[0.04] border-white/[0.06]
-             hover:text-[#E5E7EB] hover:border-white/[0.15] hover:bg-white/[0.07]
-             hover:shadow-[0_2px_8px_rgba(0,0,0,0.15)] hover:-translate-y-px
-             active:translate-y-0 active:shadow-none`
-        }`}
+      className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-px active:translate-y-0"
     >
       <Icon size={12.5} />
       {label}
@@ -393,6 +413,8 @@ export default function AdminOverview() {
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const [resetApprovalId, setResetApprovalId] = useState(null);
+  const [activityDetail, setActivityDetail] = useState(null);
+  const [watchlistDetail, setWatchlistDetail] = useState(null);
 
   // Fetch pending password reset requests
   const { data: pendingResets = [], refetch: refetchResets } = useQuery({
@@ -414,7 +436,7 @@ export default function AdminOverview() {
     retry: false,
   });
 
-  useEffect(() => { document.title = `Admin - Overview | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
+  useEffect(() => { document.title = `${t('admin.overview.pageTitle', 'Admin - Overview')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: adminKeys.overview(gymId),
@@ -441,7 +463,7 @@ export default function AdminOverview() {
   if (!isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[#EF4444] text-[14px] font-semibold">{t('admin.overview.accessDenied')}</p>
+        <p className="text-[14px] font-semibold" style={{ color: 'var(--color-danger)' }}>{t('admin.overview.accessDenied')}</p>
       </div>
     );
   }
@@ -450,19 +472,17 @@ export default function AdminOverview() {
     return (
       <AdminPageShell>
         <div className="flex flex-col items-center justify-center min-h-[40vh] gap-5">
-          <div className="w-14 h-14 rounded-2xl bg-[#EF4444]/10 flex items-center justify-center">
-            <AlertTriangle size={24} className="text-[#EF4444]" />
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+            style={{ background: 'var(--color-danger-soft)' }}>
+            <AlertTriangle size={24} style={{ color: 'var(--color-danger)' }} />
           </div>
           <div className="text-center">
-            <p className="text-[15px] font-semibold text-[#EF4444]">{t('admin.overview.loadError', 'Failed to load overview data')}</p>
-            <p className="text-[12.5px] text-[#6B7280] max-w-md mt-1.5">{error?.message}</p>
+            <p className="text-[15px] font-semibold" style={{ color: 'var(--color-danger)' }}>{t('admin.overview.loadError', 'Failed to load overview data')}</p>
+            <p className="text-[12.5px] max-w-md mt-1.5" style={{ color: 'var(--color-admin-text-muted)' }}>{error?.message}</p>
           </div>
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12.5px] font-medium
-              text-[#E5E7EB] bg-white/[0.05] border border-white/10
-              hover:bg-white/[0.08] hover:border-white/[0.15]
-              active:scale-[0.98] transition-all duration-200"
+            className="admin-pill admin-pill--outline flex items-center gap-2"
           >
             <RefreshCw size={13} />
             {t('admin.overview.refresh')}
@@ -487,7 +507,7 @@ export default function AdminOverview() {
       icon: AlertTriangle,
       text: t('admin.overview.atRiskDesc', { critical: stats.criticalCount, high: data.riskTiers?.high || 0 }),
       actionLabel: t('admin.overview.actionFollowUp'),
-      color: stats.criticalCount > 0 ? '#EF4444' : '#F59E0B',
+      color: stats.criticalCount > 0 ? 'var(--color-danger)' : 'var(--color-warning)',
       onClick: () => navigate('/admin/churn'),
     });
   }
@@ -496,7 +516,7 @@ export default function AdminOverview() {
       icon: KeyRound,
       text: t('admin.overview.pendingResetsDesc', { count: pendingResets.length }),
       actionLabel: t('admin.overview.review'),
-      color: '#F59E0B',
+      color: 'var(--color-warning)',
       onClick: () => setResetApprovalId(pendingResets[0]?.id),
     });
   }
@@ -505,7 +525,7 @@ export default function AdminOverview() {
       icon: UserPlus,
       text: t('admin.overview.onboardingGapsDesc', { count: onboardingCount }),
       actionLabel: t('admin.overview.viewAction'),
-      color: '#F97316',
+      color: 'var(--color-danger)',
       onClick: () => navigate('/admin/members'),
     });
   }
@@ -514,7 +534,7 @@ export default function AdminOverview() {
       icon: Activity,
       text: t('admin.overview.unusualActivityDesc', { avg: stats.avgDailyCheckins, today: stats.checkInsToday }),
       actionLabel: t('admin.overview.viewAction'),
-      color: '#EF4444',
+      color: 'var(--color-danger)',
       onClick: () => navigate('/admin/attendance'),
     });
   }
@@ -543,7 +563,7 @@ export default function AdminOverview() {
           title={t('admin.overview.title')}
           subtitle={`${format(new Date(), 'EEEE, MMMM d, yyyy', dateFnsLocale)} · ${stats.checkInsToday} ${t('admin.overview.glanceCheckins').toLowerCase()}`}
           actions={
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap pb-1 md:pb-0">
               <QuickActionButton icon={Users} label={t('admin.overview.navMembers')} onClick={() => navigate('/admin/members')} />
               <QuickActionButton icon={AlertTriangle} label={t('admin.overview.navChurn')} onClick={() => navigate('/admin/churn')} />
               {classesEnabled && (
@@ -561,20 +581,20 @@ export default function AdminOverview() {
            Stat cards are the first visual hero element
          ════════════════════════════════════════════════════ */}
       <FadeIn delay={40}>
-        <p className="text-[11.5px] font-semibold text-[#D4AF37] uppercase tracking-[0.1em] mb-3">
+        <span className="admin-eyebrow block mb-3">
           {t('admin.overview.todayGlance', 'Today at a Glance')}
-        </p>
+        </span>
       </FadeIn>
-      <div className={`grid gap-4 mb-8 ${classesEnabled ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'}`}>
+      <div className={`grid gap-2.5 md:gap-4 mb-8 ${classesEnabled ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'}`}>
         <FadeIn delay={60}>
           <StatCard
             label={t('admin.overview.glanceCritical', 'Critical')}
             value={stats.criticalCount}
             icon={AlertTriangle}
-            borderColor="#EF4444"
+            borderColor="var(--color-danger)"
             sub={stats.criticalCount > 0
-              ? <span className="text-[10.5px] font-medium text-[#EF4444]">{t('admin.overview.needsAction', 'Needs action')}</span>
-              : <span className="text-[10.5px] font-medium text-[#10B981]">{t('admin.overview.allClear', 'All clear')}</span>}
+              ? <span className="text-[10.5px] font-medium" style={{ color: 'var(--color-danger)' }}>{t('admin.overview.needsAction', 'Needs action')}</span>
+              : <span className="text-[10.5px] font-medium" style={{ color: 'var(--color-success)' }}>{t('admin.overview.allClear', 'All clear')}</span>}
           />
         </FadeIn>
         <FadeIn delay={80}>
@@ -582,10 +602,10 @@ export default function AdminOverview() {
             label={t('admin.overview.glanceAtRisk')}
             value={stats.atRiskCount}
             icon={Activity}
-            borderColor="#F59E0B"
+            borderColor="var(--color-warning)"
             sub={stats.atRiskCount > 0
-              ? <span className="text-[10.5px] font-medium text-[#F59E0B]">{t('admin.overview.actionFollowUp', 'Follow up')}</span>
-              : <span className="text-[10.5px] font-medium text-[#10B981]">{t('admin.overview.everyoneActive', 'Everyone active')}</span>}
+              ? <span className="text-[10.5px] font-medium" style={{ color: 'var(--color-warning)' }}>{t('admin.overview.actionFollowUp', 'Follow up')}</span>
+              : <span className="text-[10.5px] font-medium" style={{ color: 'var(--color-success)' }}>{t('admin.overview.everyoneActive', 'Everyone active')}</span>}
           />
         </FadeIn>
         <FadeIn delay={100}>
@@ -593,13 +613,13 @@ export default function AdminOverview() {
             label={t('admin.overview.glanceCheckins')}
             value={stats.checkInsToday}
             icon={CalendarCheck}
-            borderColor="#8B5CF6"
+            borderColor="var(--color-coach)"
             sub={<DeltaSub delta={formatDelta(stats.checkInsToday, stats.checkInsYesterday, t('admin.overview.vsYesterday', 'vs yesterday'))} />}
           />
         </FadeIn>
         {classesEnabled && (
           <FadeIn delay={110}>
-            <StatCard label={t('admin.overview.glanceClasses')} value={stats.classesToday} icon={BookOpen} borderColor="#D4AF37" />
+            <StatCard label={t('admin.overview.glanceClasses')} value={stats.classesToday} icon={BookOpen} borderColor="var(--color-accent)" />
           </FadeIn>
         )}
         <FadeIn delay={120}>
@@ -607,7 +627,7 @@ export default function AdminOverview() {
             label={t('admin.overview.glanceNewMonth')}
             value={stats.newMembersMonth}
             icon={UserPlus}
-            borderColor="#10B981"
+            borderColor="var(--color-success)"
             sub={<DeltaSub delta={formatDelta(stats.newMembersMonth, stats.newMembersPrevMonth, t('admin.overview.vsLastMonth', 'vs last month'))} />}
           />
         </FadeIn>
@@ -616,7 +636,7 @@ export default function AdminOverview() {
             label={t('admin.overview.glanceTotal')}
             value={stats.totalMembers}
             icon={Users}
-            borderColor="#6366F1"
+            borderColor="var(--color-coach)"
           />
         </FadeIn>
       </div>
@@ -628,16 +648,23 @@ export default function AdminOverview() {
       <FadeIn delay={160}>
         <div className="mb-8">
           {needsAttentionCount > 0 ? (
-            <div className="rounded-2xl border border-[#EF4444]/15 bg-gradient-to-br from-[#EF4444]/[0.03] to-[#F59E0B]/[0.02] p-5 space-y-3">
+            <div
+              className="rounded-2xl p-3 sm:p-4 md:p-5 space-y-3"
+              style={{
+                background: 'var(--color-danger-soft)',
+                border: '1px solid color-mix(in srgb, var(--color-danger) 15%, transparent)',
+              }}
+            >
               <div className="flex items-center gap-3 mb-1">
-                <div className="w-9 h-9 rounded-xl bg-[#EF4444]/10 flex items-center justify-center">
-                  <AlertTriangle size={16} className="text-[#EF4444]" />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{ background: 'color-mix(in srgb, var(--color-danger) 15%, transparent)' }}>
+                  <AlertTriangle size={16} style={{ color: 'var(--color-danger)' }} />
                 </div>
                 <div>
-                  <p className="text-[14.5px] font-bold text-[#E5E7EB] tracking-tight">
+                  <p className="admin-page-title text-[14.5px] font-bold tracking-tight" style={{ color: 'var(--color-admin-text)' }}>
                     {t('admin.overview.needsAttention', 'Needs Attention Now')}
                   </p>
-                  <p className="text-[11.5px] text-[#6B7280]">
+                  <p className="text-[11.5px]" style={{ color: 'var(--color-admin-text-sub)' }}>
                     {t('admin.overview.needsAttentionSub', '{{count}} item(s) requiring your action', { count: needsAttentionCount })}
                   </p>
                 </div>
@@ -652,36 +679,37 @@ export default function AdminOverview() {
 
               {/* Inline at-risk watchlist preview */}
               {atRisk.length > 0 && (
-                <div className="mt-3 pt-3.5 border-t border-white/[0.06]">
+                <div className="mt-3 pt-3.5" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
                   <div className="flex items-center justify-between mb-2.5">
-                    <p className="text-[11px] font-semibold text-[#F59E0B] uppercase tracking-[0.1em]">
+                    <span className="admin-eyebrow" style={{ color: 'var(--color-warning)' }}>
                       {t('admin.overview.watchlistAtRisk')}
-                    </p>
+                    </span>
                     <button
                       onClick={() => navigate('/admin/churn')}
-                      className="flex-shrink-0 text-[11px] text-[#D4AF37] hover:text-[#E5C158]
-                        flex items-center gap-0.5 whitespace-nowrap
-                        transition-colors duration-200"
+                      className="flex-shrink-0 text-[11px] flex items-center gap-0.5 whitespace-nowrap transition-colors duration-200"
+                      style={{ color: 'var(--color-accent)' }}
                     >
                       {t('admin.overview.viewAll')} <ChevronRight size={12} />
                     </button>
                   </div>
-                  <div className="divide-y divide-white/[0.04]">
+                  <div className="divide-y" style={{ borderColor: 'var(--color-admin-border)' }}>
                     {atRisk.slice(0, 3).map(m => (
-                      <WatchlistRow key={m.id} member={m} t={t} onMessage={() => navigate('/admin/churn')} />
+                      <WatchlistRow key={m.id} member={m} t={t} onMessage={() => navigate('/admin/churn')} onClick={setWatchlistDetail} />
                     ))}
                   </div>
                 </div>
               )}
             </div>
           ) : (
-            <div className="rounded-2xl border border-[#10B981]/15 bg-[#10B981]/[0.03] p-5 flex items-center gap-3.5">
-              <div className="w-9 h-9 rounded-xl bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
-                <CheckCircle size={16} className="text-[#10B981]" />
+            <div className="rounded-2xl p-3 sm:p-4 md:p-5 flex items-center gap-3.5"
+              style={{ background: 'var(--color-success-soft)', border: '1px solid color-mix(in srgb, var(--color-success) 15%, transparent)' }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'color-mix(in srgb, var(--color-success) 15%, transparent)' }}>
+                <CheckCircle size={16} style={{ color: 'var(--color-success)' }} />
               </div>
               <div>
-                <p className="text-[13.5px] font-semibold text-[#E5E7EB]">{t('admin.overview.allClear', 'All Clear')}</p>
-                <p className="text-[11.5px] text-[#6B7280]">{t('admin.overview.noAtRisk')} {t('admin.overview.everyoneActive')}</p>
+                <p className="text-[13.5px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>{t('admin.overview.allClear', 'All Clear')}</p>
+                <p className="text-[11.5px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.overview.noAtRisk')} {t('admin.overview.everyoneActive')}</p>
               </div>
             </div>
           )}
@@ -692,34 +720,36 @@ export default function AdminOverview() {
            SECTION 4 -- RECENT ACTIVITY + FULL WATCHLIST
            Two-column operational view
          ════════════════════════════════════════════════════ */}
-      <div className="grid lg:grid-cols-[1fr_340px] gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-3 md:gap-5">
         {/* Recent Activity Feed */}
         <FadeIn delay={200}>
-          <AdminCard hover padding="p-5">
+          <AdminCard hover padding="p-3 sm:p-4 md:p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-7 h-7 rounded-lg bg-white/[0.04] flex items-center justify-center">
-                <Activity size={13} className="text-[#9CA3AF]" />
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{ background: 'var(--color-admin-panel)' }}>
+                <Activity size={13} style={{ color: 'var(--color-admin-text-sub)' }} />
               </div>
-              <p className="text-[13.5px] font-semibold text-[#E5E7EB]">
+              <p className="text-[13.5px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>
                 {t('admin.overview.recentActivity')}
               </p>
               {recentActivity.length > 0 && (
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white/[0.05] text-[#6B7280] ml-auto">
-                  {recentActivity.length}
+                <span className="admin-eyebrow ml-auto">
+                  {t('admin.overview.lastNCount', 'LAST {{count}}', { count: recentActivity.length })}
                 </span>
               )}
             </div>
             {recentActivity.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
-                <div className="w-10 h-10 rounded-xl bg-white/[0.04] flex items-center justify-center mb-3">
-                  <Clock size={18} className="text-[#4B5563]" />
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+                  style={{ background: 'var(--color-admin-panel)' }}>
+                  <Clock size={18} style={{ color: 'var(--color-admin-text-faint)' }} />
                 </div>
-                <p className="text-[12.5px] text-[#6B7280]">{t('admin.overview.noActivity')}</p>
+                <p className="text-[12.5px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.overview.noActivity')}</p>
               </div>
             ) : (
-              <div className="divide-y divide-white/[0.04]">
+              <div className="divide-y" style={{ borderColor: 'var(--color-admin-border)' }}>
                 {recentActivity.map((item, i) => (
-                  <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} />
+                  <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} t={t} onClick={setActivityDetail} />
                 ))}
               </div>
             )}
@@ -728,49 +758,200 @@ export default function AdminOverview() {
 
         {/* Full Watchlist */}
         <FadeIn delay={240}>
-          <AdminCard hover padding="p-5">
+          <AdminCard hover padding="p-3 sm:p-4 md:p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-[#F59E0B]/10 flex items-center justify-center">
-                  <AlertTriangle size={13} className="text-[#F59E0B]" />
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+                  style={{ background: 'var(--color-warning-soft)' }}>
+                  <AlertTriangle size={13} style={{ color: 'var(--color-warning)' }} />
                 </div>
-                <p className="text-[13.5px] font-semibold text-[#E5E7EB]">
+                <p className="text-[13.5px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>
                   {t('admin.overview.watchlist')}
                 </p>
               </div>
-              <button
-                onClick={() => navigate('/admin/churn')}
-                className="flex-shrink-0 text-[11px] text-[#D4AF37] hover:text-[#E5C158]
-                  flex items-center gap-0.5 whitespace-nowrap
-                  transition-colors duration-200"
-              >
-                {t('admin.overview.viewAll')} <ChevronRight size={12} />
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="admin-pill admin-pill--hot">
+                  {t('admin.overview.atRiskPill', 'AT RISK · {{count}}', { count: stats.atRiskCount })}
+                </span>
+                <button
+                  onClick={() => navigate('/admin/churn')}
+                  className="flex-shrink-0 text-[11px] flex items-center gap-0.5 whitespace-nowrap transition-colors duration-200"
+                  style={{ color: 'var(--color-accent)' }}
+                >
+                  {t('admin.overview.viewAll')} <ChevronRight size={12} />
+                </button>
+              </div>
             </div>
 
             {atRisk.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10">
-                <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center mb-3">
-                  <CheckCircle size={18} className="text-[#10B981]" />
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+                  style={{ background: 'var(--color-success-soft)' }}>
+                  <CheckCircle size={18} style={{ color: 'var(--color-success)' }} />
                 </div>
-                <p className="text-[12.5px] text-[#6B7280]">{t('admin.overview.noAtRisk')}</p>
-                <p className="text-[11px] text-[#4B5563] mt-1">{t('admin.overview.everyoneActive')}</p>
+                <p className="text-[12.5px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.overview.noAtRisk')}</p>
+                <p className="text-[11px] mt-1" style={{ color: 'var(--color-admin-text-faint)' }}>{t('admin.overview.everyoneActive')}</p>
               </div>
             ) : (
-              <>
-                <p className="text-[10.5px] font-medium text-[#6B7280] uppercase tracking-[0.08em] mb-2.5">
-                  {t('admin.overview.glanceAtRisk')} — {stats.atRiskCount}
-                </p>
-                <div className="divide-y divide-white/[0.04]">
-                  {atRisk.map(m => (
-                    <WatchlistRow key={m.id} member={m} t={t} onMessage={() => navigate('/admin/churn')} />
-                  ))}
-                </div>
-              </>
+              <div className="divide-y" style={{ borderColor: 'var(--color-admin-border)' }}>
+                {atRisk.map(m => (
+                  <WatchlistRow key={m.id} member={m} t={t} onMessage={() => navigate('/admin/churn')} onClick={setWatchlistDetail} />
+                ))}
+              </div>
             )}
           </AdminCard>
         </FadeIn>
       </div>
+
+      {/* ── Activity detail modal ─────────────────────────── */}
+      <AdminModal
+        isOpen={!!activityDetail}
+        onClose={() => setActivityDetail(null)}
+        title={
+          activityDetail
+            ? (activityDetail.type === 'workout' ? t('admin.overview.actions.workout', 'completed workout')
+              : activityDetail.type === 'signup' ? t('admin.overview.actions.joined', 'joined')
+              : t('admin.overview.actions.checkin', 'checked in'))
+            : ''
+        }
+        titleIcon={
+          activityDetail?.type === 'workout' ? Dumbbell
+          : activityDetail?.type === 'signup' ? UserPlus
+          : CalendarCheck
+        }
+        size="sm"
+        footer={
+          <div className="flex gap-2 justify-end w-full">
+            <button
+              onClick={() => setActivityDetail(null)}
+              className="px-4 py-2 rounded-xl text-[13px] font-medium"
+              style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
+            >
+              {t('admin.overview.close', 'Close')}
+            </button>
+            <button
+              onClick={() => { const id = activityDetail?.profile_id; setActivityDetail(null); if (id) navigate(`/admin/members?member=${id}`); }}
+              className="px-4 py-2 rounded-xl text-[13px] font-bold"
+              style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}
+            >
+              {t('admin.overview.viewMember', 'View member')}
+            </button>
+          </div>
+        }
+      >
+        {activityDetail && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Avatar name={activityDetail.memberName} size="md" src={activityDetail.avatarUrl} />
+              <div className="min-w-0">
+                <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                  {activityDetail.memberName || t('admin.overview.unknownMember', 'Unknown')}
+                </p>
+                <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                  {formatDistanceToNow(new Date(activityDetail.timestamp), { addSuffix: true, ...(dateFnsLocale || {}) })}
+                </p>
+              </div>
+            </div>
+            <div className="rounded-xl p-3" style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border-subtle)' }}>
+              <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('admin.overview.eventTime', 'Time')}
+              </p>
+              <p className="text-[13px] font-mono" style={{ color: 'var(--color-text-primary)' }}>
+                {format(new Date(activityDetail.timestamp), 'PPp', dateFnsLocale)}
+              </p>
+              {/* The activity row carries the workout volume as `total_volume_lbs`
+                  (DB column shape). Coerce to number defensively so a null/string
+                  never reaches Math.round (which would render `NaN lbs`). */}
+              {activityDetail.type === 'workout' && (() => {
+                const raw = activityDetail.total_volume_lbs ?? activityDetail.totalVolume;
+                const vol = Number(raw);
+                if (!Number.isFinite(vol) || vol <= 0) return null;
+                return (
+                  <>
+                    <p className="text-[11px] uppercase tracking-wider mt-2 mb-1" style={{ color: 'var(--color-text-subtle)' }}>
+                      {t('admin.overview.totalVolume', 'Total volume')}
+                    </p>
+                    <p className="text-[13px]" style={{ color: 'var(--color-text-primary)' }}>
+                      {Math.round(vol).toLocaleString()} lbs
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+      </AdminModal>
+
+      {/* ── Watchlist detail modal ────────────────────────── */}
+      <AdminModal
+        isOpen={!!watchlistDetail}
+        onClose={() => setWatchlistDetail(null)}
+        title={watchlistDetail?.full_name || ''}
+        titleIcon={AlertTriangle}
+        subtitle={t('admin.overview.atRiskSub', 'At-risk member')}
+        size="sm"
+        footer={
+          <div className="flex gap-2 justify-end w-full">
+            <button
+              onClick={() => setWatchlistDetail(null)}
+              className="px-4 py-2 rounded-xl text-[13px] font-medium"
+              style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
+            >
+              {t('admin.overview.close', 'Close')}
+            </button>
+            <button
+              onClick={() => { setWatchlistDetail(null); navigate('/admin/churn'); }}
+              className="px-4 py-2 rounded-xl text-[13px] font-bold"
+              style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}
+            >
+              {t('admin.overview.openWinBack', 'Open win-back')}
+            </button>
+          </div>
+        }
+      >
+        {watchlistDetail && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Avatar name={watchlistDetail.full_name} size="md" src={watchlistDetail.avatar_url} />
+              <div className="min-w-0">
+                <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{watchlistDetail.full_name}</p>
+                <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{watchlistDetail.username || ''}</p>
+              </div>
+              <span className="ml-auto admin-pill admin-pill--hot admin-mono">{watchlistDetail.score}%</span>
+            </div>
+            <div className="rounded-xl p-3 space-y-2" style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border-subtle)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('admin.overview.daysInactiveLabel', 'Days inactive')}
+                </span>
+                <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                  {watchlistDetail.neverActive ? t('admin.overview.neverLogged') : watchlistDetail.daysInactive}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('admin.overview.riskTier', 'Risk tier')}
+                </span>
+                <span className="text-[13px] font-semibold capitalize" style={{ color: 'var(--color-warning)' }}>
+                  {watchlistDetail.risk_tier || getRiskTier(watchlistDetail.score)}
+                </span>
+              </div>
+              {Array.isArray(watchlistDetail.key_signals) && watchlistDetail.key_signals.length > 0 && (
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-subtle)' }}>
+                    {t('admin.overview.signals', 'Signals')}
+                  </p>
+                  <ul className="text-[12px] space-y-0.5" style={{ color: 'var(--color-text-primary)' }}>
+                    {watchlistDetail.key_signals.slice(0, 4).map((s, i) => (
+                      <li key={i}>• {translateSignal(t, s)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </AdminModal>
     </AdminPageShell>
   );
 }

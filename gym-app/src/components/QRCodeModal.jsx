@@ -1,5 +1,6 @@
-import { useRef, useCallback, useState, useEffect } from 'react';
-import { X, Download, Wallet, Smartphone } from 'lucide-react';
+import { useRef, useCallback, useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { X, Wallet, Share2, Info, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Barcode from 'react-barcode';
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -8,6 +9,46 @@ import { useTranslation } from 'react-i18next';
 const WalletPass = registerPlugin('WalletPass');
 import { supabase } from '../lib/supabase';
 import { signQRPayload } from '../lib/qrSecurity';
+import { useAuth } from '../contexts/AuthContext';
+
+const FONT_DISPLAY = "'Familjen Grotesk', 'Archivo', system-ui, sans-serif";
+const FONT_MONO = "'JetBrains Mono', ui-monospace, monospace";
+
+// Allow-list of hostnames we are willing to open in the in-app browser /
+// system browser. Prevents arbitrary navigation if a malicious server response
+// ever supplies a saveUrl we did not expect.
+// TODO: extend with gymConfig.customDomain when added to gym schema
+const ALLOWED_EXTERNAL_HOSTS = new Set([
+  'wallet.google.com',
+  'pay.google.com',
+  'apple.com',
+  'www.apple.com',
+  'tugympr.com',
+  'www.tugympr.com',
+]);
+
+// Open an external URL using SFSafariViewController (via @capacitor/browser)
+// when available, falling back to window.open for the web build. Apple prefers
+// in-app browser sessions over leaving the app.
+async function openExternalUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') throw new Error('Only HTTPS URLs are allowed');
+    if (!ALLOWED_EXTERNAL_HOSTS.has(u.hostname)) {
+      throw new Error(`Blocked external host: ${u.hostname}`);
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[openExternalUrl] rejected', err);
+    return;
+  }
+  try {
+    const { Browser } = await import('@capacitor/browser');
+    await Browser.open({ url });
+  } catch {
+    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* swallow */ }
+  }
+}
 
 // Max brightness when showing QR so physical scanners can read easily
 async function setMaxBrightness() {
@@ -28,113 +69,209 @@ async function restoreBrightness(original) {
   } catch { /* best effort */ }
 }
 
+// ── Card palette (matches Gym Wallet v2 reference) ──────────────────────────
+const CARD_GRADIENT = 'linear-gradient(165deg, #12181E 0%, #0A0E12 60%, #0D1318 100%)';
+const GOLD_GRADIENT = 'linear-gradient(135deg, #D4A835 0%, #8E6A1A 100%)';
+
+function formatMonthYear(iso, lang) {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat(lang?.startsWith('es') ? 'es-ES' : 'en-US', {
+      month: 'long', year: 'numeric',
+    }).format(d);
+  } catch { return null; }
+}
+
+// ── Pass header with PR logo tile ────────────────────────────────────────────
+function PassHeader({ label = 'MEMBER PASS', title = 'TuGymPR', logoUrl = '' }) {
+  const { t } = useTranslation('pages');
+  return (
+    <div
+      className="flex items-center justify-between px-[18px] pt-4 pb-3.5 relative"
+    >
+      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        {logoUrl ? (
+          <div
+            className="flex items-center justify-center overflow-hidden flex-shrink-0"
+            style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <img
+              src={logoUrl}
+              alt={title}
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          </div>
+        ) : (
+          <div
+            className="w-9 h-9 rounded-[10px] flex items-center justify-center flex-shrink-0"
+            style={{
+              background: GOLD_GRADIENT,
+              boxShadow: '0 2px 6px rgba(212,168,53,0.35)',
+            }}
+          >
+            <span
+              className="text-[14px] font-extrabold leading-none"
+              style={{ fontFamily: FONT_DISPLAY, color: '#1a1208', letterSpacing: '-0.5px' }}
+            >PR</span>
+          </div>
+        )}
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase text-white/65" style={{ letterSpacing: '1.4px' }}>
+            {label}
+          </div>
+          <div
+            className="text-[14px] font-extrabold text-white truncate"
+            style={{ fontFamily: FONT_DISPLAY, letterSpacing: '-0.2px', marginTop: 1 }}
+          >{title}</div>
+        </div>
+      </div>
+      <div className="text-right shrink-0 ml-3">
+        <div className="text-[9px] font-semibold text-white/55" style={{ letterSpacing: '1.2px' }}>{t('qrCode.statusLabel', { defaultValue: 'STATUS' })}</div>
+        <div className="flex items-center gap-1.5 justify-end mt-0.5">
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: '#2EC4C4', boxShadow: '0 0 6px #2EC4C4' }}
+          />
+          <span
+            className="text-[12px] font-extrabold text-white uppercase"
+            style={{ fontFamily: FONT_DISPLAY, letterSpacing: '0.4px' }}
+          >{t('qrCode.statusActive', { defaultValue: 'ACTIVE' })}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Secondary "Apple Wallet fields" row ──────────────────────────────────────
+function PassFields({ fields }) {
+  return (
+    <div
+      className="grid grid-cols-3 gap-3 px-[18px] py-3.5"
+      style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      {fields.map((f, i) => (
+        <div key={i}>
+          <div className="text-[9px] font-extrabold text-white/40" style={{ letterSpacing: '1.2px' }}>
+            {f.label}
+          </div>
+          <div
+            className="font-extrabold text-white mt-1"
+            style={{
+              fontFamily: f.mono ? FONT_MONO : FONT_DISPLAY,
+              fontSize: f.mono ? 13 : 14,
+              letterSpacing: f.mono ? '0.5px' : '-0.2px',
+            }}
+          >{f.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Fullscreen modal that displays a member's QR code or barcode for scanning
- * at the gym's access system. Designed for maximum scanability:
- * white background, large code, high contrast.
+ * at the gym's access system. Redesigned to match the Apple-Wallet-style
+ * "Gym Wallet v2" mock: dark gradient pass card with gold PR tile, member
+ * name, secondary fields, large QR, and action row below.
  *
  * @param {string} payload       - The string to encode
  * @param {string} memberName    - Member's display name
  * @param {string} displayFormat - 'qr_code' | 'barcode_128' | 'barcode_39'
  * @param {string} gymName       - Gym name for wallet pass
  * @param {function} onClose     - Close handler
- * @param {boolean} skipSigning  - If true, display payload as-is without HMAC signing (for URLs like referral links)
+ * @param {boolean} skipSigning  - If true, display payload as-is without HMAC signing
  */
 export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_code', gymName, onClose, skipSigning = false }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const { profile, gymLogoUrl } = useAuth() || {};
   const codeRef = useRef(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState('');
   const [signedPayload, setSignedPayload] = useState(null);
 
-  // Sign the QR payload with HMAC to prevent forgery (skip for raw URLs like referral links)
+  // Detect special payload types for display tweaks
+  const isReferral = typeof payload === 'string' && payload.startsWith('gym-referral:');
+  const isRewardPayload = typeof payload === 'string' && payload.startsWith('gym-reward:');
+  const isSpecial = isReferral || isRewardPayload || skipSigning;
+
+  // Sign the QR payload with HMAC to prevent forgery (skip for raw URLs like referral links).
+  // Each .then() is paired with a .catch() — if the sign-qr edge function rejects (e.g.
+  // network blip, expired session), an unhandled rejection bubbles up to Capacitor as
+  // `[reject]@capacitor` and crashes the page. We swallow + show the unsigned payload
+  // as a graceful fallback so the modal still renders something useful.
   useEffect(() => {
     if (!payload || skipSigning) return;
     let cancelled = false;
-    signQRPayload(payload).then((signed) => {
-      if (!cancelled) setSignedPayload(signed);
-    });
+    signQRPayload(payload)
+      .then((signed) => { if (!cancelled) setSignedPayload(signed); })
+      .catch((err) => {
+        console.warn('[QRCodeModal] signQRPayload failed, falling back to unsigned payload:', err);
+        if (!cancelled) setSignedPayload(payload);
+      });
     return () => { cancelled = true; };
   }, [payload, skipSigning]);
 
-  // Max screen brightness while QR is displayed
+  // Max screen brightness while QR is displayed. Wrapped in catches so a plugin-
+  // missing or permission-denied response doesn't crash the modal.
   const originalBrightnessRef = useRef(null);
   useEffect(() => {
-    setMaxBrightness().then(orig => { originalBrightnessRef.current = orig; });
-    return () => { restoreBrightness(originalBrightnessRef.current); };
+    setMaxBrightness()
+      .then(orig => { originalBrightnessRef.current = orig; })
+      .catch((err) => { console.warn('[QRCodeModal] setMaxBrightness failed:', err); });
+    return () => {
+      try {
+        const result = restoreBrightness(originalBrightnessRef.current);
+        if (result && typeof result.catch === 'function') {
+          result.catch((err) => console.warn('[QRCodeModal] restoreBrightness failed:', err));
+        }
+      } catch (err) {
+        console.warn('[QRCodeModal] restoreBrightness threw:', err);
+      }
+    };
+  }, []);
+
+  // Lock body scroll while modal is mounted
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
   }, []);
 
   const isBarcode = displayFormat === 'barcode_128' || displayFormat === 'barcode_39';
   const barcodeFormat = displayFormat === 'barcode_39' ? 'CODE39' : 'CODE128';
 
-  const handleDownload = useCallback(async () => {
-    if (!codeRef.current) return;
-    const svg = codeRef.current.querySelector('svg');
-    if (!svg) return;
+  // Derive member ID (short hash from qr payload or profile id)
+  const memberId = useMemo(() => {
+    if (isSpecial) return null;
+    const src = profile?.qr_code_payload || profile?.id || '';
+    // Use 8-char alphanumeric uppercase slice
+    const cleaned = String(src).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+    return cleaned || null;
+  }, [profile?.qr_code_payload, profile?.id, isSpecial]);
 
-    const canvas = document.createElement('canvas');
-    const size = 1024;
-    const width = size;
-    const height = isBarcode ? 400 : size;
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  const memberSince = useMemo(
+    () => formatMonthYear(profile?.created_at || profile?.onboarded_at, i18n.language),
+    [profile?.created_at, profile?.onboarded_at, i18n.language]
+  );
 
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, width, height);
+  const planLabel = useMemo(() => {
+    const tier = profile?.membership_tier || profile?.plan_name;
+    if (tier && typeof tier === 'string') return tier.toUpperCase();
+    return t('qrCode.planDefault', 'MEMBER');
+  }, [profile?.membership_tier, profile?.plan_name, t]);
 
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-
-    // Load SVG into canvas
-    await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const padding = isBarcode ? 40 : 80;
-        ctx.drawImage(img, padding, padding, width - padding * 2, height - padding * 2);
-        resolve();
-      };
-      img.onerror = reject;
-      img.src = dataUrl;
-    });
-
-    const pngDataUrl = canvas.toDataURL('image/png');
-    const fileName = `gym-pass-${memberName?.replace(/\s+/g, '-').toLowerCase() || 'code'}.png`;
-
-    // On native: write to temp file then share
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const { Filesystem, Directory } = await import('@capacitor/filesystem');
-        const { Share } = await import('@capacitor/share');
-        const base64 = pngDataUrl.split(',')[1];
-        const saved = await Filesystem.writeFile({
-          path: fileName,
-          data: base64,
-          directory: Directory.Cache,
-        });
-        await Share.share({
-          title: fileName,
-          url: saved.uri,
-          dialogTitle: t('qrCode.saveImage', 'Save QR Code'),
-        });
-      } catch (err) {
-        if (err.message?.includes('canceled') || err.message?.includes('cancelled')) return;
-      }
-    } else {
-      // Web: download via link click
-      const link = document.createElement('a');
-      link.download = fileName;
-      link.href = pngDataUrl;
-      link.click();
-    }
-  }, [memberName, isBarcode, t]);
+  const visitsLeft = profile?.passes_remaining ?? profile?.visits_remaining ?? null;
 
   const handleAddToWallet = useCallback(async () => {
     setWalletLoading(true);
     setWalletError('');
     try {
-      const platform = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
+      const platform = Capacitor.getPlatform();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error(t('qrCode.notAuthenticated'));
 
@@ -165,148 +302,320 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
         }
       );
 
-      if (error) throw error;
-
-      // Check for error in response body (function always returns 200)
+      if (error) {
+        const ctx = error.context;
+        let details = '';
+        if (ctx) {
+          try { const body = await ctx.json(); details = body?.details || body?.error || ''; }
+          catch { try { details = await ctx.text(); } catch {} }
+        }
+        // eslint-disable-next-line no-console
+        console.error('[wallet-pass] server error:', error.message, '\nDETAILS:', details);
+        throw new Error(details || error.message || 'Wallet pass server error');
+      }
       if (data?.error) {
-        throw new Error(data.error + (data.stack ? '\n' + data.stack : ''));
+        // eslint-disable-next-line no-console
+        console.error('[wallet-pass] data.error:', data.error, '\nDETAILS:', data.details, '\nSTACK:', data.stack);
+        throw new Error(data.details ? `${data.error}: ${data.details}` : data.error);
       }
-
-      // Edge function returns { unsupported: true } if certs aren't configured
-      if (data?.unsupported) {
-        throw new Error(t('qrCode.walletNotConfigured'));
-      }
+      if (data?.unsupported) throw new Error(t('qrCode.walletNotConfigured'));
 
       if (platform === 'ios') {
-        // Use native Swift plugin to present PKAddPassesViewController
         await WalletPass.addPass({ pkpassBase64: data.pkpass });
       } else {
-        // Edge function returns a Google Wallet save URL
         if (typeof data.saveUrl !== 'string' || !data.saveUrl.startsWith('https://')) {
           throw new Error(t('qrCode.walletFailed'));
         }
-        window.open(data.saveUrl, '_blank');
+        await openExternalUrl(data.saveUrl);
       }
     } catch (err) {
       setWalletError(err.message || t('qrCode.walletFailed'));
     } finally {
       setWalletLoading(false);
     }
-  }, [payload, memberName, gymName]);
+  }, [payload, memberName, gymName, t]);
+
+  const handleSharePass = useCallback(async () => {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const { Share } = await import('@capacitor/share');
+        await Share.share({
+          title: memberName ? `${memberName} — ${gymName || 'TuGymPR'}` : t('qrCode.gymPass', 'Gym Pass'),
+          text: t('qrCode.shareText', 'Check out my gym pass on TuGymPR'),
+        });
+      } else if (navigator.share) {
+        await navigator.share({
+          title: memberName || t('qrCode.gymPass', 'Gym Pass'),
+          text: t('qrCode.shareText', 'Check out my gym pass on TuGymPR'),
+        });
+      }
+    } catch { /* user cancelled */ }
+  }, [memberName, gymName, t]);
 
   if (!payload) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={onClose}>
+  // Display mnemonic below QR (8-char hash for member pass)
+  const qrCaption = memberId && !isSpecial
+    ? memberId
+    : isReferral
+      ? payload.split(':').pop()
+      : isRewardPayload
+        ? (payload.split(':').pop() || '').substring(0, 8).toUpperCase()
+        : '';
+
+  const platform = Capacitor.getPlatform();
+
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="qr-modal-title"
+      style={{
+        padding: 'max(env(safe-area-inset-top, 0px) + 12px, 16px) 16px max(env(safe-area-inset-bottom, 0px) + 12px, 16px)',
+      }}
+    >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
 
-      {/* Modal */}
+      {/* Wallet card + actions stack — centered, with bottom Close button as the only dismiss UI (top X removed per UX feedback) */}
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="qr-modal-title"
-        className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden animate-fade-in max-h-[90vh] overflow-y-auto"
+        className="relative w-full max-w-[380px] max-h-full overflow-y-auto animate-fade-in"
         onClick={e => e.stopPropagation()}
+        style={{ fontFamily: FONT_DISPLAY }}
       >
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          aria-label={t('qrCode.close', 'Close')}
-          className="absolute top-4 right-4 z-10 w-11 h-11 flex items-center justify-center rounded-full bg-black/20 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-          style={{ color: 'var(--color-text-subtle)' }}
+        {/* ── Pass Card ───────────────────────────────────────────── */}
+        <div
+          className="relative overflow-hidden"
+          style={{
+            borderRadius: 22,
+            background: CARD_GRADIENT,
+            boxShadow: '0 24px 50px rgba(0,0,0,0.35), inset 0 0 0 0.5px rgba(255,255,255,0.06)',
+          }}
         >
-          <X size={18} />
-        </button>
+          {/* Ambient glows */}
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              top: -80, right: -40, width: 220, height: 220, borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(46,196,196,0.22) 0%, transparent 60%)',
+            }}
+          />
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              bottom: 140, left: -60, width: 200, height: 200, borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(212,168,53,0.10) 0%, transparent 60%)',
+            }}
+          />
 
-        {/* Code display area — white bg for max scanability */}
-        <div className={`bg-white flex flex-col items-center ${isBarcode ? 'p-6 pt-10' : 'p-8'}`}>
-          <div ref={codeRef}>
-            {isBarcode ? (
-              <Barcode
-                value={signedPayload || payload}
-                format={barcodeFormat}
-                width={2}
-                height={100}
-                displayValue={false}
-                background="#FFFFFF"
-                lineColor="#000000"
-              />
-            ) : (
-              <QRCodeSVG
-                value={signedPayload || payload}
-                size={240}
-                level="H"
-                includeMargin={false}
-                bgColor="#FFFFFF"
-                fgColor="#000000"
-              />
+          {/* Header */}
+          <PassHeader
+            label={isReferral ? t('qrCode.referralPass', 'REFERRAL PASS') : isRewardPayload ? t('qrCode.rewardPass', 'REWARD PASS') : t('qrCode.memberPass', 'MEMBER PASS')}
+            title={gymName || 'TuGymPR'}
+            logoUrl={gymLogoUrl}
+          />
+
+          {/* Member name block */}
+          <div className="px-[18px] pt-[18px] pb-5 relative">
+            <div className="text-[10px] font-extrabold" style={{ color: '#2EC4C4', letterSpacing: '1.6px' }}>
+              {isReferral ? t('qrCode.referral', 'REFERRAL') : isRewardPayload ? t('qrCode.reward', 'REWARD') : t('qrCode.member', 'MEMBER')}
+            </div>
+            <div
+              id="qr-modal-title"
+              className="text-white mt-1 leading-none"
+              style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700, letterSpacing: '-1px' }}
+            >
+              {memberName || t('qrCode.yourGymPass')}
+            </div>
+            {memberSince && !isSpecial && (
+              <div className="text-[12px] text-white/55 mt-1.5">
+                {t('qrCode.memberSince', 'Member since')} {memberSince}
+              </div>
             )}
           </div>
-          <p className={`mt-4 font-mono font-bold text-black/70 text-center select-all ${isBarcode ? 'text-[18px] tracking-[0.25em]' : 'text-[14px] tracking-widest'}`}>
-            {payload.startsWith('gym-referral:') ? payload.split(':').pop() : payload.startsWith('gym-reward:') ? payload.split(':').pop()?.substring(0, 8) + '...' : payload}
-          </p>
+
+          {/* Secondary fields — only for member pass */}
+          {!isSpecial && (
+            <PassFields
+              fields={[
+                ...(memberId ? [{ label: t('qrCode.memberId', 'MEMBER ID'), value: memberId, mono: true }] : []),
+                ...(visitsLeft != null ? [{ label: t('qrCode.visitsLeft', 'VISITS LEFT'), value: String(visitsLeft) }] : []),
+                { label: t('qrCode.plan', 'PLAN'), value: planLabel },
+              ]}
+            />
+          )}
+
+          {/* QR / Barcode — on white tile centered */}
+          <div
+            className="px-[18px] pt-1 pb-6 text-center relative"
+            style={{
+              borderTop: isSpecial ? '1px solid rgba(255,255,255,0.06)' : 'none',
+            }}
+          >
+            <div className="inline-block bg-white rounded-[12px] p-3" ref={codeRef}>
+              {isBarcode ? (
+                <Barcode
+                  value={signedPayload || payload}
+                  format={barcodeFormat}
+                  width={2}
+                  height={80}
+                  displayValue={false}
+                  background="#FFFFFF"
+                  lineColor="#000000"
+                />
+              ) : (
+                <QRCodeSVG
+                  value={signedPayload || payload}
+                  size={176}
+                  level="H"
+                  includeMargin={false}
+                  bgColor="#FFFFFF"
+                  fgColor="#000000"
+                />
+              )}
+              {qrCaption && (
+                <>
+                  <div
+                    className="mt-2 text-center"
+                    style={{
+                      fontSize: 9, fontWeight: 700, letterSpacing: '1.4px',
+                      textTransform: 'uppercase',
+                      color: 'rgba(0,0,0,0.55)',
+                    }}
+                  >
+                    {t('qrCode.manualCode', 'Manual entry code')}
+                  </div>
+                  <div
+                    className="text-center"
+                    style={{
+                      fontFamily: FONT_MONO, fontSize: 18, fontWeight: 800, letterSpacing: '3px',
+                      color: '#000000',
+                      marginTop: 2,
+                    }}
+                  >
+                    {qrCaption}
+                  </div>
+                </>
+              )}
+            </div>
+            <div
+              className="text-white/45 mt-2"
+              style={{ fontSize: 10, letterSpacing: '0.4px', fontWeight: 500 }}
+            >
+              {t('qrCode.scanAtFrontDesk', 'SCAN AT FRONT DESK · HOLD STEADY')}
+            </div>
+          </div>
         </div>
 
-        {/* Info + actions — dark bg */}
-        <div className="border-t border-white/8 p-5" style={{ background: 'var(--color-bg-card)' }}>
-          <p id="qr-modal-title" className="text-[15px] font-bold text-center mb-1" style={{ color: 'var(--color-text-primary)' }}>
-            {memberName || t('qrCode.yourGymPass')}
-          </p>
-          <p className="text-[12px] text-center mb-4" style={{ color: 'var(--color-text-subtle)' }}>
-            {t('qrCode.showAtScanner')}
-          </p>
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleDownload}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              style={{
-                background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
-                border: '1.5px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
-                color: 'var(--color-accent)',
-              }}
+        {/* ── QuickStats (only for member pass) ───────────────────── */}
+        {!isSpecial && profile?.last_active_at && (
+          <div
+            className="mt-3.5 mx-0 px-4 py-3.5 rounded-[16px] flex items-center gap-3"
+            style={{
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border-subtle)',
+            }}
+          >
+            <div
+              className="w-9 h-9 rounded-[10px] flex items-center justify-center flex-shrink-0"
+              style={{ background: '#2EC4C4' }}
             >
-              <Download size={15} />
-              {t('qrCode.saveImage')}
-            </button>
-            <button
-              onClick={handleAddToWallet}
-              disabled={walletLoading}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              style={{
-                background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
-                border: '1.5px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
-                color: 'var(--color-accent)',
-              }}
-            >
-              {walletLoading ? (
-                <div className="w-4 h-4 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-              ) : (
-                <Wallet size={15} />
+              <QrCode size={18} color="#001512" strokeWidth={2.4} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-extrabold text-[var(--color-text-primary)] truncate" style={{ letterSpacing: '-0.1px' }}>
+                {t('qrCode.lastCheckIn', 'Last check-in')} · {formatRelative(profile.last_active_at, i18n.language)}
+              </div>
+              {gymName && (
+                <div className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{gymName}</div>
               )}
+            </div>
+            <Info size={16} className="text-[var(--color-text-muted)]" />
+          </div>
+        )}
+
+        {/* ── Action Row ──────────────────────────────────────────── */}
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <button
+            onClick={handleAddToWallet}
+            disabled={walletLoading || isReferral}
+            className="py-3 px-2 rounded-[14px] flex flex-col items-center gap-1.5 disabled:opacity-40 transition active:scale-95 focus:ring-2 focus:ring-[#D4A835] focus:outline-none"
+            style={{
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border-subtle)',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            {walletLoading ? (
+              <div className="w-[18px] h-[18px] border-[2px] border-[#D4A835]/30 border-t-[#D4A835] rounded-full animate-spin" />
+            ) : (
+              <Wallet size={18} />
+            )}
+            <span className="text-[11px] font-semibold leading-tight text-center" style={{ whiteSpace: 'pre-line' }}>
               {walletLoading
                 ? t('qrCode.generating')
-                : Capacitor.getPlatform() === 'ios'
-                  ? t('qrCode.appleWallet')
-                  : Capacitor.getPlatform() === 'android'
-                    ? t('qrCode.googleWallet')
-                    : t('qrCode.addToWallet')}
-            </button>
-          </div>
+                : platform === 'ios'
+                  ? t('qrCode.appleWallet', 'Apple Wallet')
+                  : platform === 'android'
+                    ? t('qrCode.googleWallet', 'Google Wallet')
+                    : t('qrCode.addToWallet', 'Add to Wallet')}
+            </span>
+          </button>
 
-          {walletError && (
-            <p className="text-[11px] text-red-400 text-center mt-2">{walletError}</p>
-          )}
+          <button
+            onClick={handleSharePass}
+            className="py-3 px-2 rounded-[14px] flex flex-col items-center gap-1.5 transition active:scale-95 focus:ring-2 focus:ring-[#D4A835] focus:outline-none"
+            style={{
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border-subtle)',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            <Share2 size={18} />
+            <span className="text-[11px] font-semibold leading-tight text-center" style={{ whiteSpace: 'pre-line' }}>
+              {t('qrCode.sharePass', 'Share\npass')}
+            </span>
+          </button>
+
+          <button
+            onClick={onClose}
+            className="py-3 px-2 rounded-[14px] flex flex-col items-center gap-1.5 transition active:scale-95 focus:ring-2 focus:ring-[#D4A835] focus:outline-none"
+            style={{
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border-subtle)',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            <X size={18} />
+            <span className="text-[11px] font-semibold leading-tight text-center" style={{ whiteSpace: 'pre-line' }}>
+              {t('qrCode.close', 'Close')}
+            </span>
+          </button>
         </div>
+
+        {walletError && (
+          <p className="text-[11px] text-red-400 text-center mt-3 px-2">{walletError}</p>
+        )}
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
 
-function base64ToBlob(base64, mimeType) {
-  const bytes = atob(base64);
-  const arr = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-  return new Blob([arr], { type: mimeType });
+function formatRelative(iso, lang) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const diffMs = Date.now() - d.getTime();
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 1) return lang?.startsWith('es') ? 'hace un momento' : 'moments ago';
+    if (mins < 60) return lang?.startsWith('es') ? `hace ${mins} min` : `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return lang?.startsWith('es') ? `hace ${hrs} h` : `${hrs}h ago`;
+    const days = Math.round(hrs / 24);
+    return lang?.startsWith('es') ? `hace ${days} d` : `${days}d ago`;
+  } catch { return ''; }
 }

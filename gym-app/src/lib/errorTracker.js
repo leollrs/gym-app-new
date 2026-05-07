@@ -109,6 +109,11 @@ export async function trackError(type, error, extra = {}) {
       posthog?.capture('$exception', { message, stack, component, type });
     } catch {}
 
+    // RLS only permits authenticated inserts (migration 0222). Skip the DB write
+    // for anon users — PostHog already captured it above. Otherwise every
+    // pre-login error spams the console with a 401 from this insert.
+    if (!_authContext?.profile?.id) return;
+
     await supabase.from('error_logs').insert({
       type,
       message,
@@ -117,8 +122,8 @@ export async function trackError(type, error, extra = {}) {
       component,
       device_info: getDeviceInfo(),
       metadata: Object.keys(cleanExtra).length > 0 ? cleanExtra : undefined,
-      profile_id: _authContext?.profile?.id || null,
-      gym_id: _authContext?.profile?.gym_id || null,
+      profile_id: _authContext.profile.id,
+      gym_id: _authContext.profile.gym_id || null,
     });
   } catch {
     // Never throw from the error tracker itself

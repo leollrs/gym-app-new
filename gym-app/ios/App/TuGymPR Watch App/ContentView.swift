@@ -35,6 +35,8 @@ struct ContentView: View {
                     TabView {
                         QRCheckInView()
                         StartWorkoutPage()
+                        DailySummaryView()
+                        NutritionView()
                         FriendsActiveView()
                     }
                     .tabViewStyle(.verticalPage)

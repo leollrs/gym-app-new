@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
@@ -64,6 +65,7 @@ const TrainingAvatar = ({ friend, index, onTap }) => (
 // ── LiveTrainingIndicator ───────────────────────────────────────────────────
 const LiveTrainingIndicator = () => {
   const { user } = useAuth();
+  const { t } = useTranslation('pages');
   const [activeTrainers, setActiveTrainers] = useState([]);
   const intervalRef = useRef(null);
 
@@ -147,7 +149,7 @@ const LiveTrainingIndicator = () => {
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4"
       aria-live="polite"
-      aria-label="Friends currently training"
+      aria-label={t('liveTraining.ariaLabel', { defaultValue: 'Friends currently training' })}
     >
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
@@ -156,7 +158,11 @@ const LiveTrainingIndicator = () => {
           <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-400" />
         </span>
         <p className="text-[13px] font-semibold text-[#E5E7EB]">
-          {activeTrainers.length} friend{activeTrainers.length !== 1 ? 's' : ''} training now
+          {t('liveTraining.friendsTraining', {
+            count: activeTrainers.length,
+            defaultValue: '{{count}} friend training now',
+            defaultValue_plural: '{{count}} friends training now',
+          })}
         </p>
       </div>
 

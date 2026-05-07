@@ -38,7 +38,16 @@ export async function handleScannedValue(rawText, setError) {
     if (parsed) return parsed;
   }
 
-  // Unsigned / legacy fallback — try parsing directly
+  // Reward/purchase QRs MUST be signed — reject unsigned legacy payloads
+  if (
+    (trimmed.startsWith('gym-reward:') || trimmed.startsWith('gym-purchase:')) &&
+    !trimmed.includes('|')
+  ) {
+    setError?.('Invalid QR — please refresh in the app');
+    return null;
+  }
+
+  // Unsigned / legacy fallback — try parsing directly (other QR types only)
   const parsed = parseQRContent(trimmed);
   if (parsed) return parsed;
 
@@ -66,6 +75,15 @@ export function parseQRContent(text) {
     const parts = text.split(':');
     if (parts.length >= 4 && parts[1] && parts[2] && parts[3]) {
       return { type: 'reward_redemption', gymId: parts[1], memberId: parts[2], redemptionId: parts[3] };
+    }
+    return null;
+  }
+
+  // Earned reward (birthday/milestone/manual): earned-reward:{qrCode}
+  if (text.startsWith('earned-reward:')) {
+    const code = text.substring('earned-reward:'.length);
+    if (code && code.length >= 6) {
+      return { type: 'earned_reward', qrCode: code };
     }
     return null;
   }

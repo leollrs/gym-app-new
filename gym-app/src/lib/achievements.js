@@ -241,22 +241,24 @@ export function checkNewAchievements(data, earnedKeys) {
 //   freezesUsed: number     — how many freezes already used this month (from DB)
 //   freezesMax: number      — max freezes allowed this month (from DB)
 export function computeStreakFromSessions(sessions, {
-  restDays = [],
   closureDates = [],
   gymClosedDays = [],
-  freezesUsed = 0,
-  freezesMax = 2,
+  // restDays / freezesUsed / freezesMax are accepted for backwards
+  // compatibility with older call sites but no longer affect the streak —
+  // any non-trained day that bridges two trained days within MAX_GAP_DAYS
+  // is treated as a rest day automatically.
 } = {}) {
-  const dates = new Set(
+  const trainedSet = new Set(
     sessions.map((s) => new Date(s.completed_at).toDateString())
   );
+  if (trainedSet.size === 0) return 0;
 
-  // Build a Set for fast closure-date lookups
   const closureDateSet = new Set(closureDates);
+  const closedDowSet = new Set(gymClosedDays);
 
-  // Only use freeze/rest-day logic if user has specific training days set
-  const hasSchedule = restDays.length > 0;
-  let freezesRemaining = hasSchedule ? Math.max(0, freezesMax - freezesUsed) : 0;
+  // Max consecutive non-trained days the streak can survive between two
+  // trained days. 7 mirrors the "weekly" cadence we expect from members.
+  const MAX_GAP_DAYS = 7;
 
   let streak = 0;
   const today = new Date();
@@ -266,21 +268,33 @@ export function computeStreakFromSessions(sessions, {
     const dow = d.getDay();
     const dateStr = d.toISOString().slice(0, 10); // 'YYYY-MM-DD'
 
-    if (dates.has(d.toDateString())) {
+    if (trainedSet.has(d.toDateString())) {
       streak++;
-    } else if (i === 0) {
       continue;
-    } else if (closureDateSet.has(dateStr)) {
-      // Specific closure date (holiday, maintenance, etc.) — counts toward streak
+    }
+
+    // Recurring closed DOW or specific closure date always extends the streak,
+    // regardless of how long ago the last workout was.
+    if (closureDateSet.has(dateStr) || closedDowSet.has(dow)) {
       streak++;
-    } else if (hasSchedule && restDays.includes(dow)) {
-      // Scheduled rest day — only counts if user has specific training days
-      streak++;
-    } else if (gymClosedDays.includes(dow)) {
-      streak++;
-    } else if (hasSchedule && freezesRemaining > 0) {
-      // Freeze only available when user has a specific schedule
-      freezesRemaining--;
+      continue;
+    }
+
+    // Generic rest day: count if there's a trained day within MAX_GAP_DAYS
+    // looking backwards from this day. This is what makes "2 trained + 3
+    // rest" come out as a 5-day streak — the rest days bridging trained
+    // days are added automatically.
+    let foundInGap = false;
+    for (let j = 1; j <= MAX_GAP_DAYS; j++) {
+      const back = new Date(d);
+      back.setDate(d.getDate() - j);
+      if (trainedSet.has(back.toDateString())) {
+        foundInGap = true;
+        break;
+      }
+    }
+
+    if (foundInGap) {
       streak++;
     } else {
       break;
@@ -298,7 +312,7 @@ export async function getStreakWithProtections(userId, gymId, sessions, supabase
 
   let closureDates = [];
   let freezesUsed = 0;
-  let freezesMax = 2;
+  let freezesMax = 1;
   let restDays = [];
   let gymClosedDays = [];
 
@@ -338,7 +352,7 @@ export async function getStreakWithProtections(userId, gymId, sessions, supabase
 
     const freeze = freezeRes.data;
     freezesUsed = freeze?.used_count || 0;
-    freezesMax = freeze?.max_allowed || 2;
+    freezesMax = freeze?.max_allowed || 1;
 
     const scheduledDays = (scheduleRes.data || []).map(s => s.day_of_week);
     restDays = scheduledDays.length > 0

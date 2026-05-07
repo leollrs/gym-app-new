@@ -16,9 +16,8 @@ const RATING_EMOJIS = [
 const SessionSummary = ({ workout, sessionPRs, totalVolume, duration, completedSets, totalSets, onConfirm, onCancel, saving, error, onRetry, sessionRating, onRatingChange }) => {
   const { t } = useTranslation('pages');
   return (
-  <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm">
-    <div className="rounded-t-3xl w-full max-w-lg pb-10 pt-6 px-6 animate-fade-in border-t border-white/10 shadow-[0_-8px_40px_rgba(0,0,0,0.6)]" style={{ background: 'var(--color-bg-card)' }}>
-      <div className="w-10 h-1 rounded-full mx-auto mb-6 bg-white/20" />
+  <div className="fixed inset-0 z-[150] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
+    <div className="rounded-3xl w-full max-w-lg pb-10 pt-6 px-6 animate-fade-in border border-white/10 shadow-[0_24px_80px_rgba(0,0,0,0.45)]" style={{ background: 'var(--color-bg-card)' }}>
       <h2 className="font-black text-[22px] mb-1 truncate" style={{ color: 'var(--color-text-primary)' }}>{t('sessionSummary.thatsAWrap')}</h2>
       <p className="text-[14px] mb-6 truncate" style={{ color: 'var(--color-text-subtle)' }}>{localizeRoutineName(workout)} · {duration}</p>
 

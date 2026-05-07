@@ -103,15 +103,42 @@ Deno.serve(async (req) => {
       return jsonResp({ error: 'Member not found' }, 404);
     }
 
-    // Determine gym_id
-    const effectiveGymId = isServiceRole
-      ? (bodyGymId || memberProfile.gym_id)
-      : callerGymId;
+    // Always derive gym_id from the member record — never trust the caller-supplied bodyGymId.
+    const effectiveGymId = memberProfile.gym_id;
+
+    // If the caller supplied a gymId that doesn't match the member's actual gym, reject.
+    if (bodyGymId && bodyGymId !== memberProfile.gym_id) {
+      console.warn('send-sms gym_id mismatch:', {
+        bodyGymId,
+        memberGymId: memberProfile.gym_id,
+        memberId,
+        callerId,
+      });
+      return jsonResp({ error: 'gym_id_mismatch' }, 403);
+    }
 
     // Gym boundary check (non-super_admin can only SMS their own gym)
     if (!isServiceRole && callerRole !== 'super_admin' && memberProfile.gym_id !== callerGymId) {
       return jsonResp({ error: 'Member not in your gym' }, 403);
     }
+
+    // ── GYM USAGE CAP CHECK (must run BEFORE any expensive call) ──
+    if (effectiveGymId) {
+      const { data: cap } = await supabase
+        .from('gym_usage_caps').select('*').eq('gym_id', effectiveGymId).maybeSingle();
+      const limit = cap?.sms_daily_cap ?? 100;
+      const { data: ok } = await supabase.rpc('check_and_increment_gym_usage', {
+        p_gym_id: effectiveGymId,
+        p_endpoint: 'send-sms',
+        p_profile_id: callerId,
+        p_window: '1 day',
+        p_limit: limit,
+      });
+      if (!ok) {
+        return jsonResp({ error: 'gym_monthly_cap_exceeded' }, 429);
+      }
+    }
+    // ── END GYM USAGE CAP CHECK ─────────────────────────────────
 
     // Validate phone number
     if (!memberProfile.phone_number) {

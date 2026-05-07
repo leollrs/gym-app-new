@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react';
-import { UserPlus, Copy, Check, Loader2, Share2, ScanLine, X, Users } from 'lucide-react';
+import { UserPlus, Copy, Check, Loader2, Share2, ScanLine, X, Users, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
+import PhoneInput from '../../../components/admin/PhoneInput';
 import logger from '../../../lib/logger';
 import { logAdminAction } from '../../../lib/adminAudit';
 import posthog from 'posthog-js';
@@ -34,6 +35,19 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const [referralCode, setReferralCode] = useState('');
   const [referralLoading, setReferralLoading] = useState(false);
   const [referralError, setReferralError] = useState(null);
+
+  // Optional profile info (gym admin can fill on member's behalf)
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [age, setAge] = useState('');
+  const [sex, setSex] = useState('');
+  const [heightFeet, setHeightFeet] = useState('');
+  const [heightInches, setHeightInches] = useState('');
+  const [weightLbs, setWeightLbs] = useState('');
+  const [fitnessLevel, setFitnessLevel] = useState('');
+  const [primaryGoal, setPrimaryGoal] = useState('');
+  const [trainingDaysPerWeek, setTrainingDaysPerWeek] = useState('');
+  const [externalId, setExternalId] = useState('');
+  const [adminNote, setAdminNote] = useState('');
 
   // Generate a random 6-char alphanumeric code (excludes ambiguous chars)
   const generateCode = () => {
@@ -119,17 +133,35 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     setError(null);
 
     try {
-      // 1. Create profile directly
+      const ageNum = age ? Math.max(0, Math.min(120, parseInt(age, 10))) : null;
+      const heightInchesTotal = (heightFeet || heightInches)
+        ? (parseInt(heightFeet || '0', 10) * 12) + parseInt(heightInches || '0', 10)
+        : null;
+      const weightNum = weightLbs ? Math.max(0, parseFloat(weightLbs)) : null;
+      const trainingDays = trainingDaysPerWeek ? Math.max(1, Math.min(7, parseInt(trainingDaysPerWeek, 10))) : null;
+
+      // 1. Create profile directly with optional info
+      const profileInsert = {
+        gym_id: gymId,
+        full_name: name.trim(),
+        email: email.trim().toLowerCase(),
+        role: 'member',
+        membership_status: 'active',
+        is_onboarded: false,
+      };
+      if (ageNum !== null && !Number.isNaN(ageNum)) profileInsert.age = ageNum;
+      if (sex) profileInsert.sex = sex;
+      if (heightInchesTotal !== null && !Number.isNaN(heightInchesTotal) && heightInchesTotal > 0) profileInsert.height_inches = heightInchesTotal;
+      if (weightNum !== null && !Number.isNaN(weightNum) && weightNum > 0) profileInsert.initial_weight_lbs = weightNum;
+      if (fitnessLevel) profileInsert.fitness_level = fitnessLevel;
+      if (primaryGoal) profileInsert.primary_goal = primaryGoal;
+      if (trainingDays !== null && !Number.isNaN(trainingDays)) profileInsert.training_days_per_week = trainingDays;
+      if (externalId.trim()) profileInsert.qr_external_id = externalId.trim();
+      if (adminNote.trim()) profileInsert.admin_note = adminNote.trim();
+
       const { data: newProfile, error: profileError } = await supabase
         .from('profiles')
-        .insert({
-          gym_id: gymId,
-          full_name: name.trim(),
-          email: email.trim().toLowerCase(),
-          role: 'member',
-          membership_status: 'active',
-          is_onboarded: false,
-        })
+        .insert(profileInsert)
         .select('id')
         .single();
 
@@ -225,6 +257,17 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     setReferrerInfo(null);
     setReferralCode('');
     setReferralError(null);
+    setMoreOpen(false);
+    setAge('');
+    setSex('');
+    setHeightFeet('');
+    setHeightInches('');
+    setWeightLbs('');
+    setFitnessLevel('');
+    setPrimaryGoal('');
+    setTrainingDaysPerWeek('');
+    setExternalId('');
+    setAdminNote('');
   };
 
   return (
@@ -274,17 +317,11 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
             <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
               {k('phone')} <span style={{ color: 'var(--color-danger)' }}>*</span>
             </label>
-            <input
-              type="tel"
+            <PhoneInput
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={setPhone}
               placeholder={k('phonePlaceholder')}
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{
-                background: 'var(--color-bg-input, var(--color-bg-elevated))',
-                border: '1px solid var(--color-border-subtle)',
-                color: 'var(--color-text-primary)',
-              }}
+              ariaLabel={k('phone')}
             />
           </div>
 
@@ -360,6 +397,161 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
               </p>
             )}
           </div>
+
+          {/* More information toggle */}
+          <button
+            type="button"
+            onClick={() => setMoreOpen(o => !o)}
+            className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-colors"
+            style={{
+              background: 'var(--color-bg-input, var(--color-bg-elevated))',
+              border: '1px solid var(--color-border-subtle)',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            <span>{t('admin.createInvite.moreInfo', 'More information (optional)')}</span>
+            <ChevronDown size={14} className={`transition-transform ${moreOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {moreOpen && (
+            <div className="space-y-3 pt-1">
+              {/* External ID (gym keypad / membership #) */}
+              <div>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.createInvite.externalId', 'Gym membership ID (keypad / system code)')}
+                </label>
+                <input
+                  type="text"
+                  value={externalId}
+                  onChange={e => setExternalId(e.target.value)}
+                  placeholder={t('admin.createInvite.externalIdPlaceholder', 'e.g. 1234, A001')}
+                  className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                  style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                />
+              </div>
+
+              {/* Age + Sex */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.createInvite.age', 'Age')}
+                  </label>
+                  <input
+                    type="number"
+                    value={age}
+                    onChange={e => setAge(e.target.value)}
+                    min="0" max="120"
+                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.createInvite.sex', 'Sex')}
+                  </label>
+                  <select
+                    value={sex}
+                    onChange={e => setSex(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                  >
+                    <option value="">{t('admin.createInvite.selectOption', '—')}</option>
+                    <option value="male">{t('admin.createInvite.male', 'Male')}</option>
+                    <option value="female">{t('admin.createInvite.female', 'Female')}</option>
+                    <option value="other">{t('admin.createInvite.other', 'Other')}</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Height + Weight */}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.createInvite.heightFt', 'Height (ft)')}
+                  </label>
+                  <input type="number" value={heightFeet} onChange={e => setHeightFeet(e.target.value)} min="0" max="9"
+                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.createInvite.heightIn', 'Height (in)')}
+                  </label>
+                  <input type="number" value={heightInches} onChange={e => setHeightInches(e.target.value)} min="0" max="11"
+                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.createInvite.weightLbs', 'Weight (lbs)')}
+                  </label>
+                  <input type="number" value={weightLbs} onChange={e => setWeightLbs(e.target.value)} min="0" step="0.1"
+                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                </div>
+              </div>
+
+              {/* Fitness level + Goal */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.createInvite.fitnessLevel', 'Level')}
+                  </label>
+                  <select value={fitnessLevel} onChange={e => setFitnessLevel(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+                    <option value="">{t('admin.createInvite.selectOption', '—')}</option>
+                    <option value="beginner">{t('admin.createInvite.lvlBeginner', 'Beginner')}</option>
+                    <option value="intermediate">{t('admin.createInvite.lvlIntermediate', 'Intermediate')}</option>
+                    <option value="advanced">{t('admin.createInvite.lvlAdvanced', 'Advanced')}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.createInvite.primaryGoal', 'Goal')}
+                  </label>
+                  <select value={primaryGoal} onChange={e => setPrimaryGoal(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+                    <option value="">{t('admin.createInvite.selectOption', '—')}</option>
+                    <option value="muscle_gain">{t('admin.createInvite.goalMuscle', 'Muscle gain')}</option>
+                    <option value="fat_loss">{t('admin.createInvite.goalFat', 'Fat loss')}</option>
+                    <option value="strength">{t('admin.createInvite.goalStrength', 'Strength')}</option>
+                    <option value="endurance">{t('admin.createInvite.goalEndurance', 'Endurance')}</option>
+                    <option value="general_fitness">{t('admin.createInvite.goalGeneral', 'General fitness')}</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Training frequency */}
+              <div>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.createInvite.trainingDays', 'Training days per week')}
+                </label>
+                <select value={trainingDaysPerWeek} onChange={e => setTrainingDaysPerWeek(e.target.value)}
+                  className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                  style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+                  <option value="">{t('admin.createInvite.selectOption', '—')}</option>
+                  {[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+
+              {/* Admin note */}
+              <div>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.createInvite.adminNote', 'Admin notes (private)')}
+                </label>
+                <textarea
+                  value={adminNote}
+                  onChange={e => setAdminNote(e.target.value)}
+                  rows={3}
+                  placeholder={t('admin.createInvite.adminNotePlaceholder', 'Injuries, history, preferences…')}
+                  className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors resize-none"
+                  style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                />
+              </div>
+            </div>
+          )}
 
           {error && <p className="text-[12px]" style={{ color: 'var(--color-danger)' }}>{error}</p>}
 

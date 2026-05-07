@@ -10,9 +10,13 @@ import { useTranslation } from 'react-i18next';
 import { addPoints } from '../lib/rewardsEngine';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import QRCodeModal from '../components/QRCodeModal';
+import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 
-const getMethodLabels = (t) => ({ manual: t('checkIn.manual'), qr: t('checkIn.qrScan'), gps: t('checkIn.gps') });
-const METHOD_COLORS = { manual: 'var(--color-text-muted)', qr: 'var(--color-accent)', gps: 'var(--color-success)' };
+// GPS check-in is intentionally omitted: GPS is reserved for cardio tracking.
+// Members check in via QR (admin scan) or manual entry only. Legacy rows with
+// method='gps' fall back to the manual label/color when surfaced in history.
+const getMethodLabels = (t) => ({ manual: t('checkIn.manual'), qr: t('checkIn.qrScan') });
+const METHOD_COLORS = { manual: 'var(--color-text-muted)', qr: 'var(--color-accent)' };
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function CheckIn() {
@@ -22,8 +26,12 @@ export default function CheckIn() {
   const { t } = useTranslation('pages');
   const posthog = usePostHog();
 
-  const [checkins,  setCheckins]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
+  const checkinsCacheKey = `checkin-list-${user?.id || 'anon'}`;
+  const streakCacheKey   = `checkin-streak-${user?.id || 'anon'}`;
+  const [checkins,  setCheckins]  = useCachedState(checkinsCacheKey, []);
+  // Only show skeleton on a genuine first-ever visit. If we have any cached
+  // history, paint from cache instantly and revalidate silently.
+  const [loading,   setLoading]   = useState(!hasCachedState(checkinsCacheKey));
   const [showQR,    setShowQR]    = useState(false);
 
   const qrPayload = profile?.qr_code_payload || null;
@@ -36,9 +44,9 @@ export default function CheckIn() {
       .eq('profile_id', user.id)
       .order('checked_in_at', { ascending: false })
       .limit(50);
-    setCheckins(data ?? []);
+    if (data) setCheckins(data);
     setLoading(false);
-  }, [user]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { document.title = `${t('checkIn.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
@@ -47,7 +55,8 @@ export default function CheckIn() {
   const todayCheckIn = checkins.find(c => isToday(new Date(c.checked_in_at)));
 
   // ── Streak (from streak_cache — same source as Navigation) ──────────────────
-  const [streak, setStreak] = useState(0);
+  // Cached so the streak number paints instantly on remount / app cold start.
+  const [streak, setStreak] = useCachedState(streakCacheKey, 0);
   useEffect(() => {
     if (!user) return;
     supabase
@@ -55,8 +64,10 @@ export default function CheckIn() {
       .select('current_streak_days')
       .eq('profile_id', user.id)
       .maybeSingle()
-      .then(({ data }) => setStreak(data?.current_streak_days || 0));
-  }, [user]);
+      .then(({ data }) => {
+        if (data) setStreak(data.current_streak_days || 0);
+      });
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Group history by date label ──────────────────────────────────────────────
   const grouped = useMemo(() => checkins.reduce((acc, c) => {
@@ -74,19 +85,20 @@ export default function CheckIn() {
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate(-1)}
-          aria-label="Go back"
-          className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.06] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          aria-label={t('checkIn.goBack', 'Go back')}
+          className="w-11 h-11 flex items-center justify-center rounded-xl focus:ring-2 focus:outline-none"
+          style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)', '--tw-ring-color': 'var(--color-accent, #2EC4C4)' }}
         >
           <ArrowLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
         </button>
         <div>
-          <h1 className="text-[22px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('checkIn.title')}</h1>
+          <h1 className="text-[28px] truncate" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.4px' }}>{t('checkIn.title')}</h1>
           <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('checkIn.subtitle')}</p>
         </div>
       </div>
 
       {/* ── QR Check-in ──────────────────────────────────────────────────── */}
-      <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden p-5 mb-5 flex flex-col items-center text-center">
+      <div className="rounded-[22px] overflow-hidden p-5 mb-5 flex flex-col items-center text-center" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
 
         {todayCheckIn ? (
           <>
@@ -99,7 +111,7 @@ export default function CheckIn() {
             </div>
             <p className="text-[15px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>{t('checkIn.youreIn')}</p>
             <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-              Checked in at {format(new Date(todayCheckIn.checked_in_at), 'h:mm a')}
+              {t('checkIn.checkedInAt', { time: format(new Date(todayCheckIn.checked_in_at), 'h:mm a') })}
             </p>
           </>
         ) : (
@@ -107,15 +119,16 @@ export default function CheckIn() {
             {/* QR Code button */}
             <button
               onClick={() => { posthog?.capture('check_in', { method: 'qr' }); setShowQR(true); }}
-              aria-label="Show QR code for check-in"
-              className="w-36 h-36 rounded-full flex flex-col items-center justify-center gap-2 mb-5 transition-all duration-300 active:scale-95 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label={t('checkIn.showQRAria', 'Show QR code for check-in')}
+              className="w-36 h-36 rounded-full flex flex-col items-center justify-center gap-2 mb-5 transition-all duration-300 active:scale-95 focus:ring-2 focus:outline-none"
               style={{
                 background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
                 border: '3px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+                '--tw-ring-color': 'var(--color-accent, #2EC4C4)',
               }}
             >
               <QrCode size={44} style={{ color: 'var(--color-accent)' }} strokeWidth={1.5} />
-              <p className="text-[13px] font-bold text-[#D4AF37]">{t('checkIn.showQR')}</p>
+              <p className="text-[13px] font-bold" style={{ color: 'var(--color-accent, #2EC4C4)' }}>{t('checkIn.showQR')}</p>
             </button>
             <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
               {t('checkIn.showQRInstruction')}
@@ -124,40 +137,43 @@ export default function CheckIn() {
         )}
 
         {/* Streak */}
-        <div
-          className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-full"
-          style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 15%, transparent)' }}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event('tugympr:open-streak-modal'))}
+          className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-full active:scale-95 transition-transform focus:outline-none focus:ring-2"
+          style={{ background: 'color-mix(in srgb, #FF5A2E 8%, transparent)', border: '1px solid color-mix(in srgb, #FF5A2E 15%, transparent)', '--tw-ring-color': '#FF5A2E' }}
+          aria-label={t('checkIn.openStreakDetails', 'Open streak details')}
         >
-          <span className="text-[22px] font-black text-[#D4AF37] tabular-nums">{streak}</span>
+          <span className="text-[22px] tabular-nums" style={{ color: '#FF5A2E', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 900 }}>{streak}</span>
           <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
             {streak !== 1 ? t('checkIn.daysStreak') : t('checkIn.dayStreak')}
           </span>
-        </div>
+        </button>
       </div>
 
       {/* ── History ─────────────────────────────────────────────────────────── */}
       {loading ? (
         <div className="space-y-3">
           {[1,2,3,4,5].map(i => (
-            <div key={i} className="h-16 rounded-2xl bg-white/[0.04] animate-pulse" />
+            <div key={i} className="h-16 rounded-[22px] animate-pulse" style={{ backgroundColor: 'var(--color-bg-card)' }} />
           ))}
         </div>
       ) : checkins.length === 0 ? (
-        <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] py-12 text-center">
+        <div className="rounded-[22px] py-12 text-center" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
           <MapPin size={28} style={{ color: 'var(--color-text-muted)', margin: '0 auto 12px' }} strokeWidth={1.5} />
           <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('checkIn.noCheckInsYet')}</p>
         </div>
       ) : (
-        <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden">
-          <p className="text-[14px] font-semibold px-5 pt-4 pb-2" style={{ color: 'var(--color-text-muted)' }}>{t('checkIn.history')}</p>
-          <div className="divide-y divide-white/[0.06]">
+        <div className="rounded-[22px] overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
+          <p className="text-[17px] px-5 pt-4 pb-2" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('checkIn.history')}</p>
+          <div className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
             {Object.entries(grouped).map(([label, items]) => (
               <div key={label}>
                 <p className="text-[11px] font-bold uppercase tracking-widest px-5 py-2" style={{ color: 'var(--color-text-subtle)' }}>
                   {label}
                 </p>
                 {items.map(c => (
-                  <div key={c.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-white/[0.06] transition-colors duration-200">
+                  <div key={c.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-[var(--color-surface-hover)] transition-colors duration-200">
                     <div
                       className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ background: `${METHOD_COLORS[c.method] ?? 'var(--color-text-muted)'}18` }}

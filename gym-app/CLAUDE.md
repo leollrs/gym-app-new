@@ -147,6 +147,9 @@ A **white-label B2B SaaS churn reduction platform** sold to gyms. Each gym gets 
 - Streak counter with streak freeze mechanic (1 per calendar month, DB-backed)
 - Gym closure awareness (streak protected on closed days)
 - Rest day awareness (streak protected on non-training days)
+- **Streak count includes ALL protected days** — trained Mon + rest Tue + trained Wed = streak of 3, not 2 (migration 0353; both `complete_workout` and daily cron `check_daily_streaks` increment by full gap span when fully protected)
+- **`streak_broken_at` = first unprotected gap day**, not the last trained day before it (so "Última perdida" reads correctly)
+- **Calendar-derived current + longest streak** on the client (Navigation.jsx) — walks all months and finds max contiguous run of `done|rest|frozen` containing at least one trained day; defends against any DB drift in `streak_cache.longest_streak_days`
 
 #### 12. Social Features
 - Friend system (add friends, friend requests, accept/reject)
@@ -157,12 +160,16 @@ A **white-label B2B SaaS churn reduction platform** sold to gyms. Each gym gets 
 - **Create posts** — text + photo + workout tagging
 - Friend streaks display (via get_friend_streaks RPC, tappable for profile preview)
 - Content reporting with flag/unflag (DB-backed, persists across sessions)
+- **Block user** — center-aligned confirm modal in feed post menu, DM header, and profile preview. Insert into `blocked_users`, drop friendship, RLS WITH CHECK on direct_messages/friendships/feed_comments enforces "no interaction either direction" via `public.is_blocked()` helper.
+- **Hide post** — per-user `hidden_posts` table with RLS for owner; client filters feed query against the set. Independent of blocking.
+- **Settings → Privacy → Blocked Users** — list with avatar + Unblock button.
+- **Per-message Report** in DM bubbles (via `ContentActionMenu`, `contentType='message'`). **Profile Report** in `ProfilePreview` overflow menu (alongside existing Block).
 - Privacy controls (friend-only vs gym-visible)
 - **Live Training Indicator** — pulsing avatar stack showing friends currently working out
 - **Profile preview** on tap — stats, goals, achievements, fitness level, avatar (via get_profile_preview RPC)
 
 #### 13. Direct Messaging
-- **Encrypted DMs** — AES-256-GCM encryption via Web Crypto API (messages stored as ciphertext in DB)
+- **At-rest encrypted DMs** — Direct messages are stored as ciphertext at rest (AES-256-GCM) using server-managed keys derived from a per-conversation seed. This protects against database snapshot leaks but is not end-to-end — Supabase service-role access can decrypt.
 - iMessage-style chat UI (bubbles with tails, timestamps on 5+ min gaps, no per-message avatars)
 - Read receipts ("Leído"/"Enviado") with real-time updates via postgres_changes
 - Friends-only messaging restriction (can only start conversations with accepted friends)
@@ -172,6 +179,7 @@ A **white-label B2B SaaS churn reduction platform** sold to gyms. Each gym gets 
 - Conversation list with unread badges, last message preview, timestamps
 - Optimistic send (message appears instantly)
 - Access from: Dashboard (messages shortcut), Profile Preview ("Message" button)
+- **One-time encryption disclosure banner** on first DM thread open ("Messages are encrypted at rest, accessible to TuGymPR for moderation, not to third parties"). Persisted via localStorage.
 
 #### 14. Class Booking
 - Day strip schedule view with image-based class cards
@@ -265,7 +273,7 @@ A **white-label B2B SaaS churn reduction platform** sold to gyms. Each gym gets 
 - Announcements with type-based borders + expiry countdown
 - Load more pagination (5 at a time)
 - 14-day auto-cleanup
-- 8 per-type notification toggles in settings
+- Master push toggle + 7 per-type toggles split into Transactional (workout_reminders, streak_alerts) and Promotional/Announcements (friend_activity, challenge_updates, milestone_alerts, reward_reminders, weekly_summary). Transactional shows an amber warning when disabled.
 - **Push notifications** — fully implemented:
   - iOS: APNs with JWT signing (50-min token cache), device token management
   - Android: FCM v1 via Google Cloud
@@ -299,7 +307,8 @@ A **white-label B2B SaaS churn reduction platform** sold to gyms. Each gym gets 
 - Leaderboard visibility toggle
 - **Data export** (CSV: workouts, PRs, body metrics)
 - Account deletion with typed confirmation
-- Notification settings (8 per-type toggles)
+- Notification settings (master push + 7 per-type toggles split into Transactional and Promotional/Announcements)
+- **California Privacy Notice** in Privacy section: explicit "TuGymPR does not sell or share your personal information for cross-context behavioral advertising."
 
 ---
 
@@ -311,10 +320,6 @@ A complete native watchOS companion app:
 - **RestTimerView** — rest countdown with skip button
 - **QRCheckInView** — QR code display for gym check-in from wrist
 - **HeartRateZoneView** — real-time heart rate zone visualization
-- **RepCountingManager** — CoreMotion accelerometer at 50Hz with signal processing (**ON HOLD — accuracy issues being resolved**)
-  - Exercise category detection (push/pull/squat/hinge/isolation)
-  - Exponential low-pass filter + peak detection state machine + hysteresis threshold
-  - Dynamic thresholds per exercise type
 - **OfflineCacheManager** — offline data caching via shared UserDefaults (group.com.tugympr.app)
 - **WatchSessionManager** — bidirectional WCSession messaging
   - Message types: workout_active, workout_ended, routines_sync, user_context, pr_hit, request_rpe
@@ -347,6 +352,7 @@ A complete native watchOS companion app:
 - **Google Wallet passes** via JWT signing (generate-google-pass edge function)
 - **QR scanning** via @capacitor-mlkit/barcode-scanning
 - **Camera** via native file input with capture="environment"
+- **Workout tracking surface:** **iOS:** Live Activities + Dynamic Island + Watch app for live workout state. **Android:** WebView foreground tracking only — no foreground service.
 
 ---
 
@@ -409,6 +415,7 @@ A complete native watchOS companion app:
 - Referral program configuration
 - Store management (product CRUD, reward categories, purchase logging)
 - Moderation tools (reported content dashboard, approve/delete/restore)
+- **24-hour SLA monitor** — `check-moderation-sla` edge function scheduled hourly via `pg_cron` (migration 0348) emails `support@tugympr.com` for any pending content_reports older than 24h.
 - Messaging system (in-app chat, delivery status)
 - Trainer management (add/demote, client counts, CSV export)
 - Leaderboard management (6 metrics, period/tier filtering, CSV export)
@@ -450,7 +457,7 @@ A complete native watchOS companion app:
 - RLS enforced on all tables
 
 ### Backend (Supabase — fully integrated)
-- **Auth**: member + admin + trainer + super_admin roles, MFA enforcement for admin/trainer
+- **Auth**: member + admin + trainer + super_admin roles
 - **Database**: 100+ tables covering all features
 - **Storage**: exercise-videos, progress-photos, profile photos, gym logos, food images, class images
 - **Edge Functions**: analyze-food-photo, analyze-body-photo, generate-apple-pass, generate-google-pass, generate-punch-card-pass, send-push, send-push-user, compute-churn-scores, calibrate-churn-weights, verify-qr, sign-qr, reset-password, send-reset-email, apple-wallet-webhook, push-wallet-update
@@ -461,7 +468,7 @@ A complete native watchOS companion app:
 ### State Management
 - TanStack React Query via useSupabaseQuery.js (11 domain-specific hooks with caching + deduplication)
 - **Persistent cache** — React Query persisted to localStorage (24h max age) via @tanstack/react-query-persist-client
-- React Context: AuthContext (auth + gym branding + MFA + Watch sync), ToastContext, ThemeContext
+- React Context: AuthContext (auth + gym branding + Watch sync), ToastContext, ThemeContext
 - useRoutines hook with session-storage cache (5-min TTL)
 - localStorage for draft sessions, coach marks, health settings cache, offline data
 
@@ -496,14 +503,23 @@ A complete native watchOS companion app:
 - **PostHog** — analytics, user identification, onboarding step tracking
 - **DOMPurify** — XSS protection
 
+### Permissions & Consent
+- **Device permissions** (`src/lib/devicePermissions.js`) — single entry point for `checkPermission`, `requestPermission`, `ensurePermission`, `openAppSettings` covering notifications/camera/location/health.
+  - `ensurePermission(type, explainer)` runs the App Store-compliant flow: explain → request → fall back to iOS Settings if denied.
+  - Health uses the existing `lib/healthSync.js` request flow; status cached to localStorage (`healthPermissionStatus`) since the plugin has no synchronous status check.
+  - Settings page renders status pills (Allowed/Denied/Tap to allow) per row, refreshes on `appStateChange` so flipping in iOS Settings updates the UI on resume.
+- **Permission explainer modal** (`src/components/PermissionExplainerModal.jsx`) — center-aligned, per-type rationale shown before triggering the OS prompt.
+- **AI photo analysis consent** (`src/lib/aiConsent.js`, GDPR Art. 7) — independent from device camera permission. Three features (`body-analysis`, `food-analysis`, `menu-analysis`) gated separately. Consent stored in `profiles.ai_consent` JSONB + localStorage cache. Up-front gating on Nutrition's AI/Menu mode pills and Body's photo scan; declining keeps user in barcode mode.
+
 ### Security
 - HMAC-SHA256 QR code signing (constant-time comparison for timing attack prevention)
-- **AES-256-GCM message encryption** — DMs stored as ciphertext in DB
+- **At-rest message encryption** — Direct messages are stored as ciphertext at rest (AES-256-GCM) using server-managed keys derived from a per-conversation seed. This protects against database snapshot leaks but is not end-to-end — Supabase service-role access can decrypt.
 - Image validation via magic bytes (prevents spoofed MIME types) + decompression bomb protection (4096px max)
 - EXIF metadata stripping on photos before AI analysis
 - Email validation with disposable domain blocklist (90+ domains)
 - Content sanitization via DOMPurify
 - **Notification deduplication** — dedup_key unique constraint prevents duplicate notifications across all 12 insertion points
+- **Pre-publication content moderation** — Postgres BEFORE INSERT triggers on `activity_feed_items` and `feed_comments` check content against a curated wordlist (~36 EN+ES slurs/hate-speech terms in `moderation_terms`). Severity-2 hits block insertion; severity-1 hits set `auto_flagged=true` and create a `content_reports` row for admin review. DM client-side check via `moderation_check_dm` RPC (server-validates before encryption).
 
 ---
 
@@ -539,7 +555,7 @@ A complete native watchOS companion app:
 ## Current Build Status
 
 ### Fully Built & Shipped
-- [x] Auth (login, signup, password reset, role-based routing, MFA for admin/trainer)
+- [x] Auth (login, signup, password reset, role-based routing)
 - [x] Onboarding (9-step wizard with analytics tracking, invite code, language selection)
 - [x] Dashboard (stats, hero card, DayStrip, schedule, challenge card, gym news, messages shortcut, QR)
 - [x] Workouts (My Routines + Gym Programs + Auto-Generated, enrollment, adaptation)
@@ -552,7 +568,7 @@ A complete native watchOS companion app:
 - [x] Exercise Library (144 exercises with video, custom, favorites, filter button)
 - [x] Goal Setting (6 types, realistic dates, progress tracking, influences overload engine)
 - [x] Body Diagram (interactive SVG muscle visualizer, front + back)
-- [x] Body Metrics (weight charts, 8 measurements, progress photos, AI body fat)
+- [x] Body Metrics (weight charts, 8 measurements, progress photos w/ delete, AI body fat)
 - [x] 1RM Tracker + Strength Standards (5 lifts, 5 tiers, max-per-day charts, filter dropdown)
 - [x] Social Feed (likes, comments, @mentions, posts with photos, profile preview, flag/unflag)
 - [x] Direct Messaging (encrypted, iMessage-style, read receipts, keyboard-aware, friends-only)
@@ -562,7 +578,8 @@ A complete native watchOS companion app:
 - [x] Achievements (30+ badges, auto-unlock, celebration toast)
 - [x] Rewards & Points (5 tiers, catalog, punch cards, Wallet passes, translated history)
 - [x] Referrals (code generation, sharing, QR, history)
-- [x] Nutrition (AI scan, nutri-score, barcode, 1000 foods, 300+ recipes, meal planning, grocery list)
+- [x] Nutrition (AI scan, nutri-score, barcode, 1000 foods, 300+ recipes, **AI consent gated up-front on AI/Menu mode pills**, **scan favorites persist via `food_favorites`** + show in Saved tab + tap to re-log, **food log detail modal** with back + star buttons)
+- [x] Meal Planner (top-N random pick from best macro fits, full-week recent IDs to enforce no repeats, regenerate-day & regenerate-week with `upsert` persistence + variation, tap meal opens recipe detail)
 - [x] Notifications (real-time, push, quiet hours, deduplication, translated)
 - [x] Health Integrations (Apple Health, Google Fit, DB-persisted)
 - [x] Check-In (QR/GPS/manual, streak freeze, closure awareness)
@@ -571,7 +588,7 @@ A complete native watchOS companion app:
 - [x] Apple/Google Wallet (membership + punch cards)
 - [x] Siri Shortcuts (5 commands)
 - [x] Profile (stats, goals, achievements, avatar customization, data export)
-- [x] Settings (language, dark/light mode, notifications, privacy, account deletion)
+- [x] Settings (language, dark/light mode, notifications, privacy, account deletion, **device permissions panel** with status pills + explainer modal + iOS Settings deep-link, **AI photo analysis consent** w/ grant + revoke per feature)
 - [x] My Gym (hours, holidays, announcements, upcoming classes)
 - [x] Navigation (Strava-style, secondary-color Record button, route prefetching)
 - [x] TV Display (fullscreen leaderboard rotation)
@@ -584,13 +601,12 @@ A complete native watchOS companion app:
 - [x] Performance (lazy loading, RPCs, persistent cache, offline support, service worker)
 - [x] Offline Support (queue, cached data, draft persistence, sync on reconnect)
 - [x] i18n (English + Spanish, 3,000+ keys, locale-aware dates, AI language-aware)
-- [x] Security (HMAC QR, AES-256-GCM messaging, image validation, EXIF stripping, DOMPurify, dedup)
+- [x] Security (HMAC QR, at-rest AES-256-GCM messaging via server-managed keys (not E2E), image validation, EXIF stripping, DOMPurify, dedup)
 - [x] Supabase (auth, 100+ tables, storage, 15+ edge functions, RLS, realtime, 25+ RPCs)
 - [x] Multi-tenancy (gym_id isolation, RLS enforced)
 - [x] PostHog Analytics (user identification, event tracking, onboarding funnel)
 - [x] CSV Exports (members, workouts, PRs, body metrics — GDPR compliance)
 
 ### Known Issues / On Hold
-- [ ] Apple Watch rep counting — on hold due to accuracy issues with CoreMotion signal processing
 - [ ] Desktop view optimization — planned for gym computer screens (admin/trainer focus)
 - [ ] Android build — Capacitor Android project setup pending

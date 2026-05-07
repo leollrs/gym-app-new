@@ -2,11 +2,36 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process'
 
 const isCapacitor = process.env.CAPACITOR_BUILD === 'true';
 
+// Build identifier — every build gets a fresh value so the React Query
+// persisted cache buster (in main.jsx) auto-invalidates on every deploy.
+// Without this, an old persisted cache with an incompatible row shape
+// keeps poisoning the app until the user manually clears storage.
+//   Priority: explicit env var (CI sets VITE_BUILD_ID=$GITHUB_SHA) →
+//   git short hash (local builds) → wall-clock timestamp (last resort,
+//   guaranteed unique per build).
+let buildId = process.env.VITE_BUILD_ID;
+if (!buildId) {
+  try {
+    buildId = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch { /* not a git repo or git unavailable — fall through */ }
+}
+if (!buildId) buildId = String(Date.now());
+// eslint-disable-next-line no-console
+console.log(`[vite] BUILD_ID = ${buildId}`);
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    // Available at runtime as `__BUILD_ID__` (string literal). Used as the
+    // React Query persist buster + as a debug label in stuck-loading recovery.
+    __BUILD_ID__: JSON.stringify(buildId),
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -85,12 +110,23 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'recharts': ['recharts'],
-          'framer-motion': ['framer-motion'],
-          'supabase': ['@supabase/supabase-js'],
-          'date-fns': ['date-fns'],
-          'i18n': ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
+        manualChunks(id) {
+          // Per-language pages.json chunk so we can lazy-load only the active
+          // locale's strings (~376/404 KB raw each, ~50/65 KB gz).
+          if (id.includes('/locales/en/pages.json')) return 'i18n-pages-en';
+          if (id.includes('/locales/es/pages.json')) return 'i18n-pages-es';
+          // leaflet + react-leaflet only ship with LiveCardio's RouteMap. Splitting
+          // them into a dedicated chunk keeps cardio start-up snappy by deferring
+          // ~40 KB gz until the user actually opens a cardio session.
+          if (id.includes('node_modules/leaflet/') || id.includes('node_modules/react-leaflet/')) return 'leaflet';
+          if (id.includes('node_modules/recharts/')) return 'recharts';
+          if (id.includes('node_modules/framer-motion/')) return 'framer-motion';
+          if (id.includes('node_modules/@supabase/supabase-js/')) return 'supabase';
+          if (id.includes('node_modules/date-fns/')) return 'date-fns';
+          if (id.includes('node_modules/i18next/') ||
+              id.includes('node_modules/react-i18next/') ||
+              id.includes('node_modules/i18next-browser-languagedetector/')) return 'i18n';
+          return undefined;
         },
         chunkFileNames: 'js/[name]-[hash].js',
         entryFileNames: 'js/[name]-[hash].js',

@@ -97,6 +97,79 @@ if (!ALLOWED_ORIGIN) {
   console.error('FATAL: ALLOWED_ORIGIN environment variable is not set');
 }
 
+// ── Strict allowlist schema validator ──────────────────────────
+type SchemaEntry = {
+  type: 'number' | 'string' | 'boolean' | 'array';
+  min?: number;
+  max?: number;
+  allowed?: string[];
+  maxLength?: number;
+  required?: boolean;
+  nullable?: boolean;
+  items?: Record<string, SchemaEntry>;
+  maxItems?: number;
+};
+
+function validateSchema(
+  data: any,
+  schema: Record<string, SchemaEntry>
+): { valid: boolean; value: Record<string, any>; missing: string[] } {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { valid: false, value: {}, missing: ['<root>'] };
+  }
+  const out: Record<string, any> = {};
+  const missing: string[] = [];
+
+  for (const k of Object.keys(data)) {
+    if (!(k in schema)) {
+      console.warn(`validateSchema: dropping unknown key "${k}"`);
+    }
+  }
+
+  for (const [key, rule] of Object.entries(schema)) {
+    const v = data[key];
+    const isNullish = v === null || v === undefined;
+    if (isNullish) {
+      if (rule.required) missing.push(key);
+      out[key] = rule.nullable ? null : undefined;
+      continue;
+    }
+
+    if (rule.type === 'number') {
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue;
+      }
+      if (rule.min != null && v < rule.min) { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      if (rule.max != null && v > rule.max) { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      out[key] = v;
+    } else if (rule.type === 'string') {
+      if (typeof v !== 'string') { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      let s = v;
+      if (rule.maxLength != null) s = s.slice(0, rule.maxLength);
+      if (rule.allowed && !rule.allowed.includes(s)) { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      out[key] = s;
+    } else if (rule.type === 'boolean') {
+      if (typeof v !== 'boolean') { if (rule.required) missing.push(key); out[key] = rule.nullable ? null : undefined; continue; }
+      out[key] = v;
+    } else if (rule.type === 'array') {
+      if (!Array.isArray(v)) { if (rule.required) missing.push(key); out[key] = []; continue; }
+      const limited = rule.maxItems != null ? v.slice(0, rule.maxItems) : v;
+      if (rule.items) {
+        const cleaned: any[] = [];
+        for (const it of limited) {
+          const r = validateSchema(it, rule.items);
+          if (r.valid) cleaned.push(r.value);
+        }
+        out[key] = cleaned;
+      } else {
+        out[key] = limited;
+      }
+    }
+  }
+
+  return { valid: missing.length === 0, value: out, missing };
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -141,6 +214,35 @@ serve(async (req) => {
       );
     }
     // ── END AUTH CHECK ─────────────────────────────────────────
+
+    // ── GYM USAGE CAP CHECK (must run BEFORE any expensive call) ──
+    {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('gym_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      const gymId = profile?.gym_id;
+      if (gymId) {
+        const { data: cap } = await supabase
+          .from('gym_usage_caps').select('*').eq('gym_id', gymId).maybeSingle();
+        const limit = cap?.ai_vision_monthly_cap ?? 5000;
+        const { data: ok } = await supabase.rpc('check_and_increment_gym_usage', {
+          p_gym_id: gymId,
+          p_endpoint: 'analyze-food-photo',
+          p_profile_id: user.id,
+          p_window: '30 days',
+          p_limit: limit,
+        });
+        if (!ok) {
+          return new Response(
+            JSON.stringify({ error: 'gym_monthly_cap_exceeded' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+    // ── END GYM USAGE CAP CHECK ─────────────────────────────────
 
     if (!OPENAI_API_KEY) {
       console.error('OPENAI_API_KEY not configured');
@@ -249,7 +351,13 @@ IMPORTANT: If the image contains inappropriate, explicit, or offensive content t
                 {
                   type: 'input_image',
                   image_url: `data:image/jpeg;base64,${image}`,
-                  detail: 'low',
+                  // Bumped from 'low' → 'auto' so OpenAI Vision uses the high
+                  // tile path when the photo benefits from it (small items,
+                  // labels, mixed plates). 'auto' costs ~2-3× 'low' tokens
+                  // for complex images but gives materially better food ID
+                  // accuracy. Field tests with 'low' produced too many
+                  // misidentifications on multi-item plates.
+                  detail: 'auto',
                 },
                 {
                   type: 'input_text',
@@ -313,20 +421,40 @@ If no food or drink visible: { "error": "no_food_detected" }${lang === 'es' ? '\
       );
     }
 
-    if (!parsed.items?.length) {
-      throw new Error('No food items identified');
+    // ── STRICT ALLOWLIST VALIDATION ─────────────────────────────
+    const foodItemSchema: Record<string, SchemaEntry> = {
+      name: { type: 'string', maxLength: 80, required: true },
+      estimated_grams: { type: 'number', min: 0, max: 5000, nullable: true },
+      calories: { type: 'number', min: 0, max: 5000, required: true },
+      protein_g: { type: 'number', min: 0, max: 300, required: true },
+      carbs_g: { type: 'number', min: 0, max: 500, required: true },
+      fat_g: { type: 'number', min: 0, max: 300, required: true },
+    };
+    const foodSchema: Record<string, SchemaEntry> = {
+      food_name: { type: 'string', maxLength: 120, nullable: true },
+      confidence: { type: 'string', allowed: ['high', 'medium', 'low'], nullable: true },
+      items: { type: 'array', maxItems: 20, items: foodItemSchema, required: true },
+    };
+
+    const { valid, value: validated, missing } = validateSchema(parsed, foodSchema);
+    if (!valid || !Array.isArray(validated.items) || validated.items.length === 0) {
+      console.warn('analyze-food-photo: ai_output_invalid, missing/invalid:', missing);
+      return new Response(
+        JSON.stringify({ error: 'ai_output_invalid' }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // ── Build response from AI macros directly ──────────────────
-    const items = parsed.items.map((item: any) => {
+    // ── Build response from validated AI macros ─────────────────
+    const items = validated.items.map((item: any) => {
       const grams = Math.max(1, Math.min(item.estimated_grams ?? 100, 5000));
       return {
         name: item.name,
         grams,
-        calories: Math.round(item.calories ?? 0),
-        protein_g: Math.round((item.protein_g ?? 0) * 10) / 10,
-        carbs_g: Math.round((item.carbs_g ?? 0) * 10) / 10,
-        fat_g: Math.round((item.fat_g ?? 0) * 10) / 10,
+        calories: Math.round(item.calories),
+        protein_g: Math.round(item.protein_g * 10) / 10,
+        carbs_g: Math.round(item.carbs_g * 10) / 10,
+        fat_g: Math.round(item.fat_g * 10) / 10,
         usda_match: false,
       };
     });
@@ -342,8 +470,8 @@ If no food or drink visible: { "error": "no_food_detected" }${lang === 'es' ? '\
 
     return new Response(
       JSON.stringify({
-        food_name: parsed.food_name || 'Unknown meal',
-        confidence: parsed.confidence || 'medium',
+        food_name: validated.food_name || 'Unknown meal',
+        confidence: validated.confidence || 'medium',
         total_calories,
         total_protein_g,
         total_carbs_g,

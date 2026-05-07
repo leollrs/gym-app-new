@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, CheckSquare, Square, ClipboardList, Send, UserMinus, Ban, AlertTriangle, ShieldBan, MoreHorizontal, CheckCheck } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, CheckSquare, Square, ClipboardList, Send, UserMinus, Ban, AlertTriangle, ShieldBan, MoreHorizontal, CheckCheck, Activity, Plus, SlidersHorizontal } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -10,8 +11,11 @@ import logger from '../../lib/logger';
 import { formatDistanceToNow, subDays } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
-import UnderlineTabs from '../../components/UnderlineTabs';
 import useFocusTrap from '../../hooks/useFocusTrap';
+import Skeleton from '../../components/Skeleton';
+import TrainerEmptyState from './components/TrainerEmptyState';
+import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
+import { TCard, TPill, TAvatar, TRing, TEyebrow, TPageTitle, TDarkButton, TIconButton, TTabPill } from './components/designPrimitives';
 
 // ── Client quick-preview modal ──────────────────────────────────────────────
 const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemove, onBlock }) => {
@@ -574,6 +578,7 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
 // ── Filter / sort constants ──────────────────────────────────────────────────
 const FILTER_KEYS = ['all', 'active', 'at_risk', 'has_program', 'no_program'];
 const SORT_KEYS = ['last_active', 'name', 'workouts'];
+const SORT_DEFAULTS = { last_active: 'Last active', name: 'Name', workouts: 'Workouts', adherence: 'Adherence', streak: 'Streak', churn: 'Churn risk' };
 
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function TrainerClients() {
@@ -788,211 +793,281 @@ export default function TrainerClients() {
     return list;
   }, [clients, search, filter, sortBy, churnScores]);
 
+  // ── Compute funnel counts + status mapping ─────────────────
+  const now = Date.now();
+  const isActiveClient = (c) => c.last_active_at && (now - new Date(c.last_active_at).getTime()) / 86400000 <= 7;
+  const isChurnClient = (c) => {
+    const churn = churnScores[c.id];
+    if (churn && churn.score >= 80) return true;
+    return c.last_active_at ? (now - new Date(c.last_active_at).getTime()) / 86400000 > 30 : true;
+  };
+  const isAtRiskClient = (c) => {
+    if (isChurnClient(c)) return false;
+    const churn = churnScores[c.id];
+    if (churn) return churn.score >= 30;
+    return c.last_active_at ? (now - new Date(c.last_active_at).getTime()) / 86400000 > 14 : false;
+  };
+  const onTrackCount = clients.filter(c => isActiveClient(c) && !isAtRiskClient(c) && !isChurnClient(c)).length;
+  const atRiskCount  = clients.filter(c => isAtRiskClient(c)).length;
+  const churnCount   = clients.filter(c => isChurnClient(c)).length;
+
+  // Status tab definitions reuse existing FILTER_KEYS to preserve filter state behaviour.
+  const STATUS_TABS = [
+    { key: 'all',         label: t('trainerClients.tabAll', 'All') },
+    { key: 'active',      label: t('trainerClients.tabOnTrack', 'On track') },
+    { key: 'at_risk',     label: t('trainerClients.tabAtRisk', 'At risk') },
+    { key: 'no_program',  label: t('trainerClients.tabNoPlan', 'No plan') },
+    { key: 'has_program', label: t('trainerClients.tabHasProgram', 'On program') },
+  ];
+
   return (
-    <div className="px-4 md:px-6 py-6 w-full max-w-5xl mx-auto pb-24 md:pb-12">
+    <div style={{ background: TT.bg, minHeight: '100%' }} className="pb-2">
       <style>{`
         @keyframes slideInLeft {
           from { opacity: 0; transform: translateX(-12px); }
           to { opacity: 1; transform: translateX(0); }
         }
       `}</style>
-      <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-4 md:-mx-6 px-4 md:px-6 py-3 mb-4"
-        style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--color-border-subtle) 50%, transparent)' }}>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>
-          {clients.length === 1
-            ? t('trainerClients.assignedCountOne', '{{count}} assigned client', { count: clients.length })
-            : t('trainerClients.assignedCountOther', '{{count}} assigned clients', { count: clients.length })}
-        </p>
-        <div className="flex items-center justify-between">
-          <h1 className="text-[22px] font-black tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
-            {t('trainerClients.title', 'My Clients')}
-          </h1>
-          <button
-            onClick={() => setShowAddClient(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 font-bold rounded-xl text-[13px] transition-colors min-h-[44px] shrink-0 hover:brightness-110 active:scale-95"
-            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
-          >
-            <UserPlus size={16} />
-            {t('trainerClients.addClient', 'Add Client')}
-          </button>
-        </div>
-      </div>
 
-      {/* Search + inline filter pills + sort cycle button */}
-      {!loading && clients.length > 0 && (
-        <div className="mb-4 space-y-2 md:sticky md:top-0 md:z-10 md:pb-2" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
-          {/* Search + sort in one row */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+      <div style={{ padding: '6px 16px 12px' }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
+          <div>
+            <TEyebrow>{t('trainerClients.roster', 'Roster · {{count}}', { count: clients.length })}</TEyebrow>
+            <TPageTitle>{t('trainerClients.title', 'Clients')}</TPageTitle>
+          </div>
+          <TDarkButton onClick={() => setShowAddClient(true)} aria-label={t('trainerClients.addClient', 'Add Client')}>
+            <Plus size={15} strokeWidth={2.4} />
+            {t('trainerClients.add', 'Add')}
+          </TDarkButton>
+        </div>
+
+        {/* Funnel strip */}
+        {!loading && clients.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 12 }}>
+            {[
+              { lbl: t('trainerClients.funnel.onTrack', 'On track'), n: onTrackCount, tone: TT.good, soft: TT.goodSoft, filter: 'active' },
+              { lbl: t('trainerClients.funnel.atRisk', 'At risk'),   n: atRiskCount,  tone: TT.warn, soft: TT.warnSoft, filter: 'at_risk' },
+              { lbl: t('trainerClients.funnel.churn', 'Churn'),      n: churnCount,   tone: TT.hot,  soft: TT.hotSoft,  filter: 'at_risk' },
+            ].map((s, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setFilter(s.filter)}
+                style={{
+                  padding: 12, borderRadius: 14, background: s.soft,
+                  border: 'none', textAlign: 'left', cursor: 'pointer',
+                  minHeight: 64,
+                }}
+              >
+                <div style={{ fontFamily: TFont.display, fontSize: 22, fontWeight: 800, color: s.tone, letterSpacing: -0.5, lineHeight: 1 }}>
+                  {s.n}
+                </div>
+                <div style={{ fontSize: 11, color: s.tone, fontWeight: 700, marginTop: 4 }}>{s.lbl}</div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Search + filter row */}
+        {!loading && clients.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <div
+              style={{
+                flex: 1, height: 40, background: TT.surface, borderRadius: 12,
+                border: `1px solid ${TT.borderSolid}`,
+                display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px',
+              }}
+            >
+              <Search size={16} color={TT.textMute} strokeWidth={2} />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder={t('trainerClients.searchClients', 'Search clients…')}
+                placeholder={t('trainerClients.searchPlaceholder', 'Search clients…')}
                 aria-label={t('trainerClients.searchClients', 'Search clients')}
-                className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl pl-10 pr-4 py-2.5 text-[14px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+                style={{
+                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                  fontSize: 13, color: TT.text, minWidth: 0,
+                }}
               />
             </div>
             <button
+              type="button"
+              aria-label={t('trainerClients.sortBtn', 'Sort')}
               onClick={() => {
                 const idx = SORT_KEYS.indexOf(sortBy);
                 setSortBy(SORT_KEYS[(idx + 1) % SORT_KEYS.length]);
               }}
-              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-medium bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors shrink-0 border border-[var(--color-border-subtle)]"
-              title={`${t('trainerClients.sortPrefix', 'Sort')}: ${t('trainerClients.sort_' + sortBy, sortBy)}`}
-            >
-              <SortAsc size={14} />
-              <span>{t('trainerClients.sort_' + sortBy, sortBy)}</span>
-            </button>
-            <button
-              onClick={() => {
-                if (selectMode) {
-                  setSelectMode(false);
-                  setBulkSelected(new Set());
-                } else {
-                  setSelectMode(true);
-                }
+              title={`${t('trainerClients.sortPrefix', 'Sort')}: ${t(`trainerClients.sort_${sortBy}`, SORT_DEFAULTS[sortBy] || sortBy)}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 40, padding: '0 12px', borderRadius: 12,
+                background: TT.surface2, border: `1px solid ${TT.border}`,
+                color: TT.text, fontSize: 12, fontWeight: 700,
+                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
               }}
-              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-medium transition-colors shrink-0 border ${
-                selectMode
-                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] border-[var(--color-accent)]/30'
-                  : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border-[var(--color-border-subtle)]'
-              }`}
-              title={selectMode ? t('trainerClients.exitSelect', 'Exit select') : t('trainerClients.selectClients', 'Select clients')}
             >
-              <CheckCheck size={14} />
-              <span>{t('trainerClients.select', 'Select')}</span>
+              <SortAsc size={14} color={TT.text} />
+              {t(`trainerClients.sort_${sortBy}`, SORT_DEFAULTS[sortBy] || sortBy)}
             </button>
+            <TIconButton
+              size={40}
+              ariaLabel={selectMode ? t('trainerClients.exitSelect', 'Exit select') : t('trainerClients.selectClients', 'Select clients')}
+              onClick={() => {
+                if (selectMode) { setSelectMode(false); setBulkSelected(new Set()); }
+                else setSelectMode(true);
+              }}
+              style={selectMode ? { background: TT.accentSoft, borderColor: TT.accent } : undefined}
+            >
+              <SlidersHorizontal size={16} color={selectMode ? TT.accentInk : TT.text} />
+            </TIconButton>
           </div>
+        )}
 
-          {/* Always-visible compact filter */}
-          <UnderlineTabs
-            tabs={FILTER_KEYS.map(fk => ({ key: fk, label: t('trainerClients.filter_' + fk, fk) }))}
-            activeIndex={Math.max(0, FILTER_KEYS.indexOf(filter))}
-            onChange={(i) => setFilter(FILTER_KEYS[i])}
+        {/* Status tabs */}
+        {!loading && clients.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto' }} className="scrollbar-hide">
+            {STATUS_TABS.map((tab) => (
+              <TTabPill
+                key={tab.key}
+                active={filter === tab.key}
+                onClick={() => setFilter(tab.key)}
+              >
+                {tab.label}
+              </TTabPill>
+            ))}
+          </div>
+        )}
+
+        {/* Client list */}
+        {loading ? (
+          <div className="space-y-3 py-2">
+            <Skeleton variant="list-item" />
+            <Skeleton variant="list-item" />
+            <Skeleton variant="list-item" />
+            <Skeleton variant="list-item" />
+          </div>
+        ) : clients.length === 0 ? (
+          <TrainerEmptyState
+            icon={Users}
+            title={t('trainerClients.noClients', 'No clients assigned yet')}
+            description={t('trainerClients.emptyDesc', 'Add a client from your gym roster to start tracking their journey.')}
+            actionLabel={t('trainerClients.addFirstClient', 'Add your first client')}
+            actionIcon={UserPlus}
+            onAction={() => setShowAddClient(true)}
           />
-        </div>
-      )}
-
-      {loading ? (
-        <div className="animate-pulse space-y-3 py-4">
-          <div className="h-16 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
-          <div className="h-16 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
-          <div className="h-16 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
-        </div>
-      ) : clients.length === 0 ? (
-        <div className="text-center py-20">
-          <Users size={32} className="text-[var(--color-text-muted)] mx-auto mb-3" />
-          <p className="text-[14px] text-[var(--color-text-muted)]">{t('trainerClients.noClients', 'No clients assigned yet')}</p>
-          <button
-            onClick={() => setShowAddClient(true)}
-            className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[13px] transition-colors min-h-[44px]"
-          >
-            <UserPlus size={16} />
-            {t('trainerClients.addFirstClient', 'Add Your First Client')}
-          </button>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <Search size={24} className="text-[var(--color-text-muted)] mx-auto mb-3" />
-          <p className="text-[14px] text-[var(--color-text-muted)]">{t('trainerClients.noMatchingClients', 'No clients match your filters')}</p>
-          <button onClick={() => { setSearch(''); setFilter('all'); }}
-            className="text-[12px] text-[var(--color-accent)] mt-2 hover:text-[var(--color-accent-soft)] transition-colors">
-            {t('trainerClients.clearFilters', 'Clear filters')}
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filtered.map(c => {
-              const daysInactive = c.last_active_at
-                ? Math.floor((Date.now() - new Date(c.last_active_at)) / 86400000)
-                : null;
-              const isActive = daysInactive !== null && daysInactive <= 7;
+        ) : filtered.length === 0 ? (
+          <TrainerEmptyState
+            icon={Search}
+            title={t('trainerClients.noMatchingClients', 'No clients match your filters')}
+            description={t('trainerClients.noMatchDesc', 'Try widening the filter or clearing your search.')}
+            actionLabel={t('trainerClients.clearFilters', 'Clear filters')}
+            onAction={() => { setSearch(''); setFilter('all'); }}
+            compact
+          />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            {filtered.map((c, idx) => {
+              const status = isChurnClient(c) ? 'churn' : isAtRiskClient(c) ? 'at_risk' : 'on_track';
+              const tone = statusTone(status);
               const churn = churnScores[c.id];
-              const isAtRisk = churn
-                ? churn.score >= 30
-                : (daysInactive === null || daysInactive > 14);
-              const riskLevel = churn && churn.score >= 30 ? getChurnLevel(churn.score) : null;
+              const adherenceVal = (() => {
+                const wk = c.recentWorkouts || 0;
+                return Math.max(0, Math.min(1, wk / 6));
+              })();
+              const adherencePct = Math.round(adherenceVal * 100);
+              const sessionsLabel = `${c.recentWorkouts || 0}/${6}`;
+              const sessionsRatio = Math.max(0, Math.min(1, (c.recentWorkouts || 0) / 6));
+              const programLabel = c.assigned_program_id
+                ? t('trainerClients.programAssigned', 'Program assigned')
+                : t('trainerClients.noProgram', 'No program');
+              const lastActiveLabel = c.last_active_at
+                ? formatDistanceToNow(new Date(c.last_active_at), { addSuffix: true, locale: dateFnsLocale })
+                : t('trainerClients.neverActive', 'Never active');
+              const isSelected = bulkSelected.has(c.id);
               return (
-                <button
+                <motion.button
                   key={c.id}
-                  onClick={() => selectMode ? toggleBulkSelect(c.id) : setSelected(c)}
-                  className={`w-full flex items-center gap-3 px-3.5 sm:px-4 py-4 sm:py-3.5 bg-[var(--color-bg-card)] border rounded-2xl hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-hover)] transition-all text-left overflow-hidden ${
-                    bulkSelected.has(c.id) ? 'border-[var(--color-accent)]/40' : 'border-[var(--color-border-subtle)]'
-                  }`}
+                  type="button"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.22, delay: Math.min(idx * 0.03, 0.3) }}
+                  onClick={() => selectMode ? toggleBulkSelect(c.id) : navigate(`/trainer/clients/${c.id}`)}
+                  aria-label={c.full_name}
+                  style={{
+                    background: TT.surface,
+                    borderRadius: 18,
+                    border: `1px solid ${isSelected ? TT.accent : TT.border}`,
+                    boxShadow: TT.shadow,
+                    padding: 14,
+                    color: TT.text,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    width: '100%',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
                 >
-                  {/* Bulk select checkbox — only visible in select mode */}
                   {selectMode && (
                     <button
+                      type="button"
                       onClick={(e) => { e.stopPropagation(); toggleBulkSelect(c.id); }}
                       aria-label={t('trainerClients.selectClient', 'Select')}
-                      className="min-w-[36px] min-h-[36px] sm:min-w-[28px] sm:min-h-[28px] flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors flex-shrink-0 animate-[slideInLeft_0.15s_ease-out]"
-                      style={{ animation: 'slideInLeft 0.15s ease-out' }}
+                      style={{
+                        minWidth: 32, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer',
+                        flexShrink: 0, color: isSelected ? TT.accent : TT.textMute,
+                        animation: 'slideInLeft 0.15s ease-out',
+                      }}
                     >
-                      {bulkSelected.has(c.id) ? (
-                        <CheckSquare size={18} className="text-[var(--color-accent)]" />
-                      ) : (
-                        <Square size={18} />
-                      )}
+                      {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
                     </button>
                   )}
-                  <div className="w-9 h-9 rounded-full bg-[var(--color-bg-elevated)] flex items-center justify-center flex-shrink-0 relative">
-                    <span className="text-[13px] font-bold text-[var(--color-text-secondary)]">{(c.full_name || 'U')[0]}</span>
-                    <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--color-bg-primary)] ${
-                      isActive ? 'bg-emerald-400' : isAtRisk ? 'bg-amber-400' : 'bg-[var(--color-bg-inset)]'
-                    }`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-[14px] font-semibold text-[var(--color-text-primary)] truncate">{c.full_name}</p>
-                      {riskLevel && (
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${riskLevel.bg} ${riskLevel.color}`}>
-                          {Math.round(churn.score)}
-                        </span>
+                  <TAvatar name={c.full_name || '?'} size={44} idx={avatarIdx(c.id)} src={c.avatar_url} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, color: TT.text }}>
+                        {c.full_name}
+                      </div>
+                      {status === 'churn' && (
+                        <TPill tone="hot" size="s">
+                          {churn ? `${Math.round(churn.score)}%` : t('trainerClients.churnPill', 'Churn')}
+                        </TPill>
+                      )}
+                      {status === 'at_risk' && (
+                        <TPill tone="warn" size="s">
+                          {churn ? `${Math.round(churn.score)}%` : t('trainerClients.riskPill', 'Risk')}
+                        </TPill>
                       )}
                     </div>
-                    <p className="text-[11px] text-[var(--color-text-muted)]">
-                      {c.last_active_at
-                        ? t('trainerClients.activeAgo', 'Active {{time}}', { time: formatDistanceToNow(new Date(c.last_active_at), { addSuffix: true, locale: dateFnsLocale }) })
-                        : t('trainerClients.neverActive', 'Never active')}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                    {/* Condensed stat pill on mobile, full stat block on md+ */}
-                    <div className="text-right block">
-                      <div className="md:hidden">
-                        <span className="inline-flex items-center text-[10px] font-semibold text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)] px-1.5 py-0.5 rounded-full">
-                          {c.recentWorkouts}w
-                        </span>
-                      </div>
-                      <div className="hidden md:block">
-                        <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('trainerClients.workoutsSummary', '{{count}}w / 14d', { count: c.recentWorkouts })}</p>
-                        {c.assigned_program_id && (
-                          <p className="text-[10px] text-[var(--color-accent)]">{t('trainerClients.programAssigned', 'Program assigned')}</p>
-                        )}
-                      </div>
+                    <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {programLabel} · {lastActiveLabel}
                     </div>
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        try {
-                          const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: c.id });
-                          if (convId) navigate(`/trainer/messages/${convId}`);
-                        } catch (err) { logger.error('Error opening conversation:', err); }
-                      }}
-                      aria-label={t('trainerClients.messageClient', 'Message')}
-                      className="w-11 h-11 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors"
-                    >
-                      <MessageSquare size={15} />
-                    </button>
-                    <ChevronRight size={14} className="text-[var(--color-text-muted)] hidden sm:block" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                      <span style={{ fontSize: 10.5, color: TT.textMute, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                        {t('trainerClients.sessionsLabel', 'Sessions')}
+                      </span>
+                      <span style={{ fontSize: 11, fontFamily: TFont.mono, color: TT.text, fontWeight: 700 }}>
+                        {sessionsLabel}
+                      </span>
+                      <span style={{ flex: 1, height: 4, background: TT.surface2, borderRadius: 999, overflow: 'hidden', minWidth: 20 }}>
+                        <span style={{ display: 'block', width: `${sessionsRatio * 100}%`, height: '100%', background: tone }} />
+                      </span>
+                    </div>
                   </div>
-                </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                    <TRing value={adherenceVal} size={40} stroke={4} color={tone} label={`${adherencePct}`} />
+                    <div style={{ fontSize: 9, color: TT.textMute, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase' }}>
+                      {t('trainerClients.adhAbbr', 'Adh')}
+                    </div>
+                  </div>
+                </motion.button>
               );
             })}
-
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {selected && (
         <ClientPreview

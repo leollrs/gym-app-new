@@ -16,6 +16,8 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { validateImageFile } from '../../lib/validateImage';
+import { classImageUrl } from '../../lib/classImageUrl';
+import { format, addDays } from 'date-fns';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 import {
   PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton,
@@ -33,20 +35,49 @@ const DAYS_OF_WEEK = [
   { value: 6, labelKey: 'days.saturday' },
 ];
 
-const DEFAULT_COLOR = '#D4AF37';
+const DEFAULT_COLOR = 'var(--color-accent)';
 
 // Format a schedule slot label (recurring vs specific date)
-function slotDayLabel(slot, dayLabelFn) {
+function slotDayLabel(slot, dayLabelFn, lang) {
   if (slot.specific_date) {
     const d = new Date(slot.specific_date + 'T00:00:00');
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString(lang, { month: 'short', day: 'numeric', year: 'numeric' });
   }
   return dayLabelFn(slot.day_of_week);
 }
 
+// Convert "HH:MM" (24h, possibly with seconds) → "h:mm AM/PM" for display.
+// Returns the input unchanged if it isn't parseable.
+function format12h(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return '';
+  const [hStr, mStr] = timeStr.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return timeStr;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = ((h + 11) % 12) + 1; // 0→12, 13→1, etc.
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+// Add minutes to a "HH:MM[:SS]" 24h string, returning "HH:MM:SS" suitable
+// for inserts into a Postgres `time` column. Caps at 23:59:59.
+function addMinutes(timeStr, mins) {
+  if (!timeStr || typeof timeStr !== 'string') return timeStr;
+  const [hStr, mStr] = timeStr.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return timeStr;
+  let total = h * 60 + m + (mins || 0);
+  if (total >= 24 * 60) total = 24 * 60 - 1;
+  if (total < 0) total = 0;
+  const newH = Math.floor(total / 60);
+  const newM = total % 60;
+  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}:00`;
+}
+
 const COLOR_PRESETS = [
-  '#D4AF37', '#EF4444', '#F59E0B', '#10B981', '#3B82F6',
-  '#8B5CF6', '#EC4899', '#06B6D4', '#F97316', '#6366F1',
+  'var(--color-accent)', 'var(--color-danger)', 'var(--color-warning)', 'var(--color-success)', 'var(--color-info)',
+  'var(--color-coach)', 'var(--color-coach)', 'var(--color-info)', 'var(--color-danger)', 'var(--color-coach)',
 ];
 
 // ── Default class cover presets (gradient + icon) ──
@@ -362,7 +393,7 @@ function ClassAnalytics({ classId, hasTemplate, t }) {
               <div key={`${r.profile_id}-${i}`} className="flex items-center gap-2.5 p-2.5 rounded-lg transition-colors hover:brightness-105"
                 style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
                 {r.profiles?.avatar_url ? (
-                  <img src={r.profiles.avatar_url} alt={r.profiles?.full_name || "Member avatar"} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                  <img src={r.profiles.avatar_url} alt={r.profiles?.full_name || t('admin.classes.memberAvatarAlt', 'Member avatar')} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
                 ) : (
                   <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                     style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}>
@@ -416,7 +447,7 @@ function TranslationPreviewModal({ preview, onConfirm, onCancel, onChange, savin
         <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.translationPreviewDesc')}</p>
 
         {/* Name */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.className')} (EN)</label>
             <input value={name_en} onChange={e => onChange({ ...preview, name_en: e.target.value })}
@@ -433,7 +464,7 @@ function TranslationPreviewModal({ preview, onConfirm, onCancel, onChange, savin
 
         {/* Description */}
         {(desc_en || desc_es) && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.description')} (EN)</label>
               <textarea value={desc_en} onChange={e => onChange({ ...preview, desc_en: e.target.value })} rows={3}
@@ -466,7 +497,7 @@ function TranslationPreviewModal({ preview, onConfirm, onCancel, onChange, savin
 }
 
 // ── Instructor Search Selector ──
-function InstructorSelector({ gymId, value, valueName, onChange, t }) {
+function InstructorSelector({ gymId, values = [], onChange, t }) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
@@ -492,93 +523,117 @@ function InstructorSelector({ gymId, value, valueName, onChange, t }) {
     staleTime: 5 * 60 * 1000,
   });
 
+  const selectedIds = new Set(values);
+  const selectedPeople = people.filter(p => selectedIds.has(p.id));
   const filtered = people.filter(p =>
+    !selectedIds.has(p.id) &&
     p.full_name?.toLowerCase().includes(search.toLowerCase()),
   );
 
   const roleBadge = (role) => {
-    const colors = { admin: 'text-red-400 bg-red-400/10', trainer: 'text-[#D4AF37] bg-[#D4AF37]/10' };
-    return colors[role] || 'text-blue-400 bg-blue-400/10';
+    const colors = { admin: 'admin-pill admin-pill--hot', trainer: 'admin-pill admin-pill--warn' };
+    return colors[role] || 'admin-pill admin-pill--info';
   };
 
-  const selected = value ? people.find(p => p.id === value) : null;
+  const addPerson = (p) => {
+    onChange([...values, p.id]);
+    setSearch('');
+    setOpen(false);
+  };
+  const removePerson = (id) => {
+    onChange(values.filter(v => v !== id));
+  };
 
   return (
     <div className="relative" ref={wrapperRef}>
       <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.instructor')}</label>
-      {selected ? (
-        <div className="flex items-center gap-2 p-2.5 rounded-xl"
-          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-          {selected.avatar_url ? (
-            <img src={selected.avatar_url} alt={selected.full_name || "Instructor avatar"} className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
-          ) : (
-            <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent, #D4AF37) 15%, transparent)' }}>
-              <span className="text-[8px] font-bold" style={{ color: 'var(--color-accent, #D4AF37)' }}>{selected.full_name?.[0]?.toUpperCase() || '?'}</span>
-            </div>
-          )}
-          <span className="flex-1 text-[13px] truncate" style={{ color: 'var(--color-text-primary)' }}>{selected.full_name}</span>
-          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${roleBadge(selected.role)}`}>
-            {selected.role}
-          </span>
-          <button type="button" onClick={() => { onChange(null, ''); setSearch(''); }}
-            aria-label={t('admin.classes.clearInstructor', 'Clear instructor')}
-            className="text-[11px] font-medium transition-colors text-red-400 hover:text-red-300">
-            <X size={14} />
-          </button>
-        </div>
-      ) : (
-        <div className="relative">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-muted)' }} />
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setOpen(true); }}
-            onFocus={() => setOpen(true)}
-            placeholder={t('admin.classes.searchInstructor', 'Search trainers, admins...')}
-            aria-label={t('admin.classes.searchInstructor', 'Search trainers, admins...')}
-            className="w-full rounded-xl pl-8 pr-3 py-2.5 text-[13px] outline-none transition-colors"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-          />
-          {open && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-xl shadow-xl"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-              {filtered.length === 0 ? (
-                <p className="px-3 py-2.5 text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noMatchingPeople', 'No matching people')}</p>
+
+      {/* Selected trainer chips */}
+      {selectedPeople.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {selectedPeople.map(p => (
+            <span key={p.id} className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-lg text-[12px]"
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+              {p.avatar_url ? (
+                <img src={p.avatar_url} alt={p.full_name || ''} className="w-5 h-5 rounded-full object-cover" />
               ) : (
-                filtered.slice(0, 30).map(p => (
-                  <button key={p.id} type="button"
-                    onClick={() => { onChange(p.id, p.full_name); setSearch(''); setOpen(false); }}
-                    className="flex items-center gap-2 w-full px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-left transition-colors">
-                    {p.avatar_url ? (
-                      <img src={p.avatar_url} alt={p.full_name || "Trainer avatar"} className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent, #D4AF37) 15%, transparent)' }}>
-                        <span className="text-[8px] font-bold" style={{ color: 'var(--color-accent, #D4AF37)' }}>{p.full_name?.[0]?.toUpperCase() || '?'}</span>
-                      </div>
-                    )}
-                    <span className="flex-1 text-[13px] truncate" style={{ color: 'var(--color-text-primary)' }}>{p.full_name}</span>
-                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${roleBadge(p.role)}`}>
-                      {p.role}
-                    </span>
-                  </button>
-                ))
+                <div className="w-5 h-5 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent, #D4AF37) 15%, transparent)' }}>
+                  <span className="text-[8px] font-bold" style={{ color: 'var(--color-accent, #D4AF37)' }}>{p.full_name?.[0]?.toUpperCase() || '?'}</span>
+                </div>
               )}
-            </div>
-          )}
+              <span>{p.full_name}</span>
+              <button type="button" onClick={() => removePerson(p.id)}
+                aria-label={t('admin.classes.clearInstructor', 'Remove trainer')}
+                className="hover:text-red-400 transition-colors">
+                <X size={12} />
+              </button>
+            </span>
+          ))}
         </div>
       )}
+
+      {/* Search to add another */}
+      <div className="relative">
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-muted)' }} />
+        <input
+          value={search}
+          onChange={e => { setSearch(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder={selectedPeople.length > 0
+            ? t('admin.classes.addAnotherInstructor', 'Add another trainer...')
+            : t('admin.classes.searchInstructor', 'Search trainers, admins...')}
+          aria-label={t('admin.classes.searchInstructor', 'Search trainers, admins...')}
+          className="w-full rounded-xl pl-8 pr-3 py-2.5 text-[13px] outline-none transition-colors"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+        />
+        {open && (
+          <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-xl shadow-xl"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2.5 text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noMatchingPeople', 'No matching people')}</p>
+            ) : (
+              filtered.slice(0, 30).map(p => (
+                <button key={p.id} type="button"
+                  onClick={() => addPerson(p)}
+                  className="flex items-center gap-2 w-full px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-left transition-colors">
+                  {p.avatar_url ? (
+                    <img src={p.avatar_url} alt={p.full_name || t('admin.classes.trainerAvatarAlt', 'Trainer avatar')} className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent, #D4AF37) 15%, transparent)' }}>
+                      <span className="text-[8px] font-bold" style={{ color: 'var(--color-accent, #D4AF37)' }}>{p.full_name?.[0]?.toUpperCase() || '?'}</span>
+                    </div>
+                  )}
+                  <span className="flex-1 text-[13px] truncate" style={{ color: 'var(--color-text-primary)' }}>{p.full_name}</span>
+                  <span className={`${roleBadge(p.role)}`}>
+                    {p.role}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 // ── Class Form Modal ──
-function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = [], onAddSlot, onDeleteSlot, t, tc }) {
+function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = [], onAddSlot, onDeleteSlot, t, tc, lang }) {
   const [form, setForm] = useState({
     name: classData?.name || '',
     description: classData?.description || '',
     instructor: classData?.instructor_name || classData?.instructor || '',
-    trainer_id: classData?.trainer_id || '',
+    trainer_ids: (() => {
+      const fromJunction = (classData?.gym_class_trainers || [])
+        .map(r => r?.trainer?.id)
+        .filter(Boolean);
+      // Fallback for classes that pre-date the junction table being
+      // populated (e.g. dev environment running before migration 0379).
+      if (fromJunction.length > 0) return fromJunction;
+      return classData?.trainer_id ? [classData.trainer_id] : [];
+    })(),
     duration_minutes: classData?.duration_minutes || 60,
     max_capacity: classData?.max_capacity || 30,
     accent_color: classData?.accent_color || DEFAULT_COLOR,
@@ -587,7 +642,7 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
   });
   const [pendingSlots, setPendingSlots] = useState([]);
   const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(classData?.image_url || '');
+  const [imagePreview, setImagePreview] = useState(classImageUrl(classData?.image_path) || classData?.image_url || '');
   const [coverPreset, setCoverPreset] = useState(classData?.cover_preset || '');
   const [preview, setPreview] = useState(null);
   const [errors, setErrors] = useState({});
@@ -633,9 +688,25 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
     setImagePreview(URL.createObjectURL(file));
   };
 
-  // Step 1: Translate → show preview (single API call, second only if needed)
+  // Step 1: Translate → show preview (single API call, second only if needed).
+  // For EDITS we skip the translation roundtrip entirely — the admin is
+  // tweaking an existing class and the translation flow was burying the
+  // actual save call behind a fragile preview step that several admins
+  // reported "didn't save my changes". Editing now goes straight to save.
   const handleTranslateAndPreview = async () => {
     if (!validateClassForm()) return;
+
+    if (classData?.id) {
+      onSave({
+        ...form,
+        name_es: classData?.name_es || '',
+        description_es: classData?.description_es || '',
+        imageFile,
+        pendingSlots,
+        cover_preset: coverPreset || null,
+      });
+      return;
+    }
 
     const texts = [form.name];
     const hasDesc = !!(form.description || '').trim();
@@ -720,8 +791,8 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
           <input value={form.name} onChange={e => { if (e.target.value.length <= NAME_MAX) setFormField('name', e.target.value); }}
             onBlur={() => handleClassBlur('name')}
             className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.name ? 'rgba(239, 68, 68, 0.5)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }}
-            placeholder="Yoga, Spinning, CrossFit..." />
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.name ? 'var(--color-danger-soft)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }}
+            placeholder={t('admin.classes.namePlaceholder', 'Yoga, Spinning, CrossFit...')} />
           {errors.name && <p className="text-[11px] text-red-400 mt-1">{errors.name}</p>}
         </div>
 
@@ -736,12 +807,11 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
             style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
         </div>
 
-        {/* Instructor (searchable - pulls from members, trainers, admins) */}
+        {/* Instructor (multi-select — pulls from trainers and admins) */}
         <InstructorSelector
           gymId={gymId}
-          value={form.trainer_id}
-          valueName={form.instructor}
-          onChange={(id, name) => setForm(f => ({ ...f, trainer_id: id || '', instructor: name || '' }))}
+          values={form.trainer_ids}
+          onChange={(ids) => setForm(f => ({ ...f, trainer_ids: ids }))}
           t={t}
         />
 
@@ -752,7 +822,7 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
             <input type="number" min={5} max={480} value={form.duration_minutes} onChange={e => setFormField('duration_minutes', Number(e.target.value))}
               onBlur={() => handleClassBlur('duration_minutes')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.duration_minutes ? 'rgba(239, 68, 68, 0.5)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.duration_minutes ? 'var(--color-danger-soft)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
             {errors.duration_minutes && <p className="text-[11px] text-red-400 mt-1">{errors.duration_minutes}</p>}
           </div>
           <div>
@@ -760,7 +830,7 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
             <input type="number" min={1} max={1000} value={form.max_capacity} onChange={e => setFormField('max_capacity', Number(e.target.value))}
               onBlur={() => handleClassBlur('max_capacity')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.max_capacity ? 'rgba(239, 68, 68, 0.5)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.max_capacity ? 'var(--color-danger-soft)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
             {errors.max_capacity && <p className="text-[11px] text-red-400 mt-1">{errors.max_capacity}</p>}
           </div>
         </div>
@@ -771,68 +841,57 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
             <Repeat size={12} /> {t('admin.classes.weeklySchedule', 'Weekly Schedule')}
           </label>
 
-          {/* Existing slots (edit mode) */}
-          {isEditing && classData?.gym_class_schedules?.length > 0 && (
-            <div className="space-y-1.5 mb-2">
-              {classData.gym_class_schedules
-                .sort((a, b) => {
-                  if (a.specific_date && !b.specific_date) return 1;
-                  if (!a.specific_date && b.specific_date) return -1;
-                  if (a.specific_date && b.specific_date) return a.specific_date.localeCompare(b.specific_date);
-                  return (a.day_of_week ?? 0) - (b.day_of_week ?? 0) || a.start_time.localeCompare(b.start_time);
-                })
-                .map(slot => (
-                  <div key={slot.id} className="flex items-center justify-between p-2 rounded-lg"
-                    style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                    <div className="flex items-center gap-2">
-                      {slot.specific_date ? (
-                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[#3B82F6]/10 text-[#3B82F6]">
-                          <CalendarDays size={9} className="inline mr-0.5 -mt-px" />
-                          {slotDayLabel(slot, (d) => tc(DAYS_OF_WEEK.find(x => x.value === d)?.labelKey))}
-                        </span>
-                      ) : (
-                        <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                          <Repeat size={9} className="inline mr-0.5 -mt-px" style={{ color: 'var(--color-accent, #D4AF37)' }} />
-                          {tc(DAYS_OF_WEEK.find(d => d.value === slot.day_of_week)?.labelKey)}
-                        </span>
-                      )}
-                      <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{slot.start_time?.slice(0, 5)} - {slot.end_time?.slice(0, 5)}</span>
-
-                    </div>
-                    <button type="button" onClick={() => onDeleteSlot(slot.id)} aria-label={t('admin.classes.deleteSlot', 'Delete schedule slot')} className="p-1 rounded hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors">
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
-            </div>
-          )}
-
-          {/* Pending slots (new class) */}
-          {!isEditing && pendingSlots.length > 0 && (
-            <div className="space-y-1.5 mb-2">
-              {pendingSlots.map((slot, idx) => (
-                <div key={idx} className="flex items-center justify-between p-2 rounded-lg"
-                  style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                  <div className="flex items-center gap-2">
-                    {slot.specific_date ? (
-                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[#3B82F6]/10 text-[#3B82F6]">
-                        <CalendarDays size={9} className="inline mr-0.5 -mt-px" />
-                        {slotDayLabel(slot, (d) => tc(DAYS_OF_WEEK.find(x => x.value === d)?.labelKey))}
-                      </span>
-                    ) : (
-                      <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                        <Repeat size={9} className="inline mr-0.5 -mt-px" style={{ color: 'var(--color-accent, #D4AF37)' }} />
-                        {tc(DAYS_OF_WEEK.find(d => d.value === slot.day_of_week)?.labelKey)}
-                      </span>
-                    )}
-                    <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{slot.start_time?.slice(0, 5)} - {slot.end_time?.slice(0, 5)}</span>
-                    {slot.capacity_override && <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>({t('admin.classes.cap')}: {slot.capacity_override})</span>}
-                  </div>
-                  <button type="button" onClick={() => setPendingSlots(s => s.filter((_, i) => i !== idx))} aria-label={t('admin.classes.removePendingSlot', 'Remove pending slot')} className="p-1 rounded hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors">
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
+          {/* Slot table — existing (edit mode) or pending (new class) */}
+          {((isEditing && classData?.gym_class_schedules?.length > 0) || (!isEditing && pendingSlots.length > 0)) && (
+            <div className="rounded-xl overflow-hidden mb-2"
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+                    <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>{tc('day') || t('admin.classes.day', 'Day')}</th>
+                    <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.time', 'Time')}</th>
+                    <th className="w-10 px-2 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(isEditing ? [...classData.gym_class_schedules].sort((a, b) => {
+                    if (a.specific_date && !b.specific_date) return 1;
+                    if (!a.specific_date && b.specific_date) return -1;
+                    if (a.specific_date && b.specific_date) return a.specific_date.localeCompare(b.specific_date);
+                    return (a.day_of_week ?? 0) - (b.day_of_week ?? 0) || a.start_time.localeCompare(b.start_time);
+                  }) : pendingSlots).map((slot, idx) => {
+                    const key = slot.id || `pending-${idx}`;
+                    const onDelete = isEditing
+                      ? () => onDeleteSlot(slot.id)
+                      : () => setPendingSlots(s => s.filter((_, i) => i !== idx));
+                    return (
+                      <tr key={key} style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--color-border-subtle)' }}>
+                        <td className="px-3 py-2">
+                          {slot.specific_date ? (
+                            <span className="inline-flex items-center gap-1 font-medium" style={{ color: 'var(--color-info, #60A5FA)' }}>
+                              <CalendarDays size={11} />
+                              {slotDayLabel(slot, (d) => tc(DAYS_OF_WEEK.find(x => x.value === d)?.labelKey), lang)}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                              <Repeat size={11} style={{ color: 'var(--color-accent, #D4AF37)' }} />
+                              {tc(DAYS_OF_WEEK.find(d => d.value === slot.day_of_week)?.labelKey)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                          {format12h(slot.start_time)} <span style={{ color: 'var(--color-text-muted)' }}>–</span> {format12h(slot.end_time)}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          <button type="button" onClick={onDelete} aria-label={t('admin.classes.deleteSlot', 'Delete schedule slot')} className="p-1.5 rounded hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors">
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
 
@@ -845,8 +904,10 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
                 setPendingSlots(s => [...s, slot]);
               }
             }}
+            durationMinutes={form.duration_minutes}
             t={t}
             tc={tc}
+            lang={lang}
           />
 
           {(!isEditing && pendingSlots.length === 0 && !classData?.gym_class_schedules?.length) && (
@@ -864,7 +925,7 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
           {/* Custom image preview */}
           {imagePreview ? (
             <div className="relative w-full h-32 rounded-xl overflow-hidden mb-2" style={{ border: '1px solid var(--color-border-subtle)' }}>
-              <img src={imagePreview} alt="Class image preview" className="w-full h-full object-cover" />
+              <img src={imagePreview} alt={t('admin.classes.imagePreviewAlt', 'Class image preview')} className="w-full h-full object-cover" />
               <button onClick={() => { setImageFile(null); setImagePreview(''); setCoverPreset(''); }}
                 aria-label={t('admin.classes.removeImage', 'Remove image')}
                 className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
@@ -931,13 +992,14 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
 }
 
 // ── Schedule Slot Form ──
-function ScheduleSlotForm({ onAdd, t, tc }) {
+function ScheduleSlotForm({ onAdd, durationMinutes = 60, t, tc, lang }) {
   const [mode, setMode] = useState('recurring'); // 'recurring' | 'specific'
   const [selectedDays, setSelectedDays] = useState([1]); // multiple days for recurring
   const [selectedDates, setSelectedDates] = useState([]); // multiple dates for specific
   const [dateInput, setDateInput] = useState('');
   const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('10:00');
+
+  const endTime = addMinutes(startTime, durationMinutes).slice(0, 5);
 
   const toggleDay = (dayVal) => {
     setSelectedDays(prev =>
@@ -956,13 +1018,14 @@ function ScheduleSlotForm({ onAdd, t, tc }) {
   };
 
   const handleAdd = () => {
+    const computedEnd = addMinutes(startTime, durationMinutes);
     if (mode === 'recurring') {
       for (const day of selectedDays) {
         onAdd({
           day_of_week: day,
           specific_date: null,
           start_time: startTime,
-          end_time: endTime,
+          end_time: computedEnd,
         });
       }
     } else {
@@ -971,7 +1034,7 @@ function ScheduleSlotForm({ onAdd, t, tc }) {
           day_of_week: null,
           specific_date: date,
           start_time: startTime,
-          end_time: endTime,
+          end_time: computedEnd,
         });
       }
       setSelectedDates([]);
@@ -982,7 +1045,7 @@ function ScheduleSlotForm({ onAdd, t, tc }) {
 
   const fmtDate = (iso) => {
     const d = new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
   };
 
   return (
@@ -1000,7 +1063,7 @@ function ScheduleSlotForm({ onAdd, t, tc }) {
         <button type="button" onClick={() => setMode('specific')}
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
           style={mode === 'specific'
-            ? { backgroundColor: 'rgba(59,130,246,0.15)', color: '#3B82F6', border: '1px solid rgba(59,130,246,0.3)' }
+            ? { backgroundColor: 'var(--color-info-soft)', color: 'var(--color-info)', border: '1px solid var(--color-info-soft)' }
             : { backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
           }>
           <CalendarDays size={11} /> {t('admin.classes.specificDate', 'Specific Date')}
@@ -1011,17 +1074,22 @@ function ScheduleSlotForm({ onAdd, t, tc }) {
       {mode === 'recurring' ? (
         <div>
           <label className="block text-[10px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.selectDays', 'Select days')}</label>
-          <div className="flex flex-wrap gap-1">
-            {DAYS_OF_WEEK.map(d => (
-              <button key={d.value} type="button" onClick={() => toggleDay(d.value)}
-                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
-                style={selectedDays.includes(d.value)
-                  ? { backgroundColor: 'color-mix(in srgb, var(--color-accent, #D4AF37) 15%, transparent)', color: 'var(--color-accent, #D4AF37)', border: '1px solid color-mix(in srgb, var(--color-accent, #D4AF37) 30%, transparent)' }
-                  : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
-                }>
-                {tc(d.labelKey)?.slice(0, 3)}
-              </button>
-            ))}
+          {/* Week strip — Mon → Sun grid so days line up visually */}
+          <div className="grid grid-cols-7 gap-1">
+            {[1, 2, 3, 4, 5, 6, 0].map(dayVal => {
+              const d = DAYS_OF_WEEK.find(x => x.value === dayVal);
+              const selected = selectedDays.includes(dayVal);
+              return (
+                <button key={dayVal} type="button" onClick={() => toggleDay(dayVal)}
+                  className="py-2 rounded-lg text-[11px] font-semibold uppercase tracking-wide transition-all"
+                  style={selected
+                    ? { backgroundColor: 'color-mix(in srgb, var(--color-accent, #D4AF37) 18%, transparent)', color: 'var(--color-accent, #D4AF37)', border: '1px solid color-mix(in srgb, var(--color-accent, #D4AF37) 40%, transparent)' }
+                    : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
+                  }>
+                  {tc(d.labelKey)?.slice(0, 1)}
+                </button>
+              );
+            })}
           </div>
         </div>
       ) : (
@@ -1035,14 +1103,18 @@ function ScheduleSlotForm({ onAdd, t, tc }) {
               style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
             <button type="button" onClick={addDate} disabled={!dateInput}
               aria-label={t('admin.classes.addDate', 'Add date')}
-              className="p-2 rounded-lg bg-[#3B82F6]/12 text-[#3B82F6] hover:bg-[#3B82F6]/20 disabled:opacity-30 transition-colors">
+              className="p-2 rounded-lg disabled:opacity-30 transition-colors"
+              style={{
+                backgroundColor: 'color-mix(in srgb, var(--color-info) 12%, transparent)',
+                color: 'var(--color-info)',
+              }}>
               <Plus size={14} />
             </button>
           </div>
           {selectedDates.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {selectedDates.map(date => (
-                <span key={date} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] text-[11px] font-semibold">
+                <span key={date} className="admin-pill admin-pill--info inline-flex items-center gap-1">
                   {fmtDate(date)}
                   <button type="button" onClick={() => removeDate(date)} aria-label={t('admin.classes.removeDate', 'Remove date')} className="hover:text-red-400 transition-colors"><X size={10} /></button>
                 </span>
@@ -1052,34 +1124,23 @@ function ScheduleSlotForm({ onAdd, t, tc }) {
         </div>
       )}
 
-      {/* Time inputs — use text inputs to avoid native time picker overflow */}
-      <div className="flex items-end justify-center mb-3">
-        <div style={{ width: 90 }}>
-          <label className="block text-[10px] font-medium mb-1 text-center" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.startTime')}</label>
-          <input type="text" inputMode="numeric" value={startTime} placeholder="09:00"
-            onChange={e => {
-              let v = e.target.value.replace(/[^\d:]/g, '');
-              if (v.length === 2 && !v.includes(':') && startTime.length < v.length) v += ':';
-              if (v.length <= 5) setStartTime(v);
-            }}
-            onBlur={() => { if (/^\d{2}:\d{2}$/.test(startTime)) return; setStartTime('09:00'); }}
-            className="block w-full rounded-lg py-1.5 text-[12px] text-center outline-none"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-        </div>
-        <span className="px-3 text-[13px] font-medium pb-1.5" style={{ color: 'var(--color-text-muted)' }}>–</span>
-        <div style={{ width: 90 }}>
-          <label className="block text-[10px] font-medium mb-1 text-center" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.endTime')}</label>
-          <input type="text" inputMode="numeric" value={endTime} placeholder="10:00"
-            onChange={e => {
-              let v = e.target.value.replace(/[^\d:]/g, '');
-              if (v.length === 2 && !v.includes(':') && endTime.length < v.length) v += ':';
-              if (v.length <= 5) setEndTime(v);
-            }}
-            onBlur={() => { if (/^\d{2}:\d{2}$/.test(endTime)) return; setEndTime('10:00'); }}
-            className="block w-full rounded-lg py-1.5 text-[12px] text-center outline-none"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-        </div>
+      {/* Start time only — end is derived from class duration so changing
+          the duration updates every slot at once. iOS shows the wheel
+          picker with AM/PM. */}
+      <div>
+        <label className="block text-[10px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.startTime')}</label>
+        <input
+          type="time"
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+          className="w-full rounded-lg px-2 py-2 text-[13px] outline-none tabular-nums"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+        />
       </div>
+      <p className="text-[11px] tabular-nums text-center mb-2" style={{ color: 'var(--color-text-muted)' }}>
+        {format12h(startTime)} <span style={{ opacity: 0.6 }}>–</span> {format12h(endTime)}
+        <span className="ml-1" style={{ opacity: 0.6 }}>({durationMinutes} {tc('min') || 'min'})</span>
+      </p>
       {/* Add button */}
       <button onClick={handleAdd} disabled={!canAdd}
         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-[12px] font-semibold disabled:opacity-30 transition-colors" aria-label={t('admin.classes.addSchedule')}
@@ -1112,53 +1173,602 @@ function DeleteConfirmModal({ className: classItem, onConfirm, onCancel, deletin
 }
 
 // ── Bookings Viewer (used inside detail modal) ──
-function BookingsView({ classItem, t, tc }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+// Lets the admin pick any past or future date and see who's signed up,
+// per schedule slot, with a numbered list and a "X / capacity" header.
+// Uses the get_class_attendees RPC (defined in migration 0377) so it
+// works regardless of bookings RLS.
+function BookingsView({ classItem, gymId, t, tc }) {
+  const { i18n } = useTranslation('pages');
+  const isEs = i18n.language?.startsWith('es');
+  // Build a list of valid class dates (recurring DOWs ± 8 weeks, plus
+  // any specific_date one-offs). The admin can only pick from these —
+  // no point letting them browse to a Tuesday for a Monday-only class.
+  const validDates = useMemo(() => {
+    const schedules = classItem?.gym_class_schedules || [];
+    if (!schedules.length) return [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const horizonStart = new Date(today);
+    horizonStart.setDate(horizonStart.getDate() - 14); // 2 weeks of history
+    const horizonEnd = new Date(today);
+    horizonEnd.setDate(horizonEnd.getDate() + 8 * 7);  // 8 weeks ahead
+    const set = new Set();
 
-  const { data: bookings = [], isLoading } = useQuery({
-    queryKey: adminKeys.classes.bookings(classItem?.id, date),
-    queryFn: async () => {
-      if (!classItem?.id) return [];
-      const { data } = await supabase
-        .from('gym_class_bookings')
-        .select('id, booked_at, profiles(full_name, username)')
-        .eq('class_id', classItem.id)
-        .gte('booked_at', `${date}T00:00:00`)
-        .lte('booked_at', `${date}T23:59:59`)
-        .order('booked_at');
-      return data || [];
-    },
-    enabled: !!classItem?.id,
-  });
+    schedules.forEach((s) => {
+      if (s.specific_date) {
+        set.add(s.specific_date);
+        return;
+      }
+      if (typeof s.day_of_week !== 'number') return;
+      // Walk every day in the horizon and collect ones matching this DOW.
+      const cursor = new Date(horizonStart);
+      while (cursor <= horizonEnd) {
+        if (cursor.getDay() === s.day_of_week) {
+          set.add(cursor.toISOString().slice(0, 10));
+        }
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    });
+    return Array.from(set).sort();
+  }, [classItem]);
+
+  // Default selection: today if it's valid, else the next future valid date,
+  // else the most recent past valid date.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const initialDate = useMemo(() => {
+    if (!validDates.length) return todayStr;
+    if (validDates.includes(todayStr)) return todayStr;
+    const future = validDates.find((d) => d > todayStr);
+    if (future) return future;
+    return validDates[validDates.length - 1];
+  }, [validDates, todayStr]);
+  const [date, setDate] = useState(initialDate);
+
+  // If the class data changes (different schedule), re-anchor the date.
+  useEffect(() => { setDate(initialDate); }, [initialDate]);
+
+  const schedulesForDate = useMemo(() => {
+    if (!classItem?.gym_class_schedules?.length) return [];
+    const dow = new Date(`${date}T00:00:00`).getDay();
+    return classItem.gym_class_schedules
+      .filter(s => (s.specific_date ? s.specific_date === date : s.day_of_week === dow))
+      .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+  }, [classItem, date]);
+
+  // Render label like "Lunes 6 May" using date-fns + the active locale.
+  const formatPickerLabel = (d) => {
+    try {
+      // We avoid pulling in another locale import — use Intl, capitalised.
+      const dt = new Date(`${d}T00:00:00`);
+      const opts = { weekday: 'short', day: 'numeric', month: 'short' };
+      const lang = isEs ? 'es-ES' : 'en-US';
+      const s = dt.toLocaleDateString(lang, opts);
+      // Capitalise the first letter (es spelling has lowercase weekdays).
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    } catch { return d; }
+  };
+
+  if (validDates.length === 0) {
+    return (
+      <p className="text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>
+        {t('admin.classes.noSchedules', 'Esta clase no tiene horarios configurados.')}
+      </p>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <input type="date" value={date} onChange={e => setDate(e.target.value)}
-        aria-label={t('admin.classes.selectDate', 'Select date')}
-        className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-        style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+    <BookingsViewer
+      classItem={classItem}
+      gymId={gymId}
+      validDates={validDates}
+      date={date}
+      setDate={setDate}
+      schedulesForDate={schedulesForDate}
+      formatPickerLabel={formatPickerLabel}
+      todayStr={todayStr}
+      isEs={isEs}
+      t={t}
+      tc={tc}
+    />
+  );
+}
+
+// ── Day / Week / Month view-switcher for the bookings tab ──
+function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedulesForDate, formatPickerLabel, todayStr, isEs, t, tc }) {
+  const [viewMode, setViewMode] = useState('day');
+  const [monthAnchor, setMonthAnchor] = useState(() => {
+    const d = new Date(`${date}T00:00:00`);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+
+  // Anchor the month view on the selected date when it changes externally.
+  useEffect(() => {
+    const d = new Date(`${date}T00:00:00`);
+    setMonthAnchor(new Date(d.getFullYear(), d.getMonth(), 1));
+  }, [date]);
+
+  // Index validDates as a Set for O(1) lookup.
+  const validSet = useMemo(() => new Set(validDates), [validDates]);
+
+  // Week start = Sunday of the selected date.
+  const weekStart = useMemo(() => {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() - d.getDay()); // back to Sunday
+    return d;
+  }, [date]);
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      return d;
+    });
+  }, [weekStart]);
+
+  const dayLabelsShort = isEs
+    ? ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
+    : ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+  const monthLabel = (() => {
+    const lang = isEs ? 'es-ES' : 'en-US';
+    const s = monthAnchor.toLocaleDateString(lang, { month: 'long', year: 'numeric' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  })();
+
+  // Build month grid (Sunday-leading, padded to multiples of 7).
+  const monthCells = useMemo(() => {
+    const start = new Date(monthAnchor);
+    const end = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 0);
+    const cells = [];
+    for (let i = 0; i < start.getDay(); i += 1) cells.push(null);
+    for (let d = 1; d <= end.getDate(); d += 1) {
+      cells.push(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), d));
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [monthAnchor]);
+
+  const shiftMonth = (delta) => {
+    setMonthAnchor((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+  };
+
+  // ── Unified prev/next/today nav, view-mode aware ──────────────
+  const shiftDay = (delta) => {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() + delta);
+    setDate(d.toISOString().slice(0, 10));
+  };
+  const shiftWeek = (delta) => {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() + delta * 7);
+    setDate(d.toISOString().slice(0, 10));
+  };
+  const goToToday = () => {
+    setDate(todayStr);
+    const t0 = new Date(`${todayStr}T00:00:00`);
+    setMonthAnchor(new Date(t0.getFullYear(), t0.getMonth(), 1));
+  };
+
+  // Header label depends on viewMode.
+  const navLabel = (() => {
+    const lang = isEs ? 'es-ES' : 'en-US';
+    if (viewMode === 'day') return formatPickerLabel(date);
+    if (viewMode === 'month') return monthLabel;
+    // week
+    const ws = weekStart;
+    const we = new Date(weekStart); we.setDate(we.getDate() + 6);
+    const a = ws.toLocaleDateString(lang, { day: 'numeric', month: 'short' });
+    const b = we.toLocaleDateString(lang, { day: 'numeric', month: 'short' });
+    return `${a} – ${b}`;
+  })();
+
+  const onPrev = () => {
+    if (viewMode === 'day') shiftDay(-1);
+    else if (viewMode === 'week') shiftWeek(-1);
+    else shiftMonth(-1);
+  };
+  const onNext = () => {
+    if (viewMode === 'day') shiftDay(1);
+    else if (viewMode === 'week') shiftWeek(1);
+    else shiftMonth(1);
+  };
+  const isOnToday = (() => {
+    if (viewMode === 'day') return date === todayStr;
+    if (viewMode === 'month') {
+      const t0 = new Date(`${todayStr}T00:00:00`);
+      return monthAnchor.getFullYear() === t0.getFullYear() && monthAnchor.getMonth() === t0.getMonth();
+    }
+    // week
+    const ws = weekStart;
+    const we = new Date(weekStart); we.setDate(we.getDate() + 7);
+    const t0 = new Date(`${todayStr}T00:00:00`);
+    return t0 >= ws && t0 < we;
+  })();
+
+  return (
+    <div className="space-y-3">
+      {/* Day / Semana / Mes segmented */}
+      <div
+        className="grid grid-cols-3 gap-1 p-1 rounded-2xl"
+        style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
+      >
+        {[
+          { key: 'day',   label: t('classes.viewDay',   'Día') },
+          { key: 'week',  label: t('classes.viewWeek',  'Semana') },
+          { key: 'month', label: t('classes.viewMonth', 'Mes') },
+        ].map(opt => {
+          const active = viewMode === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setViewMode(opt.key)}
+              className="py-1.5 rounded-xl text-[12px] font-bold transition-all min-h-[34px]"
+              style={{
+                background: active ? 'var(--color-accent)' : 'transparent',
+                color: active ? '#000' : 'var(--color-text-secondary)',
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Unified prev / label / next + Today button (visible whenever
+          the user has navigated away from today). */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onPrev}
+          className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04]"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
+          aria-label={t('admin.classes.prevNav', 'Anterior')}
+        >
+          ‹
+        </button>
+        <div className="flex-1 text-center text-[13px] font-bold capitalize truncate" style={{ color: 'var(--color-text-primary)' }}>
+          {navLabel}
+        </div>
+        {!isOnToday && (
+          <button
+            type="button"
+            onClick={goToToday}
+            className="px-3 h-9 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors"
+            style={{
+              background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+              color: 'var(--color-accent)',
+              border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)',
+            }}
+            aria-label={t('admin.classes.today', 'Hoy')}
+          >
+            {t('admin.classes.today', 'Hoy')}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onNext}
+          className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04]"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
+          aria-label={t('admin.classes.nextNav', 'Siguiente')}
+        >
+          ›
+        </button>
+      </div>
+
+      {/* DAY VIEW */}
+      {viewMode === 'day' && (
+        <>
+          {schedulesForDate.length === 0 ? (
+            <p className="text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>
+              {t('admin.classes.noSlotsThatDay', 'Esta clase no se imparte ese día.')}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {schedulesForDate.map(s => (
+                <ScheduleAttendees key={s.id} schedule={s} date={date} classItem={classItem} gymId={gymId} t={t} tc={tc} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* WEEK VIEW — list of valid class dates this week with their slots. */}
+      {viewMode === 'week' && (
+        <div className="space-y-3">
+          {weekDays.map((d) => {
+            const dateStr = d.toISOString().slice(0, 10);
+            const isValid = validSet.has(dateStr);
+            const isToday = dateStr === todayStr;
+            const isSelected = dateStr === date;
+            const dow = d.getDay();
+            const slots = (classItem?.gym_class_schedules || [])
+              .filter(s => (s.specific_date ? s.specific_date === dateStr : s.day_of_week === dow))
+              .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+            return (
+              <div
+                key={dateStr}
+                className="rounded-xl p-3"
+                style={{
+                  backgroundColor: 'var(--color-bg-deep)',
+                  border: isSelected
+                    ? '1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)'
+                    : '1px solid var(--color-border-subtle)',
+                  opacity: isValid ? 1 : 0.4,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => isValid && (setDate(dateStr), setViewMode('day'))}
+                  disabled={!isValid}
+                  className="w-full flex items-center justify-between text-left disabled:cursor-default"
+                >
+                  <p
+                    className="text-[13px] font-bold capitalize"
+                    style={{ color: isToday ? 'var(--color-accent)' : 'var(--color-text-primary)' }}
+                  >
+                    {formatPickerLabel(dateStr)}
+                  </p>
+                  <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                    {isValid ? `${slots.length} ${t('admin.classes.slot', 'horario')}${slots.length === 1 ? '' : 's'}` : t('admin.classes.noSlotsShort', '—')}
+                  </span>
+                </button>
+                {isValid && slots.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {slots.map((s) => (
+                      <ScheduleAttendees
+                        key={s.id}
+                        schedule={s}
+                        date={dateStr}
+                        classItem={classItem}
+                        gymId={gymId}
+                        t={t}
+                        tc={tc}
+                        compact
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* MONTH VIEW — compact calendar grid (cell height fixed so the
+          whole grid fits inside the modal without scroll on a phone). */}
+      {viewMode === 'month' && (
+        <div
+          className="rounded-2xl p-3 space-y-2"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
+        >
+          {/* DOW header */}
+          <div className="grid grid-cols-7 gap-1 px-1">
+            {dayLabelsShort.map((lbl) => (
+              <div key={lbl} className="text-[9px] font-bold uppercase tracking-[0.06em] text-center" style={{ color: 'var(--color-text-subtle)' }}>
+                {lbl}
+              </div>
+            ))}
+          </div>
+
+          {/* Cells — fixed 36px tall so 6 rows + header fit ~270px total. */}
+          <div className="grid grid-cols-7 gap-1 px-1">
+            {monthCells.map((d, i) => {
+              if (!d) return <div key={`pad-${i}`} style={{ height: 36 }} />;
+              const dateStr = d.toISOString().slice(0, 10);
+              const isValid = validSet.has(dateStr);
+              const isSelected = dateStr === date;
+              const isToday = dateStr === todayStr;
+              return (
+                <button
+                  key={dateStr}
+                  type="button"
+                  onClick={() => isValid && (setDate(dateStr), setViewMode('day'))}
+                  disabled={!isValid}
+                  className="relative rounded-lg flex items-center justify-center transition-all disabled:cursor-default"
+                  style={{
+                    height: 36,
+                    background: isSelected
+                      ? 'color-mix(in srgb, var(--color-accent) 25%, transparent)'
+                      : 'transparent',
+                    border: isSelected
+                      ? '1px solid color-mix(in srgb, var(--color-accent) 60%, transparent)'
+                      : isToday
+                        ? '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)'
+                        : '1px solid transparent',
+                  }}
+                >
+                  <span
+                    className="text-[12px] font-bold tabular-nums"
+                    style={{
+                      color: isSelected || isToday ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                      opacity: isValid ? 1 : 0.35,
+                    }}
+                  >
+                    {d.getDate()}
+                  </span>
+                  {isValid && (
+                    <span
+                      className="absolute w-1 h-1 rounded-full"
+                      style={{ bottom: 4, background: isSelected ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* MONTH VIEW: full attendee list per valid class date in the visible
+          month, rendered below the calendar so the admin doesn't have to
+          jump into Day or Week to read names. */}
+      {viewMode === 'month' && (() => {
+        const monthDates = monthCells
+          .filter(Boolean)
+          .map(d => d.toISOString().slice(0, 10))
+          .filter(ds => validSet.has(ds));
+        if (monthDates.length === 0) return null;
+        return (
+          <div className="space-y-3">
+            {monthDates.map((ds) => {
+              const dow = new Date(`${ds}T00:00:00`).getDay();
+              const slots = (classItem?.gym_class_schedules || [])
+                .filter(s => (s.specific_date ? s.specific_date === ds : s.day_of_week === dow))
+                .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+              if (slots.length === 0) return null;
+              return (
+                <div
+                  key={ds}
+                  className="rounded-xl p-3"
+                  style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  <p className="text-[12px] font-bold capitalize mb-2" style={{ color: ds === todayStr ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+                    {formatPickerLabel(ds)}
+                  </p>
+                  <div className="space-y-2">
+                    {slots.map(s => (
+                      <ScheduleAttendees
+                        key={s.id}
+                        schedule={s}
+                        date={ds}
+                        classItem={classItem}
+                        gymId={gymId}
+                        t={t}
+                        tc={tc}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// Per-schedule numbered attendee list + capacity header.
+// Admin can cancel any attendee's booking inline (×) — uses the
+// cancel_class_booking RPC, which also auto-promotes the next
+// waitlisted person if the cancelled row was confirmed.
+function ScheduleAttendees({ schedule, date, classItem, gymId, t, tc }) {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [cancellingId, setCancellingId] = useState(null);
+
+  const { data: attendees = [], isLoading } = useQuery({
+    queryKey: ['admin', 'class-attendees', schedule.id, date],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_class_attendees', {
+        p_gym_id: gymId,
+        p_schedule_id: schedule.id,
+        p_booking_date: date,
+      });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!schedule.id && !!gymId,
+    staleTime: 30_000,
+  });
+
+  const cap = schedule.override_capacity || classItem?.max_capacity || 20;
+  const confirmedCount = attendees.filter(a => a.status === 'confirmed' || a.status === 'attended').length;
+  const waitlistCount = attendees.filter(a => a.status === 'waitlisted').length;
+
+  const adminCancel = async (booking) => {
+    if (!window.confirm(t('admin.classes.confirmCancel', { defaultValue: '¿Cancelar la reserva de {{name}}?', name: booking.full_name || '' }))) return;
+    setCancellingId(booking.booking_id);
+    // admin_cancel_class_booking lets staff cancel any booking in their
+    // gym (member RPC requires profile_id = auth.uid()). Migration 0378.
+    const { error } = await supabase.rpc('admin_cancel_class_booking', { p_booking_id: booking.booking_id });
+    setCancellingId(null);
+    if (error) {
+      showToast(error.message || t('admin.classes.cancelFailed', 'No se pudo cancelar'), 'error');
+      return;
+    }
+    showToast(t('admin.classes.cancelled', 'Reserva cancelada'), 'success');
+    queryClient.invalidateQueries({ queryKey: ['admin', 'class-attendees', schedule.id, date] });
+  };
+
+  return (
+    <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+          {schedule.start_time?.slice(0, 5)} – {schedule.end_time?.slice(0, 5)}
+        </p>
+        <span className="text-[11px] font-bold tabular-nums" style={{ color: confirmedCount >= cap ? 'var(--color-danger)' : 'var(--color-accent)' }}>
+          {confirmedCount} / {cap}
+          {waitlistCount > 0 && (
+            <span className="ml-1.5" style={{ color: 'var(--color-warning)' }}>
+              · +{waitlistCount} {t('admin.classes.waitlist', 'lista')}
+            </span>
+          )}
+        </span>
+      </div>
       {isLoading ? (
         <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{tc('loading')}</p>
-      ) : bookings.length === 0 ? (
-        <p className="text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noBookings')}</p>
+      ) : attendees.length === 0 ? (
+        <p className="text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noBookings', 'Sin reservas')}</p>
       ) : (
-        <div className="space-y-2">
-          {bookings.map(b => (
-            <div key={b.id} className="flex items-center justify-between p-3 rounded-xl transition-colors"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-              <span className="text-[13px]" style={{ color: 'var(--color-text-primary)' }}>{b.profiles?.full_name || b.profiles?.username || t('admin.classes.unknown', 'Unknown')}</span>
-              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{new Date(b.booked_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-          ))}
-          <p className="text-[11px] text-right" style={{ color: 'var(--color-text-muted)' }}>{bookings.length} {t('admin.classes.booked')}</p>
-        </div>
+        <ol className="space-y-1.5">
+          {attendees.map((a, i) => {
+            const isWait = a.status === 'waitlisted';
+            const canCancel = a.status === 'confirmed' || a.status === 'waitlisted';
+            return (
+              <li
+                key={a.booking_id}
+                className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg"
+                style={{ backgroundColor: 'var(--color-bg-card)' }}
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span
+                    className="text-[11px] font-bold tabular-nums w-6 text-right flex-shrink-0"
+                    style={{ color: isWait ? 'var(--color-warning)' : 'var(--color-text-muted)' }}
+                  >
+                    {isWait ? `W${a.waitlist_position || ''}` : `${i + 1}.`}
+                  </span>
+                  <span className="text-[12.5px] truncate" style={{ color: 'var(--color-text-primary)' }}>
+                    {a.full_name || t('admin.classes.unknown', 'Unknown')}
+                  </span>
+                </div>
+                {a.status === 'attended' && (
+                  <span className="text-[10px] uppercase tracking-wider font-bold flex-shrink-0" style={{ color: 'var(--color-success)' }}>
+                    {t('admin.classes.attended', 'Asistió')}
+                  </span>
+                )}
+                {isWait && (
+                  <span className="text-[10px] uppercase tracking-wider font-bold flex-shrink-0" style={{ color: 'var(--color-warning)' }}>
+                    {t('admin.classes.waitlistPill', 'Lista')}
+                  </span>
+                )}
+                {canCancel && (
+                  <button
+                    type="button"
+                    onClick={() => adminCancel(a)}
+                    disabled={cancellingId === a.booking_id}
+                    aria-label={t('admin.classes.cancelAttendee', 'Cancelar reserva')}
+                    className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-50"
+                    style={{
+                      background: 'rgba(239,68,68,0.12)',
+                      color: 'var(--color-danger)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
       )}
     </div>
   );
 }
 
 // ── Class Detail Modal (Schedule + Analytics + Bookings + Template) ──
-function ClassDetailModal({ classItem, onClose, onAddSlot, onDeleteSlot, dayLabel, gymId, t, tc }) {
+function ClassDetailModal({ classItem, onClose, dayLabel, gymId, t, tc, lang }) {
   const [detailTab, setDetailTab] = useState('schedule');
 
   const DETAIL_TABS = [
@@ -1170,13 +1780,13 @@ function ClassDetailModal({ classItem, onClose, onAddSlot, onDeleteSlot, dayLabe
   return (
     <AdminModal isOpen onClose={onClose} title={classItem.name} size="lg">
       {/* Detail tabs */}
-      <div className="flex gap-1 mb-4 -mt-1" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+      <div className="flex gap-1 mb-4 -mt-1 overflow-x-auto scrollbar-hide" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
         {DETAIL_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = detailTab === tab.key;
           return (
             <button key={tab.key} onClick={() => setDetailTab(tab.key)}
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[12px] font-semibold transition-all duration-200 border-b-2 -mb-px"
+              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-[12px] font-semibold transition-all duration-200 border-b-2 -mb-px whitespace-nowrap"
               style={{
                 color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
                 borderColor: isActive ? 'var(--color-accent)' : 'transparent',
@@ -1190,45 +1800,100 @@ function ClassDetailModal({ classItem, onClose, onAddSlot, onDeleteSlot, dayLabe
       {/* Schedule tab */}
       {detailTab === 'schedule' && (
         <div className="space-y-3">
-          {classItem.gym_class_schedules?.length > 0 && (
-            <div className="space-y-1.5">
+          {/* Class info — read-only summary of the class. Edits are done via
+              the pencil icon (Edit class form), not here. */}
+          <div
+            className="rounded-xl p-3 flex items-start gap-3"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
+          >
+            {classImageUrl(classItem.image_path) ? (
+              <img
+                src={classImageUrl(classItem.image_path)}
+                alt={classItem.name}
+                className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+                style={{ border: '1px solid var(--color-border-subtle)' }}
+              />
+            ) : classItem.cover_preset ? (
+              <CoverPreview preset={classItem.cover_preset} size="md" className="flex-shrink-0" />
+            ) : (
+              <div
+                className="w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: `${classItem.accent_color || 'var(--color-accent)'}20` }}
+              >
+                <CalendarDays size={20} style={{ color: classItem.accent_color || 'var(--color-accent)' }} />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                  {(lang === 'es' && classItem.name_es) ? classItem.name_es : classItem.name}
+                </h3>
+                {!classItem.is_active && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+                    {t('admin.classes.inactive')}
+                  </span>
+                )}
+              </div>
+              {((lang === 'es' && classItem.description_es) || classItem.description) && (
+                <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  {(lang === 'es' && classItem.description_es) ? classItem.description_es : classItem.description}
+                </p>
+              )}
+              <div className="flex items-center gap-3 mt-1.5 text-[11px] flex-wrap" style={{ color: 'var(--color-text-muted)' }}>
+                {(classItem.trainer?.full_name || classItem.instructor || classItem.instructor_name) && (
+                  <span className="inline-flex items-center gap-1">
+                    <UserCheck size={11} style={{ color: 'var(--color-accent)' }} />
+                    {classItem.trainer?.full_name || classItem.instructor || classItem.instructor_name}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1">
+                  <Clock size={11} /> {classItem.duration_minutes} min
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Users size={11} /> {classItem.max_capacity}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Schedule slots — READ-ONLY in the detail modal. To edit slots,
+              the admin uses the pencil button → Edit class form. */}
+          {classItem.gym_class_schedules?.length > 0 ? (
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border-subtle)', backgroundColor: 'var(--color-bg-deep)' }}>
               {classItem.gym_class_schedules
+                .slice()
                 .sort((a, b) => {
-                  // Recurring first (by day), then specific dates chronologically
                   if (a.specific_date && !b.specific_date) return 1;
                   if (!a.specific_date && b.specific_date) return -1;
                   if (a.specific_date && b.specific_date) return a.specific_date.localeCompare(b.specific_date);
                   return (a.day_of_week ?? 0) - (b.day_of_week ?? 0) || a.start_time.localeCompare(b.start_time);
                 })
-                .map(slot => (
-                  <div key={slot.id} className="flex items-center justify-between p-2.5 rounded-lg"
-                    style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                    <div className="flex items-center gap-3">
+                .map((slot, i, arr) => (
+                  <div
+                    key={slot.id}
+                    className="flex items-center justify-between px-3 py-2.5"
+                    style={{ borderTop: i === 0 ? 'none' : '1px solid var(--color-border-subtle)' }}
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
                       {slot.specific_date ? (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#3B82F6]/10 text-[#3B82F6]">
-                          <CalendarDays size={10} className="inline mr-0.5 -mt-px" />
-                          {slotDayLabel(slot, dayLabel)}
-                        </span>
+                        <CalendarDays size={12} style={{ color: 'var(--color-info)' }} />
                       ) : (
-                        <span className="text-[12px] font-semibold min-w-[80px]" style={{ color: 'var(--color-text-primary)' }}>
-                          <Repeat size={10} className="inline mr-1 -mt-px" style={{ color: 'var(--color-accent, #D4AF37)' }} />
-                          {slotDayLabel(slot, dayLabel)}
-                        </span>
+                        <Repeat size={12} style={{ color: 'var(--color-accent)' }} />
                       )}
-                      <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{slot.start_time?.slice(0, 5)} - {slot.end_time?.slice(0, 5)}</span>
+                      <span className="text-[12.5px] font-semibold capitalize truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {slotDayLabel(slot, dayLabel, lang)}
+                      </span>
                     </div>
-                    <button onClick={() => onDeleteSlot(slot.id)} aria-label={t('admin.classes.deleteSlot', 'Delete schedule slot')} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors"><Trash2 size={13} /></button>
+                    <span className="text-[12px] tabular-nums flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
+                      {format12h(slot.start_time)} – {format12h(slot.end_time)}
+                    </span>
                   </div>
                 ))}
             </div>
-          )}
-          {(!classItem.gym_class_schedules || classItem.gym_class_schedules.length === 0) && (
+          ) : (
             <p className="text-[12px] italic py-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noScheduleSlots')}</p>
           )}
-          <div className="pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-            <p className="text-[11px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.addSchedule')}</p>
-            <ScheduleSlotForm onAdd={(slot) => onAddSlot(classItem.id, slot)} t={t} tc={tc} />
-          </div>
         </div>
       )}
 
@@ -1239,7 +1904,7 @@ function ClassDetailModal({ classItem, onClose, onAddSlot, onDeleteSlot, dayLabe
 
       {/* Bookings tab */}
       {detailTab === 'bookings' && (
-        <BookingsView classItem={classItem} t={t} tc={tc} />
+        <BookingsView classItem={classItem} gymId={gymId} t={t} tc={tc} />
       )}
     </AdminModal>
   );
@@ -1285,7 +1950,7 @@ function SlotCard({ slot, onEditClass, onDeleteSlot, t }) {
 }
 
 // ── Schedule View (recurring + specific dates) ──
-function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc }) {
+function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc, lang }) {
   const { recurringSlots, specificSlots } = useMemo(() => {
     const recurring = [];
     const specific = [];
@@ -1368,7 +2033,7 @@ function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc }) {
           </p>
           {Object.entries(groupedSpecific).map(([date, dateSlots]) => {
             const d = new Date(date + 'T00:00:00');
-            const label = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+            const label = d.toLocaleDateString(lang, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
             return (
               <div key={date}>
                 <p className="text-[12px] font-semibold mb-2" style={{ color: 'var(--color-text-secondary)' }}>{label}</p>
@@ -1387,7 +2052,7 @@ function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc }) {
 }
 
 // ── Build schedule summary string ──
-function buildScheduleSummary(classItem, dayLabel) {
+function buildScheduleSummary(classItem, dayLabel, t, lang) {
   const schedules = classItem.gym_class_schedules || [];
   if (schedules.length === 0) return null;
 
@@ -1415,10 +2080,10 @@ function buildScheduleSummary(classItem, dayLabel) {
     if (specific.length <= 2) {
       for (const s of sortedDates) {
         const d = new Date(s.specific_date + 'T00:00:00');
-        parts.push(`${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${s.start_time?.slice(0, 5)}`);
+        parts.push(`${d.toLocaleDateString(lang, { month: 'short', day: 'numeric' })} ${s.start_time?.slice(0, 5)}`);
       }
     } else {
-      parts.push(`+${specific.length} dates`);
+      parts.push(t('admin.classes.plusDates', '+{{count}} dates', { count: specific.length }));
     }
   }
 
@@ -1426,7 +2091,7 @@ function buildScheduleSummary(classItem, dayLabel) {
 }
 
 // ── Classes List View (simplified cards) ──
-function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDetail, dayLabel, todaysClasses, upcomingBookings, t, tc }) {
+function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDetail, dayLabel, todaysClasses, upcomingBookings, t, tc, lang }) {
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
@@ -1442,33 +2107,34 @@ function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDeta
   return (
     <div className="space-y-4">
       {/* Top stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <span className="admin-eyebrow">{t('admin.classes.eyebrowAtAGlance', { defaultValue: 'At a glance' })}</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3">
         <StatCard
           label={t('admin.classes.statActiveClasses')}
           value={activeCount}
           icon={CalendarDays}
-          borderColor="#10B981"
+          borderColor="var(--color-success)"
           delay={0}
         />
         <StatCard
           label={t('admin.classes.statWeeklySlots')}
           value={totalSlots}
           icon={Clock}
-          borderColor="#3B82F6"
+          borderColor="var(--color-info)"
           delay={40}
         />
         <StatCard
           label={t('admin.classes.statTodaysClasses')}
           value={todaysClasses}
           icon={Calendar}
-          borderColor="#D4AF37"
+          borderColor="var(--color-accent)"
           delay={80}
         />
         <StatCard
           label={t('admin.classes.statUpcomingBookings')}
           value={upcomingBookings}
           icon={Users}
-          borderColor="#8B5CF6"
+          borderColor="var(--color-coach)"
           delay={120}
         />
       </div>
@@ -1482,9 +2148,9 @@ function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDeta
       </div>
 
       {/* Cards */}
-      <div className="grid lg:grid-cols-2 2xl:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
         {filtered.map((cls, idx) => {
-          const scheduleSummary = buildScheduleSummary(cls, dayLabel);
+          const scheduleSummary = buildScheduleSummary(cls, dayLabel, t, lang);
           return (
             <FadeIn key={cls.id} delay={idx * 40}>
               <AdminCard hover padding="p-0" borderLeft={cls.accent_color}>
@@ -1495,8 +2161,8 @@ function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDeta
                   tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDetail(cls); } }}
                 >
-                  {cls.image_url ? (
-                    <img src={cls.image_url} alt={cls.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" style={{ border: '1px solid var(--color-border-subtle)' }} />
+                  {classImageUrl(cls.image_path) ? (
+                    <img src={classImageUrl(cls.image_path)} alt={cls.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" style={{ border: '1px solid var(--color-border-subtle)' }} />
                   ) : cls.cover_preset ? (
                     <CoverPreview preset={cls.cover_preset} size="md" className="flex-shrink-0" />
                   ) : (
@@ -1519,7 +2185,7 @@ function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDeta
                     {cls.trainer && (
                       <div className="flex items-center gap-1.5 mt-1">
                         {cls.trainer.avatar_url ? (
-                          <img src={cls.trainer.avatar_url} alt={cls.trainer.full_name || "Trainer avatar"} className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
+                          <img src={cls.trainer.avatar_url} alt={cls.trainer.full_name || t('admin.classes.trainerAvatarAlt', 'Trainer avatar')} className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
                         ) : (
                           <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
                             style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}>
@@ -1543,10 +2209,10 @@ function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDeta
                       <p className="text-[11px] italic mt-1.5" style={{ color: 'var(--color-text-faint)' }}>{t('admin.classes.noScheduleSlots')}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
                     <Toggle checked={cls.is_active} onChange={() => onToggleActive(cls)} label={t('admin.classes.toggleActive')} />
-                    <button onClick={() => onEdit(cls)} className="p-2 rounded-lg transition-all duration-200 hover:scale-110" style={{ color: 'var(--color-text-muted)' }} aria-label={tc('edit')}><Edit3 size={15} /></button>
-                    <button onClick={() => onDelete(cls)} className="p-2 rounded-lg transition-all duration-200 hover:scale-110" style={{ color: 'var(--color-danger, #EF4444)' }} aria-label={tc('delete')}><Trash2 size={15} /></button>
+                    <button onClick={() => onEdit(cls)} className="p-1.5 sm:p-2 rounded-lg transition-all duration-200 hover:scale-110" style={{ color: 'var(--color-text-muted)' }} aria-label={tc('edit')}><Edit3 size={15} /></button>
+                    <button onClick={() => onDelete(cls)} className="p-1.5 sm:p-2 rounded-lg transition-all duration-200 hover:scale-110" style={{ color: 'var(--color-danger, #EF4444)' }} aria-label={tc('delete')}><Trash2 size={15} /></button>
                   </div>
                 </div>
               </AdminCard>
@@ -1641,24 +2307,32 @@ function BookingsTabView({ classes, t, tc, locale = 'es' }) {
     return anchorDate.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
   }, [viewMode, selectedDate, weekDays, anchorDate]);
 
-  // Fetch bookings
+  // Fetch bookings — bounded by a hard 2000-row cap so a busy gym (or a misconfigured
+  // date window) can't accidentally pull tens of thousands of rows and freeze the UI.
+  // 2000 covers a full month of every-class-full at 60+ bookings per day; admins who
+  // need more should narrow the date range or use the Reports CSV export.
+  const BOOKINGS_LIMIT = 2000;
   const classIds = classes.map(c => c.id);
-  const { data: allBookings = [], isLoading } = useQuery({
+  const { data: bookingsResult = { rows: [], truncated: false }, isLoading } = useQuery({
     queryKey: adminKeys.classes.bookingsTab(viewMode, dateFrom, dateTo),
     queryFn: async () => {
-      if (!classIds.length) return [];
+      if (!classIds.length) return { rows: [], truncated: false };
       const { data } = await supabase
         .from('gym_class_bookings')
         .select('id, class_id, status, attended, rating, booking_date, created_at, waitlist_position, profiles(id, full_name, avatar_url)')
         .in('class_id', classIds)
         .gte('booking_date', dateFrom)
         .lte('booking_date', dateTo)
-        .order('created_at');
-      return data || [];
+        .order('created_at')
+        .limit(BOOKINGS_LIMIT);
+      const rows = data || [];
+      return { rows, truncated: rows.length >= BOOKINGS_LIMIT };
     },
     enabled: classIds.length > 0,
     staleTime: 30_000,
   });
+  const allBookings = bookingsResult.rows;
+  const bookingsTruncated = bookingsResult.truncated;
 
   // Visible bookings: day = just that day, week = tapped day or all, month = tapped day or none
   const displayDate = viewMode === 'month' ? monthSelectedDate : viewMode === 'week' ? selectedDate : selectedDate;
@@ -1690,9 +2364,9 @@ function BookingsTabView({ classes, t, tc, locale = 'es' }) {
 
   const statusStyle = (b) => {
     const styles = {
-      confirmed: { bg: 'rgba(16,185,129,0.1)', color: '#10B981' },
-      waitlisted: { bg: 'rgba(96,165,250,0.1)', color: '#60A5FA' },
-      cancelled: { bg: 'rgba(239,68,68,0.1)', color: '#EF4444' },
+      confirmed: { bg: 'var(--color-success-soft)', color: 'var(--color-success)' },
+      waitlisted: { bg: 'var(--color-info-soft)', color: 'var(--color-info)' },
+      cancelled: { bg: 'var(--color-danger-soft)', color: 'var(--color-danger)' },
       attended: { bg: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)' },
     };
     return styles[b.attended ? 'attended' : b.status] || styles.confirmed;
@@ -1714,22 +2388,22 @@ function BookingsTabView({ classes, t, tc, locale = 'es' }) {
   return (
     <div className="space-y-3">
       {/* View toggle + nav */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-1 p-1 rounded-xl flex-shrink-0" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
           {VIEW_MODES.map(v => (
             <button key={v.key} onClick={() => { setViewMode(v.key); setMonthSelectedDate(null); setExpandedClassId(null); }}
-              className="px-3.5 py-2 rounded-lg text-[13px] font-semibold transition-colors"
+              className="px-3 sm:px-3.5 py-2 rounded-lg text-[12px] sm:text-[13px] font-semibold transition-colors"
               style={viewMode === v.key
                 ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }
                 : { color: 'var(--color-text-muted)' }
               }>{v.label}</button>
           ))}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 ml-auto">
           <button onClick={() => shift(-1)} aria-label={t('admin.classes.previousPeriod', 'Previous period')} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
             <ChevronDown size={16} className="rotate-90" />
           </button>
-          <button onClick={goToday} className="px-3.5 py-2 rounded-xl text-[12px] font-bold"
+          <button onClick={goToday} className="px-3 sm:px-3.5 py-2 rounded-xl text-[12px] font-bold"
             style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
             {t('admin.classes.today', 'Hoy')}
           </button>
@@ -1758,7 +2432,7 @@ function BookingsTabView({ classes, t, tc, locale = 'es' }) {
                 <span className="text-[9px] font-medium uppercase" style={{ color: isSelected ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>{d.day}</span>
                 <span className="text-[15px] font-bold" style={{ color: isSelected ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{d.num}</span>
                 {d.isToday && <div className="w-1 h-1 rounded-full mt-0.5" style={{ backgroundColor: 'var(--color-accent)' }} />}
-                {hasBookings && !d.isToday && <div className="w-1 h-1 rounded-full mt-0.5" style={{ backgroundColor: '#10B981' }} />}
+                {hasBookings && !d.isToday && <div className="w-1 h-1 rounded-full mt-0.5" style={{ backgroundColor: 'var(--color-success)' }} />}
               </button>
             );
           })}
@@ -1785,7 +2459,7 @@ function BookingsTabView({ classes, t, tc, locale = 'es' }) {
                 <span className="text-[12px] font-medium" style={{ color: d.isToday ? 'var(--color-accent)' : monthSelectedDate === d.iso ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{d.num}</span>
                 {(bookingsByDate[d.iso] || 0) > 0 && (
                   <div className="flex items-center gap-0.5 mt-0.5">
-                    <div className="w-1 h-1 rounded-full" style={{ backgroundColor: '#10B981' }} />
+                    <div className="w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--color-success)' }} />
                     <span className="text-[8px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{bookingsByDate[d.iso]}</span>
                   </div>
                 )}
@@ -1846,19 +2520,19 @@ function BookingsTabView({ classes, t, tc, locale = 'es' }) {
                   onClick={() => setExpandedClassId(isExpanded ? null : cls.id)}>
                   {cls.cover_preset ? (
                     <CoverPreview preset={cls.cover_preset} size="sm" className="flex-shrink-0" />
-                  ) : cls.image_url ? (
-                    <img src={cls.image_url} alt={cls.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                  ) : classImageUrl(cls.image_path) ? (
+                    <img src={classImageUrl(cls.image_path)} alt={cls.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                   ) : (
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${cls.accent_color || '#D4AF37'}15` }}>
+                      style={{ backgroundColor: `${cls.accent_color || 'var(--color-accent)'}15` }}>
                       <CalendarDays size={16} style={{ color: cls.accent_color || 'var(--color-accent)' }} />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{cls.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.1)', color: '#10B981' }}>{confirmed} {t('admin.classes.confirmed', 'confirmed')}</span>
-                      {waitlisted > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(96,165,250,0.1)', color: '#60A5FA' }}>{waitlisted} {t('admin.classes.waitlisted', 'waitlist')}</span>}
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-success-soft)', color: 'var(--color-success)' }}>{confirmed} {t('admin.classes.confirmed', 'confirmed')}</span>
+                      {waitlisted > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-info-soft)', color: 'var(--color-info)' }}>{waitlisted} {t('admin.classes.waitlisted', 'waitlist')}</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -1872,7 +2546,7 @@ function BookingsTabView({ classes, t, tc, locale = 'es' }) {
                   <div className="px-3.5 pb-2">
                     <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-bg-hover)' }}>
                       <div className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${capacityPct}%`, backgroundColor: capacityPct >= 90 ? '#EF4444' : capacityPct >= 70 ? '#F59E0B' : '#10B981' }} />
+                        style={{ width: `${capacityPct}%`, backgroundColor: capacityPct >= 90 ? 'var(--color-danger)' : capacityPct >= 70 ? 'var(--color-warning)' : 'var(--color-success)' }} />
                     </div>
                     <p className="text-[9px] mt-0.5 text-right" style={{ color: 'var(--color-text-muted)' }}>{confirmed}/{cls.max_capacity}</p>
                   </div>
@@ -1933,7 +2607,7 @@ export default function AdminClasses() {
   const [deleting, setDeleting] = useState(false);
   const [detailClassId, setDetailClassId] = useState(null);
 
-  useEffect(() => { document.title = `Admin - Classes | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
+  useEffect(() => { document.title = `${t('admin.classes.pageTitle', 'Admin - Classes')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // ── Fetch classes ──
   const { data: classes = [], isLoading } = useQuery({
@@ -1941,19 +2615,16 @@ export default function AdminClasses() {
     queryFn: async () => {
       const { data } = await supabase
         .from('gym_classes')
-        .select('*, gym_class_schedules(id, day_of_week, start_time, end_time, specific_date), trainer:profiles!gym_classes_trainer_id_fkey(id, full_name, avatar_url)')
+        .select('*, gym_class_schedules(id, day_of_week, start_time, end_time, specific_date), trainer:profiles!gym_classes_trainer_id_fkey(id, full_name, avatar_url), gym_class_trainers(trainer:profiles(id, full_name, avatar_url))')
         .eq('gym_id', gymId)
         .order('name');
-      if (data) {
-        await Promise.all(data.map(async (cls) => {
-          if (cls.image_path) {
-            const { data: signed } = await supabase.storage
-              .from('class-images')
-              .createSignedUrl(cls.image_path, 60 * 60);
-            cls.image_url = signed?.signedUrl || '';
-          }
-        }));
-      }
+      // IMPORTANT: don't bake image_url into the cached row. The persisted
+      // React Query cache (24h) was holding signed URLs from a previous
+      // build that called createSignedUrl(); those URLs embed a JWT with an
+      // `exp` claim, and once expired Supabase returns
+      // `400 InvalidJWT: "exp" claim timestamp check failed`. Deriving the
+      // URL at render time from image_path means the cache only stores raw
+      // DB columns and the URL is regenerated fresh on every render.
       return data || [];
     },
     enabled: !!gymId,
@@ -1962,6 +2633,14 @@ export default function AdminClasses() {
   // Derive detailClass from fresh classes data so schedules stay current
   const detailClass = detailClassId ? classes.find(c => c.id === detailClassId) || null : null;
   const setDetailClass = (cls) => setDetailClassId(cls?.id || null);
+
+  // Same idea for the edit modal: when add/delete slot invalidates the
+  // classes query, the modal needs to re-render against the new schedules
+  // immediately. `formModal` only ever holds 'new' | { id } now; the live
+  // row is looked up here every render.
+  const liveFormClass = (formModal && formModal !== 'new')
+    ? classes.find(c => c.id === formModal.id) || formModal
+    : null;
 
   // ── Fetch trainers ──
   const { data: trainers = [] } = useQuery({
@@ -2029,6 +2708,12 @@ export default function AdminClasses() {
         imagePath = path;
       }
 
+      const trainerIds = Array.isArray(formData.trainer_ids) ? formData.trainer_ids : [];
+      // Keep gym_classes.trainer_id populated with the first selected
+      // trainer so legacy single-trainer reads (member side, analytics,
+      // dashboard) still resolve to a real person.
+      const primaryTrainer = trainerIds[0] || null;
+
       const payload = {
         gym_id: gymId, name: formData.name, name_es: formData.name_es || null,
         description: formData.description || null, description_es: formData.description_es || null,
@@ -2036,18 +2721,48 @@ export default function AdminClasses() {
         max_capacity: formData.max_capacity, accent_color: formData.accent_color,
         is_active: formData.is_active, image_path: imagePath,
         cover_preset: formData.cover_preset || null,
-        workout_template_id: formData.workout_template_id || null, trainer_id: formData.trainer_id || null,
+        workout_template_id: formData.workout_template_id || null, trainer_id: primaryTrainer,
+      };
+
+      const syncTrainers = async (classId) => {
+        await supabase.from('gym_class_trainers').delete().eq('class_id', classId);
+        if (trainerIds.length > 0) {
+          const rows = trainerIds.map(tid => ({ class_id: classId, trainer_id: tid, gym_id: gymId }));
+          const { error: junctionErr } = await supabase.from('gym_class_trainers').insert(rows);
+          if (junctionErr) throw junctionErr;
+        }
       };
 
       if (formModal?.id) {
         const { error } = await supabase.from('gym_classes').update(payload).eq('id', formModal.id).eq('gym_id', gymId);
         if (error) throw error;
         logAdminAction('update_class', 'class', formModal.id);
+
+        await syncTrainers(formModal.id);
+
+        // Re-normalize every slot's end_time = start_time + new duration.
+        // The form no longer collects an end_time directly; it's derived
+        // from the class's duration. Changing the duration here cascades
+        // to every existing slot so the booking conflict checks and the
+        // member-side display stay in sync.
+        const { data: existingSlots } = await supabase
+          .from('gym_class_schedules')
+          .select('id, start_time')
+          .eq('class_id', formModal.id);
+        if (existingSlots?.length) {
+          await Promise.all(existingSlots.map(s =>
+            supabase.from('gym_class_schedules')
+              .update({ end_time: addMinutes(s.start_time, formData.duration_minutes) })
+              .eq('id', s.id)
+          ));
+        }
       } else {
         const { data: inserted, error } = await supabase.from('gym_classes').insert(payload).select('id').single();
         if (error) throw error;
         logAdminAction('create_class', 'class', inserted.id, { name: formData.name });
         posthog?.capture('admin_class_created');
+
+        if (inserted?.id) await syncTrainers(inserted.id);
 
         // Insert pending schedule slots for new class
         if (formData.pendingSlots?.length > 0 && inserted?.id) {
@@ -2075,8 +2790,13 @@ export default function AdminClasses() {
 
   // ── Toggle active ──
   const handleToggleActive = async (cls) => {
-    const { error } = await supabase.from('gym_classes').update({ is_active: !cls.is_active }).eq('id', cls.id).eq('gym_id', gymId);
-    if (!error) queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
+    try {
+      const { error } = await supabase.from('gym_classes').update({ is_active: !cls.is_active }).eq('id', cls.id).eq('gym_id', gymId);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
+    } catch (err) {
+      showToast(err.message || tc('somethingWentWrong'), 'error');
+    }
   };
 
   // ── Delete class ──
@@ -2113,6 +2833,24 @@ export default function AdminClasses() {
     } else {
       payload.day_of_week = slot.day_of_week;
     }
+
+    // Pre-insert conflict detection: same class, same day/date, overlapping times.
+    const conflictQuery = supabase
+      .from('gym_class_schedules')
+      .select('id, start_time, end_time')
+      .eq('class_id', classId)
+      .eq('gym_id', gymId);
+    if (slot.specific_date) conflictQuery.eq('specific_date', slot.specific_date);
+    else conflictQuery.eq('day_of_week', slot.day_of_week).is('specific_date', null);
+    const { data: existing } = await conflictQuery;
+    const overlap = (existing || []).find(s =>
+      slot.start_time < s.end_time && slot.end_time > s.start_time
+    );
+    if (overlap) {
+      showToast(tc('admin.classes.slotConflict', { defaultValue: 'A slot already exists at this time.' }), 'error');
+      return;
+    }
+
     const { error } = await supabase.from('gym_class_schedules').insert(payload);
     if (!error) queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
     else showToast(error.message, 'error');
@@ -2121,15 +2859,17 @@ export default function AdminClasses() {
   // ── Delete schedule slot ──
   const handleDeleteSlot = async (slotId) => {
     const { error } = await supabase.from('gym_class_schedules').delete().eq('id', slotId).eq('gym_id', gymId);
-    if (!error) {
-      logAdminAction('delete_schedule_slot', 'gym_class_schedule', slotId);
-      queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
+    if (error) {
+      showToast(error.message || tc('somethingWentWrong'), 'error');
+      return;
     }
+    logAdminAction('delete_schedule_slot', 'gym_class_schedule', slotId);
+    queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
   };
 
   const dayLabel = (dayNum) => {
     const d = DAYS_OF_WEEK.find(d => d.value === dayNum);
-    return d ? tc(d.labelKey) : `Day ${dayNum}`;
+    return d ? tc(d.labelKey) : t('admin.classes.dayN', 'Day {{n}}', { n: dayNum });
   };
 
   // Summary stats
@@ -2157,7 +2897,7 @@ export default function AdminClasses() {
         subtitle={`${activeClasses} ${t('admin.classes.activeClasses')} . ${totalSlots} ${t('admin.classes.weeklySlots')}`}
         actions={
           <button onClick={() => setFormModal('new')}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold transition-all duration-200 hover:scale-[1.03] hover:shadow-lg"
+            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold transition-all duration-200 hover:scale-[1.03] hover:shadow-lg w-full sm:w-auto"
             style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}>
             <Plus size={15} /> {t('admin.classes.addClass')}
           </button>
@@ -2198,6 +2938,7 @@ export default function AdminClasses() {
                   onDeleteSlot={handleDeleteSlot}
                   t={t}
                   tc={tc}
+                  lang={i18n.language}
                 />
               );
               if (tabKey === 'classes') return (
@@ -2212,6 +2953,7 @@ export default function AdminClasses() {
                   upcomingBookings={upcomingBookings}
                   t={t}
                   tc={tc}
+                  lang={i18n.language}
                 />
               );
               if (tabKey === 'bookings') return (
@@ -2231,7 +2973,7 @@ export default function AdminClasses() {
       {/* Modals */}
       {formModal && (
         <ClassFormModal
-          classData={formModal === 'new' ? null : formModal}
+          classData={liveFormClass}
           onClose={() => setFormModal(null)}
           onSave={handleSaveClass}
           saving={saving}
@@ -2241,6 +2983,7 @@ export default function AdminClasses() {
           onDeleteSlot={handleDeleteSlot}
           t={t}
           tc={tc}
+          lang={i18n.language}
         />
       )}
 
@@ -2259,12 +3002,11 @@ export default function AdminClasses() {
         <ClassDetailModal
           classItem={detailClass}
           onClose={() => setDetailClassId(null)}
-          onAddSlot={handleAddSlot}
-          onDeleteSlot={handleDeleteSlot}
           dayLabel={dayLabel}
           gymId={gymId}
           t={t}
           tc={tc}
+          lang={i18n.language}
         />
       )}
     </AdminPageShell>

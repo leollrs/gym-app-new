@@ -1,8 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+// CardioLogModal.jsx
+// Warm-paper redesigned manual cardio log sheet. Matches onboarding / ExerciseLibrary aesthetic.
+// - createPortal, body scroll lock, no Framer Motion
+// - Archivo 900 title, Familjen Grotesk body
+// - 18px rounded tiles with colored icon chips
+// - Preserves existing log_cardio_session RPC payload
+
+import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  X, Minus, Plus, ChevronDown,
+  X, Minus, Plus, ChevronDown, Activity,
   Footprints, Bike, Waves, CircleDot, TrendingUp,
   Zap, Droplets, PersonStanding, Flame,
   Swords, CircleDashed, Music, Mountain, Snowflake, Heart,
@@ -11,9 +19,10 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { estimateCardioCalories } from '../lib/cardioCalories';
-import useFocusTrap from '../hooks/useFocusTrap';
 
-// Intensity multipliers applied on top of the base MET estimate
+const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
+const FONT_BODY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
+
 const INTENSITY_MULT = { easy: 0.75, moderate: 1.0, hard: 1.25, max: 1.5 };
 
 const CARDIO_MAIN = [
@@ -43,90 +52,72 @@ const CARDIO_MORE = [
 ];
 
 const DISTANCE_TYPES = new Set(['running', 'cycling', 'rowing', 'swimming', 'walking', 'hiking']);
-
+const GPS_TYPES = new Set(['running', 'cycling', 'walking', 'hiking']);
 const INTENSITIES = ['easy', 'moderate', 'hard', 'max'];
-const INTENSITY_COLORS = {
-  easy:     '#22C55E',
-  moderate: '#F59E0B',
-  hard:     '#EF4444',
-  max:      '#DC2626',
-};
+const INTENSITY_COLORS = { easy: '#22C55E', moderate: '#F59E0B', hard: '#EF4444', max: '#DC2626' };
+
+function SectionLabel({ children }) {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: 1.2,
+        textTransform: 'uppercase',
+        color: 'var(--color-text-muted)',
+        marginBottom: 8,
+        fontFamily: FONT_BODY,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function CardioLogModal({ isOpen, onClose, onLogged }) {
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const focusRef = useFocusTrap(isOpen);
 
   const [cardioType, setCardioType] = useState('running');
   const [duration, setDuration] = useState(30);
   const [distance, setDistance] = useState('');
-  const [distanceUnit, setDistanceUnit] = useState('km');
+  // Default to imperial when metric_units is undefined — keep this in lockstep
+  // with LiveCardio + CardioSessionDetail + ActiveSession.
+  const [distanceUnit, setDistanceUnit] = useState(profile?.metric_units === true ? 'km' : 'mi');
   const [intensity, setIntensity] = useState('moderate');
+  const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showMoreTypes, setShowMoreTypes] = useState(false);
 
-  // Live tracking mode
-  const [mode, setMode] = useState('log'); // 'log' or 'live'
-  const [liveRunning, setLiveRunning] = useState(false);
-  const [liveElapsed, setLiveElapsed] = useState(0); // seconds
-  const liveStartRef = useRef(null);
-  const liveAccumRef = useRef(0);
-  const liveRafRef = useRef(null);
+  const bodyWeightLbs = profile?.weight_lbs ?? (profile?.weight_kg ? profile.weight_kg * 2.20462 : 165);
 
-  // Body weight for calorie estimation (from profile or default 165lbs)
-  const bodyWeightLbs = profile?.weight_lbs
-    ?? (profile?.weight_kg ? profile.weight_kg * 2.20462 : 165);
-
-  // Live timer — drift-free via Date.now()
-  useEffect(() => {
-    if (!liveRunning) { cancelAnimationFrame(liveRafRef.current); return; }
-    if (!liveStartRef.current) liveStartRef.current = Date.now();
-    const tick = () => {
-      const elapsed = liveAccumRef.current + (Date.now() - liveStartRef.current) / 1000;
-      setLiveElapsed(Math.floor(elapsed));
-      liveRafRef.current = requestAnimationFrame(tick);
-    };
-    liveRafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(liveRafRef.current);
-  }, [liveRunning]);
-
-  // Effective duration (seconds) for calorie calc
-  const effectiveDurationSec = mode === 'live' ? liveElapsed : (duration || 0) * 60;
-  const effectiveDurationMin = Math.ceil(effectiveDurationSec / 60);
-
-  // Distance in km for calorie calc
-  const distanceKm = distance ? (distanceUnit === 'mi' ? parseFloat(distance) * 1.60934 : parseFloat(distance)) : null;
-
-  // Use distance-based calculation when distance is provided (more accurate)
-  const baseCal = estimateCardioCalories(cardioType, effectiveDurationSec, bodyWeightLbs, distanceKm);
+  const durationSec = (duration || 0) * 60;
+  const distanceKm = distance
+    ? (distanceUnit === 'mi' ? parseFloat(distance) * 1.60934 : parseFloat(distance))
+    : null;
+  const baseCal = estimateCardioCalories(cardioType, durationSec, bodyWeightLbs, distanceKm);
   const estimatedCalories = distanceKm ? baseCal : Math.round(baseCal * (INTENSITY_MULT[intensity] ?? 1));
 
   const showDistance = DISTANCE_TYPES.has(cardioType);
+  const canTrackLive = GPS_TYPES.has(cardioType);
 
-  // Lock body scroll when open
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = ''; };
-    }
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
-  // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
       setCardioType('running');
       setDuration(30);
       setDistance('');
-      setDistanceUnit('km');
       setIntensity('moderate');
+      setNotes('');
       setSubmitting(false);
-      setMode('log');
-      setLiveRunning(false);
-      setLiveElapsed(0);
-      liveStartRef.current = null;
-      liveAccumRef.current = 0;
       setShowMoreTypes(false);
     }
   }, [isOpen]);
@@ -134,116 +125,130 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
   const handleSubmit = useCallback(async () => {
     if (submitting || !user) return;
     setSubmitting(true);
-
     try {
-      const distanceKm = distance
-        ? (distanceUnit === 'mi' ? parseFloat(distance) * 1.60934 : parseFloat(distance))
-        : null;
-
       const { error } = await supabase.rpc('log_cardio_session', {
         p_payload: {
           cardio_type: cardioType,
-          duration_seconds: effectiveDurationSec,
+          duration_seconds: durationSec,
           distance_km: distanceKm,
           calories_burned: estimatedCalories,
           intensity,
           source: 'manual',
+          notes: notes?.trim() || null,
         },
       });
-
       if (error) throw error;
-
-      showToast(t('cardio.loggedSuccess'), 'success');
+      showToast(t('cardio.loggedSuccess', 'Cardio logged!'), 'success');
       onLogged?.();
       onClose();
     } catch (err) {
       console.error('Failed to log cardio:', err);
-      showToast(t('cardio.logError'), 'error');
+      showToast(t('cardio.logError', 'Failed to log. Try again.'), 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, user, cardioType, duration, distance, distanceUnit, intensity, estimatedCalories, showToast, t, onLogged, onClose]);
+  }, [submitting, user, cardioType, durationSec, distanceKm, intensity, estimatedCalories, notes, showToast, t, onLogged, onClose]);
+
+  const goLive = () => {
+    onClose();
+    setTimeout(() => navigate('/cardio-live', { state: { cardioType } }), 120);
+  };
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+  const accent = 'var(--color-accent, #2EC4C4)';
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('cardio.title', 'Log Cardio')}
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(10,13,16,0.55)',
+        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      }}
+    >
       <div
-        ref={focusRef}
-        className="relative w-full max-w-[480px] mx-4 mb-4 sm:mb-0 rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
-        style={{ background: 'var(--color-bg-card)' }}
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 560, maxHeight: '92vh',
+          display: 'flex', flexDirection: 'column',
+          background: 'var(--color-bg-card, #FAFAF7)',
+          borderTopLeftRadius: 24, borderTopRightRadius: 24,
+          boxShadow: '0 -12px 44px rgba(15,20,25,0.18)',
+          overflow: 'hidden',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        }}
       >
-        {/* ── Header ─────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+        {/* Grip */}
+        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 10 }}>
+          <div style={{ width: 44, height: 4, borderRadius: 2, background: 'var(--color-border-subtle, rgba(15,20,25,0.12))' }} />
+        </div>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '14px 20px 10px' }}>
           <div>
-            <h3 className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
-              {t('cardio.title')}
-            </h3>
-            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t('cardio.subtitle')}
-            </p>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: accent, fontFamily: FONT_BODY }}>
+              {t('cardio.logPast', 'Log Cardio')}
+            </div>
+            <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 28, letterSpacing: -0.8, color: 'var(--color-text-primary)', marginTop: 2 }}>
+              {t('cardio.title', 'Log Cardio')}
+            </div>
           </div>
           <button
-            type="button"
-            onClick={onClose}
-            className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/[0.06] transition-colors"
-            style={{ color: 'var(--color-text-subtle)' }}
-            aria-label="Close"
+            type="button" onClick={onClose} aria-label={t('cardioLog.close', { defaultValue: 'Close' })}
+            style={{
+              width: 40, height: 40, borderRadius: 14, border: 'none',
+              background: 'var(--color-surface-hover, rgba(15,20,25,0.06))',
+              color: 'var(--color-text-primary)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* ── Mode toggle: Log Past / Track Live ─────────── */}
-        <div className="px-5 pb-4">
-          <div className="flex rounded-xl p-1" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-            {['log', 'live'].map(m => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => { if (m === 'live') { onClose(); setTimeout(() => navigate('/cardio-live'), 150); return; } setMode(m); }}
-                className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-all"
-                style={mode === m
-                  ? { backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }
-                  : { color: 'var(--color-text-muted)' }
-                }
-              >
-                {m === 'log' ? t('cardio.logPast', 'Log Past') : t('cardio.trackLive', 'Track Live')}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Activity picker ────────────────────────────── */}
-        <div className="px-5 pb-4">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
-            {t('cardio.activity')}
-          </label>
-          <div className="grid grid-cols-3 gap-2">
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 20px' }}>
+          {/* Activity grid */}
+          <SectionLabel>{t('cardio.activity', 'Activity')}</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
             {[...CARDIO_MAIN, ...(showMoreTypes ? CARDIO_MORE : [])].map(ct => {
               const Icon = ct.icon;
-              const selected = cardioType === ct.key;
+              const sel = cardioType === ct.key;
               return (
                 <button
                   key={ct.key}
                   type="button"
                   onClick={() => setCardioType(ct.key)}
-                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border transition-all duration-150 ${
-                    selected
-                      ? 'border-opacity-50'
-                      : 'bg-white/[0.04] border-white/[0.06] hover:bg-white/[0.06]'
-                  }`}
-                  style={selected ? {
-                    backgroundColor: `${ct.color}15`,
-                    borderColor: `${ct.color}50`,
-                  } : undefined}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                    padding: '14px 8px',
+                    borderRadius: 18,
+                    border: `1px solid ${sel ? `${ct.color}66` : 'var(--color-border-subtle, rgba(15,20,25,0.08))'}`,
+                    background: sel ? `color-mix(in srgb, ${ct.color} 10%, var(--color-bg-card))` : 'var(--color-surface-hover, rgba(15,20,25,0.04))',
+                    cursor: 'pointer',
+                    minHeight: 72,
+                    fontFamily: FONT_BODY,
+                  }}
                 >
-                  <Icon size={20} style={{ color: selected ? ct.color : 'var(--color-text-subtle)' }} />
+                  <div
+                    style={{
+                      width: 36, height: 36, borderRadius: 12,
+                      background: sel ? `${ct.color}22` : 'var(--color-bg-card)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <Icon size={18} style={{ color: sel ? ct.color : 'var(--color-text-muted)' }} />
+                  </div>
                   <span
-                    className="text-[11px] font-semibold leading-tight text-center"
-                    style={{ color: selected ? ct.color : 'var(--color-text-subtle)' }}
+                    style={{
+                      fontSize: 11, fontWeight: 800, textAlign: 'center',
+                      color: sel ? ct.color : 'var(--color-text-primary)',
+                    }}
                   >
                     {t(`cardio.types.${ct.key}`, ct.key.replace(/_/g, ' '))}
                   </span>
@@ -252,207 +257,233 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
             })}
           </div>
           <button
-            type="button"
-            onClick={() => setShowMoreTypes(s => !s)}
-            className="w-full flex items-center justify-center gap-1.5 mt-2 py-2 text-[11px] font-medium"
-            style={{ color: 'var(--color-text-muted)' }}
+            type="button" onClick={() => setShowMoreTypes(s => !s)}
+            style={{
+              width: '100%', marginTop: 6, padding: '8px 0',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'var(--color-text-muted)', fontSize: 11, fontWeight: 600,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+              fontFamily: FONT_BODY,
+            }}
           >
-            <ChevronDown size={12} className={`transition-transform ${showMoreTypes ? 'rotate-180' : ''}`} />
+            <ChevronDown size={12} style={{ transform: showMoreTypes ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
             {showMoreTypes ? t('cardio.showLess', 'Show less') : t('cardio.showMore', 'More activities')}
           </button>
-        </div>
 
-        {/* ── Duration / Live Timer ───────────────────────── */}
-        <div className="px-5 pb-4">
-          {mode === 'live' ? (
-            <>
-              {/* Live timer display */}
-              <div className="text-center py-4">
-                <p className="text-[48px] font-black tabular-nums" style={{ color: liveRunning ? '#10B981' : 'var(--color-text-primary)' }}>
-                  {String(Math.floor(liveElapsed / 3600)).padStart(2, '0')}:{String(Math.floor((liveElapsed % 3600) / 60)).padStart(2, '0')}:{String(liveElapsed % 60).padStart(2, '0')}
-                </p>
-                <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                  {liveRunning ? t('cardio.tracking', 'Tracking...') : liveElapsed > 0 ? t('cardio.paused', 'Paused') : t('cardio.readyToStart', 'Ready to start')}
-                </p>
-              </div>
-              {/* Start / Pause / Resume */}
-              <div className="flex gap-3 justify-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (liveRunning) {
-                      // Pause
-                      liveAccumRef.current += (Date.now() - liveStartRef.current) / 1000;
-                      liveStartRef.current = null;
-                      setLiveRunning(false);
-                    } else {
-                      // Start / Resume
-                      liveStartRef.current = Date.now();
-                      setLiveRunning(true);
-                    }
-                  }}
-                  className="px-8 py-3 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
-                  style={liveRunning
-                    ? { backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444' }
-                    : { backgroundColor: '#10B981', color: '#FFFFFF' }
-                  }
-                >
-                  {liveRunning ? t('cardio.pause', 'Pause') : liveElapsed > 0 ? t('cardio.resume', 'Resume') : t('cardio.start', 'Start')}
-                </button>
-              </div>
-              {/* Calories estimate */}
-              {liveElapsed > 0 && (
-                <p className="text-center mt-3 text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-                  ~{estimatedCalories} {t('cardio.cal')}
-                </p>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Manual duration stepper */}
-              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
-                {t('cardio.duration')}
-              </label>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDuration(d => Math.max(1, (d || 1) - 5))}
-                  aria-label="Decrease duration"
-                  className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors active:scale-95"
-                  style={{ color: 'var(--color-text-primary)' }}
-                >
-                  <Minus size={16} />
-                </button>
-                <div className="flex-1 text-center">
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min="1"
-                    max="300"
-                    value={duration}
-                    onChange={e => {
-                      const v = e.target.value;
-                      if (v === '') { setDuration(''); return; }
-                      const n = parseInt(v);
-                      if (!isNaN(n) && n >= 0 && n <= 300) setDuration(n);
-                    }}
-                    onBlur={() => { if (!duration || duration < 1) setDuration(1); }}
-                    className="w-24 text-center font-black border-none outline-none bg-transparent"
-                    style={{ color: 'var(--color-text-primary)', fontSize: '28px' }}
-                  />
-                  <p className="text-[11px] -mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('cardio.minutes')}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDuration(d => Math.min(300, (d || 0) + 5))}
-                  aria-label="Increase duration"
-                  className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors active:scale-95"
-                  style={{ color: 'var(--color-text-primary)' }}
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-              <p className="text-center mt-2 text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-                ~{estimatedCalories} {t('cardio.cal')}
-              </p>
-            </>
+          {/* Live tracking CTA for GPS activities */}
+          {canTrackLive && (
+            <button
+              type="button"
+              onClick={goLive}
+              style={{
+                width: '100%', marginTop: 12, padding: '12px 14px',
+                borderRadius: 16,
+                border: `1.5px solid ${accent}`,
+                background: 'color-mix(in srgb, var(--color-accent, #2EC4C4) 10%, var(--color-bg-card))',
+                color: accent,
+                fontFamily: FONT_BODY, fontWeight: 800, fontSize: 13,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                cursor: 'pointer',
+              }}
+            >
+              <Activity size={16} />
+              {t('cardio.trackLiveWithGps', 'Track live with GPS')}
+            </button>
           )}
-        </div>
 
-        {/* ── Distance (conditional) ─────────────────────── */}
-        {showDistance && (
-          <div className="px-5 pb-4">
-            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
-              {t('cardio.distance')} <span className="font-normal lowercase">({t('cardio.optional')})</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                placeholder="0.0"
-                value={distance}
-                onChange={e => setDistance(e.target.value)}
-                className="flex-1 border border-white/[0.06] rounded-xl px-3 py-2.5 outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)]"
-                style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)', fontSize: '16px' }}
-              />
-              <div className="flex rounded-xl border border-white/[0.06] overflow-hidden">
-                {['km', 'mi'].map(unit => (
-                  <button
-                    key={unit}
-                    type="button"
-                    onClick={() => setDistanceUnit(unit)}
-                    className={`px-3 py-2.5 text-[12px] font-bold transition-all ${
-                      distanceUnit === unit
-                        ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
-                        : 'bg-white/[0.04] hover:bg-white/[0.06]'
-                    }`}
-                    style={distanceUnit !== unit ? { color: 'var(--color-text-subtle)' } : undefined}
-                  >
-                    {unit}
-                  </button>
-                ))}
+          {/* Duration stepper */}
+          <div style={{ marginTop: 18 }}>
+            <SectionLabel>{t('cardio.duration', 'Duration')}</SectionLabel>
+            <div
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: 10,
+                borderRadius: 18,
+                background: 'var(--color-surface-hover, rgba(15,20,25,0.04))',
+                border: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setDuration(d => Math.max(1, (d || 1) - 5))}
+                aria-label={t('cardioLog.decrease', { defaultValue: 'Decrease' })}
+                style={{
+                  width: 44, height: 44, borderRadius: 14,
+                  background: 'var(--color-bg-card)', border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                <Minus size={16} />
+              </button>
+              <div style={{ textAlign: 'center' }}>
+                <div
+                  style={{
+                    fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 36,
+                    color: 'var(--color-text-primary)', letterSpacing: -1,
+                    lineHeight: 1,
+                  }}
+                >
+                  {duration || 0}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                  {t('cardio.minutes', 'minutes')}
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setDuration(d => Math.min(300, (d || 0) + 5))}
+                aria-label={t('cardioLog.increase', { defaultValue: 'Increase' })}
+                style={{
+                  width: 44, height: 44, borderRadius: 14,
+                  background: 'var(--color-bg-card)', border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 8, fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)' }}>
+              ~{estimatedCalories} {t('cardio.cal', 'cal')}
             </div>
           </div>
-        )}
 
-        {/* ── Intensity ──────────────────────────────────── */}
-        <div className="px-5 pb-5">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
-            {t('cardio.intensity')}
-          </label>
-          <div className="grid grid-cols-4 gap-2">
-            {INTENSITIES.map(level => {
-              const selected = intensity === level;
-              const color = INTENSITY_COLORS[level];
-              return (
-                <button
-                  key={level}
-                  type="button"
-                  onClick={() => setIntensity(level)}
-                  className={`py-2.5 rounded-xl border text-[12px] font-bold transition-all duration-150 ${
-                    selected
-                      ? 'border-opacity-50'
-                      : 'bg-white/[0.04] border-white/[0.06] hover:bg-white/[0.06]'
-                  }`}
-                  style={selected ? {
-                    backgroundColor: `${color}15`,
-                    borderColor: `${color}50`,
-                    color: color,
-                  } : { color: 'var(--color-text-subtle)' }}
+          {/* Distance */}
+          {showDistance && (
+            <div style={{ marginTop: 18 }}>
+              <SectionLabel>
+                {t('cardio.distance', 'Distance')}{' '}
+                <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
+                  ({t('cardio.optional', 'optional')})
+                </span>
+              </SectionLabel>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="number" min="0" step="0.1" placeholder="0.0"
+                  value={distance}
+                  onChange={e => setDistance(e.target.value)}
+                  style={{
+                    flex: 1, padding: '12px 14px',
+                    borderRadius: 16,
+                    border: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
+                    background: 'var(--color-surface-hover, rgba(15,20,25,0.04))',
+                    color: 'var(--color-text-primary)',
+                    fontSize: 16, fontFamily: FONT_BODY,
+                    outline: 'none',
+                  }}
+                />
+                <div
+                  style={{
+                    display: 'flex',
+                    borderRadius: 16,
+                    overflow: 'hidden',
+                    background: 'var(--color-surface-hover, rgba(15,20,25,0.04))',
+                    border: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
+                  }}
                 >
-                  {t(`cardio.intensities.${level}`)}
-                </button>
-              );
-            })}
+                  {['km', 'mi'].map(u => (
+                    <button
+                      key={u} type="button"
+                      onClick={() => setDistanceUnit(u)}
+                      style={{
+                        padding: '0 16px', minWidth: 52,
+                        border: 'none', cursor: 'pointer',
+                        background: distanceUnit === u ? accent : 'transparent',
+                        color: distanceUnit === u ? 'var(--color-bg-card)' : 'var(--color-text-muted)',
+                        fontWeight: 800, fontSize: 12,
+                      }}
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Intensity */}
+          <div style={{ marginTop: 18 }}>
+            <SectionLabel>{t('cardio.intensity', 'Intensity')}</SectionLabel>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {INTENSITIES.map(lvl => {
+                const sel = intensity === lvl;
+                const c = INTENSITY_COLORS[lvl];
+                return (
+                  <button
+                    key={lvl} type="button"
+                    onClick={() => setIntensity(lvl)}
+                    style={{
+                      padding: '12px 4px',
+                      borderRadius: 16,
+                      border: `1px solid ${sel ? `${c}66` : 'var(--color-border-subtle, rgba(15,20,25,0.08))'}`,
+                      background: sel
+                        ? `color-mix(in srgb, ${c} 12%, var(--color-bg-card))`
+                        : 'var(--color-surface-hover, rgba(15,20,25,0.04))',
+                      color: sel ? c : 'var(--color-text-primary)',
+                      cursor: 'pointer',
+                      fontFamily: FONT_BODY, fontWeight: 800, fontSize: 12,
+                      textTransform: 'uppercase', letterSpacing: 0.5,
+                    }}
+                  >
+                    {t(`cardio.intensities.${lvl}`, lvl)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div style={{ marginTop: 18 }}>
+            <SectionLabel>{t('cardio.notes', 'Notes')} <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>({t('cardio.optional', 'optional')})</span></SectionLabel>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder={t('cardio.notesPlaceholder', 'How did it feel?')}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: 16,
+                border: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
+                background: 'var(--color-surface-hover, rgba(15,20,25,0.04))',
+                color: 'var(--color-text-primary)',
+                fontSize: 14, fontFamily: FONT_BODY,
+                outline: 'none', resize: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
           </div>
         </div>
 
-        {/* ── Log button ─────────────────────────────────── */}
-        <div className="px-5 pb-5">
+        {/* Footer CTA */}
+        <div
+          style={{
+            borderTop: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
+            padding: '12px 20px 18px',
+            background: 'var(--color-bg-card, #FAFAF7)',
+          }}
+        >
           <button
             type="button"
-            onClick={() => {
-              // Stop live timer if running
-              if (liveRunning) {
-                liveAccumRef.current += (Date.now() - liveStartRef.current) / 1000;
-                liveStartRef.current = null;
-                setLiveRunning(false);
-              }
-              handleSubmit();
-            }}
-            disabled={submitting || (mode === 'live' && liveElapsed < 10)}
-            className="w-full py-3.5 rounded-2xl text-[15px] font-bold transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleSubmit}
+            disabled={submitting}
             style={{
-              backgroundColor: 'var(--color-accent, #D4AF37)',
-              color: '#000',
+              width: '100%', height: 52, borderRadius: 16,
+              border: 'none', cursor: submitting ? 'default' : 'pointer',
+              background: accent,
+              color: 'var(--color-bg-card, #0A0D10)',
+              fontFamily: FONT_BODY, fontWeight: 800, fontSize: 14,
+              letterSpacing: 0.1,
+              opacity: submitting ? 0.6 : 1,
+              boxShadow: '0 6px 18px color-mix(in srgb, var(--color-accent, #2EC4C4) 30%, transparent)',
             }}
           >
-            {submitting ? t('cardio.logging') : mode === 'live' ? t('cardio.finishAndLog', 'Finish & Log') : t('cardio.logButton')}
+            {submitting ? t('cardio.logging', 'Logging...') : t('cardio.logButton', 'Log cardio')}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

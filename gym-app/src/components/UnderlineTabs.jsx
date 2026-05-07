@@ -1,8 +1,8 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 
 /**
- * Strava-style underline tab bar.
- * Labels separated visually, active tab gets a sliding gold underline.
+ * Plain-text underline tab bar.
+ * Active tab: fontWeight 800, accent underline. Inactive: fontWeight 600, transparent border.
  *
  * Props:
  *   tabs        – array of { key, label } or just strings
@@ -12,26 +12,17 @@ import React, { useRef, useEffect, useState } from 'react';
 export default function UnderlineTabs({ tabs, activeIndex, onChange, scrollable = false }) {
   const containerRef = useRef(null);
   const tabRefs = useRef([]);
-  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   const normalized = tabs.map(t => (typeof t === 'string' ? { key: t, label: t } : t));
 
   useEffect(() => {
-    const el = tabRefs.current[activeIndex];
-    if (el) {
-      const container = containerRef.current;
-      const containerRect = container.getBoundingClientRect();
-      const tabRect = el.getBoundingClientRect();
-      setIndicator({
-        left: tabRect.left - containerRect.left + container.scrollLeft,
-        width: tabRect.width,
-      });
-      // Scroll active tab into view on mobile
-      if (scrollable) {
+    if (scrollable) {
+      const el = tabRefs.current[activeIndex];
+      if (el) {
         el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
       }
     }
-  }, [activeIndex, normalized.length, scrollable]);
+  }, [activeIndex, scrollable]);
 
   const handleKeyDown = (e, i) => {
     let newIndex = i;
@@ -55,8 +46,8 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange, scrollable 
   };
 
   return (
-    <div ref={containerRef} className={`relative ${scrollable ? 'overflow-x-auto scrollbar-hide' : ''}`}>
-      <div className={`flex gap-1 ${scrollable ? 'w-max min-w-full' : ''}`} role="tablist">
+    <div ref={containerRef} className={`relative ${scrollable ? 'overflow-x-auto scrollbar-hide' : ''}`} style={{ borderBottom: '1px solid var(--color-border-subtle, rgba(0,0,0,0.06))' }}>
+      <div className={`flex ${scrollable ? 'w-max min-w-full' : ''}`} role="tablist">
         {normalized.map((tab, i) => (
           <button
             key={tab.key}
@@ -68,30 +59,27 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange, scrollable 
             tabIndex={i === activeIndex ? 0 : -1}
             onClick={() => onChange(i)}
             onKeyDown={(e) => handleKeyDown(e, i)}
-            className={`${scrollable ? 'shrink-0 px-5 whitespace-nowrap' : 'flex-1 min-w-0 px-2 whitespace-normal'} py-3 min-h-[48px] text-xs sm:text-sm font-semibold text-center transition-colors relative leading-tight rounded-t-md ${
-              i === activeIndex
-                ? 'text-[var(--color-text-primary)] bg-[var(--color-surface)]/60'
-                : 'text-[var(--color-text-muted)]'
-            }`}
+            className="text-[14px] transition-colors relative"
+            style={{
+              flex: scrollable ? undefined : 1,
+              textAlign: 'center',
+              padding: '14px 0 12px',
+              fontWeight: i === activeIndex ? 800 : 600,
+              color: i === activeIndex ? 'var(--color-text-primary)' : 'var(--color-text-sub, var(--color-text-muted))',
+              background: 'none',
+              borderBottom: i === activeIndex ? '2px solid var(--color-accent, #2EC4C4)' : '2px solid transparent',
+              whiteSpace: scrollable ? 'nowrap' : undefined,
+            }}
           >
             {tab.label}
             {tab.count != null && tab.count > 0 && (
-              <span className={`ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${
-                i === activeIndex ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'
-              }`}>
+              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold" style={{ color: i === activeIndex ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
                 {tab.count}
               </span>
             )}
           </button>
         ))}
       </div>
-      {/* Bottom border */}
-      <div className="h-[1px]" style={{ background: 'var(--color-border-subtle)' }} />
-      {/* Sliding underline */}
-      <div
-        className="absolute bottom-0 h-[2px] rounded-full transition-all duration-300 ease-out"
-        style={{ left: indicator.left, width: indicator.width, background: 'var(--color-accent)' }}
-      />
     </div>
   );
 }

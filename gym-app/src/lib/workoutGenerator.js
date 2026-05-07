@@ -92,26 +92,89 @@ const META = {
   ex_secr:  { tier: 'isolation', diff: 'beginner'     },
 };
 
-// ── Volume config by goal ───────────────────────────────────────────────────
-const GOAL_CONFIG = {
-  muscle_gain:    { sets: [3, 4], reps: '8-12',  rest: 90  },
-  fat_loss:       { sets: [3, 4], reps: '12-15', rest: 60  },
-  strength:       { sets: [4, 5], reps: '3-6',   rest: 180 },
-  endurance:      { sets: [2, 3], reps: '15-20', rest: 45  },
-  general_fitness:{ sets: [3, 3], reps: '10-12', rest: 75  },
+// ── Volume config by goal × duration tier ───────────────────────────────────
+// Duration tiers: 30 / 45 / 60 / 90 / 120 min. Exercise count scales ~8-12 min per
+// exercise (setup + sets + rest). Anything in between resolves to the nearest tier.
+const DURATION_CONFIGS = {
+  30: {
+    maxExercises: 4,
+    goals: {
+      muscle_gain:    { sets: [2, 2], reps: '8-12',  rest: 45  },
+      fat_loss:       { sets: [2, 2], reps: '12-15', rest: 30  },
+      strength:       { sets: [3, 3], reps: '3-6',   rest: 90  },
+      endurance:      { sets: [2, 2], reps: '15-20', rest: 20  },
+      general_fitness:{ sets: [2, 2], reps: '10-12', rest: 45  },
+    },
+  },
+  45: {
+    maxExercises: 6,
+    goals: {
+      muscle_gain:    { sets: [2, 3], reps: '8-12',  rest: 60  },
+      fat_loss:       { sets: [2, 3], reps: '12-15', rest: 45  },
+      strength:       { sets: [3, 4], reps: '3-6',   rest: 120 },
+      endurance:      { sets: [2, 2], reps: '15-20', rest: 30  },
+      general_fitness:{ sets: [2, 3], reps: '10-12', rest: 60  },
+    },
+  },
+  60: {
+    maxExercises: 8,
+    goals: {
+      muscle_gain:    { sets: [3, 4], reps: '8-12',  rest: 90  },
+      fat_loss:       { sets: [3, 4], reps: '12-15', rest: 60  },
+      strength:       { sets: [4, 5], reps: '3-6',   rest: 180 },
+      endurance:      { sets: [2, 3], reps: '15-20', rest: 45  },
+      general_fitness:{ sets: [3, 3], reps: '10-12', rest: 75  },
+    },
+  },
+  75: {
+    maxExercises: 10,
+    goals: {
+      muscle_gain:    { sets: [3, 4], reps: '8-12',  rest: 90  },
+      fat_loss:       { sets: [3, 4], reps: '12-15', rest: 60  },
+      strength:       { sets: [4, 5], reps: '3-6',   rest: 150 },
+      endurance:      { sets: [3, 3], reps: '15-20', rest: 45  },
+      general_fitness:{ sets: [3, 4], reps: '10-12', rest: 75  },
+    },
+  },
+  90: {
+    maxExercises: 12,
+    goals: {
+      muscle_gain:    { sets: [4, 5], reps: '8-12',  rest: 90  },
+      fat_loss:       { sets: [3, 4], reps: '12-15', rest: 60  },
+      strength:       { sets: [5, 6], reps: '3-6',   rest: 180 },
+      endurance:      { sets: [3, 4], reps: '15-20', rest: 45  },
+      general_fitness:{ sets: [3, 4], reps: '10-12', rest: 75  },
+    },
+  },
+  120: {
+    maxExercises: 14,
+    goals: {
+      muscle_gain:    { sets: [4, 5], reps: '8-12',  rest: 90  },
+      fat_loss:       { sets: [4, 4], reps: '12-15', rest: 60  },
+      strength:       { sets: [5, 6], reps: '3-6',   rest: 180 },
+      endurance:      { sets: [3, 4], reps: '15-20', rest: 45  },
+      general_fitness:{ sets: [3, 4], reps: '10-12', rest: 75  },
+    },
+  },
 };
 
-// Short workout overrides: fewer sets, shorter rest — used when shortWorkout=true
-const SHORT_GOAL_CONFIG = {
-  muscle_gain:    { sets: [2, 3], reps: '8-12',  rest: 60  },
-  fat_loss:       { sets: [2, 3], reps: '12-15', rest: 45  },
-  strength:       { sets: [3, 4], reps: '3-6',   rest: 120 },
-  endurance:      { sets: [2, 2], reps: '15-20', rest: 30  },
-  general_fitness:{ sets: [2, 3], reps: '10-12', rest: 60  },
-};
+// Backwards-compatible aliases
+const GOAL_CONFIG = DURATION_CONFIGS[60].goals;
+const SHORT_GOAL_CONFIG = DURATION_CONFIGS[45].goals;
+const SHORT_WORKOUT_MAX_EXERCISES = DURATION_CONFIGS[45].maxExercises;
 
-// Max exercises per session for short workouts (compound-focused)
-const SHORT_WORKOUT_MAX_EXERCISES = 4;
+/** Resolve duration to the nearest config tier.
+ *  Exercise count scales ~8-12 min per exercise: 30→3, 45→5, 60→7, 90→10, 120→12.
+ */
+function getDurationConfig(minutes) {
+  if (!minutes) return DURATION_CONFIGS[60];
+  if (minutes >= 105) return DURATION_CONFIGS[120];
+  if (minutes >= 83)  return DURATION_CONFIGS[90];
+  if (minutes >= 68)  return DURATION_CONFIGS[75];
+  if (minutes >= 53)  return DURATION_CONFIGS[60];
+  if (minutes >= 38)  return DURATION_CONFIGS[45];
+  return DURATION_CONFIGS[30];
+}
 
 const RECOVERY_MOD = {
   aggressive:   { setsBonus: 1,  restMod: -15 },
@@ -148,6 +211,13 @@ function buildPushSlots(level, gender, priority, shortWorkout = false) {
   if (level === 'advanced') {
     slots.push({ muscle: 'Shoulders', tier: 'isolation' });
   }
+  // Extended pool for 90/120-min sessions
+  slots.push(
+    { muscle: 'Chest',     tier: 'secondary' },
+    { muscle: 'Triceps',   tier: 'isolation' },
+    { muscle: 'Shoulders', tier: 'isolation' },
+    { muscle: 'Core',      tier: 'isolation' },
+  );
   return slots;
 }
 
@@ -171,19 +241,25 @@ function buildPullSlots(level, gender, priority, shortWorkout = false) {
   if (level !== 'beginner') {
     slots.push({ muscle: 'Back',   tier: 'secondary' });
   }
+  // Extended pool for 90/120-min sessions
+  slots.push(
+    { muscle: 'Back',   tier: 'isolation' },
+    { muscle: 'Biceps', tier: 'secondary' },
+    { muscle: 'Core',   tier: 'secondary' },
+    { muscle: 'Back',   tier: 'primary'   },
+  );
   return slots;
 }
 
 function buildLegsSlots(level, gender, priority, shortWorkout = false) {
   if (shortWorkout) {
     // Short: 3-4 compound-focused exercises
-    const slots = [
+    return [
       { muscle: 'Legs',   tier: 'primary'   },
       { muscle: 'Legs',   tier: 'secondary'  },
       { muscle: 'Glutes', tier: 'primary'   },
       { muscle: 'Core',   tier: 'primary'   },
     ];
-    return slots;
   }
   const slots = [
     { muscle: 'Legs',   tier: 'primary'   },
@@ -201,6 +277,13 @@ function buildLegsSlots(level, gender, priority, shortWorkout = false) {
   if (level !== 'beginner') {
     slots.push({ muscle: 'Calves', tier: 'secondary' });
   }
+  // Extended pool for 90/120-min sessions
+  slots.push(
+    { muscle: 'Glutes', tier: 'isolation' },
+    { muscle: 'Calves', tier: 'isolation' },
+    { muscle: 'Core',   tier: 'isolation' },
+    { muscle: 'Legs',   tier: 'secondary' },
+  );
   return slots;
 }
 
@@ -229,6 +312,14 @@ function buildUpperSlots(level, gender, priority, shortWorkout = false) {
     slots.push({ muscle: 'Biceps',  tier: 'isolation' });
     slots.push({ muscle: 'Triceps', tier: 'isolation' });
   }
+  // Extended pool for 90/120-min sessions
+  slots.push(
+    { muscle: 'Chest',     tier: 'isolation' },
+    { muscle: 'Back',      tier: 'isolation' },
+    { muscle: 'Biceps',    tier: 'secondary' },
+    { muscle: 'Triceps',   tier: 'secondary' },
+    { muscle: 'Core',      tier: 'isolation' },
+  );
   return slots;
 }
 
@@ -255,6 +346,13 @@ function buildLowerSlots(level, gender, priority, shortWorkout = false) {
   if (gender === 'female' || (priority || []).some(p => p.toLowerCase().includes('glute'))) {
     slots.push({ muscle: 'Glutes', tier: 'secondary' });
   }
+  // Extended pool for 90/120-min sessions
+  slots.push(
+    { muscle: 'Glutes', tier: 'isolation' },
+    { muscle: 'Calves', tier: 'isolation' },
+    { muscle: 'Core',   tier: 'primary'   },
+    { muscle: 'Legs',   tier: 'secondary' },
+  );
   return slots;
 }
 
@@ -280,39 +378,56 @@ function buildFullBodySlots(level, gender, priority, shortWorkout = false) {
     slots.push({ muscle: 'Legs',   tier: 'secondary' });
     slots.push({ muscle: 'Glutes', tier: 'primary'   });
   }
+  // Extended pool for 90/120-min sessions
+  slots.push(
+    { muscle: 'Back',      tier: 'secondary' },
+    { muscle: 'Chest',     tier: 'secondary' },
+    { muscle: 'Shoulders', tier: 'isolation' },
+    { muscle: 'Core',      tier: 'primary'   },
+  );
   return slots;
 }
 
 // ── Split → day templates ───────────────────────────────────────────────────
+// Each template carries a `variantIndex` that tracks how many times the same
+// slotsKey has already appeared in the split. Used so that a repeated template
+// (e.g. 4-day Upper/Lower → Upper, Lower, Upper, Lower) yields DISTINCT exercise
+// selections instead of four copies of two routines. Labels get an A/B suffix.
 const SPLIT_TEMPLATES = {
   full_body:    (days) => {
     const count = Math.min(days, 2);
-    return Array.from({ length: count }, () => ({
-      label:    'Full Body',
-      slotsKey: 'full_body',
-      muscles:  ['Chest', 'Back', 'Legs', 'Glutes', 'Shoulders', 'Biceps', 'Triceps', 'Core'],
+    return Array.from({ length: count }, (_, i) => ({
+      label:        count > 1 ? `Full Body ${String.fromCharCode(65 + i)}` : 'Full Body',
+      slotsKey:     'full_body',
+      variantIndex: i,
+      muscles:      ['Chest', 'Back', 'Legs', 'Glutes', 'Shoulders', 'Biceps', 'Triceps', 'Core'],
     }));
   },
   ppl:          () => [
-    { label: 'Push',  slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
-    { label: 'Pull',  slotsKey: 'pull',  muscles: ['Back', 'Biceps', 'Core'] },
-    { label: 'Legs',  slotsKey: 'legs',  muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
+    { label: 'Push',  slotsKey: 'push',  variantIndex: 0, muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
+    { label: 'Pull',  slotsKey: 'pull',  variantIndex: 0, muscles: ['Back', 'Biceps', 'Core'] },
+    { label: 'Legs',  slotsKey: 'legs',  variantIndex: 0, muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
   ],
   upper_lower:  (days) => {
     const base = [
       { label: 'Upper', slotsKey: 'upper', muscles: ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Core'] },
       { label: 'Lower', slotsKey: 'lower', muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
     ];
-    // For 4 days, repeat Upper/Lower to fill all slots
     const count = Math.max(2, Math.min(days || 4, 6));
-    return Array.from({ length: count }, (_, i) => ({ ...base[i % 2] }));
+    const counters = { upper: 0, lower: 0 };
+    return Array.from({ length: count }, (_, i) => {
+      const b = base[i % 2];
+      const vi = counters[b.slotsKey]++;
+      const suffix = count >= 4 ? ` ${String.fromCharCode(65 + vi)}` : '';
+      return { ...b, label: `${b.label}${suffix}`, variantIndex: vi };
+    });
   },
   ppl_extended: () => [
-    { label: 'Push',             slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
-    { label: 'Pull',             slotsKey: 'pull',  muscles: ['Back', 'Biceps', 'Core'] },
-    { label: 'Legs',             slotsKey: 'legs',  muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
-    { label: 'Push + Shoulders', slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
-    { label: 'Pull + Arms',     slotsKey: 'pull',  muscles: ['Back', 'Biceps', 'Core'] },
+    { label: 'Push',             slotsKey: 'push',  variantIndex: 0, muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
+    { label: 'Pull',             slotsKey: 'pull',  variantIndex: 0, muscles: ['Back', 'Biceps', 'Core'] },
+    { label: 'Legs',             slotsKey: 'legs',  variantIndex: 0, muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
+    { label: 'Push + Shoulders', slotsKey: 'push',  variantIndex: 1, muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
+    { label: 'Pull + Arms',      slotsKey: 'pull',  variantIndex: 1, muscles: ['Back', 'Biceps', 'Core'] },
   ],
   ppl_double:   (days) => {
     const base = [
@@ -320,9 +435,14 @@ const SPLIT_TEMPLATES = {
       { label: 'Pull',  slotsKey: 'pull',  muscles: ['Back', 'Biceps', 'Core'] },
       { label: 'Legs',  slotsKey: 'legs',  muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
     ];
-    // For 6+ days, repeat PPL cycle to fill all slots
     const count = Math.max(3, Math.min(days || 6, 7));
-    return Array.from({ length: count }, (_, i) => ({ ...base[i % 3] }));
+    const counters = { push: 0, pull: 0, legs: 0 };
+    return Array.from({ length: count }, (_, i) => {
+      const b = base[i % 3];
+      const vi = counters[b.slotsKey]++;
+      const suffix = count > 3 ? ` ${String.fromCharCode(65 + vi)}` : '';
+      return { ...b, label: `${b.label}${suffix}`, variantIndex: vi };
+    });
   },
 };
 
@@ -380,9 +500,15 @@ function pickExercise(pool, muscle, tier, variantOffset, usageMap) {
 }
 
 // ── Build a single routine from slots ──────────────────────────────────────
-function buildRoutine(template, pool, variantOffset, variant, level, gender, priority, goalConfig, recoveryMod, goalExerciseIds = new Set(), shortWorkout = false) {
+function buildRoutine(template, pool, variantOffset, variant, level, gender, priority, goalConfig, recoveryMod, goalExerciseIds = new Set(), shortWorkout = false, maxExercises = 99) {
   const buildSlots = SLOTS_BUILDERS[template.slotsKey];
-  const slots = buildSlots(level, gender, priority, shortWorkout);
+  const slots = buildSlots(level, gender, priority, shortWorkout).slice(0, maxExercises);
+
+  // Repeated templates (e.g. 4-day Upper/Lower repeating) shift the pick offset
+  // so the 2nd Upper day selects DIFFERENT exercises than the 1st Upper day.
+  // Using 2 as the bump keeps A/B pairing coherent when combined with variantOffset.
+  const templateVariantBump = (template.variantIndex || 0) * 2;
+  const effectiveOffset = variantOffset + templateVariantBump;
 
   const usageMap = new Map();
   const exercises = [];
@@ -399,7 +525,7 @@ function buildRoutine(template, pool, variantOffset, variant, level, gender, pri
       );
     }
     if (!ex) {
-      ex = pickExercise(pool, slot.muscle, slot.tier, variantOffset, usageMap);
+      ex = pickExercise(pool, slot.muscle, slot.tier, effectiveOffset, usageMap);
     }
     if (!ex) continue;
 
@@ -425,8 +551,14 @@ function buildRoutine(template, pool, variantOffset, variant, level, gender, pri
     });
   }
 
+  // If the template already has an A/B suffix (repeated split days), don't double-tag.
+  const hasVariantSuffix = /\s[A-Z]$/.test(template.label);
+  const name = hasVariantSuffix
+    ? `Auto: ${localizeLabel(template.label)}`
+    : `Auto: ${localizeLabel(template.label)} ${variant}`;
+
   return {
-    name:      `Auto: ${localizeLabel(template.label)} ${variant}`,
+    name,
     label:     template.label,
     muscles:   template.muscles,
     exercises,
@@ -522,6 +654,7 @@ export function generateProgram(onboarding, goals = []) {
     gender               = 'other',
     priority_muscles     = [],
     short_workout        = false,
+    workout_duration_min = null,
   } = onboarding;
 
   // Build set of exercise IDs from active lift goals
@@ -566,9 +699,11 @@ export function generateProgram(onboarding, goals = []) {
     return allowedDiff.has(diff);
   });
 
-  // 5. Volume config (short workouts use reduced sets/rest)
-  const goalConfigMap = short_workout ? SHORT_GOAL_CONFIG : GOAL_CONFIG;
-  const goalConfig    = goalConfigMap[primary_goal] || goalConfigMap.general_fitness;
+  // 5. Volume config based on duration preference (falls back to short_workout flag)
+  const durConfig = workout_duration_min
+    ? getDurationConfig(workout_duration_min)
+    : (short_workout ? DURATION_CONFIGS[45] : DURATION_CONFIGS[60]);
+  const goalConfig = durConfig.goals[primary_goal] || durConfig.goals.general_fitness;
   const recoveryMod   = RECOVERY_MOD[recoveryTier] || RECOVERY_MOD.standard;
 
   // 6. Determine split & day templates
@@ -577,11 +712,12 @@ export function generateProgram(onboarding, goals = []) {
   const dayTemplates = templateFn(training_days_per_week, fitness_level, gender, priority_muscles);
 
   // 7. Generate A and B routine sets
+  const maxEx = durConfig.maxExercises;
   const routinesA = dayTemplates.map(t =>
-    buildRoutine(t, pool, 0, 'A', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout)
+    buildRoutine(t, pool, 0, 'A', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout, maxEx)
   );
   const routinesB = dayTemplates.map(t =>
-    buildRoutine(t, pool, 1, 'B', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout)
+    buildRoutine(t, pool, 1, 'B', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout, maxEx)
   );
 
   // 8. Cardio

@@ -1,19 +1,17 @@
 -- ============================================================
--- 0308: Fix add_reward_points function overload ambiguity
+-- 0308: Fix add_reward_points "not unique" error
 --
--- Problem: "function add_reward_points(uuid, uuid, unknown, integer, text)
--- is not unique" — multiple overloads exist in the live DB.
---
--- Fix: Drop ALL overloads and recreate the single canonical version.
+-- Drop all overloaded versions of add_reward_points, then
+-- recreate the single canonical version.
 -- ============================================================
 
--- Drop all possible overloads
+-- Drop all known signatures
 DROP FUNCTION IF EXISTS public.add_reward_points(UUID, UUID, TEXT, INT, TEXT);
-DROP FUNCTION IF EXISTS public.add_reward_points(UUID, UUID, TEXT, INTEGER, TEXT);
-DROP FUNCTION IF EXISTS public.add_reward_points(UUID, UUID, VARCHAR, INT, TEXT);
 DROP FUNCTION IF EXISTS public.add_reward_points(UUID, UUID, TEXT, INT);
+DROP FUNCTION IF EXISTS public.add_reward_points(UUID, UUID, TEXT, INTEGER, TEXT);
+DROP FUNCTION IF EXISTS public.add_reward_points(UUID, UUID, TEXT, INTEGER);
 
--- Recreate the canonical version (from 0295_harden_add_reward_points_whitelist)
+-- Recreate the single canonical version
 CREATE OR REPLACE FUNCTION public.add_reward_points(
   p_user_id     UUID,
   p_gym_id      UUID,
@@ -27,61 +25,71 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_caller UUID := auth.uid();
-  v_caller_role TEXT;
-  v_points INT;
-  v_current_total INT;
-  v_current_lifetime INT;
-  v_new_total INT;
-  v_new_lifetime INT;
+  new_total    INT;
+  new_lifetime INT;
+  v_points     INT;
 BEGIN
-  -- Caller must be authenticated
-  IF v_caller IS NULL THEN
-    RETURN json_build_object('success', false, 'error', 'Not authenticated');
+  -- 1. Authentication
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  -- Caller must be admin/trainer or self
-  SELECT role INTO v_caller_role FROM profiles WHERE id = v_caller;
-  IF v_caller != p_user_id AND v_caller_role NOT IN ('admin', 'super_admin', 'trainer') THEN
-    RETURN json_build_object('success', false, 'error', 'Unauthorized');
+  -- 2. Authorization
+  IF auth.uid() != p_user_id THEN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM profiles
+      WHERE id      = auth.uid()
+        AND gym_id  = p_gym_id
+        AND role   IN ('admin', 'trainer', 'super_admin')
+    ) THEN
+      RAISE EXCEPTION 'Unauthorized: cannot award points to other users';
+    END IF;
   END IF;
 
-  -- Server-side points lookup (ignores p_points parameter)
+  -- 3. Input guard
+  IF p_user_id IS NULL THEN
+    RETURN json_build_object('total_points', 0, 'lifetime_points', 0);
+  END IF;
+
+  -- 4. Server-side points whitelist (p_points is IGNORED except for streak_day)
   v_points := CASE p_action
-    WHEN 'workout'     THEN 50
-    WHEN 'pr'          THEN 100
-    WHEN 'check_in'    THEN 20
-    WHEN 'streak'      THEN 10
-    WHEN 'challenge'   THEN 500
-    WHEN 'achievement' THEN 75
-    WHEN 'referral'    THEN 200
-    WHEN 'admin_gift'  THEN GREATEST(1, LEAST(p_points, 10000))
+    WHEN 'workout_completed'    THEN 50
+    WHEN 'pr_hit'               THEN 20
+    WHEN 'check_in'             THEN 20
+    WHEN 'streak_day'           THEN LEAST(GREATEST(p_points, 20), 35)
+    WHEN 'challenge_completed'  THEN 500
+    WHEN 'achievement_unlocked' THEN 75
+    WHEN 'weight_logged'        THEN 10
+    WHEN 'first_weekly_workout' THEN 25
+    WHEN 'streak_7'             THEN 200
+    WHEN 'streak_30'            THEN 1000
+    WHEN 'daily_challenge'      THEN 25
+    WHEN 'challenge_joined'     THEN 25
     ELSE NULL
   END;
 
   IF v_points IS NULL THEN
-    RETURN json_build_object('success', false, 'error', 'Invalid action: ' || COALESCE(p_action, 'NULL'));
+    RAISE EXCEPTION 'Unknown reward action: %', p_action;
   END IF;
 
-  -- Log the points event
-  INSERT INTO reward_points_log (profile_id, gym_id, action, points, description)
-  VALUES (p_user_id, p_gym_id, p_action, v_points, p_description);
+  IF v_points <= 0 THEN
+    RETURN json_build_object('total_points', 0, 'lifetime_points', 0);
+  END IF;
 
-  -- Upsert running totals
-  INSERT INTO reward_points (profile_id, gym_id, total_points, lifetime_points)
-  VALUES (p_user_id, p_gym_id, v_points, v_points)
-  ON CONFLICT (profile_id)
-  DO UPDATE SET
-    total_points    = reward_points.total_points + v_points,
-    lifetime_points = reward_points.lifetime_points + v_points
-  RETURNING total_points, lifetime_points INTO v_new_total, v_new_lifetime;
+  -- 5. Persist
+  INSERT INTO reward_points_log (profile_id, gym_id, action, points, description, created_at)
+  VALUES (p_user_id, p_gym_id, p_action, v_points, COALESCE(p_description, p_action), NOW());
 
-  RETURN json_build_object(
-    'success', true,
-    'points_awarded', v_points,
-    'total_points', v_new_total,
-    'lifetime_points', v_new_lifetime
-  );
+  INSERT INTO reward_points (profile_id, gym_id, total_points, lifetime_points, last_updated)
+  VALUES (p_user_id, p_gym_id, v_points, v_points, NOW())
+  ON CONFLICT (profile_id) DO UPDATE SET
+    total_points    = reward_points.total_points    + v_points,
+    lifetime_points = reward_points.lifetime_points + v_points,
+    last_updated    = NOW()
+  RETURNING total_points, lifetime_points INTO new_total, new_lifetime;
+
+  RETURN json_build_object('total_points', new_total, 'lifetime_points', new_lifetime);
 END;
 $$;
 

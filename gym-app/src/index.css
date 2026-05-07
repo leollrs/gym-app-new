@@ -62,10 +62,11 @@
   --color-bg-active:     rgba(0, 0, 0, 0.055);
   --color-bg-subtle:     rgba(0, 0, 0, 0.025);
 
-  /* ── Admin shell surfaces (light) ───────── */
-  --color-admin-shell:   #EDECEA;
-  --color-admin-sidebar: #E6E4E0;
-  --color-admin-panel:   #F5F4F1;
+  /* ── Admin shell surfaces (light, premium warm cream) ───────── */
+  --color-admin-shell:   #F0EEE9;   /* canvas */
+  --color-admin-sidebar: #FAF8F3;   /* elevated bg */
+  --color-admin-panel:   #F7F5F0;   /* nested */
+  --color-admin-border:  #E8E4DB;   /* solid 1px soft border */
 
   /* ── Bronze/gold accent (editorial, warm) ── */
   --color-accent:        #A67B3D;
@@ -76,6 +77,7 @@
   /* ── Blue (charts / secondary) ───────────── */
   --color-blue:          #3B82F6;
   --color-blue-soft:     #60A5FA;
+  --color-secondary-blue: #3B82F6;  /* explicit alias for components that want the brand secondary blue */
 
   /* ── Text (warm slate, not harsh black) ──── */
   --color-text-primary:   #1C1917;
@@ -84,26 +86,51 @@
   --color-text-subtle:    #8A847E;
   --color-text-faint:     #ADA8A1;
 
+  /* Admin-scoped text (cooler slate — matches premium reference) */
+  --color-admin-text:         #0B0F12;
+  --color-admin-text-sub:     #5A6570;
+  --color-admin-text-muted:   #96A0AA;
+  --color-admin-text-faint:   #B8BEC5;
+
   /* ── Text on accent ────────────────────────── */
-  --color-text-on-accent: #FFFFFF;
+  /* Black sits well on the gold/amber accent in both themes (gold + black is a
+     fixed pairing). Keeping this value identical in :root and html.dark guarantees
+     accent buttons are never invisible in light mode. */
+  --color-text-on-accent: #000000;
 
   /* ── Borders (warm) ──────────────────────── */
   --color-border-subtle:  rgba(0, 0, 0, 0.055);
   --color-border-default: rgba(0, 0, 0, 0.09);
   --color-border-strong:  rgba(0, 0, 0, 0.14);
 
-  /* ── Status (premium, slightly desaturated) ── */
-  --color-success: #2A9D7E;
-  --color-warning: #D4910A;
-  --color-danger:  #D94848;
+  /* ── Status — premium triage palette ─────── */
+  /* hue same as warn/danger but tuned to sit on cream surfaces */
+  --color-success: #2FA66B;
+  --color-warning: #E8A93A;   /* amber · "watch" tier */
+  --color-danger:  #E8522A;   /* hot orange · "critical" */
+  --color-coach:   #6D5FDB;   /* purple · coaching signals */
+  --color-info:    #4A7AE6;
 
-  /* ── Shadows (warm tint) ─────────────────── */
-  --shadow-sm:   0 1px 2px rgba(28, 25, 23, 0.06), 0 1px 3px rgba(28, 25, 23, 0.04);
-  --shadow-md:   0 2px 8px rgba(28, 25, 23, 0.06), 0 4px 16px rgba(28, 25, 23, 0.05);
-  --shadow-lg:   0 4px 12px rgba(28, 25, 23, 0.06), 0 10px 32px rgba(28, 25, 23, 0.08);
+  /* Soft tints for pills/chips (opaque on light, tuned below for dark) */
+  --color-success-soft: #DFF1E6;
+  --color-warning-soft: #FBEED4;
+  --color-danger-soft:  #FBE6DD;
+  --color-coach-soft:   #EDEAFB;
+  --color-info-soft:    #E2EAFB;
+
+  /* Ink tones for pill text (readable on *-soft backgrounds) */
+  --color-success-ink: #1E7A4E;
+  --color-warning-ink: #9A6C10;
+  --color-danger-ink:  #C43F1C;
+  --color-coach-ink:   #4A3FA3;
+
+  /* ── Shadows — whisper-light, match reference ──── */
+  --shadow-sm:   0 1px 2px rgba(15, 20, 25, 0.04), 0 2px 6px rgba(15, 20, 25, 0.03);
+  --shadow-md:   0 1px 3px rgba(15, 20, 25, 0.04), 0 6px 18px rgba(15, 20, 25, 0.04);
+  --shadow-lg:   0 2px 4px rgba(15, 20, 25, 0.04), 0 14px 36px rgba(15, 20, 25, 0.07);
   --shadow-glow: 0 0 16px var(--color-accent-glow);
-  --shadow-card: 0 1px 3px rgba(28, 25, 23, 0.04), 0 4px 12px rgba(28, 25, 23, 0.03);
-  --shadow-card-hover: 0 2px 8px rgba(28, 25, 23, 0.06), 0 8px 24px rgba(28, 25, 23, 0.06);
+  --shadow-card: 0 1px 2px rgba(15, 20, 25, 0.03), 0 6px 20px rgba(15, 20, 25, 0.04);
+  --shadow-card-hover: 0 2px 4px rgba(15, 20, 25, 0.04), 0 12px 32px rgba(15, 20, 25, 0.06);
 
   /* ── Radius ──────────────────────────────── */
   --radius-sm:  0.5rem;
@@ -138,7 +165,6 @@
   --border-color:     var(--color-border-subtle);
   --text-subtle:      var(--color-text-subtle);
   --text-faint:       var(--color-text-faint);
-  --color-info:       #3B82F6;
   --glass-bg:         rgba(248, 247, 244, 0.9);
   --success:          var(--color-success);
   --warning:          var(--color-warning);
@@ -166,6 +192,7 @@ html.dark {
   --color-admin-shell:   #08080D;
   --color-admin-sidebar: #0C0C14;
   --color-admin-panel:   #101018;
+  --color-admin-border:  rgba(255, 255, 255, 0.07);
 
   /* Amber accent — warm gold on obsidian */
   --color-accent:        #D4A030;
@@ -173,13 +200,35 @@ html.dark {
   --color-accent-dark:   #B8882A;
   --color-accent-glow:   rgba(212, 160, 48, 0.12);
 
-  /* Text on accent — dark text on warm gold */
-  --color-text-on-accent: #0C0C14;
+  /* Text on accent — pure black on warm gold (matches :root for theme parity) */
+  --color-text-on-accent: #000000;
 
-  /* Status: premium, slightly desaturated */
+  /* Admin-scoped text (dark) — matches primary hierarchy */
+  --color-admin-text:         #E8E6E1;
+  --color-admin-text-sub:     #B8B4AC;
+  --color-admin-text-muted:   #908C84;
+  --color-admin-text-faint:   #605C56;
+
+  /* Status — triage palette, brighter on obsidian */
   --color-success: #3DD9A4;
-  --color-warning: #E8A830;
-  --color-danger:  #E85858;
+  --color-warning: #F0B94A;
+  --color-danger:  #FF6B3D;   /* hot, pops on dark */
+  --color-coach:   #9083F0;   /* lavender on obsidian */
+  --color-info:    #6BA1FF;
+  --color-secondary-blue: #6BA1FF;  /* explicit alias matches --color-info on dark */
+
+  /* Soft tints — low-alpha glazes of the above so they sit on obsidian */
+  --color-success-soft: rgba(61, 217, 164, 0.14);
+  --color-warning-soft: rgba(240, 185, 74, 0.14);
+  --color-danger-soft:  rgba(255, 107, 61, 0.16);
+  --color-coach-soft:   rgba(144, 131, 240, 0.18);
+  --color-info-soft:    rgba(107, 161, 255, 0.16);
+
+  /* Pill text — on dark, use the vivid tone directly */
+  --color-success-ink: #5EE8B8;
+  --color-warning-ink: #F4C870;
+  --color-danger-ink:  #FF8A63;
+  --color-coach-ink:   #B3A8FF;
 
   --color-text-primary:   #E8E6E1;
   --color-text-secondary: #C8C4BC;
@@ -473,6 +522,72 @@ input::placeholder  { color: var(--color-text-subtle); }
 
 /* Divide gold / amber */
 .divide-\[\#D4AF37\] > :not(:first-child), .divide-\[\#F0A500\] > :not(:first-child) { border-color: var(--color-accent) !important; }
+
+/* ── Semantic hex class remapping (admin triage palette) ──────────────────
+   Hot (critical/danger/high-risk reds+oranges) → --color-danger (#E8522A light / #FF6B3D dark)
+   Warn (amber/medium-risk yellows) → --color-warning (#E8A93A / #F0B94A)
+   Good (emerald/success greens) → --color-success (#2FA66B / #3DD9A4)
+   Coach (violet/indigo purples) → --color-coach (#6D5FDB / #9083F0)
+   Info (blues) → --color-info (#4A7AE6 / #6BA1FF)
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* --- text --- */
+.text-\[\#EF4444\], .text-\[\#ef4444\], .text-\[\#F87171\], .text-\[\#F97316\], .text-\[\#f97316\], .text-\[\#DC2626\], .text-\[\#B91C1C\], .text-\[\#E8522A\], .text-\[\#FF6B3D\], .text-\[\#FF5500\] { color: var(--color-danger) !important; }
+.text-\[\#F59E0B\], .text-\[\#f59e0b\], .text-\[\#FBBF24\], .text-\[\#D97706\], .text-\[\#d97706\], .text-\[\#E8A93A\], .text-\[\#F0B94A\], .text-\[\#EAB308\] { color: var(--color-warning) !important; }
+.text-\[\#10B981\], .text-\[\#10b981\], .text-\[\#34D399\], .text-\[\#22C55E\], .text-\[\#047857\], .text-\[\#059669\], .text-\[\#2FA66B\], .text-\[\#3DD9A4\], .text-\[\#1E7A4E\] { color: var(--color-success) !important; }
+.text-\[\#8B5CF6\], .text-\[\#8b5cf6\], .text-\[\#6366F1\], .text-\[\#A855F7\], .text-\[\#6D28D9\], .text-\[\#4338CA\], .text-\[\#818CF8\], .text-\[\#A78BFA\], .text-\[\#9B8AFB\], .text-\[\#6D5FDB\], .text-\[\#9083F0\], .text-\[\#EC4899\], .text-\[\#BE185D\], .text-\[\#FDF2F8\], .text-\[\#FAF5FF\] { color: var(--color-coach) !important; }
+.text-\[\#3B82F6\], .text-\[\#3b82f6\], .text-\[\#60A5FA\], .text-\[\#2563EB\], .text-\[\#1D4ED8\], .text-\[\#0EA5E9\], .text-\[\#06B6D4\], .text-\[\#14B8A6\], .text-\[\#0E7490\], .text-\[\#4A7AE6\], .text-\[\#6BA1FF\], .text-\[\#6889FF\], .text-\[\#7B9EFF\] { color: var(--color-info) !important; }
+
+/* --- backgrounds (solid + common alpha steps) --- */
+.bg-\[\#EF4444\], .bg-\[\#F97316\], .bg-\[\#DC2626\], .bg-\[\#E8522A\], .bg-\[\#FF5500\] { background-color: var(--color-danger) !important; }
+.bg-\[\#F59E0B\], .bg-\[\#FBBF24\], .bg-\[\#E8A93A\], .bg-\[\#EAB308\] { background-color: var(--color-warning) !important; }
+.bg-\[\#10B981\], .bg-\[\#34D399\], .bg-\[\#22C55E\], .bg-\[\#2FA66B\] { background-color: var(--color-success) !important; }
+.bg-\[\#8B5CF6\], .bg-\[\#6366F1\], .bg-\[\#A855F7\], .bg-\[\#6D5FDB\], .bg-\[\#EC4899\] { background-color: var(--color-coach) !important; }
+.bg-\[\#3B82F6\], .bg-\[\#60A5FA\], .bg-\[\#4A7AE6\] { background-color: var(--color-info) !important; }
+
+/* Soft chip backgrounds (/10, /15, /20) → tonal soft tints */
+.bg-\[\#EF4444\]\/10, .bg-\[\#F97316\]\/10, .bg-\[\#DC2626\]\/10, .bg-\[\#E8522A\]\/10 { background-color: var(--color-danger-soft) !important; }
+.bg-\[\#EF4444\]\/15, .bg-\[\#F97316\]\/15, .bg-\[\#E8522A\]\/15 { background-color: var(--color-danger-soft) !important; }
+.bg-\[\#EF4444\]\/20, .bg-\[\#F97316\]\/20 { background-color: var(--color-danger-soft) !important; }
+.bg-\[\#F59E0B\]\/10, .bg-\[\#FBBF24\]\/10, .bg-\[\#E8A93A\]\/10 { background-color: var(--color-warning-soft) !important; }
+.bg-\[\#F59E0B\]\/15, .bg-\[\#E8A93A\]\/15 { background-color: var(--color-warning-soft) !important; }
+.bg-\[\#F59E0B\]\/20 { background-color: var(--color-warning-soft) !important; }
+.bg-\[\#10B981\]\/10, .bg-\[\#34D399\]\/10, .bg-\[\#2FA66B\]\/10 { background-color: var(--color-success-soft) !important; }
+.bg-\[\#10B981\]\/15, .bg-\[\#2FA66B\]\/15 { background-color: var(--color-success-soft) !important; }
+.bg-\[\#10B981\]\/20 { background-color: var(--color-success-soft) !important; }
+.bg-\[\#8B5CF6\]\/10, .bg-\[\#6366F1\]\/10, .bg-\[\#6D5FDB\]\/10, .bg-\[\#EC4899\]\/10 { background-color: var(--color-coach-soft) !important; }
+.bg-\[\#8B5CF6\]\/15, .bg-\[\#6D5FDB\]\/15 { background-color: var(--color-coach-soft) !important; }
+.bg-\[\#8B5CF6\]\/20 { background-color: var(--color-coach-soft) !important; }
+.bg-\[\#3B82F6\]\/10, .bg-\[\#60A5FA\]\/10, .bg-\[\#4A7AE6\]\/10 { background-color: var(--color-info-soft) !important; }
+.bg-\[\#3B82F6\]\/15 { background-color: var(--color-info-soft) !important; }
+.bg-\[\#3B82F6\]\/20 { background-color: var(--color-info-soft) !important; }
+
+/* --- borders --- */
+.border-\[\#EF4444\], .border-\[\#F97316\], .border-\[\#DC2626\], .border-\[\#E8522A\] { border-color: var(--color-danger) !important; }
+.border-\[\#EF4444\]\/20, .border-\[\#EF4444\]\/25, .border-\[\#F97316\]\/20, .border-\[\#E8522A\]\/20, .border-\[\#E8522A\]\/25 { border-color: color-mix(in srgb, var(--color-danger) 25%, transparent) !important; }
+.border-\[\#F59E0B\], .border-\[\#E8A93A\] { border-color: var(--color-warning) !important; }
+.border-\[\#F59E0B\]\/20, .border-\[\#F59E0B\]\/25, .border-\[\#E8A93A\]\/20 { border-color: color-mix(in srgb, var(--color-warning) 25%, transparent) !important; }
+.border-\[\#10B981\], .border-\[\#34D399\], .border-\[\#2FA66B\] { border-color: var(--color-success) !important; }
+.border-\[\#10B981\]\/20, .border-\[\#10B981\]\/25, .border-\[\#2FA66B\]\/20 { border-color: color-mix(in srgb, var(--color-success) 25%, transparent) !important; }
+.border-\[\#8B5CF6\], .border-\[\#6366F1\], .border-\[\#6D5FDB\], .border-\[\#EC4899\] { border-color: var(--color-coach) !important; }
+.border-\[\#8B5CF6\]\/20, .border-\[\#8B5CF6\]\/25, .border-\[\#6D5FDB\]\/20 { border-color: color-mix(in srgb, var(--color-coach) 25%, transparent) !important; }
+.border-\[\#3B82F6\], .border-\[\#60A5FA\], .border-\[\#4A7AE6\] { border-color: var(--color-info) !important; }
+.border-\[\#3B82F6\]\/20, .border-\[\#3B82F6\]\/25 { border-color: color-mix(in srgb, var(--color-info) 25%, transparent) !important; }
+
+/* --- gradient stops --- */
+.from-\[\#EF4444\], .to-\[\#EF4444\], .via-\[\#EF4444\], .from-\[\#F97316\], .to-\[\#F97316\], .from-\[\#E8522A\], .to-\[\#E8522A\] { }
+.from-\[\#EF4444\] { --tw-gradient-from: var(--color-danger) !important; }
+.to-\[\#EF4444\]   { --tw-gradient-to:   var(--color-danger) !important; }
+.from-\[\#F97316\] { --tw-gradient-from: var(--color-danger) !important; }
+.to-\[\#F97316\]   { --tw-gradient-to:   var(--color-danger) !important; }
+.from-\[\#F59E0B\] { --tw-gradient-from: var(--color-warning) !important; }
+.to-\[\#F59E0B\]   { --tw-gradient-to:   var(--color-warning) !important; }
+.from-\[\#10B981\] { --tw-gradient-from: var(--color-success) !important; }
+.to-\[\#10B981\]   { --tw-gradient-to:   var(--color-success) !important; }
+.from-\[\#8B5CF6\] { --tw-gradient-from: var(--color-coach) !important; }
+.to-\[\#8B5CF6\]   { --tw-gradient-to:   var(--color-coach) !important; }
+.from-\[\#3B82F6\] { --tw-gradient-from: var(--color-info) !important; }
+.to-\[\#3B82F6\]   { --tw-gradient-to:   var(--color-info) !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    text-white / text-black
@@ -935,13 +1050,22 @@ button {
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ADMIN DASHBOARD — Premium surface & typography system
+   ADMIN DASHBOARD — Premium warm-cream surface & editorial typography
+   Reference: warm cream canvas, Archivo display, JetBrains Mono numerals,
+   whisper-light borders + shadows, color-coded semantic triage pills.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Admin card — refined depth & tonal separation */
+/* Admin font stacks — editorial display + data-forward mono */
+:where(.admin-shell, .admin-sidebar) {
+  --admin-font-display: 'Archivo', 'Barlow', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --admin-font-body: 'Barlow', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --admin-font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+}
+
+/* Admin card — warm cream surface, solid whisper-soft border, minimal lift */
 .admin-card {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-admin-border);
   border-radius: 14px;
   box-shadow: var(--shadow-card);
   transition: box-shadow 0.3s ease, border-color 0.3s ease, background-color 0.3s ease;
@@ -957,10 +1081,10 @@ button {
   box-shadow: var(--shadow-card-hover);
 }
 
-/* Admin stat card — inset accent edge, bold KPI typography */
+/* Admin stat card — same treatment, subtle rise on hover */
 .admin-stat-card {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-admin-border);
   border-radius: 14px;
   box-shadow: var(--shadow-card);
   transition: box-shadow 0.35s ease, border-color 0.35s ease, background-color 0.35s ease, transform 0.35s ease;
@@ -972,10 +1096,10 @@ button {
   transform: translateY(-1px);
 }
 
-/* Admin sidebar — lifted panel, intentional surface */
+/* Admin sidebar — same cream as canvas, separation via 1px solid border only */
 .admin-sidebar {
   background: var(--color-admin-sidebar);
-  border-right: 1px solid var(--color-border-subtle);
+  border-right: 1px solid var(--color-admin-border);
 }
 
 /* Admin sidebar nav link — soft state transitions */
@@ -985,21 +1109,22 @@ button {
   gap: 0.625rem;
   padding: 0.5rem 0.75rem;
   border-radius: 10px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-subtle);
+  color: var(--color-admin-text-sub);
   transition: all 0.2s ease;
   position: relative;
 }
 
 .admin-nav-link:hover {
-  color: var(--color-text-muted);
+  color: var(--color-admin-text);
   background: var(--color-bg-hover);
 }
 
 .admin-nav-link-active {
   color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  font-weight: 700;
 }
 
 .admin-nav-link-active::before {
@@ -1013,42 +1138,89 @@ button {
   background: var(--color-accent);
 }
 
-/* Admin page header — strong heading hierarchy */
+/* Admin page header — Archivo display, tight tracking for presence */
 .admin-page-title {
-  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  color: var(--color-text-primary);
+  font-family: var(--admin-font-display, 'Archivo', 'Barlow', sans-serif);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  color: var(--color-admin-text);
 }
 
-/* Admin KPI numeral — bold, large, tabular */
+/* Admin KPI numeral — Archivo bold tabular, same weight as reference */
 .admin-kpi {
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--admin-font-display, 'Archivo', 'Barlow', sans-serif);
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-primary);
+  color: var(--color-admin-text);
 }
 
-/* Admin shell background */
+/* Data-forward monospace for percentages, IDs, timestamps */
+.admin-mono {
+  font-family: var(--admin-font-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Uppercase micro-label (under KPIs, over sections) */
+.admin-eyebrow {
+  font-family: var(--admin-font-body, 'Barlow', sans-serif);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-admin-text-muted);
+}
+
+/* Admin shell background + base text tones */
 .admin-shell {
   background-color: var(--color-admin-shell);
+  color: var(--color-admin-text);
+  font-family: var(--admin-font-body, 'Barlow', sans-serif);
 }
 
-/* Nested inset panel surface */
+/* Nested inset panel surface (search bars, nested cards) */
 .admin-inset {
-  background: var(--color-bg-input);
+  background: var(--color-admin-panel);
   border-radius: 10px;
+  border: 1px solid var(--color-admin-border);
 }
 
 /* Admin section divider — tonal, not harsh line */
 .admin-divider {
   height: 1px;
-  background: var(--color-border-subtle);
+  background: var(--color-admin-border);
   border: none;
 }
+
+/* Semantic triage pills — color-coded at-a-glance status chips.
+   Reference signature: tonal bg + ink text + uppercase letterspacing. */
+.admin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--admin-font-body, 'Barlow', sans-serif);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  background: var(--color-admin-panel);
+  color: var(--color-admin-text-sub);
+}
+.admin-pill--hot    { background: var(--color-danger-soft);  color: var(--color-danger-ink); }
+.admin-pill--warn   { background: var(--color-warning-soft); color: var(--color-warning-ink); }
+.admin-pill--good   { background: var(--color-success-soft); color: var(--color-success-ink); }
+.admin-pill--coach  { background: var(--color-coach-soft);   color: var(--color-coach-ink); }
+.admin-pill--info   { background: var(--color-info-soft);    color: #2A5FCA; }
+.admin-pill--dark   { background: var(--color-admin-text);   color: #fff; }
+.admin-pill--outline { background: transparent; border-color: var(--color-admin-border); color: var(--color-admin-text-sub); }
+html.dark .admin-pill--info { color: #A0C2FF; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    NATIVE APP (iOS / Android) SAFE AREA & PLATFORM STYLES
@@ -1165,8 +1337,61 @@ button, a, [role="button"] {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── Prevent text selection on interactive elements ──────────────── */
-nav, .bottom-nav, header {
+/* ── Disable text selection app-wide for native feel ─────────────────
+   No long-press copy menu, no accidental highlights when scrolling.
+   Inputs, textareas and contenteditable areas opt back IN below.
+   Anything that explicitly needs selection can carry the
+   `.allow-select` class. */
+html, body, #root {
   -webkit-user-select: none;
+  -ms-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input, textarea, [contenteditable="true"], [contenteditable=""], .allow-select, .allow-select * {
+  -webkit-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* ── Trainer live session full-viewport mode ─────────────────── */
+body.live-session-active nav[aria-label="Trainer mobile navigation"] {
+  display: none;
+}
+
+/* ── Trainer messages thread mode — fullscreen on mobile ────────
+   When a conversation is open on mobile, hide the bottom nav and
+   strip the layout's reserved bottom padding so the composer sits
+   flush against the screen edge (iMessage-style). Composer keeps
+   its own safe-area-bottom padding. */
+body.trainer-thread-active nav[aria-label="Trainer mobile navigation"] {
+  display: none;
+}
+body.trainer-thread-active main > div.flex-1 {
+  padding-bottom: 0 !important;
+}
+
+/* ── Trainer messages page — exact viewport-derived height ──────
+   `h-full` collapses inside the layout's `min-h-screen` chain
+   (no parent has an actual `height`), so the chat container ends
+   up content-tall with empty TT.bg below the composer. Pin the
+   wrapper to the *visible* viewport area so the inner flex column
+   (header / messages / composer) lays out correctly with the
+   composer at the bottom. */
+.trainer-messages-page {
+  /* Mobile, no thread: subtract layout top header + bottom nav. */
+  height: calc(100dvh - 52px - 68px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+body.trainer-thread-active .trainer-messages-page {
+  /* Mobile, thread active: bottom nav hidden, composer owns safe-area-bottom. */
+  height: calc(100dvh - 52px - env(safe-area-inset-top, 0px));
+}
+@media (min-width: 768px) {
+  /* Desktop: no fixed header in TrainerLayout, sidebar is to the side. */
+  .trainer-messages-page,
+  body.trainer-thread-active .trainer-messages-page {
+    height: 100vh;
+  }
 }

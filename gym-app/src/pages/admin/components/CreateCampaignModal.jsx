@@ -5,18 +5,22 @@ import { supabase } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
 import { AdminModal, SectionLabel } from '../../../components/admin';
 
+// Stable enum keys persisted to DB (winback_campaigns.variant_a/b.offer_type).
+// Display labels come from t(`admin.churn.campaign.offer.${key}`, fallback).
 const OFFER_TYPES = [
-  { value: 'Free PT session', key: 'pt_session' },
-  { value: '1 month discount', key: 'discount' },
-  { value: 'Free class pass', key: 'class_pass' },
-  { value: 'Free days', key: 'free_days' },
-  { value: 'Custom', key: 'custom' },
+  { key: 'pt_session', value: 'pt_session', fallback: 'Free PT session' },
+  { key: 'monthly_discount', value: 'monthly_discount', fallback: '1 month discount' },
+  { key: 'class_pass', value: 'class_pass', fallback: 'Free class pass' },
+  { key: 'free_days', value: 'free_days', fallback: 'Free days' },
+  { key: 'custom', value: 'custom', fallback: 'Custom' },
 ];
 
+// Stable enum keys persisted to DB (winback_campaigns.target_tier).
+// Display labels come from t(`admin.churn.campaign.tier.${key}`, fallback).
 const TIERS = [
-  { value: 'critical', key: 'critical' },
-  { value: 'high', key: 'high' },
-  { value: 'medium', key: 'medium' },
+  { key: 'critical', value: 'critical', fallback: 'Critical' },
+  { key: 'high', value: 'high', fallback: 'High' },
+  { key: 'medium', value: 'medium', fallback: 'Medium' },
 ];
 
 function VariantForm({ label, variant, onChange, t }) {
@@ -37,7 +41,7 @@ function VariantForm({ label, variant, onChange, t }) {
                   ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30'
                   : 'bg-white/4 text-[#9CA3AF] border-white/6 hover:text-[#E5E7EB]'
               }`}>
-              {t(`admin.churn.campaign.offer.${o.key}`, o.value)}
+              {t(`admin.churn.campaign.offer.${o.key}`, o.fallback)}
             </button>
           ))}
         </div>
@@ -119,9 +123,9 @@ export default function CreateCampaignModal({ gymId, onClose, onCreated }) {
           <button onClick={handleCreate} disabled={saving || !isValid || saved}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
             style={{
-              background: saved ? 'rgba(16,185,129,0.15)' : 'rgba(212,175,55,0.12)',
-              color: saved ? '#10B981' : '#D4AF37',
-              border: `1px solid ${saved ? 'rgba(16,185,129,0.25)' : 'rgba(212,175,55,0.25)'}`,
+              background: saved ? 'var(--color-success-soft)' : 'color-mix(in srgb, var(--color-accent) 20%, transparent)',
+              color: saved ? 'var(--color-success)' : 'var(--color-accent)',
+              border: `1px solid ${saved ? 'var(--color-success-soft)' : 'color-mix(in srgb, var(--color-accent) 20%, transparent)'}`,
             }}>
             {saved ? <><CheckCircle size={14} /> {t('admin.churn.campaign.created', 'Created!')}</>
               : saving ? t('admin.churn.campaign.creating', 'Creating...')
@@ -147,7 +151,7 @@ export default function CreateCampaignModal({ gymId, onClose, onCreated }) {
                     ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30'
                     : 'bg-white/4 text-[#9CA3AF] border-white/6 hover:text-[#E5E7EB]'
                 }`}>
-                {t(`admin.churn.campaign.tier.${tier.key}`, tier.value.charAt(0).toUpperCase() + tier.value.slice(1))}
+                {t(`admin.churn.campaign.tier.${tier.key}`, tier.fallback)}
               </button>
             ))}
           </div>

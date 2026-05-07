@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useState, useRef } from 'react';
+import { lazy, Suspense, useEffect, useState, useRef, useMemo } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { usePostHog } from '@posthog/react';
+import { useQueryClient } from '@tanstack/react-query';
 import QRCodeModal from './components/QRCodeModal';
 import './App.css';
 
@@ -13,6 +14,7 @@ import { supabase } from './lib/supabase';
 import { useTranslation } from 'react-i18next';
 import { WifiOff } from 'lucide-react';
 import { getQueue } from './lib/offlineQueue';
+import { setNavigateFn, safeReload } from './lib/navigationRef';
 
 // ── Eagerly loaded (critical path for members) ──────────────
 import Navigation from './components/Navigation';
@@ -20,34 +22,84 @@ import AppTour from './components/AppTour';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
-import Onboarding from './pages/Onboarding';
+// Onboarding is lazy: most launches are returning users who skip it. It
+// transitively pulls ~280 KB of meal data + a 100 KB exercise library; keeping
+// it out of the boot bundle is the single biggest TTI win.
+const Onboarding = lazy(() => import('./pages/Onboarding'));
 
 // ── Lazy-loaded member pages (loaded on navigation) ─────────
-const Workouts = lazy(() => import('./pages/Workouts'));
-const SocialFeed       = lazy(() => import('./pages/SocialFeed'));
-const ActiveSession    = lazy(() => import('./pages/ActiveSession'));
+// Preload the 5 main tab chunks so tab switching feels instant.
+// import() returns a promise that Webpack/Vite caches — calling it
+// twice doesn't re-download, so lazy() still works as before.
+// Preload imports — each called once, Vite caches the result.
+// Grouped by priority: tab pages first, then secondary pages.
+const workoutsImport    = () => import('./pages/Workouts');
+const socialFeedImport  = () => import('./pages/SocialFeed');
+const quickStartImport  = () => import('./pages/QuickStart');
+const progressImport    = () => import('./pages/Progress');
+const communityImport   = () => import('./pages/Community');
+const profileImport     = () => import('./pages/Profile');
+const rewardsImport     = () => import('./pages/Rewards');
+const challengesImport  = () => import('./pages/Challenges');
+const nutritionImport   = () => import('./pages/Nutrition');
+const activeSessionImport = () => import('./pages/ActiveSession');
+const messagesImport    = () => import('./pages/Messages');
+const myGymImport       = () => import('./pages/MyGym');
+const exerciseLibImport = () => import('./pages/ExerciseLibrary');
+
+// Wave 1 (2s): main 5 tabs — what you see in bottom nav
+// Wave 2 (4s): secondary pages — commonly visited from tabs
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    workoutsImport();
+    quickStartImport();
+    progressImport();
+    communityImport();
+    profileImport();
+  }, 2000);
+  setTimeout(() => {
+    socialFeedImport();
+    rewardsImport();
+    challengesImport();
+    nutritionImport();
+    activeSessionImport();
+    messagesImport();
+    myGymImport();
+    exerciseLibImport();
+  }, 4000);
+}
+
+const Workouts = lazy(workoutsImport);
+const SocialFeed       = lazy(socialFeedImport);
+const ActiveSession    = lazy(activeSessionImport);
 const LiveCardio       = lazy(() => import('./pages/LiveCardio'));
-const Profile          = lazy(() => import('./pages/Profile'));
+const CardioSessionDetail = lazy(() => import('./pages/CardioSessionDetail'));
+const Profile          = lazy(profileImport);
 const MemberSettings   = lazy(() => import('./pages/MemberSettings'));
+const PersonalInfo     = lazy(() => import('./pages/PersonalInfo'));
+const Support          = lazy(() => import('./pages/Support'));
+const ResetPassword    = lazy(() => import('./pages/ResetPassword'));
+const LegalViewer      = lazy(() => import('./pages/LegalViewer'));
 const WorkoutBuilder   = lazy(() => import('./pages/WorkoutBuilder'));
 const SessionSummary   = lazy(() => import('./pages/SessionSummary'));
-const Nutrition        = lazy(() => import('./pages/Nutrition'));
-const MyGym            = lazy(() => import('./pages/MyGym'));
+const Nutrition        = lazy(nutritionImport);
+const MyGym            = lazy(myGymImport);
 const CheckIn          = lazy(() => import('./pages/CheckIn'));
-const ExerciseLibraryPage = lazy(() => import('./pages/ExerciseLibrary').then(m => ({ default: m.ExerciseLibraryPage })));
-const Challenges       = lazy(() => import('./pages/Challenges'));
-const Progress         = lazy(() => import('./pages/Progress'));
-const Community        = lazy(() => import('./pages/Community'));
+const ExerciseLibraryPage = lazy(() => exerciseLibImport().then(m => ({ default: m.ExerciseLibraryPage })));
+const Challenges       = lazy(challengesImport);
+const Messages         = lazy(messagesImport);
+const Progress         = lazy(progressImport);
+const Community        = lazy(communityImport);
 const Notifications    = lazy(() => import('./pages/Notifications'));
 const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
-const Rewards          = lazy(() => import('./pages/Rewards'));
+const Rewards          = lazy(rewardsImport);
 const Referrals        = lazy(() => import('./pages/Referrals'));
 const FirstWorkoutWelcome = lazy(() => import('./components/FirstWorkoutWelcome'));
 const TVDisplay        = lazy(() => import('./pages/TVDisplay'));
-const QuickStart       = lazy(() => import('./pages/QuickStart'));
+const QuickStart       = lazy(quickStartImport);
 const HealthSync       = lazy(() => import('./pages/HealthSync'));
 const Classes          = lazy(() => import('./pages/Classes'));
-const Messages         = lazy(() => import('./pages/Messages'));
+const PublicTrainerProfile = lazy(() => import('./pages/PublicTrainerProfile'));
 
 // ── Lazy-loaded trainer pages ───────────────────────────────
 const TrainerLayout        = lazy(() => import('./layouts/TrainerLayout'));
@@ -60,6 +112,11 @@ const TrainerMessages      = lazy(() => import('./pages/trainer/TrainerMessages'
 const TrainerSocial        = lazy(() => import('./pages/trainer/TrainerSocial'));
 const TrainerClasses       = lazy(() => import('./pages/trainer/TrainerClasses'));
 const TrainerProfile       = lazy(() => import('./pages/trainer/TrainerProfile'));
+const TrainerSettings      = lazy(() => import('./pages/trainer/TrainerSettings'));
+const TrainerHelp          = lazy(() => import('./pages/trainer/TrainerHelp'));
+const TrainerPrivacy       = lazy(() => import('./pages/trainer/TrainerPrivacy'));
+const TrainerLiveSession   = lazy(() => import('./pages/trainer/TrainerLiveSession'));
+const TrainerNotifications = lazy(() => import('./pages/trainer/TrainerNotifications'));
 
 // ── Lazy-loaded admin pages ─────────────────────────────────
 const AdminLayout        = lazy(() => import('./layouts/AdminLayout'));
@@ -89,6 +146,7 @@ const AdminABTesting     = lazy(() => import('./pages/admin/AdminABTesting'));
 const AdminEmailTemplates = lazy(() => import('./pages/admin/AdminEmailTemplates'));
 const AdminRewards       = lazy(() => import('./pages/admin/AdminRewards'));
 const AdminProfile       = lazy(() => import('./pages/admin/AdminProfile'));
+const AdminNotifications = lazy(() => import('./pages/admin/AdminNotifications'));
 
 // ── Lazy-loaded platform super-admin pages ──────────────────
 const PlatformLayout     = lazy(() => import('./layouts/PlatformLayout'));
@@ -115,14 +173,23 @@ if ('scrollRestoration' in window.history) {
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => {
-    window.scrollTo(0, 0);
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-    document.getElementById('main-content')?.scrollTo(0, 0);
-    // Retry after lazy components mount
-    const t1 = setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, 50);
-    const t2 = setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, 150);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    const reset = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      // AdminLayout / TrainerLayout main content is its own scroll container.
+      document.getElementById('main-content')?.scrollTo(0, 0);
+      // Some admin pages render their own scroll wrappers — reset them too.
+      document.querySelectorAll('[data-scroll-container]').forEach((el) => {
+        try { el.scrollTo(0, 0); } catch { el.scrollTop = 0; }
+      });
+    };
+    reset();
+    // Retry after lazy components mount and after Suspense resolves.
+    const t1 = setTimeout(reset, 50);
+    const t2 = setTimeout(reset, 150);
+    const t3 = setTimeout(reset, 350);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [pathname]);
   return null;
 }
@@ -280,57 +347,292 @@ const MemberBlockedScreen = () => {
   );
 };
 
+// ── AGE VERIFICATION REQUIRED (legacy users) ──────────────
+// Shown to users whose `date_of_birth` was never set (signed up before
+// migration 0344 added the column). New signups are gated at Signup.jsx
+// so they always have DOB. GDPR-K Article 8: 16+ globally.
+// Self-signup floor. Under-13 users sign up via gym invite code only;
+// the gym handles parental consent in the real world (membership waiver
+// signed at the counter). Once signed up, no runtime age gate fires —
+// age handling is collected at signup and never re-prompted.
+const AGE_VERIFY_MIN = 13;
+const AgeVerificationScreen = () => {
+  const { signOut, user, refreshProfile, patchProfile } = useAuth();
+  const { showToast } = useToast();
+  const { t } = useTranslation('pages');
+  // Three independent fields (month / day / year) — sidesteps iOS WKWebView's
+  // flaky <input type="date"> which silently fails to open its native picker
+  // when the input has `appearance-none` and behaves inconsistently across
+  // locales. Three <select>s render identically on every platform.
+  const [month, setMonth] = useState('');
+  const [day, setDay] = useState('');
+  const [year, setYear] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState('');
+
+  const dob = useMemo(() => {
+    if (!month || !day || !year) return '';
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }, [month, day, year]);
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions = useMemo(() => {
+    const arr = [];
+    for (let y = currentYear; y >= currentYear - 110; y--) arr.push(y);
+    return arr;
+  }, [currentYear]);
+
+  const monthOptions = useMemo(() => {
+    const fmt = new Intl.DateTimeFormat(undefined, { month: 'long' });
+    return Array.from({ length: 12 }, (_, i) => ({
+      value: i + 1,
+      label: fmt.format(new Date(2000, i, 1)),
+    }));
+  }, []);
+
+  const daysInMonth = useMemo(() => {
+    if (!month || !year) return 31;
+    return new Date(Number(year), Number(month), 0).getDate();
+  }, [month, year]);
+
+  const dayOptions = useMemo(() => {
+    return Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  }, [daysInMonth]);
+
+  const computeAge = (iso) => {
+    if (!iso) return NaN;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return NaN;
+    const today = new Date();
+    let a = today.getFullYear() - d.getFullYear();
+    const m = today.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < d.getDate())) a--;
+    return a;
+  };
+
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.();
+    console.log('[AgeVerify] submit', { month, day, year, dob });
+    setErr('');
+    if (!dob) { setErr(t('ageVerify.required', { defaultValue: 'Date of birth is required.' })); return; }
+    const age = computeAge(dob);
+    if (Number.isNaN(age) || age < 0) { setErr(t('ageVerify.invalid', { defaultValue: 'Please enter a valid date.' })); return; }
+    if (age < AGE_VERIFY_MIN) {
+      setErr(t('ageVerify.tooYoung', { defaultValue: `You must be ${AGE_VERIFY_MIN} or older to use TuGymPR.`, min: AGE_VERIFY_MIN }));
+      return;
+    }
+    setSubmitting(true);
+    const nowIso = new Date().toISOString();
+    const { error } = await supabase
+      .from('profiles')
+      .update({ date_of_birth: dob, age_verified_at: nowIso })
+      .eq('id', user.id);
+    if (error) {
+      // Surface the underlying message so RLS / column-missing failures
+      // are diagnosable from the device instead of a generic toast.
+      console.error('[AgeVerify] update failed:', error);
+      setSubmitting(false);
+      setErr(error.message || t('ageVerify.saveFailed', { defaultValue: 'Could not save. Please try again.' }));
+      showToast(t('ageVerify.saveFailed', { defaultValue: 'Could not save. Please try again.' }), 'error');
+      return;
+    }
+    // Optimistic local patch — flips requiresAgeVerification immediately so
+    // the route guard releases the user without waiting on the RPC roundtrip
+    // (the get_auth_context RPC must include date_of_birth + age_verified_at,
+    // see migration 0349).
+    patchProfile?.({ date_of_birth: dob, age_verified_at: nowIso });
+    await refreshProfile?.();
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#05070B] flex items-center justify-center px-4">
+      <form onSubmit={handleSubmit} className="max-w-md w-full text-center">
+        <div className="w-16 h-16 rounded-full bg-[var(--color-accent,#D4AF37)]/10 border border-[var(--color-accent,#D4AF37)]/25 flex items-center justify-center mx-auto mb-6">
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="var(--color-accent,#D4AF37)" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">
+          {t('ageVerify.title', { defaultValue: 'Confirm your age' })}
+        </h1>
+        <p className="text-[14px] text-[#9CA3AF] mb-6">
+          {t('ageVerify.body', { defaultValue: 'TuGymPR requires all members to be 16 or older to comply with privacy regulations. Please confirm your date of birth to continue.' })}
+        </p>
+        <label className="block text-left text-[12px] text-[#9CA3AF] mb-2 px-1">
+          {t('ageVerify.dobLabel', { defaultValue: 'Date of birth' })}
+        </label>
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <select
+            value={month}
+            onChange={(e) => { setMonth(e.target.value); setErr(''); }}
+            className="block w-full min-w-0 bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-3 text-[14px] text-left text-[#E5E7EB] focus:outline-none focus:border-[var(--color-accent,#D4AF37)]/50"
+            required
+          >
+            <option value="">{t('ageVerify.month', { defaultValue: 'Month' })}</option>
+            {monthOptions.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+          <select
+            value={day}
+            onChange={(e) => { setDay(e.target.value); setErr(''); }}
+            className="block w-full min-w-0 bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-3 text-[14px] text-left text-[#E5E7EB] focus:outline-none focus:border-[var(--color-accent,#D4AF37)]/50"
+            required
+          >
+            <option value="">{t('ageVerify.day', { defaultValue: 'Day' })}</option>
+            {dayOptions.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+          <select
+            value={year}
+            onChange={(e) => { setYear(e.target.value); setErr(''); }}
+            className="block w-full min-w-0 bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-3 text-[14px] text-left text-[#E5E7EB] focus:outline-none focus:border-[var(--color-accent,#D4AF37)]/50"
+            required
+          >
+            <option value="">{t('ageVerify.year', { defaultValue: 'Year' })}</option>
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+        {err && (
+          <p className="text-[12.5px] text-red-400 text-left px-1 mb-3">{err}</p>
+        )}
+        <div className="flex items-center justify-center gap-3 mt-2">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-xl px-5 py-3 text-[13px] font-semibold transition-colors disabled:opacity-50"
+            style={{ background: 'var(--color-accent, #D4AF37)', color: 'var(--color-bg-card, #000)' }}
+          >
+            {submitting
+              ? t('ageVerify.saving', { defaultValue: 'Saving…' })
+              : t('ageVerify.confirm', { defaultValue: 'Confirm' })}
+          </button>
+          <button
+            type="button"
+            onClick={signOut}
+            className="rounded-xl px-5 py-3 text-[13px] font-medium transition-colors bg-white/[0.06] border border-white/[0.08] text-[#E5E7EB]"
+          >
+            {t('blocking.signOut', { defaultValue: 'Sign out' })}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
 // ── PROFILE UNAVAILABLE SCREEN ─────────────────────────────
+// Differentiates "we're offline + cache was wiped" from "your profile genuinely
+// failed to load" — the first case auto-recovers as soon as network returns,
+// so we shouldn't scare the user with an error screen + Sign out button.
 const ProfileUnavailableScreen = () => {
   const { signOut } = useAuth();
   const { t } = useTranslation('pages');
+  const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+  // Auto-reload when we come back online — the next boot will hydrate the
+  // profile from a fresh getSession + fetchProfile. safeReload uses navigate(0)
+  // on Capacitor to avoid the WebView teardown that can leave a black screen
+  // when the service worker isn't yet in scope.
+  useEffect(() => {
+    if (!offline) return;
+    const onOnline = () => safeReload();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [offline]);
+
   return (
-    <div className="min-h-screen bg-[#05070B] flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--color-bg-primary, #05070B)' }}>
       <div className="max-w-md w-full text-center">
-        <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-6">
-          <svg className="w-8 h-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M3.055 19h17.89c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L1.323 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
+          style={{
+            background: offline ? 'rgba(245, 158, 11, 0.10)' : 'rgba(245, 158, 11, 0.10)',
+            border: '1px solid rgba(245, 158, 11, 0.20)',
+          }}
+        >
+          {offline ? (
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="#F59E0B" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636L5.636 18.364m12.728 0L5.636 5.636M12 19c-3.866 0-7-3.134-7-7s3.134-7 7-7 7 3.134 7 7-3.134 7-7 7z" />
+            </svg>
+          ) : (
+            <svg className="w-8 h-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M3.055 19h17.89c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L1.323 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          )}
         </div>
-        <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">{t('blocking.profileUnavailableTitle')}</h1>
-        <p className="text-[14px] text-[#9CA3AF] mb-8">
-          {t('blocking.profileUnavailableBody')}
+        <h1 className="text-xl font-bold mb-3" style={{ color: 'var(--color-text-primary, #E5E7EB)' }}>
+          {offline
+            ? t('blocking.offlineTitle', 'You\u2019re offline')
+            : t('blocking.profileUnavailableTitle')}
+        </h1>
+        <p className="text-[14px] mb-8" style={{ color: 'var(--color-text-muted, #9CA3AF)' }}>
+          {offline
+            ? t('blocking.offlineBody', 'Reconnect to the internet to load your account. The app will resume automatically.')
+            : t('blocking.profileUnavailableBody')}
         </p>
         <div className="flex items-center justify-center gap-3">
           <button
-            onClick={() => window.location.reload()}
-            className="bg-[#D4AF37] hover:bg-[#E6C766] text-black rounded-xl px-5 py-3 text-[13px] font-semibold transition-colors"
+            onClick={() => safeReload()}
+            className="rounded-xl px-5 py-3 text-[13px] font-semibold transition-colors"
+            style={{ background: 'var(--color-accent, #D4AF37)', color: 'var(--color-bg-card, #000)' }}
           >
             {t('blocking.retry')}
           </button>
-          <button
-            onClick={signOut}
-            className="bg-white/6 hover:bg-white/10 border border-white/8 text-[#E5E7EB] rounded-xl px-5 py-3 text-[13px] font-medium transition-colors"
-          >
-            {t('blocking.signOut')}
-          </button>
+          {!offline && (
+            <button
+              onClick={signOut}
+              className="rounded-xl px-5 py-3 text-[13px] font-medium transition-colors"
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                color: 'var(--color-text-primary, #E5E7EB)',
+              }}
+            >
+              {t('blocking.signOut')}
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-const isSuperAdmin = (profile) => profile?.role === 'super_admin';
-const isAdmin = (profile) => profile?.role === 'admin' || profile?.role === 'super_admin';
-const isTrainer = (profile) => profile?.role === 'trainer';
+// ── Multi-role helpers ────────────────────────────────────
+// All checks read activeView + availableRoles, never just profile.role.
+// activeView is the user's *current* experience (they may have switched);
+// availableRoles is everything they're entitled to.
+const hasRole = (availableRoles, role) =>
+  Array.isArray(availableRoles) && availableRoles.includes(role);
+
+const isSuperAdminView = (activeView) => activeView === 'super_admin';
+const isAdminView = (activeView) => activeView === 'admin' || activeView === 'super_admin';
+const isTrainerView = (activeView) => activeView === 'trainer';
 
 // ── PROTECTED ROUTE (member) ───────────────────────────────
 const ProtectedRoute = ({ children }) => {
-  const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
+  const { user, profile, loading, gymDeactivated, memberBlocked, requiresAgeVerification, activeView, availableRoles } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user)   return <Navigate to="/login" replace />;
   if (!profile) return <ProfileUnavailableScreen />;
+  // Defensive: cached profile may be hydrated without role data (stripped for
+  // security on cold start). Wait for the live profile fetch before deciding
+  // routing — otherwise an admin briefly sees the member home on slow wifi.
+  if (!Array.isArray(availableRoles) || availableRoles.length === 0) return <LoadingScreen />;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
-  if (isSuperAdmin(profile)) return <Navigate to="/platform/operations" replace />;
+  // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
+  // Super admins always go to /platform — they don't have a member
+  // experience even if technically `member` is in additional_roles.
+  if (isSuperAdminView(activeView)) return <Navigate to="/platform/operations" replace />;
   if (!profile.is_onboarded) return <Navigate to="/onboarding" replace />;
-  if (isAdmin(profile))   return <Navigate to="/admin" replace />;
-  if (isTrainer(profile)) return <Navigate to="/trainer" replace />;
+  // Route based on the user's chosen view, not their primary role. A
+  // trainer who switched to member view stays here.
+  if (isAdminView(activeView))   return <Navigate to="/admin" replace />;
+  if (isTrainerView(activeView)) return <Navigate to="/trainer" replace />;
   return children;
 };
 
@@ -338,16 +640,17 @@ const ProtectedRoute = ({ children }) => {
 // Allows authenticated but not-yet-onboarded users through.
 // Redirects away if already onboarded.
 const OnboardingRoute = ({ children }) => {
-  const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
+  const { user, profile, loading, gymDeactivated, memberBlocked, requiresAgeVerification, activeView } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user)   return <Navigate to="/login" replace />;
   if (!profile) return <ProfileUnavailableScreen />;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
+  // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
   if (profile.is_onboarded) {
-    if (isSuperAdmin(profile)) return <Navigate to="/platform/operations" replace />;
-    if (isAdmin(profile))      return <Navigate to="/admin" replace />;
-    if (isTrainer(profile))    return <Navigate to="/trainer" replace />;
+    if (isSuperAdminView(activeView)) return <Navigate to="/platform/operations" replace />;
+    if (isAdminView(activeView))      return <Navigate to="/admin" replace />;
+    if (isTrainerView(activeView))    return <Navigate to="/trainer" replace />;
     return <Navigate to="/" replace />;
   }
   return children;
@@ -355,36 +658,64 @@ const OnboardingRoute = ({ children }) => {
 
 // ── ADMIN ROUTE ────────────────────────────────────────────
 const AdminRoute = ({ children }) => {
-  const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
+  const { user, profile, loading, gymDeactivated, memberBlocked, requiresAgeVerification, availableRoles, activeView } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user)            return <Navigate to="/login" replace />;
   if (!profile)         return <ProfileUnavailableScreen />;
+  // Defensive: see ProtectedRoute. Roles aren't cached client-side, so wait
+  // for the live fetch before letting an admin route render anything.
+  if (!Array.isArray(availableRoles) || availableRoles.length === 0) return <LoadingScreen />;
   if (gymDeactivated)   return <GymDeactivatedScreen />;
   if (memberBlocked)    return <MemberBlockedScreen />;
-  if (isSuperAdmin(profile)) return <Navigate to="/platform/operations" replace />;
-  if (!isAdmin(profile)) return <Navigate to="/" replace />;
+  // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
+  if (isSuperAdminView(activeView)) return <Navigate to="/platform/operations" replace />;
+  // Entitlement check: must hold admin (or super_admin) somewhere — and
+  // the activeView must be admin/super_admin (so a trainer who's also
+  // an admin but switched to trainer view doesn't accidentally see
+  // /admin links).
+  const entitled = hasRole(availableRoles, 'admin') || hasRole(availableRoles, 'super_admin');
+  if (!entitled) return <Navigate to="/" replace />;
+  if (!isAdminView(activeView)) {
+    // They're entitled but viewing as something else — bounce them to
+    // their current view's home so the URL bar matches reality.
+    if (isTrainerView(activeView)) return <Navigate to="/trainer" replace />;
+    return <Navigate to="/" replace />;
+  }
   return children;
 };
 
 // ── PLATFORM ROUTE (super_admin only) ─────────────────────
 const PlatformRoute = ({ children }) => {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, requiresAgeVerification, availableRoles } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user)                  return <Navigate to="/login" replace />;
   if (!profile)               return <ProfileUnavailableScreen />;
-  if (!isSuperAdmin(profile)) return <Navigate to="/" replace />;
+  // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
+  // Super admin is identity-level, not view-level — anyone holding
+  // super_admin gets in regardless of activeView (so they can always
+  // recover from a bad view-switch).
+  if (!hasRole(availableRoles, 'super_admin')) return <Navigate to="/" replace />;
   return children;
 };
 
 // ── TRAINER ROUTE ──────────────────────────────────────────
 const TrainerRoute = ({ children }) => {
-  const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
+  const { user, profile, loading, gymDeactivated, memberBlocked, requiresAgeVerification, availableRoles, activeView } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user)              return <Navigate to="/login" replace />;
   if (!profile)           return <ProfileUnavailableScreen />;
+  // Defensive: see ProtectedRoute.
+  if (!Array.isArray(availableRoles) || availableRoles.length === 0) return <LoadingScreen />;
   if (gymDeactivated)     return <GymDeactivatedScreen />;
   if (memberBlocked)      return <MemberBlockedScreen />;
-  if (!isTrainer(profile)) return <Navigate to="/" replace />;
+  // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
+  if (!hasRole(availableRoles, 'trainer')) return <Navigate to="/" replace />;
+  if (!isTrainerView(activeView)) {
+    // Entitled but viewing as something else — go to the chosen view.
+    if (isAdminView(activeView))      return <Navigate to="/admin" replace />;
+    if (isSuperAdminView(activeView)) return <Navigate to="/platform/operations" replace />;
+    return <Navigate to="/" replace />;
+  }
   return children;
 };
 
@@ -399,16 +730,17 @@ const AuthenticatedRoute = ({ children }) => {
 
 // ── PUBLIC ROUTE ───────────────────────────────────────────
 const PublicRoute = ({ children }) => {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, availableRoles, activeView } = useAuth();
   if (loading) return <LoadingScreen />;
   // When user just signed in, profile may still be loading — show loading instead
   // of flashing ProfileUnavailableScreen during the brief fetch window
   if (user && !profile) return <LoadingScreen />;
-  if (user && profile && isSuperAdmin(profile)) return <Navigate to="/platform" replace />;
+  // Super-admin is identity-level — always route to /platform regardless of activeView
+  if (user && profile && hasRole(availableRoles, 'super_admin')) return <Navigate to="/platform/operations" replace />;
   if (user && profile && !profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   if (user && profile?.is_onboarded) {
-    if (isAdmin(profile))   return <Navigate to="/admin" replace />;
-    if (isTrainer(profile)) return <Navigate to="/trainer" replace />;
+    if (isAdminView(activeView))   return <Navigate to="/admin" replace />;
+    if (isTrainerView(activeView)) return <Navigate to="/trainer" replace />;
     return <Navigate to="/" replace />;
   }
   return children;
@@ -416,17 +748,146 @@ const PublicRoute = ({ children }) => {
 
 // RecordEntry removed — /record now renders QuickStart directly
 
+// ── Member route keep-alive ──────────────────────────────────
+// Every static member page is kept mounted after FIRST visit. The wrapper
+// toggles `display: block`/`none` based on the current pathname, so any
+// subsequent navigation to a previously-visited page is instant — no
+// remount, no re-running effects, no skeleton flash, no re-fetch.
+//
+// First visit to a page IS a normal cold mount (lazy chunk + data fetch).
+// We deliberately DON'T background-preload all pages on app entry — that
+// caused a "page keeps reloading" flash because each lazy-chunk fetch
+// triggers Suspense, and even with per-page Suspense boundaries the
+// constant cold-mount work made the device feel laggy.
+//
+// Pages with URL params (`/session/:id`, `/cardio/:id`, etc.) are NOT
+// kept alive — different IDs → different data, and we don't want
+// unbounded memory growth from cached instances.
+//
+// Pages refresh their own data via existing mechanisms (Dashboard has a
+// locationKey effect that bumps refreshKey on every navigation, which is
+// effectively "refresh on become active"; pages with postgres_changes
+// subscriptions stay live in real time).
+const KEEP_ALIVE_MAP = {
+  '/':                   Dashboard,
+  '/workouts':           Workouts,
+  '/exercises':          ExerciseLibraryPage,
+  '/record':             QuickStart,
+  '/community':          Community,
+  '/social':             SocialFeed,
+  '/challenges':         Challenges,
+  '/notifications':      Notifications,
+  '/notification-settings': NotificationSettings,
+  '/progress':           Progress,
+  '/profile':            Profile,
+  '/settings':           MemberSettings,
+  '/personal-info':      PersonalInfo,
+  '/support':            Support,
+  '/nutrition':          Nutrition,
+  '/my-gym':             MyGym,
+  '/classes':            Classes,
+  '/checkin':            CheckIn,
+  '/rewards':            Rewards,
+  '/referrals':          Referrals,
+  '/health-sync':        HealthSync,
+  '/messages':           Messages,
+};
+
+const MemberRoutes = () => {
+  const location = useLocation();
+  const path = location.pathname;
+  const isKeepAlivePath = path in KEEP_ALIVE_MAP;
+  const [visited, setVisited] = useState(() => {
+    const initial = new Set();
+    if (path in KEEP_ALIVE_MAP) initial.add(path);
+    return initial;
+  });
+
+  // Add the active path to the visited set when it changes. This covers
+  // the case where the path on first render isn't a keep-alive path, then
+  // the user navigates to one.
+  useEffect(() => {
+    if (!isKeepAlivePath) return;
+    setVisited((prev) => {
+      if (prev.has(path)) return prev;
+      const next = new Set(prev);
+      next.add(path);
+      return next;
+    });
+  }, [path, isKeepAlivePath]);
+
+  return (
+    <>
+      {/* Every visited keep-alive page stays mounted, toggled by display.
+          CRITICAL: each page gets its OWN Suspense boundary so a background
+          preload's lazy chunk fetch doesn't suspend the parent tree and
+          flash the skeleton over whatever the user is currently looking at.
+          Active page suspending → shows skeleton briefly. Inactive pages
+          suspending → render null (no DOM impact, mounts in background). */}
+      {Array.from(visited).map((kaPath) => {
+        const Comp = KEEP_ALIVE_MAP[kaPath];
+        if (!Comp) return null;
+        const active = kaPath === path;
+        return (
+          <div
+            key={kaPath}
+            style={{ display: active ? 'block' : 'none' }}
+            aria-hidden={!active}
+          >
+            <Suspense fallback={active ? <Skeleton variant="page" /> : null}>
+              <Comp />
+            </Suspense>
+          </div>
+        );
+      })}
+
+      {/* Dynamic / one-shot routes — keep using <Routes> so each instance
+          remounts fresh. Only rendered when current path isn't one of the
+          keep-alive paths, to avoid double-rendering. */}
+      {!isKeepAlivePath && (
+        <Routes>
+          <Route path="/workouts/:id/edit" element={<WorkoutBuilder />} />
+          <Route path="/session/:id"       element={<ActiveSession />} />
+          <Route path="/session-summary"   element={<SessionSummary />} />
+          <Route path="/cardio-live"       element={<LiveCardio />} />
+          <Route path="/cardio/:id"        element={<CardioSessionDetail />} />
+          <Route path="/legal/privacy"     element={<LegalViewer page="privacy" />} />
+          <Route path="/legal/terms"       element={<LegalViewer page="terms" />} />
+          <Route path="/messages/:conversationId" element={<Messages />} />
+          {/* Redirects */}
+          <Route path="/workout-log"       element={<Navigate to="/progress?tab=log" replace />} />
+          <Route path="/strength"          element={<Navigate to="/progress?tab=strength" replace />} />
+          <Route path="/personal-records"  element={<Navigate to="/progress?tab=records" replace />} />
+          <Route path="/metrics"           element={<Navigate to="/progress?tab=body" replace />} />
+          <Route path="/leaderboard"       element={<Navigate to="/community?tab=leaderboard" replace />} />
+          <Route path="*"                  element={<Navigate to="/" replace />} />
+        </Routes>
+      )}
+    </>
+  );
+};
+
 // ── APP ────────────────────────────────────────────────────
 function App() {
   const { user, profile, gymName, gymConfig, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const posthog = usePostHog();
+  const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useTranslation('common');
   const [watchQROpen, setWatchQROpen] = useState(false);
   const [offlineDismissed, setOfflineDismissed] = useState(false);
   const deepLinkProcessed = useRef(false);
+
+  // ── Register navigate for non-component callers (AuthContext, error
+  // handlers, deep-link processors). Lets them call safeNavigate() instead of
+  // window.location.href, which on Capacitor would reload the WebView from
+  // disk and blow away JS state. ───────────────────────────────
+  useEffect(() => {
+    setNavigateFn(navigate);
+    return () => setNavigateFn(null);
+  }, [navigate]);
 
   // ── Online / Offline awareness ──────────────────────────────
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -450,9 +911,145 @@ function App() {
     }
   }, [isOnline]);
 
+  // ── Route prefetch: once auth resolves, warm up the main tab chunks ──
+  // The setTimeout-based prefetches at module scope still run, but kicking
+  // them off the moment the user is known means tab switches after first
+  // paint never wait on a dynamic import (no Suspense fallback flash).
+  useEffect(() => {
+    if (!user || loading) return;
+    // Fire-and-forget — Vite caches the promise so duplicates are cheap.
+    workoutsImport().catch(() => {});
+    nutritionImport().catch(() => {});
+    profileImport().catch(() => {});
+    progressImport().catch(() => {});
+    socialFeedImport().catch(() => {});
+    messagesImport().catch(() => {});
+    myGymImport().catch(() => {});
+    challengesImport().catch(() => {});
+    // Secondary routes — tapped less often but still benefit from being in
+    // memory before the user navigates to them.
+    import('./pages/CheckIn').catch(() => {});
+    import('./pages/Notifications').catch(() => {});
+    import('./pages/Rewards').catch(() => {});
+  }, [user, loading]);
+
+  // ── Data prefetch: populate React Query cache for the main tabs so each
+  // page paints from cache on first navigation instead of triggering a fetch
+  // with a spinner. We kick these off in parallel and don't await — if a page
+  // mounts before prefetch finishes, React Query will still see the in-flight
+  // query and avoid a duplicate request.
+  useEffect(() => {
+    if (!user?.id || loading || !profile?.id) return;
+    const userId = user.id;
+    const gymId = profile.gym_id;
+
+    // Notifications list
+    queryClient.prefetchQuery({
+      queryKey: ['notifications', userId],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('id, title, body, type, read_at, created_at, profile_id')
+          .eq('profile_id', userId)
+          .is('dismissed_at', null)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        return data;
+      },
+    }).catch(() => {});
+
+    // Dashboard RPC — consolidates 8+ queries into one
+    queryClient.prefetchQuery({
+      queryKey: ['dashboard', userId],
+      queryFn: async () => {
+        const { data, error } = await supabase.rpc('get_dashboard_data');
+        if (error) throw error;
+        return data;
+      },
+    }).catch(() => {});
+
+    // Recent workouts
+    queryClient.prefetchQuery({
+      queryKey: ['dashboard-sessions', userId],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('workout_sessions')
+          .select('id, name, completed_at, total_volume_lbs, duration_seconds, routine_id')
+          .eq('profile_id', userId)
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        return data;
+      },
+    }).catch(() => {});
+
+    // Personal records
+    queryClient.prefetchQuery({
+      queryKey: ['personal-records', userId],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('personal_records')
+          .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at, exercises(name, muscle_group)')
+          .eq('profile_id', userId)
+          .order('estimated_1rm', { ascending: false })
+          .limit(100);
+        if (error) throw error;
+        return data;
+      },
+    }).catch(() => {});
+
+    // Challenges (gym-scoped)
+    if (gymId) {
+      queryClient.prefetchQuery({
+        queryKey: ['challenges', gymId],
+        queryFn: async () => {
+          const { data, error } = await supabase
+            .from('challenges')
+            .select('id, name, description, type, start_date, end_date, reward_description, gym_id')
+            .eq('gym_id', gymId)
+            .order('start_date', { ascending: false })
+            .limit(50);
+          if (error) throw error;
+          return data;
+        },
+      }).catch(() => {});
+    }
+
+    // Check-in history (for the CheckIn / streak page)
+    queryClient.prefetchQuery({
+      queryKey: ['check-ins', userId],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('check_ins')
+          .select('id, checked_in_at, method')
+          .eq('profile_id', userId)
+          .order('checked_in_at', { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        return data;
+      },
+    }).catch(() => {});
+
+    // Streak cache (drives the streak number on CheckIn + Navigation)
+    queryClient.prefetchQuery({
+      queryKey: ['streak-cache', userId],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('streak_cache')
+          .select('current_streak_days, longest_streak_days, last_activity_date')
+          .eq('profile_id', userId)
+          .maybeSingle();
+        if (error) throw error;
+        return data;
+      },
+    }).catch(() => {});
+  }, [user?.id, profile?.id, profile?.gym_id, loading, queryClient]);
+
   // Track page views
   useEffect(() => {
-    if (posthog) posthog.capture('$pageview', { $current_url: `https://app.tugympr.com${location.pathname}` });
+    if (posthog) posthog.capture('$pageview', { $current_url: `${window.location.origin}${location.pathname}` });
   }, [location.pathname, posthog]);
 
   // Listen for Watch-triggered actions
@@ -504,6 +1101,69 @@ function App() {
     }
   }, [loading, user?.id, profile?.gym_id, profile?.is_onboarded, navigate]);
 
+  // ── In-app toast for newly inserted notifications ──
+  // Native push covers OS-level pop-ups, but on web/PWA and while the app is
+  // foregrounded there's no system banner. Subscribe to our own
+  // `notifications` table so a toast pops the moment something lands —
+  // announcements, friend activity, win-back messages, anything inserted by
+  // broadcastNotification / sendNotification / DB triggers.
+  // The Notifications page maintains its own list subscription; this one is
+  // app-wide and only handles the live toast.
+  useEffect(() => {
+    if (!user?.id) return;
+    const seen = new Set();
+    // Don't toast notifications that were already in the DB before this
+    // session started — only true "new" inserts. The realtime channel only
+    // delivers events from the moment we subscribe, so any row whose
+    // created_at is older than now() at subscribe-time is considered stale.
+    const subscribedAt = Date.now();
+
+    const channel = supabase
+      .channel(`app-notifications-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `profile_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const row = payload?.new;
+          if (!row || !row.id || seen.has(row.id)) return;
+          seen.add(row.id);
+
+          // Suppress if the user was the one who triggered it (they're already
+          // looking at the source UI). Also suppress if the row was created
+          // before we subscribed — guards against any replayed events.
+          const createdMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+          if (createdMs < subscribedAt - 5000) return;
+
+          // Don't toast while the user is already on the notifications page —
+          // the list updates inline.
+          if (window.location?.pathname?.startsWith('/notifications')) return;
+
+          const toastTitle = row.title || t('notifications.newTitle', { defaultValue: 'New notification' });
+          const toastBody = row.body ? `${toastTitle} — ${row.body}` : toastTitle;
+          showToast(toastBody, 'info', {
+            durationMs: 6000,
+            action: {
+              label: t('notifications.viewAction', { defaultValue: 'View' }),
+              onClick: () => {
+                const route = row.data?.route || '/notifications';
+                navigate(route);
+              },
+            },
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, navigate, showToast, t]);
+
   // ── Handle native deep links from Capacitor appUrlOpen ──
   useEffect(() => {
     const handler = (e) => {
@@ -534,7 +1194,7 @@ function App() {
       }
 
       const siriRoutes = {
-        'start-workout': '/quick-start',
+        'start-workout': '/record',
         'check-in':      '/checkin',
         'gym-card':      '/profile?showQR=1',
         'streak':        '/profile',
@@ -729,11 +1389,19 @@ function App() {
       />
     )}
     <ScrollToTop />
+    {/* Outer ErrorBoundary catches throws from <Navigation>, route guards, and
+        any teardown cascade (e.g. SIGNED_OUT triggering posthog.reset, realtime
+        unsubscribe, theme reset). Per-route boundaries below are still useful
+        for recovering inside a single page, but without this wrapper a throw
+        in the auth-state cascade paints a black screen on Capacitor. */}
+    <ErrorBoundary>
     <Routes>
 
       {/* Public — unauthenticated only */}
       <Route path="/login"  element={<PublicRoute><ErrorBoundary><Login /></ErrorBoundary></PublicRoute>} />
       <Route path="/signup" element={<PublicRoute><ErrorBoundary><Signup /></ErrorBoundary></PublicRoute>} />
+      {/* Password reset landing — must be open to recovery sessions, not gated by PublicRoute. */}
+      <Route path="/auth/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
 
       {/* Deep link catch routes — the useEffect above handles redirect logic */}
       <Route path="/siri/*"            element={<LoadingScreen />} />
@@ -749,6 +1417,23 @@ function App() {
 
       {/* TV display — auth required, no nav (any authenticated user/role) */}
       <Route path="/tv-display" element={<AuthenticatedRoute><ErrorBoundary><TVDisplay /></ErrorBoundary></AuthenticatedRoute>} />
+
+      {/* Public-facing trainer profile — viewable by members, trainers, and admins
+          within the same gym (gym-id guard enforced inside the page). Standalone
+          so all roles can land here without the member/admin/trainer route
+          redirects bouncing them to their own dashboards. */}
+      <Route
+        path="/trainers/:trainerId"
+        element={
+          <AuthenticatedRoute>
+            <ErrorBoundary>
+              <Suspense fallback={<Skeleton variant="page" />}>
+                <PublicTrainerProfile />
+              </Suspense>
+            </ErrorBoundary>
+          </AuthenticatedRoute>
+        }
+      />
 
       {/* Platform super-admin dashboard */}
       <Route
@@ -812,6 +1497,7 @@ function App() {
                 <Route path="/email-templates" element={<AdminEmailTemplates />} />
                 <Route path="/rewards"     element={<AdminRewards />} />
                 <Route path="/profile"     element={<AdminProfile />} />
+                <Route path="/notifications" element={<AdminNotifications />} />
                 <Route path="/settings"     element={<AdminSettings />} />
                 <Route path="*"            element={<Navigate to="/admin" replace />} />
               </Routes>
@@ -838,10 +1524,14 @@ function App() {
                 <Route path="/plans"                    element={<TrainerPlans />} />
                 <Route path="/messages"                 element={<TrainerMessages />} />
                 <Route path="/messages/:conversationId" element={<TrainerMessages />} />
-                <Route path="/notifications"            element={<Notifications />} />
+                <Route path="/notifications"            element={<TrainerNotifications />} />
                 <Route path="/social"                   element={<TrainerSocial />} />
                 <Route path="/classes"                  element={<TrainerClasses />} />
                 <Route path="/profile"                  element={<TrainerProfile />} />
+                <Route path="/settings"                 element={<TrainerSettings />} />
+                <Route path="/help"                     element={<TrainerHelp />} />
+                <Route path="/privacy"                  element={<TrainerPrivacy />} />
+                <Route path="/live/:sessionId"          element={<TrainerLiveSession />} />
                 <Route path="/notification-settings"    element={<NotificationSettings />} />
                 {/* Backward-compatible redirects */}
                 <Route path="/client/:clientId" element={<Navigate to="/trainer/clients/:clientId" replace />} />
@@ -869,55 +1559,7 @@ function App() {
               <div id="main-content" role="main">
               <ErrorBoundary>
               <Suspense fallback={<Skeleton variant="page" />}>
-              <Routes>
-                {/* Home */}
-                <Route path="/"                  element={<Dashboard />} />
-
-                {/* Train / programming */}
-                <Route path="/workouts"          element={<Workouts />} />
-                <Route path="/workouts/:id/edit" element={<WorkoutBuilder />} />
-                <Route path="/exercises"         element={<ExerciseLibraryPage />} />
-
-                {/* Record / sessions */}
-                <Route path="/record"            element={<QuickStart />} />
-                <Route path="/session/:id"       element={<ActiveSession />} />
-                <Route path="/session-summary"   element={<SessionSummary />} />
-                <Route path="/cardio-live"       element={<LiveCardio />} />
-
-                {/* Social & community */}
-                <Route path="/community"         element={<Community />} />
-                <Route path="/social"            element={<SocialFeed />} />
-                <Route path="/challenges"        element={<Challenges />} />
-                <Route path="/notifications"          element={<Notifications />} />
-                <Route path="/notification-settings" element={<NotificationSettings />} />
-
-                {/* Progress (consolidated hub) */}
-                <Route path="/progress"          element={<Progress />} />
-
-                {/* You / self */}
-                <Route path="/profile"           element={<Profile />} />
-                <Route path="/settings"          element={<MemberSettings />} />
-                <Route path="/nutrition"         element={<Nutrition />} />
-                <Route path="/my-gym"           element={<MyGym />} />
-                <Route path="/classes"          element={<Classes />} />
-
-                {/* Redirects: standalone pages now live inside hub pages */}
-                <Route path="/workout-log"       element={<Navigate to="/progress?tab=log" replace />} />
-                <Route path="/strength"          element={<Navigate to="/progress?tab=strength" replace />} />
-                <Route path="/personal-records"  element={<Navigate to="/progress?tab=records" replace />} />
-                <Route path="/metrics"           element={<Navigate to="/progress?tab=body" replace />} />
-                <Route path="/leaderboard"       element={<Navigate to="/community?tab=leaderboard" replace />} />
-
-                {/* Utility */}
-                <Route path="/checkin"           element={<CheckIn />} />
-                <Route path="/rewards"           element={<Rewards />} />
-                <Route path="/referrals"         element={<Referrals />} />
-                <Route path="/health-sync"       element={<HealthSync />} />
-                <Route path="/messages"          element={<Messages />} />
-                <Route path="/messages/:conversationId" element={<Messages />} />
-
-                <Route path="*"                  element={<Navigate to="/" replace />} />
-              </Routes>
+                <MemberRoutes />
               </Suspense>
               </ErrorBoundary>
               </div>
@@ -927,6 +1569,7 @@ function App() {
       />
 
     </Routes>
+    </ErrorBoundary>
     </Suspense>
   );
 }

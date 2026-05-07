@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { X, Dumbbell, Flame, Trophy, Zap, Activity, Sparkles, Sprout, Calendar, Target, Award, MessageCircle } from 'lucide-react';
+import { X, Dumbbell, Flame, Trophy, Zap, Activity, Sparkles, Sprout, Calendar, Target, Award, MessageCircle, MoreHorizontal, Ban, Flag } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
 import UserAvatar from './UserAvatar';
+import ReportContentModal from './ReportContentModal';
 
 // Goal display config
 const GOAL_META = {
@@ -25,12 +28,44 @@ const LEVEL_META = {
 const ProfilePreview = ({ userId, isOpen, onClose }) => {
   const { t } = useTranslation('pages');
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { showToast } = useToast();
   const [profileData, setProfileData] = useState(null);
   const [stats, setStats]             = useState({ workouts: 0, streak: 0, prs: 0 });
   const [latestAchievement, setLatestAchievement] = useState(null);
   const [loading, setLoading]         = useState(true);
   const [visible, setVisible]         = useState(false);
+  const [showMenu, setShowMenu]       = useState(false);
+  const [confirmBlock, setConfirmBlock] = useState(false);
+  const [reportOpen, setReportOpen]   = useState(false);
+  const [blocking, setBlocking]       = useState(false);
   const backdropRef = useRef(null);
+  const menuRef = useRef(null);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setShowMenu(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showMenu]);
+
+  const handleBlock = async () => {
+    if (!userId || !user?.id || blocking) return;
+    setBlocking(true);
+    await supabase.from('blocked_users').upsert(
+      { blocker_id: user.id, blocked_id: userId },
+      { onConflict: 'blocker_id,blocked_id' }
+    );
+    await supabase.from('friendships').delete()
+      .or(`and(requester_id.eq.${user.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${user.id})`);
+    showToast(t('social.userBlocked', { name: profileData?.full_name?.split(' ')[0] ?? '' }), 'success');
+    setBlocking(false);
+    setConfirmBlock(false);
+    onClose();
+  };
 
   // Animate in — use a short timeout for reliable rendering in Capacitor WebView
   useEffect(() => {
@@ -98,7 +133,7 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const displayName = profileData?.full_name || profileData?.username || 'Member';
+  const displayName = profileData?.full_name || profileData?.username || t('profilePreview.memberFallback', { defaultValue: 'Member' });
   const username = profileData?.username;
   const avatarUrl = profileData?.avatar_url;
   const initial = (displayName ?? '?')[0].toUpperCase();
@@ -113,7 +148,7 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
       ref={backdropRef}
       role="button"
       tabIndex={-1}
-      aria-label="Close preview"
+      aria-label={t('profilePreview.closePreview', { defaultValue: 'Close preview' })}
       onClick={handleBackdropClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClose(); }}
       className={`fixed inset-0 z-[200] flex items-center justify-center px-4 transition-all duration-300 ${
@@ -125,22 +160,67 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
         role="dialog"
         aria-modal="true"
         aria-busy={loading}
-        aria-label={loading ? 'Loading profile' : (profileData?.full_name || 'Profile preview')}
+        aria-label={loading ? t('profilePreview.loadingProfile', { defaultValue: 'Loading profile' }) : (profileData?.full_name || t('profilePreview.profilePreview', { defaultValue: 'Profile preview' }))}
         className={`relative w-full max-w-[360px] rounded-2xl border border-white/[0.06] shadow-2xl shadow-black/50 overflow-hidden transition-all duration-300 ${
           visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
         }`}
         style={{ background: 'var(--color-bg-card)' }}
       >
-        {/* Close button */}
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close preview"
-          className="absolute top-4 right-4 z-10 w-9 h-9 rounded-xl flex items-center justify-center hover:bg-white/[0.06] transition-colors"
-          style={{ color: 'var(--color-text-subtle)' }}
-        >
-          <X size={18} />
-        </button>
+        {/* Close + overflow menu */}
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-1">
+          {!loading && profileData && userId !== user?.id && (
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setShowMenu(s => !s)}
+                aria-label={t('social.moreOptions')}
+                aria-haspopup="menu"
+                aria-expanded={showMenu}
+                className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-white/[0.06] transition-colors"
+                style={{ color: 'var(--color-text-subtle)' }}
+              >
+                <MoreHorizontal size={18} />
+              </button>
+              {showMenu && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-11 w-48 rounded-xl border border-white/10 shadow-xl overflow-hidden"
+                  style={{ background: 'var(--color-bg-card)' }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setShowMenu(false); setReportOpen(true); }}
+                    className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] hover:bg-white/[0.04] transition-colors text-left"
+                    style={{ color: 'var(--color-text-primary)' }}
+                  >
+                    <Flag size={15} style={{ color: 'var(--color-text-muted)' }} />
+                    {t('moderation.menu.report', { defaultValue: 'Report' })}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setShowMenu(false); setConfirmBlock(true); }}
+                    className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-red-400 hover:bg-red-500/10 transition-colors text-left"
+                    style={{ borderTop: '1px solid var(--color-border-subtle, rgba(127,127,127,0.12))' }}
+                  >
+                    <Ban size={15} className="text-red-400" />
+                    {t('social.blockUser', { name: profileData?.full_name?.split(' ')[0] ?? '' })}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('profilePreview.closePreview', { defaultValue: 'Close preview' })}
+            className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-white/[0.06] transition-colors"
+            style={{ color: 'var(--color-text-subtle)' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -240,6 +320,66 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
           </div>
         )}
       </div>
+
+      {/* Report User (center-aligned) */}
+      <ReportContentModal
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        contentType="profile"
+        contentId={userId}
+        targetUserId={userId}
+      />
+
+      {/* Block User Confirm (center-aligned) */}
+      {confirmBlock && (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('social.confirmBlock.title', { name: profileData?.full_name?.split(' ')[0] ?? '' })}
+          onClick={() => !blocking && setConfirmBlock(false)}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
+          <div
+            className="relative w-full max-w-[420px] rounded-[28px] border border-white/10 overflow-hidden"
+            style={{ background: 'var(--color-bg-card)', boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
+                <Ban size={20} className="text-red-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                  {t('social.confirmBlock.title', { name: profileData?.full_name?.split(' ')[0] ?? '' })}
+                </h3>
+                <p className="text-[13px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('social.confirmBlock.subtitle')}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 px-5 pb-5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmBlock(false)}
+                disabled={blocking}
+                className="flex-1 py-3 rounded-xl text-[14px] font-semibold bg-white/[0.06] hover:bg-white/[0.08] transition-colors disabled:opacity-50"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {t('social.report.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleBlock}
+                disabled={blocking}
+                className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-50"
+              >
+                {blocking ? t('social.report.submitting') : t('social.confirmBlock.confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );

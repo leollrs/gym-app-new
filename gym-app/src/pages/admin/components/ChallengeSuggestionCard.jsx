@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Lightbulb, Sparkles, Dumbbell, Zap, Star, Users, Target } from 'lucide-react';
+import { Lightbulb, Sparkles, Dumbbell, Zap, Star, Users, Target, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { AdminCard } from '../../../components/admin';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { getISOWeek } from 'date-fns';
+
+const DISMISS_KEY = (gymId) => `suggestion_dismissed_${gymId}`;
+const norm = (s) => (s || '').trim().toLowerCase();
 
 const TYPE_ICONS = {
   consistency: Dumbbell,
@@ -32,6 +35,22 @@ export default function ChallengeSuggestionCard({ gymId, onCreateFromSuggestion 
     gcTime: 24 * 60 * 60 * 1000,
   });
 
+  // Existing challenges — used to skip suggestions whose name already exists for this gym.
+  const { data: existingNames = [] } = useQuery({
+    queryKey: ['admin', 'challenges', gymId, 'names-only'],
+    queryFn: async () => {
+      const { data } = await supabase.from('challenges').select('name').eq('gym_id', gymId);
+      return (data || []).map(c => norm(c.name));
+    },
+    enabled: !!gymId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Locally dismissed suggestions (admin clicked the dismiss button).
+  const [dismissed, setDismissed] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(DISMISS_KEY(gymId)) || '[]'); } catch { return []; }
+  });
+
   // "New" badge logic — shows until admin sees it this week
   const currentWeek = getISOWeek(new Date());
   const storageKey = `suggestion_seen_${gymId}`;
@@ -39,7 +58,22 @@ export default function ChallengeSuggestionCard({ gymId, onCreateFromSuggestion 
     try { return parseInt(localStorage.getItem(storageKey) || '0') === currentWeek; } catch { return false; }
   });
 
-  if (isLoading || !suggestion) return null;
+  const suggestionKey = useMemo(() => {
+    if (!suggestion) return null;
+    return norm(suggestion.suggested_name_en || suggestion.suggested_name_es);
+  }, [suggestion]);
+
+  const alreadyExists = suggestionKey && existingNames.includes(suggestionKey);
+  const isDismissed = suggestionKey && dismissed.includes(suggestionKey);
+
+  if (isLoading || !suggestion || alreadyExists || isDismissed) return null;
+
+  const handleDismiss = () => {
+    if (!suggestionKey) return;
+    const next = Array.from(new Set([...dismissed, suggestionKey])).slice(-50);
+    setDismissed(next);
+    try { localStorage.setItem(DISMISS_KEY(gymId), JSON.stringify(next)); } catch {}
+  };
 
   const name = isEs ? suggestion.suggested_name_es : suggestion.suggested_name_en;
   const reasoning = isEs ? suggestion.reasoning_es : suggestion.reasoning_en;
@@ -55,7 +89,17 @@ export default function ChallengeSuggestionCard({ gymId, onCreateFromSuggestion 
   };
 
   return (
-    <AdminCard className="mb-5 border-[#D4AF37]/20 bg-gradient-to-r from-[#D4AF37]/[0.04] to-transparent">
+    <AdminCard className="mb-5 border-[#D4AF37]/20 bg-gradient-to-r from-[#D4AF37]/[0.04] to-transparent relative">
+      <button
+        type="button"
+        onClick={handleDismiss}
+        aria-label={t('admin.challenges.suggestion.dismiss', 'Dismiss suggestion')}
+        title={t('admin.challenges.suggestion.dismiss', 'Dismiss suggestion')}
+        className="absolute top-2 right-2 w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        <X size={16} />
+      </button>
       <div className="flex items-start gap-4">
         <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
           <Lightbulb size={20} className="text-[#D4AF37]" />

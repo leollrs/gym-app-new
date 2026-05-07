@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle, User } from 'lucide-react';
+import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle, User, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
@@ -7,11 +7,12 @@ import i18n from 'i18next';
 import { supabase } from '../../../lib/supabase';
 import { encryptMessage } from '../../../lib/messageEncryption';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useToast } from '../../../contexts/ToastContext';
 import logger from '../../../lib/logger';
 import { getRiskTier } from '../../../lib/churnScore';
 import { logAdminAction } from '../../../lib/adminAudit';
 import posthog from 'posthog-js';
-import { Avatar, SectionLabel, AdminModal } from '../../../components/admin';
+import { Avatar, SectionLabel, AdminModal, PhoneInput } from '../../../components/admin';
 import { StatusBadge } from '../../../components/admin/StatusBadge';
 
 const statusActionMap = {
@@ -43,6 +44,7 @@ function getStatusActions(status) {
 export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onStatusChanged }) {
   const { user: authUser } = useAuth();
   const adminId = authUser?.id;
+  const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
   const isEs = i18n.language?.startsWith('es');
@@ -53,7 +55,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [note, setNote] = useState(member.admin_note ?? '');
   const [noteSaving, setNoteSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('workouts');
+  const [tab, setTab] = useState('info');
   const [showStatusConfirm, setShowStatusConfirm] = useState(false);
 
   // Referral state
@@ -70,7 +72,20 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [statusReason, setStatusReason] = useState('');
   const [pendingAction, setPendingAction] = useState(null);
   const [statusSaving, setStatusSaving] = useState(false);
+
+  // Lock body scroll while member detail modal is mounted
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
   const [statusConflict, setStatusConflict] = useState(false);
+
+  // Permanent deletion state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const [externalId, setExternalId] = useState(member.qr_external_id ?? '');
   const [externalIdSaving, setExternalIdSaving] = useState(false);
@@ -222,6 +237,12 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     setExternalIdSaving(false);
   };
 
+  // Normalize phone for comparison so cosmetic-only differences (spaces/dashes/parens)
+  // between the saved value and what PhoneInput now formats aren't treated as edits.
+  // The PhoneInput component stores E.164 (+ followed by digits) so we strip everything
+  // non-digit before comparing.
+  const normalizePhone = (s) => (s || '').replace(/[^\d+]/g, '');
+
   const handleSaveInfo = async () => {
     setInfoSaving(true);
     setInfoSaved(false);
@@ -229,7 +250,9 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     if (memberName.trim() && memberName !== member.full_name) updates.full_name = memberName.trim();
     if (memberUsername.trim() && memberUsername !== member.username) updates.username = memberUsername.trim();
     const phoneVal = memberPhone.trim() || null;
-    if (phoneVal !== (originalPhoneRef.current || null)) updates.phone_number = phoneVal;
+    if (normalizePhone(phoneVal) !== normalizePhone(originalPhoneRef.current)) {
+      updates.phone_number = phoneVal;
+    }
     if (Object.keys(updates).length > 0) {
       await supabase.from('profiles').update(updates).eq('id', member.id).eq('gym_id', gymId);
       logAdminAction('update_info', 'member', member.id);
@@ -252,6 +275,15 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       if (error) throw error;
       logAdminAction('update_email', 'member', member.id, { email: memberEmail.trim() });
       originalEmailRef.current = memberEmail.trim();
+      // Re-fetch the member row so list views and downstream caches stay in sync.
+      try {
+        const { data: refreshed } = await supabase
+          .from('profiles').select('email').eq('id', member.id).maybeSingle();
+        if (refreshed?.email) {
+          setMemberEmail(refreshed.email);
+          originalEmailRef.current = refreshed.email;
+        }
+      } catch { /* non-fatal */ }
       setEmailSaved(true);
       setTimeout(() => setEmailSaved(false), 2000);
     } catch (err) {
@@ -270,7 +302,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       if (error) throw error;
       setResetCode(data);
     } catch (err) {
-      setResetError(err.message || 'Failed to generate reset code.');
+      setResetError(err.message || t('admin.memberDetail.resetGenerateFailed', 'Failed to generate reset code.'));
     } finally {
       setResetLoading(false);
     }
@@ -341,6 +373,28 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     onStatusChanged?.(member.id, nextStatus);
   };
 
+  const handleConfirmDelete = async () => {
+    if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') {
+      setDeleteError(t('admin.memberDetail.deleteTypeMismatch', { defaultValue: 'Type DELETE to confirm.' }));
+      return;
+    }
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const { error } = await supabase.rpc('admin_delete_gym_member', { p_user_id: member.id });
+      if (error) throw error;
+      logAdminAction('delete_account', 'member', member.id, { name: member.full_name });
+      posthog?.capture('admin_member_deleted');
+      showToast(t('admin.memberDetail.deleteSuccess', { defaultValue: 'Account permanently deleted.' }), 'success');
+      onStatusChanged?.(member.id, 'deleted');
+      onClose?.();
+    } catch (err) {
+      logger.error('Member delete failed:', err);
+      setDeleteError(err?.message || t('admin.memberDetail.deleteFailed', { defaultValue: 'Failed to delete member.' }));
+      setDeleting(false);
+    }
+  };
+
   const handleSendFollowup = async () => {
     setFollowupSending(true);
     try {
@@ -382,8 +436,8 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const neverActive = member.neverActive ?? false;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="member-detail-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-[14px] w-full max-w-lg md:max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
+    <div className="fixed inset-0 z-[120] flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm overflow-y-auto pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:py-6" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="member-detail-title" className="bg-[#0F172A] border border-white/8 rounded-[14px] w-full max-w-lg md:max-w-2xl max-h-[min(88vh,100%)] flex flex-col overflow-hidden my-auto"
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -398,7 +452,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               <p className="text-[11px] text-[#6B7280] truncate">@{member.username} · {t('admin.members.joined', 'joined')} {format(new Date(member.created_at), 'MMM yyyy', dateFnsLocale)}</p>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close member detail" className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"><X size={20} /></button>
+          <button onClick={onClose} aria-label={t('admin.memberDetail.closeAria', 'Close member detail')} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"><X size={20} /></button>
         </div>
 
         {/* Stats row */}
@@ -419,7 +473,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
         {/* Tabs */}
         <div className="flex border-b border-white/6 flex-shrink-0">
-          {[{ key: 'workouts', label: t('admin.memberDetail.tabWorkouts', 'Workouts') }, { key: 'prs', label: t('admin.memberDetail.tabPRs', 'PRs') }, { key: 'referrals', label: t('admin.referral.memberReferrals') }].map(tb => (
+          {[{ key: 'info', label: t('admin.memberDetail.tabInfo', 'Info') }, { key: 'activity', label: t('admin.memberDetail.tabActivity', 'Activity') }, { key: 'referrals', label: t('admin.referral.memberReferrals') }].map(tb => (
             <button key={tb.key} onClick={() => setTab(tb.key)}
               className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${tab === tb.key ? 'text-[#D4AF37] border-b-2 border-[#D4AF37] -mb-px' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}>
               {tb.label}
@@ -433,59 +487,73 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             <div className="flex justify-center py-8">
               <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
             </div>
-          ) : tab === 'workouts' ? (
-            sessions.length === 0 ? (
-              <p className="text-[13px] text-[#6B7280] text-center py-6">{t('admin.memberDetail.noWorkouts', 'No workouts logged')}</p>
+          ) : tab === 'activity' ? (
+            (sessions.length === 0 && prs.length === 0) ? (
+              <p className="text-[13px] text-[#6B7280] text-center py-6">{t('admin.memberDetail.noActivity', 'No activity yet')}</p>
             ) : (
-              <div className="space-y-2">
-                {(showAllWorkouts ? sessions : sessions.slice(0, 3)).map(s => (
-                  <div key={s.id} className="flex items-center justify-between gap-3 p-3 bg-[#111827] rounded-xl overflow-hidden">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{s.name || t('admin.memberDetail.workout', 'Workout')}</p>
-                      <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, yyyy', dateFnsLocale)}</p>
+              <div className="space-y-5">
+                {/* Recent workouts */}
+                <div>
+                  <SectionLabel className="mb-2">{t('admin.memberDetail.tabWorkouts', 'Workouts')}</SectionLabel>
+                  {sessions.length === 0 ? (
+                    <p className="text-[12px] text-[#6B7280] text-center py-3">{t('admin.memberDetail.noWorkouts', 'No workouts logged')}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(showAllWorkouts ? sessions : sessions.slice(0, 3)).map(s => (
+                        <div key={s.id} className="flex items-center justify-between gap-3 p-3 bg-[#111827] rounded-xl overflow-hidden">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{s.name || t('admin.memberDetail.workout', 'Workout')}</p>
+                            <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, yyyy', dateFnsLocale)}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            {s.total_volume_lbs > 0 && <p className="text-[12px] font-semibold text-[#9CA3AF]">{Math.round(s.total_volume_lbs).toLocaleString()} lbs</p>}
+                            {s.duration_seconds > 0 && <p className="text-[11px] text-[#6B7280]">{Math.floor(s.duration_seconds / 60)}m</p>}
+                          </div>
+                        </div>
+                      ))}
+                      {sessions.length > 3 && !showAllWorkouts && (
+                        <button onClick={() => setShowAllWorkouts(true)}
+                          className="w-full py-2 text-[12px] font-semibold rounded-xl transition-colors"
+                          style={{ color: 'var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
+                          {t('admin.memberDetail.seeMore', { count: sessions.length - 3, defaultValue: 'See {{count}} more' })}
+                        </button>
+                      )}
+                      {sessions.length > 3 && showAllWorkouts && (
+                        <button onClick={() => setShowAllWorkouts(false)}
+                          className="w-full py-2 text-[12px] font-semibold rounded-xl transition-colors"
+                          style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                          {t('admin.memberDetail.showLess', 'Show less')}
+                        </button>
+                      )}
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      {s.total_volume_lbs > 0 && <p className="text-[12px] font-semibold text-[#9CA3AF]">{Math.round(s.total_volume_lbs).toLocaleString()} lbs</p>}
-                      {s.duration_seconds > 0 && <p className="text-[11px] text-[#6B7280]">{Math.floor(s.duration_seconds / 60)}m</p>}
+                  )}
+                </div>
+
+                {/* Personal records */}
+                <div>
+                  <SectionLabel icon={Trophy} className="mb-2">{t('admin.memberDetail.tabPRs', 'PRs')}</SectionLabel>
+                  {prs.length === 0 ? (
+                    <p className="text-[12px] text-[#6B7280] text-center py-3">{t('admin.memberDetail.noPRs', 'No PRs recorded yet')}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {prs.map((pr, i) => (
+                        <div key={`${pr.exercise_id}-${pr.achieved_at || i}`} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${i < 3 ? 'bg-[#D4AF37]/12' : 'bg-white/4'}`}>
+                            <Trophy size={13} className={i < 3 ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{pr.exercises?.name ?? pr.exercise_id}</p>
+                            {pr.achieved_at && <p className="text-[11px] text-[#6B7280]">{format(new Date(pr.achieved_at), 'MMM d, yyyy', dateFnsLocale)}</p>}
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-[13px] font-bold text-[#E5E7EB]">{pr.weight_lbs} lbs × {pr.reps}</p>
+                            {pr.estimated_1rm > 0 && <p className="text-[10px] text-[#6B7280]">{Math.round(pr.estimated_1rm)} lbs {t('admin.memberDetail.est1RM', 'est. 1RM')}</p>}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
-                {sessions.length > 3 && !showAllWorkouts && (
-                  <button onClick={() => setShowAllWorkouts(true)}
-                    className="w-full py-2 text-[12px] font-semibold rounded-xl transition-colors"
-                    style={{ color: 'var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
-                    {t('admin.memberDetail.seeMore', { count: sessions.length - 3, defaultValue: 'See {{count}} more' })}
-                  </button>
-                )}
-                {sessions.length > 3 && showAllWorkouts && (
-                  <button onClick={() => setShowAllWorkouts(false)}
-                    className="w-full py-2 text-[12px] font-semibold rounded-xl transition-colors"
-                    style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                    {t('admin.memberDetail.showLess', 'Show less')}
-                  </button>
-                )}
-              </div>
-            )
-          ) : tab === 'prs' ? (
-            prs.length === 0 ? (
-              <p className="text-[13px] text-[#6B7280] text-center py-6">{t('admin.memberDetail.noPRs', 'No PRs recorded yet')}</p>
-            ) : (
-              <div className="space-y-2">
-                {prs.map((pr, i) => (
-                  <div key={`${pr.exercise_id}-${pr.achieved_at || i}`} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${i < 3 ? 'bg-[#D4AF37]/12' : 'bg-white/4'}`}>
-                      <Trophy size={13} className={i < 3 ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{pr.exercises?.name ?? pr.exercise_id}</p>
-                      {pr.achieved_at && <p className="text-[11px] text-[#6B7280]">{format(new Date(pr.achieved_at), 'MMM d, yyyy', dateFnsLocale)}</p>}
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-[13px] font-bold text-[#E5E7EB]">{pr.weight_lbs} lbs × {pr.reps}</p>
-                      {pr.estimated_1rm > 0 && <p className="text-[10px] text-[#6B7280]">{Math.round(pr.estimated_1rm)} lbs {t('admin.memberDetail.est1RM', 'est. 1RM')}</p>}
-                    </div>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
             )
           ) : tab === 'referrals' ? (
@@ -531,7 +599,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                       return (
                         <div key={ref.id} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
                           <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{ref.profiles?.full_name || 'Unknown'}</p>
+                            <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{ref.profiles?.full_name || t('admin.memberDetail.unknownReferrer', 'Unknown')}</p>
                             <p className="text-[11px] text-[#6B7280]">{format(new Date(ref.created_at), 'MMM d, yyyy', dateFnsLocale)}</p>
                           </div>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColors[ref.status] || statusColors.pending}`}>
@@ -546,6 +614,8 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             </div>
           ) : null}
 
+          {/* ── INFO TAB ─────────────────────────────────────── */}
+          {!loading && tab === 'info' && (<>
           {/* Member Info */}
           <div>
             <SectionLabel icon={User} className="mb-3">{t('admin.memberDetail.memberInfo', 'Member Info')}</SectionLabel>
@@ -576,9 +646,12 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.phoneNumber', 'Phone Number')}</label>
-                <input type="tel" value={memberPhone} onChange={e => setMemberPhone(e.target.value)}
-                  placeholder="+1XXXXXXXXXX"
-                  className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40" />
+                <PhoneInput
+                  value={memberPhone}
+                  onChange={setMemberPhone}
+                  placeholder="555 123 4567"
+                  ariaLabel={t('admin.memberDetail.phoneNumber', 'Phone Number')}
+                />
               </div>
               <button onClick={handleSaveInfo}
                 disabled={infoSaving || (memberName === (member.full_name ?? '') && memberUsername === (member.username ?? '') && memberPhone === originalPhoneRef.current)}
@@ -674,6 +747,20 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                     </button>
                   );
                 })}
+              </div>
+              <div className="pt-3 mt-1 border-t border-white/6">
+                <p className="text-[10px] uppercase tracking-wide text-[#6B7280] mb-2">
+                  {t('admin.memberDetail.dangerZone', { defaultValue: 'Danger Zone' })}
+                </p>
+                <button
+                  onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(''); setDeleteError(''); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors whitespace-nowrap text-[#EF4444] bg-[#EF4444]/10 border-[#EF4444]/20 hover:bg-[#EF4444]/15">
+                  <Trash2 size={12} />
+                  {t('admin.memberDetail.deleteAccount', { defaultValue: 'Delete Account' })}
+                </button>
+                <p className="text-[10px] text-[#6B7280] mt-2">
+                  {t('admin.memberDetail.deleteAccountHint', { defaultValue: 'Permanently removes this member and all their workouts, PRs, photos, and messages from your gym. Cannot be undone.' })}
+                </p>
               </div>
             </div>
           </div>
@@ -816,6 +903,8 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               </div>
             </div>
           )}
+          </>)}
+          {/* \u2500\u2500 END INFO TAB \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
 
         </div>
 
@@ -866,6 +955,66 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 <p className="text-[11px] text-[#F59E0B]">
                   {t('admin.memberDetail.statusConflict', { defaultValue: 'This member was modified by another admin. The status has been refreshed. Please review and try again.' })}
                 </p>
+              </div>
+            )}
+          </div>
+        </AdminModal>
+
+        {/* Permanent delete confirmation modal */}
+        <AdminModal
+          isOpen={showDeleteModal}
+          onClose={() => { if (!deleting) { setShowDeleteModal(false); setDeleteConfirmText(''); setDeleteError(''); } }}
+          title={t('admin.memberDetail.deleteAccountTitle', { defaultValue: 'Delete Account' })}
+          titleIcon={Trash2}
+          size="sm"
+          footer={
+            <>
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); setDeleteError(''); }}
+                disabled={deleting}
+                className="flex-1 py-2 rounded-lg text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap disabled:opacity-40"
+              >
+                {tc('cancel')}
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleting || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+                className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#EF4444] text-white hover:bg-[#DC2626] transition-colors whitespace-nowrap disabled:opacity-40"
+              >
+                {deleting
+                  ? t('admin.memberDetail.deleting', { defaultValue: 'Deleting…' })
+                  : t('admin.memberDetail.deletePermanently', { defaultValue: 'Delete Permanently' })}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 p-2.5 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-lg">
+              <AlertTriangle size={14} className="text-[#EF4444] flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] text-[#FCA5A5] leading-relaxed">
+                {t('admin.memberDetail.deleteWarning', {
+                  name: member.full_name,
+                  defaultValue: 'This permanently deletes {{name}} and all their workouts, PRs, body metrics, photos, messages, check-ins, and activity. This action cannot be undone.',
+                })}
+              </p>
+            </div>
+            <p className="text-[12px] text-[#9CA3AF] text-center">
+              {t('admin.memberDetail.deleteTypePrompt', { defaultValue: 'Type DELETE to confirm.' })}
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={e => setDeleteConfirmText(e.target.value)}
+              autoFocus
+              autoComplete="off"
+              placeholder="DELETE"
+              aria-label={t('admin.memberDetail.deleteTypePrompt', { defaultValue: 'Type DELETE to confirm.' })}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#EF4444]/40 focus:ring-2 focus:ring-[#EF4444] focus:outline-none font-mono tracking-widest text-center"
+            />
+            {deleteError && (
+              <div className="flex items-center gap-2 p-2.5 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-lg">
+                <AlertTriangle size={14} className="text-[#EF4444] flex-shrink-0" />
+                <p className="text-[11px] text-[#FCA5A5]">{deleteError}</p>
               </div>
             )}
           </div>

@@ -30,7 +30,7 @@ export default function BoardSelector({ active, onChange }) {
   return (
     <div
       ref={scrollRef}
-      className="flex gap-1 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1"
+      className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1"
     >
       {BOARDS.map(b => (
         <button
@@ -38,11 +38,17 @@ export default function BoardSelector({ active, onChange }) {
           ref={b.key === active ? activeRef : null}
           type="button"
           onClick={() => onChange(b.key)}
-          className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-all whitespace-nowrap ${
+          className={`flex-shrink-0 px-4 py-2 text-[12px] font-semibold transition-all whitespace-nowrap ${
             active === b.key
-              ? 'bg-[#D4AF37] text-[#05070B]'
-              : 'bg-white/[0.04] text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.06]'
+              ? 'text-white'
+              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
           }`}
+          style={{
+            borderRadius: 999,
+            ...(active === b.key
+              ? { background: 'var(--color-accent, #2EC4C4)' }
+              : { background: 'transparent', border: '1px solid var(--color-border, rgba(200,200,200,0.15))' }),
+          }}
         >
           {t(`leaderboard.boards.${b.key}`)}
         </button>

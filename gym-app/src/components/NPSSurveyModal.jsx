@@ -170,7 +170,7 @@ const NPSSurveyModal = () => {
                 <button
                   onClick={handleDismiss}
                   className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/[0.08] transition-colors"
-                  aria-label="Close"
+                  aria-label={t('common:close', 'Close')}
                 >
                   <X size={16} style={{ color: 'var(--color-text-muted)' }} />
                 </button>
@@ -180,7 +180,8 @@ const NPSSurveyModal = () => {
                   {t('nps.survey.label')}
                 </p>
                 <h2 className="text-[18px] font-bold leading-snug pr-8" style={{ color: 'var(--color-text-primary)' }}>
-                  {t('nps.survey.question')}
+                  {/* Use the admin-edited title when set; fall back to the canned i18n string. */}
+                  {survey?.title?.trim() || t('nps.survey.question')}
                 </h2>
 
                 {/* Score selector */}
@@ -197,7 +198,7 @@ const NPSSurveyModal = () => {
                           ${getScoreColor(i, score)}
                         `}
                         style={getScoreStyle(i, score)}
-                        aria-label={`${i}${i === 1 ? ' - Not at all likely' : i === 3 ? ' - Neutral' : i === 5 ? ' - Extremely likely' : ''}`}
+                        aria-label={`${i}${i === 1 ? ` - ${t('nps.survey.notLikely')}` : i === 5 ? ` - ${t('nps.survey.veryLikely')}` : ''}`}
                       >
                         {i}
                       </button>

@@ -186,7 +186,7 @@ const PRRow = ({ pr, history }) => {
       <button
         className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/[0.02] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
         onClick={() => setOpen(o => !o)}
-        aria-label={`Toggle details for ${pr.exercises?.name ?? 'exercise'}`}
+        aria-label={t('strength.toggleDetailsFor', { name: pr.exercises?.name ?? t('strength.exerciseFallback', 'exercise'), defaultValue: `Toggle details for ${pr.exercises?.name ?? 'exercise'}` })}
       >
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
@@ -323,7 +323,7 @@ export default function Strength() {
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate(-1)}
-          aria-label="Go back"
+          aria-label={t('strength.goBack', 'Go back')}
           className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors border border-white/8 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{ background: 'var(--color-bg-card)' }}
         >
@@ -388,6 +388,7 @@ export default function Strength() {
             title={t('strength.coachMarkTitle')}
             description={t('strength.coachMarkDesc')}
             position="bottom"
+            dismissLabel={t('activeSession.gotIt')}
           >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-7">
             {STANDARDS.map(std => (

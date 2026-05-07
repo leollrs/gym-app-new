@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, X, ChevronDown, ChevronRight, Dumbbell, Info, Plus, Bookmark, Check, Users, SlidersHorizontal, ArrowUpDown, Star, Pencil } from 'lucide-react';
+import { Search, X, ChevronDown, ChevronRight, Dumbbell, Plus, Bookmark, Check, Users, SlidersHorizontal, ArrowUpDown, Star, Pencil, Edit3, Sparkles, Play, Minus, Heart, MoreHorizontal, Trophy, Flame } from 'lucide-react';
 import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT, CATEGORIES } from '../data/exercises';
 import BodyDiagram from '../components/BodyDiagram';
 import { supabase } from '../lib/supabase';
@@ -52,8 +52,541 @@ const StatPill = ({ label, value }) => (
   </div>
 );
 
+/* ── Warm-paper shared design tokens ────────────────────────────────────────── */
+const WARM_SHADOW = '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)';
+const DISPLAY_FONT = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
+const ACCENT_SOFT = 'color-mix(in srgb, var(--color-accent) 16%, transparent)';
+const HOT = '#FF5A2E';
+
+/* ── Mini kebab-case stat block (3-up strip) ────────────────────────────────── */
+const MiniStat = ({ k, v, sub, tone }) => (
+  <div className="flex-1 min-w-0">
+    <div
+      className="font-extrabold tracking-[-0.03em] truncate"
+      style={{
+        fontFamily: DISPLAY_FONT,
+        fontSize: 22,
+        color: tone === 'gold' ? '#8a6a1d' : 'var(--color-text-primary)',
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >{v}</div>
+    <div className="text-[10px] font-extrabold uppercase tracking-[0.08em]" style={{ color: 'var(--color-text-muted)' }}>{k}</div>
+    {sub && <div className="text-[10px] mt-[1px]" style={{ color: 'var(--color-text-subtle)' }}>{sub}</div>}
+  </div>
+);
+
+/* ── Filter chip (capsule) ──────────────────────────────────────────────────── */
+const FilterChip = ({ active, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1 px-3 py-[7px] rounded-full transition-all active:scale-95"
+    style={{
+      background: active ? 'var(--color-text-primary)' : 'var(--color-bg-card)',
+      color: active ? 'var(--color-bg-primary)' : 'var(--color-text-subtle)',
+      border: `1px solid ${active ? 'var(--color-text-primary)' : 'var(--color-border-subtle)'}`,
+      fontSize: 12,
+      fontWeight: 700,
+      letterSpacing: '-0.1px',
+    }}
+  >
+    {children}
+  </button>
+);
+
+/* ── Exercise list row (warm-paper card) ────────────────────────────────────── */
+const ExerciseRow = ({ exercise, onClick, lang = 'en' }) => {
+  const { t } = useTranslation('pages');
+  const tint = getMuscleColor(exercise.muscle);
+  const sets = exercise.defaultSets;
+  const reps = exercise.defaultReps;
+  const name = lang === 'es' && exercise.name_es ? exercise.name_es : exercise.name;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
+      className="rounded-[18px] p-[14px] cursor-pointer flex items-center gap-3 active:scale-[0.995] transition-all"
+      style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW }}
+    >
+      <div
+        className="w-[46px] h-[46px] rounded-[13px] flex items-center justify-center flex-shrink-0"
+        style={{ background: `${tint}14`, border: `1px solid ${tint}22` }}
+      >
+        <Dumbbell size={20} strokeWidth={2.2} style={{ color: tint }} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <div
+            className="truncate"
+            style={{ fontFamily: DISPLAY_FONT, fontSize: 15, fontWeight: 800, letterSpacing: '-0.3px', color: 'var(--color-text-primary)' }}
+          >{name}</div>
+          {exercise.isMine && (
+            <span
+              className="flex-shrink-0 px-1.5 py-[2px] rounded-[5px] text-[8px] font-extrabold uppercase tracking-[0.06em]"
+              style={{ background: ACCENT_SOFT, color: 'var(--color-accent)' }}
+            >{t('exerciseLibrary.yours', 'Mine')}</span>
+          )}
+          {exercise.pr && (
+            <span
+              className="flex-shrink-0 px-1.5 py-[2px] rounded-[5px] text-[8px] font-extrabold uppercase tracking-[0.06em]"
+              style={{ background: '#fef2c7', color: '#8a6a1d' }}
+            >PR {exercise.pr}</span>
+          )}
+        </div>
+        <div className="mt-[3px] flex items-center gap-1.5 text-[12px] truncate" style={{ color: 'var(--color-text-subtle)' }}>
+          <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}</span>
+          <span style={{ color: 'var(--color-text-muted)' }}>·</span>
+          <span>{t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}</span>
+          {exercise.category && (
+            <>
+              <span style={{ color: 'var(--color-text-muted)' }}>·</span>
+              <span>{t(`exerciseLibrary.categoryNames.${exercise.category}`, exercise.category)}</span>
+            </>
+          )}
+        </div>
+        <div className="mt-2 flex items-center gap-1.5">
+          {sets != null && (
+            <span className="inline-flex items-baseline gap-1 px-2 py-[3px] rounded-md text-[10.5px] font-semibold"
+              style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}>
+              <span className="font-extrabold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{sets}</span>
+              <span className="uppercase tracking-[0.05em] text-[9px]">{t('exerciseLibrary.sets', 'sets')}</span>
+            </span>
+          )}
+          {reps && (
+            <span className="inline-flex items-baseline gap-1 px-2 py-[3px] rounded-md text-[10.5px] font-semibold"
+              style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}>
+              <span className="font-extrabold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{reps}</span>
+              <span className="uppercase tracking-[0.05em] text-[9px]">{t('exerciseLibrary.reps', 'reps')}</span>
+            </span>
+          )}
+          {exercise.usedLabel && (
+            <span className="ml-1 inline-flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+              <span className="w-[5px] h-[5px] rounded-full" style={{ background: 'var(--color-accent)' }} />
+              {exercise.usedLabel}
+            </span>
+          )}
+        </div>
+      </div>
+      <ChevronRight size={14} className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+    </div>
+  );
+};
+
+/* ── Muscle group label → BodyDiagram region IDs (public/muscles/ images) ──── */
+// "Back" intentionally includes traps + mid_back so the whole back lights up
+// when an exercise targets the back muscle group — without this, exercises
+// whose primaryRegions only list one slice (e.g. deadlift = ['lower_back'])
+// rendered as just the lower back wedge, which read as "broken" to users.
+const MUSCLE_LABEL_TO_REGIONS = {
+  Chest:      ['mid_chest', 'upper_chest', 'lower_chest'],
+  Back:       ['upper_back', 'mid_back', 'lats', 'lower_back', 'traps'],
+  Lats:       ['lats'],
+  Traps:      ['traps'],
+  Shoulders:  ['front_delts', 'side_delts', 'rear_delts'],
+  Biceps:     ['biceps'],
+  Triceps:    ['triceps'],
+  Forearms:   ['forearms'],
+  Core:       ['upper_abs', 'mid_abs', 'lower_abs', 'obliques'],
+  Abs:        ['upper_abs', 'mid_abs', 'lower_abs'],
+  Quads:      ['quads'],
+  Hamstrings: ['hamstrings'],
+  Glutes:     ['glutes', 'glute_med'],
+  Calves:     ['calves'],
+  Legs:       ['quads', 'hamstrings', 'glutes', 'calves'],
+  'Full Body': ['mid_chest', 'upper_back', 'lats', 'lower_back', 'quads', 'glutes', 'hamstrings', 'mid_abs'],
+};
+const muscleLabelToRegions = (label) => MUSCLE_LABEL_TO_REGIONS[label] || [];
+
+/**
+ * Build the regions to highlight for an exercise card. The muscle group's
+ * full region set is the baseline (so "Back" always lights up the whole back),
+ * unioned with whatever specific regions the exercise data lists. Extras like
+ * hamstrings on a deadlift carry through. Secondary regions stay separate.
+ */
+const buildExerciseRegions = (exercise) => {
+  const fromGroup = muscleLabelToRegions(exercise?.muscle);
+  const explicit  = Array.isArray(exercise?.primaryRegions) ? exercise.primaryRegions : [];
+  const merged    = Array.from(new Set([...fromGroup, ...explicit]));
+  return {
+    primary:   merged,
+    secondary: Array.isArray(exercise?.secondaryRegions) ? exercise.secondaryRegions : [],
+  };
+};
+
+/* ── Muscle Map — wraps BodyDiagram using real /public/muscles/ images ─────── */
+const MuscleMap = ({ primary, secondary = [] }) => {
+  const primaryRegions = muscleLabelToRegions(primary);
+  const secondaryRegions = (secondary || []).flatMap((m) => muscleLabelToRegions(m));
+  // Constrain to a standard phone-friendly size so the 440×800 source images
+  // never overflow their card container.
+  return (
+    <div className="w-full mx-auto" style={{ maxWidth: 340 }}>
+      <BodyDiagram
+        primaryRegions={primaryRegions}
+        secondaryRegions={secondaryRegions}
+        compact
+        inline
+        title=" "
+      />
+    </div>
+  );
+};
+
+/* ── Muscle chip (primary/secondary selector) ───────────────────────────────── */
+const MuscleChip = ({ label, selected, primary, onClick }) => {
+  const bg = primary ? 'var(--color-accent)' : selected ? ACCENT_SOFT : 'var(--color-bg-card)';
+  const fg = primary ? '#001512' : selected ? 'var(--color-accent)' : 'var(--color-text-subtle)';
+  const bd = primary ? 'transparent' : selected ? 'transparent' : 'var(--color-border-subtle)';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full transition-all active:scale-95"
+      style={{
+        padding: '9px 13px',
+        background: bg,
+        color: fg,
+        border: `1px solid ${bd}`,
+        fontSize: 13,
+        fontWeight: primary ? 800 : 600,
+        letterSpacing: '-0.1px',
+        boxShadow: primary ? '0 2px 8px color-mix(in srgb, var(--color-accent) 22%, transparent)' : 'none',
+      }}
+    >
+      {primary && <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#001512' }} />}
+      {label}
+    </button>
+  );
+};
+
+/* ── Equipment picker tiles (3×2) ───────────────────────────────────────────── */
+const EQUIP_ICONS = {
+  Barbell: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <rect x="2" y="10" width="2" height="4"/><rect x="5" y="7" width="2.5" height="10"/>
+      <line x1="7.5" y1="12" x2="16.5" y2="12"/>
+      <rect x="16.5" y="7" width="2.5" height="10"/><rect x="20" y="10" width="2" height="4"/>
+    </svg>
+  ),
+  Dumbbell: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <rect x="2" y="9" width="3" height="6"/><rect x="5" y="7" width="3" height="10"/>
+      <line x1="8" y1="12" x2="16" y2="12"/>
+      <rect x="16" y="7" width="3" height="10"/><rect x="19" y="9" width="3" height="6"/>
+    </svg>
+  ),
+  Machine: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 18v3M16 18v3M3 10h18"/>
+    </svg>
+  ),
+  Cable: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h16M12 4v8"/><path d="M8 12a4 4 0 0 0 8 0"/><rect x="10" y="18" width="4" height="3" rx="0.5"/>
+    </svg>
+  ),
+  Bodyweight: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="5" r="2"/><path d="M12 7v6M8 21l4-8 4 8M8 11h8"/>
+    </svg>
+  ),
+  Kettlebell: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 5a3 3 0 0 1 6 0v2"/><path d="M7 9c-2 2-3 6-2 9h14c1-3 0-7-2-9z"/>
+    </svg>
+  ),
+  Bands: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12c4-6 16-6 20 0"/><path d="M2 12c4 6 16 6 20 0"/>
+    </svg>
+  ),
+  Cardio: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12h3l2-5 4 10 2-5h7"/>
+    </svg>
+  ),
+};
+
+const EquipmentTile = ({ label, selected, onClick, icon }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex flex-col items-center justify-center gap-1.5 rounded-[14px] transition-all active:scale-[0.97]"
+    style={{
+      padding: '14px 8px',
+      background: selected ? 'var(--color-text-primary)' : 'var(--color-bg-card)',
+      color: selected ? 'var(--color-bg-primary)' : 'var(--color-text-primary)',
+      border: `1.5px solid ${selected ? 'var(--color-text-primary)' : 'var(--color-border-subtle)'}`,
+      boxShadow: selected ? 'none' : '0 1px 2px rgba(15,20,25,0.03)',
+    }}
+  >
+    <div style={{ color: selected ? 'var(--color-accent)' : 'var(--color-text-subtle)' }}>{icon}</div>
+    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '-0.1px' }}>{label}</div>
+  </button>
+);
+
+/* ── Stepper (− VALUE +) ────────────────────────────────────────────────────── */
+const Stepper = ({ value, onChange, min = 1, max = 99 }) => {
+  const { t } = useTranslation('pages');
+  return (
+  <div
+    className="rounded-[14px] flex items-center p-1.5"
+    style={{ background: 'var(--color-bg-card)', border: '1.5px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(15,20,25,0.03)' }}
+  >
+    <button
+      type="button"
+      onClick={() => onChange(Math.max(min, value - 1))}
+      aria-label={t('exerciseLibrary.ariaDecrease', 'Decrease')}
+      className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center active:scale-95 transition-all"
+      style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }}
+    >
+      <Minus size={16} strokeWidth={2.4} />
+    </button>
+    <div className="flex-1 text-center">
+      <span
+        className="tabular-nums"
+        style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--color-text-primary)' }}
+      >{value}</span>
+    </div>
+    <button
+      type="button"
+      onClick={() => onChange(Math.min(max, value + 1))}
+      aria-label={t('exerciseLibrary.ariaIncrease', 'Increase')}
+      className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center active:scale-95 transition-all"
+      style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }}
+    >
+      <Plus size={16} strokeWidth={2.4} />
+    </button>
+  </div>
+  );
+};
+
+/* ── Rep range (dual input, center bar) ─────────────────────────────────────── */
+const RepRange = ({ low, high, onChange }) => {
+  const { t } = useTranslation('pages');
+  return (
+    <div
+      className="rounded-[14px] flex items-center gap-2.5 px-3.5"
+      style={{ background: 'var(--color-bg-card)', border: '1.5px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(15,20,25,0.03)', padding: '10px 14px' }}
+    >
+      <input
+        inputMode="numeric"
+        value={low}
+        onChange={(e) => onChange(e.target.value, high)}
+        className="text-center tabular-nums bg-transparent border-0 outline-none"
+        style={{ width: 28, fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--color-text-primary)' }}
+      />
+      <div className="flex-1 relative h-[2px] rounded-[1px]" style={{ background: 'var(--color-border-subtle)' }}>
+        <div className="absolute left-[20%] right-[25%] -top-[1px] h-1 rounded-[2px]" style={{ background: 'var(--color-accent)' }} />
+      </div>
+      <input
+        inputMode="numeric"
+        value={high}
+        onChange={(e) => onChange(low, e.target.value)}
+        className="text-center tabular-nums bg-transparent border-0 outline-none"
+        style={{ width: 34, fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--color-text-primary)' }}
+      />
+      <span className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'var(--color-text-subtle)' }}>{t('exerciseLibrary.reps', 'reps')}</span>
+    </div>
+  );
+};
+
+/* ── Difficulty segmented ───────────────────────────────────────────────────── */
+const DifficultyPicker = ({ value, onChange, labels }) => (
+  <div
+    className="flex rounded-[12px] gap-1"
+    style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', padding: 4 }}
+  >
+    {labels.map(({ key, label }) => {
+      const sel = key === value;
+      return (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className="flex-1 rounded-[9px] transition-all"
+          style={{
+            padding: '9px 8px',
+            background: sel ? 'var(--color-bg-card)' : 'transparent',
+            color: sel ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
+            fontSize: 12,
+            fontWeight: sel ? 800 : 600,
+            letterSpacing: '-0.1px',
+            boxShadow: sel ? '0 1px 2px rgba(15,20,25,0.05)' : 'none',
+            border: 'none',
+          }}
+        >
+          {label}
+        </button>
+      );
+    })}
+  </div>
+);
+
+/* ── Eyebrow label (uppercase, bold) ────────────────────────────────────────── */
+const SectionLabel = ({ children, required, optional, right }) => (
+  <div className="flex items-baseline gap-1.5 mb-2">
+    <span className="text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-primary)' }}>{children}</span>
+    {required && <span className="text-[11px] font-extrabold" style={{ color: HOT }}>*</span>}
+    {optional && <span className="text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--color-text-muted)' }}>Optional</span>}
+    {right && <span className="ml-auto text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{right}</span>}
+  </div>
+);
+
+/* ── Warm Detail: 4-column numbers strip ────────────────────────────────────── */
+const NumbersStrip = ({ items }) => (
+  <div
+    className="flex items-stretch rounded-[16px] px-3 py-[10px]"
+    style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW, border: '1px solid var(--color-border-subtle)' }}
+  >
+    {items.map((s, i) => (
+      <React.Fragment key={s.k}>
+        <div className="flex-1 text-center min-w-0">
+          <div
+            className="truncate"
+            style={{
+              fontFamily: DISPLAY_FONT,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: '-0.03em',
+              color: s.gold ? '#8a6a1d' : 'var(--color-text-primary)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {s.v}
+          </div>
+          <div
+            className="mt-[1px]"
+            style={{ fontSize: 9, fontWeight: 800, color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}
+          >
+            {s.k}
+          </div>
+        </div>
+        {i < items.length - 1 && (
+          <div className="w-px" style={{ background: 'var(--color-border-subtle)' }} />
+        )}
+      </React.Fragment>
+    ))}
+  </div>
+);
+
+/* ── Warm Detail: numbered form cues ────────────────────────────────────────── */
+const CuesList = ({ title, cues }) => (
+  <div
+    className="rounded-[16px] p-3"
+    style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW, border: '1px solid var(--color-border-subtle)' }}
+  >
+    <div
+      className="mb-2"
+      style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+    >
+      {title}
+    </div>
+    <div className="flex flex-col gap-[6px]">
+      {cues.map((c, i) => (
+        <div key={i} className="flex gap-[10px] items-start">
+          <div
+            className="flex-shrink-0 flex items-center justify-center"
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 7,
+              background: ACCENT_SOFT,
+              color: 'var(--color-accent)',
+              fontFamily: DISPLAY_FONT,
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            {i + 1}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: 'var(--color-text-primary)',
+              letterSpacing: '-0.005em',
+              lineHeight: 1.45,
+            }}
+          >
+            {c}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+/* ── Warm Detail: sparkline of last sessions ────────────────────────────────── */
+const HistorySpark = ({ sessions, emptyLabel, emptySub }) => {
+  if (!sessions || sessions.length === 0) {
+    return (
+      <div
+        className="rounded-[18px] p-5 text-center"
+        style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW, border: '1px solid var(--color-border-subtle)' }}
+      >
+        <div
+          style={{ fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-0.02em' }}
+        >
+          {emptyLabel}
+        </div>
+        <div className="mt-1" style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{emptySub}</div>
+      </div>
+    );
+  }
+  const max = Math.max(...sessions.map(s => s.load || 0), 1);
+  return (
+    <div
+      className="rounded-[18px] p-4"
+      style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW, border: '1px solid var(--color-border-subtle)' }}
+    >
+      <div className="flex justify-between items-baseline mb-3">
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>
+            LAST {sessions.length} SESSIONS
+          </div>
+        </div>
+        {sessions.some(s => s.pr) && (
+          <div
+            className="px-2 py-[3px] rounded-full flex items-center gap-1"
+            style={{ background: '#F6ECB6', color: '#8a6a1d', fontSize: 10, fontWeight: 800, letterSpacing: '0.04em' }}
+          >
+            <Trophy size={10} strokeWidth={2.5} /> NEW PR
+          </div>
+        )}
+      </div>
+      <div
+        className="grid items-end pb-1"
+        style={{ gridTemplateColumns: `repeat(${sessions.length}, 1fr)`, height: 70, borderBottom: '1px dashed var(--color-border-subtle)' }}
+      >
+        {sessions.map((s, i) => (
+          <div key={i} className="flex flex-col items-center justify-end h-full gap-[6px]">
+            <div
+              style={{
+                width: 10,
+                height: `${Math.max(14, (s.load / max) * 60)}px`,
+                borderRadius: 3,
+                background: s.pr ? 'var(--color-accent)' : 'var(--color-border-subtle)',
+                boxShadow: s.pr ? '0 0 0 4px color-mix(in srgb, var(--color-accent) 18%, transparent)' : 'none',
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="grid mt-[6px]" style={{ gridTemplateColumns: `repeat(${sessions.length}, 1fr)` }}>
+        {sessions.map((s, i) => (
+          <div key={i} className="text-center" style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-subtle)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            {s.day}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 /* ── Premium Exercise Card ──────────────────────────────────────────────────── */
-const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, onToggleFavorite }) => {
+const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, onToggleFavorite, onEdit, onDelete, onSave, onUnsave, isMine, isSaved }) => {
   const { t } = useTranslation('pages');
   const posthog = usePostHog();
   const [expanded, setExpanded] = useState(false);
@@ -62,28 +595,72 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
   const tint = getMuscleColor(exercise.muscle);
 
   const hasVideo = !!exercise.videoUrl;
-  const hasMuscles = exercise.primaryRegions?.length > 0;
+  // Merge the exercise's explicit primary regions with its muscle-group baseline
+  // so the diagram always lights up the whole muscle group (e.g. "Back" shades
+  // the full back, not just lower_back from the exercise's primary array).
+  const { primary: cardPrimaryRegions, secondary: cardSecondaryRegions } = buildExerciseRegions(exercise);
+  const hasMuscles = cardPrimaryRegions.length > 0;
   const instrText = exInstructions(exercise);
   const longDescription = (instrText?.length ?? 0) > 100;
 
+  // Split instructions into numbered cues when newline-separated, else use as single cue / sentences.
+  // Use the locale-aware instrText FIRST so Spanish users see Spanish steps; fall back to the raw
+  // English `instructions` only when no localized copy exists. (Previously inverted, which caused
+  // every numbered cue to render in English regardless of app language.)
+  const instructionCues = React.useMemo(() => {
+    const raw = (instrText || exercise.instructions || '').trim();
+    if (!raw) return [];
+    if (raw.includes('\n')) return raw.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    // Fallback: split by sentence-enders for a better numbered list
+    const parts = raw.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+    return parts.length > 1 ? parts : [raw];
+  }, [exercise.instructions, instrText]);
+
+  // PR formatting — knownPR is { weight, reps } when present
+  const prValue = exercise.knownPR
+    ? `${exercise.knownPR.weight}×${exercise.knownPR.reps}`
+    : null;
+
+  const handleStartNow = (e) => {
+    e.stopPropagation();
+    if (typeof onSelect !== 'function') return;
+    posthog?.capture('exercise_start_now_clicked', { exercise_name: exName(exercise), muscle_group: exercise.muscle });
+    onSelect(exercise);
+  };
+
+  // Body scroll lock while modal is open
+  useEffect(() => {
+    if (!expanded) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [expanded]);
+
+  const openModal = () => {
+    posthog?.capture('exercise_viewed', { exercise_name: exName(exercise), muscle_group: exercise.muscle });
+    setDetailTab('overview');
+    setShowFullDescription(false);
+    setExpanded(true);
+  };
+  const closeModal = () => setExpanded(false);
+
   return (
+    <>
     <div
-      className="group rounded-2xl border overflow-hidden transition-all duration-200"
+      className="group rounded-[18px] overflow-hidden transition-all duration-200"
       style={{
         background: 'var(--color-bg-card)',
-        borderColor: expanded ? 'var(--color-border-default)' : 'var(--color-border-subtle)',
-        boxShadow: expanded ? '0 6px 32px rgba(0,0,0,0.35)' : '0 1px 3px rgba(0,0,0,0.15)',
+        boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)',
       }}
     >
       {/* Collapsed row */}
       <div
         role="button"
         tabIndex={0}
-        aria-expanded={expanded}
         aria-label={`${exName(exercise)} - ${exercise.muscle}, ${exercise.equipment}`}
         className="flex items-center gap-3.5 px-4 py-3.5 cursor-pointer active:bg-white/[0.02] transition-colors"
-        onClick={() => { setExpanded(e => { if (!e) posthog?.capture('exercise_viewed', { exercise_name: exName(exercise), muscle_group: exercise.muscle }); return !e; }); setDetailTab('overview'); setShowFullDescription(false); }}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); setDetailTab('overview'); setShowFullDescription(false); } }}
+        onClick={openModal}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(); } }}
       >
         <div
           className="w-11 h-11 rounded-[13px] flex items-center justify-center flex-shrink-0"
@@ -98,7 +675,7 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
           </p>
           <p className="text-[12.5px] mt-0.5 truncate" style={{ color: 'var(--color-text-subtle)' }}>
             {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
-            <span className="mx-1.5 text-[#3B3F47]">&middot;</span>
+            <span className="mx-1.5 text-[var(--color-text-muted)]">&middot;</span>
             {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}
           </p>
         </div>
@@ -107,10 +684,10 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(exercise.id); }}
-            aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            aria-label={isFavorite ? t('exerciseLibrary.ariaRemoveFavorite', 'Remove from favorites') : t('exerciseLibrary.ariaAddFavorite', 'Add to favorites')}
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all focus:ring-2 focus:ring-[#2EC4C4] focus:outline-none"
           >
-            <Star size={15} className={isFavorite ? 'text-[#D4AF37] fill-[#D4AF37]' : 'text-[#3B4252]'} />
+            <Star size={15} className={isFavorite ? 'text-[#2EC4C4] fill-[#2EC4C4]' : 'text-[var(--color-text-muted)]'} />
           </button>
         )}
 
@@ -119,7 +696,7 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
             type="button"
             onClick={(e) => { e.stopPropagation(); onSelect(exercise); }}
             aria-label={`Add ${exName(exercise)}`}
-            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all focus:ring-2 focus:ring-[#2EC4C4] focus:outline-none"
             style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
           >
             <Plus size={14} strokeWidth={2.5} style={{ color: 'var(--color-accent)' }} />
@@ -128,126 +705,376 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
 
         <ChevronRight
           size={16}
-          className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+          className="flex-shrink-0"
           style={{ color: 'var(--color-text-muted)' }}
         />
       </div>
+    </div>
 
-      {/* ── Expanded detail panel ────────────────────────────────────────────── */}
-      {expanded && (
-        <div>
-          {/* Video section */}
-          {hasVideo && (
-            <div className="mx-3 mb-2 rounded-xl overflow-hidden" style={{ aspectRatio: '16/9', background: 'var(--color-bg-primary)' }}>
-              <video
-                src={resolveVideoUrl(exercise.videoUrl)}
-                autoPlay
-                loop
-                muted
-                playsInline
-                aria-label={`${exName(exercise)} demonstration`}
-                className="w-full h-full object-cover"
-              />
+    {/* ── Detail modal (portaled, scroll-locked, warm-paper aesthetic) ─────── */}
+    {expanded && createPortal(
+      <div
+        className="fixed inset-0 z-[200] flex items-center justify-center px-4 animate-fade-in"
+        style={{ background: 'rgba(10,13,16,0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+        onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={exName(exercise)}
+      >
+        <div
+          className="relative w-full max-w-[460px] animate-fade-in flex flex-col"
+          style={{
+            background: 'var(--color-bg-card)',
+            maxHeight: 'calc(100dvh - 32px)',
+            overflow: 'hidden',
+            borderRadius: 24,
+            boxShadow: '0 24px 60px rgba(10,13,16,0.35)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Top close bar */}
+          <div className="sticky top-0 z-10 flex items-center justify-between px-4 pt-3 pb-2" style={{ background: 'var(--color-bg-card)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+            <button
+              type="button"
+              onClick={closeModal}
+              aria-label={t('exerciseLibrary.ariaClose', 'Close')}
+              className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
+              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
+            >
+              <X size={16} strokeWidth={2.4} style={{ color: 'var(--color-text-primary)' }} />
+            </button>
+            <div
+              className="truncate"
+              style={{ fontSize: 11, fontWeight: 800, color: 'var(--color-text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+            >
+              {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
             </div>
-          )}
+            <div style={{ width: 36 }} />
+          </div>
 
-          {/* Content area */}
-          <div className="px-4 pt-3 pb-4">
-            {/* Title + metadata (reinforced in expanded) */}
-            <div className="mb-3">
-              <h3 className="text-[17px] font-bold tracking-[-0.015em] leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
+          <div
+          className="flex-1 flex flex-col"
+          style={{
+            background: 'var(--color-surface-hover)',
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Hero: big display title + star + meta line */}
+          <div className="px-4 pt-3 pb-2.5 flex-shrink-0">
+            {exercise.loggedToday && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-[3px] rounded-full mb-2"
+                style={{ background: '#F6ECB6', color: '#8a6a1d', fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}
+              >
+                <Flame size={9} strokeWidth={2.5} /> {t('exerciseLibrary.loggedToday', 'Logged today')}
+              </span>
+            )}
+            <div className="flex items-start gap-3">
+              <h3
+                className="flex-1 min-w-0"
+                style={{
+                  fontFamily: DISPLAY_FONT,
+                  fontSize: 22,
+                  fontWeight: 800,
+                  color: 'var(--color-text-primary)',
+                  letterSpacing: '-0.025em',
+                  lineHeight: 1.1,
+                }}
+              >
                 {exName(exercise)}
               </h3>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[12.5px]" style={{ color: 'var(--color-text-subtle)' }}>
-                  {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
-                  <span className="mx-1.5 text-[#3B3F47]">&middot;</span>
-                  {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}
-                </span>
-                {exercise.category && (
-                  <span
-                    className="text-[10.5px] font-semibold px-2 py-[3px] rounded-md"
-                    style={{ background: `${tint}0C`, color: tint, border: `1px solid ${tint}18` }}
-                  >
-                    {t(`exerciseLibrary.categoryNames.${exercise.category}`, exercise.category)}
-                  </span>
-                )}
-              </div>
+              {onToggleFavorite && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(exercise.id); }}
+                  aria-label={isFavorite ? t('exerciseLibrary.ariaRemoveFavorite', 'Remove from favorites') : t('exerciseLibrary.ariaAddFavorite', 'Add to favorites')}
+                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 mt-0.5"
+                  style={{
+                    background: isFavorite ? ACCENT_SOFT : 'var(--color-bg-card)',
+                    border: '1px solid var(--color-border-subtle)',
+                  }}
+                >
+                  <Star
+                    size={17}
+                    strokeWidth={2}
+                    style={{ color: isFavorite ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
+                    fill={isFavorite ? 'var(--color-accent)' : 'none'}
+                  />
+                </button>
+              )}
             </div>
-
-            {/* Stats row */}
             <div
-              className="flex items-center justify-center rounded-[12px] mb-4 divide-x"
-              style={{ background: 'var(--color-surface-hover)', borderColor: 'transparent', '--tw-divide-opacity': '0.05', '--tw-divide-color': 'var(--color-border-subtle)' }}
+              className="mt-2 flex items-center gap-1.5 flex-wrap"
+              style={{ fontSize: 12.5, color: 'var(--color-text-subtle)' }}
             >
-              <StatPill label={t('exerciseLibrary.sets')} value={exercise.defaultSets} />
-              <StatPill label={t('exerciseLibrary.reps')} value={exercise.defaultReps} />
-              <StatPill label={t('exerciseLibrary.type')} value={t(`exerciseLibrary.categoryNames.${exercise.category || 'Compound'}`, exercise.category || 'Strength')} />
+              <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>
+                {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
+              </span>
+              <span style={{ color: 'var(--color-text-muted)' }}>·</span>
+              <span>{t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}</span>
+              {exercise.category && (
+                <>
+                  <span style={{ color: 'var(--color-text-muted)' }}>·</span>
+                  <span>{t(`exerciseLibrary.categoryNames.${exercise.category}`, exercise.category)}</span>
+                </>
+              )}
             </div>
+          </div>
 
-            {/* Detail tabs */}
-            {(instrText || hasMuscles) && (
+          {/* Numbers strip */}
+          <div className="px-4 pb-2.5 flex-shrink-0">
+            <NumbersStrip
+              items={[
+                { k: t('exerciseLibrary.sets', 'SETS').toUpperCase(), v: exercise.defaultSets ?? '—' },
+                { k: t('exerciseLibrary.reps', 'REPS').toUpperCase(), v: exercise.defaultReps ?? '—' },
+                { k: t('exerciseLibrary.rest', 'REST').toUpperCase(), v: exercise.restSeconds ? `${Math.floor(exercise.restSeconds / 60)}:${String(exercise.restSeconds % 60).padStart(2, '0')}` : '—' },
+                ...(prValue ? [{ k: t('exerciseLibrary.pr', 'PR').toUpperCase(), v: prValue, gold: true }] : []),
+              ]}
+            />
+          </div>
+
+          {/* Tab underline row — equal 33/33/33 split */}
+          <div className="px-4 flex-shrink-0">
+            <div className="flex" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+              {[
+                { key: 'overview', label: t('exerciseLibrary.tabs.overview', 'Overview') },
+                { key: 'muscles', label: t('exerciseLibrary.tabs.muscles', 'Muscles') },
+                { key: 'history', label: t('exerciseLibrary.tabs.history', 'History') },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={(e) => { e.stopPropagation(); setDetailTab(tab.key); }}
+                  className="relative pb-2.5 pt-1 transition-colors text-center"
+                  style={{
+                    flex: '1 1 0',
+                    minWidth: 0,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: detailTab === tab.key ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
+                  }}
+                >
+                  {tab.label}
+                  {detailTab === tab.key && (
+                    <span
+                      className="absolute bottom-[-1px] left-3 right-3 h-[2px] rounded-full"
+                      style={{ background: 'var(--color-accent)' }}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tab content — fills remaining space; inner auto-scroll only if content exceeds */}
+          <div className="px-4 pt-3 pb-3 flex flex-col gap-2.5 flex-1" style={{ minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            {/* OVERVIEW: video (or fallback) + cues */}
+            {detailTab === 'overview' && (
               <>
-                <div className="flex gap-0 mb-3.5" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-                  {[
-                    { key: 'overview', label: t('exerciseLibrary.tabs.overview'), show: !!instrText },
-                    { key: 'muscles', label: t('exerciseLibrary.tabs.muscles'), show: hasMuscles },
-                  ].filter(t => t.show).map(t => (
-                    <button
-                      key={t.key}
-                      onClick={() => setDetailTab(t.key)}
-                      className="relative px-4 pb-2.5 text-[12.5px] font-semibold transition-colors"
-                      style={{ color: detailTab === t.key ? 'var(--color-text-primary)' : 'var(--color-text-subtle)' }}
-                    >
-                      {t.label}
-                      {detailTab === t.key && (
-                        <span
-                          className="absolute bottom-0 left-4 right-4 h-[2px] rounded-full"
-                          style={{ background: 'var(--color-accent)' }}
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Overview tab */}
-                {detailTab === 'overview' && instrText && (
-                  <div>
-                    <p className={`text-[13px] leading-[1.65] text-[#8B95A5] ${!showFullDescription && longDescription ? 'line-clamp-2' : ''}`}>
-                      {instrText}
-                    </p>
-                    {longDescription && (
-                      <button
-                        onClick={() => setShowFullDescription(s => !s)}
-                        className="text-[12px] font-medium mt-1 transition-colors"
-                        style={{ color: '#C9A84C' }}
-                      >
-                        {showFullDescription ? t('exerciseLibrary.showLess') : t('exerciseLibrary.readMore')}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Muscles tab */}
-                {detailTab === 'muscles' && hasMuscles && (
-                  <div>
-                    <BodyDiagram
-                      compact
-                      inline
-                      title={t('exerciseLibrary.musclesWorked')}
-                      primaryRegions={exercise.primaryRegions}
-                      secondaryRegions={exercise.secondaryRegions ?? []}
+                {hasVideo ? (
+                  <div
+                    className="rounded-[18px] overflow-hidden"
+                    style={{
+                      aspectRatio: '12/9',
+                      background: 'var(--color-bg-primary)',
+                      boxShadow: WARM_SHADOW,
+                      border: '1px solid var(--color-border-subtle)',
+                    }}
+                  >
+                    <video
+                      src={resolveVideoUrl(exercise.videoUrl)}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      aria-label={`${exName(exercise)} demonstration`}
+                      className="w-full h-full object-cover"
                     />
                   </div>
+                ) : (
+                  <div
+                    className="rounded-[18px] flex items-center justify-center"
+                    style={{
+                      aspectRatio: '12/9',
+                      background: 'var(--color-bg-card)',
+                      boxShadow: WARM_SHADOW,
+                      border: '1px dashed var(--color-border-subtle)',
+                    }}
+                  >
+                    <div className="flex flex-col items-center gap-1">
+                      <Play size={22} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        {t('exerciseLibrary.videoComingSoon', 'Video coming soon')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {instructionCues.length > 0 && (
+                  <CuesList
+                    title={t('exerciseLibrary.formCues', 'Form Cues')}
+                    cues={showFullDescription || instructionCues.length <= 4 ? instructionCues : instructionCues.slice(0, 4)}
+                  />
+                )}
+                {instructionCues.length > 4 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowFullDescription(s => !s); }}
+                    className="self-start px-3 py-1.5 rounded-full transition-colors"
+                    style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-accent)', background: ACCENT_SOFT }}
+                  >
+                    {showFullDescription ? t('exerciseLibrary.showLess') : t('exerciseLibrary.readMore')}
+                  </button>
                 )}
               </>
             )}
 
-            {/* Fallback: no instructions and no muscles — just show stats (already shown above) */}
+            {/* MUSCLES */}
+            {detailTab === 'muscles' && hasMuscles && (
+              <div
+                className="rounded-[18px] p-4"
+                style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW, border: '1px solid var(--color-border-subtle)' }}
+              >
+                <BodyDiagram
+                  compact
+                  inline
+                  title={t('exerciseLibrary.musclesWorked')}
+                  primaryRegions={cardPrimaryRegions}
+                  secondaryRegions={cardSecondaryRegions}
+                />
+              </div>
+            )}
+
+            {/* HISTORY */}
+            {detailTab === 'history' && (
+              <HistorySpark
+                sessions={exercise.recentSessions || []}
+                emptyLabel={t('exerciseLibrary.noHistoryYet', 'No history yet')}
+                emptySub={t('exerciseLibrary.startFirstSet', 'Log your first set to see progress here')}
+              />
+            )}
+
+          </div>
+
+          {/* Bottom action row — fixed at bottom of modal */}
+          <div
+            className="flex items-center gap-2 px-4 pt-3 pb-4 flex-shrink-0"
+            style={{ borderTop: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}
+          >
+            {isMine && onEdit ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); closeModal(); onEdit(exercise); }}
+                  className="flex-1 h-11 rounded-full flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                  style={{
+                    background: 'var(--color-bg-card)',
+                    border: '1.5px solid var(--color-border-subtle)',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: 'var(--color-text-primary)',
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  <Pencil size={14} strokeWidth={2.4} />
+                  {t('exerciseLibrary.edit', 'Edit')}
+                </button>
+                {onDelete && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); closeModal(); onDelete(exercise.id); }}
+                    className="flex-1 h-11 rounded-full flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                    style={{
+                      background: 'color-mix(in srgb, #ef4444 12%, transparent)',
+                      border: '1.5px solid color-mix(in srgb, #ef4444 35%, transparent)',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: '#ef4444',
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    <X size={15} strokeWidth={2.6} />
+                    {t('exerciseLibrary.delete', 'Delete')}
+                  </button>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); if (selectable && onSelect) onSelect(exercise); }}
+                className="flex-1 h-11 rounded-full flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                style={{
+                  background: 'var(--color-bg-card)',
+                  border: '1.5px solid var(--color-border-subtle)',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: 'var(--color-text-primary)',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                <Plus size={15} strokeWidth={2.4} />
+                {t('exerciseLibrary.addToWorkout', 'Add to workout')}
+              </button>
+            )}
+            {!isMine && onSave && !isSaved && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onSave(); }}
+                className="flex-1 h-11 rounded-full flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                style={{
+                  background: ACCENT_SOFT,
+                  border: `1.5px solid color-mix(in srgb, var(--color-accent) 35%, transparent)`,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: 'var(--color-accent)',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                <Bookmark size={14} strokeWidth={2.4} />
+                {t('exerciseLibrary.save', 'Save')}
+              </button>
+            )}
+            {!isMine && onUnsave && isSaved && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onUnsave(); }}
+                className="flex-1 h-11 rounded-full flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                style={{
+                  background: 'var(--color-bg-card)',
+                  border: '1.5px solid var(--color-border-subtle)',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: 'var(--color-text-muted)',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                <X size={14} strokeWidth={2.4} />
+                {t('exerciseLibrary.removeFromSaved', 'Remove from saved')}
+              </button>
+            )}
+            {typeof onSelect === 'function' && !isMine && (
+              <button
+                type="button"
+                onClick={handleStartNow}
+                className="flex-[1.4] h-11 rounded-full flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                style={{
+                  background: 'var(--color-accent)',
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  letterSpacing: '-0.005em',
+                  boxShadow: '0 6px 18px color-mix(in srgb, var(--color-accent) 30%, transparent)',
+                }}
+              >
+                <Play size={14} strokeWidth={2.6} fill="#fff" />
+                {t('exerciseLibrary.startNow', 'Start now')}
+              </button>
+            )}
           </div>
         </div>
-      )}
-    </div>
+        </div>
+      </div>,
+      document.body
+    )}
+    </>
   );
 });
 
@@ -337,15 +1164,16 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           onChange={e => setSearchInput(e.target.value)}
           placeholder={t('exerciseLibrary.searchPlaceholder')}
           aria-label={t('exerciseLibrary.searchPlaceholder')}
-          className="w-full rounded-xl pl-10 pr-12 py-3 text-[14px] focus:outline-none transition-all border border-white/[0.06] placeholder-[#3B4252] focus:border-white/[0.12]"
-          style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
+          maxLength={100}
+          className="w-full rounded-[14px] pl-10 pr-12 py-3 text-[14px] focus:outline-none transition-all"
+          style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)' }}
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
           {searchInput && (
             <button
               onClick={() => { setSearchInput(''); setDebouncedQuery(''); }}
-              aria-label="Clear search"
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label={t('exerciseLibrary.ariaClearSearch', 'Clear search')}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-[#2EC4C4] focus:outline-none"
               style={{ color: 'var(--color-text-subtle)' }}
             >
               <X size={14} />
@@ -353,8 +1181,8 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           )}
           <button
             onClick={() => setShowAdvancedFilters(true)}
-            aria-label="Open filters"
-            className="relative min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl transition-all active:scale-95 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            aria-label={t('exerciseLibrary.ariaOpenFilters', 'Open filters')}
+            className="relative min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl transition-all active:scale-95 focus:ring-2 focus:ring-[#2EC4C4] focus:outline-none"
             style={{
               background: activeFilterCount > 0 ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent',
               color: activeFilterCount > 0 ? 'var(--color-accent)' : 'var(--color-text-subtle)',
@@ -362,7 +1190,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           >
             <SlidersHorizontal size={16} />
             {activeFilterCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#D4AF37] text-black text-[9px] font-bold flex items-center justify-center">
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-black text-[9px] font-bold flex items-center justify-center" style={{ background: 'var(--color-accent, #2EC4C4)' }}>
                 {activeFilterCount}
               </span>
             )}
@@ -372,7 +1200,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
 
       {/* Results + Sort row */}
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[12.5px] font-medium text-[#5B6276]">
+        <p className="text-[12.5px] font-medium text-[var(--color-text-muted)]">
           {t('exerciseLibrary.resultCount', { count: sorted.length })}
           {debouncedQuery && <span style={{ color: 'var(--color-text-muted)' }}> {t('exerciseLibrary.forQuery', { query: debouncedQuery })}</span>}
         </p>
@@ -387,13 +1215,13 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
             {t('exerciseLibrary.sort')}
           </button>
           {showSortMenu && (
-            <div className="absolute right-0 top-full mt-1.5 w-40 rounded-xl border border-white/[0.08] overflow-hidden z-20"
+            <div className="absolute right-0 top-full mt-1.5 w-40 rounded-xl border border-[var(--color-border-subtle)] overflow-hidden z-20"
                  style={{ background: 'var(--color-bg-card)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
               {SORT_OPTIONS.map(opt => (
                 <button
                   key={opt.key}
                   onClick={() => { setSortBy(opt.key); setShowSortMenu(false); }}
-                  className="w-full px-3.5 py-2.5 text-left text-[13px] transition-colors hover:bg-white/[0.04]"
+                  className="w-full px-3.5 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--color-surface-hover)]"
                   style={{ color: sortBy === opt.key ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
                 >
                   {t(`exerciseLibrary.sortOptions.${opt.i18nKey}`)}
@@ -421,7 +1249,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
-              <Dumbbell size={28} className="text-[#3B4252]" />
+              <Dumbbell size={28} className="text-[var(--color-text-muted)]" />
             </div>
             <p className="text-[15px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('exerciseLibrary.noExercisesFound')}</p>
             <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.tryDifferentSearch')}</p>
@@ -432,22 +1260,21 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       {/* Advanced Filters Bottom Sheet */}
       {showAdvancedFilters && createPortal(
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center"
+          className="fixed inset-0 z-[100] flex items-center justify-center px-4"
           style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
           onClick={e => e.target === e.currentTarget && setShowAdvancedFilters(false)}
           role="dialog"
           aria-labelledby="filters-dialog-title"
         >
           <div
-            className="w-full max-w-[520px] rounded-t-[24px] pb-8 pt-3 animate-slide-up"
-            style={{ background: 'var(--color-bg-card)', borderTop: '1px solid var(--color-border-subtle)' }}
+            className="w-full max-w-[520px] rounded-[24px] pb-8 pt-3 animate-fade-in"
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}
           >
-            {/* Handle */}
-            <div className="w-10 h-1 rounded-full bg-white/10 mx-auto mb-5" />
+
 
             <div className="px-6">
               <div className="flex items-center justify-between mb-6">
-                <h3 id="filters-dialog-title" className="text-[17px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.filters')}</h3>
+                <h3 id="filters-dialog-title" className="text-[18px] truncate" style={{ fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.filters')}</h3>
                 <button
                   onClick={() => {
                     setActiveMuscle('All');
@@ -455,7 +1282,8 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                     setActiveCategory('All');
                   }}
                   aria-label={t('exerciseLibrary.reset')}
-                  className="text-[13px] font-medium text-[#D4AF37] active:opacity-70"
+                  className="text-[13px] font-medium active:opacity-70"
+                  style={{ color: 'var(--color-accent, #2EC4C4)' }}
                 >
                   {t('exerciseLibrary.reset')}
                 </button>
@@ -463,7 +1291,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
 
               {/* Muscle Group */}
               <div className="mb-6">
-                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[#5B6276]">{t('exerciseLibrary.muscleGroup')}</p>
+                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[var(--color-text-muted)]">{t('exerciseLibrary.muscleGroup')}</p>
                 <div className="flex flex-wrap gap-2">
                   {['All', ...MUSCLE_GROUPS].map(m => {
                     const active = activeMuscle === m;
@@ -471,7 +1299,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                       <button
                         key={m}
                         onClick={() => setActiveMuscle(m)}
-                        className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
+                        className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
                           color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
@@ -488,7 +1316,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
 
               {/* Equipment */}
               <div className="mb-6">
-                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[#5B6276]">{t('exerciseLibrary.equipment')}</p>
+                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[var(--color-text-muted)]">{t('exerciseLibrary.equipment')}</p>
                 <div className="flex flex-wrap gap-2">
                   {['All', ...EQUIPMENT].map(eq => {
                     const active = activeEquipment === eq;
@@ -496,7 +1324,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                       <button
                         key={eq}
                         onClick={() => setActiveEquipment(eq)}
-                        className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
+                        className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
                           color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
@@ -513,7 +1341,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
 
               {/* Category */}
               <div className="mb-8">
-                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[#5B6276]">{t('exerciseLibrary.category')}</p>
+                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[var(--color-text-muted)]">{t('exerciseLibrary.category')}</p>
                 <div className="flex flex-wrap gap-2">
                   {['All', ...CATEGORIES].map(cat => {
                     const active = activeCategory === cat;
@@ -521,7 +1349,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                       <button
                         key={cat}
                         onClick={() => setActiveCategory(cat)}
-                        className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
+                        className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
                           color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
@@ -538,7 +1366,8 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
 
               <button
                 onClick={() => setShowAdvancedFilters(false)}
-                className="w-full py-3.5 rounded-xl font-bold text-[14px] active:scale-[0.98] transition-all bg-[#D4AF37] text-[#0A0D14]"
+                className="w-full py-3.5 rounded-full font-bold text-[14px] active:scale-[0.98] transition-all text-white"
+                style={{ background: 'var(--color-accent, #2EC4C4)' }}
               >
                 {t('exerciseLibrary.showExercises', { count: filtered.length })}
               </button>
@@ -559,11 +1388,12 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
 
   return (
     <div
-      className="rounded-2xl border overflow-hidden transition-all duration-200"
+      className="rounded-[18px] overflow-hidden transition-all duration-200"
       style={{
         background: 'var(--color-bg-card)',
-        borderColor: expanded ? 'var(--color-border-default)' : 'var(--color-border-subtle)',
-        boxShadow: expanded ? '0 4px 24px rgba(0,0,0,0.3)' : '0 1px 3px rgba(0,0,0,0.15)',
+        boxShadow: expanded
+          ? '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.08)'
+          : '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)',
       }}
     >
       <div
@@ -589,7 +1419,7 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
           <div className="flex items-center gap-1.5 mt-0.5 truncate">
             <span className="text-[12.5px] truncate" style={{ color: 'var(--color-text-subtle)' }}>
               {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
-              <span className="mx-1.5 text-[#3B3F47]">&middot;</span>
+              <span className="mx-1.5 text-[var(--color-text-muted)]">&middot;</span>
               {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}
             </span>
             {!isMine && exercise.createdByName && (
@@ -612,18 +1442,18 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onToggleFavorite(exercise.id); }}
-              aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label={isFavorite ? t('exerciseLibrary.ariaRemoveFavorite', 'Remove from favorites') : t('exerciseLibrary.ariaAddFavorite', 'Add to favorites')}
+              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-all focus:ring-2 focus:ring-[#2EC4C4] focus:outline-none"
             >
-              <Star size={15} className={isFavorite ? 'text-[#D4AF37] fill-[#D4AF37]' : 'text-[#3B4252]'} />
+              <Star size={15} className={isFavorite ? 'text-[#2EC4C4] fill-[#2EC4C4]' : 'text-[var(--color-text-muted)]'} />
             </button>
           )}
 
           {!isMine && !isSaved && onSave && (
             <button
               onClick={e => { e.stopPropagation(); onSave(); }}
-              aria-label="Save exercise"
-              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label={t('exerciseLibrary.ariaSaveExercise', 'Save exercise')}
+              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-all focus:ring-2 focus:ring-[#2EC4C4] focus:outline-none"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
             >
               <Bookmark size={14} style={{ color: 'var(--color-accent)' }} />
@@ -632,8 +1462,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
           {isSaved && !isMine && onUnsave && (
             <button
               onClick={e => { e.stopPropagation(); onUnsave(); }}
-              aria-label="Unsave exercise"
-              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 bg-[#10B981]/10 hover:bg-red-500/10 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label={t('exerciseLibrary.ariaUnsaveExercise', 'Unsave exercise')}
+              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 bg-[#10B981]/10 hover:bg-red-500/10 transition-colors focus:ring-2 focus:ring-[#2EC4C4] focus:outline-none"
             >
               <Bookmark size={14} className="text-[#10B981] fill-[#10B981]" />
             </button>
@@ -658,18 +1488,18 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
             <StatPill label={t('exerciseLibrary.reps')} value={exercise.defaultReps} />
           </div>
           {exInstructions(exercise) && (
-            <p className="text-[13px] leading-[1.65] text-[#8B95A5] mb-3">
+            <p className="text-[13px] leading-[1.65] text-[var(--color-text-subtle)] mb-3">
               {exInstructions(exercise)}
             </p>
           )}
 
           {/* Actions for own exercises */}
           {isMine && (
-            <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
+            <div className="flex items-center gap-2 pt-2 border-t border-[var(--color-border-subtle)]">
               {onEdit && (
                 <button
                   onClick={() => onEdit(exercise)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-[var(--color-surface-hover)] hover:bg-white/[0.06] transition-colors"
                   style={{ color: 'var(--color-text-subtle)' }}
                 >
                   <Pencil size={11} /> {t('exerciseLibrary.edit')}
@@ -678,7 +1508,7 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
               {onDelete && (
                 <button
                   onClick={() => onDelete(exercise.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 bg-white/[0.03] hover:bg-red-500/10 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 bg-[var(--color-surface-hover)] hover:bg-red-500/10 transition-colors"
                   style={{ color: 'var(--color-text-muted)' }}
                 >
                   <X size={11} /> {t('exerciseLibrary.delete')}
@@ -689,10 +1519,10 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
 
           {/* Unsave for friend exercises */}
           {!isMine && isSaved && onUnsave && (
-            <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
+            <div className="flex items-center gap-2 pt-2 border-t border-[var(--color-border-subtle)]">
               <button
                 onClick={() => onUnsave()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 bg-white/[0.03] hover:bg-red-500/10 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 bg-[var(--color-surface-hover)] hover:bg-red-500/10 transition-colors"
                   style={{ color: 'var(--color-text-muted)' }}
               >
                 <X size={11} /> {t('exerciseLibrary.removeFromSaved')}
@@ -747,7 +1577,7 @@ const DropdownSelect = ({ value, options, onChange, placeholder, label, renderOp
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full border border-white/[0.06] rounded-xl px-3.5 py-3 text-left text-[14px] flex items-center justify-between min-h-[44px] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
+        className="w-full border border-[var(--color-border-subtle)] rounded-xl px-3.5 py-3 text-left text-[14px] flex items-center justify-between min-h-[44px] focus:outline-none focus:border-[#2EC4C4]/40 transition-all"
         style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
       >
         <span>{value ? display(value) : placeholder}</span>
@@ -755,7 +1585,7 @@ const DropdownSelect = ({ value, options, onChange, placeholder, label, renderOp
       </button>
       {open && (
         <div
-          className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-10 max-h-[200px] overflow-y-auto border border-white/[0.06] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+          className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-10 max-h-[200px] overflow-y-auto border border-[var(--color-border-subtle)] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
           style={{ background: 'var(--color-bg-primary)' }}
         >
           {options.map((opt) => (
@@ -763,7 +1593,7 @@ const DropdownSelect = ({ value, options, onChange, placeholder, label, renderOp
               key={opt}
               type="button"
               onClick={() => { onChange(opt); setOpen(false); }}
-              className="w-full px-3.5 py-2.5 text-left text-[13px] hover:bg-white/[0.04] transition-colors"
+              className="w-full px-3.5 py-2.5 text-left text-[13px] hover:bg-[var(--color-surface-hover)] transition-colors"
               style={{ color: value === opt ? 'var(--color-accent)' : 'var(--color-text-primary)' }}
             >
               {display(opt)}
@@ -782,8 +1612,9 @@ const AddExerciseModal = ({ onSave, onClose }) => {
   const { t } = useTranslation('pages');
   const [form, setForm] = useState({
     name: '', muscle: MUSCLE_GROUPS[0], equipment: EQUIPMENT[0],
-    category: CATEGORIES[0], defaultSets: '3', defaultReps: '8-12', instructions: '',
-    secondaryMuscles: [], shareWithFriends: false,
+    category: CATEGORIES[0], defaultSets: 3, defaultReps: '8-12',
+    repLow: 8, repHigh: 12, rest: 90, difficulty: 'Intermediate',
+    instructions: '', secondaryMuscles: [], shareWithFriends: false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -803,10 +1634,13 @@ const AddExerciseModal = ({ onSave, onClose }) => {
     if (!form.name.trim()) { setError(t('exerciseLibrary.nameRequired')); return; }
     setSaving(true);
     setError('');
+    const reps = `${form.repLow}-${form.repHigh}`;
     const result = await onSave({
       ...form,
       name:        form.name.trim(),
       defaultSets: parseInt(form.defaultSets) || 3,
+      defaultReps: reps,
+      instructions: form.instructions?.trim() || '',
     });
     if (result?.error) setError(result.error);
     setSaving(false);
@@ -822,124 +1656,401 @@ const AddExerciseModal = ({ onSave, onClose }) => {
     };
   }, []);
 
+  const mm = String(Math.floor(form.rest / 60));
+  const ss = String(form.rest % 60).padStart(2, '0');
+  const canSave = !!form.name.trim() && !saving;
+
+  const difficultyLabels = [
+    { key: 'Beginner',     label: t('exerciseLibrary.beginner', 'Beginner') },
+    { key: 'Intermediate', label: t('exerciseLibrary.intermediate', 'Intermediate') },
+    { key: 'Advanced',     label: t('exerciseLibrary.advanced', 'Advanced') },
+  ];
+
+  // Map the backend equipment list to tiles the user sees — fall back to real EQUIPMENT when user picks.
+  const equipTiles = ['Barbell', 'Dumbbell', 'Machine', 'Cable', 'Bodyweight', 'Kettlebell'];
+
   return (
-    <div className="fixed inset-0 z-[110] flex flex-col animate-fade-in" style={{ background: 'var(--color-bg-primary)' }}>
-      {/* Header */}
-      <header className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))', background: 'var(--color-bg-primary)' }}>
-        <button onClick={onClose} aria-label="Close" className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center hover:bg-white/[0.08] transition-colors">
-          <X size={18} style={{ color: 'var(--color-text-muted)' }} />
-        </button>
-        <h2 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.newExercise')}</h2>
-      </header>
-
-      {/* Scrollable body — save button is inline at the bottom */}
-      <div className="flex-1 overflow-y-auto px-5 py-5 pb-[calc(2rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))]">
-        <div className="flex flex-col gap-5">
-          {/* Name */}
-          <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t('exerciseLibrary.exerciseNameLabel')}
-            </label>
-            <input
-              autoFocus
-              value={form.name}
-              onChange={e => set('name', e.target.value)}
-              placeholder={t('exerciseLibrary.exerciseNamePlaceholder')}
-              className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[14px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
-            style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-            />
-          </div>
-
-          {/* Primary Muscle + Equipment */}
-          <div className="grid grid-cols-2 gap-3">
-            <DropdownSelect label={t('exerciseLibrary.primaryMuscleLabel')} value={form.muscle} options={MUSCLE_GROUPS} onChange={(v) => set('muscle', v)} renderOption={(v) => t(`muscleGroups.${v}`, v)} />
-            <DropdownSelect label={t('exerciseLibrary.equipmentLabel')} value={form.equipment} options={EQUIPMENT} onChange={(v) => set('equipment', v)} renderOption={(v) => t(`exerciseLibrary.equipmentNames.${v}`, v)} />
-          </div>
-
-          {/* Secondary Muscles (optional multi-select chips) */}
-          <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-2" style={{ color: 'var(--color-text-muted)' }}>
-              {t('exerciseLibrary.secondaryMusclesLabel')} <span className="normal-case" style={{ color: 'var(--color-text-muted)' }}>({t('exerciseLibrary.optional')})</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {SECONDARY_MUSCLES.filter(m => m !== form.muscle).map(muscle => {
-                const selected = form.secondaryMuscles.includes(muscle);
-                return (
-                  <button
-                    key={muscle}
-                    type="button"
-                    onClick={() => toggleSecondary(muscle)}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
-                      selected
-                        ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
-                        : 'bg-white/[0.04] border border-white/[0.06]'
-                    }`}
-                    style={!selected ? { color: 'var(--color-text-subtle)' } : undefined}
-                  >
-                    {t(`muscleGroups.${muscle}`, muscle)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Sets + Reps */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.defaultSetsLabel')}</label>
-              <input type="number" min="1" max="10" value={form.defaultSets}
-                onChange={e => set('defaultSets', e.target.value)}
-                className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[#D4AF37]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-              />
-            </div>
-            <div>
-              <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.defaultRepsLabel')}</label>
-              <input inputMode="numeric" value={form.defaultReps}
-                onChange={e => set('defaultReps', e.target.value)}
-                placeholder="8-12"
-                className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-              />
-            </div>
-          </div>
-
-          {/* Instructions */}
-          <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.instructionsLabel')} <span className="normal-case" style={{ color: 'var(--color-text-muted)' }}>({t('exerciseLibrary.optional')})</span></label>
-            <textarea
-              value={form.instructions}
-              onChange={e => set('instructions', e.target.value)}
-              placeholder={t('exerciseLibrary.instructionsPlaceholder')}
-              rows={3}
-              className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 resize-none transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-            />
-          </div>
-
-          {/* Share with friends toggle */}
-          <div className="flex items-center justify-between py-3 border-t border-white/[0.06]">
-            <div>
-              <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.shareWithFriends')}</p>
-              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.shareWithFriendsHint')}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => set('shareWithFriends', !form.shareWithFriends)}
-              aria-label={t('exerciseLibrary.shareWithFriends')}
-              aria-pressed={form.shareWithFriends}
-              className={`relative w-11 h-6 rounded-full transition-colors ${form.shareWithFriends ? 'bg-[#D4AF37]' : 'bg-white/[0.10]'}`}
-            >
-              <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.shareWithFriends ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
-            </button>
-          </div>
-
-          {/* Error */}
-          {error && <p className="text-[12px] text-red-400">{error}</p>}
-
-          {/* Save button — inline, right after the form */}
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center px-4 animate-fade-in"
+      style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-exercise-title"
+    >
+      <div
+        className="w-full max-w-[520px] rounded-[22px] overflow-hidden flex flex-col animate-fade-in"
+        style={{
+          background: 'var(--color-bg-primary)',
+          maxHeight: 'calc(100vh - 24px)',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.45), 0 1px 2px rgba(15,20,25,0.06)',
+        }}
+      >
+        {/* Sticky top bar */}
+        <header
+          className="flex-shrink-0 flex items-center justify-between px-3.5 py-2.5"
+          style={{
+            borderBottom: '1px solid var(--color-border-subtle)',
+            background: 'var(--color-bg-primary)',
+            paddingTop: 'max(0.625rem, var(--safe-area-top, env(safe-area-inset-top)))',
+          }}
+        >
           <button
-            onClick={handleSave}
-            disabled={saving || !form.name.trim()}
-            className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
+            onClick={onClose}
+            aria-label={t('exerciseLibrary.ariaClose', 'Close')}
+            className="w-[38px] h-[38px] rounded-full flex items-center justify-center active:scale-95 transition-all"
+            style={{ background: 'var(--color-surface-hover)' }}
           >
+            <X size={18} strokeWidth={2.2} style={{ color: 'var(--color-text-primary)' }} />
+          </button>
+          <h2
+            id="new-exercise-title"
+            className="truncate"
+            style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800, letterSpacing: '-0.3px', color: 'var(--color-text-primary)' }}
+          >{t('exerciseLibrary.newExercise')}</h2>
+          <div style={{ width: 38 }} />
+        </header>
+
+        <div className="flex-1 overflow-y-auto pb-[calc(100px+var(--safe-area-bottom,env(safe-area-inset-bottom)))]">
+          {/* Hero */}
+          <div className="px-5 pt-4 pb-1">
+            <div className="text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-accent)' }}>
+              {t('exerciseLibrary.createCustomMovement', 'CREATE · CUSTOM MOVEMENT')}
+            </div>
+            <div
+              className="mt-1.5"
+              style={{ fontFamily: DISPLAY_FONT, fontSize: 28, fontWeight: 900, letterSpacing: '-1px', lineHeight: 1.02, color: 'var(--color-text-primary)' }}
+            >
+              {t('exerciseLibrary.newExerciseHeadline', 'Build an exercise the gym will remember.')}
+            </div>
+          </div>
+
+          {/* Exercise name */}
+          <div className="px-4 pt-5">
+            <SectionLabel required>{t('exerciseLibrary.exerciseNameLabel')}</SectionLabel>
+            <div
+              className="rounded-[14px] flex items-center gap-2.5"
+              style={{
+                background: 'var(--color-bg-card)',
+                border: '1.5px solid var(--color-border-subtle)',
+                boxShadow: '0 1px 2px rgba(15,20,25,0.03)',
+                padding: '14px',
+              }}
+            >
+              <div
+                className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
+                style={{ background: ACCENT_SOFT }}
+              >
+                <Edit3 size={16} strokeWidth={2} style={{ color: 'var(--color-accent)' }} />
+              </div>
+              <input
+                autoFocus
+                value={form.name}
+                onChange={(e) => set('name', e.target.value)}
+                maxLength={40}
+                placeholder={t('exerciseLibrary.exerciseNamePlaceholder', 'e.g. Bulgarian Split Squat')}
+                className="flex-1 bg-transparent border-0 outline-none"
+                style={{ fontSize: 15, fontWeight: 500, color: 'var(--color-text-primary)', letterSpacing: '-0.2px' }}
+              />
+              {form.name.length > 0 && (
+                <div
+                  className="text-[10px] font-bold uppercase tracking-[0.04em]"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >{form.name.length}/40</div>
+              )}
+            </div>
+          </div>
+
+          {/* Equipment tile grid */}
+          <div className="px-4 pt-6">
+            <SectionLabel>{t('exerciseLibrary.equipmentLabel')}</SectionLabel>
+            <div className="grid grid-cols-3 gap-2">
+              {equipTiles.map((eq) => (
+                <EquipmentTile
+                  key={eq}
+                  label={t(`exerciseLibrary.equipmentNames.${eq}`, eq)}
+                  selected={form.equipment === eq}
+                  onClick={() => set('equipment', eq)}
+                  icon={EQUIP_ICONS[eq]}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Muscles worked card */}
+          <div className="px-4 pt-6">
+            <SectionLabel required>{t('exerciseLibrary.musclesWorked', 'Muscles worked')}</SectionLabel>
+            <div
+              className="rounded-[20px] p-4"
+              style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW }}
+            >
+              {/* Diagram full-width on top (images are 440×800) */}
+              <div className="w-full" style={{ maxHeight: 220, overflow: 'hidden' }}>
+                <MuscleMap primary={form.muscle} secondary={form.secondaryMuscles} />
+              </div>
+              {/* Primary label + legend row below */}
+              <div className="mt-3 flex items-end justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
+                    {t('exerciseLibrary.primaryMuscleLabel', 'Primary')}
+                  </div>
+                  <div
+                    className="mt-0.5 truncate"
+                    style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--color-text-primary)' }}
+                  >
+                    {t(`muscleGroups.${form.muscle}`, form.muscle)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+                  <span className="w-2 h-2 rounded-full" style={{ background: 'var(--color-accent)' }} />
+                  Primary
+                  <span className="w-2 h-2 rounded-full ml-2" style={{ background: 'var(--color-accent)', opacity: 0.35 }} />
+                  Secondary · {form.secondaryMuscles.length}
+                </div>
+              </div>
+
+              {/* Primary picker */}
+              <div className="mt-3.5 pt-3.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                <div className="text-[10px] font-extrabold uppercase tracking-[0.1em] mb-2.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('exerciseLibrary.tapToChangePrimary', 'TAP TO CHANGE PRIMARY')}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {MUSCLE_GROUPS.map((m) => (
+                    <MuscleChip
+                      key={m}
+                      label={t(`muscleGroups.${m}`, m)}
+                      primary={m === form.muscle}
+                      onClick={() => set('muscle', m)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Secondary */}
+              <div className="mt-3.5 pt-3.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="text-[10px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
+                    {t('exerciseLibrary.secondaryMusclesLabel', 'SECONDARY')}
+                    <span className="ml-1 font-semibold normal-case tracking-[0.02em]" style={{ color: 'var(--color-text-muted)' }}>— {t('exerciseLibrary.optional')}</span>
+                  </div>
+                  {form.secondaryMuscles.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => set('secondaryMuscles', [])}
+                      className="text-[10px] font-bold uppercase tracking-[0.06em] active:opacity-70"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >{t('exerciseLibrary.clear', 'CLEAR')}</button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {SECONDARY_MUSCLES.filter((m) => m !== form.muscle).map((m) => (
+                    <MuscleChip
+                      key={m}
+                      label={t(`muscleGroups.${m}`, m)}
+                      selected={form.secondaryMuscles.includes(m)}
+                      onClick={() => toggleSecondary(m)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Defaults */}
+          <div className="px-4 pt-6">
+            <div className="flex items-baseline justify-between mb-2">
+              <span className="text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-primary)' }}>
+                {t('exerciseLibrary.defaults', 'Defaults')}
+              </span>
+              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                {t('exerciseLibrary.defaultsHint', 'Pre-fills when added to a routine')}
+              </span>
+            </div>
+
+            <div className="grid gap-2.5" style={{ gridTemplateColumns: '1fr 1.2fr' }}>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('exerciseLibrary.defaultSetsLabel', 'Sets')}
+                </div>
+                <Stepper value={form.defaultSets} onChange={(v) => set('defaultSets', v)} min={1} max={10} />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('exerciseLibrary.defaultRepsLabel', 'Rep range')}
+                </div>
+                <RepRange
+                  low={form.repLow}
+                  high={form.repHigh}
+                  onChange={(l, h) => setForm(f => ({ ...f, repLow: l, repHigh: h }))}
+                />
+              </div>
+            </div>
+
+            {/* Rest */}
+            <div className="mt-2.5">
+              <div className="text-[10px] font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('exerciseLibrary.restBetweenSets', 'Rest between sets')}
+              </div>
+              <div
+                className="rounded-[14px] px-4 py-3.5"
+                style={{ background: 'var(--color-bg-card)', border: '1.5px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(15,20,25,0.03)' }}
+              >
+                <div className="flex items-baseline justify-between">
+                  <span
+                    className="tabular-nums"
+                    style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 800, letterSpacing: '-0.8px', color: 'var(--color-text-primary)' }}
+                  >{mm}:{ss}</span>
+                  <div className="flex gap-1.5">
+                    {[60, 90, 120, 180].map((r) => {
+                      const sel = form.rest === r;
+                      const label = r < 60 ? `${r}s` : r % 60 === 0 ? `${r / 60}m` : `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`;
+                      return (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => set('rest', r)}
+                          className="rounded-full active:scale-95 transition-all"
+                          style={{
+                            padding: '5px 9px',
+                            border: `1px solid ${sel ? 'transparent' : 'var(--color-border-subtle)'}`,
+                            background: sel ? ACCENT_SOFT : 'transparent',
+                            color: sel ? 'var(--color-accent)' : 'var(--color-text-subtle)',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            letterSpacing: '0.2px',
+                          }}
+                        >{label}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="relative mt-3 h-5">
+                  <div className="absolute left-0 right-0 top-[9px] h-[2px] rounded-[1px]" style={{ background: 'var(--color-border-subtle)' }} />
+                  <div
+                    className="absolute left-0 top-[9px] h-[2px] rounded-[1px]"
+                    style={{ width: `${((form.rest - 30) / 210) * 100}%`, background: 'var(--color-accent)' }}
+                  />
+                  <div
+                    className="absolute top-[1px] w-[18px] h-[18px] rounded-full"
+                    style={{
+                      left: `calc(${((form.rest - 30) / 210) * 100}% - 9px)`,
+                      background: 'var(--color-accent)',
+                      border: '3px solid var(--color-bg-card)',
+                      boxShadow: '0 1px 4px color-mix(in srgb, var(--color-accent) 45%, transparent)',
+                    }}
+                  />
+                  <input
+                    type="range"
+                    min="30"
+                    max="240"
+                    step="15"
+                    value={form.rest}
+                    onChange={(e) => set('rest', parseInt(e.target.value))}
+                    className="absolute inset-0 w-full opacity-0 cursor-pointer"
+                    aria-label={t('exerciseLibrary.ariaRestSeconds', 'Rest seconds')}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Difficulty */}
+          <div className="px-4 pt-6">
+            <SectionLabel>{t('exerciseLibrary.difficulty', 'Difficulty')}</SectionLabel>
+            <DifficultyPicker value={form.difficulty} onChange={(v) => set('difficulty', v)} labels={difficultyLabels} />
+          </div>
+
+          {/* Form cues & notes */}
+          <div className="px-4 pt-6">
+            <SectionLabel optional>{t('exerciseLibrary.formCuesNotes', 'Form cues & notes')}</SectionLabel>
+            <div
+              className="rounded-[14px]"
+              style={{ background: 'var(--color-bg-card)', border: '1.5px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(15,20,25,0.03)' }}
+            >
+              <textarea
+                value={form.instructions}
+                onChange={(e) => set('instructions', e.target.value)}
+                placeholder={t('exerciseLibrary.formCuesPlaceholder', '• Knee tracks over middle toe\n• Brace core before descent\n• Drive through the heel…')}
+                rows={4}
+                maxLength={400}
+                className="w-full bg-transparent border-0 outline-none resize-none p-3.5"
+                style={{ fontSize: 14, color: 'var(--color-text-primary)', lineHeight: 1.5, letterSpacing: '-0.1px' }}
+              />
+              <div className="flex items-center px-3.5 pb-3 text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                <span className="ml-auto">{(form.instructions || '').length}/400</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Share with friends */}
+          <div className="px-4 pt-6">
+            <div
+              className="rounded-[18px] p-4 flex items-center gap-3.5"
+              style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW }}
+            >
+              <div
+                className="w-11 h-11 rounded-[12px] flex items-center justify-center flex-shrink-0"
+                style={{ background: form.shareWithFriends ? ACCENT_SOFT : 'var(--color-surface-hover)' }}
+              >
+                <Users size={20} strokeWidth={2} style={{ color: form.shareWithFriends ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)', letterSpacing: '-0.2px' }}>
+                  {t('exerciseLibrary.shareWithFriends')}
+                </div>
+                <div className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {form.shareWithFriends
+                    ? t('exerciseLibrary.shareFriendsCanSee', 'Friends can see and use this exercise')
+                    : t('exerciseLibrary.shareOnlyYou', 'Only you can see this exercise')}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.shareWithFriends}
+                aria-label={t('exerciseLibrary.shareWithFriends')}
+                onClick={() => set('shareWithFriends', !form.shareWithFriends)}
+                className="relative w-12 h-7 rounded-full transition-colors flex-shrink-0"
+                style={{ background: form.shareWithFriends ? 'var(--color-accent)' : 'var(--color-border-subtle)' }}
+              >
+                <span
+                  className="absolute top-0.5 w-6 h-6 rounded-full bg-white transition-all"
+                  style={{ left: form.shareWithFriends ? 22 : 2, boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }}
+                />
+              </button>
+            </div>
+          </div>
+
+          {error && <p className="text-[12px] px-4 pt-3 text-red-500">{error}</p>}
+        </div>
+
+        {/* Sticky save bar */}
+        <div
+          className="absolute left-0 right-0 bottom-0 flex gap-2.5 items-center px-4 pt-3"
+          style={{
+            paddingBottom: 'calc(1.25rem + var(--safe-area-bottom, env(safe-area-inset-bottom)))',
+            background: 'linear-gradient(180deg, transparent 0%, var(--color-bg-primary) 40%)',
+          }}
+        >
+          <button
+            type="button"
+            disabled={!canSave}
+            onClick={handleSave}
+            className="flex-1 flex items-center justify-center gap-2 rounded-full active:scale-[0.98] transition-all"
+            style={{
+              padding: '16px 18px',
+              background: canSave ? 'var(--color-accent)' : 'var(--color-surface-hover)',
+              color: canSave ? '#001512' : 'var(--color-text-muted)',
+              fontFamily: DISPLAY_FONT,
+              fontSize: 15,
+              fontWeight: 800,
+              letterSpacing: '-0.2px',
+              boxShadow: canSave ? '0 8px 20px color-mix(in srgb, var(--color-accent) 32%, transparent)' : 'none',
+              border: 'none',
+              cursor: canSave ? 'pointer' : 'not-allowed',
+            }}
+          >
+            <Check size={18} strokeWidth={2.6} />
             {saving ? t('exerciseLibrary.saving') : t('exerciseLibrary.saveExercise')}
           </button>
         </div>
@@ -955,13 +2066,26 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
     name: exercise.name || '',
     muscle: exercise.muscle || MUSCLE_GROUPS[0],
     equipment: exercise.equipment || EQUIPMENT[0],
+    category: exercise.category || CATEGORIES[0],
     defaultSets: String(exercise.defaultSets || 3),
     defaultReps: String(exercise.defaultReps || '8-12'),
+    rest: Number.isFinite(exercise.restSeconds) ? exercise.restSeconds : 90,
+    difficulty: exercise.difficulty || 'Intermediate',
     instructions: exercise.instructions || '',
+    shareWithFriends: !!exercise.shareWithFriends,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const mm = String(Math.floor(form.rest / 60));
+  const ss = String(form.rest % 60).padStart(2, '0');
+
+  const difficultyLabels = [
+    { key: 'Beginner',     label: t('exerciseLibrary.beginner', 'Beginner') },
+    { key: 'Intermediate', label: t('exerciseLibrary.intermediate', 'Intermediate') },
+    { key: 'Advanced',     label: t('exerciseLibrary.advanced', 'Advanced') },
+  ];
 
   return (
     <div className="flex-1 overflow-y-auto px-5 py-5 pb-[calc(2rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))]">
@@ -969,30 +2093,158 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
         <div>
           <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.exerciseNameLabel')}</label>
           <input autoFocus value={form.name} onChange={e => set('name', e.target.value)} placeholder={t('exerciseLibrary.exerciseNamePlaceholder')}
-            className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[14px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
+            className="w-full border border-[var(--color-border-subtle)] rounded-xl px-3.5 py-2.5 text-[14px] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[#2EC4C4]/40 transition-all"
             style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <DropdownSelect label={t('exerciseLibrary.primaryMuscleLabel')} value={form.muscle} options={MUSCLE_GROUPS} onChange={v => set('muscle', v)} renderOption={(v) => t(`muscleGroups.${v}`, v)} />
           <DropdownSelect label={t('exerciseLibrary.equipmentLabel')} value={form.equipment} options={EQUIPMENT} onChange={v => set('equipment', v)} renderOption={(v) => t(`exerciseLibrary.equipmentNames.${v}`, v)} />
         </div>
+        <div className="grid grid-cols-1 gap-3">
+          <DropdownSelect label={t('exerciseLibrary.category', 'Category')} value={form.category} options={CATEGORIES} onChange={v => set('category', v)} renderOption={(v) => t(`exerciseLibrary.categoryNames.${v}`, v)} />
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.defaultSetsLabel')}</label>
             <input type="number" min="1" max="10" value={form.defaultSets} onChange={e => set('defaultSets', e.target.value)}
-              className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[#D4AF37]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
+              className="w-full border border-[var(--color-border-subtle)] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[#2EC4C4]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
           </div>
           <div>
             <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.defaultRepsLabel')}</label>
             <input inputMode="numeric" value={form.defaultReps} onChange={e => set('defaultReps', e.target.value)} placeholder="8-12"
-              className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
+              className="w-full border border-[var(--color-border-subtle)] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[#2EC4C4]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
           </div>
         </div>
+
+        {/* Rest between sets */}
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.instructionsLabel')} <span className="normal-case" style={{ color: 'var(--color-text-muted)' }}>({t('exerciseLibrary.optional')})</span></label>
-          <textarea value={form.instructions} onChange={e => set('instructions', e.target.value)} placeholder={t('exerciseLibrary.instructionsPlaceholder')} rows={3}
-            className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 resize-none transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
+          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+            {t('exerciseLibrary.restBetweenSets', 'Rest between sets')}
+          </label>
+          <div
+            className="rounded-[14px] px-4 py-3.5"
+            style={{ background: 'var(--color-bg-card)', border: '1.5px solid var(--color-border-subtle)' }}
+          >
+            <div className="flex items-baseline justify-between">
+              <span
+                className="tabular-nums"
+                style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 800, letterSpacing: '-0.6px', color: 'var(--color-text-primary)' }}
+              >{mm}:{ss}</span>
+              <div className="flex gap-1.5">
+                {[60, 90, 120, 180].map((r) => {
+                  const sel = form.rest === r;
+                  const label = r % 60 === 0 ? `${r / 60}m` : `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => set('rest', r)}
+                      className="rounded-full active:scale-95 transition-all"
+                      style={{
+                        padding: '5px 9px',
+                        border: `1px solid ${sel ? 'transparent' : 'var(--color-border-subtle)'}`,
+                        background: sel ? ACCENT_SOFT : 'transparent',
+                        color: sel ? 'var(--color-accent)' : 'var(--color-text-subtle)',
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    >{label}</button>
+                  );
+                })}
+              </div>
+            </div>
+            <input
+              type="range"
+              min="30"
+              max="240"
+              step="15"
+              value={form.rest}
+              onChange={(e) => set('rest', parseInt(e.target.value))}
+              className="w-full mt-3"
+              aria-label={t('exerciseLibrary.ariaRestSeconds', 'Rest seconds')}
+            />
+          </div>
         </div>
+
+        {/* Difficulty */}
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+            {t('exerciseLibrary.difficulty', 'Difficulty')}
+          </label>
+          <div className="flex gap-2">
+            {difficultyLabels.map(d => {
+              const active = form.difficulty === d.key;
+              return (
+                <button
+                  key={d.key}
+                  type="button"
+                  onClick={() => set('difficulty', d.key)}
+                  className="flex-1 py-2.5 rounded-xl text-[12.5px] transition-all active:scale-[0.98]"
+                  style={{
+                    background: active ? 'var(--color-accent)' : 'var(--color-bg-card)',
+                    color: active ? '#001512' : 'var(--color-text-subtle)',
+                    border: `1.5px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
+                    fontWeight: active ? 800 : 500,
+                  }}
+                >{d.label}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Form cues / instructions */}
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+            {t('exerciseLibrary.formCuesNotes', 'Form cues & notes')} <span className="normal-case" style={{ color: 'var(--color-text-muted)' }}>({t('exerciseLibrary.optional')})</span>
+          </label>
+          <textarea
+            value={form.instructions}
+            onChange={e => set('instructions', e.target.value)}
+            placeholder={t('exerciseLibrary.formCuesPlaceholder')}
+            rows={4}
+            maxLength={400}
+            className="w-full border border-[var(--color-border-subtle)] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[#2EC4C4]/40 resize-none transition-all"
+            style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
+          />
+        </div>
+
+        {/* Share with friends toggle */}
+        <div
+          className="rounded-[16px] p-3.5 flex items-center gap-3"
+          style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+        >
+          <div
+            className="w-10 h-10 rounded-[12px] flex items-center justify-center flex-shrink-0"
+            style={{ background: form.shareWithFriends ? ACCENT_SOFT : 'var(--color-surface-hover)' }}
+          >
+            <Users size={18} strokeWidth={2} style={{ color: form.shareWithFriends ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13.5px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+              {t('exerciseLibrary.shareWithFriends')}
+            </div>
+            <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+              {form.shareWithFriends
+                ? t('exerciseLibrary.shareFriendsCanSee', 'Friends can see and use this exercise')
+                : t('exerciseLibrary.shareOnlyYou', 'Only you can see this exercise')}
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={form.shareWithFriends}
+            aria-label={t('exerciseLibrary.shareWithFriends')}
+            onClick={() => set('shareWithFriends', !form.shareWithFriends)}
+            className="relative w-11 h-[26px] rounded-full transition-colors flex-shrink-0"
+            style={{ background: form.shareWithFriends ? 'var(--color-accent)' : 'var(--color-border-subtle)' }}
+          >
+            <span
+              className="absolute top-0.5 w-[22px] h-[22px] rounded-full bg-white transition-all"
+              style={{ left: form.shareWithFriends ? 21 : 2, boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }}
+            />
+          </button>
+        </div>
+
         {error && <p className="text-[12px] text-red-400">{error}</p>}
         <button
           onClick={async () => {
@@ -1003,7 +2255,8 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
             setSaving(false);
           }}
           disabled={saving || !form.name.trim()}
-          className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
+          className="w-full py-3.5 rounded-full font-bold text-[14px] text-white disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
+            style={{ background: 'var(--color-accent, #2EC4C4)' }}
         >
           {saving ? t('exerciseLibrary.saving') : t('exerciseLibrary.saveChanges')}
         </button>
@@ -1026,6 +2279,46 @@ export const ExerciseLibraryPage = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [editingExercise, setEditingExercise] = useState(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [activeChip, setActiveChip] = useState('all');
+  const [draft, setDraft] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterMuscle, setFilterMuscle] = useState('All');
+  const [filterEquipment, setFilterEquipment] = useState('All');
+  const [sortBy, setSortBy] = useState('name-asc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [recentExerciseIds, setRecentExerciseIds] = useState(new Set());
+  const sortMenuRef = useRef(null);
+
+  // Close sort menu on outside click
+  useEffect(() => {
+    if (!showSortMenu) return;
+    const fn = (e) => { if (sortMenuRef.current && !sortMenuRef.current.contains(e.target)) setShowSortMenu(false); };
+    document.addEventListener('click', fn);
+    return () => document.removeEventListener('click', fn);
+  }, [showSortMenu]);
+
+  // Lock body scroll when filter modal is open
+  useEffect(() => {
+    if (!showFilters) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [showFilters]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Pick up draft banner — reads exercise_draft from localStorage if present
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('exercise_draft');
+      if (raw) setDraft(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, [showAddModal]);
 
   useEffect(() => { document.title = `${t('exerciseLibrary.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -1094,43 +2387,96 @@ export const ExerciseLibraryPage = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  // Load exercises the user has logged in the last 30 days (powers the "Recent" chip).
+  // Falls back to favorites + saved exercises so the chip still surfaces something
+  // useful for new users that haven't completed any sessions yet.
+  useEffect(() => {
+    if (!user?.id) return;
+    const since = new Date(Date.now() - 30 * 86400000).toISOString();
+    supabase
+      .from('workout_sessions')
+      .select('id, completed_at, workout_sets(exercise_id, completed)')
+      .eq('profile_id', user.id)
+      .eq('status', 'completed')
+      .gte('completed_at', since)
+      .then(({ data, error }) => {
+        const ids = new Set();
+        if (error) {
+          logger.error('Recent sessions load error:', error);
+        } else {
+          (data || []).forEach(s => {
+            (s.workout_sets || []).forEach(ws => {
+              if (ws?.exercise_id && ws.completed !== false) ids.add(ws.exercise_id);
+            });
+          });
+        }
+        setRecentExerciseIds(ids);
+      });
+  }, [user?.id]);
+
   const handleCreateExercise = async (form) => {
+    if (!user?.id || !profile?.gym_id) {
+      return { error: t('exerciseLibrary.notReady', 'Profile not ready, try again in a moment.') };
+    }
+
+    // The Postgres enums for muscle_group / equipment / category don't include
+    // every option the local JS list exposes (Cardio category, Cardio Machine
+    // equipment, etc.). Map / drop the front-end-only values to the closest
+    // valid enum so the INSERT doesn't fail with an opaque "Load failed".
+    const VALID_MUSCLES = new Set(['Chest','Back','Shoulders','Biceps','Triceps','Legs','Glutes','Core','Calves','Forearms','Traps','Full Body','Warm-Up']);
+    const VALID_EQUIPMENT = new Set(['Barbell','Dumbbell','Cable','Machine','Bodyweight','Kettlebell','Resistance Band','Smith Machine','EZ Bar']);
+    const VALID_CATEGORY = new Set(['Strength','Hypertrophy','Power','Endurance','Mobility']);
+
+    const muscle    = VALID_MUSCLES.has(form.muscle) ? form.muscle : 'Full Body';
+    const equipment = VALID_EQUIPMENT.has(form.equipment) ? form.equipment : 'Bodyweight';
+    const category  = VALID_CATEGORY.has(form.category) ? form.category : 'Strength';
+
+    const restSeconds = Number.isFinite(parseInt(form.rest, 10)) ? parseInt(form.rest, 10) : 90;
     const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-    const { error } = await supabase
-      .from('exercises')
-      .insert({
-        id,
-        gym_id:       profile.gym_id,
-        created_by:   user.id,
-        name:         form.name,
-        muscle_group: form.muscle,
-        equipment:    form.equipment,
-        category:     form.category,
-        default_sets: form.defaultSets,
-        default_reps: form.defaultReps,
-        rest_seconds: 90,
-        instructions: form.instructions || null,
-        is_active:    true,
-      });
+    let error;
+    try {
+      ({ error } = await supabase
+        .from('exercises')
+        .insert({
+          id,
+          gym_id:       profile.gym_id,
+          created_by:   user.id,
+          name:         form.name,
+          muscle_group: muscle,
+          equipment,
+          category,
+          default_sets: form.defaultSets,
+          default_reps: form.defaultReps,
+          rest_seconds: restSeconds,
+          instructions: form.instructions || null,
+          is_active:    true,
+        }));
+    } catch (err) {
+      // iOS WebKit surfaces network-layer fetch failures as TypeError "Load failed".
+      logger.error('Create exercise threw:', err);
+      return { error: err?.message || 'Network error — please try again.' };
+    }
 
     if (error) {
       logger.error('Create exercise error:', error);
-      return { error: error.message };
+      return { error: error.message || error.hint || 'Failed to save exercise' };
     }
 
     posthog?.capture('custom_exercise_created');
-    await supabase.from('user_saved_exercises').insert({ user_id: user.id, exercise_id: id });
+    // Don't block on the bookmark write — the exercise itself is already saved.
+    supabase.from('user_saved_exercises').insert({ user_id: user.id, exercise_id: id })
+      .then(({ error: saveErr }) => { if (saveErr) logger.error('Save bookmark failed:', saveErr); });
 
     const normalized = {
       id,
       name:              form.name,
-      muscle:            form.muscle,
-      equipment:         form.equipment,
-      category:          form.category,
+      muscle,
+      equipment,
+      category,
       defaultSets:       form.defaultSets,
       defaultReps:       form.defaultReps,
-      restSeconds:       90,
+      restSeconds,
       instructions:      form.instructions ?? '',
       primaryRegions:    [],
       secondaryRegions:  [],
@@ -1158,7 +2504,15 @@ export const ExerciseLibraryPage = () => {
 
   const handleDeleteExercise = async (exerciseId) => {
     if (!confirm(t('exerciseLibrary.deleteConfirm'))) return;
-    await supabase.from('exercises').update({ is_active: false }).eq('id', exerciseId);
+    const { error } = await supabase
+      .from('exercises')
+      .update({ is_active: false })
+      .eq('id', exerciseId)
+      .eq('created_by', user.id);
+    if (error) {
+      alert(t('exerciseLibrary.deleteError', 'Failed to delete exercise. Please try again.'));
+      return;
+    }
     setCustom(prev => prev.filter(e => e.id !== exerciseId));
     setSavedIds(prev => { const s = new Set(prev); s.delete(exerciseId); return s; });
   };
@@ -1174,16 +2528,35 @@ export const ExerciseLibraryPage = () => {
   };
 
   const handleEditExercise = async (exercise, updates) => {
+    const restSeconds = Number.isFinite(parseInt(updates.rest, 10)) ? parseInt(updates.rest, 10) : 90;
+    // Postgres enums for category are stricter than the local JS list — drop
+    // unsupported values to the closest valid enum so the UPDATE doesn't fail.
+    const VALID_CATEGORY = new Set(['Strength', 'Hypertrophy', 'Power', 'Endurance', 'Mobility']);
+    const category = VALID_CATEGORY.has(updates.category) ? updates.category : (exercise.category || 'Strength');
     const { error } = await supabase.from('exercises').update({
       name: updates.name,
       muscle_group: updates.muscle,
       equipment: updates.equipment,
+      category,
       default_sets: parseInt(updates.defaultSets) || 3,
       default_reps: updates.defaultReps,
+      rest_seconds: restSeconds,
       instructions: updates.instructions || null,
     }).eq('id', exercise.id);
     if (error) { logger.error('Edit exercise error:', error); return { error: error.message }; }
-    setCustom(prev => prev.map(e => e.id === exercise.id ? { ...e, name: updates.name, muscle: updates.muscle, equipment: updates.equipment, defaultSets: parseInt(updates.defaultSets) || 3, defaultReps: updates.defaultReps, instructions: updates.instructions || '' } : e));
+    setCustom(prev => prev.map(e => e.id === exercise.id ? {
+      ...e,
+      name: updates.name,
+      muscle: updates.muscle,
+      equipment: updates.equipment,
+      category,
+      defaultSets: parseInt(updates.defaultSets) || 3,
+      defaultReps: updates.defaultReps,
+      restSeconds,
+      difficulty: updates.difficulty,
+      instructions: updates.instructions || '',
+      shareWithFriends: !!updates.shareWithFriends,
+    } : e));
     setEditingExercise(null);
     return {};
   };
@@ -1199,80 +2572,304 @@ export const ExerciseLibraryPage = () => {
   }, [globalDbExercises, customExercises]);
 
   const tabs = [
-    { key: 'all',     label: t('exerciseLibrary.tabAll') },
-    { key: 'mine',    label: t('exerciseLibrary.tabMine'), count: mineExercises.length || null },
+    { key: 'all',     label: t('exerciseLibrary.tabAll'),     count: totalCount },
+    { key: 'mine',    label: t('exerciseLibrary.tabMine'),    count: mineExercises.length || null },
     { key: 'friends', label: t('exerciseLibrary.tabFriends'), count: friendExercises.length || null },
   ];
 
-  return (
-    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 md:px-8 pt-7 md:pt-12 pb-28 md:pb-12 animate-fade-in">
+  // Chip filters map to muscle category + custom keys (push/pull/hiit/mobility/recent).
+  const chipDefs = [
+    { id: 'all',      label: t('exerciseLibrary.filterAll', 'All') },
+    { id: 'recent',   label: t('exerciseLibrary.filterRecent', 'Recent') },
+    { id: 'push',     label: `↑ ${t('exerciseLibrary.filterPush', 'Push')}` },
+    { id: 'pull',     label: `↓ ${t('exerciseLibrary.filterPull', 'Pull')}` },
+    { id: 'legs',     label: t('muscleGroups.Legs', 'Legs') },
+    { id: 'core',     label: t('muscleGroups.Core', 'Core') },
+    { id: 'mobility', label: t('exerciseLibrary.filterMobility', 'Mobility') },
+    { id: 'hiit',     label: t('exerciseLibrary.filterHIIT', 'HIIT') },
+  ];
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <header className="mb-7 flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
+  const lang = (typeof window !== 'undefined' && (window.localStorage.getItem('i18nextLng') || '')).startsWith('es') ? 'es' : 'en';
+
+  // Flattened list for the current tab
+  const activeList = useMemo(() => {
+    if (tab === 'mine') return mineExercises.map(e => ({ ...e, isMine: e.createdBy === user?.id }));
+    if (tab === 'friends') return friendExercises;
+    // all — combine local + global + custom
+    const localById = Object.fromEntries(localExercises.map(e => [e.id, e]));
+    const uniqueLocal = localExercises.filter(e => !dbIds.has(e.id));
+    const dbFallback = [...globalDbExercises, ...customExercises].map(e => (
+      (!e.videoUrl && localById[e.id]?.videoUrl) ? { ...e, videoUrl: localById[e.id].videoUrl } : e
+    ));
+    return [...uniqueLocal, ...dbFallback];
+  }, [tab, mineExercises, friendExercises, globalDbExercises, customExercises, dbIds, user?.id]);
+
+  // Apply search + chip + advanced filters + sort
+  const filteredRows = useMemo(() => {
+    const q = debouncedQuery.toLowerCase().trim();
+    const filtered = activeList.filter((e) => {
+      if (q) {
+        const hay = `${e.name} ${e.name_es || ''} ${e.muscle} ${e.equipment}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (filterMuscle !== 'All' && e.muscle !== filterMuscle) return false;
+      if (filterEquipment !== 'All' && e.equipment !== filterEquipment) return false;
+      if (activeChip === 'all') return true;
+      if (activeChip === 'recent') {
+        // Fall back to favorites when no recent session data exists yet so the
+        // chip still renders meaningful results (and doesn't appear "broken").
+        if (recentExerciseIds.size > 0) return recentExerciseIds.has(e.id);
+        return favoriteIds.has(e.id);
+      }
+      const m = (e.muscle || '').toLowerCase();
+      const cat = (e.category || '').toLowerCase();
+      if (activeChip === 'legs')     return m === 'legs' || m === 'quads' || m === 'hamstrings' || m === 'glutes' || m === 'calves';
+      if (activeChip === 'core')     return m === 'core' || m === 'abs';
+      if (activeChip === 'push')     return m === 'chest' || m === 'shoulders' || m === 'triceps';
+      if (activeChip === 'pull')     return m === 'back' || m === 'lats' || m === 'biceps' || m === 'traps';
+      if (activeChip === 'mobility') return cat.includes('mobility') || cat.includes('stretch');
+      if (activeChip === 'hiit')     return cat.includes('hiit') || cat.includes('cardio');
+      return true;
+    });
+    const arr = [...filtered];
+    switch (sortBy) {
+      case 'name-asc':  return arr.sort((a, b) => exName(a).localeCompare(exName(b)));
+      case 'name-desc': return arr.sort((a, b) => exName(b).localeCompare(exName(a)));
+      case 'muscle':    return arr.sort((a, b) => (a.muscle || '').localeCompare(b.muscle || '') || exName(a).localeCompare(exName(b)));
+      case 'equipment': return arr.sort((a, b) => (a.equipment || '').localeCompare(b.equipment || '') || exName(a).localeCompare(exName(b)));
+      default:          return arr;
+    }
+  }, [activeList, debouncedQuery, activeChip, filterMuscle, filterEquipment, sortBy, recentExerciseIds, favoriteIds]);
+
+  const activeFilterCount = (filterMuscle !== 'All' ? 1 : 0) + (filterEquipment !== 'All' ? 1 : 0);
+
+  return (
+    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 md:px-8 pt-5 md:pt-10 pb-28 md:pb-12 animate-fade-in">
+
+      {/* ── Hero ──────────────────────────────────────────────────────────── */}
+      <header className="mb-3.5">
+        <div className="text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-accent)' }}>
+          {t('exerciseLibrary.yourArsenal', 'YOUR ARSENAL')} · {totalCount} {t('exerciseLibrary.moves', 'MOVES')}
+        </div>
+        <div className="mt-1.5 flex items-end justify-between gap-3">
           <h1
-            className="text-[22px] md:text-[32px] font-extrabold tracking-[-0.02em] leading-none truncate"
-            style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}
+            className="truncate"
+            style={{ fontFamily: DISPLAY_FONT, fontSize: 30, fontWeight: 900, letterSpacing: '-1.1px', lineHeight: 1.02, color: 'var(--color-text-primary)' }}
           >
             {t('exerciseLibrary.title')}
           </h1>
-          <p className="text-[13px] mt-1.5 font-medium text-[#5B6276]">
-            {t('exerciseLibrary.exercisesAvailable', { count: totalCount })}
-          </p>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="inline-flex items-center gap-1 px-3.5 py-2.5 rounded-full active:scale-95 transition-all whitespace-nowrap flex-shrink-0"
+            style={{
+              background: 'var(--color-accent)',
+              color: '#001512',
+              fontSize: 13,
+              fontWeight: 800,
+              letterSpacing: '-0.1px',
+              boxShadow: '0 6px 16px color-mix(in srgb, var(--color-accent) 28%, transparent)',
+              border: 'none',
+            }}
+          >
+            <Plus size={15} strokeWidth={2.6} /> {t('exerciseLibrary.new', 'New')}
+          </button>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95 transition-all whitespace-nowrap flex-shrink-0"
-          style={{
-            background: 'linear-gradient(135deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 85%, black) 100%)',
-            color: 'var(--color-bg-secondary)',
-            boxShadow: '0 2px 12px color-mix(in srgb, var(--color-accent) 20%, transparent)',
-          }}
-        >
-          <Plus size={15} strokeWidth={2.5} /> {t('exerciseLibrary.newExercise')}
-        </button>
+
       </header>
 
-      {/* ── Segmented Control ───────────────────────────────────────────────── */}
+      {/* ── Tab Segmented ───────────────────────────────────────────────────── */}
       <div
-        className="flex gap-0.5 mb-5 rounded-[12px] p-[3px]"
+        className="flex gap-0.5 mb-3 rounded-[12px] p-1"
         style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
       >
-        {tabs.map(t => {
-          const active = tab === t.key;
+        {tabs.map((x) => {
+          const active = tab === x.key;
           return (
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className="flex-1 py-2 rounded-[10px] text-[13px] font-semibold transition-all relative"
+              key={x.key}
+              onClick={() => setTab(x.key)}
+              className="flex-1 py-2 rounded-[9px] transition-all inline-flex items-center justify-center gap-1.5"
               style={{
                 background: active ? 'var(--color-bg-card)' : 'transparent',
                 color: active ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
-                boxShadow: active ? '0 1px 4px rgba(0,0,0,0.25)' : 'none',
+                fontSize: 12,
+                fontWeight: active ? 800 : 600,
+                letterSpacing: '-0.1px',
+                boxShadow: active ? '0 1px 2px rgba(15,20,25,0.05)' : 'none',
+                border: 'none',
               }}
             >
-              {t.label}
-              {t.count ? (
+              {x.label}
+              {x.count != null && (
                 <span
-                  className="ml-1.5 text-[10.5px] font-bold px-1.5 py-0.5 rounded-md"
-                  style={{
-                    background: active ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'rgba(255,255,255,0.04)',
-                    color: active ? 'var(--color-accent)' : 'var(--color-text-subtle)',
-                  }}
-                >
-                  {t.count}
-                </span>
-              ) : null}
+                  className="text-[9px] font-extrabold"
+                  style={{ color: active ? 'var(--color-accent)' : 'var(--color-text-muted)', letterSpacing: '0.3px' }}
+                >{x.count}</span>
+              )}
             </button>
           );
         })}
       </div>
 
+      {/* ── Search bar ──────────────────────────────────────────────────────── */}
+      <div
+        className="mb-3 flex items-center gap-2.5 rounded-[14px] px-3.5 py-3"
+        style={{ background: 'var(--color-bg-card)', border: '1.5px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(15,20,25,0.03)' }}
+      >
+        <Search size={16} strokeWidth={2} style={{ color: 'var(--color-text-subtle)' }} />
+        <input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder={t('exerciseLibrary.searchPlaceholder', 'Search exercises, muscles, gear…')}
+          className="flex-1 bg-transparent border-0 outline-none"
+          style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', letterSpacing: '-0.2px' }}
+          maxLength={100}
+        />
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setShowFilters(true); }}
+          aria-label={t('exerciseLibrary.ariaFilters', 'Filters')}
+          className="relative min-w-[44px] min-h-[44px] rounded-[10px] flex items-center justify-center active:scale-95 transition-all flex-shrink-0"
+          style={{
+            background: activeFilterCount > 0 ? ACCENT_SOFT : 'var(--color-surface-hover)',
+          }}
+        >
+          <SlidersHorizontal
+            size={14}
+            strokeWidth={2.2}
+            style={{ color: activeFilterCount > 0 ? 'var(--color-accent)' : 'var(--color-text-subtle)' }}
+          />
+          {activeFilterCount > 0 && (
+            <span
+              className="absolute -top-1 -right-1 w-[14px] h-[14px] rounded-full text-[8px] font-bold flex items-center justify-center"
+              style={{ background: 'var(--color-accent)', color: '#001512' }}
+            >
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ── Filter chips (scrollable) ───────────────────────────────────────── */}
+      <div className="mb-3 -mx-4 px-4 overflow-x-auto no-scrollbar">
+        <div className="flex gap-1.5 whitespace-nowrap">
+          {chipDefs.map((c) => (
+            <FilterChip key={c.id} active={c.id === activeChip} onClick={() => setActiveChip(c.id)}>
+              {c.label}
+            </FilterChip>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Draft banner ────────────────────────────────────────────────────── */}
+      {draft && (
+        <div className="mb-3">
+          <div className="text-[10px] font-extrabold uppercase tracking-[0.1em] mb-2" style={{ color: 'var(--color-text-subtle)' }}>
+            {t('exerciseLibrary.pickUpWhereLeftOff', 'PICK UP WHERE YOU LEFT OFF')}
+          </div>
+          <div
+            className="rounded-[18px] p-3.5 flex items-center gap-3 cursor-pointer"
+            style={{
+              background: `linear-gradient(135deg, ${ACCENT_SOFT} 0%, color-mix(in srgb, var(--color-accent) 4%, transparent) 100%)`,
+              border: '1.5px dashed var(--color-accent)',
+            }}
+            onClick={() => setShowAddModal(true)}
+          >
+            <div
+              className="w-[46px] h-[46px] rounded-[12px] flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--color-bg-card)', border: '1.5px dashed var(--color-accent)' }}
+            >
+              <Edit3 size={18} strokeWidth={2.2} style={{ color: 'var(--color-accent)' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[9px] font-extrabold uppercase tracking-[0.12em]" style={{ color: 'var(--color-accent)' }}>
+                {t('exerciseLibrary.draftUnfinished', 'DRAFT · UNFINISHED')}
+              </div>
+              <div
+                className="mt-0.5 truncate"
+                style={{ fontFamily: DISPLAY_FONT, fontSize: 15, fontWeight: 800, letterSpacing: '-0.3px', color: 'var(--color-text-primary)' }}
+              >{draft.name || t('exerciseLibrary.untitledDraft', 'Untitled exercise')}</div>
+              <div className="mt-0.5 text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                {draft.primary || draft.muscle || '—'}{draft.saved ? ` · ${t('exerciseLibrary.saved', 'saved')} ${draft.saved}` : ''}
+              </div>
+            </div>
+            <button
+              className="px-3 py-2 rounded-full text-[11px] font-extrabold active:scale-95 transition-all"
+              style={{ background: 'var(--color-accent)', color: '#001512', letterSpacing: '-0.1px', border: 'none' }}
+            >
+              {t('exerciseLibrary.resume', 'Resume')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Section label + sort ────────────────────────────────────────────── */}
+      <div className="mt-4 mb-2.5 flex items-center justify-between">
+        <span className="text-[10px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
+          {t('exerciseLibrary.exerciseCount', { count: filteredRows.length, defaultValue: '{{count}} exercises' })}
+        </span>
+        <div ref={sortMenuRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setShowSortMenu(s => !s)}
+            aria-label={t('exerciseLibrary.sort', 'Sort')}
+            className="inline-flex items-center gap-1 bg-transparent active:scale-95 transition-all"
+            style={{ color: 'var(--color-text-subtle)', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', border: 'none' }}
+          >
+            <ArrowUpDown size={11} strokeWidth={2.2} />
+            {t(`exerciseLibrary.sortLabels.${sortBy}`, 'SORT').toUpperCase()}
+          </button>
+          {showSortMenu && (
+            <div
+              className="absolute right-0 top-full mt-1.5 w-44 rounded-xl overflow-hidden z-30"
+              style={{
+                background: 'var(--color-bg-card)',
+                border: '1px solid var(--color-border-subtle)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+              }}
+            >
+              {SORT_OPTIONS.map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => { setSortBy(opt.key); setShowSortMenu(false); }}
+                  className="w-full px-3.5 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--color-surface-hover)]"
+                  style={{ color: sortBy === opt.key ? 'var(--color-accent)' : 'var(--color-text-primary)' }}
+                >
+                  {t(`exerciseLibrary.sortOptions.${opt.i18nKey}`)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ── Tab Content ─────────────────────────────────────────────────────── */}
 
-      {/* All tab */}
+      {/* All tab — preserves ExerciseCard expand-to-detail flow */}
       {tab === 'all' && (
-        <ExerciseLibrary extraExercises={extraForAll} favoriteIds={favoriteIds} onToggleFavorite={handleToggleFavorite} />
+        filteredRows.length === 0 ? (
+          <div className="text-center py-20">
+            <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+                 style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+              <Dumbbell size={28} className="text-[var(--color-text-muted)]" />
+            </div>
+            <p className="text-[15px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('exerciseLibrary.noExercisesFound')}</p>
+            <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.tryDifferentSearch')}</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 xl:grid-cols-3">
+            {filteredRows.map((ex) => (
+              <ExerciseCard
+                key={ex.id}
+                exercise={ex}
+                selectable={false}
+                isFavorite={favoriteIds.has(ex.id)}
+                onToggleFavorite={handleToggleFavorite}
+              />
+            ))}
+          </div>
+        )
       )}
 
       {/* Mine tab */}
@@ -1281,27 +2878,37 @@ export const ExerciseLibraryPage = () => {
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
-              <Dumbbell size={28} className="text-[#3B4252]" />
+              <Dumbbell size={28} className="text-[var(--color-text-muted)]" />
             </div>
-            <p className="font-semibold text-[16px] text-[#D1D5DB]">{t('exerciseLibrary.noCustomYet')}</p>
-            <p className="text-[13px] mt-1.5 text-[#5B6276]">
+            <p className="font-semibold text-[16px] text-[var(--color-text-primary)]">{t('exerciseLibrary.noCustomYet')}</p>
+            <p className="text-[13px] mt-1.5 text-[var(--color-text-muted)]">
               {t('exerciseLibrary.noCustomHint')}
             </p>
             <button onClick={() => setShowAddModal(true)}
-              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95 transition-all bg-[#D4AF37] text-[#0A0D14]">
+              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all text-white"
+              style={{ background: 'var(--color-accent, #2EC4C4)' }}>
               <Plus size={14} /> {t('exerciseLibrary.newExercise')}
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {mineExercises.map(ex => (
-              <CustomExerciseCard key={ex.id} exercise={ex} isMine={ex.createdBy === user?.id} isSaved
-                onDelete={ex.createdBy === user?.id ? handleDeleteExercise : undefined}
-                onEdit={ex.createdBy === user?.id ? (e) => setEditingExercise(e) : undefined}
-                onUnsave={ex.createdBy !== user?.id ? () => handleUnsave(ex.id) : undefined}
-                isFavorite={favoriteIds.has(ex.id)}
-                onToggleFavorite={handleToggleFavorite} />
-            ))}
+          <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 xl:grid-cols-3">
+            {mineExercises.map(ex => {
+              const ownedByMe = ex.createdBy === user?.id;
+              return (
+                <ExerciseCard
+                  key={ex.id}
+                  exercise={ex}
+                  selectable={false}
+                  isFavorite={favoriteIds.has(ex.id)}
+                  onToggleFavorite={handleToggleFavorite}
+                  isMine={ownedByMe}
+                  isSaved={!ownedByMe}
+                  onEdit={ownedByMe ? (e) => setEditingExercise(e) : undefined}
+                  onDelete={ownedByMe ? handleDeleteExercise : undefined}
+                  onUnsave={!ownedByMe ? () => handleUnsave(ex.id) : undefined}
+                />
+              );
+            })}
           </div>
         )
       )}
@@ -1312,21 +2919,27 @@ export const ExerciseLibraryPage = () => {
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
-              <Users size={28} className="text-[#3B4252]" />
+              <Users size={28} className="text-[var(--color-text-muted)]" />
             </div>
-            <p className="font-semibold text-[16px] text-[#D1D5DB]">{t('exerciseLibrary.noFriendExercises')}</p>
-            <p className="text-[13px] mt-1.5 text-[#5B6276]">
+            <p className="font-semibold text-[16px] text-[var(--color-text-primary)]">{t('exerciseLibrary.noFriendExercises')}</p>
+            <p className="text-[13px] mt-1.5 text-[var(--color-text-muted)]">
               {t('exerciseLibrary.noFriendExercisesHint')}
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 xl:grid-cols-3">
             {friendExercises.map(ex => (
-              <CustomExerciseCard key={ex.id} exercise={ex} isMine={false} isSaved={savedIds.has(ex.id)}
+              <ExerciseCard
+                key={ex.id}
+                exercise={ex}
+                selectable={false}
+                isFavorite={favoriteIds.has(ex.id)}
+                onToggleFavorite={handleToggleFavorite}
+                isMine={false}
+                isSaved={savedIds.has(ex.id)}
                 onSave={() => handleSave(ex.id)}
                 onUnsave={() => handleUnsave(ex.id)}
-                isFavorite={favoriteIds.has(ex.id)}
-                onToggleFavorite={handleToggleFavorite} />
+              />
             ))}
           </div>
         )
@@ -1340,13 +2953,112 @@ export const ExerciseLibraryPage = () => {
       {/* Edit Exercise Modal */}
       {editingExercise && createPortal(
         <div className="fixed inset-0 z-[110] flex flex-col animate-fade-in" style={{ background: 'var(--color-bg-primary)' }}>
-          <header className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))', background: 'var(--color-bg-primary)' }}>
-            <button onClick={() => setEditingExercise(null)} aria-label="Close" className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center hover:bg-white/[0.08] transition-colors">
+          <header className="flex-shrink-0 px-5 pb-3 border-b border-[var(--color-border-subtle)] flex items-center gap-3" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))', background: 'var(--color-bg-primary)' }}>
+            <button onClick={() => setEditingExercise(null)} aria-label={t('exerciseLibrary.ariaClose', 'Close')} className="w-11 h-11 rounded-xl bg-[var(--color-surface-hover)] flex items-center justify-center hover:bg-[var(--color-surface-hover)] transition-colors">
               <X size={18} style={{ color: 'var(--color-text-muted)' }} />
             </button>
-            <h2 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.editExercise')}</h2>
+            <h2 className="text-[18px] truncate" style={{ fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.editExercise')}</h2>
           </header>
           <EditExerciseForm exercise={editingExercise} onSave={handleEditExercise} onCancel={() => setEditingExercise(null)} />
+        </div>,
+        document.body
+      )}
+
+      {/* Advanced Filters Modal */}
+      {showFilters && createPortal(
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+          onClick={e => e.target === e.currentTarget && setShowFilters(false)}
+          role="dialog"
+          aria-labelledby="page-filters-dialog-title"
+        >
+          <div
+            className="w-full max-w-[520px] rounded-[24px] pb-8 pt-3 animate-fade-in"
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}
+          >
+            <div className="px-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 id="page-filters-dialog-title" className="text-[18px] truncate" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--color-text-primary)' }}>
+                  {t('exerciseLibrary.filters')}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => { setFilterMuscle('All'); setFilterEquipment('All'); }}
+                  aria-label={t('exerciseLibrary.reset')}
+                  className="text-[13px] font-medium active:opacity-70"
+                  style={{ color: 'var(--color-accent)' }}
+                >
+                  {t('exerciseLibrary.reset')}
+                </button>
+              </div>
+
+              {/* Muscle Group */}
+              <div className="mb-6">
+                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('exerciseLibrary.muscleGroup')}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {['All', ...MUSCLE_GROUPS].map(m => {
+                    const active = filterMuscle === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setFilterMuscle(m)}
+                        className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
+                        style={{
+                          background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
+                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                          border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
+                          fontWeight: active ? 700 : 500,
+                        }}
+                      >
+                        {t(`muscleGroups.${m}`, m)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Equipment */}
+              <div className="mb-8">
+                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('exerciseLibrary.equipment')}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {['All', ...EQUIPMENT].map(eq => {
+                    const active = filterEquipment === eq;
+                    return (
+                      <button
+                        key={eq}
+                        type="button"
+                        onClick={() => setFilterEquipment(eq)}
+                        className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
+                        style={{
+                          background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
+                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                          border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
+                          fontWeight: active ? 700 : 500,
+                        }}
+                      >
+                        {t(`exerciseLibrary.equipmentNames.${eq}`, eq)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowFilters(false)}
+                className="w-full py-3.5 rounded-full font-bold text-[14px] active:scale-[0.98] transition-all text-white"
+                style={{ background: 'var(--color-accent)' }}
+              >
+                {t('exerciseLibrary.showExercises', { count: filteredRows.length })}
+              </button>
+            </div>
+          </div>
         </div>,
         document.body
       )}

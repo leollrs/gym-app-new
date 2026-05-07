@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, Component } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, Component } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,7 +12,11 @@ import { syncWorkoutToWatch, syncWorkoutEnded, onWatchMessage } from '../lib/wat
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { exName, exInstructions, localizeRoutineName } from '../lib/exerciseName';
-import { cacheWorkoutData, getCachedWorkoutData } from '../lib/offlineQueue';
+import { cacheWorkoutData, getCachedWorkoutData, flushQueue } from '../lib/offlineQueue';
+import { useWakeLock } from '../hooks/useWakeLock';
+import { clearCachedState } from '../hooks/useCachedState';
+import { clearCache as clearQueryCache } from '../lib/queryCache';
+import { useToast } from '../contexts/ToastContext';
 
 import { usePostHog } from '@posthog/react';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
@@ -35,6 +39,7 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
   const startedAtRef = useRef(Date.now()); // auto-start immediately
   const rafRef = useRef(null);
   const completedRef = useRef(false);
+  const lastDisplayedRef = useRef(Math.ceil(durationSec));
 
   // Reset and auto-start on exercise change
   useEffect(() => {
@@ -42,15 +47,22 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
     setDone(false);
     completedRef.current = false;
     startedAtRef.current = Date.now();
+    lastDisplayedRef.current = Math.ceil(durationSec);
     return () => cancelAnimationFrame(rafRef.current);
   }, [durationSec]);
 
-  // Drift-free tick
+  // Drift-free tick — RAF runs every frame, but state only updates when the
+  // displayed (ceil'd) seconds actually change. Cuts setState rate from ~60Hz
+  // to ~1Hz with no visible difference.
   useEffect(() => {
     const tick = () => {
       const elapsed = (Date.now() - startedAtRef.current) / 1000;
       const remaining = Math.max(0, durationSec - elapsed);
-      setTimeLeft(remaining);
+      const displayed = Math.ceil(remaining);
+      if (displayed !== lastDisplayedRef.current) {
+        lastDisplayedRef.current = displayed;
+        setTimeLeft(remaining);
+      }
 
       if (remaining <= 0 && !completedRef.current) {
         completedRef.current = true;
@@ -269,24 +281,33 @@ const InSessionCardio = ({ exercise, onComplete, onSkip, t, i18n }) => {
 class ActiveSessionErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, errorMessage: '', errorStack: '' };
   }
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error) {
+    return {
+      hasError: true,
+      errorMessage: (error && (error.message || String(error))) || 'Unknown error',
+      errorStack: (error && error.stack) || '',
+    };
   }
   componentDidCatch(error, info) {
-    // Error boundary caught — error info available via componentDidCatch args
+    try { console.error('[ActiveSession] crash:', error, info?.componentStack); } catch {}
+    try { this.setState({ errorStack: (info?.componentStack || '') + '\n' + (error?.stack || '') }); } catch {}
   }
   render() {
     if (this.state.hasError) {
       return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
-          <div className="flex flex-col items-center gap-4 px-6 text-center">
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-auto" style={{ background: 'var(--color-bg-primary)' }}>
+          <div className="flex flex-col items-center gap-3 px-6 py-10 text-center max-w-full">
             <p className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{i18n.t('pages:activeSession.somethingWentWrong')}</p>
             <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{i18n.t('pages:activeSession.dataSavedLocally')}</p>
+            <pre className="mt-3 p-3 rounded-xl text-[11px] text-left whitespace-pre-wrap break-words max-w-full overflow-auto" style={{ background: 'rgba(239,68,68,0.08)', color: '#EF4444', fontFamily: 'ui-monospace, monospace', maxHeight: 240 }}>
+{this.state.errorMessage}
+{this.state.errorStack ? '\n\n' + this.state.errorStack : ''}
+            </pre>
             <button
               onClick={() => window.history.back()}
-              className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px]"
+              className="mt-2 px-6 py-3 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px]"
             >
               {i18n.t('pages:activeSession.goBack')}
             </button>
@@ -324,7 +345,7 @@ const PRBanner = ({ exercise, weight, reps, onDismiss, t }) => (
         <p className="font-extrabold text-[17px] leading-tight text-white tracking-wide uppercase drop-shadow-sm">{t('activeSession.newPersonalRecord')}</p>
         <p className="text-[14px] text-white/90 mt-1 font-semibold truncate">{t('activeSession.prSubtitle', { exercise, weight, reps })}</p>
       </div>
-      <button onClick={onDismiss} aria-label="Dismiss" className="w-11 h-11 flex items-center justify-center text-white/70 hover:text-white text-[20px] leading-none ml-1 transition-colors duration-200 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-full">×</button>
+      <button onClick={onDismiss} aria-label={t('activeSession.dismiss', { defaultValue: 'Dismiss' })} className="w-11 h-11 flex items-center justify-center text-white/70 hover:text-white text-[20px] leading-none ml-1 transition-colors duration-200 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-full">×</button>
     </div>
   </div>
 );
@@ -337,10 +358,34 @@ const ActiveSession = () => {
   const { user, profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
   const posthog = usePostHog();
+  const { showToast } = useToast();
+
+  // ── Display unit toggle for weight inputs (lb / kg) ─────────────────────────
+  // Persists across navigations within the session via localStorage so the
+  // user doesn't have to re-pick on every exercise card. Defaults from the
+  // user's profile preference; flipping it doesn't mutate the saved profile.
+  const [weightUnit, setWeightUnit] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tugympr_session_weight_unit');
+      if (saved === 'kg' || saved === 'lb') return saved;
+    } catch {}
+    return profile?.metric_units === false ? 'lb' : (profile?.metric_units === true ? 'kg' : 'lb');
+  });
+  useEffect(() => {
+    try { localStorage.setItem('tugympr_session_weight_unit', weightUnit); } catch {}
+  }, [weightUnit]);
+  const toggleWeightUnit = useCallback(() => {
+    setWeightUnit((u) => (u === 'kg' ? 'lb' : 'kg'));
+  }, []);
 
   // ── Class booking context (when starting from a class template) ────────────
   const classBookingId = location.state?.classBookingId ?? null;
   const className = location.state?.className ?? null;
+  // Watch-initiated starts can't carry react-router state through the
+  // window.__watchPendingNav channel, so they encode skipWarmUp as a query
+  // param. Honour either source.
+  const skipWarmUp = location.state?.skipWarmUp
+    ?? (new URLSearchParams(location.search || '').get('skipWarmUp') === '1');
 
   // ── Check for conflicting active session ──────────────────────────────────
   const [conflictSession, setConflictSession] = useState(null);
@@ -348,17 +393,28 @@ const ActiveSession = () => {
 
   useEffect(() => {
     try {
+      // Only show the "discard previous workout" modal when the OTHER draft has
+      // been untouched for at least 1 hour. Anything more recent is treated as
+      // a still-active session and the user is sent to it directly via the
+      // existing conflict resume path. This keeps people from being prompted
+      // to discard a session they were actively using a few minutes ago.
       const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+      const oneHourAgoTs = Date.now() - 60 * 60 * 1000;
       for (const key of Object.keys(localStorage)) {
         if (!key.startsWith('gym_session_')) continue;
         const otherId = key.replace('gym_session_', '');
         if (otherId === id) continue; // same session, not a conflict
         const data = JSON.parse(localStorage.getItem(key));
-        if (data?.loggedSets && data?.startedAt && new Date(data.startedAt).getTime() > oneDayAgo) {
-          setConflictSession({ routineId: otherId, routineName: data.routineName || 'Workout', key });
-          setShowConflict(true);
-          break;
-        }
+        if (!data?.loggedSets || !data?.startedAt) continue;
+        if (new Date(data.startedAt).getTime() <= oneDayAgo) continue;
+        // lastUpdated falls back to startedAt if older drafts didn't track it
+        const lastTouch = data.lastUpdated
+          ? new Date(data.lastUpdated).getTime()
+          : new Date(data.startedAt).getTime();
+        if (lastTouch > oneHourAgoTs) continue; // recently active — skip prompt
+        setConflictSession({ routineId: otherId, routineName: data.routineName || 'Workout', key });
+        setShowConflict(true);
+        break;
       }
     } catch { }
   }, [id]);
@@ -435,17 +491,59 @@ const ActiveSession = () => {
   const sessionKey = `gym_session_${id}`;
   const sessionEndedRef = useRef(false); // true when finished or discarded — prevents unmount re-save
   const [savedSession] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(`gym_session_${id}`)) ?? null; }
-    catch { return null; }
+    try {
+      // When the watch hands us a fresh exercise (?exerciseId=… / ?exerciseName=…),
+      // it's the start of a brand-new free-lift session. Any leftover
+      // gym_session_empty draft would make ActiveSession resume the wrong
+      // workout — exercises wouldn't be the watch's pick, sets logged from
+      // the wrist would land on the wrong exercise, and the user would see
+      // "ghost" data. Drop the draft so we boot clean.
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search || '');
+        if (params.get('exerciseId') || params.get('exerciseName')) {
+          try { localStorage.removeItem(`gym_session_${id}`); } catch {}
+          return null;
+        }
+      }
+      return JSON.parse(localStorage.getItem(`gym_session_${id}`)) ?? null;
+    } catch { return null; }
   });
 
-  const [dataLoading, setDataLoading] = useState(true);
-  const [routineName, setRoutineName] = useState('');
-  const [exercises, setExercises]     = useState([]);
+  // ── Instant hydration from localStorage ────────────────────────────────────
+  // If we have a saved draft AND cached routine definition, we can render the
+  // workout page on the FIRST render — no spinner, no DB wait. The DB fetch
+  // below becomes a silent background revalidation.
+  const cachedRoutineInitial = useMemo(() => {
+    if (IS_EMPTY_SESSION(id)) return null;
+    try { return getCachedWorkoutData(id); } catch { return null; }
+  }, [id]);
+
+  const canHydrateInstantly =
+    IS_EMPTY_SESSION(id) ||
+    (savedSession?.loggedSets && Object.keys(savedSession.loggedSets).length > 0 &&
+     (savedSession.exercises?.length > 0 || cachedRoutineInitial?.exercises?.length > 0));
+
+  const [dataLoading, setDataLoading] = useState(!canHydrateInstantly);
+  const [routineName, setRoutineName] = useState(
+    savedSession?.routineName || cachedRoutineInitial?.routineName || ''
+  );
+
+  // Keep the screen awake while a workout is active — released on unmount.
+  useWakeLock(true);
+  const [exercises, setExercises] = useState(() => {
+    // Prefer exercises persisted in the draft (respects removed/skipped), then
+    // fall back to the cached routine definition so suggestions/history shapes
+    // are still populated before the DB revalidation finishes.
+    if (savedSession?.exercises?.length > 0) return savedSession.exercises;
+    if (cachedRoutineInitial?.exercises?.length > 0) return cachedRoutineInitial.exercises;
+    return [];
+  });
   const onboardingRef = useRef(null); // cached onboarding for intra-session suggestions
+  const [skipUndo, setSkipUndo] = useState(null); // { fromIndex, timerId } — floating undo after skipping an exercise
 
   // Warm-up phase: 'gate' (show splash), 'active' (doing warm-ups), 'done' (skipped or finished)
   const [warmUpPhase, setWarmUpPhase] = useState(() => {
+    if (skipWarmUp) return 'done';
     if (IS_EMPTY_SESSION(id)) return 'done';
     if (savedSession?.warmUpPhase === 'done') return 'done';
     // If was mid warm-up ('active') or has any saved data, restart warm-up gate
@@ -460,6 +558,10 @@ const ActiveSession = () => {
   );
   const [isPaused, setIsPaused] = useState(savedSession?.isPaused ?? false);
   const [removedExerciseIds, setRemovedExerciseIds] = useState(savedSession?.removedExerciseIds ?? []);
+  // Skipped exercises are treated as "done" for Live Activity totals — their sets
+  // drop out of the denominator so the Dynamic Island doesn't show phantom
+  // uncompleted sets the user has already moved past.
+  const [skippedExerciseIds, setSkippedExerciseIds] = useState(savedSession?.skippedExerciseIds ?? []);
 
   const startedAt = useRef(savedSession?.startedAt ?? new Date().toISOString());
   const [elapsedTime, setElapsedTime] = useState(savedSession?.elapsedTime ?? 0);
@@ -495,12 +597,93 @@ const ActiveSession = () => {
   const restStartedAt = useRef(restoredRest.current?.restStartedAt ?? null);
   const currentRestDurationRef = useRef(restoredRest.current?.duration ?? 90);
 
+  // ── Trainer coaching cues (migration 0357) ───────────────────────────────
+  // Realtime channel below subscribes to session_cues filtered by client_id.
+  // Rest extensions arriving while NOT resting are queued here and applied
+  // on the next set's rest-start. isRestingRef mirrors isResting so the
+  // realtime callback can branch without stale-closure bugs.
+  const pendingRestExtendRef = useRef(0);
+  const isRestingRef = useRef(!!restoredRest.current);
+  useEffect(() => { isRestingRef.current = isResting; }, [isResting]);
+
+  // Coach cue banner state — { id, type, text } | null. Auto-dismisses.
+  const [coachCue, setCoachCue] = useState(null);
+  useEffect(() => {
+    if (!coachCue?.id) return undefined;
+    const timer = setTimeout(() => setCoachCue(null), 8000);
+    return () => clearTimeout(timer);
+  }, [coachCue?.id]);
+
+  // Subscribe to incoming coaching cues. Each INSERT is applied (rest_extend
+  // bumps timer or queues; others surface as a banner) and ack'd server-side.
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const channel = supabase
+      .channel(`active-session-cues-${user.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'session_cues',
+        filter: `client_id=eq.${user.id}`,
+      }, (payload) => {
+        const cue = payload?.new;
+        if (!cue || cue.acknowledged) return;
+
+        let bannerText = '';
+        if (cue.cue_type === 'rest_extend') {
+          const seconds = Number(cue.payload?.seconds) || 30;
+          if (isRestingRef.current && restStartedAt.current) {
+            currentRestDurationRef.current += seconds;
+            setRestTimer((t) => t + seconds);
+            try {
+              const raw = localStorage.getItem(restStateKey);
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                parsed.duration = (parsed.duration || 0) + seconds;
+                localStorage.setItem(restStateKey, JSON.stringify(parsed));
+              }
+            } catch {}
+            bannerText = t('activeSession.cue.restExtended', `Coach extended rest by ${seconds}s`, { seconds });
+          } else {
+            pendingRestExtendRef.current += seconds;
+            bannerText = t('activeSession.cue.restQueued', `Coach added ${seconds}s to your next rest`, { seconds });
+          }
+        } else if (cue.cue_type === 'weight_adjust') {
+          const pct = Number(cue.payload?.percent) || 0;
+          bannerText = pct < 0
+            ? t('activeSession.cue.reduceWeight', `Coach: drop weight by ${Math.abs(pct)}% on this set`, { pct: Math.abs(pct) })
+            : t('activeSession.cue.bumpWeight', `Coach: bump weight by ${pct}% on this set`, { pct });
+        } else if (cue.cue_type === 'drop_set') {
+          bannerText = t('activeSession.cue.dropSet', 'Coach: do a drop set after this set');
+        } else if (cue.cue_type === 'note') {
+          const note = (cue.payload?.text || '').toString().slice(0, 200);
+          bannerText = note ? `${t('activeSession.cue.notePrefix', 'Coach')}: ${note}` : t('activeSession.cue.noteEmpty', 'Coach left a note');
+        }
+
+        if (bannerText) setCoachCue({ id: cue.id, type: cue.cue_type, text: bannerText });
+
+        // Ack server-side (fire and forget — banner already showed locally)
+        supabase.rpc('ack_session_cue', { p_cue_id: cue.id }).then(({ error }) => {
+          if (error) logger.warn('ack_session_cue failed', error.message);
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  // restStateKey is stable for a given session; intentionally tracked once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [workoutComplete, setWorkoutComplete] = useState(false);
   const [cooldownPhase, setCooldownPhase] = useState('none'); // none → active → done
   const [cooldownIndex, setCooldownIndex] = useState(0);
   const [saving, setSaving]                   = useState(false);
   const [saveError, setSaveError]             = useState('');
+  // Pause action sheet — shows when user taps pause; offers Resume / Save for
+  // later / Delete session. The SessionHeader's full-screen pause overlay
+  // stays underneath but our modal (z-[300]) covers it visually.
+  const [showPauseSheet, setShowPauseSheet] = useState(false);
+  const [showDeleteSessionConfirm, setShowDeleteSessionConfirm] = useState(false);
 
   const [activePRBanner, setActivePRBanner] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -512,8 +695,23 @@ const ActiveSession = () => {
   const isPausedRef = useRef(savedSession?.isPaused ?? false);
   const draftSaveRef = useRef(null);
 
-  const [loggedSets, setLoggedSets] = useState({});
-  const [showResumedBanner, setShowResumedBanner] = useState(!!savedSession?.loggedSets);
+  // Synchronously hydrate loggedSets from localStorage so the first render
+  // shows all the user's previously logged sets — no spinner, no flash.
+  const [loggedSets, setLoggedSets] = useState(() => savedSession?.loggedSets || {});
+  // Show the "Discard previous workout?" / resumed banner only when the saved
+  // draft has actually gone stale (>=60 minutes since the user last touched
+  // it). Previously this fired on every session resume after 5 minutes, which
+  // surfaced the discard prompt during normal in-gym warm-up time. Prefer the
+  // `lastUpdated` timestamp (added in the persist effect below); fall back to
+  // `startedAt` for older drafts that pre-date the field.
+  const timeSinceLastTouch = (() => {
+    const ref = savedSession?.lastUpdated || savedSession?.startedAt;
+    return ref ? (Date.now() - new Date(ref).getTime()) / 60000 : 0;
+  })();
+  const STALE_DRAFT_MINUTES = 60;
+  const [showResumedBanner, setShowResumedBanner] = useState(
+    !!savedSession?.loggedSets && timeSinceLastTouch >= STALE_DRAFT_MINUTES
+  );
   const [sessionRpe, setSessionRpe] = useState(null);
   const [sessionFeeling, setSessionFeeling] = useState(null);
   const [expandedNotesSet, setExpandedNotesSet] = useState(null);
@@ -533,6 +731,12 @@ const ActiveSession = () => {
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [swapSearch, setSwapSearch] = useState('');
   const [swapSelectedReason, setSwapSelectedReason] = useState(null);
+  // Inline custom-exercise creator inside the swap modal (Feat 1).
+  const [swapCustomName, setSwapCustomName] = useState('');
+  const [swapCustomSaving, setSwapCustomSaving] = useState(false);
+  // In-session list manager (Feat 3) — full-list view with reorder / swap /
+  // delete / add. Triggered by the list icon next to the segmented nav.
+  const [showListManager, setShowListManager] = useState(false);
   const [exerciseSwaps, setExerciseSwaps] = useState([]); // { original_exercise_id, new_exercise_id, reason }
   useEffect(() => {
     if (showSwapModal) {
@@ -616,6 +820,87 @@ const ActiveSession = () => {
         case 'heart_rate_summary':
           watchHRSummary.current = { averageBPM: msg.averageBPM, maxBPM: msg.maxBPM, minBPM: msg.minBPM };
           break;
+
+        // ── In-workout actions surfaced from the Watch action pills ──
+        case 'add_set': {
+          // Append a blank set to the current exercise. We can't call
+          // handleAddSet from here directly (it's defined later in the
+          // file and would create a forward-ref problem), so duplicate
+          // the minimal logic. Same shape handleAddSet uses.
+          const curEx = exercises[currentExerciseIndex];
+          if (!curEx) break;
+          setLoggedSets(prev => {
+            const cur = prev[curEx.id] || [];
+            return {
+              ...prev,
+              [curEx.id]: [
+                ...cur,
+                { weight: '', reps: '', completed: false, isPR: false, rpe: null, notes: '' },
+              ],
+            };
+          });
+          break;
+        }
+        case 'remove_set': {
+          // Drop the LAST not-yet-completed set so we never lose logged data.
+          const curEx = exercises[currentExerciseIndex];
+          if (!curEx) break;
+          setLoggedSets(prev => {
+            const cur = prev[curEx.id] || [];
+            // Find the last unfilled, non-completed slot
+            for (let i = cur.length - 1; i >= 0; i--) {
+              if (!cur[i].completed) {
+                if (cur.length <= 1) return prev; // never wipe to zero
+                const copy = cur.slice();
+                copy.splice(i, 1);
+                return { ...prev, [curEx.id]: copy };
+              }
+            }
+            return prev;
+          });
+          break;
+        }
+        case 'skip_set': {
+          // Mark the current pending set as skipped + completed (matches
+          // the iPhone's existing handleRemoveSet behaviour).
+          const curEx = exercises[currentExerciseIndex];
+          if (!curEx) break;
+          const sets = loggedSets[curEx.id] || [];
+          const idx = sets.findIndex(s => !s.completed);
+          if (idx < 0) break;
+          setLoggedSets(prev => {
+            const cur = prev[curEx.id] || [];
+            const copy = cur.slice();
+            copy[idx] = { ...copy[idx], skipped: true, completed: true };
+            return { ...prev, [curEx.id]: copy };
+          });
+          break;
+        }
+        case 'add_exercise': {
+          const exId = msg.exerciseId;
+          const exName = msg.exerciseName;
+          if (!exId && !exName) break;
+          const found = exId ? localExercises.find(e => e.id === exId) : null;
+          const stub = found || {
+            id:           exId || `watch_${Date.now()}`,
+            name:         exName || 'Exercise',
+            name_es:      null,
+            defaultSets:  3,
+            defaultReps:  10,
+            videoUrl:     null,
+            instructions: null,
+          };
+          handleAddExerciseToSession(stub);
+          // The user added this from the watch *because they want to do it
+          // now*, so jump the active exercise pointer to it. Snapshot the
+          // current length BEFORE the state update lands — after append
+          // the new exercise lives at index `exercises.length`.
+          const newIndex = exercises.length;
+          setTimeout(() => {
+            setCurrentExerciseIndex(newIndex);
+          }, 60);
+          break;
+        }
       }
     });
     return unsub;
@@ -705,6 +990,8 @@ const ActiveSession = () => {
         completedSets: 0,
         currentExerciseName: newEx.name,
         startTimestamp: sessionStartTime.current,
+        workoutLabel: t('activeSession.liveActivityWorkout', 'Workout'),
+        restLabel: t('activeSession.rest', 'Rest'),
       }).catch(() => {});
     }
     setShowAddExercise(false);
@@ -739,12 +1026,41 @@ const ActiveSession = () => {
         setLoggedSets({});
       }
       setDataLoading(false);
+
+      // ── Watch-initiated free lift: seed the exercise from URL params ─
+      // The Watch's free-lift picker hands us `?exerciseId=...&exerciseName=...`.
+      // Resolve it against the bundled library; if not found, drop a
+      // minimal stub using just the supplied name so set logging still
+      // works. Only fires when there are no exercises yet (fresh start —
+      // we don't want to re-add it during a resume).
+      const params = new URLSearchParams(location.search || '');
+      const watchExId = params.get('exerciseId');
+      const watchExName = params.get('exerciseName');
+      const alreadyHasExercises = (savedSession?.exercises?.length || 0) > 0;
+      if ((watchExId || watchExName) && !alreadyHasExercises) {
+        const found = watchExId ? localExercises.find((e) => e.id === watchExId) : null;
+        const stub = found || {
+          id:           watchExId || `watch_${Date.now()}`,
+          name:         watchExName || 'Exercise',
+          name_es:      null,
+          defaultSets:  3,
+          defaultReps:  10,
+          videoUrl:     null,
+          instructions: null,
+        };
+        // Defer so the empty-state setExercises([]) above commits first.
+        setTimeout(() => handleAddExerciseToSession(stub), 0);
+      }
       return;
     }
 
     const load = async () => {
       try {
-      setDataLoading(true);
+      // If we already hydrated from localStorage, this fetch is a background
+      // revalidation — don't flip dataLoading back to true or the spinner
+      // will briefly replace the workout UI. Only show the spinner when we
+      // have no local data at all.
+      if (!canHydrateInstantly) setDataLoading(true);
 
       const { data: routine, error: routineErr } = await supabase
         .from('routines')
@@ -811,7 +1127,7 @@ const ActiveSession = () => {
           .limit(1),
         supabase
           .from('session_drafts')
-          .select('logged_sets, session_prs, live_prs, current_exercise_index, elapsed_time, started_at, is_paused')
+          .select('logged_sets, session_prs, live_prs, current_exercise_index, elapsed_time, started_at, is_paused, exercises, removed_exercise_ids, skipped_exercise_ids')
           .eq('profile_id', user.id)
           .eq('routine_id', id)
           .gte('updated_at', cutoff)
@@ -838,16 +1154,71 @@ const ActiveSession = () => {
         });
       }
 
+      // Read recovery-driven deload opt-in (set by ReadinessModal when score
+      // is low). Consumed once per session and cleared on draft start below.
+      let recoveryDeloadFactor = 1;
+      try {
+        const flag = localStorage.getItem('recovery_deload_pending_v1');
+        if (flag) {
+          const parsed = JSON.parse(flag);
+          // Honor the flag if it was set in the last 6h.
+          if (parsed && typeof parsed.factor === 'number'
+              && parsed.factor > 0 && parsed.factor < 1
+              && Date.now() - (parsed.setAt || 0) < 6 * 60 * 60 * 1000) {
+            recoveryDeloadFactor = parsed.factor;
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+
       const enriched = sortedExercises.map(ex => {
         const libEx = localExercises.find(e => e.id === ex.id);
         const exerciseMeta = libEx ? { movementPattern: libEx.movementPattern } : null;
+        const prevForEx = prevSetsMap[ex.id] || [];
+        const baseSuggestion = computeSuggestion(prevForEx, onboarding, ex.targetReps, 0, exerciseMeta, prMap[ex.id] || null);
+        // ── Diagnostic for fix #5 (suggested PR accuracy) ────────────────────
+        // The "Suggested" chip is derived from the most recent completed
+        // session only (see lastSessions[0] above). It does NOT cross-reference
+        // the personal_records table, so if a PR was set on a different day
+        // than the most recent session it can drift behind. Logging the inputs
+        // vs. output here so we can diagnose stale suggestions in the field.
+        // Safe to leave on — only fires once per session per exercise.
+        try {
+          // eslint-disable-next-line no-console
+          console.log('[ActiveSession] suggestion inputs', {
+            exerciseId: ex.id,
+            exerciseName: ex.name,
+            prevSetsCount: prevForEx.length,
+            prevSetsSample: prevForEx.slice(0, 3),
+            knownPR: prMap[ex.id] || null,
+            targetReps: ex.targetReps,
+            suggestion: baseSuggestion,
+          });
+        } catch { /* logging is non-critical */ }
+        // Apply per-session deload to the suggested weight only — keep reps
+        // alone so users still hit their target rep range at lighter load.
+        const suggestion = baseSuggestion && recoveryDeloadFactor < 1 && baseSuggestion.suggestedWeight
+          ? {
+              ...baseSuggestion,
+              suggestedWeight: Math.max(5, Math.round(baseSuggestion.suggestedWeight * recoveryDeloadFactor / 2.5) * 2.5),
+              note: 'recovery_deload',
+              label: `Recovery deload — ${Math.round((1 - recoveryDeloadFactor) * 100)}% lighter`,
+            }
+          : baseSuggestion;
         return {
-        ...ex,
-        movementPattern: libEx?.movementPattern || null,
-        history:    prevSetsMap[ex.id] || [],
-        suggestion: computeSuggestion(prevSetsMap[ex.id] || [], onboarding, ex.targetReps, 0, exerciseMeta),
+          ...ex,
+          movementPattern: libEx?.movementPattern || null,
+          history:    prevSetsMap[ex.id] || [],
+          suggestion,
         };
       });
+
+      // Clear the deload flag once consumed so it doesn't persist into the
+      // next session.
+      if (recoveryDeloadFactor < 1) {
+        try { localStorage.removeItem('recovery_deload_pending_v1'); } catch { /* ignore */ }
+      }
       // DB draft wins; fall back to localStorage if no DB draft
       const draft = dbDraft
         ? {
@@ -858,7 +1229,9 @@ const ActiveSession = () => {
             elapsedTime:           dbDraft.elapsed_time,
             startedAt:             dbDraft.started_at,
             isPaused:              dbDraft.is_paused ?? false,
+            exercises:             Array.isArray(dbDraft.exercises) ? dbDraft.exercises : null,
             removedExerciseIds:    dbDraft.removed_exercise_ids ?? [],
+            skippedExerciseIds:    dbDraft.skipped_exercise_ids ?? [],
           }
         : savedSession
           ? {
@@ -869,16 +1242,46 @@ const ActiveSession = () => {
               elapsedTime:          savedSession.elapsedTime,
               startedAt:            savedSession.startedAt,
               isPaused:             savedSession.isPaused ?? false,
+              exercises:            Array.isArray(savedSession.exercises) ? savedSession.exercises : null,
               removedExerciseIds:   savedSession.removedExerciseIds ?? [],
+              skippedExerciseIds:   savedSession.skippedExerciseIds ?? [],
             }
           : null;
 
-      // Filter out exercises that were removed during a previous session
-      const draftRemovedIds = draft?.removedExerciseIds ?? [];
-      const finalExercises = draftRemovedIds.length > 0
-        ? enriched.filter(ex => !draftRemovedIds.includes(ex.id))
-        : enriched;
-      if (draftRemovedIds.length > 0) setRemovedExerciseIds(draftRemovedIds);
+      // If the draft has its own exercises array (because the user swapped /
+      // added / removed mid-session), prefer it over the routine snapshot —
+      // but RE-ENRICH each entry with the latest PR + suggestion data so
+      // `prevSetsMap`/`prMap` updates from this session's queries still apply.
+      // Falls back to the routine-derived `enriched` only when no draft
+      // exercises are stored (fresh start, or pre-0368 draft with no column).
+      let finalExercises;
+      if (draft?.exercises && draft.exercises.length > 0) {
+        finalExercises = draft.exercises.map(draftEx => {
+          const enrichedMatch = enriched.find(e => e.id === draftEx.id);
+          const libEx = localExercises.find(e => e.id === draftEx.id);
+          const prevForEx = prevSetsMap[draftEx.id] || [];
+          const baseSuggestion = enrichedMatch?.suggestion
+            ?? computeSuggestion(prevForEx, onboarding, draftEx.targetReps, 0,
+                                 libEx ? { movementPattern: libEx.movementPattern } : null,
+                                 prMap[draftEx.id] || null);
+          return {
+            ...draftEx,
+            movementPattern: libEx?.movementPattern || draftEx.movementPattern || null,
+            history: prevForEx,
+            suggestion: baseSuggestion,
+          };
+        });
+      } else {
+        // Filter out exercises that were removed during a previous session
+        const draftRemovedIds = draft?.removedExerciseIds ?? [];
+        finalExercises = draftRemovedIds.length > 0
+          ? enriched.filter(ex => !draftRemovedIds.includes(ex.id))
+          : enriched;
+        if (draftRemovedIds.length > 0) setRemovedExerciseIds(draftRemovedIds);
+      }
+      if (draft?.removedExerciseIds?.length > 0) setRemovedExerciseIds(draft.removedExerciseIds);
+      const draftSkippedIds = draft?.skippedExerciseIds ?? [];
+      if (draftSkippedIds.length > 0) setSkippedExerciseIds(draftSkippedIds);
       setExercises(finalExercises);
 
       // Check if draft exercises match the current routine — discard stale drafts
@@ -961,8 +1364,18 @@ const ActiveSession = () => {
   useEffect(() => {
     if (dataLoading || !exercises.length) return;
     posthog?.capture('workout_started', { routine_name: routineName, exercise_count: exercises.length });
-    const cs = Object.values(loggedSets).flat().filter(s => s.completed).length;
-    const ts = Object.values(loggedSets).flat().length;
+    // Exclude skipped exercises' remaining sets from the totals so the Live
+    // Activity denominator reflects what the user actually still has to do.
+    // (Removed exercises are already pruned from loggedSets in handleRemoveExercise.)
+    const activeSetsFlat = Object.entries(loggedSets)
+      .filter(([exId]) => !skippedExerciseIds.includes(exId))
+      .flatMap(([, sets]) => sets);
+    const skippedCompleted = Object.entries(loggedSets)
+      .filter(([exId]) => skippedExerciseIds.includes(exId))
+      .flatMap(([, sets]) => sets)
+      .filter(s => s.completed).length;
+    const cs = activeSetsFlat.filter(s => s.completed).length + skippedCompleted;
+    const ts = activeSetsFlat.length + skippedCompleted;
     // Start Live Activity (lock screen + Dynamic Island) — iOS only
     startLiveActivity({
       routineName,
@@ -970,6 +1383,11 @@ const ActiveSession = () => {
       completedSets: cs,
       currentExerciseName: exName(exercises[currentExerciseIndex]) ?? '',
       startTimestamp: sessionStartTime.current,
+      // Pass localized labels so iOS widget reads in user's language. The
+      // Swift-side fallback still hardcodes English if the plugin ignores
+      // these keys — see flag in return notes.
+      workoutLabel: t('activeSession.liveActivityWorkout', 'Workout'),
+      restLabel: t('activeSession.rest', 'Rest'),
     }).then(() => {
       // Live Activity started — skip fallback notification
     }).catch(() => {
@@ -980,8 +1398,19 @@ const ActiveSession = () => {
 
   useEffect(() => {
     if (dataLoading) return;
-    const cs = Object.values(loggedSets).flat().filter(s => s.completed).length;
-    const ts = Object.values(loggedSets).flat().length;
+    // Recompute totals every tick so deletions/skips immediately move the
+    // Dynamic Island denominator. Skipped exercises are treated as completed:
+    // their remaining sets drop out, and any sets the user had already logged
+    // on them still count toward `completedSets`.
+    const activeSetsFlat = Object.entries(loggedSets)
+      .filter(([exId]) => !skippedExerciseIds.includes(exId))
+      .flatMap(([, sets]) => sets);
+    const skippedCompleted = Object.entries(loggedSets)
+      .filter(([exId]) => skippedExerciseIds.includes(exId))
+      .flatMap(([, sets]) => sets)
+      .filter(s => s.completed).length;
+    const cs = activeSetsFlat.filter(s => s.completed).length + skippedCompleted;
+    const ts = activeSetsFlat.length + skippedCompleted;
     if (ts === 0) return; // Don't update with empty state
 
     // Guard against race condition: if restStartedAt is set but isResting hasn't
@@ -1011,6 +1440,8 @@ const ActiveSession = () => {
           ? Math.max(0, Math.ceil((restStartedAt.current + currentRestDurationRef.current * 1000 - Date.now()) / 1000))
           : 0,
         isPaused,
+        workoutLabel: t('activeSession.liveActivityWorkout', 'Workout'),
+        restLabel: t('activeSession.rest', 'Rest'),
       });
       // Sync to Apple Watch — send actual set weight/reps if available
       const watchSetIdx = curEx ? (loggedSets[curEx.id] || []).findIndex(s => !s.completed) : -1;
@@ -1018,10 +1449,21 @@ const ActiveSession = () => {
       const watchRestRemaining = isResting && restStartedAt.current
         ? Math.max(0, Math.ceil((restStartedAt.current + currentRestDurationRef.current * 1000 - Date.now()) / 1000))
         : 0;
+      // The Watch's "SET X OF Y" eyebrow expects per-exercise totals —
+      // it's the count of sets for the *current* exercise, not the
+      // workout-wide total (which the Live Activity uses). Sending `ts`
+      // here was making the watch report inflated set counts whenever
+      // the workout had multiple exercises.
+      // Cap setNumber at totalSets so the moment the user finishes the
+      // last set we don't briefly broadcast "SET 5 OF 4" before the
+      // phone advances to the next exercise.
+      const cappedSetNumber = curExTotal > 0
+        ? Math.min(curExDone + 1, curExTotal)
+        : curExDone + 1;
       syncWorkoutToWatch({
         exerciseName: exName(curEx) ?? '',
-        setNumber: curExDone + 1,
-        totalSets: ts,
+        setNumber: cappedSetNumber,
+        totalSets: curExTotal,
         suggestedWeight: watchActiveSet?.weight ? Number(watchActiveSet.weight) : (curEx?.suggestedWeight ?? 0),
         suggestedReps: watchActiveSet?.reps ? Number(watchActiveSet.reps) : (curEx?.suggestedReps ?? 0),
         restSeconds: curEx?.rest_seconds ?? 90,
@@ -1031,17 +1473,23 @@ const ActiveSession = () => {
         restRemainingSeconds: watchRestRemaining,
       });
     } catch (e) { /* Live Activity update failed — non-critical */ }
-  }, [loggedSets, dataLoading, isResting, restTimer, currentExerciseIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loggedSets, dataLoading, isResting, restTimer, currentExerciseIndex, isPaused, skippedExerciseIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Session timer — pauses when isPaused, drift-free via Date.now() ─────────
+  // Date.now() can jump backward on NTP sync / time-zone change. Clamp the
+  // computed elapsed to a monotonic floor so the displayed timer never goes
+  // backward mid-session (would feel like a bug to the user, even briefly).
   useEffect(() => {
     if (isPaused) return;
-    // Anchor the start time so elapsed = (now - startTime) / 1000
     sessionStartTime.current = Date.now() - elapsedTime * 1000;
     lastTickAt.current = Date.now();
+    let lastElapsedFloor = elapsedTime;
     const interval = setInterval(() => {
+      const computed = Math.floor((Date.now() - sessionStartTime.current) / 1000);
+      const next = computed > lastElapsedFloor ? computed : lastElapsedFloor;
+      lastElapsedFloor = next;
       lastTickAt.current = Date.now();
-      setElapsedTime(Math.floor((Date.now() - sessionStartTime.current) / 1000));
+      setElapsedTime(next);
     }, 1000);
     return () => clearInterval(interval);
   }, [isPaused]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1085,6 +1533,10 @@ const ActiveSession = () => {
   // Always update saveRef so visibilitychange/beforeunload never uses stale data
   saveRef.current = {
     startedAt: startedAt.current,
+    // Refreshed on every render so forceSave (visibilitychange/beforeunload)
+    // preserves an accurate "last touched" timestamp — used by the conflict
+    // dialog gate to avoid prompting users mid-session (fix #11).
+    lastUpdated: new Date().toISOString(),
     elapsedTime,
     loggedSets,
     sessionPRs,
@@ -1095,6 +1547,7 @@ const ActiveSession = () => {
     isPaused,
     warmUpPhase,
     removedExerciseIds,
+    skippedExerciseIds,
     exercises, // Persist exercises so removed ones stay removed on reload
   };
   if (!dataLoading && user && profile && !isEmptyMode) {
@@ -1110,7 +1563,13 @@ const ActiveSession = () => {
       live_prs: livePRs.current,
       current_exercise_index: currentExerciseIndex,
       is_paused: isPaused,
+      // Persist the live exercises array so swaps / adds / removals survive
+      // app kill, WebView eviction, or device reboot — not just localStorage
+      // (which iOS may purge under memory pressure). Schema column added in
+      // migration 0368.
+      exercises,
       removed_exercise_ids: removedExerciseIds,
+      skipped_exercise_ids: skippedExerciseIds,
       updated_at: new Date().toISOString(),
     };
   }
@@ -1131,12 +1590,32 @@ const ActiveSession = () => {
     }
   };
 
+  // ── Reactive DB-draft persistence (debounced) ──────────────────────────────
+  // Catches every state change (typing, swap, skip, remove, navigate) so the
+  // session survives an iOS WebView eviction or a phone reboot — not just an
+  // explicit "Complete Set" tap. Debounced 700ms so we don't spam Supabase
+  // on every keystroke. handleToggleComplete still fires its own immediate
+  // saveDraftToDb for the on-completion case.
+  const dbSaveDebounceRef = useRef(null);
+  useEffect(() => {
+    if (dataLoading || !draftSaveRef.current) return;
+    if (dbSaveDebounceRef.current) clearTimeout(dbSaveDebounceRef.current);
+    dbSaveDebounceRef.current = setTimeout(() => {
+      try { saveDraftToDb(); } catch { /* non-critical */ }
+    }, 700);
+    return () => {
+      if (dbSaveDebounceRef.current) clearTimeout(dbSaveDebounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercises, loggedSets, currentExerciseIndex, removedExerciseIds, skippedExerciseIds, isPaused, dataLoading]);
+
   // ── Persist to localStorage ─────────────────────────────────────────────────
   useEffect(() => {
     if (dataLoading) return;
     try {
       localStorage.setItem(sessionKey, JSON.stringify({
         startedAt: startedAt.current,
+        lastUpdated: new Date().toISOString(),
         elapsedTime,
         loggedSets,
         sessionPRs,
@@ -1145,6 +1624,7 @@ const ActiveSession = () => {
         routineName,
         warmUpPhase,
         removedExerciseIds,
+        skippedExerciseIds,
         exercises, // Persist exercises so removed ones stay removed on reload
       }));
     } catch { }
@@ -1156,6 +1636,12 @@ const ActiveSession = () => {
       if (saveRef.current && saveRef.current.loggedSets && Object.keys(saveRef.current.loggedSets).length > 0) {
         try { localStorage.setItem(sessionKey, JSON.stringify(saveRef.current)); } catch { }
       }
+      // Also fire-and-forget the DB save. supabase-js will queue the request;
+      // it may complete on next foreground if the app was suspended mid-flight.
+      // Skip if no draft ref (component still loading).
+      if (draftSaveRef.current) {
+        try { saveDraftToDb(); } catch { /* non-critical */ }
+      }
     };
     const onForeground = () => {
       // App returned to foreground — catch up elapsed workout time
@@ -1166,11 +1652,21 @@ const ActiveSession = () => {
           lastTickAt.current = Date.now();
         }
       }
-      // Catch up rest timer — read from localStorage (source of truth, survives suspension)
+      // Catch up rest timer — read from localStorage (source of truth, survives suspension).
+      // If the user paused before backgrounding, the persisted state has isPaused === true
+      // and we must NOT auto-resume the countdown — wait for an explicit Resume tap.
       try {
         const raw = localStorage.getItem(`gym_rest_${id}`);
         if (raw) {
-          const { restStartedAt: rsa, duration } = JSON.parse(raw);
+          const parsed = JSON.parse(raw);
+          const { restStartedAt: rsa, duration, isPaused: persistedPaused } = parsed;
+          if (persistedPaused) {
+            // Frozen — keep the timer where it was, don't tick during background.
+            restStartedAt.current = rsa ?? null;
+            currentRestDurationRef.current = duration ?? currentRestDurationRef.current;
+            // Don't touch setIsResting / setRestTimer — leave whatever was there.
+            return;
+          }
           const elapsedRest = (Date.now() - rsa) / 1000;
           const remaining = Math.round(duration - elapsedRest);
           restStartedAt.current = rsa;
@@ -1187,6 +1683,8 @@ const ActiveSession = () => {
           }
         }
       } catch { }
+      // Re-flush any queued offline writes (failed saves from earlier sessions).
+      try { flushQueue(supabase); } catch { }
     };
     const onBackground = () => {
       forceSave();
@@ -1241,13 +1739,16 @@ const ActiveSession = () => {
       window.scrollTo(0, 0);
       return;
     }
-    // Tick every second — always recalculate from anchor timestamp (drift-proof)
+    // Tick every 100ms — visually smoother, still drift-proof since each tick
+    // recomputes the remaining time from the anchor timestamp instead of
+    // decrementing a counter. (RAF would require restructuring the cleanup
+    // contract, so a shortened interval is the minimal-risk path here.)
     const interval = setInterval(() => {
       if (!restStartedAt.current) return;
       const elapsed = Math.floor((Date.now() - restStartedAt.current) / 1000);
       const remaining = Math.max(0, currentRestDurationRef.current - elapsed);
       setRestTimer(remaining);
-    }, 500); // 500ms for snappier recovery after background
+    }, 100);
     return () => clearInterval(interval);
   }, [isResting, restTimer, isPaused, exercises, currentExerciseIndex, restStateKey]);
 
@@ -1257,18 +1758,53 @@ const ActiveSession = () => {
   const handleRemoveSet = (exerciseId, setIndex) => {
     setLoggedSets(prev => {
       const current = prev[exerciseId] || [];
-      if (current.length <= 1) return prev; // keep at least 1 set
-      const updated = current.filter((_, i) => i !== setIndex);
-      return { ...prev, [exerciseId]: updated };
+      // Don't allow skipping if it's the only non-skipped set left
+      const nonSkipped = current.filter(s => !s.skipped);
+      if (nonSkipped.length <= 1) return prev;
+      const updated = [...current];
+      updated[setIndex] = { ...updated[setIndex], skipped: true, completed: true };
+      // Persist immediately
+      const newSets = { ...prev, [exerciseId]: updated };
+      try {
+        localStorage.setItem(sessionKey, JSON.stringify({ ...saveRef.current, loggedSets: newSets }));
+      } catch { }
+      saveDraftToDb(newSets);
+      return newSets;
     });
   };
 
   const totalVolume = Object.entries(loggedSets).reduce((sum, [, sets]) =>
-    sum + sets.filter(s => s.completed).reduce((s2, set) =>
+    sum + sets.filter(s => s.completed && !s.skipped).reduce((s2, set) =>
       s2 + (parseFloat(set.weight) || 0) * (parseInt(set.reps, 10) || 0), 0)
   , 0);
 
-  const completedSets = Object.values(loggedSets).flat().filter(s => s.completed).length;
+  // Helper: is an exercise bodyweight? Local data uses `equipment === 'Bodyweight'`.
+  // TODO: if the data model later adds `is_bodyweight`, prefer that explicit flag.
+  const isBodyweightExercise = useCallback((ex) => {
+    if (!ex) return false;
+    const local = localExercises.find(e => e.id === ex.id);
+    const eq = (ex.equipment || local?.equipment || '').toString().toLowerCase();
+    return eq === 'bodyweight';
+  }, []);
+
+  // Display-only volume: bodyweight sets logged with weight 0 don't add anything
+  // to the visible volume number — they show as "BW × N reps" instead. This does
+  // NOT change the value sent to the DB (`totalVolume` is still the source of truth
+  // for `total_volume_lbs`).
+  const displayedVolume = useMemo(() => {
+    return Object.entries(loggedSets).reduce((sum, [exId, sets]) => {
+      const ex = exercises.find(e => e.id === exId);
+      const bw = isBodyweightExercise(ex);
+      return sum + sets.filter(s => s.completed && !s.skipped).reduce((s2, set) => {
+        const w = parseFloat(set.weight) || 0;
+        const r = parseInt(set.reps, 10) || 0;
+        if (bw && w === 0) return s2; // BW × N reps — exclude from displayed volume
+        return s2 + w * r;
+      }, 0);
+    }, 0);
+  }, [loggedSets, exercises, isBodyweightExercise]);
+
+  const completedSets = Object.values(loggedSets).flat().filter(s => s.completed && !s.skipped).length;
   const totalSets     = Object.values(loggedSets).flat().length;
 
   // ── Derive worked muscle regions from completed sets ────────────────────────
@@ -1277,7 +1813,7 @@ const ActiveSession = () => {
     const secondary = new Set();
     exercises.forEach(ex => {
       const sets = loggedSets[ex.id] || [];
-      if (!sets.some(s => s.completed)) return;
+      if (!sets.some(s => s.completed && !s.skipped)) return;
       const local = localExercises.find(e => e.id === ex.id);
       if (!local) return;
       (local.primaryRegions   || []).forEach(r => primary.add(r));
@@ -1297,6 +1833,12 @@ const ActiveSession = () => {
     setLoggedSets(prev => {
       const updated = { ...prev, [exerciseId]: [...prev[exerciseId]] };
       updated[exerciseId][setIndex] = { ...updated[exerciseId][setIndex], [field]: val };
+      // Synchronously persist typed values to localStorage so a kill/lock between
+      // keystroke and the next render doesn't lose the input. The debounced DB
+      // save useEffect picks this up shortly after.
+      try {
+        localStorage.setItem(sessionKey, JSON.stringify({ ...saveRef.current, loggedSets: updated }));
+      } catch { }
       return updated;
     });
   };
@@ -1346,15 +1888,18 @@ const ActiveSession = () => {
               }
             } else {
               // Last exercise in group — rest, then go back to first exercise in group for next round
-              setCurrentRestDuration(restSeconds);
-              setRestTimer(restSeconds);
+              const queuedExtend = pendingRestExtendRef.current || 0;
+              pendingRestExtendRef.current = 0;
+              const totalRest = restSeconds + queuedExtend;
+              setCurrentRestDuration(totalRest);
+              setRestTimer(totalRest);
               restNotificationScheduled.current = false;
               restStartedAt.current = Date.now();
-              currentRestDurationRef.current = restSeconds;
+              currentRestDurationRef.current = totalRest;
               try {
                 localStorage.setItem(restStateKey, JSON.stringify({
                   restStartedAt: Date.now(),
-                  duration: restSeconds,
+                  duration: totalRest,
                 }));
               } catch { }
               setIsResting(true);
@@ -1376,15 +1921,18 @@ const ActiveSession = () => {
             }
           } else {
             // Normal (non-grouped) exercise — trigger rest as usual
-            setCurrentRestDuration(restSeconds);
-            setRestTimer(restSeconds);
+            const queuedExtend = pendingRestExtendRef.current || 0;
+            pendingRestExtendRef.current = 0;
+            const totalRest = restSeconds + queuedExtend;
+            setCurrentRestDuration(totalRest);
+            setRestTimer(totalRest);
             restNotificationScheduled.current = false;
             restStartedAt.current = Date.now();
-            currentRestDurationRef.current = restSeconds;
+            currentRestDurationRef.current = totalRest;
             try {
               localStorage.setItem(restStateKey, JSON.stringify({
                 restStartedAt: Date.now(),
-                duration: restSeconds,
+                duration: totalRest,
               }));
             } catch { }
             setIsResting(true);
@@ -1403,7 +1951,7 @@ const ActiveSession = () => {
       // ── Intra-session progressive overload: update suggestion for next set ──
       if (completing) {
         const completedSetsThisSession = updated[exerciseId]
-          .filter(s => s.completed && s.weight && s.reps)
+          .filter(s => s.completed && !s.skipped && s.weight && s.reps)
           .map(s => ({ weight: parseFloat(s.weight), reps: parseInt(s.reps, 10) }));
 
         const curExForSuggestion = exercises.find(e => e.id === exerciseId);
@@ -1514,16 +2062,29 @@ const ActiveSession = () => {
     return local?.muscle || '';
   }, [swapTargetExercise]);
 
+  // Returns { sameMuscle: [...], otherMuscles: [...] } so the modal can
+  // surface the exact-muscle picks first and still let the user pick a
+  // different muscle group when needed (e.g. trade traps day for biceps).
   const filteredSwapExercises = useMemo(() => {
-    if (!showSwapModal || !swapTargetExercise) return [];
+    if (!showSwapModal || !swapTargetExercise) return { sameMuscle: [], otherMuscles: [] };
     const q = swapSearch.toLowerCase().trim();
     const currentIds = new Set(exercises.map(e => e.id));
-    return localExercises.filter(ex => {
-      if (currentIds.has(ex.id)) return false; // already in session
-      if (swapTargetMuscle && ex.muscle !== swapTargetMuscle) return false;
-      if (q && !ex.name.toLowerCase().includes(q)) return false;
-      return true;
-    }).slice(0, 50);
+    const sameMuscle = [];
+    const otherMuscles = [];
+    for (const ex of localExercises) {
+      if (currentIds.has(ex.id)) continue; // already in session
+      if (q && !ex.name.toLowerCase().includes(q)) continue;
+      if (swapTargetMuscle && ex.muscle === swapTargetMuscle) {
+        sameMuscle.push(ex);
+      } else {
+        otherMuscles.push(ex);
+      }
+      if (sameMuscle.length + otherMuscles.length >= 80) break;
+    }
+    return {
+      sameMuscle: sameMuscle.slice(0, 50),
+      otherMuscles: otherMuscles.slice(0, 30),
+    };
   }, [showSwapModal, swapSearch, swapTargetExercise, swapTargetMuscle, exercises]);
 
   const handleSwapExercise = (newLibEx) => {
@@ -1576,9 +2137,61 @@ const ActiveSession = () => {
     setShowSwapModal(false);
     setSwapSearch('');
     setSwapSelectedReason(null);
+    setSwapCustomName('');
+  };
+
+  // Inline custom-exercise create from inside the swap modal (Feat 1).
+  // Mirrors handleCreateExercise in ExerciseLibrary but skinnier — only asks
+  // for a name, inherits muscle / equipment / sets / reps / rest from the
+  // exercise being swapped out. After save, immediately swap into the session.
+  const handleCreateCustomAndSwap = async () => {
+    const name = swapCustomName.trim();
+    if (!name || !user?.id || !profile?.gym_id || !swapTargetExercise) return;
+    setSwapCustomSaving(true);
+    try {
+      const VALID_MUSCLES = new Set(['Chest','Back','Shoulders','Biceps','Triceps','Legs','Glutes','Core','Calves','Forearms','Traps','Full Body','Warm-Up']);
+      const muscle_group = VALID_MUSCLES.has(swapTargetMuscle) ? swapTargetMuscle : 'Full Body';
+      const sourceLib = localExercises.find(e => e.id === swapTargetExercise.id);
+      const equipment = sourceLib?.equipment || 'Bodyweight';
+      const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const { error } = await supabase.from('exercises').insert({
+        id,
+        gym_id: profile.gym_id,
+        created_by: user.id,
+        name,
+        muscle_group,
+        equipment,
+        category: 'Strength',
+        default_sets: swapTargetExercise.targetSets || 3,
+        default_reps: swapTargetExercise.targetReps || 10,
+        rest_seconds: swapTargetExercise.restSeconds || 90,
+        is_active: true,
+      });
+      if (error) {
+        // eslint-disable-next-line no-console
+        console.warn('handleCreateCustomAndSwap insert failed:', error);
+        return;
+      }
+      // Build a library-shaped object so handleSwapExercise can consume it.
+      const newLibEx = {
+        id,
+        name,
+        name_es: null,
+        muscle: muscle_group,
+        equipment,
+        videoUrl: null,
+        instructions: null,
+        instructions_es: null,
+      };
+      handleSwapExercise(newLibEx);
+    } finally {
+      setSwapCustomSaving(false);
+    }
   };
 
   const handleFinish = async () => {
+    // Double-submit guard — bail out if a save is already in flight
+    if (saving) return;
     setSaving(true);
     setSaveError('');
 
@@ -1594,13 +2207,13 @@ const ActiveSession = () => {
         duration_seconds: elapsedTime,
         total_volume_lbs: totalVolume,
         completed_sets: completedSets,
-        exercises: exercises.filter(ex => (loggedSets[ex.id] || []).some(s => s.completed)).map((exercise, pos) => ({
+        exercises: exercises.filter(ex => (loggedSets[ex.id] || []).some(s => s.completed && !s.skipped)).map((exercise, pos) => ({
           exercise_id: exercise.id,
           name: exercise.name,
           position: pos + 1,
           suggested_weight: exercise.suggestion?.suggestedWeight ?? null,
           suggested_reps: exercise.suggestion?.suggestedReps ?? null,
-          sets: (loggedSets[exercise.id] || []).filter(s => s.completed).map((set, i) => ({
+          sets: (loggedSets[exercise.id] || []).filter(s => s.completed && !s.skipped).map((set, i) => ({
             weight: parseFloat(set.weight) || 0,
             reps: parseInt(set.reps, 10) || 0,
             is_pr: set.isPR || false,
@@ -1617,8 +2230,22 @@ const ActiveSession = () => {
         exercise_swaps: exerciseSwaps.length > 0 ? exerciseSwaps : undefined,
       };
 
-      const { data: result, error: rpcError } = await supabase.rpc('complete_workout', { p_payload: payload });
+      // v2 wraps complete_workout and surfaces completed_sets + exercise_count
+      // alongside session_id/xp_earned/streak so SessionSummary doesn't need a
+      // client-side fallback formula.
+      const { data: result, error: rpcError } = await supabase.rpc('complete_workout_v2', { p_payload: payload });
       if (rpcError) throw rpcError;
+
+      // Bust the dashboard's cached state so the fresh data shows up
+      // immediately when the user navigates back. Without this, the stale
+      // todaysSessions array (cached via useCachedState in localStorage)
+      // hides the just-completed workout until the next manual refresh.
+      try {
+        const heroKey = `dashboard-hero-${user?.id || 'anon'}`;
+        clearCachedState(`${heroKey}-today`);
+        clearCachedState(`${heroKey}-week-cardio`);
+        clearQueryCache(`dash:${user?.id}`);
+      } catch {}
 
       posthog?.capture('workout_completed', {
         duration_seconds: elapsedTime,
@@ -1646,7 +2273,7 @@ const ActiveSession = () => {
 
       // Prefer server-computed counts (immune to stale closures) with client fallback
       const serverSets = result.completed_sets ?? completedSets;
-      const serverExercises = result.exercise_count ?? Object.values(loggedSets).filter(sets => sets.some(s => s.completed)).length;
+      const serverExercises = result.exercise_count ?? Object.values(loggedSets).filter(sets => sets.some(s => s.completed && !s.skipped)).length;
 
       navigate('/session-summary', {
         replace: true,
@@ -1660,7 +2287,7 @@ const ActiveSession = () => {
           sessionId: result.session_id,
           streak: result.streak,
           heartRate: watchHRSummary.current || (watchHeartRate ? { averageBPM: watchHeartRate.avgBPM, maxBPM: watchHeartRate.bpm, minBPM: 0 } : null),
-          workedMuscleGroups: [...new Set(exercises.filter(ex => (loggedSets[ex.id] || []).some(s => s.completed)).map(ex => ex.muscle).filter(Boolean))],
+          workedMuscleGroups: [...new Set(exercises.filter(ex => (loggedSets[ex.id] || []).some(s => s.completed && !s.skipped)).map(ex => ex.muscle).filter(Boolean))],
         },
       });
     } catch (err) {
@@ -1670,6 +2297,21 @@ const ActiveSession = () => {
       try { localStorage.setItem(sessionKey, JSON.stringify(saveRef.current)); } catch { }
       setSaveError(err.message || t('activeSession.saveErrorMessage'));
       setSaving(false);
+      // Surface a non-dismissable toast with a Retry CTA so the user can re-run save.
+      // TODO(i18n): add `workout.saveFailedRetry` and `workout.retry` keys to locales.
+      try {
+        showToast(
+          t('workout.saveFailedRetry', "Couldn't save your workout. Tap retry."),
+          'error',
+          {
+            durationMs: 600000, // 10 min — effectively non-dismissable until user acts
+            action: {
+              label: t('workout.retry', 'Retry'),
+              onClick: () => { handleFinishRef.current?.(); },
+            },
+          }
+        );
+      } catch { /* toast provider may be unavailable in tests */ }
     }
   };
   handleFinishRef.current = handleFinish;
@@ -1739,7 +2381,7 @@ const ActiveSession = () => {
 
           {/* Subtitle */}
           <p className="text-[15px] leading-relaxed max-w-[280px] text-center" style={{ color: 'var(--color-text-muted)' }}>
-            {t('activeSession.warmUpDesc2', { count: warmUpExercises.length, defaultValue: `${warmUpExercises.length} exercises to get your muscles ready` })}
+            {t('activeSession.warmUpDesc2', { count: warmUpExercises.length, defaultValue: '{{count}} exercises to get your muscles ready' })}
           </p>
 
           {/* Exercise list preview */}
@@ -1829,26 +2471,85 @@ const ActiveSession = () => {
 
   // ── Skip/remove exercise from current session ──────────────────────────────
   const handleSkipExercise = () => {
+    const fromIndex = currentExerciseIndex;
+    const skippedEx = exercises[fromIndex];
+    const wasLast = fromIndex >= exercises.length - 1;
     // Skip just advances to the next exercise without removing it
-    if (currentExerciseIndex < exercises.length - 1) {
-      setCurrentExerciseIndex(currentExerciseIndex + 1);
+    if (!wasLast) {
+      setCurrentExerciseIndex(fromIndex + 1);
     } else {
       setWorkoutComplete(true);
     }
+    // Mark exercise as skipped so the Live Activity totalSets excludes its
+    // remaining uncompleted sets (they're effectively "done" from the user's
+    // POV). Also tag the in-memory loggedSets so the post-workout summary can
+    // distinguish "skipped" from "never started" — without breaking PR
+    // detection, which already filters on `s.completed && !s.skipped`.
+    if (skippedEx?.id) {
+      setSkippedExerciseIds(prev => prev.includes(skippedEx.id) ? prev : [...prev, skippedEx.id]);
+      setLoggedSets(prev => {
+        const cur = prev[skippedEx.id];
+        if (!cur || cur.length === 0) return prev;
+        return {
+          ...prev,
+          [skippedEx.id]: cur.map(s => (
+            s.completed ? s : { ...s, skipped: true, completed: true }
+          )),
+        };
+      });
+    }
+    // If the user just skipped the LAST exercise, the iOS Live Activity would
+    // otherwise hang on "rest in progress" forever. Tear it down explicitly so
+    // the lock screen widget clears at the same time the user hits the
+    // workout-complete gate.
+    if (wasLast) {
+      try { endLiveActivity(); } catch { /* non-critical */ }
+      try { cancelWorkoutNotification(); } catch { /* non-critical */ }
+    }
+    // Clear any previous undo timer
+    if (skipUndo?.timerId) clearTimeout(skipUndo.timerId);
+    const timerId = setTimeout(() => setSkipUndo(null), 6000);
+    setSkipUndo({ fromIndex, timerId, skippedExerciseId: skippedEx?.id });
+  };
+  const handleUndoSkip = () => {
+    if (!skipUndo) return;
+    if (skipUndo.timerId) clearTimeout(skipUndo.timerId);
+    if (skipUndo.skippedExerciseId) {
+      setSkippedExerciseIds(prev => prev.filter(id => id !== skipUndo.skippedExerciseId));
+      // Restore any sets we marked as skipped → back to incomplete so the user
+      // can log them. We only undo sets we ourselves marked (skipped:true with
+      // no real weight/reps) — sets the user actually logged stay completed.
+      setLoggedSets(prev => {
+        const cur = prev[skipUndo.skippedExerciseId];
+        if (!cur || cur.length === 0) return prev;
+        return {
+          ...prev,
+          [skipUndo.skippedExerciseId]: cur.map(s => (
+            s.skipped
+              ? { ...s, skipped: false, completed: false }
+              : s
+          )),
+        };
+      });
+    }
+    setWorkoutComplete(false);
+    setCurrentExerciseIndex(skipUndo.fromIndex);
+    setSkipUndo(null);
   };
 
   const handleRemoveExercise = () => {
-    // Remove exercise from session (doesn't delete from routine)
+    handleRemoveExerciseAt(currentExerciseIndex);
+  };
+
+  // Generalized: remove the exercise at any index (used by the list manager).
+  const handleRemoveExerciseAt = (idx) => {
     if (exercises.length <= 1) {
       setWorkoutComplete(true);
       return;
     }
-    const idx = currentExerciseIndex;
     const removedEx = exercises[idx];
-    // Track removed exercise ID so it stays removed on reload
     if (removedEx) {
       setRemovedExerciseIds(prev => [...prev, removedEx.id]);
-      // Clean up loggedSets for the removed exercise so totalSets adjusts
       setLoggedSets(prev => {
         const updated = { ...prev };
         delete updated[removedEx.id];
@@ -1856,14 +2557,83 @@ const ActiveSession = () => {
       });
     }
     setExercises(prev => prev.filter((_, i) => i !== idx));
-    if (idx >= exercises.length - 1) {
-      setCurrentExerciseIndex(Math.max(0, idx - 1));
-    }
+    // Keep currentExerciseIndex pointing at a sensible exercise.
+    setCurrentExerciseIndex(prevIdx => {
+      if (idx < prevIdx) return prevIdx - 1;
+      if (idx === prevIdx) return Math.max(0, Math.min(prevIdx, exercises.length - 2));
+      return prevIdx;
+    });
+  };
+
+  // Reorder: move exercise from `fromIdx` to `toIdx` (used by list manager).
+  const handleReorderExercise = (fromIdx, toIdx) => {
+    if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return;
+    setExercises(prev => {
+      if (fromIdx >= prev.length || toIdx >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+    // Track where the active exercise ended up after the shuffle.
+    setCurrentExerciseIndex(prevIdx => {
+      if (prevIdx === fromIdx) return toIdx;
+      // moving past the active index from above
+      if (fromIdx < prevIdx && toIdx >= prevIdx) return prevIdx - 1;
+      // moving past the active index from below
+      if (fromIdx > prevIdx && toIdx <= prevIdx) return prevIdx + 1;
+      return prevIdx;
+    });
+  };
+
+  // Open the swap modal targeted at a specific row (list manager).
+  // Simplest path: navigate the active exercise to that index, then open swap
+  // — swap modal already keys off currentExerciseIndex.
+  const handleSwapAtIndex = (idx) => {
+    setCurrentExerciseIndex(idx);
+    setSwapSearch('');
+    setSwapSelectedReason(null);
+    setSwapCustomName('');
+    setShowListManager(false);
+    setShowSwapModal(true);
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-[100] flex flex-col font-sans animate-fade-in" style={{ background: 'var(--color-bg-primary)' }}>
+
+      {/* Coach cue banner — fires when trainer sends a live cue */}
+      {coachCue && (
+        <div
+          className="fixed top-0 left-0 right-0 z-[250] mx-auto max-w-md px-4 pt-3 pointer-events-none animate-fade-in"
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className="rounded-2xl px-4 py-3 shadow-lg pointer-events-auto flex items-start gap-3 border"
+            style={{
+              background: 'linear-gradient(135deg, rgba(46,224,224,0.18), rgba(46,224,224,0.08))',
+              borderColor: 'rgba(46,224,224,0.4)',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
+            <div className="text-[10px] font-extrabold uppercase tracking-[0.12em] mt-0.5" style={{ color: '#2EE0E0' }}>
+              {t('activeSession.cue.coachLabel', 'Coach')}
+            </div>
+            <div className="flex-1 text-[13px] leading-snug font-medium" style={{ color: '#fff' }}>
+              {coachCue.text}
+            </div>
+            <button
+              type="button"
+              onClick={() => setCoachCue(null)}
+              aria-label={t('activeSession.cue.dismiss', 'Dismiss')}
+              className="text-white/60 hover:text-white text-lg leading-none px-1"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Conflict dialog — another workout is already running */}
       {showConflict && conflictSession && (
@@ -1872,23 +2642,23 @@ const ActiveSession = () => {
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
               <Dumbbell size={22} className="text-amber-400" />
             </div>
-            <h3 id="conflict-dialog-title" className="text-[18px] font-bold text-center mb-2 truncate" style={{ color: 'var(--color-text-primary)' }}>Workout Already Running</h3>
+            <h3 id="conflict-dialog-title" className="text-[18px] font-bold text-center mb-2 truncate" style={{ color: 'var(--color-text-primary)' }}>{t('activeSession.conflictTitle', { defaultValue: 'Workout Already Running' })}</h3>
             <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-subtle)' }}>
-              You have <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{conflictSession.routineName}</span> in progress. What would you like to do?
+              {t('activeSession.conflictBodyPre', { defaultValue: 'You have' })} <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{conflictSession.routineName}</span> {t('activeSession.conflictBodyPost', { defaultValue: 'in progress. What would you like to do?' })}
             </p>
             <div className="space-y-2.5">
               <button
                 onClick={handleResumeConflict}
                 className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-[#60A5FA] hover:bg-[#4B91E8] transition-colors"
               >
-                Resume {conflictSession.routineName}
+                {t('activeSession.conflictResume', { name: conflictSession.routineName, defaultValue: `Resume ${conflictSession.routineName}` })}
               </button>
               <button
                 onClick={handleDiscardConflict}
                 className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors"
                 style={{ backgroundColor: '#EF4444', color: '#FFFFFF' }}
               >
-                Discard & Start New
+                {t('activeSession.conflictDiscardStartNew', { defaultValue: 'Discard & Start New' })}
               </button>
               <button
                 onClick={() => navigate(-1)}
@@ -1989,7 +2759,7 @@ const ActiveSession = () => {
       {showFinishModal && (
         <SessionSummary
           workout={routineName} sessionPRs={sessionPRs}
-          totalVolume={totalVolume} duration={formatTime(elapsedTime)}
+          totalVolume={displayedVolume} duration={formatTime(elapsedTime)}
           completedSets={completedSets} totalSets={totalSets}
           onConfirm={handleFinish} onCancel={() => setShowFinishModal(false)}
           saving={saving} error={saveError} onRetry={handleFinish}
@@ -2012,17 +2782,241 @@ const ActiveSession = () => {
         savedSession={savedSession}
         sessionKey={sessionKey}
         onNavigateBack={() => navigate(-1)}
-        onPause={() => setIsPaused(true)}
-        onResume={() => setIsPaused(false)}
+        onPause={() => {
+          setIsPaused(true);
+          // Open the action sheet so the user can choose Resume / Save for
+          // later / Delete session. The SessionHeader's own full-screen pause
+          // overlay still renders behind us — that's fine, our z-[300] modal
+          // covers it and dismissing it falls back to the existing flow.
+          setShowPauseSheet(true);
+          // Persist pause state alongside the rest timer so foreground/resume on
+          // iOS background doesn't auto-tick the countdown past the pause point.
+          try {
+            const raw = localStorage.getItem(restStateKey);
+            const prev = raw ? JSON.parse(raw) : {};
+            localStorage.setItem(restStateKey, JSON.stringify({
+              ...prev,
+              restStartedAt: prev.restStartedAt ?? restStartedAt.current,
+              duration: prev.duration ?? currentRestDurationRef.current,
+              isPaused: true,
+              pausedAt: Date.now(),
+            }));
+          } catch { }
+        }}
+        onResume={() => {
+          setIsPaused(false);
+          // Clear the pause flag so the rest countdown can resume ticking.
+          try {
+            const raw = localStorage.getItem(restStateKey);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.isPaused) {
+                const next = { ...parsed };
+                delete next.isPaused;
+                delete next.pausedAt;
+                // Re-anchor restStartedAt so the timer continues from where the
+                // user paused (do not credit the paused interval to "elapsed rest").
+                if (parsed.pausedAt && parsed.restStartedAt) {
+                  const pausedFor = Date.now() - parsed.pausedAt;
+                  next.restStartedAt = parsed.restStartedAt + pausedFor;
+                  restStartedAt.current = next.restStartedAt;
+                }
+                localStorage.setItem(restStateKey, JSON.stringify(next));
+              }
+            }
+          } catch { }
+        }}
         onEndWorkout={() => { setIsPaused(false); setShowFinishModal(true); }}
         onSetCurrentExerciseIndex={setCurrentExerciseIndex}
+        onOpenListManager={() => setShowListManager(true)}
         onDismissResumedBanner={() => setShowResumedBanner(false)}
         watchHeartRate={watchHeartRate}
         onDiscardSession={() => { posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: elapsedTime }); sessionEndedRef.current = true; localStorage.removeItem(sessionKey); supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {}); cancelWorkoutNotification(); endLiveActivity(); syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); navigate('/workouts'); }}
       />
 
+      {/* ── Pause action sheet — Resume / Save for later / Delete ────────── */}
+      {showPauseSheet && !showDeleteSessionConfirm && (
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center px-6"
+          style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)' }}
+          role="dialog"
+          aria-labelledby="pause-sheet-title"
+        >
+          <div className="rounded-[20px] w-full max-w-sm p-6 border" style={{ background: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }}>
+            <h3 id="pause-sheet-title" className="text-[18px] font-bold text-center mb-1" style={{ color: 'var(--color-text-primary)' }}>
+              {t('activeSession.pauseTitle', { defaultValue: 'Workout paused' })}
+            </h3>
+            <p className="text-[13px] text-center leading-relaxed mb-5" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('activeSession.pauseSubtitle', { defaultValue: 'What would you like to do?' })}
+            </p>
+            <div className="space-y-2.5">
+              <button
+                onClick={() => {
+                  setShowPauseSheet(false);
+                  setIsPaused(false);
+                  try {
+                    const raw = localStorage.getItem(restStateKey);
+                    if (raw) {
+                      const parsed = JSON.parse(raw);
+                      if (parsed?.isPaused) {
+                        const next = { ...parsed };
+                        delete next.isPaused;
+                        delete next.pausedAt;
+                        if (parsed.pausedAt && parsed.restStartedAt) {
+                          const pausedFor = Date.now() - parsed.pausedAt;
+                          next.restStartedAt = parsed.restStartedAt + pausedFor;
+                          restStartedAt.current = next.restStartedAt;
+                        }
+                        localStorage.setItem(restStateKey, JSON.stringify(next));
+                      }
+                    }
+                  } catch { /* non-critical */ }
+                }}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#001512' }}
+              >
+                {t('activeSession.resume', 'Resume')}
+              </button>
+
+              {/* Save for later — keep the draft, navigate home. */}
+              <button
+                onClick={() => {
+                  try {
+                    if (saveRef.current) {
+                      localStorage.setItem(sessionKey, JSON.stringify({
+                        ...saveRef.current,
+                        isPaused: true,
+                        lastUpdated: new Date().toISOString(),
+                      }));
+                    }
+                  } catch { /* non-critical */ }
+                  try { saveDraftToDb(); } catch { /* non-critical */ }
+                  try { cancelWorkoutNotification(); } catch { /* non-critical */ }
+                  try { endLiveActivity(); } catch { /* non-critical */ }
+                  sessionEndedRef.current = true;
+                  setShowPauseSheet(false);
+                  navigate('/workouts');
+                }}
+                className="w-full py-3.5 rounded-2xl font-semibold text-[14px] transition-colors text-left px-4"
+                style={{
+                  backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.06))',
+                  color: 'var(--color-text-primary)',
+                  border: '1px solid var(--color-border-subtle)',
+                }}
+              >
+                <span className="block">{t('activeSession.saveForLater', { defaultValue: 'Save for later' })}</span>
+                <span className="block text-[11px] font-normal mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('activeSession.saveForLaterDesc', { defaultValue: 'Stop tracking — your progress is saved.' })}
+                </span>
+              </button>
+
+              {/* Delete session — clear draft, navigate home (with confirm) */}
+              <button
+                onClick={() => setShowDeleteSessionConfirm(true)}
+                className="w-full py-3.5 rounded-2xl font-semibold text-[14px] transition-colors text-left px-4"
+                style={{
+                  backgroundColor: 'rgba(239,68,68,0.10)',
+                  color: '#EF4444',
+                  border: '1px solid rgba(239,68,68,0.25)',
+                }}
+              >
+                <span className="block">{t('activeSession.deleteSession', { defaultValue: 'Delete session' })}</span>
+                <span className="block text-[11px] font-normal mt-0.5" style={{ color: 'rgba(239,68,68,0.75)' }}>
+                  {t('activeSession.deleteSessionDesc', { defaultValue: 'Discard this workout and go back.' })}
+                </span>
+              </button>
+
+              <button
+                onClick={() => { setShowPauseSheet(false); setIsPaused(false); }}
+                className="w-full py-3 rounded-2xl font-medium text-[13px]"
+                style={{ color: 'var(--color-text-subtle)' }}
+              >
+                {t('activeSession.close', { defaultValue: 'Close' })}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete-session confirmation — second tap to prevent fat-finger loss */}
+      {showDeleteSessionConfirm && (
+        <div
+          className="fixed inset-0 z-[310] flex items-center justify-center px-6"
+          style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}
+          role="dialog"
+          aria-labelledby="delete-session-title"
+        >
+          <div className="rounded-[20px] w-full max-w-sm p-6 border" style={{ background: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }}>
+            <h3 id="delete-session-title" className="text-[16px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+              {t('activeSession.deleteSessionConfirm', { defaultValue: 'Delete this workout? Your logged sets will be lost.' })}
+            </h3>
+            <div className="space-y-2.5 mt-5">
+              <button
+                onClick={() => {
+                  posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: elapsedTime, source: 'pause_sheet' });
+                  sessionEndedRef.current = true;
+                  try { localStorage.removeItem(sessionKey); } catch { /* non-critical */ }
+                  try {
+                    if (user?.id) {
+                      supabase.from('session_drafts').delete()
+                        .eq('profile_id', user.id).eq('routine_id', id)
+                        .then(() => {}).catch(() => {});
+                    }
+                  } catch { /* non-critical */ }
+                  try { cancelWorkoutNotification(); } catch { /* non-critical */ }
+                  try { endLiveActivity(); } catch { /* non-critical */ }
+                  try { syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); } catch { /* non-critical */ }
+                  setShowDeleteSessionConfirm(false);
+                  setShowPauseSheet(false);
+                  navigate('/workouts');
+                }}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white"
+                style={{ backgroundColor: '#EF4444' }}
+              >
+                {t('activeSession.deleteSessionConfirmAction', { defaultValue: 'Yes, delete' })}
+              </button>
+              <button
+                onClick={() => setShowDeleteSessionConfirm(false)}
+                className="w-full py-3 rounded-2xl font-medium text-[13px]"
+                style={{ color: 'var(--color-text-subtle)' }}
+              >
+                {t('activeSession.goBack', 'Go Back')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Skip-undo floating banner */}
+      {skipUndo && !isResting && !workoutComplete && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 z-[60] rounded-full flex items-center gap-2 px-3 py-2 animate-fade-in"
+          style={{
+            bottom: 'calc(90px + env(safe-area-inset-bottom, 0px))',
+            background: 'var(--color-bg-card)',
+            border: '1px solid var(--color-border-subtle)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            fontFamily: '"Familjen Grotesk", "Archivo", system-ui',
+          }}
+        >
+          <span className="text-[12px] font-semibold pl-1" style={{ color: 'var(--color-text-muted)' }}>
+            {t('activeSession.exerciseSkipped', 'Exercise skipped')}
+          </span>
+          <button
+            onClick={handleUndoSkip}
+            className="px-3 py-1 rounded-full text-[12px] font-bold active:scale-95 transition-transform"
+            style={{
+              background: 'var(--color-accent)',
+              color: '#001512',
+            }}
+          >
+            {t('activeSession.undo', 'Undo')}
+          </button>
+        </div>
+      )}
+
       {/* Rest Timer Overlay */}
-      {isResting && !isPaused && (
+      {isResting && !isPaused && restTimer > 0 && (
         <RestTimer
           restTimer={restTimer}
           currentRestDuration={currentRestDuration}
@@ -2049,6 +3043,20 @@ const ActiveSession = () => {
               try {
                 localStorage.setItem(restStateKey, JSON.stringify({ restStartedAt: restStartedAt.current, duration: newDuration }));
               } catch { }
+              // The OS-level "Rest Complete!" notification was scheduled when
+              // rest first started, with the ORIGINAL duration. Cancel and
+              // reschedule with the new remaining time so it doesn't fire
+              // early (the bug where users tapped +15s and still got the
+              // alert at the original mark).
+              try {
+                cancelRestNotification();
+                if (remaining > 0) {
+                  scheduleRestDoneNotification(
+                    exName(exercises[currentExerciseIndex]) ?? 'exercise',
+                    remaining
+                  );
+                }
+              } catch { /* non-critical */ }
             }
           }}
           upcomingExercise={(() => {
@@ -2082,7 +3090,7 @@ const ActiveSession = () => {
                 {/* Video placeholder / demo area */}
                 {localWu?.videoUrl ? (
                   <div className="relative w-full aspect-video bg-black/40 flex items-center justify-center">
-                    <video src={localWu.videoUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay aria-label={`${wuName} exercise demonstration`} />
+                    <video src={localWu.videoUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay aria-label={t('activeSession.exerciseDemoAria', { name: wuName, defaultValue: `${wuName} exercise demonstration` })} />
                   </div>
                 ) : (
                   <div className="w-full h-24" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.1), rgba(234,88,12,0.03))' }} />
@@ -2094,7 +3102,7 @@ const ActiveSession = () => {
                     {wuName}
                   </h3>
                   <p className="text-[12px] mt-1 leading-relaxed" style={{ color: 'var(--color-text-subtle)' }}>
-                    {localWu?.instructions || `${wu.durationSec} seconds`}
+                    {localWu?.instructions || `${wu.durationSec} ${t('activeSession.secondsLong', { defaultValue: 'seconds' })}`}
                   </p>
                 </div>
 
@@ -2170,7 +3178,7 @@ const ActiveSession = () => {
                           {stretchName}
                         </h3>
                         <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
-                          {stretch.durationSec}s · {t('activeSession.cooldownPhase', 'Cool Down')} {cooldownIndex + 1}/{stretches.length}
+                          {stretch.durationSec}{t('activeSession.secondsShort', { defaultValue: 's' })} · {t('activeSession.cooldownStretchOf', { current: cooldownIndex + 1, total: stretches.length, defaultValue: 'Stretch {{current}} of {{total}}' })}
                         </p>
                       </div>
 
@@ -2187,14 +3195,10 @@ const ActiveSession = () => {
                       </div>
                     </div>
 
-                    {/* Skip */}
-                    <button
-                      onClick={() => setCooldownPhase('done')}
-                      className="w-full mt-4 py-2 text-[12px] font-medium"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    >
-                      {t('activeSession.skipWarmUp', 'Skip')}
-                    </button>
+                    {/* Skip controls live in the sticky footer below — having
+                        a second skip button inline confused users (fix #11).
+                        The bottom bar exposes both "Next stretch" and
+                        "Skip all cooldown" with distinct labels. */}
                   </div>
                 </div>
               );
@@ -2282,6 +3286,23 @@ const ActiveSession = () => {
                   i18n={i18n}
                 />
               ) : (
+                <>
+                {/* Bodyweight badge — surfaced near the weight input area inside the card */}
+                {isBodyweightExercise(currentExercise) && (
+                  <div className="px-4 pt-2">
+                    <span
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold"
+                      style={{
+                        backgroundColor: 'rgba(96,165,250,0.12)',
+                        color: '#60A5FA',
+                        border: '1px solid rgba(96,165,250,0.25)',
+                      }}
+                      aria-label={t('activeSession.bodyweightLabel', 'Bodyweight')}
+                    >
+                      {t('activeSession.bodyweightLabel', 'Bodyweight')}
+                    </span>
+                  </div>
+                )}
                 <ExerciseCard
                   exercise={currentExercise}
                   currentSets={currentSets}
@@ -2294,13 +3315,17 @@ const ActiveSession = () => {
                   onFillSuggestion={handleFillSuggestion}
                   onSwap={currentSets.some(s => s.completed) ? undefined : () => { setSwapSearch(''); setSwapSelectedReason(null); setShowSwapModal(true); }}
                   onSkip={handleSkipExercise}
+                  onAddExercise={() => setShowAddExercise(true)}
                   onRemoveExercise={exercises.length > 1 ? handleRemoveExercise : undefined}
                   isPRCheck={isPR}
                   livePRs={livePRs.current}
                   nextInGroup={nextInGroup}
                   groupType={groupType}
                   adjustedRestSeconds={adjustedRestSeconds}
+                  unit={weightUnit}
+                  onToggleUnit={toggleWeightUnit}
                 />
+                </>
               )}
               {/* Connector line + next-in-group prompt */}
               {nextInGroup && groupType && !allSetsComplete && (
@@ -2339,7 +3364,7 @@ const ActiveSession = () => {
                 onClick={() => { setShowAddExercise(false); setExerciseSearch(''); setSelectedMuscle(''); setShowFilters(false); setShowFavoritesOnly(false); setPreviewExercise(null); }}
                 className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors"
                 style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' }}
-                aria-label="Close"
+                aria-label={t('activeSession.close', { defaultValue: 'Close' })}
               >
                 <X size={20} />
               </button>
@@ -2363,7 +3388,7 @@ const ActiveSession = () => {
                 <button
                   onClick={() => setShowFavoritesOnly(v => !v)}
                   className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 active:scale-90 transition-transform"
-                  aria-label="Toggle favorites filter"
+                  aria-label={t('activeSession.toggleFavoritesFilter', { defaultValue: 'Toggle favorites filter' })}
                   aria-pressed={showFavoritesOnly}
                 >
                   <Star size={16} fill={showFavoritesOnly ? 'var(--color-accent)' : 'none'} style={{ color: showFavoritesOnly ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
@@ -2372,7 +3397,7 @@ const ActiveSession = () => {
                 <button
                   onClick={() => setShowFilters(v => !v)}
                   className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 active:scale-90 transition-transform"
-                  aria-label="Open exercise filters"
+                  aria-label={t('activeSession.openFilters', { defaultValue: 'Open exercise filters' })}
                   aria-expanded={showFilters}
                 >
                   <SlidersHorizontal size={16} style={{ color: (showFilters || selectedMuscle) ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
@@ -2384,13 +3409,13 @@ const ActiveSession = () => {
             {(selectedMuscle || selectedEquipment) && (
               <div className="px-4 pb-2 flex gap-2">
                 {selectedMuscle && (
-                  <button onClick={() => setSelectedMuscle('')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/20 active:scale-95" aria-label={`Remove ${t(`muscleGroups.${selectedMuscle}`, selectedMuscle)} filter`}>
+                  <button onClick={() => setSelectedMuscle('')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/20 active:scale-95" aria-label={t('activeSession.removeFilter', { name: t(`muscleGroups.${selectedMuscle}`, selectedMuscle), defaultValue: `Remove ${t(`muscleGroups.${selectedMuscle}`, selectedMuscle)} filter` })}>
                     {t(`muscleGroups.${selectedMuscle}`, selectedMuscle)}
                     <X size={12} />
                   </button>
                 )}
                 {selectedEquipment && (
-                  <button onClick={() => setSelectedEquipment('')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#60A5FA]/15 text-[#60A5FA] border border-[#60A5FA]/20 active:scale-95" aria-label={`Remove ${selectedEquipment} filter`}>
+                  <button onClick={() => setSelectedEquipment('')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#60A5FA]/15 text-[#60A5FA] border border-[#60A5FA]/20 active:scale-95" aria-label={t('activeSession.removeFilter', { name: selectedEquipment, defaultValue: `Remove ${selectedEquipment} filter` })}>
                     {selectedEquipment}
                     <X size={12} />
                   </button>
@@ -2428,7 +3453,7 @@ const ActiveSession = () => {
                         onClick={() => handleAddExerciseToSession(ex)}
                         className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 active:scale-90 transition-transform"
                         style={{ backgroundColor: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.2)' }}
-                        aria-label={`Add ${exName(ex) || ex.name}`}
+                        aria-label={t('activeSession.addExerciseAria', { name: exName(ex) || ex.name, defaultValue: `Add ${exName(ex) || ex.name}` })}
                       >
                         <Plus size={18} style={{ color: 'var(--color-accent)' }} />
                       </button>
@@ -2467,22 +3492,21 @@ const ActiveSession = () => {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[260] flex items-end justify-center"
+                  className="fixed inset-0 z-[260] flex items-center justify-center px-4"
                   role="dialog"
-                  aria-label="Filter exercises"
+                  aria-label={t('activeSession.filterExercises', { defaultValue: 'Filter exercises' })}
                   onClick={() => setShowFilters(false)}
                 >
                   <div className="absolute inset-0 bg-black/60" aria-hidden="true" />
                   <motion.div
-                    initial={{ y: 300 }}
-                    animate={{ y: 0 }}
-                    exit={{ y: 300 }}
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
                     transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                    className="relative w-full max-w-lg rounded-t-[24px] pb-8 pt-5 px-5"
-                    style={{ backgroundColor: 'var(--color-bg-card)' }}
+                    className="relative w-full max-w-lg rounded-[24px] pb-6 pt-5 px-5"
+                    style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}
                     onClick={e => e.stopPropagation()}
                   >
-                    <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ backgroundColor: 'var(--color-border-default)' }} />
 
                     {/* Muscle filter */}
                     <p className="text-[14px] font-bold mb-3" style={{ color: 'var(--color-text-primary)' }}>{t('activeSession.filterByMuscle', 'Muscle Group')}</p>
@@ -2523,7 +3547,7 @@ const ActiveSession = () => {
                           className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${selectedEquipment === eq ? 'bg-[#60A5FA] text-black' : ''}`}
                           style={selectedEquipment !== eq ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : {}}
                         >
-                          {eq}
+                          {t(`exerciseLibrary.equipmentNames.${eq}`, eq)}
                         </button>
                       ))}
                     </div>
@@ -2539,6 +3563,142 @@ const ActiveSession = () => {
                 </motion.div>
               )}
             </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── In-session Exercise List Manager (Feat 3) ─────────────
+          Reorder (up/down), swap (opens swap modal targeted at the row),
+          delete, and add at end. Opens from the list icon next to the
+          segmented progress bar.                                       */}
+      <AnimatePresence>
+        {showListManager && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[260] flex flex-col"
+            style={{ backgroundColor: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}
+            role="dialog"
+            aria-label={t('activeSession.exerciseListTitle', 'Exercise list')}
+          >
+            <div className="flex items-center justify-between px-4 pt-4 pb-3">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                  {t('activeSession.exerciseListTitle', 'Exercise list')}
+                </h3>
+                <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('activeSession.exerciseListSubtitle', { defaultValue: '{{count}} exercises · reorder, swap, or remove', count: exercises.length })}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowListManager(false)}
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-white/[0.06] hover:opacity-80 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ml-3 shrink-0"
+                style={{ color: 'var(--color-text-muted)' }}
+                aria-label={t('activeSession.close', { defaultValue: 'Close' })}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+              {exercises.map((ex, idx) => {
+                const isActive = idx === currentExerciseIndex;
+                const setCount = (loggedSets[ex.id] || []).length;
+                const completedCount = (loggedSets[ex.id] || []).filter(s => s.completed && !s.skipped).length;
+                return (
+                  <div
+                    key={ex.id}
+                    className="rounded-2xl flex items-center gap-2 px-3 py-3"
+                    style={{
+                      background: 'var(--color-bg-card)',
+                      border: isActive ? '1.5px solid color-mix(in srgb, var(--color-accent) 60%, transparent)' : '1px solid var(--color-border-subtle)',
+                    }}
+                  >
+                    {/* Position badge */}
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[12px] font-bold tabular-nums"
+                      style={{
+                        background: isActive ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-text-primary) 8%, transparent)',
+                        color: isActive ? '#000' : 'var(--color-text-muted)',
+                      }}
+                    >
+                      {idx + 1}
+                    </div>
+
+                    <button
+                      onClick={() => { setCurrentExerciseIndex(idx); setShowListManager(false); }}
+                      className="flex-1 min-w-0 text-left"
+                    >
+                      <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {exName(ex)}
+                      </p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                        {ex.targetSets} × {ex.targetReps}
+                        {setCount > 0 && ` · ${completedCount}/${setCount}`}
+                      </p>
+                    </button>
+
+                    {/* Up / down */}
+                    <button
+                      onClick={() => handleReorderExercise(idx, idx - 1)}
+                      disabled={idx === 0}
+                      className="w-9 h-9 flex items-center justify-center rounded-lg disabled:opacity-25 active:scale-90 transition-transform focus:outline-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                      aria-label="Move up"
+                    >
+                      <ChevronLeft size={18} className="rotate-90" />
+                    </button>
+                    <button
+                      onClick={() => handleReorderExercise(idx, idx + 1)}
+                      disabled={idx === exercises.length - 1}
+                      className="w-9 h-9 flex items-center justify-center rounded-lg disabled:opacity-25 active:scale-90 transition-transform focus:outline-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                      aria-label="Move down"
+                    >
+                      <ChevronLeft size={18} className="-rotate-90" />
+                    </button>
+
+                    {/* Swap */}
+                    <button
+                      onClick={() => handleSwapAtIndex(idx)}
+                      className="w-9 h-9 flex items-center justify-center rounded-lg active:scale-90 transition-transform focus:outline-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                      aria-label={t('activeSession.swap', 'Swap')}
+                    >
+                      <ArrowLeftRight size={16} />
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      onClick={() => handleRemoveExerciseAt(idx)}
+                      disabled={exercises.length <= 1}
+                      className="w-9 h-9 flex items-center justify-center rounded-lg active:scale-90 transition-transform disabled:opacity-25 focus:outline-none hover:text-red-400"
+                      style={{ color: 'var(--color-text-muted)' }}
+                      aria-label={t('activeSession.removeExercise', 'Remove')}
+                    >
+                      <Minus size={18} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Add exercise — reuses the existing add-exercise picker */}
+            <div className="flex-shrink-0 px-4 pb-6 pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+              <button
+                onClick={() => { setShowListManager(false); setShowAddExercise(true); }}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-transform focus:outline-none"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                  border: '1.5px solid color-mix(in srgb, var(--color-accent) 50%, transparent)',
+                  color: 'var(--color-accent)',
+                }}
+              >
+                <Plus size={18} strokeWidth={2.5} />
+                {t('activeSession.addExercise', 'Add exercise')}
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -2568,7 +3728,7 @@ const ActiveSession = () => {
                 onClick={() => { setShowSwapModal(false); setSwapSearch(''); setSwapSelectedReason(null); }}
                 className="w-10 h-10 flex items-center justify-center rounded-full bg-white/[0.06] hover:opacity-80 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ml-3 shrink-0"
                 style={{ color: 'var(--color-text-muted)' }}
-                aria-label="Close"
+                aria-label={t('activeSession.close', { defaultValue: 'Close' })}
               >
                 <X size={20} />
               </button>
@@ -2613,9 +3773,44 @@ const ActiveSession = () => {
               </div>
             </div>
 
-            {/* Results */}
+            {/* Inline custom-exercise creator — saves to gym's exercises table
+                under the swap target's muscle, then immediately swaps in. */}
+            <div className="px-4 pb-3">
+              <div className="flex items-stretch gap-2">
+                <input
+                  type="text"
+                  value={swapCustomName}
+                  onChange={e => setSwapCustomName(e.target.value)}
+                  placeholder={t('activeSession.swapCustomPlaceholder', { defaultValue: 'Custom exercise (e.g. Sitting Trap Raise)' })}
+                  aria-label={t('activeSession.swapCustomPlaceholder', { defaultValue: 'Custom exercise name' })}
+                  maxLength={60}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-dashed border-white/[0.12] text-[13px] focus:border-[#D4AF37]/50 focus:outline-none"
+                  style={{ background: 'transparent', color: 'var(--color-text-primary)' }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && swapCustomName.trim() && !swapCustomSaving) handleCreateCustomAndSwap(); }}
+                />
+                <button
+                  onClick={handleCreateCustomAndSwap}
+                  disabled={!swapCustomName.trim() || swapCustomSaving}
+                  className="px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center gap-1 disabled:opacity-40 active:scale-[0.97] transition-transform"
+                  style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }}
+                >
+                  <Plus size={14} strokeWidth={2.5} />
+                  {swapCustomSaving ? t('activeSession.swapCustomSaving', { defaultValue: 'Saving…' }) : t('activeSession.swapCustomCreate', { defaultValue: 'Create' })}
+                </button>
+              </div>
+              <p className="text-[10px] mt-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('activeSession.swapCustomHint', { defaultValue: "We'll add it under {{muscle}} so it's available next time.", muscle: t(`muscleGroups.${swapTargetMuscle}`, swapTargetMuscle) || t('activeSession.swapCustomMuscleFallback', 'this muscle') })}
+              </p>
+            </div>
+
+            {/* Results — same-muscle picks first, then "Other muscles" section */}
             <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-1.5">
-              {filteredSwapExercises.map(ex => (
+              {filteredSwapExercises.sameMuscle.length > 0 && swapTargetMuscle && (
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] pt-1 pb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('activeSession.swapSameMuscle', { defaultValue: '{{muscle}} alternatives', muscle: t(`muscleGroups.${swapTargetMuscle}`, swapTargetMuscle) })}
+                </div>
+              )}
+              {filteredSwapExercises.sameMuscle.map(ex => (
                 <button
                   key={ex.id}
                   onClick={() => handleSwapExercise(ex)}
@@ -2626,13 +3821,37 @@ const ActiveSession = () => {
                     <ArrowLeftRight size={14} className="text-[#D4AF37]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{ex.name}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{ex.muscle} · {ex.equipment}</p>
+                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(ex)}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t(`muscleGroups.${ex.muscle}`, ex.muscle)} · {t(`exerciseLibrary.equipmentNames.${ex.equipment}`, ex.equipment)}</p>
                   </div>
                   <span className="text-[12px] font-semibold text-[#D4AF37] shrink-0">{t('activeSession.swapSelect')}</span>
                 </button>
               ))}
-              {filteredSwapExercises.length === 0 && (
+
+              {filteredSwapExercises.otherMuscles.length > 0 && (
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] pt-4 pb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('activeSession.swapOtherMuscles', 'Other muscles')}
+                </div>
+              )}
+              {filteredSwapExercises.otherMuscles.map(ex => (
+                <button
+                  key={ex.id}
+                  onClick={() => handleSwapExercise(ex)}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-white/[0.06] hover:border-[#D4AF37]/30 text-left transition-colors active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                  style={{ background: 'var(--color-bg-card)' }}
+                >
+                  <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
+                    <ArrowLeftRight size={14} style={{ color: 'var(--color-text-muted)' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(ex)}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t(`muscleGroups.${ex.muscle}`, ex.muscle)} · {t(`exerciseLibrary.equipmentNames.${ex.equipment}`, ex.equipment)}</p>
+                  </div>
+                  <span className="text-[12px] font-semibold shrink-0" style={{ color: 'var(--color-text-muted)' }}>{t('activeSession.swapSelect')}</span>
+                </button>
+              ))}
+
+              {filteredSwapExercises.sameMuscle.length === 0 && filteredSwapExercises.otherMuscles.length === 0 && (
                 <p className="text-center text-[13px] pt-8" style={{ color: 'var(--color-text-subtle)' }}>{t('activeSession.swapNoResults')}</p>
               )}
             </div>
@@ -2679,8 +3898,12 @@ const ActiveSession = () => {
             <div className="flex-1">
               {allSetsComplete ? (
                 <button
-                  onClick={handleNext}
-                  className="w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                  onClick={hasNextExercise ? handleNext : () => setShowFinishModal(true)}
+                  className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:outline-none ${
+                    hasNextExercise
+                      ? 'bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
+                      : 'bg-[#10B981] text-white shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
+                  }`}
                 >
                   {hasNextExercise ? `${t('activeSession.nextExerciseButton')} →` : `${t('activeSession.finishWorkoutButton')} →`}
                 </button>
@@ -2701,7 +3924,9 @@ const ActiveSession = () => {
             </div>
           </div>
         ) : workoutComplete && cooldownPhase === 'active' ? (
-          /* Cooldown active — Next/Skip buttons */
+          /* Cooldown active — distinct primary "Next stretch" and secondary
+              "Skip all cooldown" controls. Two near-identical "Skip" buttons
+              were confusing users (fix #11). */
           (() => {
             const muscleGroups = [...new Set(exercises.map(e => e.muscle).filter(Boolean))];
             const stretches = selectCoolDownStretches(muscleGroups);
@@ -2712,17 +3937,20 @@ const ActiveSession = () => {
                   onClick={() => {
                     if (isLast) { setCooldownPhase('done'); } else { setCooldownIndex(i => i + 1); }
                   }}
-                  className="w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:outline-none"
+                  className="w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:outline-none flex items-center justify-center gap-2"
                   style={isLast ? { backgroundColor: '#10B981', color: '#fff' } : { backgroundColor: 'var(--color-accent)', color: '#000' }}
                 >
-                  {isLast ? t('activeSession.finishCooldown', 'Finish Cool Down') : t('activeSession.nextWarmUp', 'Next')}
+                  <SkipForward size={16} strokeWidth={2.4} />
+                  {isLast
+                    ? t('activeSession.finishCooldown', 'Finish Cool Down')
+                    : t('cooldown.nextStretch', { defaultValue: 'Next stretch' })}
                 </button>
                 <button
                   onClick={() => setCooldownPhase('done')}
-                  className="w-full text-[12px] font-medium py-2"
-                  style={{ color: 'var(--color-text-muted)' }}
+                  className="w-full text-[12px] font-semibold py-2.5 rounded-xl transition-colors active:scale-[0.97]"
+                  style={{ color: '#EF4444', border: '1px solid color-mix(in srgb, #EF4444 30%, transparent)' }}
                 >
-                  {t('activeSession.skipWarmUp', 'Skip')}
+                  {t('cooldown.skipCooldown', { defaultValue: 'Skip cooldown' })}
                 </button>
               </div>
             );
@@ -2758,8 +3986,12 @@ const ActiveSession = () => {
             <div className="flex-1">
               {allSetsComplete ? (
                 <button
-                  onClick={handleNext}
-                  className="w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                  onClick={hasNextExercise ? handleNext : () => setShowFinishModal(true)}
+                  className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:outline-none ${
+                    hasNextExercise
+                      ? 'bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
+                      : 'bg-[#10B981] text-white shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
+                  }`}
                 >
                   {hasNextExercise ? `${t('activeSession.nextExerciseButton')} →` : `${t('activeSession.finishWorkoutButton')} →`}
                 </button>

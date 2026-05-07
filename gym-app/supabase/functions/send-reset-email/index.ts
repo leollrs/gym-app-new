@@ -24,15 +24,22 @@ function jsonResp(body: Record<string, unknown>, status = 200) {
   });
 }
 
-/** Generate a cryptographically secure 6-digit code. */
+/** Generate a cryptographically secure 8-digit code. */
 function generateSecureCode(): string {
   const arr = new Uint32Array(1);
   crypto.getRandomValues(arr);
-  const code = 100000 + (arr[0] % 900000);
+  const code = 10000000 + (arr[0] % 90000000);
   return String(code);
 }
 
+// Strict email regex (RFC 5322 simplified)
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 Deno.serve(async (req) => {
+  const t0 = Date.now();
+  const padTiming = () =>
+    new Promise((r) => setTimeout(r, Math.max(200 - (Date.now() - t0), 0)));
+
   if (!corsHeaders) return new Response('Server misconfiguration: ALLOWED_ORIGIN not set', { status: 500 });
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
@@ -57,6 +64,11 @@ Deno.serve(async (req) => {
       return jsonResp({ error: 'Email is required' }, 400);
     }
 
+    // Strict email format validation
+    if (!EMAIL_REGEX.test(email) || email.length > 254) {
+      return jsonResp({ error: 'Invalid email format' }, 400);
+    }
+
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // --- Rate limiting: max 3 reset emails per email address per hour ---
@@ -65,7 +77,7 @@ Deno.serve(async (req) => {
       .from('password_reset_requests')
       .select('*', { count: 'exact', head: true })
       .eq('email', email)
-      .gte('created_at', oneHourAgo);
+      .gte('requested_at', oneHourAgo);
 
     if (countErr) {
       console.error('Rate limit check error:', countErr);
@@ -89,10 +101,11 @@ Deno.serve(async (req) => {
     // If no account found, the RPC returns success without request_id/token.
     // We still return success to avoid revealing whether the email exists.
     if (!data?.request_id || !data?.token) {
+      await padTiming();
       return jsonResp({ success: true, message: 'If an account exists, a code has been sent.' });
     }
 
-    // Generate a cryptographically secure 6-digit numeric code
+    // Generate a cryptographically secure 8-digit numeric code
     const code = generateSecureCode();
 
     // Store the email_code on the request row
@@ -124,7 +137,7 @@ Deno.serve(async (req) => {
             <div style="background: #f5f5f5; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
               <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #1a1a1a;">${code}</span>
             </div>
-            <p style="color: #999; font-size: 13px;">This code expires in 15 minutes. If you didn't request this, ignore this email.</p>
+            <p style="color: #999; font-size: 13px;">This code expires in 10 minutes. If you didn't request this, ignore this email.</p>
           </div>
         `,
       }),
@@ -136,6 +149,7 @@ Deno.serve(async (req) => {
       return jsonResp({ error: 'Failed to send email' }, 500);
     }
 
+    await padTiming();
     return jsonResp({ success: true, message: 'If an account exists, a code has been sent.' });
   } catch (err) {
     console.error('send-reset-email error:', err);

@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft, Plus, Trash2, Dumbbell,
-  ChevronRight, RotateCcw, Link2, Unlink
+  ChevronRight, RotateCcw, Link2, Unlink, ArrowLeftRight
 } from 'lucide-react';
 import ExerciseLibrary from './ExerciseLibrary';
 import { getExerciseById } from '../data/exercises';
@@ -23,7 +23,7 @@ const nanoid = (len = 8) => {
 
 const REST_OPTIONS = [30, 60, 90, 120, 180, 240];
 
-const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveUp, onMoveDown, isSelected, onToggleSelect, t }) => {
+const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveUp, onMoveDown, onSwap, isSelected, onToggleSelect, t }) => {
   if (!exercise) return null;
 
   return (
@@ -34,7 +34,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
         <button
           type="button"
           onClick={() => onToggleSelect(index)}
-          aria-label={isSelected ? 'Deselect exercise' : 'Select exercise'}
+          aria-label={isSelected ? t('workoutBuilder.ariaDeselect', 'Deselect exercise') : t('workoutBuilder.ariaSelect', 'Select exercise')}
           className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
             isSelected
               ? 'bg-[#D4AF37] border-[#D4AF37] text-black'
@@ -47,7 +47,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-[15px] truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(exercise)}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <p className="text-[12px] truncate" style={{ color: 'var(--color-text-subtle)' }}>{exercise.muscle} · {exercise.equipment}</p>
+            <p className="text-[12px] truncate" style={{ color: 'var(--color-text-subtle)' }}>{t(`muscleGroups.${exercise.muscle}`, exercise.muscle)} · {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}</p>
             {item.groupType && (
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                 item.groupType === 'superset' ? 'bg-purple-500/15 text-purple-400' : 'bg-blue-500/15 text-blue-400'
@@ -61,7 +61,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
           <button
             onClick={() => onMoveUp(index)}
             disabled={index === 0}
-            aria-label="Move exercise up"
+            aria-label={t('workoutBuilder.ariaMoveUp', 'Move exercise up')}
             className="w-11 h-11 flex items-center justify-center disabled:opacity-20 transition-colors active:scale-90 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
             style={{ color: 'var(--color-text-subtle)' }}
           >
@@ -70,15 +70,23 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
           <button
             onClick={() => onMoveDown(index)}
             disabled={index === total - 1}
-            aria-label="Move exercise down"
+            aria-label={t('workoutBuilder.ariaMoveDown', 'Move exercise down')}
             className="w-11 h-11 flex items-center justify-center disabled:opacity-20 transition-colors active:scale-90 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
             style={{ color: 'var(--color-text-subtle)' }}
           >
             <ChevronRight size={18} className="rotate-90" />
           </button>
           <button
+            onClick={() => onSwap(index)}
+            aria-label={t('workoutBuilder.ariaSwap', 'Swap exercise')}
+            className="w-11 h-11 flex items-center justify-center hover:text-[#D4AF37] transition-colors active:scale-90 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            <ArrowLeftRight size={16} />
+          </button>
+          <button
             onClick={() => onRemove(index)}
-            aria-label="Remove exercise"
+            aria-label={t('workoutBuilder.ariaRemove', 'Remove exercise')}
             className="w-11 h-11 flex items-center justify-center hover:text-red-400 transition-colors active:scale-90 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
             style={{ color: 'var(--color-text-muted)' }}
           >
@@ -95,14 +103,14 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
           <div className="flex items-center justify-center gap-3">
             <button
               onClick={() => onChange(index, 'sets', Math.max(1, item.sets - 1))}
-              aria-label="Decrease sets"
+              aria-label={t('workoutBuilder.ariaDecreaseSets', 'Decrease sets')}
               className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', color: '#000' }}
             >−</button>
             <span className="font-bold text-[15px] tabular-nums w-5 text-center" style={{ color: 'var(--color-text-primary)' }}>{item.sets}</span>
             <button
               onClick={() => onChange(index, 'sets', Math.min(10, item.sets + 1))}
-              aria-label="Increase sets"
+              aria-label={t('workoutBuilder.ariaIncreaseSets', 'Increase sets')}
               className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', color: '#000' }}
             >+</button>
@@ -118,7 +126,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
               inputMode="numeric"
               min={0}
               value={item.reps}
-              aria-label={`${t('workoutBuilder.reps')} for ${exercise ? exName(exercise) : 'exercise'}`}
+              aria-label={`${t('workoutBuilder.reps')} for ${exercise ? exName(exercise) : t('workoutBuilder.exerciseFallback', 'exercise')}`}
               onChange={e => {
                 const v = e.target.value;
                 if (v === '' || v === '-') return onChange(index, 'reps', v);
@@ -137,7 +145,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
           <p className="text-[10px] uppercase font-bold tracking-wider mb-2 text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.rest')}</p>
           <select
             value={item.restSeconds}
-            aria-label={`${t('workoutBuilder.rest')} for ${exercise ? exName(exercise) : 'exercise'}`}
+            aria-label={`${t('workoutBuilder.rest')} for ${exercise ? exName(exercise) : t('workoutBuilder.exerciseFallback', 'exercise')}`}
             onChange={e => onChange(index, 'restSeconds', Number(e.target.value))}
             className="w-16 rounded-lg py-1.5 text-[13px] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors appearance-none"
             style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)', color: 'var(--color-text-primary)', textAlign: 'center', textAlignLast: 'center', paddingLeft: '0', paddingRight: '0' }}
@@ -173,7 +181,7 @@ const PickerList = ({ exercises, selectedIds, onSelect, emptyText, t }) => {
           >
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-[15px] truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(ex)}</p>
-              <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--color-text-subtle)' }}>{ex.muscle} · {ex.equipment}</p>
+              <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--color-text-subtle)' }}>{t(`muscleGroups.${ex.muscle}`, ex.muscle)} · {t(`exerciseLibrary.equipmentNames.${ex.equipment}`, ex.equipment)}</p>
             </div>
             {added ? (
               <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg flex-shrink-0"
@@ -183,7 +191,7 @@ const PickerList = ({ exercises, selectedIds, onSelect, emptyText, t }) => {
             ) : (
               <button
                 onClick={() => onSelect(ex)}
-                aria-label={`Add ${exName(ex)}`}
+                aria-label={t('workoutBuilder.ariaAddExercise', { name: exName(ex), defaultValue: `Add ${exName(ex)}` })}
                 className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                 style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-accent) 50%, transparent)' }}
               >
@@ -210,8 +218,11 @@ const WorkoutBuilder = () => {
   const { showToast } = useToast();
   const [showLibrary, setShowLibrary] = useState(false);
   const [pickerTab, setPickerTab]     = useState('library');
+  // When non-null, the exercise picker swaps the row at this index instead
+  // of appending. Used by the swap icon on each routine row.
+  const [swapTargetIndex, setSwapTargetIndex] = useState(null);
 
-  const [name, setName]                       = useState('New Workout');
+  const [name, setName]                       = useState(t('workoutBuilder.newWorkoutDefault', 'New Workout'));
   const [routineExercises, setRoutineExercises] = useState([]);
   const [originalExercises, setOriginalExercises] = useState([]);
   const [selectedIndices, setSelectedIndices]   = useState(new Set());
@@ -318,11 +329,26 @@ const WorkoutBuilder = () => {
   const friendExs = customExs.filter(e => e.createdBy && e.createdBy !== user?.id && friendIds.has(e.createdBy) && !savedIds.has(e.id));
 
   const handleAdd = (exercise) => {
+    // If the picker was opened via the swap icon on a row, replace that row
+    // (preserving its sets/reps/rest/group settings) instead of appending.
+    if (swapTargetIndex !== null) {
+      setRoutineExercises(prev => prev.map((row, i) =>
+        i === swapTargetIndex ? { ...row, id: exercise.id } : row
+      ));
+      setSwapTargetIndex(null);
+      setShowLibrary(false);
+      return;
+    }
     setRoutineExercises(prev => [
       ...prev,
       { id: exercise.id, sets: exercise.defaultSets, reps: exercise.defaultReps, restSeconds: 90, groupId: null, groupType: null }
     ]);
     setShowLibrary(false);
+  };
+
+  const handleSwap = (index) => {
+    setSwapTargetIndex(index);
+    setShowLibrary(true);
   };
 
   const handleChange = (index, field, value) => {
@@ -400,13 +426,18 @@ const WorkoutBuilder = () => {
       if (delErr) throw delErr;
 
       if (routineExercises.length > 0) {
+        // Guard: every exercise must have a valid id. Saving with a null
+        // exercise_id silently fails the DB NOT NULL and corrupts the routine.
+        const missing = routineExercises.find(ex => !ex.id);
+        if (missing) throw new Error('One or more exercises are missing an ID. Please re-add them.');
+
         const rows = routineExercises.map((ex, i) => ({
           routine_id:   id,
           exercise_id:  ex.id,
           position:     i + 1,
-          target_sets:  ex.sets,
-          target_reps:  ex.reps,
-          rest_seconds: ex.restSeconds,
+          target_sets:  Number.isFinite(parseInt(ex.sets)) ? parseInt(ex.sets) : 3,
+          target_reps:  ex.reps || '8-12',
+          rest_seconds: Number.isFinite(parseInt(ex.restSeconds)) ? parseInt(ex.restSeconds) : 90,
           group_id:     ex.groupId || null,
           group_type:   ex.groupType || null,
         }));
@@ -428,8 +459,9 @@ const WorkoutBuilder = () => {
         showToast(t('workoutBuilder.routineSaved'), 'success');
       }
     } catch (err) {
-      setError(err.message || 'Save failed');
-      showToast(err.message || 'Save failed', 'error');
+      const failMsg = t('workoutBuilder.saveFailed', 'Save failed');
+      setError(err.message || failMsg);
+      showToast(err.message || failMsg, 'error');
     } finally {
       setSaving(false);
     }
@@ -468,38 +500,73 @@ const WorkoutBuilder = () => {
   return (
     <div className="fixed inset-0 z-[90] flex flex-col animate-fade-in" style={{ background: 'var(--color-bg-primary)' }}>
 
-      {/* Header — safe area aware */}
+      {/* Header — safe area aware, premium dark + gold accent */}
       <header
-        className="flex-shrink-0 px-5 pb-4 border-b border-white/[0.06] flex items-center gap-3"
-        style={{ background: 'var(--color-bg-primary)', paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))' }}
+        className="flex-shrink-0 px-5 pb-4 flex items-center gap-3"
+        style={{
+          background: 'var(--color-bg-primary)',
+          borderBottom: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',
+          paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))',
+        }}
       >
         <button
           onClick={handleBack}
           disabled={saving}
-          aria-label="Back"
-          className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.06] transition-colors disabled:opacity-50 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          aria-label={t('workoutBuilder.ariaBack', 'Back')}
+          className="flex items-center justify-center transition-transform active:scale-95 disabled:opacity-50 flex-shrink-0 focus:outline-none"
+          style={{
+            width: 40, height: 40, borderRadius: 20,
+            background: 'var(--color-surface-hover, rgba(255,255,255,0.06))',
+            border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',
+            color: 'var(--color-text-primary)',
+          }}
         >
-          <ChevronLeft size={20} strokeWidth={2.5} style={{ color: 'var(--color-text-muted)' }} />
+          <ChevronLeft size={19} strokeWidth={2.5} />
         </button>
 
-        <div className="flex-1 text-center">
+        <div className="flex-1 min-w-0 text-center">
+          <p
+            className="uppercase mb-0.5"
+            style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: '0.16em',
+              color: 'var(--color-accent)',
+            }}
+          >
+            {t('workoutBuilder.editRoutine', 'Edit routine')}
+          </p>
           <input
             value={name}
             onChange={e => setName(e.target.value)}
-            aria-label="Workout name"
-            className="bg-transparent font-bold text-[18px] text-center w-full max-w-[220px] border-b-2 border-transparent focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors rounded"
-            style={{ color: 'var(--color-text-primary)' }}
+            aria-label={t('workoutBuilder.ariaWorkoutName', 'Workout name')}
+            className="bg-transparent text-center w-full max-w-[260px] mx-auto outline-none transition-colors"
+            style={{
+              fontFamily: '"Archivo", "Familjen Grotesk", system-ui, sans-serif',
+              fontWeight: 900, fontSize: 19,
+              letterSpacing: -0.4,
+              color: 'var(--color-text-primary)',
+              borderBottom: '1.5px dashed transparent',
+            }}
+            onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--color-accent)'; }}
+            onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
           />
         </div>
 
         <button
           onClick={handleSave}
           disabled={saving}
-          className={`font-bold text-[13px] px-4 py-2 rounded-xl transition-all disabled:opacity-50 flex-shrink-0 ${
-            saved
-              ? 'bg-[#10B981] text-white'
-              : 'bg-[#D4AF37] hover:bg-[#E6C766] text-black'
-          }`}
+          className="font-bold transition-all disabled:opacity-50 flex-shrink-0 active:scale-95"
+          style={{
+            padding: '10px 18px',
+            borderRadius: 999,
+            fontSize: 13,
+            letterSpacing: 0.2,
+            background: saved ? '#10B981' : 'var(--color-accent)',
+            color: saved ? '#fff' : 'var(--color-bg-card, #0A0D10)',
+            border: 'none',
+            boxShadow: saved
+              ? '0 4px 14px rgba(16,185,129,0.35)'
+              : '0 4px 14px color-mix(in srgb, var(--color-accent) 35%, transparent)',
+          }}
         >
           {saving ? '…' : saved ? `${t('workoutBuilder.saved')} ✓` : t('workoutBuilder.save')}
         </button>
@@ -523,13 +590,13 @@ const WorkoutBuilder = () => {
           <div className="sticky top-0 z-10 border-b border-white/[0.06] backdrop-blur-2xl" style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
             <div className="px-4 py-3.5 flex items-center gap-3">
               <button
-                onClick={() => setShowLibrary(false)}
+                onClick={() => { setShowLibrary(false); setSwapTargetIndex(null); }}
                 className="text-[#D4AF37] hover:text-[#E6C766] flex items-center gap-0.5 transition-colors"
               >
                 <ChevronLeft size={24} strokeWidth={2.5} />
                 <span className="font-semibold text-[14px]">{t('workoutBuilder.back')}</span>
               </button>
-              <h2 className="flex-1 text-center font-semibold text-[16px] truncate" style={{ color: 'var(--color-text-primary)' }}>{t('workoutBuilder.addExercise')}</h2>
+              <h2 className="flex-1 text-center font-semibold text-[16px] truncate" style={{ color: 'var(--color-text-primary)' }}>{swapTargetIndex !== null ? t('workoutBuilder.swapExercise', 'Swap Exercise') : t('workoutBuilder.addExercise')}</h2>
               <div className="w-16" />
             </div>
             {/* Tabs */}
@@ -603,7 +670,7 @@ const WorkoutBuilder = () => {
           <div className="w-px h-8 rounded-full" style={{ background: 'rgba(212,175,55,0.15)' }} />
           <div className="flex-1 flex flex-col items-center gap-0.5">
             <span className="font-bold text-[18px] tabular-nums" style={{ color: 'var(--color-text-primary)' }}>~{Math.round(routineExercises.reduce((sum, e) => sum + (e.sets * (e.restSeconds + 45)), 0) / 60)}</span>
-            <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--color-text-subtle)' }}>min</span>
+            <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.minLabel', 'min')}</span>
           </div>
         </div>
 
@@ -674,6 +741,7 @@ const WorkoutBuilder = () => {
                       onRemove={handleRemove}
                       onMoveUp={handleMoveUp}
                       onMoveDown={handleMoveDown}
+                      onSwap={handleSwap}
                       isSelected={selectedIndices.has(index)}
                       onToggleSelect={handleToggleSelect}
                       t={t}

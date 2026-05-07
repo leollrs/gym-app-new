@@ -1,36 +1,35 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, CalendarDays, Clock, Check, XCircle, AlertTriangle, Trash2, Bell, BellOff, Repeat, Dumbbell } from 'lucide-react';
+// eslint-disable-next-line no-unused-vars
+import { motion } from 'framer-motion';
+import {
+  Plus, X, ChevronLeft, ChevronRight, Calendar as CalendarIcon,
+  Trash2, Bell, BellOff, Repeat, Dumbbell,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
 import {
-  format, addWeeks, subWeeks, startOfWeek, endOfWeek, addDays,
-  isSameDay, isToday, isBefore, setHours, setMinutes, subHours,
+  format, addWeeks, startOfWeek, endOfWeek, addDays,
+  isSameDay, isToday, setHours, setMinutes, subHours,
   startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, addMonths,
 } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
-import UnderlineTabs from '../../components/UnderlineTabs';
-import PageHeader from '../../components/PageHeader';
 import logger from '../../lib/logger';
 import useFocusTrap from '../../hooks/useFocusTrap';
+import { TT, TFont, avatarIdx } from './components/designTokens';
+import {
+  TCard, TPill, TAvatar, TEyebrow, TPageTitle, TIconButton,
+  TSegmented,
+} from './components/designPrimitives';
 
 const STATUS_COLORS_BASE = {
-  scheduled: { bg: 'bg-[var(--color-accent)]/12', text: 'text-[var(--color-accent)]', key: 'statusScheduled' },
-  confirmed: { bg: 'bg-[var(--color-accent)]/12', text: 'text-[var(--color-accent)]', key: 'statusConfirmed' },
-  completed: { bg: 'bg-emerald-500/12', text: 'text-emerald-400', key: 'statusCompleted' },
-  cancelled: { bg: 'bg-red-500/12', text: 'text-red-400', key: 'statusCancelled' },
-  no_show:   { bg: 'bg-amber-500/12', text: 'text-amber-400', key: 'statusNoShow' },
-};
-
-// Inline status colors for month view session pills (not Tailwind classes)
-const STATUS_BG = {
-  scheduled:  { bg: 'var(--color-accent-glow)', text: 'var(--color-accent)' },
-  confirmed:  { bg: 'var(--color-accent-glow)', text: 'var(--color-accent)' },
-  completed:  { bg: 'rgb(16 185 129 / 0.15)', text: 'rgb(52 211 153)' },
-  cancelled:  { bg: 'rgb(239 68 68 / 0.15)', text: 'rgb(248 113 113)' },
-  no_show:    { bg: 'rgb(245 158 11 / 0.15)', text: 'rgb(251 191 36)' },
+  scheduled: { tone: 'teal',  key: 'statusScheduled' },
+  confirmed: { tone: 'teal',  key: 'statusConfirmed' },
+  completed: { tone: 'good',  key: 'statusCompleted' },
+  cancelled: { tone: 'hot',   key: 'statusCancelled' },
+  no_show:   { tone: 'warn',  key: 'statusNoShow' },
 };
 
 const DURATIONS = [30, 45, 60, 90, 120];
@@ -43,16 +42,27 @@ const QUICK_TEMPLATES = [
 
 const VIEW_MODES = ['day', 'week', 'month'];
 
-// ── Session Modal ─────────────────────────────────────────────────────────
+// Map status to (tone color, soft background) for visual blocks
+function statusVisuals(status) {
+  switch (status) {
+    case 'completed': return { tone: TT.good,  soft: TT.goodSoft };
+    case 'cancelled': return { tone: TT.hot,   soft: TT.hotSoft };
+    case 'no_show':   return { tone: TT.warn,  soft: TT.warnSoft };
+    default:          return { tone: TT.accent, soft: TT.accentSoft };
+  }
+}
+
+// ── Session Modal (keeps existing UX, restyled with TT tokens) ─────────────
 const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gymId, trainerName, workoutPlans }) => {
   const { showToast } = useToast();
-  const { t } = useTranslation(['pages', 'common']);
+  const { t, i18n } = useTranslation(['pages', 'common']);
+  const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const focusTrapRef = useFocusTrap(true, onClose);
   const isEdit = !!session;
   const STATUS_COLORS = useMemo(() => {
     const out = {};
     for (const [k, v] of Object.entries(STATUS_COLORS_BASE)) {
-      out[k] = { bg: v.bg, text: v.text, label: t(`pages:trainerCalendar.${v.key}`) };
+      out[k] = { tone: v.tone, label: t(`pages:trainerCalendar.${v.key}`) };
     }
     return out;
   }, [t]);
@@ -69,7 +79,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
   const [status, setStatus]     = useState(session?.status || 'scheduled');
   const [sendReminder, setSendReminder] = useState(session?.send_reminder ?? true);
   const [recurring, setRecurring]       = useState(false);
-  const [frequency, setFrequency]       = useState('weekly'); // 'weekly' | 'biweekly'
+  const [frequency, setFrequency]       = useState('weekly');
   const defaultEndDate = format(addWeeks(new Date(), 8), 'yyyy-MM-dd');
   const [endDate, setEndDate]           = useState(defaultEndDate);
   const [saving, setSaving]     = useState(false);
@@ -78,13 +88,11 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
   const [error, setError]       = useState('');
   const [selectedWorkout, setSelectedWorkout] = useState(session?.details?.workout_id || '');
 
-  // Apply quick template preset
   const applyTemplate = (tmpl) => {
     setTitle(t(`pages:trainerCalendar.${tmpl.titleKey}`));
     setDuration(tmpl.duration);
   };
 
-  // ── Conflict detection helper ──────────────────────────────────────────
   const checkConflicts = async (scheduledAt, durationMins, excludeSessionId) => {
     const startTime = new Date(scheduledAt);
     const endTime = new Date(startTime.getTime() + durationMins * 60000);
@@ -134,7 +142,6 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     const scheduledAt = new Date(`${dateVal}T${timeVal}`).toISOString();
     const durationMins = Math.max(1, Math.round(duration));
 
-    // ── Conflict check ──────────────────────────────────────────────────
     try {
       const conflict = await checkConflicts(scheduledAt, durationMins, isEdit ? session.id : null);
       if (conflict) {
@@ -148,10 +155,8 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       }
     } catch (e) {
       logger.error('SessionModal: conflict check failed:', e);
-      // Allow save to proceed if conflict check itself fails
     }
 
-    // Build workout details JSONB
     const workoutPlan = (workoutPlans || []).find(w => w.id === selectedWorkout);
     const details = selectedWorkout && workoutPlan
       ? { workout_id: selectedWorkout, workout_name: workoutPlan.name, workout_type: workoutPlan._type }
@@ -171,7 +176,6 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       updated_at: new Date().toISOString(),
     };
 
-    // Whitelist fields for update — never send gym_id/trainer_id on update
     const updatePayload = {
       client_id: clientId,
       title: title.trim() || t('pages:trainerCalendar.titlePlaceholder'),
@@ -184,7 +188,6 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       updated_at: new Date().toISOString(),
     };
 
-    // ── Recurring session support ─────────────────────────────────────────
     if (!isEdit && recurring) {
       const recurrenceGroup = crypto.randomUUID();
       const step = frequency === 'biweekly' ? 2 : 1;
@@ -200,12 +203,11 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
         });
         cursor = addWeeks(cursor, step);
       }
-      // Check conflicts for all recurring dates (skip the first — already checked above)
       try {
         for (let i = 1; i < rows.length; i++) {
           const rc = await checkConflicts(rows[i].scheduled_at, durationMins, null);
           if (rc) {
-            const dateStr = format(new Date(rows[i].scheduled_at), 'MMM d');
+            const dateStr = format(new Date(rows[i].scheduled_at), 'MMM d', { locale: dateFnsLocale });
             const msg = rc.type === 'trainer'
               ? t('pages:trainerCalendar.trainerConflictOnDate', { date: dateStr })
               : t('pages:trainerCalendar.clientConflictOnDate', { date: dateStr });
@@ -220,19 +222,35 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       }
 
       const { error: err } = await supabase.from('trainer_sessions').insert(rows);
-      if (err) { setError(err.message); setSaving(false); showToast(err.message, 'error'); return; }
+      if (err) {
+        const isConflict = err.code === '23505' || err.code === 'P0001' || (err.message || '').includes('trainer_schedule_conflict');
+        const friendly = isConflict
+          ? t('pages:trainerCalendar.scheduleConflictGuard', 'This time slot conflicts with another session.')
+          : err.message;
+        setError(friendly);
+        setSaving(false);
+        showToast(friendly, 'error');
+        return;
+      }
     } else {
       const { error: err } = isEdit
         ? await supabase.from('trainer_sessions').update(updatePayload).eq('id', session.id)
         : await supabase.from('trainer_sessions').insert(insertPayload);
-      if (err) { setError(err.message); setSaving(false); showToast(err.message, 'error'); return; }
+      if (err) {
+        const isConflict = err.code === '23505' || err.code === 'P0001' || (err.message || '').includes('trainer_schedule_conflict');
+        const friendly = isConflict
+          ? t('pages:trainerCalendar.scheduleConflictGuard', 'This time slot conflicts with another session.')
+          : err.message;
+        setError(friendly);
+        setSaving(false);
+        showToast(friendly, 'error');
+        return;
+      }
     }
 
-    // Schedule session reminder notification (1 hour before)
     if (sendReminder && clientId && status !== 'cancelled') {
       const sessionTime = new Date(`${dateVal}T${timeVal}`);
       const reminderTime = subHours(sessionTime, 1);
-      // Only schedule if reminder time is in the future
       if (reminderTime > new Date()) {
         const timeStr = format(sessionTime, 'HH:mm');
         const { error: notifErr } = await supabase.from('notifications').upsert({
@@ -278,26 +296,71 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     onSaved();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
-      <div ref={focusTrapRef} role="dialog" aria-modal="true" aria-labelledby="session-modal-title" className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden"
-        onClick={e => e.stopPropagation()}>
+  const inputStyle = {
+    width: '100%', background: TT.surface2,
+    border: `1px solid ${TT.borderSolid}`, borderRadius: 12,
+    padding: '10px 14px', minHeight: 44, fontSize: 14,
+    color: TT.text, outline: 'none',
+  };
 
-        <div className="flex items-center justify-between p-5 border-b border-[var(--color-border-subtle)] flex-shrink-0">
-          <p id="session-modal-title" className="text-[16px] font-bold text-[var(--color-text-primary)]">{isEdit ? t('pages:trainerCalendar.editSession') : t('pages:trainerCalendar.newSession')}</p>
-          <button onClick={onClose} aria-label={t('pages:trainerCalendar.closeDialog', 'Close dialog')} className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors -mr-2"><X size={20} className="text-[var(--color-text-muted)]" /></button>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        ref={focusTrapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="session-modal-title"
+        style={{
+          background: TT.surface, border: `1px solid ${TT.borderSolid}`,
+          borderRadius: 18, width: '100%', maxWidth: 540,
+          maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{
+          padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          borderBottom: `1px solid ${TT.border}`, flexShrink: 0,
+        }}>
+          <p id="session-modal-title" style={{
+            fontFamily: TFont.display, fontSize: 16, fontWeight: 800,
+            color: TT.text, letterSpacing: -0.3,
+          }}>
+            {isEdit ? t('pages:trainerCalendar.editSession') : t('pages:trainerCalendar.newSession')}
+          </p>
+          <button onClick={onClose}
+            aria-label={t('pages:trainerCalendar.closeDialog', 'Close dialog')}
+            className="w-11 h-11 flex items-center justify-center rounded-lg -mr-2"
+            style={{ color: TT.textMute }}
+          >
+            <X size={20} />
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div style={{ padding: 20, overflowY: 'auto', flex: 1 }} className="space-y-4">
           {/* Quick Templates */}
           {!isEdit && (
             <div>
-              <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.quickTemplates')}</label>
+              <label style={{
+                display: 'block', fontSize: 12, color: TT.textSub,
+                fontWeight: 700, marginBottom: 6,
+              }}>
+                {t('pages:trainerCalendar.quickTemplates')}
+              </label>
               <div className="flex gap-2">
                 {QUICK_TEMPLATES.map(tmpl => (
                   <button key={tmpl.key} onClick={() => applyTemplate(tmpl)}
-                    className="flex-1 py-2 px-2 rounded-xl text-[11px] font-semibold bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]/40 hover:text-[var(--color-accent)] transition-colors text-center">
-                    <span className="block text-[var(--color-text-primary)] text-[12px]">{tmpl.duration}m</span>
+                    style={{
+                      flex: 1, padding: '10px 8px', borderRadius: 12,
+                      background: TT.surface2, border: `1px solid ${TT.borderSolid}`,
+                      fontSize: 11, fontWeight: 700, color: TT.textSub,
+                      textAlign: 'center', minHeight: 44,
+                    }}
+                  >
+                    <span style={{ display: 'block', color: TT.text, fontSize: 12, marginBottom: 2 }}>{tmpl.duration}m</span>
                     {t(`pages:trainerCalendar.${tmpl.titleKey}`)}
                   </button>
                 ))}
@@ -307,9 +370,10 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
 
           {/* Client */}
           <div>
-            <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.clientLabel')}</label>
-            <select value={clientId} onChange={e => setClientId(e.target.value)}
-              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 min-h-[44px] text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none">
+            <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+              {t('pages:trainerCalendar.clientLabel')}
+            </label>
+            <select value={clientId} onChange={e => setClientId(e.target.value)} style={inputStyle}>
               <option value="">{t('pages:trainerCalendar.selectClient')}</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
             </select>
@@ -317,35 +381,47 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
 
           {/* Title */}
           <div>
-            <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.titleLabel')}</label>
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder={t('pages:trainerCalendar.titlePlaceholder')}
-              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 min-h-[44px] text-[16px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
+            <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+              {t('pages:trainerCalendar.titleLabel')}
+            </label>
+            <input value={title} onChange={e => setTitle(e.target.value)}
+              placeholder={t('pages:trainerCalendar.titlePlaceholder')}
+              maxLength={80} style={inputStyle}
+            />
           </div>
 
           {/* Date & Time */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.dateLabel')}</label>
-              <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 min-h-[44px] text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
+              <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+                {t('pages:trainerCalendar.dateLabel')}
+              </label>
+              <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} style={inputStyle} />
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.timeLabel')}</label>
-              <input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 min-h-[44px] text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
+              <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+                {t('pages:trainerCalendar.timeLabel')}
+              </label>
+              <input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)} style={inputStyle} />
             </div>
           </div>
 
           {/* Duration */}
           <div>
-            <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.durationLabel')}</label>
+            <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+              {t('pages:trainerCalendar.durationLabel')}
+            </label>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {DURATIONS.map(d => (
                 <button key={d} onClick={() => setDuration(d)}
-                  className={`min-h-[44px] py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                    duration === d ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)]'
-                  }`}>
-                  {d}m
+                  style={{
+                    minHeight: 44, borderRadius: 12, fontSize: 12, fontWeight: 800,
+                    background: duration === d ? TT.accentSoft : TT.surface2,
+                    color: duration === d ? TT.accentInk : TT.textSub,
+                    border: `1px solid ${duration === d ? 'transparent' : TT.borderSolid}`,
+                  }}
+                >
+                  {t('trainerCalendar.minutesShort', '{{d}}m', { d })}
                 </button>
               ))}
             </div>
@@ -354,37 +430,66 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           {/* Status (edit only) */}
           {isEdit && (
             <div>
-              <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.statusLabel')}</label>
+              <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+                {t('pages:trainerCalendar.statusLabel')}
+              </label>
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-                {Object.entries(STATUS_COLORS).map(([key, val]) => (
-                  <button key={key} onClick={() => setStatus(key)}
-                    className={`px-2 sm:px-3 py-2 min-h-[44px] rounded-lg text-[11px] font-semibold transition-colors ${
-                      status === key ? `${val.bg} ${val.text}` : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)]'
-                    }`}>
-                    {val.label}
-                  </button>
-                ))}
+                {Object.entries(STATUS_COLORS).map(([key, val]) => {
+                  const active = status === key;
+                  return (
+                    <button key={key} onClick={() => setStatus(key)}
+                      style={{
+                        padding: '8px 10px', minHeight: 44, borderRadius: 10,
+                        fontSize: 11, fontWeight: 800,
+                        background: active
+                          ? (val.tone === 'good' ? TT.goodSoft
+                            : val.tone === 'hot' ? TT.hotSoft
+                            : val.tone === 'warn' ? TT.warnSoft
+                            : TT.accentSoft)
+                          : TT.surface2,
+                        color: active
+                          ? (val.tone === 'good' ? TT.goodInk
+                            : val.tone === 'hot' ? TT.hot
+                            : val.tone === 'warn' ? TT.warnInk
+                            : TT.accentInk)
+                          : TT.textMute,
+                        border: `1px solid ${active ? 'transparent' : TT.borderSolid}`,
+                      }}
+                    >
+                      {val.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* Send Reminder toggle */}
-          <div className="flex items-center justify-between py-1">
-            <div className="flex items-center gap-2">
-              {sendReminder ? <Bell size={14} className="text-[var(--color-accent)]" /> : <BellOff size={14} className="text-[var(--color-text-muted)]" />}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {sendReminder ? <Bell size={14} color={TT.accent} /> : <BellOff size={14} color={TT.textMute} />}
               <div>
-                <p className="text-[12px] font-medium text-[var(--color-text-secondary)]">{t('pages:trainerCalendar.sendReminder')}</p>
-                <p className="text-[10px] text-[var(--color-text-muted)]">{t('pages:trainerCalendar.reminderHint')}</p>
+                <p style={{ fontSize: 12, color: TT.text, fontWeight: 700 }}>{t('pages:trainerCalendar.sendReminder')}</p>
+                <p style={{ fontSize: 10.5, color: TT.textMute }}>{t('pages:trainerCalendar.reminderHint')}</p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setSendReminder(!sendReminder)}
-              className="relative w-11 h-[44px] flex items-center justify-center flex-shrink-0"
+              style={{ position: 'relative', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: 'transparent', border: 'none' }}
               aria-label={t('pages:trainerCalendar.toggleSendReminder', 'Toggle send reminder')}
             >
-              <span className={`absolute w-10 h-[22px] rounded-full transition-colors ${sendReminder ? 'bg-[var(--color-accent)]' : 'bg-white/10'}`}>
-                <span className={`absolute top-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform ${sendReminder ? 'translate-x-[20px]' : 'translate-x-0.5'}`} />
+              <span style={{
+                position: 'absolute', width: 40, height: 22, borderRadius: 999,
+                background: sendReminder ? TT.accent : TT.borderSolid,
+                transition: 'background 0.15s',
+              }}>
+                <span style={{
+                  position: 'absolute', top: 2,
+                  left: sendReminder ? 20 : 2,
+                  width: 18, height: 18, borderRadius: 999, background: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.15)', transition: 'left 0.15s',
+                }} />
               </span>
             </button>
           </div>
@@ -392,49 +497,64 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           {/* Recurring toggle (new sessions only) */}
           {!isEdit && (
             <>
-              <div className="flex items-center justify-between py-1">
-                <div className="flex items-center gap-2">
-                  <Repeat size={14} className={recurring ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Repeat size={14} color={recurring ? TT.accent : TT.textMute} />
                   <div>
-                    <p className="text-[12px] font-medium text-[var(--color-text-secondary)]">{t('pages:trainerCalendar.recurring')}</p>
-                    <p className="text-[10px] text-[var(--color-text-muted)]">{t('pages:trainerCalendar.recurringHint')}</p>
+                    <p style={{ fontSize: 12, color: TT.text, fontWeight: 700 }}>{t('pages:trainerCalendar.recurring')}</p>
+                    <p style={{ fontSize: 10.5, color: TT.textMute }}>{t('pages:trainerCalendar.recurringHint')}</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setRecurring(!recurring)}
-                  className="relative w-11 h-[44px] flex items-center justify-center flex-shrink-0"
+                  style={{ position: 'relative', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: 'transparent', border: 'none' }}
                   aria-label={t('pages:trainerCalendar.toggleRecurring', 'Toggle recurring')}
                 >
-                  <span className={`absolute w-10 h-[22px] rounded-full transition-colors ${recurring ? 'bg-[var(--color-accent)]' : 'bg-white/10'}`}>
-                    <span className={`absolute top-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform ${recurring ? 'translate-x-[20px]' : 'translate-x-0.5'}`} />
+                  <span style={{
+                    position: 'absolute', width: 40, height: 22, borderRadius: 999,
+                    background: recurring ? TT.accent : TT.borderSolid,
+                  }}>
+                    <span style={{
+                      position: 'absolute', top: 2,
+                      left: recurring ? 20 : 2,
+                      width: 18, height: 18, borderRadius: 999, background: '#fff',
+                    }} />
                   </span>
                 </button>
               </div>
 
               {recurring && (
-                <div className="space-y-3 pl-6 border-l-2 border-[var(--color-accent)]/20 ml-1.5">
-                  {/* Frequency pills */}
+                <div style={{ marginLeft: 6, paddingLeft: 18, borderLeft: `2px solid ${TT.accentSoft}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div>
-                    <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.frequencyLabel')}</label>
+                    <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+                      {t('pages:trainerCalendar.frequencyLabel')}
+                    </label>
                     <div className="flex gap-2">
-                      {['weekly', 'biweekly'].map(f => (
-                        <button key={f} onClick={() => setFrequency(f)}
-                          className={`flex-1 min-h-[44px] py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                            frequency === f ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)]'
-                          }`}>
-                          {t(`pages:trainerCalendar.frequency_${f}`)}
-                        </button>
-                      ))}
+                      {['weekly', 'biweekly'].map(f => {
+                        const active = frequency === f;
+                        return (
+                          <button key={f} onClick={() => setFrequency(f)}
+                            style={{
+                              flex: 1, minHeight: 44, borderRadius: 12,
+                              fontSize: 12, fontWeight: 800,
+                              background: active ? TT.accentSoft : TT.surface2,
+                              color: active ? TT.accentInk : TT.textSub,
+                              border: `1px solid ${active ? 'transparent' : TT.borderSolid}`,
+                            }}
+                          >
+                            {t(`pages:trainerCalendar.frequency_${f}`)}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-
-                  {/* End date */}
                   <div>
-                    <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.endDateLabel')}</label>
-                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-                      className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 min-h-[44px] text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
-                    <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{t('pages:trainerCalendar.endDateHint')}</p>
+                    <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+                      {t('pages:trainerCalendar.endDateLabel')}
+                    </label>
+                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle} />
+                    <p style={{ fontSize: 10.5, color: TT.textMute, marginTop: 4 }}>{t('pages:trainerCalendar.endDateHint')}</p>
                   </div>
                 </div>
               )}
@@ -444,12 +564,11 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           {/* Workout Plan Selector */}
           {(workoutPlans || []).length > 0 && (
             <div>
-              <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">
-                <Dumbbell size={12} className="inline mr-1 -mt-0.5 text-[var(--color-accent)]" />
+              <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+                <Dumbbell size={12} color={TT.accent} style={{ display: 'inline', marginRight: 4, marginTop: -2 }} />
                 {t('pages:trainerCalendar.attachWorkout')}
               </label>
-              <select value={selectedWorkout} onChange={e => setSelectedWorkout(e.target.value)}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 min-h-[44px] text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none">
+              <select value={selectedWorkout} onChange={e => setSelectedWorkout(e.target.value)} style={inputStyle}>
                 <option value="">{t('pages:trainerCalendar.noWorkout')}</option>
                 {workoutPlans.map(w => (
                   <option key={w.id} value={w.id}>
@@ -462,42 +581,72 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
 
           {/* Notes */}
           <div>
-            <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.notesLabel')}</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder={t('pages:trainerCalendar.notesPlaceholder')}
-              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)]/40 resize-none" />
+            <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
+              {t('pages:trainerCalendar.notesLabel')}
+            </label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+              placeholder={t('pages:trainerCalendar.notesPlaceholder')}
+              style={{ ...inputStyle, padding: 12, resize: 'none' }}
+            />
           </div>
 
-          {error && <p className="text-[12px] text-red-400">{error}</p>}
+          {error && <p style={{ fontSize: 12, color: TT.hot }}>{error}</p>}
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 p-4 pb-6 sm:pb-4 md:p-5 border-t border-[var(--color-border-subtle)] flex-shrink-0">
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 10, padding: '16px 20px',
+          borderTop: `1px solid ${TT.border}`, alignItems: 'center', flexShrink: 0,
+        }}>
           {isEdit && (
             confirmDelete ? (
-              <div className="flex items-center gap-1.5">
-                <span className="text-[12px] text-[var(--color-text-secondary)]">{t('pages:trainerCalendar.deleteSessionConfirm')}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12, color: TT.textSub }}>{t('pages:trainerCalendar.deleteSessionConfirm')}</span>
                 <button onClick={handleDelete} disabled={deleting}
-                  className="px-3 py-1.5 min-h-[44px] rounded-lg text-[12px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
+                  style={{
+                    padding: '8px 12px', minHeight: 44, borderRadius: 10,
+                    fontSize: 12, fontWeight: 800,
+                    background: TT.hotSoft, color: TT.hot, border: 'none',
+                  }}
+                >
                   {deleting ? t('pages:trainerCalendar.deleting') : t('pages:trainerCalendar.confirm')}
                 </button>
                 <button onClick={() => setConfirmDelete(false)}
-                  className="px-3 py-1.5 min-h-[44px] rounded-lg text-[12px] font-semibold bg-white/5 text-[var(--color-text-secondary)] hover:bg-white/10 transition-colors">
+                  style={{
+                    padding: '8px 12px', minHeight: 44, borderRadius: 10,
+                    fontSize: 12, fontWeight: 700, background: TT.surface2, color: TT.textSub, border: 'none',
+                  }}
+                >
                   {t('pages:trainerCalendar.cancel')}
                 </button>
               </div>
             ) : (
               <button onClick={() => setConfirmDelete(true)}
-                className="flex items-center justify-center gap-1.5 px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-red-400 hover:bg-red-500/10 transition-colors">
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  padding: '10px 14px', minHeight: 44, borderRadius: 12,
+                  fontSize: 13, fontWeight: 700, color: TT.hot, background: 'transparent', border: 'none',
+                }}
+              >
                 <Trash2 size={14} /> {t('pages:trainerCalendar.delete')}
               </button>
             )
           )}
           <div className="hidden sm:block flex-1" />
           <button onClick={onClose}
-            className="px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors order-last sm:order-none">
+            style={{
+              padding: '10px 14px', minHeight: 44, borderRadius: 12,
+              fontSize: 13, fontWeight: 700, color: TT.textSub, background: 'transparent', border: 'none',
+            }}
+          >
             {t('pages:trainerCalendar.cancel')}
           </button>
           <button onClick={handleSave} disabled={saving}
-            className="px-5 py-2.5 min-h-[44px] rounded-xl text-[13px] font-bold bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-text-on-accent)] transition-colors disabled:opacity-50">
+            style={{
+              padding: '10px 18px', minHeight: 44, borderRadius: 12,
+              fontSize: 13, fontWeight: 800, color: '#06363B', background: TT.accent, border: 'none',
+              opacity: saving ? 0.6 : 1,
+            }}
+          >
             {saving ? t('pages:trainerCalendar.saving') : isEdit ? t('pages:trainerCalendar.update') : t('pages:trainerCalendar.create')}
           </button>
         </div>
@@ -511,15 +660,8 @@ export default function TrainerSchedule() {
   const { profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
-  const STATUS_COLORS = useMemo(() => {
-    const out = {};
-    for (const [k, v] of Object.entries(STATUS_COLORS_BASE)) {
-      out[k] = { bg: v.bg, text: v.text, label: t(`trainerCalendar.${v.key}`) };
-    }
-    return out;
-  }, [t]);
 
-  const [viewMode, setViewMode] = useState('week'); // 'day' | 'week' | 'month'
+  const [viewMode, setViewMode] = useState('week');
   const [weekOffset, setWeekOffset] = useState(0);
   const [dayOffset, setDayOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
@@ -527,11 +669,11 @@ export default function TrainerSchedule() {
   const [clients, setClients] = useState([]);
   const [workoutPlans, setWorkoutPlans] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null); // null | { session?, date? }
+  const [modal, setModal] = useState(null);
 
-  // ── Derived dates ────────────────────────────────────────────────────────
-  const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+  // ── Derived dates ──
+  const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 0 });
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   const selectedDay = addDays(new Date(), dayOffset);
@@ -540,34 +682,28 @@ export default function TrainerSchedule() {
   const monthStart = startOfMonth(monthAnchor);
   const monthEnd = endOfMonth(monthAnchor);
   const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  // Pad start: days from previous month to fill first row (Mon = 1 start)
-  const firstDayOfWeek = getDay(monthStart); // 0=Sun
-  const startPad = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1; // Mon-based
+  // Week starts Sunday (getDay(): Sun=0). Pad equals the day-of-week index.
+  const firstDayOfWeek = getDay(monthStart);
+  const startPad = firstDayOfWeek;
   const paddedMonthDays = useMemo(() => {
     const padBefore = Array.from({ length: startPad }, (_, i) => addDays(monthStart, -(startPad - i)));
     const totalCells = padBefore.length + monthDays.length;
     const endPad = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
     const padAfter = Array.from({ length: endPad }, (_, i) => addDays(monthEnd, i + 1));
     return [...padBefore, ...monthDays, ...padAfter];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthStart.getTime(), monthEnd.getTime(), startPad]);
 
+  // Sunday-first ordering (matches gym week convention).
   const DAY_NAMES = [
+    t('trainerCalendar.dayNames.sun'),
     t('trainerCalendar.dayNames.mon'),
     t('trainerCalendar.dayNames.tue'),
     t('trainerCalendar.dayNames.wed'),
     t('trainerCalendar.dayNames.thu'),
     t('trainerCalendar.dayNames.fri'),
     t('trainerCalendar.dayNames.sat'),
-    t('trainerCalendar.dayNames.sun'),
   ];
-
-  // ── View tab config ──────────────────────────────────────────────────────
-  const viewTabs = [
-    { key: 'day', label: t('trainerCalendar.day', 'Day') },
-    { key: 'week', label: t('trainerCalendar.week', 'Week') },
-    { key: 'month', label: t('trainerCalendar.month', 'Month') },
-  ];
-  const viewTabIndex = VIEW_MODES.indexOf(viewMode);
 
   useEffect(() => { document.title = `${t('trainerCalendar.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -575,43 +711,37 @@ export default function TrainerSchedule() {
     if (!profile?.id) return;
     loadClients();
     loadWorkoutPlans();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 
-  // ── Fetch range depends on viewMode ──────────────────────────────────────
   const fetchRange = useMemo(() => {
-    if (viewMode === 'day') {
-      return { start: selectedDay, end: selectedDay };
-    }
-    if (viewMode === 'month') {
-      // Fetch the full padded range so dots show for overflow days too
-      return { start: paddedMonthDays[0], end: paddedMonthDays[paddedMonthDays.length - 1] };
-    }
-    // week (default)
+    if (viewMode === 'day') return { start: selectedDay, end: selectedDay };
+    if (viewMode === 'month') return { start: paddedMonthDays[0], end: paddedMonthDays[paddedMonthDays.length - 1] };
     return { start: weekStart, end: weekEnd };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, weekOffset, dayOffset, monthOffset]);
 
   useEffect(() => {
     if (!profile?.id) return;
     loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id, viewMode, weekOffset, dayOffset, monthOffset]);
 
   const loadClients = async () => {
     const { data } = await supabase
       .from('trainer_clients')
-      .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name)')
+      .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name, avatar_url)')
       .eq('trainer_id', profile.id)
       .eq('is_active', true);
     setClients((data || []).map(tc => tc.profiles).filter(Boolean));
   };
 
   const loadWorkoutPlans = async () => {
-    // Fetch trainer's own routines
     const { data: routines } = await supabase
       .from('routines')
       .select('id, name, created_at')
       .eq('created_by', profile.id)
       .order('name');
-    // Fetch gym programs (published)
     const { data: programs } = await supabase
       .from('gym_programs')
       .select('id, name, duration_weeks, weeks')
@@ -634,7 +764,7 @@ export default function TrainerSchedule() {
     const { start, end } = fetchRange;
     const { data } = await supabase
       .from('trainer_sessions')
-      .select('*, profiles!trainer_sessions_client_id_fkey(full_name)')
+      .select('*, profiles!trainer_sessions_client_id_fkey(id, full_name, avatar_url)')
       .eq('trainer_id', profile.id)
       .gte('scheduled_at', new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0)).toISOString())
       .lte('scheduled_at', new Date(Date.UTC(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)).toISOString())
@@ -648,7 +778,6 @@ export default function TrainerSchedule() {
     loadSessions();
   };
 
-  // ── Today handler ────────────────────────────────────────────────────────
   const handleToday = useCallback(() => {
     if (viewMode === 'day') setDayOffset(0);
     else if (viewMode === 'week') setWeekOffset(0);
@@ -659,7 +788,6 @@ export default function TrainerSchedule() {
     || (viewMode === 'week' && weekOffset === 0)
     || (viewMode === 'month' && monthOffset === 0);
 
-  // ── Group sessions by day (shared) ───────────────────────────────────────
   const sessionsByDay = useMemo(() => {
     const map = {};
     sessions.forEach(s => {
@@ -670,7 +798,6 @@ export default function TrainerSchedule() {
     return map;
   }, [sessions]);
 
-  // ── Week view: sessions grouped by the 7 week days ──────────────────────
   const weekSessionsByDay = useMemo(() => {
     const map = {};
     days.forEach(d => { map[format(d, 'yyyy-MM-dd')] = []; });
@@ -679,35 +806,53 @@ export default function TrainerSchedule() {
       if (map[key]) map[key].push(s);
     });
     return map;
-  }, [sessions, weekStart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, weekStart.getTime()]);
 
-  // Today's remaining sessions (week view)
-  const todaySessions = useMemo(() => {
-    const now = new Date();
-    return sessions
-      .filter(s => isSameDay(new Date(s.scheduled_at), now) && !['cancelled'].includes(s.status))
-      .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
-  }, [sessions]);
-
-  // ── Day view: sessions for selected day ─────────────────────────────────
   const dayViewSessions = useMemo(() => {
     const key = format(selectedDay, 'yyyy-MM-dd');
     return (sessionsByDay[key] || []).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionsByDay, dayOffset]);
 
-  // ── Labels ──────────────────────────────────────────────────────────────
-  const weekLabel = `${format(weekStart, 'MMM d', { locale: dateFnsLocale })} - ${format(weekEnd, 'MMM d, yyyy', { locale: dateFnsLocale })}`;
-  const dayLabel = format(selectedDay, 'EEEE, MMM d, yyyy', { locale: dateFnsLocale });
-  const monthLabel = format(monthAnchor, 'MMMM yyyy', { locale: dateFnsLocale });
+  // Upcoming list for the visible month: every non-cancelled session in the
+  // anchored month, from "now" forward (so past sessions in earlier months
+  // don't pollute "upcoming"). Empty list → render the empty-state message.
+  const monthUpcomingSessions = useMemo(() => {
+    const now = new Date();
+    return sessions
+      .filter(s => {
+        if (s.status === 'cancelled') return false;
+        const dt = new Date(s.scheduled_at);
+        if (!isSameMonth(dt, monthAnchor)) return false;
+        // For the current month: only future sessions. For future months: all.
+        if (monthOffset === 0 && dt < now) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, monthOffset, monthAnchor.getTime()]);
 
+  // ── Counters ──
+  const weekCount = useMemo(
+    () => sessions.filter(s => s.status !== 'cancelled').length,
+    [sessions]
+  );
+  const weekConfirmed = useMemo(
+    () => sessions.filter(s => s.status === 'confirmed' || s.status === 'completed').length,
+    [sessions]
+  );
+  const weekPending = useMemo(
+    () => sessions.filter(s => s.status === 'scheduled').length,
+    [sessions]
+  );
+
+  // ── Labels ──
+  const weekLabel = `${format(weekStart, 'MMM d', { locale: dateFnsLocale })} — ${format(weekEnd, 'MMM d', { locale: dateFnsLocale })}`;
+  const dayLabel = format(selectedDay, 'EEE · MMM d', { locale: dateFnsLocale });
+  const monthLabel = format(monthAnchor, 'MMMM yyyy', { locale: dateFnsLocale });
   const subLabel = viewMode === 'day' ? dayLabel : viewMode === 'month' ? monthLabel : weekLabel;
 
-  // ── Handle view tab change ──────────────────────────────────────────────
-  const handleViewChange = (idx) => {
-    setViewMode(VIEW_MODES[idx]);
-  };
-
-  // ── Month view: tap a day to go to day view ─────────────────────────────
   const handleMonthDayClick = (day) => {
     const today = new Date();
     const diff = Math.round((day.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / (1000 * 60 * 60 * 24));
@@ -715,7 +860,6 @@ export default function TrainerSchedule() {
     setViewMode('day');
   };
 
-  // ── Navigation handlers ──────────────────────────────────────────────
   const handlePrev = () => {
     if (viewMode === 'day') setDayOffset(d => d - 1);
     else if (viewMode === 'week') setWeekOffset(w => w - 1);
@@ -727,340 +871,753 @@ export default function TrainerSchedule() {
     else setMonthOffset(m => m + 1);
   };
 
+  // ── Day-view hour rows (7..19) ──
+  const dayHourRows = Array.from({ length: 13 }, (_, i) => i + 7);
+
   return (
-    <div className="min-h-screen pb-28 md:pb-12 overflow-x-hidden" style={{ background: 'var(--color-bg-primary)' }}>
-      {/* ── Sticky PageHeader with tabs (Community pattern) ──────────── */}
-      <PageHeader title={t('trainerCalendar.title', 'Calendar')} accentLabel={t('trainerCalendar.accentLabel', 'Schedule')}>
-        <UnderlineTabs
-          tabs={viewTabs}
-          activeIndex={viewTabIndex}
-          onChange={handleViewChange}
-        />
-      </PageHeader>
+    <div style={{ background: TT.bg, minHeight: '100%' }}>
+      {/* ─────────────────── MOBILE LAYOUT ─────────────────── */}
+      <div className="md:hidden" style={{ padding: '6px 16px 16px' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+          <div>
+            <TEyebrow>{t('trainerCalendar.accentLabel', 'Schedule')}</TEyebrow>
+            <TPageTitle>{t('trainerCalendar.title', 'Calendar')}</TPageTitle>
+          </div>
+          <TIconButton
+            ariaLabel={t('trainerCalendar.newSession', 'New Session')}
+            size={44}
+            onClick={() => setModal({ date: viewMode === 'day' ? selectedDay : new Date() })}
+            style={{ background: TT.accent, border: 'none' }}
+          >
+            <Plus size={20} color="#06363B" strokeWidth={2.4} />
+          </TIconButton>
+        </div>
 
-      {/* ── Content area ────────────────────────────────────────────── */}
-      <div className="max-w-5xl mx-auto px-4 md:px-6 pt-4">
+        {/* View segmented */}
+        <div style={{ marginBottom: 12 }}>
+          <TSegmented
+            options={[
+              { value: 'day',   label: t('trainerCalendar.day', 'Day') },
+              { value: 'week',  label: t('trainerCalendar.week', 'Week') },
+              { value: 'month', label: t('trainerCalendar.month', 'Month') },
+            ]}
+            value={viewMode}
+            onChange={(v) => setViewMode(v)}
+          />
+        </div>
 
-        {/* Sub-navigation row: arrows + date label + Today pill + New Session */}
-        <div className="flex items-center gap-1.5 sm:gap-2 mb-5">
+        {/* This week summary */}
+        {viewMode === 'week' && weekOffset === 0 && (
+          <TCard
+            padded={16}
+            style={{
+              background: 'linear-gradient(135deg, #E0F7F8 0%, #D4EFF1 100%)',
+              borderColor: 'transparent',
+              marginBottom: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <TEyebrow color={TT.accentInk}>{t('trainerCalendar.thisWeek', 'This week')}</TEyebrow>
+                <div style={{
+                  fontFamily: TFont.display, fontSize: 32, fontWeight: 800,
+                  color: TT.text, letterSpacing: -1, lineHeight: 1, marginTop: 4,
+                }}>
+                  {weekCount}<span style={{ fontSize: 14, color: TT.textMute }}> {t('trainerCalendar.sessionsLower', 'sessions')}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: TT.accentInk, marginTop: 4, fontWeight: 700 }}>
+                  {t('trainerCalendar.heroBreakdown', '{{confirmed}} confirmed · {{pending}} pending', {
+                    confirmed: weekConfirmed,
+                    pending: weekPending,
+                  })}
+                </div>
+              </div>
+              <div style={{
+                width: 56, height: 56, borderRadius: 16, background: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <CalendarIcon size={28} color={TT.accent} strokeWidth={2} />
+              </div>
+            </div>
+          </TCard>
+        )}
+
+        {/* Date strip */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: 10,
+        }}>
           <button onClick={handlePrev}
             aria-label={t('pages:trainerCalendar.previous', 'Previous')}
-            className="p-2 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-white/5 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none">
+            style={{ background: 'transparent', border: 'none', color: TT.text, padding: 6, minHeight: 44, minWidth: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
             <ChevronLeft size={18} />
           </button>
-
-          <div className="flex-1 text-center min-w-0">
-            <p className="text-[13px] sm:text-[16px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{subLabel}</p>
-          </div>
-
+          <button onClick={handleToday} disabled={isAtToday}
+            style={{
+              fontFamily: TFont.display, fontSize: 14, fontWeight: 800,
+              color: TT.text, background: 'transparent', border: 'none',
+              opacity: isAtToday ? 1 : 1, cursor: isAtToday ? 'default' : 'pointer',
+            }}
+          >
+            {subLabel}
+          </button>
           <button onClick={handleNext}
             aria-label={t('pages:trainerCalendar.next', 'Next')}
-            className="p-2 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-white/5 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none">
+            style={{ background: 'transparent', border: 'none', color: TT.text, padding: 6, minHeight: 44, minWidth: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
             <ChevronRight size={18} />
-          </button>
-
-          {/* Today pill */}
-          <button
-            onClick={handleToday}
-            disabled={isAtToday}
-            className="px-2.5 sm:px-3 py-1.5 rounded-full text-[11px] sm:text-[12px] font-semibold min-h-[36px] transition-colors flex-shrink-0"
-            style={isAtToday
-              ? { background: 'var(--color-accent-glow)', color: 'var(--color-text-muted)', opacity: 0.6, cursor: 'default' }
-              : { background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }
-            }
-          >
-            {t('trainerCalendar.today', 'Today')}
-          </button>
-
-          {/* New Session */}
-          <button
-            onClick={() => setModal({ date: viewMode === 'day' ? selectedDay : new Date() })}
-            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-[13px] font-bold transition-colors flex-shrink-0 whitespace-nowrap min-h-[44px]"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
-          >
-            <Plus size={15} /> <span className="hidden sm:inline text-[12px]">{t('trainerCalendar.newSession', 'New')}</span>
           </button>
         </div>
 
-        {/* ── DAY VIEW ──────────────────────────────────────────────────── */}
-        {viewMode === 'day' && (
+        {/* WEEK VIEW */}
+        {viewMode === 'week' && (
           <>
             {loading ? (
-              <div className="animate-pulse space-y-3 py-4">
-                <div className="h-20 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
-                <div className="h-20 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
-              </div>
-            ) : dayViewSessions.length === 0 ? (
-              <div className="text-center py-16">
-                <CalendarDays size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-muted)' }} />
-                <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>{t('trainerCalendar.noSessionsThisDay')}</p>
-                <button
-                  onClick={() => setModal({ date: selectedDay })}
-                  className="mt-4 px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] font-semibold bg-[var(--color-accent)]/15 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/25 transition-colors"
-                >
-                  <Plus size={14} className="inline mr-1.5 -mt-0.5" />
-                  {t('trainerCalendar.addSession')}
-                </button>
+              <div className="space-y-3">
+                {[0,1,2,3,4].map(i => (
+                  <div key={i} className="h-24 rounded-2xl animate-pulse" style={{ background: TT.surface2 }} />
+                ))}
               </div>
             ) : (
-              <div className="space-y-2">
-                {dayViewSessions.map(s => {
-                  const sc = STATUS_COLORS[s.status] || STATUS_COLORS.scheduled;
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {days.map((day) => {
+                  const key = format(day, 'yyyy-MM-dd');
+                  const dSessions = (weekSessionsByDay[key] || [])
+                    .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+                  const today = isToday(day);
                   return (
-                    <button key={s.id} onClick={() => setModal({ session: s })}
-                      className="w-full flex items-center gap-2 sm:gap-3 p-3 sm:p-4 bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-xl hover:bg-[var(--color-bg-card)]/80 hover:border-white/20 transition-all text-left min-h-[56px]">
-                      <div className={`w-10 h-10 rounded-xl ${sc.bg} flex items-center justify-center flex-shrink-0`}>
-                        <CalendarDays size={18} className={sc.text} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] sm:text-[14px] font-semibold text-[var(--color-text-primary)] truncate flex items-center gap-1.5">
-                          {s.profiles?.full_name || t('trainerCalendar.client')}
-                          {s.recurrence_group && <Repeat size={12} className="text-[var(--color-text-muted)] flex-shrink-0" />}
-                        </p>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-[11px] sm:text-[12px] text-[var(--color-text-muted)] truncate">{s.title}</p>
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-bold ${sc.bg} ${sc.text} flex-shrink-0 whitespace-nowrap`}>
-                            {sc.label}
-                          </span>
+                    <TCard key={key} padded={14} style={today ? { borderLeft: `3px solid ${TT.accent}` } : {}}>
+                      <div style={{
+                        display: 'flex', alignItems: 'baseline', gap: 10,
+                        marginBottom: dSessions.length ? 10 : 0,
+                      }}>
+                        <div style={{
+                          fontFamily: TFont.display, fontSize: 14, fontWeight: 800,
+                          color: today ? TT.accent : TT.text, letterSpacing: -0.3,
+                        }}>
+                          {format(day, 'EEE d', { locale: dateFnsLocale })}
                         </div>
-                        {s.details?.workout_name && (
-                          <p className="text-[10px] text-[var(--color-accent)] flex items-center gap-1 mt-0.5">
-                            <Dumbbell size={10} /> {s.details.workout_name}
-                          </p>
-                        )}
+                        <div style={{ flex: 1, fontSize: 11, color: TT.textMute }}>
+                          {dSessions.length} {dSessions.length === 1 ? t('trainerCalendar.sessionSingular', 'session') : t('trainerCalendar.sessionsLower', 'sessions')}
+                        </div>
+                        <button
+                          onClick={() => setModal({ date: day })}
+                          aria-label={t('trainerCalendar.addSession', 'Add session')}
+                          style={{ background: 'transparent', border: 'none', color: TT.textMute, minHeight: 44, minWidth: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Plus size={14} strokeWidth={2} />
+                        </button>
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-[12px] sm:text-[13px] font-medium text-[var(--color-text-secondary)] whitespace-nowrap">{format(new Date(s.scheduled_at), 'HH:mm')}</p>
-                        <p className="text-[10px] sm:text-[11px] text-[var(--color-text-muted)]">{s.duration_mins}m</p>
+
+                      {dSessions.length === 0 ? (
+                        <div style={{ fontSize: 11, color: TT.textFaint, fontStyle: 'italic' }}>
+                          {t('trainerCalendar.tapToAdd', '+ tap to add')}
+                        </div>
+                      ) : (
+                        dSessions.map((s, j) => {
+                          const start = new Date(s.scheduled_at);
+                          const dur = s.duration_mins || 60;
+                          const now = new Date();
+                          const sEnd = new Date(start.getTime() + dur * 60000);
+                          const isNow = today && now >= start && now <= sEnd;
+                          const isGroup = (s.title || '').toLowerCase().includes('bootcamp')
+                            || (s.title || '').toLowerCase().includes('group');
+                          const isIntake = (s.title || '').toLowerCase().includes('assessment')
+                            || (s.title || '').toLowerCase().includes('intake');
+                          const pillTone = isGroup ? 'coach' : isIntake ? 'warn' : 'teal';
+                          const fullName = s.profiles?.full_name || t('trainerCalendar.client', 'Client');
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => setModal({ session: s })}
+                              style={{
+                                width: '100%',
+                                display: 'flex', alignItems: 'center', gap: 10,
+                                padding: '8px 10px', borderRadius: 10,
+                                background: isNow ? `${TT.accent}15` : TT.surface2,
+                                marginTop: j > 0 ? 4 : 0,
+                                border: isNow ? `1px solid ${TT.accent}` : '1px solid transparent',
+                                textAlign: 'left', cursor: 'pointer',
+                              }}
+                            >
+                              <div style={{
+                                fontSize: 11, fontFamily: TFont.mono, fontWeight: 800,
+                                color: isNow ? TT.accentInk : TT.text, minWidth: 56,
+                              }}>
+                                {format(start, 'HH:mm')}
+                              </div>
+                              <TAvatar
+                                name={fullName}
+                                size={24}
+                                idx={avatarIdx(s.profiles?.id || s.client_id)}
+                                src={s.profiles?.avatar_url}
+                              />
+                              <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: TT.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {fullName}
+                              </div>
+                              <TPill tone={pillTone} size="s">
+                                {isGroup ? t('trainerCalendar.kindGroup', 'Group')
+                                  : isIntake ? t('trainerCalendar.kindIntake', 'Intake')
+                                  : t('trainerCalendar.kind1on1', '1-on-1')}
+                              </TPill>
+                              {isNow && <TPill tone="hot" size="s">{t('trainerCalendar.now', 'NOW')}</TPill>}
+                            </button>
+                          );
+                        })
+                      )}
+                    </TCard>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* DAY VIEW */}
+        {viewMode === 'day' && (
+          <TCard padded={0}>
+            {loading ? (
+              <div className="p-4 space-y-3">
+                {[0,1,2,3].map(i => (
+                  <div key={i} className="h-12 rounded-xl animate-pulse" style={{ background: TT.surface2 }} />
+                ))}
+              </div>
+            ) : (
+              dayHourRows.map((h, i) => {
+                const slot = setMinutes(setHours(selectedDay, h), 0);
+                const slotEnd = setMinutes(setHours(selectedDay, h + 1), 0);
+                const session = dayViewSessions.find(s => {
+                  const t = new Date(s.scheduled_at);
+                  return t >= slot && t < slotEnd;
+                });
+                const now = new Date();
+                let isCurrent = false;
+                if (session) {
+                  const start = new Date(session.scheduled_at);
+                  const dur = session.duration_mins || 60;
+                  const end = new Date(start.getTime() + dur * 60000);
+                  isCurrent = isSameDay(selectedDay, now) && now >= start && now <= end;
+                }
+                const visuals = session ? statusVisuals(session.status) : null;
+                return (
+                  <div key={h} style={{
+                    display: 'flex', gap: 12,
+                    padding: '8px 14px',
+                    borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
+                    alignItems: 'flex-start', minHeight: 44,
+                  }}>
+                    <div style={{
+                      width: 36, fontSize: 11, fontFamily: TFont.mono,
+                      color: TT.textMute, fontWeight: 700, paddingTop: 4,
+                    }}>
+                      {h > 12 ? h - 12 : h}{h >= 12 ? t('trainerCalendar.pmShort', 'p') : t('trainerCalendar.amShort', 'a')}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      {session && visuals && (
+                        <button
+                          onClick={() => setModal({ session })}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px', borderRadius: 10,
+                            background: visuals.soft, borderLeft: `3px solid ${visuals.tone}`,
+                            border: `1px solid transparent`, borderLeftWidth: 3,
+                            position: 'relative', textAlign: 'left', cursor: 'pointer',
+                          }}
+                        >
+                          {isCurrent && (
+                            <div style={{
+                              position: 'absolute', top: 6, right: 8,
+                              fontSize: 9, fontWeight: 800, color: TT.hot,
+                              letterSpacing: 1, textTransform: 'uppercase',
+                            }}>{t('trainerCalendar.nowIndicator', '↓ NOW')}</div>
+                          )}
+                          <div style={{ fontSize: 12, fontWeight: 800, color: TT.text }}>
+                            {session.profiles?.full_name || t('trainerCalendar.client', 'Client')}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 1 }}>
+                            {session.title} · {session.duration_mins}{t('trainerCalendar.minShort', 'm')}
+                          </div>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </TCard>
+        )}
+
+        {/* MONTH VIEW */}
+        {viewMode === 'month' && (
+          <TCard padded={14}>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: 4, marginBottom: 6,
+            }}>
+              {DAY_NAMES.map((name, i) => (
+                <div key={i} style={{
+                  textAlign: 'center', fontSize: 9.5, fontWeight: 800,
+                  color: TT.textMute, letterSpacing: 0.6,
+                }}>{name[0]}</div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+              {paddedMonthDays.map((day, idx) => {
+                const key = format(day, 'yyyy-MM-dd');
+                const inMonth = isSameMonth(day, monthAnchor);
+                const today = isToday(day);
+                const dSessions = sessionsByDay[key] || [];
+                const count = dSessions.length;
+                return (
+                  <button
+                    key={key + idx}
+                    onClick={() => handleMonthDayClick(day)}
+                    style={{
+                      aspectRatio: '1', borderRadius: 8,
+                      background: today ? TT.accent : count > 0 ? TT.accentSoft : TT.surface2,
+                      color: today ? '#06363B' : TT.text,
+                      display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      fontSize: 12, fontWeight: today ? 800 : 600,
+                      position: 'relative',
+                      border: 'none', cursor: 'pointer',
+                      opacity: inMonth ? 1 : 0.3,
+                    }}
+                  >
+                    {format(day, 'd')}
+                    {count > 0 && !today && (
+                      <div style={{ display: 'flex', gap: 1.5, marginTop: 2 }}>
+                        {Array.from({ length: Math.min(count, 3) }).map((_, j) => (
+                          <div key={j} style={{
+                            width: 3, height: 3, borderRadius: 999, background: TT.accent,
+                          }} />
+                        ))}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </TCard>
+        )}
+
+        {/* MONTH VIEW — upcoming sessions list */}
+        {viewMode === 'month' && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{
+              fontFamily: TFont.display, fontSize: 14, fontWeight: 800,
+              color: TT.text, letterSpacing: -0.2, marginBottom: 8, padding: '0 2px',
+            }}>
+              {t('trainerCalendar.upcomingThisMonth', 'Upcoming this month')} · {monthUpcomingSessions.length}
+            </div>
+            {monthUpcomingSessions.length === 0 ? (
+              <TCard padded={16}>
+                <div style={{
+                  textAlign: 'center', fontSize: 13, color: TT.textSub,
+                  padding: '14px 8px',
+                }}>
+                  {t('trainerCalendar.noUpcomingThisMonth', 'No upcoming sessions this month')}
+                </div>
+              </TCard>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {monthUpcomingSessions.map((s) => {
+                  const dt = new Date(s.scheduled_at);
+                  const clientName = s.profiles?.full_name
+                    || s.client?.full_name
+                    || t('trainerCalendar.unknownClient', 'Client');
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setModal({ session: s })}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '12px 14px', borderRadius: 12,
+                        background: TT.surface2, border: 'none', cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <div style={{
+                        flex: '0 0 56px', display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center',
+                        background: TT.accentSoft, borderRadius: 10,
+                        padding: '6px 4px',
+                      }}>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: TT.accent, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+                          {format(dt, 'MMM', { locale: dateFnsLocale })}
+                        </div>
+                        <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: TT.text, lineHeight: 1 }}>
+                          {format(dt, 'd')}
+                        </div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {clientName}
+                        </div>
+                        <div style={{ fontSize: 11, color: TT.textSub }}>
+                          {format(dt, 'EEE · h:mm a', { locale: dateFnsLocale })}
+                          {s.duration_mins ? ` · ${s.duration_mins}m` : ''}
+                        </div>
+                      </div>
+                      <div style={{
+                        fontSize: 10, fontWeight: 700,
+                        color: s.status === 'confirmed' ? TT.accent : TT.textSub,
+                        textTransform: 'uppercase', letterSpacing: 0.6,
+                      }}>
+                        {t(`trainerCalendar.status.${s.status}`, s.status)}
                       </div>
                     </button>
                   );
                 })}
               </div>
             )}
-          </>
+          </div>
         )}
+      </div>
 
-        {/* ── WEEK VIEW ─────────────────────────────────────────────────── */}
-        {viewMode === 'week' && (
-          <>
-            {/* Today's Agenda (if on current week) */}
-            {weekOffset === 0 && todaySessions.length > 0 && (
-              <div className="mb-6 bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl p-4">
-                <p className="text-[13px] font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
-                  <Clock size={14} className="text-[var(--color-accent)]" />
-                  {t('trainerCalendar.todaysSessions')}
-                </p>
-                <div className="space-y-2">
-                  {todaySessions.map(s => {
-                    const sc = STATUS_COLORS[s.status] || STATUS_COLORS.scheduled;
-                    return (
-                      <button key={s.id} onClick={() => setModal({ session: s })}
-                        className="w-full flex items-center gap-3 p-3 bg-[var(--color-bg-secondary)] rounded-xl hover:bg-[var(--color-bg-secondary)]/80 transition-colors text-left">
-                        <div className={`w-8 h-8 rounded-lg ${sc.bg} flex items-center justify-center flex-shrink-0`}>
-                          <CalendarDays size={14} className={sc.text} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-medium text-[var(--color-text-primary)] truncate flex items-center gap-1">
-                            {s.profiles?.full_name || t('trainerCalendar.client')}
-                            {s.recurrence_group && <Repeat size={11} className="text-[var(--color-text-muted)] flex-shrink-0" />}
-                          </p>
-                          <p className="text-[11px] text-[var(--color-text-muted)]">{s.title}</p>
-                          {s.details?.workout_name && (
-                            <p className="text-[10px] text-[var(--color-accent)] flex items-center gap-1 mt-0.5">
-                              <Dumbbell size={9} /> {s.details.workout_name}
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-[12px] text-[var(--color-text-secondary)]">{format(new Date(s.scheduled_at), 'HH:mm')}</p>
-                          <p className="text-[10px] text-[var(--color-text-muted)]">{s.duration_mins}m</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+      {/* ─────────────────── DESKTOP LAYOUT ─────────────────── */}
+      <div className="hidden md:block">
+        <main style={{ padding: '24px 28px 32px', maxWidth: 1280, margin: '0 auto' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <TEyebrow>{t('trainerCalendar.accentLabel', 'Schedule')}</TEyebrow>
+              <div style={{
+                fontFamily: TFont.display, fontSize: 32, fontWeight: 800,
+                color: TT.text, letterSpacing: -1.2, lineHeight: 1.05, marginTop: 6,
+              }}>
+                {t('trainerCalendar.title', 'Calendar')}
               </div>
-            )}
+              <div style={{ fontSize: 13, color: TT.textSub, marginTop: 4 }}>
+                {t('trainerCalendar.heroBreakdown', '{{confirmed}} confirmed · {{pending}} pending', {
+                  confirmed: weekConfirmed, pending: weekPending,
+                })}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ minWidth: 240 }}>
+                <TSegmented
+                  options={[
+                    { value: 'day',   label: t('trainerCalendar.day', 'Day') },
+                    { value: 'week',  label: t('trainerCalendar.week', 'Week') },
+                    { value: 'month', label: t('trainerCalendar.month', 'Month') },
+                  ]}
+                  value={viewMode}
+                  onChange={setViewMode}
+                />
+              </div>
+              <button
+                onClick={() => setModal({ date: viewMode === 'day' ? selectedDay : new Date() })}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '10px 14px', borderRadius: 12,
+                  background: TT.accent, color: '#06363B',
+                  fontFamily: TFont.display, fontWeight: 800, fontSize: 13,
+                  border: 'none', minHeight: 44, cursor: 'pointer',
+                }}
+              >
+                <Plus size={15} strokeWidth={2.4} />
+                {t('trainerCalendar.newSession', 'New Session')}
+              </button>
+            </div>
+          </div>
 
-            {/* Week grid */}
-            {loading ? (
-              <div className="animate-pulse grid grid-cols-1 md:grid-cols-7 gap-2 py-4">
-                {Array.from({ length: 7 }).map((_, i) => (
-                  <div key={i} className="h-28 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+          {/* Sub-nav: prev / label / next / today */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+            <button onClick={handlePrev}
+              aria-label={t('pages:trainerCalendar.previous', 'Previous')}
+              style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, borderRadius: 10, padding: 8, color: TT.text, minHeight: 44, minWidth: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <div style={{ flex: 1, textAlign: 'center', fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text }}>
+              {subLabel}
+            </div>
+            <button onClick={handleNext}
+              aria-label={t('pages:trainerCalendar.next', 'Next')}
+              style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, borderRadius: 10, padding: 8, color: TT.text, minHeight: 44, minWidth: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <ChevronRight size={18} />
+            </button>
+            <button onClick={handleToday} disabled={isAtToday}
+              style={{
+                padding: '8px 14px', borderRadius: 999, fontSize: 12, fontWeight: 800,
+                background: isAtToday ? TT.surface2 : TT.text,
+                color: isAtToday ? TT.textMute : '#fff',
+                border: 'none', minHeight: 36, cursor: isAtToday ? 'default' : 'pointer',
+                opacity: isAtToday ? 0.6 : 1,
+              }}
+            >
+              {t('trainerCalendar.today', 'Today')}
+            </button>
+          </div>
+
+          {/* Two-column when day/week, single col for month */}
+          {viewMode === 'month' ? (
+            <TCard padded={14}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 8 }}>
+                {DAY_NAMES.map((name) => (
+                  <div key={name} style={{ textAlign: 'center', fontSize: 10, fontWeight: 800, color: TT.textMute, letterSpacing: 1 }}>{name}</div>
                 ))}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
-                {days.map(day => {
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+                {paddedMonthDays.map((day, idx) => {
                   const key = format(day, 'yyyy-MM-dd');
-                  const daySessions = weekSessionsByDay[key] || [];
+                  const inMonth = isSameMonth(day, monthAnchor);
                   const today = isToday(day);
-                  const past = isBefore(day, new Date()) && !today;
-
+                  const dSessions = sessionsByDay[key] || [];
+                  const count = dSessions.length;
                   return (
-                    <div key={key} className={`bg-[var(--color-bg-card)] border rounded-xl overflow-hidden min-h-0 md:min-h-[140px] hover:border-white/20 hover:bg-white/[0.03] transition-all ${
-                      today ? 'border-[var(--color-accent)]/30' : 'border-[var(--color-border-subtle)]'
-                    }`}>
-                      {/* Day header */}
-                      <div className={`px-3 py-2 border-b flex items-center justify-between ${
-                        today ? 'border-[var(--color-accent)]/20 bg-[var(--color-accent)]/5' : 'border-white/4'
-                      }`}>
-                        <div>
-                          <p className={`text-[11px] font-medium ${today ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}`}>
-                            {format(day, 'EEE', { locale: dateFnsLocale })}
-                          </p>
-                          <p className={`text-[15px] font-bold ${today ? 'text-[var(--color-accent)]' : past ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)]'}`}>
-                            {format(day, 'd')}
-                          </p>
+                    <button
+                      key={key + idx}
+                      onClick={() => handleMonthDayClick(day)}
+                      style={{
+                        aspectRatio: '1.4', borderRadius: 10,
+                        background: today ? TT.accent : count > 0 ? TT.accentSoft : TT.surface2,
+                        color: today ? '#06363B' : TT.text,
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'flex-start', justifyContent: 'flex-start',
+                        padding: '6px 8px',
+                        fontSize: 13, fontWeight: today ? 800 : 600,
+                        border: 'none', cursor: 'pointer', opacity: inMonth ? 1 : 0.4,
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span>{format(day, 'd')}</span>
+                      {count > 0 && (
+                        <div style={{ marginTop: 'auto', fontSize: 10, fontWeight: 700, color: today ? '#06363B' : TT.accentInk }}>
+                          {count} {count === 1 ? t('trainerCalendar.sessionSingular', 'session') : t('trainerCalendar.sessionsLower', 'sessions')}
                         </div>
-                        <button
-                          onClick={() => setModal({ date: day })}
-                          aria-label="Add session"
-                          className="w-8 h-8 md:w-7 md:h-7 rounded-md flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
-                        >
-                          <Plus size={14} />
-                        </button>
-                      </div>
-
-                      {/* Sessions */}
-                      <div className="p-1.5 space-y-1">
-                        {daySessions.length === 0 ? (
-                          <p className="text-[10px] text-[var(--color-text-faint)] text-center py-3">{t('trainerCalendar.noSessions')}</p>
-                        ) : (
-                          daySessions.map(s => {
-                            const sc = STATUS_COLORS[s.status] || STATUS_COLORS.scheduled;
-                            return (
-                              <button key={s.id} onClick={() => setModal({ session: s })}
-                                className={`w-full text-left px-2.5 py-2.5 md:py-2 rounded-lg ${sc.bg} hover:opacity-80 transition-opacity min-h-[44px] md:min-h-0`}>
-                                <p className={`text-[12px] md:text-[11px] font-semibold ${sc.text} truncate flex items-center gap-1`}>
-                                  {s.profiles?.full_name || t('trainerCalendar.client')}
-                                  {s.recurrence_group && <Repeat size={10} className="flex-shrink-0 opacity-60" />}
-                                </p>
-                                <p className="text-[11px] md:text-[10px] text-[var(--color-text-muted)]">
-                                  {format(new Date(s.scheduled_at), 'HH:mm')} · {s.duration_mins}m
-                                </p>
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
+                      )}
+                    </button>
                   );
                 })}
               </div>
-            )}
-          </>
-        )}
+            </TCard>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
+              {/* Main calendar pane */}
+              <TCard padded={0}>
+                {viewMode === 'week' && (
+                  <div>
+                    {loading ? (
+                      <div className="p-4 space-y-3">
+                        {[0,1,2,3,4].map(i => (
+                          <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: TT.surface2 }} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        {days.map((day, di) => {
+                          const key = format(day, 'yyyy-MM-dd');
+                          const dSessions = (weekSessionsByDay[key] || [])
+                            .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+                          const today = isToday(day);
+                          return (
+                            <div key={key} style={{
+                              padding: '14px 18px',
+                              borderTop: di > 0 ? `1px solid ${TT.border}` : 'none',
+                              borderLeft: today ? `3px solid ${TT.accent}` : '3px solid transparent',
+                            }}>
+                              <div style={{
+                                display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: dSessions.length ? 8 : 0,
+                              }}>
+                                <div style={{
+                                  fontFamily: TFont.display, fontSize: 14, fontWeight: 800,
+                                  color: today ? TT.accent : TT.text, letterSpacing: -0.3,
+                                }}>
+                                  {format(day, 'EEE d', { locale: dateFnsLocale })}
+                                </div>
+                                <div style={{ flex: 1, fontSize: 11, color: TT.textMute }}>
+                                  {dSessions.length} {dSessions.length === 1 ? t('trainerCalendar.sessionSingular', 'session') : t('trainerCalendar.sessionsLower', 'sessions')}
+                                </div>
+                                <button
+                                  onClick={() => setModal({ date: day })}
+                                  aria-label={t('trainerCalendar.addSession', 'Add session')}
+                                  style={{ background: 'transparent', border: 'none', color: TT.textMute, cursor: 'pointer' }}
+                                >
+                                  <Plus size={14} strokeWidth={2} />
+                                </button>
+                              </div>
+                              {dSessions.length === 0 ? (
+                                <div style={{ fontSize: 11, color: TT.textFaint, fontStyle: 'italic' }}>
+                                  {t('trainerCalendar.tapToAdd', '+ tap to add')}
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {dSessions.map(s => {
+                                    const start = new Date(s.scheduled_at);
+                                    const fullName = s.profiles?.full_name || t('trainerCalendar.client', 'Client');
+                                    return (
+                                      <button
+                                        key={s.id}
+                                        onClick={() => setModal({ session: s })}
+                                        style={{
+                                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                          padding: '8px 10px', borderRadius: 10,
+                                          background: TT.surface2, border: '1px solid transparent',
+                                          textAlign: 'left', cursor: 'pointer',
+                                        }}
+                                      >
+                                        <div style={{ fontSize: 11, fontFamily: TFont.mono, fontWeight: 800, color: TT.text, minWidth: 56 }}>
+                                          {format(start, 'HH:mm')}
+                                        </div>
+                                        <TAvatar name={fullName} size={24}
+                                          idx={avatarIdx(s.profiles?.id || s.client_id)}
+                                          src={s.profiles?.avatar_url} />
+                                        <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: TT.text }}>
+                                          {fullName}
+                                        </div>
+                                        <span style={{ fontSize: 11, color: TT.textMute, fontFamily: TFont.mono }}>
+                                          {s.duration_mins}{t('trainerCalendar.minShort', 'm')}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-        {/* ── MONTH VIEW (Google Calendar style) ────────────────────────── */}
-        {viewMode === 'month' && (
-          <>
-            {loading ? (
-              <div className="animate-pulse space-y-2 py-4">
-                <div className="grid grid-cols-7 gap-1">
-                  {Array.from({ length: 35 }).map((_, i) => (
-                    <div key={i} className="h-16 rounded-lg" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-                {/* Day names header */}
-                <div className="grid grid-cols-7" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-                  {DAY_NAMES.map((name, i) => (
-                    <div key={name} className="py-2.5 text-center text-[10px] font-bold uppercase tracking-widest"
-                      style={{ color: (i >= 5) ? 'var(--color-text-muted)' : 'var(--color-text-secondary)' }}>
-                      {name}
+                {viewMode === 'day' && (
+                  <div>
+                    {dayHourRows.map((h, i) => {
+                      const slot = setMinutes(setHours(selectedDay, h), 0);
+                      const slotEnd = setMinutes(setHours(selectedDay, h + 1), 0);
+                      const session = dayViewSessions.find(s => {
+                        const t = new Date(s.scheduled_at);
+                        return t >= slot && t < slotEnd;
+                      });
+                      const now = new Date();
+                      let isCurrent = false;
+                      if (session) {
+                        const start = new Date(session.scheduled_at);
+                        const dur = session.duration_mins || 60;
+                        const end = new Date(start.getTime() + dur * 60000);
+                        isCurrent = isSameDay(selectedDay, now) && now >= start && now <= end;
+                      }
+                      const visuals = session ? statusVisuals(session.status) : null;
+                      return (
+                        <div key={h} style={{
+                          display: 'flex', gap: 16,
+                          padding: '10px 18px',
+                          borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
+                          alignItems: 'flex-start', minHeight: 56,
+                        }}>
+                          <div style={{
+                            width: 50, fontSize: 11, fontFamily: TFont.mono,
+                            color: TT.textMute, fontWeight: 700, paddingTop: 4,
+                          }}>
+                            {h > 12 ? h - 12 : h}{h >= 12 ? t('trainerCalendar.pm', 'pm') : t('trainerCalendar.am', 'am')}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            {session && visuals && (
+                              <button
+                                onClick={() => setModal({ session })}
+                                style={{
+                                  width: '100%', padding: '10px 14px', borderRadius: 10,
+                                  background: visuals.soft, borderLeft: `3px solid ${visuals.tone}`,
+                                  border: '1px solid transparent', borderLeftWidth: 3,
+                                  position: 'relative', textAlign: 'left', cursor: 'pointer',
+                                }}
+                              >
+                                {isCurrent && (
+                                  <div style={{
+                                    position: 'absolute', top: 8, right: 10,
+                                    fontSize: 9, fontWeight: 800, color: TT.hot,
+                                    letterSpacing: 1, textTransform: 'uppercase',
+                                  }}>{t('trainerCalendar.nowIndicator', '↓ NOW')}</div>
+                                )}
+                                <div style={{ fontSize: 13, fontWeight: 800, color: TT.text }}>
+                                  {session.profiles?.full_name || t('trainerCalendar.client', 'Client')}
+                                </div>
+                                <div style={{ fontSize: 11, color: TT.textSub, marginTop: 2 }}>
+                                  {session.title} · {session.duration_mins}{t('trainerCalendar.minShort', 'm')}
+                                </div>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </TCard>
+
+              {/* Selected day detail rail */}
+              <TCard padded={0}>
+                <div style={{ padding: '14px 18px', borderBottom: `1px solid ${TT.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <TEyebrow>{t('trainerCalendar.thisWeek', 'This week')}</TEyebrow>
+                    <div style={{
+                      fontFamily: TFont.display, fontSize: 16, fontWeight: 800,
+                      color: TT.text, letterSpacing: -0.3, marginTop: 4,
+                    }}>
+                      {format(viewMode === 'day' ? selectedDay : new Date(), 'EEE · MMM d', { locale: dateFnsLocale })}
                     </div>
-                  ))}
+                  </div>
+                  <button
+                    onClick={() => setModal({ date: viewMode === 'day' ? selectedDay : new Date() })}
+                    aria-label={t('trainerCalendar.addSession', 'Add session')}
+                    style={{
+                      width: 38, height: 38, borderRadius: 10,
+                      background: TT.accentSoft, color: TT.accentInk,
+                      border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Plus size={16} strokeWidth={2.4} />
+                  </button>
                 </div>
-
-                {/* Calendar grid */}
-                <div className="grid grid-cols-7">
-                  {paddedMonthDays.map((day, idx) => {
-                    const key = format(day, 'yyyy-MM-dd');
-                    const inMonth = isSameMonth(day, monthAnchor);
-                    const today = isToday(day);
-                    const dayOfWeek = getDay(day); // 0=Sun, 6=Sat
-                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                    const daySessions = sessionsByDay[key] || [];
-                    const hasSessions = daySessions.length > 0;
-
+                {(() => {
+                  const focusKey = format(viewMode === 'day' ? selectedDay : new Date(), 'yyyy-MM-dd');
+                  const focusSessions = (sessionsByDay[focusKey] || [])
+                    .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+                  if (focusSessions.length === 0) {
+                    return (
+                      <div style={{ padding: '24px 18px', fontSize: 12.5, color: TT.textMute }}>
+                        {t('trainerCalendar.noSessionsThisDay', 'No sessions this day')}
+                      </div>
+                    );
+                  }
+                  return focusSessions.map((s, i) => {
+                    const visuals = statusVisuals(s.status);
+                    const fullName = s.profiles?.full_name || t('trainerCalendar.client', 'Client');
                     return (
                       <button
-                        key={key + idx}
-                        onClick={() => handleMonthDayClick(day)}
-                        className="text-left transition-colors cursor-pointer group min-h-[56px] sm:min-h-[64px] md:min-h-[80px]"
+                        key={s.id}
+                        onClick={() => setModal({ session: s })}
                         style={{
-                          borderBottom: '1px solid var(--color-border-subtle)',
-                          borderRight: (idx % 7 !== 6) ? '1px solid var(--color-border-subtle)' : 'none',
-                          background: isWeekend && inMonth ? 'rgba(255,255,255,0.015)' : 'transparent',
-                          opacity: inMonth ? 1 : 0.3,
+                          width: '100%',
+                          padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10,
+                          borderBottom: i < focusSessions.length - 1 ? `1px solid ${TT.border}` : 'none',
+                          borderLeft: `3px solid ${visuals.tone}`,
+                          background: 'transparent', cursor: 'pointer', textAlign: 'left',
                         }}
                       >
-                        <div className="p-1.5 md:p-2 h-full flex flex-col group-hover:bg-white/[0.04] rounded-sm transition-colors">
-                          {/* Day number */}
-                          <div className="flex items-start justify-center md:justify-start mb-0.5">
-                            {today ? (
-                              <span className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-full text-[12px] font-bold"
-                                style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
-                                {format(day, 'd')}
-                              </span>
-                            ) : (
-                              <span className={`inline-flex items-center justify-center w-[26px] h-[26px] rounded-full text-[12px] leading-none ${
-                                hasSessions ? 'font-bold' : 'font-medium'
-                              }`}
-                                style={{ color: inMonth ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
-                                {format(day, 'd')}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Session preview pills */}
-                          <div className="flex-1 min-w-0 hidden md:block">
-                            {daySessions.slice(0, 2).map(s => {
-                              const sc = STATUS_BG[s.status] || STATUS_BG.scheduled;
-                              return (
-                                <div key={s.id} className="text-[9px] truncate px-1 py-0.5 rounded mt-0.5 flex items-center gap-0.5"
-                                  style={{ background: sc.bg, color: sc.text }}>
-                                  {s.recurrence_group && <Repeat size={8} className="flex-shrink-0 opacity-60" />}
-                                  {format(new Date(s.scheduled_at), 'HH:mm')}{' '}
-                                  {s.profiles?.full_name?.split(' ')[0] || s.title}
-                                </div>
-                              );
-                            })}
-                            {daySessions.length > 2 && (
-                              <p className="text-[9px] mt-0.5 px-1" style={{ color: 'var(--color-text-muted)' }}>
-                                {t('trainerCalendar.more', { count: daySessions.length - 2 })}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Mobile: colored dots instead of pills */}
-                          <div className="flex items-center justify-center gap-1 mt-auto md:hidden">
-                            {daySessions.slice(0, 3).map(s => {
-                              const sc = STATUS_BG[s.status] || STATUS_BG.scheduled;
-                              return (
-                                <span key={s.id} className="w-[6px] h-[6px] rounded-full flex-shrink-0"
-                                  style={{ background: sc.text }} />
-                              );
-                            })}
-                            {daySessions.length > 3 && (
-                              <span className="text-[9px] font-bold" style={{ color: 'var(--color-text-muted)' }}>
-                                +{daySessions.length - 3}
-                              </span>
-                            )}
+                        <TAvatar name={fullName} size={32} idx={avatarIdx(s.profiles?.id || s.client_id)} src={s.profiles?.avatar_url} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: TT.text }}>{fullName}</div>
+                          <div style={{ fontSize: 11, color: TT.textSub, marginTop: 1 }}>
+                            {format(new Date(s.scheduled_at), 'HH:mm')} · {s.duration_mins}{t('trainerCalendar.minShort', 'm')} · {s.title}
                           </div>
                         </div>
                       </button>
                     );
-                  })}
-                </div>
-              </div>
-            )}
-          </>
-        )}
+                  });
+                })()}
+              </TCard>
+            </div>
+          )}
+        </main>
       </div>
 
       {/* Modal */}

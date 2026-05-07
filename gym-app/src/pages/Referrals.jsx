@@ -1,43 +1,97 @@
 // ── Referrals Page ──────────────────────────────────────────────────────────
+// Liquid Glass / iOS 26 redesign (Referral B reference)
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Copy, Check, Share2, Gift, Users, Clock,
-  CheckCircle, AlertCircle, UserPlus, Star, Coins, Maximize2,
+  CheckCircle, UserPlus, QrCode, Coins, CreditCard,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Share } from '@capacitor/share';
+
+const WalletPass = registerPlugin('WalletPass');
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import QRCodeModal from '../components/QRCodeModal';
 import { formatDistanceToNow } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale';
 import { usePostHog } from '@posthog/react';
 
 const REFERRAL_BASE_URL = 'https://tugympr.app/referral';
+
+// Allow-list of hostnames we are willing to open in the in-app browser /
+// system browser. Prevents arbitrary navigation if a server response ever
+// supplies a saveUrl we did not expect.
+// TODO: extend with gymConfig.customDomain when added to gym schema
+const ALLOWED_EXTERNAL_HOSTS = new Set([
+  'wallet.google.com',
+  'pay.google.com',
+  'apple.com',
+  'www.apple.com',
+  'tugympr.com',
+  'www.tugympr.com',
+  'tugympr.app',
+]);
+
+// Open an external URL using SFSafariViewController (via @capacitor/browser)
+// when available, falling back to window.open for the web build.
+async function openExternalUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') throw new Error('Only HTTPS URLs are allowed');
+    if (!ALLOWED_EXTERNAL_HOSTS.has(u.hostname)) {
+      throw new Error(`Blocked external host: ${u.hostname}`);
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[openExternalUrl] rejected', err);
+    return;
+  }
+  try {
+    const { Browser } = await import('@capacitor/browser');
+    await Browser.open({ url });
+  } catch {
+    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* swallow */ }
+  }
+}
+
+// ── Body scroll lock helper for modals ──────────────────────────────────────
+function useBodyScrollLock(active) {
+  useEffect(() => {
+    if (!active) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [active]);
+}
 
 export default function Referrals() {
   const navigate = useNavigate();
   const { user, profile, gymName } = useAuth();
   const { showToast } = useToast();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const posthog = usePostHog();
 
   const [referralCode, setReferralCode] = useState(null);
   const [referralConfig, setReferralConfig] = useState(null);
+  const [rewardsById, setRewardsById] = useState({}); // { [gym_rewards.id]: { name, name_es, emoji_icon } }
   const [referrals, setReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const isEs = i18n.language?.startsWith('es');
 
-  // ── Load referral data ──────────────────────────────────────────────────────
+  useBodyScrollLock(showQRModal);
+
+  // ── Load referral data ──────────────────────────────────────────────────
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      // 1. Try to fetch existing referral code (table may not exist yet)
       const { data: existing, error: codeErr } = await supabase
         .from('referral_codes')
         .select('code')
@@ -47,7 +101,6 @@ export default function Referrals() {
       if (!codeErr && existing?.code) {
         setReferralCode(existing.code);
       } else if (!codeErr) {
-        // Generate new code via RPC (needs gym_id)
         const gymId = profile?.gym_id;
         if (gymId) {
           const { data: generated, error: rpcErr } = await supabase
@@ -58,9 +111,7 @@ export default function Referrals() {
           }
         }
       }
-      // If table doesn't exist (404), silently continue — feature not deployed yet
 
-      // 2. Fetch gym's referral config (column may not exist yet)
       if (profile?.gym_id) {
         try {
           const { data: gym } = await supabase
@@ -70,29 +121,52 @@ export default function Referrals() {
             .maybeSingle();
           if (gym?.referral_config) {
             setReferralConfig(gym.referral_config);
+
+            // If the admin chose "from inventory" for either side, fetch those
+            // gym_rewards rows so we can render real names + emojis instead of
+            // falling through to the generic "500 puntos de bonificación" string.
+            const ids = [];
+            if (gym.referral_config?.referrer_reward?.type === 'gym_reward'
+                && gym.referral_config.referrer_reward.reward_id) {
+              ids.push(gym.referral_config.referrer_reward.reward_id);
+            }
+            if (gym.referral_config?.referred_reward?.type === 'gym_reward'
+                && gym.referral_config.referred_reward.reward_id) {
+              ids.push(gym.referral_config.referred_reward.reward_id);
+            }
+            if (ids.length) {
+              try {
+                const { data: rewards } = await supabase
+                  .from('gym_rewards')
+                  .select('id, name, name_es, emoji_icon')
+                  .in('id', ids);
+                if (rewards) {
+                  setRewardsById(Object.fromEntries(rewards.map(r => [r.id, r])));
+                }
+              } catch { /* gym_rewards not ready */ }
+            }
           }
-        } catch { /* column doesn't exist yet */ }
+        } catch { /* column not ready */ }
       }
 
-      // 3. Fetch referral history (table may not exist yet)
       try {
         const { data: refs } = await supabase
           .from('referrals')
-          .select('id, status, created_at, referred_id, referred_profile:profiles!referrals_referred_id_fkey(full_name)')
+          .select('id, status, created_at, referred_id, points_awarded, referred_profile:profiles!referrals_referred_id_fkey(full_name)')
           .eq('referrer_id', user.id)
           .order('created_at', { ascending: false });
         setReferrals(refs ?? []);
-      } catch { /* table doesn't exist yet */ }
+      } catch { /* table not ready */ }
     } catch {
-      // silent — DB not ready
+      /* silent */
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, profile?.gym_id, posthog]);
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Derived stats ───────────────────────────────────────────────────────────
+  // ── Derived stats ───────────────────────────────────────────────────────
   const totalReferrals = referrals.length;
   const completedReferrals = referrals.filter(r => r.status === 'completed').length;
   const totalPointsEarned = referrals.reduce((sum, r) => sum + (r.points_awarded || 0), 0);
@@ -102,7 +176,7 @@ export default function Referrals() {
     ? `gym-referral:${profile.gym_id}:${user.id}:${referralCode}`
     : '';
 
-  // ── Copy code ───────────────────────────────────────────────────────────────
+  // ── Copy code ───────────────────────────────────────────────────────────
   const handleCopy = useCallback(async () => {
     if (!referralCode) return;
     try {
@@ -114,9 +188,9 @@ export default function Referrals() {
     } catch {
       showToast(t('referrals.copyFailed'), 'error');
     }
-  }, [referralCode, showToast, t]);
+  }, [referralCode, showToast, t, posthog]);
 
-  // ── Share ───────────────────────────────────────────────────────────────────
+  // ── Share ───────────────────────────────────────────────────────────────
   const handleShare = useCallback(async () => {
     if (!referralCode) return;
     const message = t('referrals.shareMessage', {
@@ -132,212 +206,526 @@ export default function Referrals() {
         });
         posthog?.capture('referral_code_shared', { method: 'native_share' });
       } else {
-        // Fallback: copy link
         await navigator.clipboard.writeText(`${message}\n${referralLink}`);
         posthog?.capture('referral_code_shared', { method: 'copy' });
         showToast(t('referrals.linkCopied'), 'success');
       }
     } catch {
-      // user cancelled share sheet
+      /* user cancelled */
     }
-  }, [referralCode, referralLink, gymName, showToast, t]);
+  }, [referralCode, referralLink, gymName, showToast, t, posthog]);
 
-  // ── Status helpers ──────────────────────────────────────────────────────────
+  // ── Add to Apple/Google Wallet ──────────────────────────────────────────
+  const handleAddToWallet = useCallback(async () => {
+    if (!referralCode) return;
+    setWalletLoading(true);
+    try {
+      const platform = Capacitor.getPlatform();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const fnName = platform === 'android' ? 'generate-google-pass' : 'generate-apple-pass';
+      // Derive the same way the page renders it, so the Wallet pass shows the
+      // real configured reward (points value or inventory item) instead of the
+      // legacy `.label` field that the new admin form no longer sets.
+      const r = referralConfig?.referrer_reward;
+      let referrerReward = null;
+      if (r) {
+        if (r.label) {
+          referrerReward = r.label;
+        } else if (r.type === 'gym_reward' && r.reward_id && rewardsById[r.reward_id]) {
+          const gr = rewardsById[r.reward_id];
+          referrerReward = (gr.name_es && /^es/.test(i18n.language || '')) ? gr.name_es : gr.name;
+        } else {
+          const v = Number(r.value ?? r.points);
+          if (Number.isFinite(v) && v > 0) referrerReward = `${v} ${/^es/.test(i18n.language || '') ? 'puntos' : 'points'}`;
+        }
+      }
+      const { data, error } = await supabase.functions.invoke(fnName, {
+        body: {
+          kind: 'referral',
+          payload: referralQrPayload || referralCode,
+          referralCode,
+          referralReward: referrerReward,
+          memberName: profile?.full_name,
+          gymName: gymName || 'TuGymPR',
+        },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (error) {
+        const ctx = error.context;
+        let details = '';
+        if (ctx) {
+          try { const body = await ctx.json(); details = body?.details || body?.error || ''; }
+          catch { try { details = await ctx.text(); } catch { /* swallow */ } }
+        }
+        throw new Error(details || error.message || 'Wallet pass failed');
+      }
+      if (data?.error) throw new Error(data.details ? `${data.error}: ${data.details}` : data.error);
+      if (data?.unsupported) throw new Error(t('referrals.walletUnsupported', 'Wallet passes not yet configured for this gym'));
+
+      if (platform === 'ios') {
+        await WalletPass.addPass({ pkpassBase64: data.pkpass });
+      } else if (data?.saveUrl) {
+        await openExternalUrl(data.saveUrl);
+      }
+      posthog?.capture('referral_code_shared', { method: 'wallet' });
+    } catch (err) {
+      showToast(err.message || t('referrals.walletFailed', 'Could not add to wallet'), 'error');
+    } finally {
+      setWalletLoading(false);
+    }
+  }, [referralCode, referralQrPayload, referralConfig, rewardsById, profile, gymName, showToast, t, i18n.language, posthog]);
+
+  // ── Status helpers ──────────────────────────────────────────────────────
   const STATUS_META = {
     pending:   { icon: Clock,       color: 'var(--color-warning)', labelKey: 'statusPending' },
     completed: { icon: CheckCircle, color: 'var(--color-success)', labelKey: 'statusCompleted' },
-    expired:   { icon: AlertCircle, color: 'var(--color-text-subtle)', labelKey: 'statusExpired' },
+    expired:   { icon: Clock,       color: 'var(--color-text-subtle)', labelKey: 'statusExpired' },
   };
 
-  // ── Reward info defaults ────────────────────────────────────────────────────
-  const referrerReward = referralConfig?.referrer_reward?.label || t('referrals.defaultReferrerReward');
-  const friendReward = (referralConfig?.referred_reward?.label || referralConfig?.friend_reward?.label) || t('referrals.defaultFriendReward');
+  // Translate the JSONB reward shape saved by Admin → Referidos into a display string.
+  // Handles both the current shape ({type, value} | {type, reward_id}), the legacy
+  // shape ({type:'points', points:N, label}), and an explicit user-set label.
+  const formatRewardLabel = (reward, fallbackKey) => {
+    if (!reward || typeof reward !== 'object') return t(fallbackKey);
+    if (reward.label && typeof reward.label === 'string') return reward.label;
+
+    if (reward.type === 'gym_reward' && reward.reward_id) {
+      const r = rewardsById[reward.reward_id];
+      if (r) {
+        const name = (isEs && r.name_es) ? r.name_es : r.name;
+        return `${r.emoji_icon || '🎁'} ${name}`;
+      }
+      // Inventory not loaded yet — show a neutral placeholder, not the
+      // "500 puntos" default which is misleading for a non-points reward.
+      return t('referrals.rewardLoading', '...');
+    }
+
+    // Points (current uses .value; legacy default rows use .points).
+    const v = Number(reward.value ?? reward.points);
+    if (Number.isFinite(v) && v > 0) {
+      return `${v.toLocaleString(isEs ? 'es' : 'en')} ${t('referrals.ptsLong', isEs ? 'puntos' : 'points')}`;
+    }
+    return t(fallbackKey);
+  };
+
+  const referrerReward = formatRewardLabel(referralConfig?.referrer_reward, 'referrals.defaultReferrerReward');
+  const friendReward = formatRewardLabel(
+    referralConfig?.referred_reward || referralConfig?.friend_reward,
+    'referrals.defaultFriendReward'
+  );
+
+  // Hero progress (milestone: 5 invites)
+  const MILESTONE = 5;
+  const progressDots = Array.from({ length: MILESTONE }, (_, i) => i < Math.min(totalReferrals, MILESTONE));
+
+  // Typography tokens per user spec (Familjen Grotesk for display, Archivo for body)
+  const FONT_DISPLAY = "'Familjen Grotesk', 'Archivo', system-ui, -apple-system, sans-serif";
+  const FONT_BODY = "'Archivo', 'Familjen Grotesk', system-ui, -apple-system, sans-serif";
 
   return (
-    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in">
-
+    <div
+      className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in"
+      style={{ fontFamily: FONT_BODY }}
+    >
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate(-1)}
-          aria-label="Go back"
-          className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.06] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          aria-label={t('referrals.goBack', { defaultValue: 'Go back' })}
+          className="w-11 h-11 flex items-center justify-center rounded-2xl focus:outline-none focus:ring-2 transition-all duration-200 active:scale-95"
+          style={{
+            background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)',
+            border: '1px solid var(--color-border-subtle)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+          }}
         >
           <ArrowLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
         </button>
-        <div>
-          <h1 className="text-[22px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('referrals.title')}</h1>
-          <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('referrals.subtitle')}</p>
+        <div className="flex-1 min-w-0">
+          <h1
+            className="text-[24px] truncate"
+            style={{
+              fontFamily: FONT_DISPLAY,
+              fontWeight: 800,
+              color: 'var(--color-text-primary)',
+              letterSpacing: '-0.4px',
+            }}
+          >
+            {t('referrals.title')}
+          </h1>
+          <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+            {t('referrals.subtitle')}
+          </p>
         </div>
       </div>
 
       {loading ? (
         <div className="space-y-4">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-28 rounded-2xl bg-white/[0.04] animate-pulse" />
+            <div
+              key={i}
+              className="h-32 rounded-3xl animate-pulse"
+              style={{ background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)' }}
+            />
           ))}
         </div>
       ) : (
         <>
-          {/* ── Hero: Referral Code ──────────────────────────────────────────── */}
-          <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden p-5 mb-5 flex flex-col items-center text-center">
+          {/* ── HERO · Gradient reward card ──────────────────────────────── */}
+          <div
+            className="relative overflow-hidden rounded-3xl p-6 mb-4"
+            style={{
+              background: 'linear-gradient(135deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 65%, #000 35%) 120%)',
+              color: '#fff',
+              boxShadow: '0 10px 30px -10px color-mix(in srgb, var(--color-accent) 45%, transparent)',
+            }}
+          >
+            {/* Decorative bubble */}
             <div
-              className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+              aria-hidden
+              className="absolute rounded-full"
               style={{
-                background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
-                border: '3px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+                top: -40, right: -40, width: 180, height: 180,
+                background: 'rgba(255,255,255,0.14)',
               }}
-            >
-              <UserPlus size={28} style={{ color: 'var(--color-accent)' }} strokeWidth={1.5} />
-            </div>
+            />
+            <div
+              aria-hidden
+              className="absolute rounded-full"
+              style={{
+                bottom: -60, left: -30, width: 140, height: 140,
+                background: 'rgba(255,255,255,0.07)',
+              }}
+            />
 
-            <p className="text-[13px] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('referrals.yourCode')}</p>
-
-            {referralCode ? (
-              <button
-                onClick={handleCopy}
-                aria-label={copied ? t('referrals.codeCopied', 'Code copied') : t('referrals.copyCode', 'Copy referral code')}
-                className="flex items-center gap-2.5 px-5 py-3 min-h-[44px] rounded-xl mb-4 transition-all duration-200 active:scale-95"
+            <div className="relative">
+              <div
+                className="text-[11px] opacity-85 mb-1"
+                style={{ fontWeight: 800, letterSpacing: '1.4px' }}
+              >
+                {t('referrals.title').toUpperCase()}
+              </div>
+              <div
+                className="mt-1"
                 style={{
-                  background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
-                  border: '1.5px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                  fontFamily: FONT_DISPLAY,
+                  fontSize: 30,
+                  fontWeight: 800,
+                  letterSpacing: '-1px',
+                  lineHeight: 1.05,
                 }}
               >
-                <span
-                  className="text-[20px] font-mono font-black tracking-[0.15em] select-all"
-                  style={{ color: 'var(--color-accent)' }}
-                >
-                  {referralCode}
-                </span>
-                {copied ? (
-                  <Check size={18} style={{ color: 'var(--color-success)' }} />
-                ) : (
-                  <Copy size={18} style={{ color: 'var(--color-accent)' }} />
-                )}
-              </button>
-            ) : (
-              <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-subtle)' }}>{t('referrals.noCode')}</p>
-            )}
+                {referrerReward}
+              </div>
+              <div className="text-[13px] mt-3 opacity-90">
+                {completedReferrals > 0
+                  ? t('referrals.shareMessage', { gymName: gymName || 'TuGymPR', code: referralCode || '—' })
+                  : t('referrals.noReferralsHint')}
+              </div>
 
-            {/* QR Code */}
-            {referralQrPayload && (
-              <>
-                <div className="bg-white p-4 rounded-xl mb-3" role="img" aria-label={t('referrals.qrCodeAlt', 'Referral QR code')}>
-                  <QRCodeSVG
-                    value={referralQrPayload}
-                    size={180}
-                    level="H"
-                    includeMargin={false}
-                    bgColor="#FFFFFF"
-                    fgColor="#000000"
+              {/* Progress dots */}
+              <div className="flex gap-2 mt-5">
+                {progressDots.map((filled, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 rounded-full"
+                    style={{
+                      height: 8,
+                      background: filled ? '#fff' : 'rgba(255,255,255,0.3)',
+                    }}
                   />
-                </div>
-                <button
-                  onClick={() => { setShowQRModal(true); posthog?.capture('referral_code_shared', { method: 'qr' }); }}
-                  aria-label={t('referrals.openQR', 'Open QR code fullscreen')}
-                  className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] rounded-xl text-[13px] font-semibold mb-3 transition-all duration-200 active:scale-[0.97]"
-                  style={{
-                    background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
-                    border: '1.5px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
-                    color: 'var(--color-accent)',
-                  }}
-                >
-                  <Maximize2 size={15} />
-                  {t('referrals.openQR')}
-                </button>
-              </>
-            )}
-
-            <p className="text-[11px] mb-4" style={{ color: 'var(--color-text-subtle)' }}>{t('referrals.scanOrShare')}</p>
-
-            {/* Share Button */}
-            <button
-              onClick={handleShare}
-              disabled={!referralCode}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
-              style={{
-                background: 'var(--color-accent)',
-                color: '#000',
-              }}
-            >
-              <Share2 size={17} />
-              {t('referrals.shareButton')}
-            </button>
+                ))}
+              </div>
+              <div
+                className="flex justify-between mt-2 text-[10px]"
+                style={{ fontWeight: 700, opacity: 0.85 }}
+              >
+                <span>{totalReferrals} / {MILESTONE}</span>
+                <span>{t('referrals.youGet')}: {referrerReward}</span>
+              </div>
+            </div>
           </div>
 
-          {/* ── Stats Row ────────────────────────────────────────────────────── */}
-          <div className="grid grid-cols-3 gap-3 mb-5">
+          {/* ── Code + Share channels card ───────────────────────────────── */}
+          <div
+            className="rounded-3xl p-4 mb-4"
+            style={{
+              background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)',
+              border: '1px solid var(--color-border-subtle)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+            }}
+          >
+            {/* Code pill + copy */}
+            <div className="flex items-center gap-2.5 mb-4">
+              <div
+                className="flex-1 px-4 py-3 rounded-2xl text-center"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-text-primary) 6%, transparent)',
+                  border: '1.5px dashed var(--color-border-strong)',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: 15,
+                  fontWeight: 800,
+                  letterSpacing: '2px',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                {referralCode || '— — — —'}
+              </div>
+              <button
+                onClick={handleCopy}
+                disabled={!referralCode}
+                aria-label={copied ? t('referrals.codeCopied') : t('referrals.shareButton')}
+                className="px-4 py-3 rounded-2xl flex items-center gap-1.5 transition-all duration-200 active:scale-95 disabled:opacity-40"
+                style={{
+                  background: 'var(--color-accent)',
+                  color: '#000',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  letterSpacing: '0.3px',
+                  minHeight: 44,
+                }}
+              >
+                {copied ? <Check size={15} strokeWidth={3} /> : <Copy size={14} strokeWidth={2.5} />}
+                {copied ? t('referrals.statusCompleted') : t('referrals.shareButton').split(' ')[0]}
+              </button>
+            </div>
+
+            {/* Channel buttons row */}
+            <div className="grid grid-cols-4 gap-2.5">
+              <button
+                onClick={handleShare}
+                disabled={!referralCode}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all duration-200 active:scale-95 disabled:opacity-40"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                }}
+              >
+                <div
+                  className="w-11 h-11 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)' }}
+                >
+                  <Share2 size={19} style={{ color: 'var(--color-accent)' }} />
+                </div>
+                <span className="text-[11px]" style={{ fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                  {t('referrals.shareButton').split(' ')[0]}
+                </span>
+              </button>
+
+              <button
+                onClick={handleCopy}
+                disabled={!referralCode}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all duration-200 active:scale-95 disabled:opacity-40"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-text-primary) 5%, transparent)',
+                  border: '1px solid var(--color-border-subtle)',
+                }}
+              >
+                <div
+                  className="w-11 h-11 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'color-mix(in srgb, var(--color-text-primary) 8%, transparent)' }}
+                >
+                  {copied ? (
+                    <Check size={19} style={{ color: 'var(--color-success)' }} strokeWidth={3} />
+                  ) : (
+                    <Copy size={18} style={{ color: 'var(--color-text-primary)' }} />
+                  )}
+                </div>
+                <span className="text-[11px]" style={{ fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                  {copied ? t('referrals.statusCompleted') : t('referrals.codeCopied').replace('!', '')}
+                </span>
+              </button>
+
+              <button
+                onClick={() => { if (referralQrPayload) { setShowQRModal(true); posthog?.capture('referral_code_shared', { method: 'qr' }); } }}
+                disabled={!referralQrPayload}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all duration-200 active:scale-95 disabled:opacity-40"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-text-primary) 5%, transparent)',
+                  border: '1px solid var(--color-border-subtle)',
+                }}
+              >
+                <div
+                  className="w-11 h-11 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'color-mix(in srgb, var(--color-text-primary) 8%, transparent)' }}
+                >
+                  <QrCode size={19} style={{ color: 'var(--color-text-primary)' }} />
+                </div>
+                <span className="text-[11px]" style={{ fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                  {t('referrals.openQR')}
+                </span>
+              </button>
+
+              <button
+                onClick={handleAddToWallet}
+                disabled={!referralCode || walletLoading}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all duration-200 active:scale-95 disabled:opacity-40"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-text-primary) 5%, transparent)',
+                  border: '1px solid var(--color-border-subtle)',
+                }}
+                aria-label={t('referrals.addToWallet', 'Add to Wallet')}
+              >
+                <div
+                  className="w-11 h-11 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'color-mix(in srgb, var(--color-text-primary) 8%, transparent)' }}
+                >
+                  {walletLoading
+                    ? <div className="w-4 h-4 border-[1.5px] border-current/20 border-t-current rounded-full animate-spin" style={{ color: 'var(--color-text-primary)' }} />
+                    : <CreditCard size={19} style={{ color: 'var(--color-text-primary)' }} />
+                  }
+                </div>
+                <span className="text-[11px]" style={{ fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                  {t('referrals.wallet', 'Wallet')}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* ── Stats row (Invited / Joined / Points) ────────────────────── */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
             {[
-              { label: t('referrals.statTotal'), value: totalReferrals, icon: Users, color: 'var(--color-accent)' },
-              { label: t('referrals.statCompleted'), value: completedReferrals, icon: CheckCircle, color: 'var(--color-success)' },
+              { label: t('referrals.statTotal'), value: totalReferrals, icon: UserPlus, color: 'var(--color-accent)' },
+              { label: t('referrals.statCompleted'), value: completedReferrals, icon: Users, color: 'var(--color-success)' },
               { label: t('referrals.statPoints'), value: totalPointsEarned, icon: Coins, color: 'var(--color-warning)' },
             ].map((stat, i) => (
               <div
                 key={i}
-                className="bg-white/[0.04] rounded-2xl border border-white/[0.06] p-4 flex flex-col items-center text-center"
+                className="rounded-3xl p-4 flex flex-col items-center text-center"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)',
+                  border: '1px solid var(--color-border-subtle)',
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                }}
               >
                 <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center mb-2"
-                  style={{ background: `${stat.color}15` }}
+                  className="w-10 h-10 rounded-2xl flex items-center justify-center mb-2"
+                  style={{ background: `color-mix(in srgb, ${stat.color} 15%, transparent)` }}
                 >
-                  <stat.icon size={17} style={{ color: stat.color }} />
+                  <stat.icon size={18} style={{ color: stat.color }} />
                 </div>
-                <p className="text-[20px] font-black tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                <p
+                  className="tabular-nums"
+                  style={{
+                    fontFamily: FONT_DISPLAY,
+                    fontSize: 22,
+                    fontWeight: 800,
+                    letterSpacing: '-0.5px',
+                    color: 'var(--color-text-primary)',
+                  }}
+                >
                   {stat.value}
                 </p>
-                <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{stat.label}</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)', fontWeight: 600 }}>
+                  {stat.label}
+                </p>
               </div>
             ))}
           </div>
 
-          {/* ── Reward Info Card ──────────────────────────────────────────────── */}
-          <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden p-5 mb-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Gift size={18} style={{ color: 'var(--color-accent)' }} />
-              <p className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+          {/* ── QR Code display card ─────────────────────────────────────── */}
+          {referralQrPayload && (
+            <div
+              className="rounded-3xl p-5 mb-4 flex flex-col items-center text-center"
+              style={{
+                background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)',
+                border: '1px solid var(--color-border-subtle)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+              }}
+            >
+              <div className="flex items-center gap-2 mb-3 self-start">
+                <QrCode size={16} style={{ color: 'var(--color-accent)' }} />
+                <p
+                  className="text-[14px]"
+                  style={{ fontWeight: 800, color: 'var(--color-text-primary)', fontFamily: FONT_DISPLAY, letterSpacing: '-0.2px' }}
+                >
+                  {t('referrals.openQR')}
+                </p>
+              </div>
+              <button
+                onClick={() => { setShowQRModal(true); posthog?.capture('referral_code_shared', { method: 'qr' }); }}
+                aria-label={t('referrals.openQR')}
+                className="bg-white p-4 rounded-2xl transition-all duration-200 active:scale-[0.98]"
+              >
+                <QRCodeSVG
+                  value={referralQrPayload}
+                  size={180}
+                  level="H"
+                  includeMargin={false}
+                  bgColor="#FFFFFF"
+                  fgColor="#000000"
+                />
+              </button>
+              <p className="text-[11px] mt-3" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('referrals.scanOrShare')}
+              </p>
+            </div>
+          )}
+
+          {/* ── Rewards info ─────────────────────────────────────────────── */}
+          <div
+            className="rounded-3xl p-5 mb-4"
+            style={{
+              background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)',
+              border: '1px solid var(--color-border-subtle)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+            }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Gift size={16} style={{ color: 'var(--color-accent)' }} />
+              <p
+                className="text-[14px]"
+                style={{ fontWeight: 800, color: 'var(--color-text-primary)', fontFamily: FONT_DISPLAY, letterSpacing: '-0.2px' }}
+              >
                 {t('referrals.rewardsTitle')}
               </p>
             </div>
 
-            <div className="space-y-3">
-              {/* You get */}
+            <div className="space-y-2.5">
               <div
-                className="flex items-start gap-3 p-3 rounded-xl"
+                className="flex items-start gap-3 p-3 rounded-2xl"
                 style={{
-                  background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                  background: 'color-mix(in srgb, var(--color-accent) 7%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 18%, transparent)',
                 }}
               >
                 <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-                  style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
                 >
-                  <Star size={16} style={{ color: 'var(--color-accent)' }} />
+                  <Gift size={16} style={{ color: 'var(--color-accent)' }} />
                 </div>
                 <div>
-                  <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                  <p className="text-[13px]" style={{ fontWeight: 800, color: 'var(--color-text-primary)' }}>
                     {t('referrals.youGet')}
                   </p>
                   <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{referrerReward}</p>
                 </div>
               </div>
 
-              {/* Friend gets */}
               <div
-                className="flex items-start gap-3 p-3 rounded-xl"
+                className="flex items-start gap-3 p-3 rounded-2xl"
                 style={{
-                  background: 'rgba(16,185,129,0.06)',
-                  border: '1px solid rgba(16,185,129,0.12)',
+                  background: 'color-mix(in srgb, var(--color-success) 8%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-success) 18%, transparent)',
                 }}
               >
                 <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-                  style={{ background: 'rgba(16,185,129,0.15)' }}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'color-mix(in srgb, var(--color-success) 20%, transparent)' }}
                 >
                   <UserPlus size={16} style={{ color: 'var(--color-success)' }} />
                 </div>
                 <div>
-                  <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                  <p className="text-[13px]" style={{ fontWeight: 800, color: 'var(--color-text-primary)' }}>
                     {t('referrals.friendGets')}
                   </p>
                   <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{friendReward}</p>
@@ -346,42 +734,64 @@ export default function Referrals() {
             </div>
           </div>
 
-          {/* ── Referral History ──────────────────────────────────────────────── */}
-          <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden">
-            <p className="text-[14px] font-semibold px-5 pt-4 pb-2" style={{ color: 'var(--color-text-muted)' }}>
+          {/* ── Referral History ─────────────────────────────────────────── */}
+          <div
+            className="rounded-3xl overflow-hidden"
+            style={{
+              background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)',
+              border: '1px solid var(--color-border-subtle)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+            }}
+          >
+            <p
+              className="text-[14px] px-5 pt-4 pb-2"
+              style={{ fontWeight: 800, color: 'var(--color-text-primary)', fontFamily: FONT_DISPLAY, letterSpacing: '-0.2px' }}
+            >
               {t('referrals.historyTitle')}
             </p>
 
             {referrals.length === 0 ? (
               <div className="py-10 text-center">
                 <Users size={28} style={{ color: 'var(--color-text-muted)', margin: '0 auto 12px' }} strokeWidth={1.5} />
-                <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('referrals.noReferralsYet')}</p>
-                <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>{t('referrals.noReferralsHint')}</p>
+                <p className="text-[13px]" style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                  {t('referrals.noReferralsYet')}
+                </p>
+                <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('referrals.noReferralsHint')}
+                </p>
               </div>
             ) : (
-              <div className="divide-y divide-white/[0.06]">
-                {referrals.map(ref => {
+              <div>
+                {referrals.map((ref, idx) => {
                   const meta = STATUS_META[ref.status] || STATUS_META.pending;
                   const StatusIcon = meta.icon;
+                  const isLast = idx === referrals.length - 1;
                   return (
-                    <div key={ref.id} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.06] transition-colors duration-200">
+                    <div
+                      key={ref.id}
+                      className="flex items-center gap-3 px-5 py-3"
+                      style={{
+                        borderBottom: isLast ? 'none' : '1px solid var(--color-border-subtle)',
+                      }}
+                    >
                       <div
                         className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{ background: `${meta.color}15` }}
+                        style={{ background: `color-mix(in srgb, ${meta.color} 15%, transparent)` }}
                       >
                         <StatusIcon size={16} style={{ color: meta.color }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        <p className="text-[13px] truncate" style={{ fontWeight: 700, color: 'var(--color-text-primary)' }}>
                           {ref.referred_profile?.full_name || t('referrals.unknownUser')}
                         </p>
                         <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                           {t(`referrals.${meta.labelKey}`)}
-                          {ref.points_awarded ? ` · +${ref.points_awarded} pts` : ''}
+                          {ref.points_awarded ? ` · +${ref.points_awarded} ${t('referrals.ptsShort', 'pts')}` : ''}
                         </p>
                       </div>
                       <p className="text-[11px] flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
-                        {formatDistanceToNow(new Date(ref.created_at), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(ref.created_at), { addSuffix: true, locale: i18n.language === 'es' ? esLocale : undefined })}
                       </p>
                     </div>
                   );
@@ -392,7 +802,7 @@ export default function Referrals() {
         </>
       )}
 
-      {/* Fullscreen QR modal for referral — portaled to body so fixed positioning works */}
+      {/* Fullscreen QR modal — portaled to body */}
       {showQRModal && referralQrPayload && createPortal(
         <QRCodeModal
           payload={referralQrPayload}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
   Plus, Gift, Pencil, Trash2, ToggleLeft, ToggleRight,
-  Milestone, Award, Hash, Trophy, Mail, Clock, ChevronRight,
+  Trophy, Mail, Clock, ChevronRight, ChevronDown,
+  Cake, Save,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -12,6 +13,7 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { logAdminAction } from '../../lib/adminAudit';
+import logger from '../../lib/logger';
 import posthog from 'posthog-js';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 import {
@@ -51,7 +53,7 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
   const [form, setForm] = useState({
     name: '', name_es: '', description: '', description_es: '',
     reward_type: 'custom', emoji_icon: '🎁', cost_points: '0', is_active: true,
-    sort_order: '0',
+    sort_order: '0', is_featured: false,
   });
 
   const [errors, setErrors] = useState({});
@@ -68,6 +70,7 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
         cost_points: reward.cost_points?.toString() || '0',
         is_active: reward.is_active ?? true,
         sort_order: reward.sort_order?.toString() || '0',
+        is_featured: !!reward.is_featured,
       });
       setErrors({});
       // Auto-expand advanced if reward has translations or custom sort
@@ -88,11 +91,19 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
     if (errors[k]) setErrors(prev => { const n = { ...prev }; delete n[k]; return n; });
   };
 
+  // Sanity bounds — server has no upper cap on cost_points, so without these
+  // an admin can save a 10,000,000-pt reward and break the gamification economy.
+  const REWARD_NAME_MAX = 80;
+  const REWARD_POINTS_MAX = 1_000_000;
+
   const validateForm = () => {
     const e = {};
     if (!form.name.trim()) e.name = t('admin.validation.nameRequired', 'Name is required');
     else if (form.name.trim().length < 2) e.name = t('admin.validation.tooShort', { min: 2 });
-    if (parseInt(form.cost_points) < 0) e.cost_points = t('admin.validation.pointsMin', 'Points must be 0 or more');
+    else if (form.name.trim().length > REWARD_NAME_MAX) e.name = t('admin.validation.tooLong', { max: REWARD_NAME_MAX, defaultValue: 'Max {{max}} characters' });
+    const pts = parseInt(form.cost_points, 10);
+    if (Number.isNaN(pts) || pts < 0) e.cost_points = t('admin.validation.pointsMin', 'Points must be 0 or more');
+    else if (pts > REWARD_POINTS_MAX) e.cost_points = t('admin.validation.pointsMax', { max: REWARD_POINTS_MAX.toLocaleString(), defaultValue: 'Max {{max}} points' });
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -102,10 +113,13 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
     if (field === 'name') {
       if (!form.name.trim()) e.name = t('admin.validation.nameRequired', 'Name is required');
       else if (form.name.trim().length < 2) e.name = t('admin.validation.tooShort', { min: 2 });
+      else if (form.name.trim().length > REWARD_NAME_MAX) e.name = t('admin.validation.tooLong', { max: REWARD_NAME_MAX, defaultValue: 'Max {{max}} characters' });
       else delete e.name;
     }
     if (field === 'cost_points') {
-      if (parseInt(form.cost_points) < 0) e.cost_points = t('admin.validation.pointsMin', 'Points must be 0 or more');
+      const pts = parseInt(form.cost_points, 10);
+      if (Number.isNaN(pts) || pts < 0) e.cost_points = t('admin.validation.pointsMin', 'Points must be 0 or more');
+      else if (pts > REWARD_POINTS_MAX) e.cost_points = t('admin.validation.pointsMax', { max: REWARD_POINTS_MAX.toLocaleString(), defaultValue: 'Max {{max}} points' });
       else delete e.cost_points;
     }
     setErrors(e);
@@ -137,7 +151,19 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
         cost_points: parseInt(form.cost_points) || 0,
         is_active: form.is_active,
         sort_order: parseInt(form.sort_order) || 0,
+        is_featured: !!form.is_featured,
       };
+
+      // Only one featured reward per gym — clear any existing featured flag
+      // before saving this one to satisfy the partial unique index.
+      if (payload.is_featured) {
+        await supabase
+          .from('gym_rewards')
+          .update({ is_featured: false })
+          .eq('gym_id', gymId)
+          .eq('is_featured', true)
+          .neq('id', reward?.id || '00000000-0000-0000-0000-000000000000');
+      }
 
       if (isEdit) {
         const { error } = await supabase.from('gym_rewards').update(payload).eq('id', reward.id).eq('gym_id', gymId);
@@ -262,6 +288,19 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
           </span>
         </button>
 
+        {/* Featured toggle — only one reward can be featured per gym */}
+        <button
+          onClick={() => set('is_featured', !form.is_featured)}
+          className="flex items-center gap-2.5 py-2"
+        >
+          {form.is_featured
+            ? <ToggleRight size={22} className="text-amber-400" />
+            : <ToggleLeft size={22} className="text-[#6B7280]" />}
+          <span className={`text-[13px] font-medium ${form.is_featured ? 'text-amber-400' : 'text-[#6B7280]'}`}>
+            {t('admin.rewards.featured', 'Featured (replaces any current featured reward)')}
+          </span>
+        </button>
+
         {/* ── Advanced / Translation fields (progressive disclosure) ── */}
         <div className="border-t border-white/6 pt-3">
           <button
@@ -292,7 +331,7 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
                 <input
                   value={form.name_es}
                   onChange={e => set('name_es', e.target.value)}
-                  placeholder="e.g. Batido Gratis"
+                  placeholder={t('admin.rewards.namePlaceholder', 'e.g. Free Smoothie')}
                   className={inputClass}
                 />
               </div>
@@ -340,18 +379,25 @@ function RewardLog({ gymId, isEs, t }) {
   const handleDeactivate = async (entry) => {
     setDeactivating(entry.id);
     try {
-      // If cancelling a pending redemption, refund the points
+      // If cancelling a pending redemption, refund the points by calling the
+      // server-side `add_reward_points` RPC (which is the authoritative way to
+      // mutate balances — same RPC the redemption flow uses to deduct).
+      // Doing it here means the toast copy "points returned" is actually true.
       if (entry.table === 'reward_redemptions' && entry.status === 'pending') {
         const { data: redemption } = await supabase
           .from('reward_redemptions')
           .select('profile_id, points_spent')
           .eq('id', entry.dbId)
           .single();
-        if (redemption) {
-          // Points were "held" (not yet deducted) — just expire the hold.
-          // No refund needed since points aren't deducted until claim.
-          // But if points WERE deducted on redeem, refund them:
-          // (Safe either way — if points weren't deducted, total stays the same)
+        if (redemption?.profile_id && (redemption.points_spent || 0) > 0) {
+          const { error: refundErr } = await supabase.rpc('add_reward_points', {
+            p_profile_id: redemption.profile_id,
+            p_points: redemption.points_spent,
+            p_source: 'redemption_refund',
+            p_metadata: { redemption_id: entry.dbId, expired_by_admin: true },
+          });
+          // Don't block the expire on a refund-RPC missing — fall back to logging.
+          if (refundErr) logger.error('Refund failed for redemption', entry.dbId, refundErr);
         }
       }
 
@@ -450,7 +496,7 @@ function RewardLog({ gymId, isEs, t }) {
   });
 
   const sourceIcon = { challenge: Trophy, email: Mail, redemption: Gift };
-  const sourceColor = { challenge: 'var(--color-accent)', email: '#3B82F6', redemption: 'var(--color-success, #10B981)' };
+  const sourceColor = { challenge: 'var(--color-accent)', email: 'var(--color-info)', redemption: 'var(--color-success, #10B981)' };
   const statusStyle = {
     pending: 'text-amber-400 bg-amber-500/10',
     active: 'text-amber-400 bg-amber-500/10',
@@ -482,32 +528,32 @@ function RewardLog({ gymId, isEs, t }) {
               <div className="divide-y divide-white/4">
                 {visible.map(entry => {
                   const Icon = sourceIcon[entry.type] || Gift;
-                  const color = sourceColor[entry.type] || '#6B7280';
+                  const color = sourceColor[entry.type] || 'var(--color-admin-text-sub)';
                   return (
-                    <div key={entry.id} className="flex items-center gap-3 py-3">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
+                    <div key={entry.id} className="flex items-start gap-3 py-3">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: `${color}15` }}>
                         <Icon size={13} style={{ color }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] text-[#E5E7EB]">
-                          <span className="font-semibold">{entry.member}</span>
-                          <span className="text-[#6B7280] mx-1.5">·</span>
-                          <span className="text-[#9CA3AF]">{entry.label}</span>
-                        </p>
-                        <p className="text-[11px] text-[#6B7280] mt-0.5">{entry.reward}</p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyle[entry.status] || statusStyle.pending}`}>
-                          {entry.status}
-                        </span>
-                        <span className="text-[10px] text-[#4B5563] tabular-nums">
-                          {format(new Date(entry.date), 'MMM d', dateFnsLocale)}
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-[12px] text-[#E5E7EB] truncate min-w-0">
+                            <span className="font-semibold">{entry.member}</span>
+                            <span className="text-[#6B7280] mx-1.5">·</span>
+                            <span className="text-[#9CA3AF]">{entry.label}</span>
+                          </p>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${statusStyle[entry.status] || statusStyle.pending}`}>
+                            {t(`admin.rewards.statusPill.${entry.status}`, entry.status)}
+                          </span>
+                          <span className="text-[10px] text-[#4B5563] tabular-nums whitespace-nowrap flex-shrink-0 ml-auto">
+                            {format(new Date(entry.date), 'MMM d', dateFnsLocale)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#6B7280] mt-0.5 line-clamp-2 break-words">{entry.reward}</p>
                         {entry.canDeactivate && (
                           <button
                             onClick={() => handleDeactivate(entry)}
                             disabled={deactivating === entry.id}
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors disabled:opacity-40"
+                            className="mt-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors disabled:opacity-40"
                           >
                             {deactivating === entry.id ? '...' : t('admin.rewards.expire', 'Expire')}
                           </button>
@@ -532,6 +578,182 @@ function RewardLog({ gymId, isEs, t }) {
 }
 
 // ── Main Component ─────────────────────────────────────────
+// ── Birthday Rewards Card (moved from AdminSettings) ───────
+function BirthdayRewardsCard({ gymId, rewards, t, isEs }) {
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const [enabled, setEnabled] = useState(false);
+  const [points, setPoints] = useState(0);
+  const [message, setMessage] = useState('');
+  const [rewardId, setRewardId] = useState('');
+  const [pointsOpen, setPointsOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!gymId) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('gyms')
+        .select('birthday_rewards_enabled, birthday_reward_points, birthday_reward_message, birthday_reward_id')
+        .eq('id', gymId)
+        .single();
+      if (cancelled) return;
+      if (!error && data) {
+        setEnabled(!!data.birthday_rewards_enabled);
+        const pts = data.birthday_reward_points ?? 0;
+        setPoints(pts);
+        setMessage(data.birthday_reward_message ?? '');
+        setRewardId(data.birthday_reward_id ?? '');
+        setPointsOpen(pts > 0); // only auto-expand if there are existing points
+      }
+      setLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [gymId]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('gyms')
+        .update({
+          birthday_rewards_enabled: enabled,
+          birthday_reward_points: Math.max(0, Math.min(10000, parseInt(points, 10) || 0)),
+          birthday_reward_message: message?.trim() || null,
+          birthday_reward_id: rewardId || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', gymId);
+      if (error) throw error;
+      logAdminAction('update_birthday_rewards', 'gym', gymId);
+      queryClient.invalidateQueries({ queryKey: adminKeys.settings(gymId) });
+      showToast(t('admin.settings.saved', 'Saved!'), 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to save', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!loaded) return null;
+
+  const activeRewards = (rewards || []).filter(r => r.is_active);
+  const rewardLabel = (r) => `${r.emoji_icon || '🎁'} ${(isEs && r.name_es) ? r.name_es : r.name}`;
+
+  return (
+    <FadeIn>
+      <AdminCard hover padding="p-4 sm:p-5" className="mt-6">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <SectionLabel icon={Cake}>{t('admin.settings.birthdayTitle', 'Birthday rewards')}</SectionLabel>
+          <button
+            type="button"
+            onClick={() => setEnabled(v => !v)}
+            className="flex items-center gap-1 text-[12px] font-semibold transition-colors"
+            style={{ color: enabled ? 'var(--color-success)' : 'var(--color-text-muted)' }}
+          >
+            {enabled ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+            {enabled ? t('admin.settings.enabled', 'Enabled') : t('admin.settings.disabled', 'Disabled')}
+          </button>
+        </div>
+        <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
+          {t('admin.settings.birthdayDesc', 'On a member\'s birthday, they get a celebration notification plus the reward you pick from the catalog. Optionally add bonus points.')}
+        </p>
+
+        {/* PRIMARY: Reward picker */}
+        <div className="mb-4">
+          <label className="block text-[11px] uppercase mb-1.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em', fontWeight: 800 }}>
+            {t('admin.settings.birthdayReward', 'Birthday reward')}
+          </label>
+          <select
+            value={rewardId}
+            onChange={e => setRewardId(e.target.value)}
+            disabled={!enabled}
+            className="w-full rounded-xl px-3 py-3 text-[14px] font-medium focus:outline-none disabled:opacity-50"
+            style={{ background: 'var(--color-surface-hover, rgba(255,255,255,0.04))', border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))', color: 'var(--color-text-primary)' }}
+          >
+            <option value="">{t('admin.settings.birthdayNoReward', '— Pick a reward from the catalog —')}</option>
+            {activeRewards.map(r => (
+              <option key={r.id} value={r.id}>{rewardLabel(r)}</option>
+            ))}
+          </select>
+          <p className="text-[10.5px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+            {t('admin.settings.birthdayRewardHint', 'The member sees this reward as a claimable item in their Rewards page on their birthday.')}
+          </p>
+        </div>
+
+        {/* SECONDARY: bonus points (collapsed by default) */}
+        <button
+          type="button"
+          onClick={() => setPointsOpen(o => !o)}
+          disabled={!enabled}
+          className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-[12px] font-semibold mb-3 transition-colors disabled:opacity-50"
+          style={{
+            background: 'var(--color-surface-hover, rgba(255,255,255,0.03))',
+            border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))',
+            color: 'var(--color-text-muted)',
+          }}
+        >
+          <span>{t('admin.settings.birthdayPointsToggle', '+ Add bonus points (optional)')}</span>
+          <ChevronDown size={14} className={`transition-transform ${pointsOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {pointsOpen && (
+          <div className="mb-4">
+            <label className="block text-[11px] uppercase mb-1.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em', fontWeight: 800 }}>
+              {t('admin.settings.birthdayPoints', 'Bonus points')}
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number" inputMode="numeric" min="0" max="10000"
+                value={points}
+                onChange={e => setPoints(e.target.value)}
+                disabled={!enabled}
+                placeholder="0"
+                className="w-full rounded-xl px-3 py-2.5 text-[14px] font-bold focus:outline-none disabled:opacity-50"
+                style={{ background: 'var(--color-surface-hover, rgba(255,255,255,0.04))', border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))', color: 'var(--color-text-primary)' }}
+              />
+              <span className="text-[12px] font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.settings.birthdayPointsUnit', 'points')}
+              </span>
+            </div>
+            <p className="text-[10.5px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+              {t('admin.settings.birthdayPointsHint', 'Awarded in addition to the reward above. Leave at 0 to skip.')}
+            </p>
+          </div>
+        )}
+
+        {/* Optional custom message */}
+        <div>
+          <label className="block text-[11px] uppercase mb-1.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em', fontWeight: 800 }}>
+            {t('admin.settings.birthdayMessage', 'Custom message (optional)')}
+          </label>
+          <input
+            type="text" maxLength={140}
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            placeholder={t('admin.settings.birthdayMessagePlaceholder', 'Happy birthday from the team! 🎂')}
+            className="w-full rounded-xl px-3 py-2.5 text-[14px] focus:outline-none"
+            style={{ background: 'var(--color-surface-hover, rgba(255,255,255,0.04))', border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))', color: 'var(--color-text-primary)' }}
+          />
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
+            style={{ background: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+          >
+            <Save size={14} />
+            {saving ? t('admin.settings.saving', 'Saving...') : t('admin.settings.save', 'Save')}
+          </button>
+        </div>
+      </AdminCard>
+    </FadeIn>
+  );
+}
+
 export default function AdminRewards() {
   const { t, i18n } = useTranslation('pages');
   const { profile } = useAuth();
@@ -546,10 +768,6 @@ export default function AdminRewards() {
   const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [deactivateNote, setDeactivateNote] = useState('');
 
-  // Milestone form
-  const [milestoneCount, setMilestoneCount] = useState('');
-  const [milestoneRewardId, setMilestoneRewardId] = useState('');
-
   // ── Queries ────────────────────────────────────────────────
   const { data: rewards = [], isLoading: loadingRewards } = useQuery({
     queryKey: rewardKeys.all(gymId),
@@ -560,20 +778,6 @@ export default function AdminRewards() {
         .eq('gym_id', gymId)
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!gymId,
-  });
-
-  const { data: milestones = [], isLoading: loadingMilestones } = useQuery({
-    queryKey: rewardKeys.milestones(gymId),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('referral_milestones')
-        .select('*, gym_rewards(name, name_es, emoji_icon)')
-        .eq('gym_id', gymId)
-        .order('referral_count', { ascending: true });
       if (error) throw error;
       return data || [];
     },
@@ -612,43 +816,7 @@ export default function AdminRewards() {
     onSuccess: (_data, id) => {
       logAdminAction('delete_reward', 'reward', id);
       queryClient.invalidateQueries({ queryKey: rewardKeys.all(gymId) });
-      queryClient.invalidateQueries({ queryKey: rewardKeys.milestones(gymId) });
       showToast(t('admin.rewards.deleted', 'Reward deleted'), 'success');
-    },
-    onError: (err) => showToast(err.message, 'error'),
-  });
-
-  const addMilestoneMutation = useMutation({
-    mutationFn: async () => {
-      const count = parseInt(milestoneCount);
-      if (!count || count < 1) throw new Error('Invalid referral count');
-      if (!milestoneRewardId) throw new Error('Select a reward');
-      const { error } = await supabase.from('referral_milestones').insert({
-        gym_id: gymId,
-        referral_count: count,
-        reward_id: milestoneRewardId,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: rewardKeys.milestones(gymId) });
-      setMilestoneCount('');
-      setMilestoneRewardId('');
-      showToast(t('admin.rewards.saved', 'Saved'), 'success');
-    },
-    onError: (err) => showToast(err.message, 'error'),
-  });
-
-  const deleteMilestoneMutation = useMutation({
-    mutationFn: async (id) => {
-      const { error } = await supabase.from('referral_milestones').delete().eq('id', id).eq('gym_id', gymId);
-      if (error) throw error;
-      return id;
-    },
-    onSuccess: (_data, id) => {
-      logAdminAction('delete_milestone', 'referral_milestone', id);
-      queryClient.invalidateQueries({ queryKey: rewardKeys.milestones(gymId) });
-      showToast(t('admin.rewards.deleted', 'Deleted'), 'success');
     },
     onError: (err) => showToast(err.message, 'error'),
   });
@@ -689,7 +857,6 @@ export default function AdminRewards() {
         tabs={[
           { key: 'catalog', label: t('admin.rewards.tabCatalog', 'Catalog'), icon: Gift },
           { key: 'redemptions', label: t('admin.rewards.tabRedemptions', 'Redemptions'), icon: Clock },
-          { key: 'performance', label: t('admin.rewards.tabPerformance', 'Performance'), icon: Trophy },
         ]}
         active={rewardsTab}
         onChange={setRewardsTab}
@@ -698,220 +865,149 @@ export default function AdminRewards() {
 
       {/* ── Catalog Tab ───────────────────────────────────── */}
       {rewardsTab === 'catalog' && <>
-      <SectionLabel className="mb-1">{t('admin.rewards.catalog', 'Reward Catalog')}</SectionLabel>
+      <span className="admin-eyebrow block mb-3">{t('admin.rewards.catalog', 'Reward Catalog')}</span>
 
       {loadingRewards ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 md:gap-3">
           {[1, 2, 3, 4].map(i => <CardSkeleton key={i} />)}
         </div>
       ) : rewards.length === 0 ? (
         <FadeIn>
-          <AdminCard className="mt-4 text-center py-12">
-            <Gift size={40} className="mx-auto text-[#6B7280] mb-3" />
-            <p className="text-[15px] font-semibold text-[#E5E7EB]">
+          <AdminCard className="text-center py-12">
+            <Gift size={40} className="mx-auto mb-3" style={{ color: 'var(--color-admin-text-muted)' }} />
+            <p className="text-[15px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>
               {t('admin.rewards.noRewards', 'No rewards yet')}
             </p>
-            <p className="text-[12px] text-[#6B7280] mt-1 mb-4">
+            <p className="text-[12px] mt-1 mb-4" style={{ color: 'var(--color-admin-text-muted)' }}>
               {t('admin.rewards.noRewardsHint', 'Add your first reward to start building your catalog.')}
             </p>
             <button
               onClick={openAdd}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C4A030] transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2.5 font-bold text-[13px] rounded-xl transition-colors"
+              style={{ background: 'var(--color-accent)', color: '#000' }}
             >
               <Plus size={15} /> {t('admin.rewards.addReward', 'Add Reward')}
             </button>
           </AdminCard>
         </FadeIn>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-          {rewards.map((r, idx) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 md:gap-3">
+          {rewards.map((r, idx) => {
+            // Map reward_type to a tone class for emoji background tint
+            const toneMap = {
+              smoothie: 'info', guest_pass: 'info', merch: 'coach',
+              pt_session: 'warn', free_month: 'good', class_pass: 'coach',
+              discount: 'warn', bring_friend: 'coach', custom: 'info',
+            };
+            const tone = toneMap[r.reward_type] || 'info';
+            const tintBg = tone === 'good' ? 'var(--color-success-soft)'
+              : tone === 'warn' ? 'var(--color-warning-soft)'
+              : tone === 'coach' ? 'var(--color-coach-soft)'
+              : 'var(--color-info-soft)';
+            return (
             <FadeIn key={r.id} delay={idx * 40}>
-              <AdminCard className="relative">
-                {/* Top row: emoji + name + badges */}
-                <div className={`flex items-center gap-3 ${!r.is_active ? 'opacity-40' : ''}`}>
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/8 flex items-center justify-center flex-shrink-0 text-[20px]">
+              <div className={`admin-card p-3 sm:p-4 h-full flex flex-col ${!r.is_active ? 'opacity-60' : ''}`}>
+                {/* Top row: emoji icon + PTS pill */}
+                <div className="flex items-start justify-between mb-3">
+                  <div
+                    className="w-10 h-10 rounded-[10px] flex items-center justify-center flex-shrink-0 text-[20px]"
+                    style={{ background: tintBg }}
+                  >
                     {r.emoji_icon || '🎁'}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{rewardName(r)}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${typeColor(r.reward_type)}`}>
-                        {t(`admin.rewards.type_${r.reward_type}`, r.reward_type)}
-                      </span>
-                      {r.cost_points > 0 && (
-                        <span className="text-[11px] font-semibold text-[#D4AF37]">
-                          {r.cost_points.toLocaleString()} {t('admin.rewards.pts', 'pts')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  {r.cost_points > 0 && (
+                    <span className={`admin-pill admin-pill--${tone === 'info' ? 'info' : tone}`}>
+                      {r.cost_points.toLocaleString()} {t('admin.rewards.pts', 'PTS')}
+                    </span>
+                  )}
                 </div>
+
+                {/* Name */}
+                <div className="admin-kpi text-[15px] leading-tight" style={{ letterSpacing: '-0.15px' }}>
+                  {rewardName(r)}
+                </div>
+
+                {/* Type eyebrow pill */}
+                <span className="admin-pill admin-pill--outline mt-1 self-start" style={{ fontSize: '9.5px' }}>
+                  {t(`admin.rewards.type_${r.reward_type}`, r.reward_type).toUpperCase()}
+                </span>
 
                 {/* Description */}
                 {rewardDesc(r) && (
-                  <p className={`text-[12px] text-[#6B7280] mt-2 line-clamp-2 ${!r.is_active ? 'opacity-40' : ''}`}>{rewardDesc(r)}</p>
+                  <p className="text-[12px] mt-2 leading-[1.4] line-clamp-2" style={{ color: 'var(--color-admin-text-sub)' }}>
+                    {rewardDesc(r)}
+                  </p>
                 )}
 
-                {/* Bottom row: inactive badge + actions */}
-                <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-white/4">
-                  <div className="flex-1 min-w-0">
-                    {!r.is_active && (
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase text-red-400 bg-red-500/10">
-                          {t('admin.rewards.inactive', 'Inactive')}
-                        </span>
-                        {r.deactivated_at && (
-                          <span className="text-[10px] text-[#4B5563]">
-                            {format(new Date(r.deactivated_at), 'MMM d, yyyy', dateFnsLocale)}
-                          </span>
-                        )}
-                        {r.deactivated_note && (
-                          <span className="text-[10px] text-[#6B7280] truncate">{r.deactivated_note}</span>
-                        )}
-                      </div>
+                {/* Inactive meta */}
+                {!r.is_active && (
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span className="admin-pill admin-pill--hot" style={{ fontSize: '9.5px' }}>
+                      {t('admin.rewards.inactive', 'Inactive')}
+                    </span>
+                    {r.deactivated_at && (
+                      <span className="text-[10px]" style={{ color: 'var(--color-admin-text-faint)' }}>
+                        {format(new Date(r.deactivated_at), 'MMM d, yyyy', dateFnsLocale)}
+                      </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        if (r.is_active) {
-                          setDeactivateTarget(r);
-                          setDeactivateNote('');
-                        } else {
-                          toggleActiveMutation.mutate({ id: r.id, is_active: true });
-                        }
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-white/[0.04] transition-colors"
-                      aria-label={r.is_active ? t('admin.rewards.deactivate', 'Deactivate') : t('admin.rewards.activate', 'Activate')}
-                    >
-                      {r.is_active
-                        ? <ToggleRight size={18} className="text-emerald-400" />
-                        : <ToggleLeft size={18} className="text-[#6B7280]" />}
-                    </button>
-                    <button
-                      onClick={() => openEdit(r)}
-                      className="p-1.5 rounded-lg hover:bg-white/[0.04] transition-colors"
-                      aria-label={t('admin.rewards.editReward', 'Edit')}
-                    >
-                      <Pencil size={14} className="text-[#9CA3AF]" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(t('admin.rewards.deleteConfirm', 'Delete this reward?'))) {
-                          deleteRewardMutation.mutate(r.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
-                      aria-label={t('admin.rewards.deleteReward', 'Delete')}
-                    >
-                      <Trash2 size={14} className="text-[#6B7280] hover:text-red-400" />
-                    </button>
-                  </div>
+                )}
+
+                {/* Action buttons row */}
+                <div className="flex items-center gap-1.5 mt-auto pt-3">
+                  <button
+                    onClick={() => openEdit(r)}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-[12px] font-semibold transition-colors"
+                    style={{
+                      background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                      color: 'var(--color-accent)',
+                      border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                    }}
+                  >
+                    <Pencil size={12} />
+                    {t('admin.rewards.edit', 'Editar')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (r.is_active) {
+                        setDeactivateTarget(r);
+                        setDeactivateNote('');
+                      } else {
+                        toggleActiveMutation.mutate({ id: r.id, is_active: true });
+                      }
+                    }}
+                    className="w-9 h-9 rounded-lg grid place-items-center transition-colors flex-shrink-0"
+                    style={{ border: '1px solid var(--color-admin-border)', background: 'var(--color-bg-card)' }}
+                    aria-label={r.is_active ? t('admin.rewards.deactivate', 'Deactivate') : t('admin.rewards.activate', 'Activate')}
+                    title={r.is_active ? t('admin.rewards.deactivate', 'Deactivate') : t('admin.rewards.activate', 'Activate')}
+                  >
+                    {r.is_active
+                      ? <ToggleRight size={14} style={{ color: 'var(--color-success)' }} />
+                      : <ToggleLeft size={14} style={{ color: 'var(--color-admin-text-sub)' }} />}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(t('admin.rewards.deleteConfirm', 'Delete this reward?'))) {
+                        deleteRewardMutation.mutate(r.id);
+                      }
+                    }}
+                    className="w-9 h-9 rounded-lg grid place-items-center transition-colors flex-shrink-0"
+                    style={{ border: '1px solid var(--color-admin-border)', background: 'var(--color-bg-card)' }}
+                    aria-label={t('admin.rewards.deleteReward', 'Delete')}
+                    title={t('admin.rewards.deleteReward', 'Delete')}
+                  >
+                    <Trash2 size={14} style={{ color: 'var(--color-danger)' }} />
+                  </button>
                 </div>
-              </AdminCard>
+              </div>
             </FadeIn>
-          ))}
+          );
+          })}
         </div>
       )}
-      </>}
 
-      {/* ── Performance Tab ───────────────────────────────── */}
-      {rewardsTab === 'performance' && <>
-      <SectionLabel>
-        {t('admin.rewards.referralMilestones', 'Referral Milestones')}
-      </SectionLabel>
-
-      <FadeIn>
-        <AdminCard className="mt-4">
-          {/* Add milestone row */}
-          <div className="flex items-end gap-3 pb-4 border-b border-white/6">
-            <div className="w-24">
-              <label className="block text-[11px] font-medium text-[#9CA3AF] mb-1">
-                {t('admin.rewards.referralCount', 'Referrals')}
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={milestoneCount}
-                onChange={e => setMilestoneCount(e.target.value)}
-                placeholder="3"
-                className={inputClass}
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-[11px] font-medium text-[#9CA3AF] mb-1">
-                {t('admin.rewards.selectReward', 'Reward')}
-              </label>
-              <select
-                value={milestoneRewardId}
-                onChange={e => setMilestoneRewardId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">{t('admin.rewards.selectReward', 'Select reward...')}</option>
-                {activeRewards.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.emoji_icon} {rewardName(r)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              onClick={() => addMilestoneMutation.mutate()}
-              disabled={addMilestoneMutation.isPending || !milestoneCount || !milestoneRewardId}
-              className="px-4 py-2.5 rounded-xl text-[12px] font-bold text-black bg-[#D4AF37] hover:bg-[#C5A028] disabled:opacity-40 transition-colors flex-shrink-0"
-            >
-              {t('admin.rewards.addMilestone', 'Add')}
-            </button>
-          </div>
-
-          {/* Milestones list */}
-          {loadingMilestones ? (
-            <div className="py-6 text-center text-[12px] text-[#6B7280]">{t('common:loading')}</div>
-          ) : milestones.length === 0 ? (
-            <div className="py-8 text-center">
-              <Milestone size={28} className="mx-auto text-[#6B7280] mb-2" />
-              <p className="text-[13px] text-[#6B7280]">
-                {t('admin.rewards.noMilestones', 'No referral milestones configured yet.')}
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-white/6">
-              {milestones.map(m => {
-                const rw = m.gym_rewards;
-                const rwName = isEs && rw?.name_es ? rw.name_es : rw?.name;
-                return (
-                  <div key={m.id} className="flex items-center gap-3 py-3">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-[13px] font-bold text-[#D4AF37] tabular-nums w-8 text-right">
-                        {m.referral_count}
-                      </span>
-                      <span className="text-[12px] text-[#6B7280]">
-                        {t('admin.rewards.referralsNeeded', 'referrals')}
-                      </span>
-                      <span className="text-[12px] text-[#6B7280] mx-1">&rarr;</span>
-                      <span className="text-[15px]">{rw?.emoji_icon || '🎁'}</span>
-                      <span className="text-[13px] font-medium text-[#E5E7EB] truncate">
-                        {rwName || 'Unknown'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(t('admin.rewards.deleteConfirm', 'Delete this milestone?'))) {
-                          deleteMilestoneMutation.mutate(m.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors flex-shrink-0"
-                      aria-label={t('admin.rewards.deleteMilestone', 'Delete milestone')}
-                    >
-                      <Trash2 size={14} className="text-[#6B7280]" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </AdminCard>
-      </FadeIn>
+      {/* Birthday Rewards (moved from Settings) */}
+      <BirthdayRewardsCard gymId={gymId} rewards={rewards} t={t} isEs={isEs} />
       </>}
 
       {/* ── Redemptions Tab ───────────────────────────────── */}

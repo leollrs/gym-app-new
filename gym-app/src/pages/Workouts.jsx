@@ -5,6 +5,7 @@ import {
   Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info,
 } from 'lucide-react';
 import { useRoutines } from '../hooks/useRoutines';
+import { useCachedState, hasCachedState, useSyncedCachedState } from '../hooks/useCachedState';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
@@ -69,7 +70,7 @@ const ExerciseWhyTooltip = ({ exercise, onboarding, lang }) => {
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-[60]" role="button" tabIndex={0} aria-label="Close tooltip" onClick={(e) => { e.stopPropagation(); setOpen(false); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setOpen(false); } }} />
+          <div className="fixed inset-0 z-[60]" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseTooltip', 'Close tooltip')} onClick={(e) => { e.stopPropagation(); setOpen(false); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setOpen(false); } }} />
           <div className="absolute left-0 top-full mt-1 z-[61] w-[240px] rounded-xl p-3 shadow-xl border" style={{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-border-subtle)' }}>
             <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'var(--color-accent)' }}>{t('workouts.whyThisExercise')}</p>
             <div className="flex flex-col gap-1.5">
@@ -136,7 +137,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
   const weekNums = Object.keys(weeks).map(Number).sort((a, b) => a - b);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm py-[10vh] px-4" role="button" tabIndex={0} aria-label="Close program details" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClose(); }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm py-[10vh] px-4" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseProgramDetails', 'Close program details')} onClick={onClose} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClose(); }}>
       <div role="dialog" aria-modal="true" className="rounded-[20px] w-full max-w-lg md:max-w-2xl max-h-[80vh] flex flex-col overflow-hidden border" style={{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
           <div className="flex-1 min-w-0 pr-4">
@@ -145,7 +146,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
               <Calendar size={11} /> {t('workouts.weekProgram', { count: program.duration_weeks })}
             </p>
           </div>
-          <button onClick={onClose} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)' }} aria-label="Close"><X size={16} style={{ color: 'var(--color-text-subtle)' }} /></button>
+          <button onClick={onClose} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)' }} aria-label={t('workouts.ariaClose', 'Close')}><X size={16} style={{ color: 'var(--color-text-subtle)' }} /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {program.description && <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{progDesc(program)}</p>}
@@ -215,19 +216,50 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
 };
 
 // ── Routine detail (expandable) ──────────────────────────
+// ── Session-level routine exercise cache ────────────────────────────────────
+// Survives unmount/remount, cleared on full page refresh.
+const routineExerciseCache = new Map();
+
+/** Preload exercises for multiple routines in a single query */
+async function preloadRoutineExercises(routineIds) {
+  const uncached = routineIds.filter(id => !routineExerciseCache.has(id));
+  if (uncached.length === 0) return;
+  const { data } = await supabase
+    .from('routine_exercises')
+    .select('id, routine_id, position, target_sets, target_reps, rest_seconds, exercises(name, name_es)')
+    .in('routine_id', uncached)
+    .order('position');
+  // Group by routine_id and cache
+  const grouped = {};
+  for (const row of (data || [])) {
+    if (!grouped[row.routine_id]) grouped[row.routine_id] = [];
+    grouped[row.routine_id].push(row);
+  }
+  for (const id of uncached) {
+    routineExerciseCache.set(id, grouped[id] || []);
+  }
+}
+
 const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => {
   const { t } = useTranslation('pages');
-  const [exercises, setExercises] = useState([]);
-  const [loaded, setLoaded] = useState(false);
+  const [exercises, setExercises] = useState(() => routineExerciseCache.get(routineId) || []);
+  const [loaded, setLoaded] = useState(() => routineExerciseCache.has(routineId));
 
   useEffect(() => {
+    if (routineExerciseCache.has(routineId)) {
+      setExercises(routineExerciseCache.get(routineId));
+      setLoaded(true);
+      return;
+    }
     supabase
       .from('routine_exercises')
-      .select('id, position, target_sets, target_reps, rest_seconds, exercises(name)')
+      .select('id, position, target_sets, target_reps, rest_seconds, exercises(name, name_es)')
       .eq('routine_id', routineId)
       .order('position')
       .then(({ data }) => {
-        setExercises(data || []);
+        const result = data || [];
+        routineExerciseCache.set(routineId, result);
+        setExercises(result);
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
@@ -276,6 +308,10 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => 
     </div>
   );
 };
+
+// ── Design tokens ──────────────────────────────────────────
+const TU_DISPLAY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
+const TU_ACCENT = 'var(--color-accent, #2EC4C4)';
 
 // ── Main page ──────────────────────────────────────────────
 const Workouts = () => {
@@ -360,6 +396,7 @@ const Workouts = () => {
   }, []);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [leaveProgramConfirm, setLeaveProgramConfirm] = useState(null); // { id, name, source } or null
   const [deletingId, setDeletingId]           = useState(null);
   const [showGenerator, setShowGenerator]     = useState(false);
   const [programCategoryFilter, setProgramCategoryFilter] = useState('All');
@@ -374,6 +411,7 @@ const Workouts = () => {
   const [expandedProgramRoutineId, setExpandedProgramRoutineId] = useState(null);
   const [programViewWeek, setProgramViewWeek] = useState(null);
   const [todayCompletedRoutineIds, setTodayCompletedRoutineIds] = useState(new Set());
+  const [programCompletedDays, setProgramCompletedDays] = useState(0);
   const [showAllRoutines, setShowAllRoutines] = useState(false);
   const [showAllMyPrograms, setShowAllMyPrograms] = useState(false);
   const [selectedMyProgram, setSelectedMyProgram] = useState(null);
@@ -381,21 +419,28 @@ const Workouts = () => {
   const [dayCompressionWarning, setDayCompressionWarning] = useState(null);
   const [goalMismatchWarning, setGoalMismatchWarning] = useState(null);
 
-  // Gym programs
-  const [gymPrograms, setGymPrograms]       = useState([]);
+  // Gym programs — cached across unmount / app-restart so tab switches paint instantly
+  const wCacheKey = `workouts-${user?.id}`;
+  const [gymPrograms, setGymPrograms]       = useCachedState(`${wCacheKey}-gymPrograms`, []);
   const [programsLoading, setProgramsLoading] = useState(false);
-  const [enrolledIds, setEnrolledIds]       = useState(new Set());
+  const [enrolledIds, setEnrolledIds]       = useCachedState(`${wCacheKey}-enrolled`, new Set());
   const [selectedProgram, setSelectedProgram] = useState(null);
 
   // Generated programs
-  const [generatedProgram, setGeneratedProgram] = useState(null);
-  const [allPrograms, setAllPrograms]           = useState([]);
-  const [programLoading, setProgramLoading]     = useState(true);
-  const [onboardingData, setOnboardingData]     = useState(null);
+  // useSyncedCachedState — if `user?.id` stabilizes AFTER first render, the
+  // cache key changes from `workouts-undefined-gp` to `workouts-<id>-gp`.
+  // Regular `useCachedState`'s lazy init only runs once, so the program would
+  // be stuck at null until the load effect finishes. `useSyncedCachedState`
+  // re-syncs from cache whenever the key changes, so the already-cached
+  // program hydrates instantly once user.id is known.
+  const [generatedProgram, setGeneratedProgram] = useSyncedCachedState(`${wCacheKey}-gp`, null);
+  const [allPrograms, setAllPrograms]           = useSyncedCachedState(`${wCacheKey}-allPrograms`, []);
+  const [programLoading, setProgramLoading]     = useState(!hasCachedState(`${wCacheKey}-gp`));
+  const [onboardingData, setOnboardingData]     = useCachedState(`${wCacheKey}-onboarding`, null);
   const [goalsMismatch, setGoalsMismatch]       = useState(false);
   const [adaptationSuggestions, setAdaptationSuggestions] = useState(null);
   // Workout schedule: maps routine_id -> day_of_week (0=Sun..6=Sat)
-  const [workoutScheduleMap, setWorkoutScheduleMap] = useState({});
+  const [workoutScheduleMap, setWorkoutScheduleMap] = useCachedState(`${wCacheKey}-schedule`, {});
 
   // Load adaptation suggestions from localStorage on mount
   useEffect(() => {
@@ -406,7 +451,9 @@ const Workouts = () => {
   // Load gym programs (with offline cache fallback)
   const loadPrograms = useCallback(async () => {
     if (!profile?.gym_id) return;
-    setProgramsLoading(true);
+    // Only spin if we have no cached gym programs yet — cached data paints
+    // instantly and revalidates silently in the background.
+    if (!hasCachedState(`${wCacheKey}-gymPrograms`)) setProgramsLoading(true);
     try {
       const [{ data: progs }, { data: enrolled }] = await Promise.all([
         supabase.from('gym_programs').select('id, name, description, duration_weeks, weeks, created_at').eq('gym_id', profile.gym_id).eq('is_published', true).order('created_at', { ascending: false }).limit(50),
@@ -476,20 +523,49 @@ const Workouts = () => {
       return () => { document.body.style.overflow = ''; };
     }
   }, [goalMismatchWarning]);
+  useEffect(() => {
+    if (expandedRoutineId) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [expandedRoutineId]);
+  useEffect(() => {
+    if (startModeChoice === 'choosing') {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [startModeChoice]);
+  useEffect(() => {
+    if (leaveProgramConfirm) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [leaveProgramConfirm]);
 
   // Load generated programs + onboarding
   useEffect(() => {
     if (!user?.id || !profile?.gym_id) return;
     const load = async () => {
-      const [{ data: allGp }, { data: ob }, { data: latestWeight }] = await Promise.all([
+      const [gpRes, obRes, lwRes] = await Promise.all([
         supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
         supabase.from('member_onboarding').select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, height_inches, initial_weight_lbs, age, sex, height_cm, weight_kg, gender, priority_muscles').eq('profile_id', user.id).maybeSingle(),
         supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       ]);
-      const programs = allGp || [];
-      setAllPrograms(programs);
-      const latest = programs[0] || null;
-      setGeneratedProgram(latest);
+      const { data: allGp, error: gpErr } = gpRes;
+      const { data: ob } = obRes;
+      const { data: latestWeight } = lwRes;
+      // Only replace cached program state when the fetch succeeded.
+      // A transient network hiccup that returns an error MUST NOT downgrade
+      // an active program back to "no program chosen" — keep the cache value.
+      if (!gpErr) {
+        const programs = allGp || [];
+        setAllPrograms(programs);
+        const latest = programs[0] || null;
+        setGeneratedProgram(latest);
+      } else {
+        logger.warn('Workouts: generated_programs fetch failed, keeping cached state:', gpErr);
+      }
+      const latest = (!gpErr && (allGp?.[0] || null)) || generatedProgram;
       // Enrich onboarding data with latest actual body weight if available
       const enriched = ob ? { ...ob } : null;
       if (enriched && latestWeight?.weight_lbs) {
@@ -544,6 +620,71 @@ const Workouts = () => {
         setTodayCompletedRoutineIds(new Set((data || []).map(s => s.routine_id)));
       });
   }, [user?.id]);
+
+  // ── Per-week completion map for the program view ───────────────────────
+  // Lets the program card show green checks on routines actually completed
+  // in the viewed week (past or current), matching MyPlan's behavior.
+  // Keyed: `${week_number}::${routine_id}` → true.
+  const [completedByWeek, setCompletedByWeek] = useState(new Map());
+  useEffect(() => {
+    if (!user?.id || !generatedProgram?.program_start) { setCompletedByWeek(new Map()); return; }
+    const progStart = new Date(generatedProgram.program_start);
+    supabase
+      .from('workout_sessions')
+      .select('routine_id, completed_at')
+      .eq('profile_id', user.id)
+      .eq('status', 'completed')
+      .gte('completed_at', progStart.toISOString())
+      .then(({ data }) => {
+        const map = new Map();
+        for (const s of (data || [])) {
+          const completedDate = new Date(s.completed_at);
+          // Week index = floor((completed - progStart) / 7d) + 1, 1-based
+          const weekN = Math.floor((completedDate - progStart) / (7 * 86400000)) + 1;
+          map.set(`${weekN}::${s.routine_id}`, true);
+        }
+        setCompletedByWeek(map);
+      });
+  }, [user?.id, generatedProgram?.program_start, programCompletedDays]);
+
+  // Count completed workout days for the **viewing** program week. When the
+  // user navigates back via the prev/next buttons in the hero card, the
+  // "X/Y sessions" label needs to reflect that week's history, not the
+  // current calendar week. We compute the date range using program_start as
+  // the anchor (program weeks are 7-day blocks from program_start, not
+  // strictly Sunday-Saturday).
+  useEffect(() => {
+    if (!user?.id || !generatedProgram) return;
+    const progStart = generatedProgram.program_start;
+    if (!progStart) return;
+
+    const totalWeeks = generatedProgram.duration_weeks || 6;
+    const progStartMs = new Date(progStart).getTime();
+    const nowMs = Date.now();
+    const currentWeekIdx = Math.min(
+      Math.floor((nowMs - progStartMs) / (7 * 86400000)) + 1,
+      totalWeeks
+    );
+    const targetWeek = programViewWeek || currentWeekIdx;
+    const isCurrent = targetWeek === currentWeekIdx;
+
+    // Program-week window: [program_start + (w-1)*7d, program_start + w*7d)
+    const winStart = new Date(progStartMs + (targetWeek - 1) * 7 * 86400000);
+    const winEnd   = new Date(progStartMs + targetWeek * 7 * 86400000);
+    // Cap upper bound at "now" for the current week so the count doesn't
+    // include sessions that haven't happened yet (it can't, but keeps the
+    // intent explicit).
+    const upperBound = isCurrent && winEnd.getTime() > nowMs ? new Date(nowMs) : winEnd;
+
+    supabase
+      .from('workout_sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', user.id)
+      .eq('status', 'completed')
+      .gte('completed_at', winStart.toISOString())
+      .lt('completed_at', upperBound.toISOString())
+      .then(({ count }) => setProgramCompletedDays(count || 0));
+  }, [user?.id, generatedProgram, programViewWeek]);
 
   // Enforce single active program — deactivate all but the latest
   useEffect(() => {
@@ -612,28 +753,33 @@ const Workouts = () => {
     });
 
     // Determine which DOW map to use for this week
+    // Week 1 ALWAYS uses week1 map (handles "Start Today" on non-standard days)
     let dowMap;
-    if (hasWrappedDays && weekNum === 1) {
-      dowMap = week1DowToIdx; // partial first week
+    if (weekNum === 1 && Object.keys(week1DowToIdx).length > 0) {
+      dowMap = week1DowToIdx; // first week (may differ from packed schedule)
     } else if (hasWrappedDays && weekNum === totalProgramWeeks) {
       dowMap = lastWeekDowToIdx; // partial last week
     } else {
-      dowMap = normalDowToIdx; // full weeks (week 2 through N-1)
+      dowMap = normalDowToIdx; // full weeks (week 2 through N)
     }
 
     // Build the list: for each DOW in this week's map, find the matching routine
     const result = [];
     const dowEntries = Object.entries(dowMap).map(([d, idx]) => [Number(d), idx]).sort((a, b) => a[0] - b[0]);
     for (const [dow, routineIdx] of dowEntries) {
-      // Find the routine assigned to this DOW in the normal schedule
-      // (workout_schedule stores normal DOW, so for week 1 we need to find routine by index)
       let routine;
-      if (hasWrappedDays && (weekNum === 1 || weekNum === totalProgramWeeks)) {
-        // For partial weeks, find routine by its normal DOW via routine_index
+      if (weekNum === 1 || (hasWrappedDays && weekNum === totalProgramWeeks)) {
+        // Week 1 and last week: look up routine by its index → normal DOW → routine ID
+        // This handles "Start Today" on closed days where the DOW isn't in workout_schedule
         const normalDow = schedMap?.normal_dows?.[routineIdx];
         const rid = normalDow !== undefined ? routineIdByNormalDow[String(normalDow)] : null;
         routine = rid ? autoRoutines.find(r => r.id === rid) : null;
+        // Fallback: try matching by position in autoRoutines array
+        if (!routine && routineIdx < autoRoutines.length) {
+          routine = autoRoutines[routineIdx];
+        }
       } else {
+        // Normal weeks: direct DOW lookup from workout_schedule
         const rid = routineIdByNormalDow[String(dow)];
         routine = rid ? autoRoutines.find(r => r.id === rid) : null;
       }
@@ -646,6 +792,29 @@ const Workouts = () => {
 
   const thisWeekRoutines = getRoutinesForWeek(currentWeekNum);
 
+  // Preload routine exercises for the current week's routines (instant expand)
+  useEffect(() => {
+    if (thisWeekRoutines.length > 0) {
+      preloadRoutineExercises(thisWeekRoutines.map(r => r.id));
+    }
+  }, [thisWeekRoutines.map(r => r.id).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Also preload when user changes week in the program view
+  useEffect(() => {
+    if (!programActive || !programViewWeek) return;
+    const weekRoutines = getRoutinesForWeek(programViewWeek);
+    if (weekRoutines.length > 0) {
+      preloadRoutineExercises(weekRoutines.map(r => r.id));
+    }
+  }, [programViewWeek]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Preload all user routines (My Routines section) on mount
+  useEffect(() => {
+    if (routines.length > 0) {
+      preloadRoutineExercises(routines.map(r => r.id));
+    }
+  }, [routines.map(r => r.id).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handlers
   const handleEnroll = async (programId) => {
     await supabase.from('gym_program_enrollments').insert({ program_id: programId, profile_id: user.id, gym_id: profile.gym_id });
@@ -655,6 +824,25 @@ const Workouts = () => {
     await supabase.from('gym_program_enrollments').delete().eq('program_id', programId).eq('profile_id', user.id);
     setEnrolledIds(prev => { const s = new Set(prev); s.delete(programId); return s; });
   };
+  // Confirmed leave/end program — called after "Are you sure?" modal
+  const handleConfirmLeaveProgram = async () => {
+    if (!leaveProgramConfirm) return;
+    const { id, isActive } = leaveProgramConfirm;
+    if (isActive) {
+      await supabase.from('generated_programs').update({ expires_at: new Date().toISOString() }).eq('id', id);
+    } else {
+      await supabase.from('generated_programs').delete().eq('id', id);
+    }
+    const { data: allGp } = await supabase.from('generated_programs')
+      .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+      .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+    const programs = allGp || [];
+    setAllPrograms(programs);
+    setGeneratedProgram(programs[0] || null);
+    setLeaveProgramConfirm(null);
+    setSelectedMyProgram(null);
+  };
+
   const handleSaveCreateModal = async ({ name, exercises }) => {
     const routine = await createRoutine(name);
     posthog?.capture('routine_created');
@@ -826,9 +1014,13 @@ const Workouts = () => {
       const N = firstWeek.length;
 
       // Rotate from start date to pick the N closest training days for week 1
+      // "Start Today" means today is ALWAYS included, even if gym is closed
       const sorted = [...allAvailableDays].sort((a, b) => a - b);
-      const fromStart = sorted.filter(d => d >= startDow);
-      const beforeStart = sorted.filter(d => d < startDow);
+      const week1Pool = useStartMode === 'today' && !sorted.includes(startDow)
+        ? [startDow, ...sorted].sort((a, b) => a - b)
+        : sorted;
+      const fromStart = week1Pool.filter(d => d >= startDow);
+      const beforeStart = week1Pool.filter(d => d < startDow);
       const rotated = [...fromStart, ...beforeStart];
       const week1AllDays = rotated.slice(0, N);
 
@@ -837,7 +1029,8 @@ const Workouts = () => {
       // Wrapped days → last week (routines that couldn't fit in week 1's calendar week)
       const wrappedDows = week1AllDays.filter(d => d < startDow);
       const needsExtraWeek = wrappedDows.length > 0;
-      const baseDuration = selectedTemplate.durationWeeks || 6;
+      // Enforce minimum of 8 weeks to hit the 6-week stickiness target with buffer.
+      const baseDuration = Math.max(8, selectedTemplate.durationWeeks || 8);
       const totalDurationWeeks = baseDuration + (needsExtraWeek ? 1 : 0);
 
       // Week 2+ (packed): fill first N gym-open days starting from Monday
@@ -986,12 +1179,22 @@ const Workouts = () => {
 
       logger.log(`Enrollment complete: ${createdRoutineIds.length} routines created`);
 
-      // 4. Refresh state
-      const { data: allGp } = await supabase.from('generated_programs')
-        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+      // 4. Refresh state — programs, routines, AND workout schedule
+      const [{ data: allGp }, { data: schedData }] = await Promise.all([
+        supabase.from('generated_programs')
+          .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+          .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
+        supabase.from('workout_schedule')
+          .select('routine_id, day_of_week')
+          .eq('profile_id', user.id),
+      ]);
       const programs = allGp || [];
       setAllPrograms(programs);
       setGeneratedProgram(programs[0] || null);
+      // Refresh workout schedule map so DOW→routine mapping is current
+      const map = {};
+      (schedData || []).forEach(s => { map[s.routine_id] = s.day_of_week; });
+      setWorkoutScheduleMap(map);
       await refetch();
 
       // Close everything
@@ -1010,24 +1213,26 @@ const Workouts = () => {
     <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 lg:px-8 pt-4 pb-28 md:pb-12">
 
       {/* ── Header ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-8 gap-2" data-tour="tour-workouts-page">
-        <h1 className="text-[22px] font-bold tracking-tight truncate min-w-0" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.title')}</h1>
-        <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center justify-between mb-6 gap-2 min-w-0" data-tour="tour-workouts-page">
+        <h1 className="min-w-0 truncate flex-shrink" style={{ fontFamily: TU_DISPLAY, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>{t('workouts.title')}</h1>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <Link
             to="/exercises"
-            className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-[12px] font-medium transition-colors"
-            style={{ color: 'var(--color-text-subtle)' }}
+            aria-label={t('workouts.library')}
+            className="flex items-center gap-1.5 px-2.5 py-2 min-h-[44px] rounded-full text-[12px] font-semibold transition-colors whitespace-nowrap"
+            style={{ color: 'var(--color-text-muted)' }}
           >
             <BookOpen size={14} />
-            {t('workouts.library')}
+            <span>{t('workouts.library')}</span>
           </Link>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] rounded-xl text-[12px] font-semibold transition-colors"
-            style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }}
+            aria-label={t('workouts.newRoutine', 'New routine')}
+            className="flex items-center gap-1 px-2.5 py-2 min-h-[44px] rounded-full text-[12px] font-bold transition-colors whitespace-nowrap"
+            style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-primary)' }}
           >
             <Plus size={14} />
-            {t('workouts.new')}
+            <span>{t('workouts.newRoutine', 'New routine')}</span>
           </button>
         </div>
       </div>
@@ -1084,7 +1289,7 @@ const Workouts = () => {
                   setAdaptationSuggestions(null);
                 }}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                aria-label="Dismiss adaptation suggestion"
+                aria-label={t('workouts.ariaDismissAdaptation', 'Dismiss adaptation suggestion')}
               >
                 <X size={14} style={{ color: 'var(--color-text-subtle)' }} />
               </button>
@@ -1101,36 +1306,68 @@ const Workouts = () => {
 
         return (
         <section className="mb-10">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.currentProgram')}</p>
-          <div className="rounded-2xl px-4 py-5" style={{ backgroundColor: 'var(--color-bg-card)' }}>
-            {/* Title & progress with week navigator */}
-            <div className="flex items-start justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <button onClick={() => setProgramViewWeek(w => Math.max(1, (w || currentWeekNum) - 1))} disabled={viewWeek <= 1} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }} aria-label="Previous week"><ChevronLeft size={16} /></button>
+          {/* ── HERO: Current Program Card ─────────────────────── */}
+          <div
+            className="rounded-[22px] overflow-hidden"
+            style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}
+          >
+            <div className="px-5 pt-5 pb-2">
+              {/* Program name + icon */}
+              <div className="flex items-start justify-between mb-1">
                 <div>
-                  <h2 className="text-[20px] font-semibold tracking-tight leading-tight" style={{ color: 'var(--color-text-primary)' }}>
-                    {t('workouts.weekXOfY', { current: Math.min(viewWeek, totalProgramWeeks), total: totalProgramWeeks })}
+                  <p className="text-[10px] font-bold uppercase mb-1.5" style={{ color: TU_ACCENT, letterSpacing: '0.12em' }}>{t('workouts.currentProgram')}</p>
+                  <h2 style={{ fontFamily: TU_DISPLAY, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5, lineHeight: 1.15 }}>
+                    {gpName(generatedProgram)}
                   </h2>
-                  <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
-                    {isViewingCurrentWeek ? t('workouts.currentWeekRoutine', { variant: isWeekA ? 'A' : 'B' }) : ''}
+                </div>
+                <div className="w-11 h-11 rounded-[14px] flex items-center justify-center flex-shrink-0"
+                  style={{ background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)` }}>
+                  <Zap size={20} style={{ color: TU_ACCENT }} strokeWidth={2} />
+                </div>
+              </div>
+
+              {/* Progress bar + stats */}
+              {(() => {
+                const schedPerWeek = generatedProgram?.schedule_map?.routine_day_map?.length || generatedProgram?.routines_a_count || 3;
+                const totalExpected = schedPerWeek * totalProgramWeeks;
+                const pct = totalExpected > 0 ? Math.min(Math.round((programCompletedDays / totalExpected) * 100), 100) : 0;
+                return (
+                  <div className="my-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                        {t('workouts.weekXOfY', { current: Math.min(viewWeek, totalProgramWeeks), total: totalProgramWeeks })}
+                      </span>
+                      <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                        {isViewingCurrentWeek
+                          ? t('workouts.sessionsThisWeekCount', { count: programCompletedDays, total: schedPerWeek, defaultValue: '{{count}}/{{total}} sessions this week' })
+                          : `${programCompletedDays} / ${schedPerWeek} ${t('workouts.sessionsLogged', 'sessions logged')}`}
+                      </span>
+                    </div>
+                    <div className="w-full h-[5px] rounded-full" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.max(pct, 2)}%`, background: TU_ACCENT }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Week navigator — minimal */}
+              <div className="flex items-center justify-between mb-2 -mx-1">
+                <button onClick={() => { setProgramViewWeek(w => Math.max(1, (w || currentWeekNum) - 1)); setExpandedProgramRoutineId(null); }} disabled={viewWeek <= 1} className="min-w-[44px] min-h-[44px] w-9 h-9 rounded-full flex items-center justify-center disabled:opacity-20" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-subtle)' }} aria-label={t('workouts.ariaPreviousWeek', 'Previous week')}><ChevronLeft size={16} strokeWidth={2} /></button>
+                <div className="text-center">
+                  <p className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                    {isViewingCurrentWeek ? t('workouts.currentWeekRoutine', { variant: isWeekA ? 'A' : 'B' }) : t('workouts.weekN', { n: viewWeek })}
                   </p>
                 </div>
-                <button onClick={() => setProgramViewWeek(w => Math.min(totalProgramWeeks, (w || currentWeekNum) + 1))} disabled={viewWeek >= totalProgramWeeks} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }} aria-label="Next week"><ChevronRight size={16} /></button>
+                <button onClick={() => { setProgramViewWeek(w => Math.min(totalProgramWeeks, (w || currentWeekNum) + 1)); setExpandedProgramRoutineId(null); }} disabled={viewWeek >= totalProgramWeeks} className="min-w-[44px] min-h-[44px] w-9 h-9 rounded-full flex items-center justify-center disabled:opacity-20" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-subtle)' }} aria-label={t('workouts.ariaNextWeek', 'Next week')}><ChevronRight size={16} strokeWidth={2} /></button>
               </div>
-              <div className="w-11 h-11 rounded-2xl bg-[#10B981]/10 flex items-center justify-center">
-                <Zap size={18} className="text-[#10B981]" />
-              </div>
+
             </div>
 
-            {/* Progress bar */}
-            <div className="mb-6">
-              <div className="w-full h-1 rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }}>
-                <div
-                  className="h-full rounded-full bg-[#10B981] transition-all"
-                  style={{ width: `${Math.min((currentWeekNum / totalProgramWeeks) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
+            {/* Routine list area with subtle separator */}
+            <div className="px-5 pb-5">
 
             {/* Week content — use getRoutinesForWeek for all weeks so partial first/last weeks are respected */}
             {(() => {
@@ -1170,7 +1407,8 @@ const Workouts = () => {
                     })}
                   </div>
                 ) : (
-                  <div className="rounded-xl py-6 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                  <div className="rounded-xl py-10 text-center flex flex-col items-center gap-2" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                    <Dumbbell size={24} style={{ color: 'var(--color-text-subtle)', opacity: 0.4 }} />
                     <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.noPreviewAvailable')}</p>
                   </div>
                 );
@@ -1181,38 +1419,80 @@ const Workouts = () => {
                   <div className="space-y-2">
                     {weekRoutines.map(routine => {
                       const isExpanded = expandedProgramRoutineId === routine.id;
-                      // Use _displayDow (per-week DOW) instead of the fixed workoutScheduleMap
                       const scheduledDow = routine._displayDow ?? workoutScheduleMap[routine.id];
                       const DOW_LABELS = [
                         t('days.sun', { ns: 'common' }), t('days.mon', { ns: 'common' }), t('days.tue', { ns: 'common' }),
                         t('days.wed', { ns: 'common' }), t('days.thu', { ns: 'common' }), t('days.fri', { ns: 'common' }), t('days.sat', { ns: 'common' }),
                       ];
                       const dayLabel = scheduledDow !== undefined ? DOW_LABELS[scheduledDow] : null;
-                      // Only show "Today" badge when viewing the current week
                       const isToday = isViewingCurrentWeek && scheduledDow !== undefined && scheduledDow === new Date().getDay();
+                      // Look up completion for THIS specific viewed week, not just today.
+                      // Past weeks now show green checks for routines done that week.
+                      const isCompleted = completedByWeek.has(`${viewWeek}::${routine.id}`)
+                        || (isViewingCurrentWeek && todayCompletedRoutineIds.has(routine.id));
+
+                      // Today's routine → dark "UP NEXT" card
+                      if (isToday && !isCompleted) {
+                        return (
+                          <div key={routine.id}>
+                            <div className="rounded-[18px] p-4" style={{ background: '#1a1a1e', color: '#fff' }}>
+                              <div className="flex items-center gap-1.5 mb-2">
+                                <p className="text-[10px] font-bold uppercase" style={{ color: TU_ACCENT, letterSpacing: '0.08em' }}>
+                                  {t('workouts.upNext', 'UP NEXT')} {'\u00B7'} {t('workouts.today', 'TODAY')}
+                                </p>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-10 h-10 rounded-[12px] flex items-center justify-center flex-shrink-0"
+                                    style={{ background: 'rgba(255,255,255,0.1)' }}>
+                                    <Dumbbell size={16} style={{ color: 'rgba(255,255,255,0.7)' }} strokeWidth={2} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-[15px] truncate" style={{ color: '#fff', letterSpacing: -0.2 }}>{localizeRoutineName(routine.name)}</p>
+                                    <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{routine.exerciseCount} {t('workouts.exercises')} {'\u00B7'} {routine.estimatedMin || '~45'} {t('dashboard.min', 'min')}</p>
+                                  </div>
+                                </div>
+                                <Link
+                                  to={`/session/${routine.id}`}
+                                  onClick={() => posthog?.capture('routine_started', { routine_name: routine.name })}
+                                  className="px-5 py-2.5 rounded-[12px] text-[13px] font-bold flex-shrink-0 active:scale-95 transition-all"
+                                  style={{ background: TU_ACCENT, color: '#001512' }}
+                                >
+                                  {t('workouts.start', 'START')}
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Other routines → clean row with day on right
                       return (
                         <div key={routine.id}>
                           <button
                             type="button"
                             onClick={() => setExpandedProgramRoutineId(isExpanded ? null : routine.id)}
-                            className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-colors duration-200 text-left"
-                            style={{ backgroundColor: isToday ? 'color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-hover))' : 'var(--color-surface-hover)' }}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-[16px] transition-colors duration-200 text-left"
+                            style={{ background: isExpanded ? 'var(--color-surface-hover, rgba(0,0,0,0.04))' : 'transparent' }}
                           >
-                            <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                              <Dumbbell size={15} style={{ color: 'var(--color-text-muted)' }} />
+                            {/* Completed check or dumbbell */}
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                              style={{ background: isCompleted ? `color-mix(in srgb, ${TU_ACCENT} 15%, transparent)` : 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
+                              {isCompleted
+                                ? <CheckCircle2 size={16} style={{ color: TU_ACCENT }} strokeWidth={2} />
+                                : <Dumbbell size={14} style={{ color: 'var(--color-text-muted)' }} strokeWidth={2} />
+                              }
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(routine.name)}</p>
-                                {dayLabel && (
-                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase`} style={isToday ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' } : { color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' }}>
-                                    {dayLabel}{isToday ? ` - ${t('workouts.today', 'Today')}` : ''}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{routine.exerciseCount} {t('workouts.exercises')}</p>
+                              <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{localizeRoutineName(routine.name)}</p>
+                              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{routine.exerciseCount} {t('workouts.exercises')}</p>
                             </div>
-                            <ChevronRight size={16} className={`flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--color-text-subtle)' }} />
+                            {dayLabel && (
+                              <span className="text-[11px] font-bold uppercase flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+                                {dayLabel}
+                              </span>
+                            )}
+                            <ChevronRight size={14} className={`flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--color-text-subtle)' }} strokeWidth={2} />
                           </button>
                           {isExpanded && (
                             <RoutineDetail routineId={routine.id} onEdit={() => navigate(`/workouts/${routine.id}/edit`)} onDelete={(e) => handleDelete(e, routine.id)} deletingId={deletingId} onStart={() => posthog?.capture('routine_started', { routine_name: routine.name })} />
@@ -1237,6 +1517,7 @@ const Workouts = () => {
               </>
               );
             })()}
+            </div>
           </div>
         </section>
         );
@@ -1245,35 +1526,42 @@ const Workouts = () => {
       {/* ── No program / expired — two options ──────────────── */}
       {!programLoading && !programActive && (
         <section className="mb-10">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--color-text-subtle)' }}>
+          <p className="text-[10px] font-bold uppercase mb-3 px-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>
             {programExpired ? t('workouts.programEndedWhatsNext') : t('workouts.getStarted')}
           </p>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => setShowGenerator(true)}
-              className="text-left rounded-2xl bg-gradient-to-br from-[#10B981]/10 to-[#10B981]/[0.02] p-5 active:scale-[0.98] transition-transform duration-150"
-            >
-              <div className="w-10 h-10 rounded-2xl bg-[#10B981]/10 flex items-center justify-center mb-4">
-                <Zap size={18} className="text-[#10B981]" />
+
+          {/* Primary CTA — Generate a program */}
+          <button
+            onClick={() => setShowGenerator(true)}
+            className="w-full text-left rounded-[22px] p-5 mb-3 active:scale-[0.98] transition-transform duration-150"
+            style={{ background: `color-mix(in srgb, ${TU_ACCENT} 6%, var(--color-bg-card))`, boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-[14px] flex items-center justify-center flex-shrink-0"
+                style={{ background: `color-mix(in srgb, ${TU_ACCENT} 15%, transparent)` }}>
+                <Zap size={22} style={{ color: TU_ACCENT }} strokeWidth={2} />
               </div>
-              <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.customProgram')}</p>
-              <p className="text-[11px] mt-1.5 leading-snug" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.builtAroundGoals')}</p>
-            </button>
-            <button
-              onClick={() => {
-                const el = document.getElementById('discover-programs');
-                el?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="text-left rounded-2xl p-5 active:scale-[0.98] transition-transform duration-150"
-              style={{ backgroundColor: 'var(--color-surface-hover)' }}
-            >
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                <BookOpen size={18} style={{ color: 'var(--color-text-subtle)' }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[15px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{t('workouts.customProgram')}</p>
+                <p className="text-[12px] mt-1 leading-snug" style={{ color: 'var(--color-text-muted)' }}>{t('workouts.builtAroundGoals')}</p>
               </div>
-              <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.browsePrograms')}</p>
-              <p className="text-[11px] mt-1.5 leading-snug" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.provenPrograms')}</p>
-            </button>
-          </div>
+              <ChevronRight size={16} style={{ color: TU_ACCENT }} strokeWidth={2} className="flex-shrink-0" />
+            </div>
+          </button>
+
+          {/* Secondary — Browse templates */}
+          <button
+            onClick={() => {
+              const el = document.getElementById('discover-programs');
+              el?.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="w-full flex items-center gap-3 px-5 py-3.5 rounded-[16px] text-left active:scale-[0.98] transition-transform duration-150"
+            style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}
+          >
+            <BookOpen size={16} style={{ color: 'var(--color-text-muted)' }} strokeWidth={2} />
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t('workouts.browsePrograms')}</p>
+            <ChevronRight size={14} style={{ color: 'var(--color-text-subtle)' }} strokeWidth={2} className="ml-auto flex-shrink-0" />
+          </button>
         </section>
       )}
 
@@ -1281,14 +1569,15 @@ const Workouts = () => {
           SECTION 2: MY ROUTINES
          ════════════════════════════════════════════════════════ */}
       <section className="mb-10">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.myRoutines')}</p>
+        <div className="flex items-center justify-between mb-4 px-1">
+          <p style={{ fontFamily: TU_DISPLAY, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('workouts.myRoutines')}</p>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="text-[11px] font-medium transition-colors min-h-[44px] min-w-[44px]"
-            style={{ color: 'var(--color-text-subtle)' }}
+            className="flex items-center gap-1 text-[12px] font-bold min-h-[44px] min-w-[44px] px-2.5 py-1 rounded-full whitespace-nowrap"
+            style={{ color: TU_ACCENT, background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)` }}
           >
-            {t('workouts.addNew')}
+            <Plus size={12} strokeWidth={2.4} />
+            {t('workouts.newRoutine', 'New routine')}
           </button>
         </div>
 
@@ -1304,64 +1593,56 @@ const Workouts = () => {
             compact
           />
         ) : (() => {
-          const visible = showAllRoutines ? routines : routines.slice(0, 3);
-          const hiddenCount = routines.length - 3;
+          const visible = showAllRoutines ? routines : routines.slice(0, 4);
+          const hiddenCount = routines.length - 4;
           return (
             <>
-              <div className="space-y-1 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
+              <div className="grid grid-cols-2 gap-3">
                 {visible.map(routine => {
-                  const isExpanded = expandedRoutineId === routine.id;
                   return (
-                    <div key={routine.id} className="relative group">
+                    <div key={routine.id} className="relative">
                       <button
                         type="button"
-                        onClick={() => setExpandedRoutineId(isExpanded ? null : routine.id)}
-                        className="w-full flex items-center gap-3.5 pl-4 pr-14 py-3.5 rounded-2xl transition-colors duration-200 text-left"
-                        style={isExpanded ? { backgroundColor: 'var(--color-surface-hover)' } : undefined}
+                        onClick={() => setExpandedRoutineId(routine.id)}
+                        className="w-full text-left p-4 rounded-[18px] transition-colors duration-200"
+                        style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 4px 12px rgba(15,20,25,0.04)' }}
                       >
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                          <Dumbbell size={16} style={{ color: 'var(--color-text-subtle)' }} />
+                        <div className="w-9 h-9 rounded-[12px] flex items-center justify-center mb-3"
+                          style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
+                          <Dumbbell size={16} style={{ color: 'var(--color-text-muted)' }} strokeWidth={2} />
                         </div>
-                        <div className="flex-1 min-w-0 overflow-hidden">
-                          <p className="font-semibold text-[15px] truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(routine.name)}</p>
-                          <p className="text-[11px] mt-0.5 flex items-center gap-2" style={{ color: 'var(--color-text-subtle)' }}>
-                            <span>{routine.exerciseCount} {t('workouts.exercises')}</span>
-                            <span style={{ color: 'var(--color-border-subtle)' }}>·</span>
-                            <span>{timeAgo(routine.lastPerformedAt)}</span>
-                          </p>
-                        </div>
+                        <p className="font-bold text-[14px] truncate" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{localizeRoutineName(routine.name)}</p>
+                        <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                          {t('workouts.exercisesPerWeek', { count: routine.exerciseCount, defaultValue: '{{count}} exercises / week' })}
+                        </p>
                       </button>
-                      {/* Delete button on card */}
-                      <button
-                        onClick={(e) => handleDelete(e, routine.id)}
-                        disabled={deletingId === routine.id}
-                        className="absolute top-2.5 right-2.5 min-w-[44px] min-h-[44px] w-8 h-8 rounded-lg flex items-center justify-center hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                        style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)', opacity: 1 }}
-                        aria-label="Delete routine"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                      {isExpanded && (
-                        <RoutineDetail routineId={routine.id} onEdit={() => navigate(`/workouts/${routine.id}/edit`)} onDelete={(e) => handleDelete(e, routine.id)} deletingId={deletingId} onStart={() => posthog?.capture('routine_started', { routine_name: routine.name })} />
-                      )}
                     </div>
                   );
                 })}
+                {/* New routine card */}
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="p-4 rounded-[18px] border-2 border-dashed flex flex-col items-center justify-center gap-2 min-h-[110px] transition-colors"
+                  style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
+                >
+                  <Plus size={20} strokeWidth={1.5} />
+                  <span className="text-[12px] font-semibold">{t('workouts.newRoutine', 'New routine')}</span>
+                </button>
               </div>
               {!showAllRoutines && hiddenCount > 0 && (
                 <button
                   onClick={() => setShowAllRoutines(true)}
-                  className="w-full mt-2 py-3 rounded-2xl text-[12px] font-medium transition-colors duration-200"
-                  style={{ color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' }}
+                  className="w-full mt-3 py-3 rounded-[16px] text-[12px] font-semibold transition-colors duration-200"
+                  style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}
                 >
                   {t('workouts.showAllRoutines', { count: routines.length })}
                 </button>
               )}
-              {showAllRoutines && routines.length > 3 && (
+              {showAllRoutines && routines.length > 4 && (
                 <button
                   onClick={() => setShowAllRoutines(false)}
-                  className="w-full mt-2 py-3 rounded-2xl text-[12px] font-medium transition-colors duration-200"
-                  style={{ color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' }}
+                  className="w-full mt-3 py-3 rounded-[16px] text-[12px] font-semibold transition-colors duration-200"
+                  style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}
                 >
                   {t('workouts.showLess')}
                 </button>
@@ -1375,13 +1656,14 @@ const Workouts = () => {
           SECTION 3: MY PROGRAMS
          ════════════════════════════════════════════════════════ */}
       <section className="mb-10">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.myPrograms')}</p>
+        <div className="flex items-center justify-between mb-4 px-1">
+          <p style={{ fontFamily: TU_DISPLAY, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('workouts.myPrograms')}</p>
           <button
             onClick={() => setShowGenerator(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-xl text-[11px] font-semibold transition-colors bg-[#10B981]/10 text-[#10B981]"
+            className="flex items-center gap-1 px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold transition-colors"
+            style={{ background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)`, color: TU_ACCENT }}
           >
-            <Zap size={12} />
+            <Zap size={12} strokeWidth={2.4} />
             {t('workouts.newProgram')}
           </button>
         </div>
@@ -1460,22 +1742,13 @@ const Workouts = () => {
                   </button>
                   {/* Delete program */}
                   <button
-                    onClick={async (e) => {
+                    onClick={(e) => {
                       e.stopPropagation();
-                      if (!confirm(t('workouts.removeProgramConfirm'))) return;
-                      if (isActive) {
-                        await supabase.from('generated_programs').update({ expires_at: new Date().toISOString() }).eq('id', prog.id);
-                      } else {
-                        await supabase.from('generated_programs').delete().eq('id', prog.id);
-                      }
-                      const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
-                      const programs = allGp || [];
-                      setAllPrograms(programs);
-                      setGeneratedProgram(programs[0] || null);
+                      setLeaveProgramConfirm({ id: prog.id, name: prog.split_type, isActive });
                     }}
-                    className="absolute top-3 right-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-lg flex items-center justify-center hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                    style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)', opacity: 1 }}
-                    aria-label="Delete program"
+                    className="absolute top-3 right-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-lg flex items-center justify-center hover:text-red-400 hover:bg-red-500/10 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                    style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
+                    aria-label={t('workouts.ariaDeleteProgram', 'Delete program')}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -1512,32 +1785,30 @@ const Workouts = () => {
         {/* Visual separator */}
         <div className="h-px mb-10" style={{ background: 'linear-gradient(to right, transparent, var(--color-border-subtle), transparent)' }} />
 
-        <div className="mb-6">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] mb-1" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.discover')}</p>
-          <h2 className="text-[20px] font-semibold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.programs')}</h2>
+        <div className="mb-6 px-1">
+          <p className="text-[10px] font-bold uppercase mb-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>{t('workouts.discover')}</p>
+          <h2 style={{ fontFamily: TU_DISPLAY, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('workouts.programs')}</h2>
         </div>
 
         {/* Category filter chips — Gym Exclusive added */}
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-5 -mx-1 px-1">
-          {['Gym Exclusive', ...PROGRAM_CATEGORIES].map(cat => (
-            <button
-              key={cat}
-              onClick={() => setProgramCategoryFilter(cat)}
-              className={`shrink-0 px-3.5 py-1.5 min-h-[44px] rounded-full text-[11px] font-medium transition-all ${
-                cat === 'Gym Exclusive' ? 'border' : ''
-              }`}
-              style={programCategoryFilter === cat
-                ? cat === 'Gym Exclusive'
-                  ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)' }
-                  : { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }
-                : cat === 'Gym Exclusive'
-                  ? { color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)' }
-                  : { color: 'var(--color-text-subtle)' }
-              }
-            >
-              {cat === 'Gym Exclusive' ? t('workouts.gymExclusive', 'Gym Exclusive') : t(`workouts.programCategories.${cat}`)}
-            </button>
-          ))}
+        <div className="flex gap-2 overflow-x-auto scrollbar-none pb-5 -mx-1 px-1">
+          {['Gym Exclusive', ...PROGRAM_CATEGORIES].map(cat => {
+            const isActive = programCategoryFilter === cat;
+            const isGym = cat === 'Gym Exclusive';
+            return (
+              <button
+                key={cat}
+                onClick={() => setProgramCategoryFilter(cat)}
+                className="shrink-0 px-3.5 py-2 min-h-[44px] rounded-full text-[12px] font-semibold transition-all"
+                style={isActive
+                  ? { background: isGym ? `color-mix(in srgb, ${TU_ACCENT} 15%, transparent)` : 'var(--color-text-primary)', color: isGym ? TU_ACCENT : 'var(--color-bg-primary)', border: isGym ? `1px solid color-mix(in srgb, ${TU_ACCENT} 30%, transparent)` : 'none' }
+                  : { color: 'var(--color-text-muted)', border: isGym ? '1px solid var(--color-border-subtle)' : '1px solid transparent' }
+                }
+              >
+                {isGym ? t('workouts.gymExclusive', 'Gym Exclusive') : t(`workouts.programCategories.${cat}`, cat)}
+              </button>
+            );
+          })}
         </div>
 
         {/* Gym Exclusive programs section */}
@@ -1568,7 +1839,7 @@ const Workouts = () => {
                   <div className="absolute bottom-0 left-0 right-0 p-3.5 z-10">
                     <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{prog.name}</p>
                     <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                      {prog.duration_weeks || 6} {t('workouts.weeks', 'weeks')} · {prog.weeks?.['1']?.length || '?'} {t('workouts.daysPerWeekShort', 'days/wk')}
+                      {t('workouts.programDuration', { weeks: prog.duration_weeks || 6, days: prog.weeks?.['1']?.length || '?', defaultValue: '{{weeks}} weeks, {{days}} days/wk' })}
                     </p>
                   </div>
                 </button>
@@ -1616,7 +1887,7 @@ const Workouts = () => {
                     <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{prog.name}</p>
                     {prog.description && <p className="text-[10px] mt-1 line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>{prog.description}</p>}
                     <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
-                      {prog.duration_weeks || 6} {t('workouts.weeks', 'weeks')} · {prog.weeks?.['1']?.length || '?'} {t('workouts.daysPerWeekShort', 'days/wk')}
+                      {t('workouts.programDuration', { weeks: prog.duration_weeks || 6, days: prog.weeks?.['1']?.length || '?', defaultValue: '{{weeks}} weeks, {{days}} days/wk' })}
                     </p>
                   </div>
                 </button>
@@ -1668,7 +1939,7 @@ const Workouts = () => {
                       backgroundColor: tmpl.level === 'Beginner' ? 'rgba(16,185,129,0.2)' : tmpl.level === 'Advanced' ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.1)',
                       color: tmpl.level === 'Beginner' ? '#6EE7B7' : tmpl.level === 'Advanced' ? '#FCA5A5' : 'rgba(255,255,255,0.7)',
                     }}>
-                    {t(`workouts.programLevels.${tmpl.level}`)}
+                    {t(`workouts.programLevels.${tmpl.level}`, tmpl.level)}
                   </span>
                   {isRecommended && (
                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm"
@@ -1695,6 +1966,64 @@ const Workouts = () => {
 
     </div>
 
+    {/* ── My Routine Detail Modal ───────────────────────── */}
+    {expandedRoutineId && (() => {
+      const routine = routines.find(r => r.id === expandedRoutineId);
+      if (!routine) return null;
+      return (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-md"
+            role="button"
+            tabIndex={0}
+            aria-label={t('workouts.ariaCloseRoutineDetails', 'Close routine details')}
+            onClick={() => setExpandedRoutineId(null)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpandedRoutineId(null); }}
+          />
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-[28px] overflow-hidden" style={{ backgroundColor: 'var(--color-bg-secondary)' }}>
+            <div className="relative flex justify-center pt-4 pb-3 shrink-0">
+              <div className="w-8 h-[3px] rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+              <button
+                onClick={() => setExpandedRoutineId(null)}
+                className="absolute right-4 top-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
+                aria-label={t('workouts.ariaClose', 'Close')}
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 pb-6">
+              <div className="mb-5">
+                <h2 className="text-[24px] font-bold tracking-tight leading-tight" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(routine.name)}</h2>
+                <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                  {routine.exerciseCount} {t('workouts.exercises')}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.exercises')}</p>
+                <RoutineDetail
+                  routineId={routine.id}
+                  onEdit={() => { setExpandedRoutineId(null); navigate(`/workouts/${routine.id}/edit`); }}
+                  onDelete={(e) => handleDelete(e, routine.id)}
+                  deletingId={deletingId}
+                  onStart={() => { posthog?.capture('routine_started', { routine_name: routine.name }); setExpandedRoutineId(null); }}
+                />
+              </div>
+            </div>
+            <div className="shrink-0 px-6 pt-4 pb-5" style={{ background: 'linear-gradient(to top, var(--color-bg-secondary), var(--color-bg-secondary), transparent)' }}>
+              <button
+                onClick={(e) => { handleDelete(e, routine.id); setExpandedRoutineId(null); }}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors"
+                disabled={deletingId === routine.id}
+              >
+                {deletingId === routine.id ? t('workouts.deleting', 'Deleting...') : t('workouts.deleteRoutine', 'Delete routine')}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+
     {/* ── My Program Detail Modal ───────────────────────── */}
     {selectedMyProgram && (() => {
       const prog = selectedMyProgram;
@@ -1715,12 +2044,12 @@ const Workouts = () => {
       const localProgName = gpName(prog);
 
       return (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" role="button" tabIndex={0} aria-label="Close program details" onClick={() => setSelectedMyProgram(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedMyProgram(null); }} />
-          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-[28px] overflow-hidden" style={{ backgroundColor: 'var(--color-bg-secondary)', paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseProgramDetails', 'Close program details')} onClick={() => setSelectedMyProgram(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedMyProgram(null); }} />
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-[28px] overflow-hidden" style={{ backgroundColor: 'var(--color-bg-secondary)' }}>
             <div className="relative flex justify-center pt-4 pb-3 shrink-0">
               <div className="w-8 h-[3px] rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
-              <button onClick={() => setSelectedMyProgram(null)} className="absolute right-4 top-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }} aria-label="Close">
+              <button onClick={() => setSelectedMyProgram(null)} className="absolute right-4 top-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }} aria-label={t('workouts.ariaClose', 'Close')}>
                 <X size={15} />
               </button>
             </div>
@@ -1771,11 +2100,11 @@ const Workouts = () => {
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.programOverview')}</p>
                   <div className="flex items-center justify-between mb-3">
-                    <button onClick={() => canPrev && setMyProgWeek(weekKeys[weekIdx - 1])} disabled={!canPrev} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={canPrev ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }} aria-label="Previous week">
+                    <button onClick={() => canPrev && setMyProgWeek(weekKeys[weekIdx - 1])} disabled={!canPrev} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={canPrev ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }} aria-label={t('workouts.ariaPreviousWeek', 'Previous week')}>
                       <ChevronLeft size={16} />
                     </button>
                     <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.weekXOfY', { current: myProgWeek, total: weekKeys.length })}</span>
-                    <button onClick={() => canNext && setMyProgWeek(weekKeys[weekIdx + 1])} disabled={!canNext} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={canNext ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }} aria-label="Next week">
+                    <button onClick={() => canNext && setMyProgWeek(weekKeys[weekIdx + 1])} disabled={!canNext} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={canNext ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }} aria-label={t('workouts.ariaNextWeek', 'Next week')}>
                       <ChevronRight size={16} />
                     </button>
                   </div>
@@ -1841,15 +2170,7 @@ const Workouts = () => {
             <div className="shrink-0 px-6 pt-4 pb-5" style={{ background: 'linear-gradient(to top, var(--color-bg-secondary), var(--color-bg-secondary), transparent)' }}>
               {isActive ? (
                 <button
-                  onClick={async () => {
-                    await supabase.from('generated_programs').update({ expires_at: new Date().toISOString() }).eq('id', prog.id);
-                    setSelectedMyProgram(null);
-                    // Refresh programs
-                    const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
-                    const programs = allGp || [];
-                    setAllPrograms(programs);
-                    setGeneratedProgram(programs[0] || null);
-                  }}
+                  onClick={() => setLeaveProgramConfirm({ id: prog.id, name: prog.split_type, isActive: true })}
                   className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors"
                 >
                   {t('workouts.removeProgram')}
@@ -1885,11 +2206,11 @@ const Workouts = () => {
       const canNext = weekIdx < weekKeys.length - 1;
 
       return (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" role="button" tabIndex={0} aria-label="Close program details" onClick={() => setSelectedTemplate(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedTemplate(null); }} />
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseProgramDetails', 'Close program details')} onClick={() => setSelectedTemplate(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedTemplate(null); }} />
           <div
-            className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-[28px] overflow-hidden"
-            style={{ backgroundColor: 'var(--color-bg-secondary)', paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}
+            className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-[28px] overflow-hidden"
+            style={{ backgroundColor: 'var(--color-bg-secondary)' }}
           >
             {/* Handle + Close */}
             <div className="relative flex justify-center pt-4 pb-3 shrink-0">
@@ -1898,7 +2219,7 @@ const Workouts = () => {
                 onClick={() => setSelectedTemplate(null)}
                 className="absolute right-4 top-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                 style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
-                aria-label="Close"
+                aria-label={t('workouts.ariaClose', 'Close')}
               >
                 <X size={15} />
               </button>
@@ -1909,7 +2230,7 @@ const Workouts = () => {
               {/* Hero */}
               <div className="mb-6">
                 <span className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-subtle)' }}>
-                  {t(`workouts.programLevels.${selectedTemplate.level}`)} · {t(`workouts.programCategories.${selectedTemplate.category}`)}
+                  {t(`workouts.programLevels.${selectedTemplate.level}`, selectedTemplate.level)} · {t(`workouts.programCategories.${selectedTemplate.category}`, selectedTemplate.category)}
                 </span>
                 <h2 className="text-[18px] font-bold tracking-tight leading-tight mt-2 truncate" style={{ color: 'var(--color-text-primary)' }}>
                   {progName(selectedTemplate)}
@@ -1943,7 +2264,7 @@ const Workouts = () => {
                     disabled={!canPrev}
                     className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                     style={canPrev ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }}
-                    aria-label="Previous week"
+                    aria-label={t('workouts.ariaPreviousWeek', 'Previous week')}
                   >
                     <ChevronLeft size={16} />
                   </button>
@@ -1955,7 +2276,7 @@ const Workouts = () => {
                     disabled={!canNext}
                     className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                     style={canNext ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }}
-                    aria-label="Next week"
+                    aria-label={t('workouts.ariaNextWeek', 'Next week')}
                   >
                     <ChevronRight size={16} />
                   </button>
@@ -2057,6 +2378,8 @@ const Workouts = () => {
       />
     )}
 
+
+
     {showGenerator && (
       <GenerateWorkoutModal
         onboarding={onboardingData}
@@ -2078,7 +2401,7 @@ const Workouts = () => {
 
     {/* ── Start Mode Choice Dialog ────────────── */}
     {startModeChoice === 'choosing' && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label="Close start mode dialog" onClick={() => setStartModeChoice(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setStartModeChoice(null); }}>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseStartMode', 'Close start mode dialog')} onClick={() => setStartModeChoice(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setStartModeChoice(null); }}>
         <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4">
             <Calendar size={24} className="text-[#D4AF37]" />
@@ -2118,7 +2441,7 @@ const Workouts = () => {
 
     {/* ── Switch Program Confirmation Dialog ────────────── */}
     {switchStep && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label="Close switch program dialog" onClick={() => setSwitchStep(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSwitchStep(null); }}>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseSwitch', 'Close switch program dialog')} onClick={() => setSwitchStep(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSwitchStep(null); }}>
         <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           {switchStep === 'confirm' ? (
             <>
@@ -2182,7 +2505,7 @@ const Workouts = () => {
 
     {/* ── Day Compression Warning Modal ────────────────── */}
     {dayCompressionWarning && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label="Close day compression warning" onClick={() => setDayCompressionWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDayCompressionWarning(null); }}>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseDayCompression', 'Close day compression warning')} onClick={() => setDayCompressionWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDayCompressionWarning(null); }}>
         <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertTriangle size={22} className="text-amber-400" />
@@ -2212,7 +2535,7 @@ const Workouts = () => {
 
     {/* ── Goal Mismatch Warning Modal ─────────────────── */}
     {goalMismatchWarning && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label="Close goal mismatch warning" onClick={() => setGoalMismatchWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setGoalMismatchWarning(null); }}>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseGoalMismatch', 'Close goal mismatch warning')} onClick={() => setGoalMismatchWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setGoalMismatchWarning(null); }}>
         <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertTriangle size={22} className="text-amber-400" />
@@ -2246,6 +2569,37 @@ const Workouts = () => {
               style={{ color: 'var(--color-text-subtle)' }}
             >
               {t('workouts.cancel')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {/* ── "Are you sure?" Leave Program Modal ─────────────────── */}
+    {leaveProgramConfirm && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => setLeaveProgramConfirm(null)}>
+        <div className="w-full max-w-sm rounded-[20px] p-6" style={{ backgroundColor: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
+          <div className="w-14 h-14 rounded-2xl bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle size={28} className="text-red-400" />
+          </div>
+          <h3 className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+            {t('workouts.leaveProgramTitle', 'Leave this program?')}
+          </h3>
+          <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-muted)' }}>
+            {t('workouts.leaveProgramDesc', 'Consistency is key to results. If you leave now, your progress in this program will end. You can always start a new one later.')}
+          </p>
+          <div className="space-y-2.5">
+            <button
+              onClick={() => setLeaveProgramConfirm(null)}
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors"
+              style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+            >
+              {t('workouts.keepTraining', 'Keep Training')}
+            </button>
+            <button
+              onClick={handleConfirmLeaveProgram}
+              className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors"
+            >
+              {t('workouts.confirmLeave', 'Yes, leave program')}
             </button>
           </div>
         </div>

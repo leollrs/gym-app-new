@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Camera, X, Check, Loader2 } from 'lucide-react';
 import UserAvatar, { AVATAR_DESIGNS, getInitials } from './UserAvatar';
 
@@ -14,11 +15,11 @@ const PRESET_COLORS = [
 // ── Design presets ───────────────────────────────────────────────────────────
 const DESIGN_LIST = Object.entries(AVATAR_DESIGNS).map(([id, gradient]) => ({ id, gradient }));
 
-// ── Tab data ─────────────────────────────────────────────────────────────────
-const TABS = [
-  { key: 'photo', label: 'Photo' },
-  { key: 'color', label: 'Color' },
-  { key: 'design', label: 'Icons' },
+// ── Tab data (labels resolved at render time so i18n picks up language) ─────
+const TAB_KEYS = [
+  { key: 'photo', labelKey: 'avatarPicker.tabPhoto', fallback: 'Photo' },
+  { key: 'color', labelKey: 'avatarPicker.tabColor', fallback: 'Color' },
+  { key: 'design', labelKey: 'avatarPicker.tabIcons', fallback: 'Icons' },
 ];
 
 // ── Backdrop ─────────────────────────────────────────────────────────────────
@@ -27,9 +28,9 @@ const backdrop = {
   visible: { opacity: 1 },
 };
 const sheet = {
-  hidden: { y: '100%' },
-  visible: { y: 0, transition: { type: 'spring', damping: 28, stiffness: 300 } },
-  exit: { y: '100%', transition: { duration: 0.2 } },
+  hidden: { scale: 0.95, opacity: 0 },
+  visible: { scale: 1, opacity: 1, transition: { type: 'spring', damping: 28, stiffness: 300 } },
+  exit: { scale: 0.95, opacity: 0, transition: { duration: 0.2 } },
 };
 
 /**
@@ -44,12 +45,21 @@ const sheet = {
  *   uploading     — boolean (external upload state)
  */
 export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onSave, uploading = false }) {
+  const { t } = useTranslation('pages');
   const [tab, setTab] = useState(currentAvatar?.type || 'color');
   const [selectedType, setSelectedType] = useState(currentAvatar?.type || 'color');
   const [selectedValue, setSelectedValue] = useState(currentAvatar?.value || '#6366F1');
   const [previewFile, setPreviewFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Lock body scroll while bottom sheet is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [isOpen]);
 
   // Build a preview user object
   const previewUser = {
@@ -92,41 +102,37 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 z-[100] flex items-end justify-center"
+          className="fixed inset-0 z-[100] flex items-center justify-center px-4"
           variants={backdrop}
           initial="hidden"
           animate="visible"
           exit="hidden"
         >
           {/* Scrim */}
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={-1} aria-label="Close dialog" onClick={handleClose} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClose(); }} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={-1} aria-label={t('avatarPicker.closeDialog', 'Close dialog')} onClick={handleClose} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClose(); }} />
 
           {/* Sheet */}
           <motion.div
             role="dialog"
             aria-modal="true"
-            aria-label="Customize Avatar"
-            className="relative w-full max-w-[480px] bg-[var(--color-bg-card)] border-t border-white/[0.08] rounded-t-[20px] pb-[env(safe-area-inset-bottom)] max-h-[85vh] overflow-y-auto"
+            aria-label={t('avatarPicker.title', 'Customize Avatar')}
+            className="relative w-full max-w-[480px] bg-[var(--color-bg-card)] border border-white/[0.08] rounded-[20px] max-h-[85vh] overflow-y-auto"
+            style={{ boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}
             variants={sheet}
             initial="hidden"
             animate="visible"
             exit="exit"
           >
-            {/* Handle bar */}
-            <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 rounded-full bg-white/20" />
-            </div>
-
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3">
               <h2 className="text-[18px] font-bold text-[var(--color-text-primary)]">
-                Customize Avatar
+                {t('avatarPicker.title', 'Customize Avatar')}
               </h2>
               <button
                 type="button"
                 onClick={handleClose}
                 className="w-9 h-9 rounded-full bg-white/[0.08] flex items-center justify-center text-[var(--color-text-muted)] hover:text-white transition-colors"
-                aria-label="Close"
+                aria-label={t('common:close', 'Close')}
               >
                 <X size={18} />
               </button>
@@ -146,18 +152,18 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
 
             {/* Tabs */}
             <div className="flex gap-1 mx-5 p-1 rounded-xl bg-white/[0.05] border border-white/[0.06]">
-              {TABS.map((t) => (
+              {TAB_KEYS.map((tk) => (
                 <button
-                  key={t.key}
+                  key={tk.key}
                   type="button"
-                  onClick={() => setTab(t.key)}
+                  onClick={() => setTab(tk.key)}
                   className={`flex-1 py-2.5 text-[13px] font-semibold rounded-lg transition-all ${
-                    tab === t.key
+                    tab === tk.key
                       ? 'bg-[#D4AF37] text-black'
                       : 'text-[var(--color-text-muted)] hover:text-white'
                   }`}
                 >
-                  {t.label}
+                  {t(tk.labelKey, tk.fallback)}
                 </button>
               ))}
             </div>
@@ -170,7 +176,7 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                   {previewUrl || user?.avatar_url ? (
                     <img
                       src={previewUrl || user.avatar_url}
-                      alt="Current photo"
+                      alt={t('avatarPicker.currentPhoto', 'Current photo')}
                       className="w-24 h-24 rounded-full object-cover border-2 border-white/[0.1]"
                     />
                   ) : (
@@ -185,7 +191,7 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                       className="flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.08] border border-white/[0.1] text-[14px] font-semibold text-[var(--color-text-primary)] hover:bg-white/[0.12] transition-colors min-h-[44px]"
                     >
                       <Camera size={16} />
-                      {previewUrl ? 'Change Photo' : 'Choose Photo'}
+                      {previewUrl ? t('avatarPicker.changePhoto', 'Change Photo') : t('avatarPicker.choosePhoto', 'Choose Photo')}
                     </button>
                   </div>
                   {/* File input — accept image/*, no capture attr so iOS shows "Take Photo or Choose" dialog */}
@@ -197,7 +203,7 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                     onChange={handleFileChange}
                   />
                   <p className="text-[12px] text-[var(--color-text-muted)]">
-                    JPG, PNG or WebP. Max 5 MB.
+                    {t('avatarPicker.fileHint', 'JPG, PNG or WebP. Max 5 MB.')}
                   </p>
                 </div>
               )}
@@ -218,7 +224,7 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                           aspectRatio: '1',
                           backgroundColor: color,
                         }}
-                        aria-label={`Select color ${color}`}
+                        aria-label={t('avatarPicker.selectColor', { color, defaultValue: 'Select color {{color}}' })}
                       >
                         <span className="text-white font-bold select-none" style={{ fontSize: 16 }}>
                           {initials}
@@ -254,7 +260,7 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                           aspectRatio: '1',
                           background: design?.bg || d.gradient,
                         }}
-                        aria-label={`Select ${d.id} icon`}
+                        aria-label={t('avatarPicker.selectIcon', { name: d.id, defaultValue: 'Select {{name}} icon' })}
                       >
                         {design?.svg ? design.svg(36) : (
                           <span className="text-white font-bold select-none" style={{ fontSize: 16 }}>
@@ -287,10 +293,10 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                 {uploading ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Saving…
+                    {t('avatarPicker.saving', 'Saving…')}
                   </>
                 ) : (
-                  'Save Avatar'
+                  t('avatarPicker.saveAvatar', 'Save Avatar')
                 )}
               </button>
             </div>

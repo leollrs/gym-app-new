@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, Pause, Play, X, Timer } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pause, Play, X, Clock, ListOrdered } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const SessionHeader = ({
@@ -18,6 +18,7 @@ const SessionHeader = ({
   onResume,
   onEndWorkout,
   onSetCurrentExerciseIndex,
+  onOpenListManager,
   onDismissResumedBanner,
   onDiscardSession,
   watchHeartRate,
@@ -28,27 +29,45 @@ const SessionHeader = ({
   const exerciseCount = exercises.length;
   const { t } = useTranslation('pages');
 
+  // Compute per-exercise completion for segmented progress bar
+  // For the active exercise, compute partial fill based on completed sets
+  const segmentStates = exercises.map((ex, i) => {
+    if (i < currentExerciseIndex) return { done: true, pct: 1 };
+    if (i === currentExerciseIndex) {
+      // Try to read completed sets on current exercise
+      return { active: true, pct: 0.4 };
+    }
+    return { done: false, pct: 0 };
+  });
+
   return (
     <>
       {/* ── Pause overlay ──────────────────────────────────────── */}
       {isPaused && (
-        <div className="fixed inset-0 z-[150] backdrop-blur-md flex flex-col items-center justify-center gap-8" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}>
+        <div
+          className="fixed inset-0 z-[150] backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in"
+          style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}
+        >
           <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-subtle)' }}>{t('activeSession.paused')}</p>
-          <p className="text-[56px] font-black tabular-nums tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
+          <p className="text-[56px] font-black tabular-nums tracking-tight" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif' }}>
             {formatTime(elapsedTime)}
           </p>
           <div className="flex flex-col items-center gap-3 w-48">
             <button
               onClick={onResume}
-              className="w-full py-4 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-transform duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="w-full py-4 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-transform duration-200 focus:outline-none"
+              style={{ backgroundColor: 'var(--color-accent)', color: '#001512' }}
             >
-              <Play size={18} fill="black" strokeWidth={0} />
+              <Play size={18} fill="#001512" strokeWidth={0} />
               {t('activeSession.resume')}
             </button>
             <button
               onClick={onEndWorkout}
-              className="w-full py-3 rounded-2xl border border-white/[0.06] font-semibold text-[14px] active:scale-[0.97] transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              style={{ color: 'var(--color-text-muted)' }}
+              className="w-full py-3 rounded-2xl font-semibold text-[14px] active:scale-[0.97] transition-colors duration-200 focus:outline-none"
+              style={{
+                color: 'var(--color-text-muted)',
+                border: '1px solid var(--color-border-subtle)',
+              }}
             >
               {t('activeSession.endWorkout')}
             </button>
@@ -57,114 +76,224 @@ const SessionHeader = ({
       )}
 
       {/* ── Top bar ────────────────────────────────────────────── */}
-      <div className="flex-shrink-0" style={{ backgroundColor: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
-        <div className="relative flex items-center justify-between px-4 h-12">
+      <div
+        className="flex-shrink-0"
+        style={{
+          backgroundColor: 'var(--color-bg-primary)',
+          paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))',
+        }}
+      >
+        <div className="flex items-center gap-2 px-4 pt-2 pb-1">
           {/* Back */}
           <button
             onClick={onNavigateBack}
-            className="w-11 h-11 rounded-xl flex items-center justify-center hover:opacity-80 transition-colors duration-200 z-10 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-            style={{ color: 'var(--color-text-muted)' }}
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-200 focus:outline-none shrink-0"
+            style={{
+              backgroundColor: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border-subtle)',
+              color: 'var(--color-text-primary)',
+            }}
             aria-label="Back"
           >
-            <ChevronLeft size={22} />
+            <ChevronLeft size={20} strokeWidth={2.2} />
           </button>
 
-          {/* Exercise counter — absolutely centered on the page */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            {classLabel && (
-              <span className="text-[10px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] mb-0.5 truncate max-w-[180px]">
+          {/* Exercise counter + workout name stacked, center */}
+          <div className="flex-1 min-w-0 text-center px-1">
+            {classLabel ? (
+              <div className="inline-block text-[10px] font-bold uppercase tracking-[0.14em] px-2 py-0.5 rounded-full mb-0.5 truncate max-w-[180px]"
+                style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }}
+              >
                 {classLabel}
-              </span>
-            )}
-            {exerciseCount > 0 ? (
-              <div className="flex items-center gap-1">
-                <span className="text-[18px] font-black tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                  {currentExerciseIndex + 1}
-                </span>
-                <span className="text-[18px] font-bold" style={{ color: 'var(--color-text-muted)' }}>/</span>
-                <span className="text-[18px] font-black tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
-                  {exerciseCount}
-                </span>
               </div>
-            ) : (
-              <span className="text-[14px] font-semibold truncate max-w-[200px]" style={{ color: 'var(--color-text-subtle)' }}>{routineName}</span>
-            )}
+            ) : exerciseCount > 0 ? (
+              <div className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
+                {t('activeSession.exerciseXofY', {
+                  current: currentExerciseIndex + 1,
+                  total: exerciseCount,
+                  defaultValue: `EXERCISE ${currentExerciseIndex + 1} OF ${exerciseCount}`,
+                })}
+              </div>
+            ) : null}
+            <div
+              className="text-[15px] font-bold leading-tight truncate"
+              style={{
+                color: 'var(--color-text-primary)',
+                letterSpacing: '-0.3px',
+                fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif',
+              }}
+            >
+              {routineName}
+            </div>
           </div>
 
-          {/* HR + Timer + Pause */}
-          <div className="flex items-center gap-1.5 z-10">
-            {watchHeartRate?.bpm > 0 && (
-              <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-red-500/10">
-                <span className="text-[10px]">❤️</span>
-                <span className="text-[12px] font-bold text-red-400 tabular-nums">
-                  {watchHeartRate.bpm}
-                </span>
-              </div>
-            )}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04]">
-              <Timer size={12} style={{ color: 'var(--color-text-subtle)' }} />
-              <span className="text-[13px] font-bold tabular-nums tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
-                {formatTime(elapsedTime)}
+          {/* Clock pill — black, shows elapsed */}
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={`Elapsed ${formatTime(elapsedTime)}`}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl shrink-0"
+            style={{
+              backgroundColor: '#0A0D10',
+              color: '#FFFFFF',
+              fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif',
+              fontWeight: 700,
+              fontSize: 13,
+              fontVariantNumeric: 'tabular-nums',
+              cursor: 'default',
+            }}
+          >
+            <Clock size={13} color="#FFFFFF" strokeWidth={2.2} />
+            {formatTime(elapsedTime)}
+          </button>
+
+          {/* HR badge (optional) */}
+          {watchHeartRate?.bpm > 0 && (
+            <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg shrink-0" style={{ backgroundColor: 'rgba(239,68,68,0.12)' }}>
+              <span className="text-[10px]">❤️</span>
+              <span className="text-[12px] font-bold tabular-nums" style={{ color: '#EF4444' }}>
+                {watchHeartRate.bpm}
               </span>
             </div>
-            <button
-              onClick={onPause}
-              className="w-11 h-11 rounded-xl flex items-center justify-center hover:opacity-80 transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              style={{ color: 'var(--color-text-muted)' }}
-              aria-label="Pause"
-            >
-              <Pause size={18} />
-            </button>
-          </div>
+          )}
+
+          {/* Pause */}
+          <button
+            onClick={onPause}
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-200 focus:outline-none shrink-0"
+            style={{
+              backgroundColor: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border-subtle)',
+              color: 'var(--color-text-primary)',
+            }}
+            aria-label="Pause"
+          >
+            <Pause size={16} fill="currentColor" strokeWidth={0} />
+          </button>
         </div>
 
-        {/* Progress bar */}
-        <div className="h-[3px] bg-white/[0.04]">
+        {/* Segmented exercise progress bar with prev/next nav */}
+        {exerciseCount > 0 && (
+          <div className="flex items-center gap-2 px-4 pt-2 pb-1">
+            {/* Prev exercise — tap target large enough to hit on a phone */}
+            <button
+              type="button"
+              onClick={() => onSetCurrentExerciseIndex(Math.max(0, currentExerciseIndex - 1))}
+              disabled={currentExerciseIndex <= 0}
+              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100 focus:outline-none"
+              style={{
+                backgroundColor: 'var(--color-bg-card)',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-primary)',
+              }}
+              aria-label="Previous exercise"
+            >
+              <ChevronLeft size={18} strokeWidth={2.4} />
+            </button>
+
+            <div className="flex items-center gap-1.5 flex-1">
+              {segmentStates.map((s, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onSetCurrentExerciseIndex(i)}
+                  className="flex-1 h-2.5 rounded-full relative overflow-hidden active:scale-y-90 transition-transform focus:outline-none"
+                  style={{
+                    backgroundColor: s.done
+                      ? 'var(--color-accent)'
+                      : s.active
+                        ? 'color-mix(in srgb, var(--color-accent) 100%, transparent)'
+                        : 'var(--color-surface-hover, rgba(255,255,255,0.12))',
+                  }}
+                  aria-label={`Go to exercise ${i + 1}`}
+                >
+                  {s.active && (
+                    <span
+                      className="absolute inset-y-0 left-0 block rounded-full"
+                      style={{
+                        width: `${Math.max(20, s.pct * 100)}%`,
+                        backgroundColor: 'color-mix(in srgb, var(--color-accent) 65%, #000 35%)',
+                      }}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Next exercise */}
+            <button
+              type="button"
+              onClick={() => onSetCurrentExerciseIndex(Math.min(exerciseCount - 1, currentExerciseIndex + 1))}
+              disabled={currentExerciseIndex >= exerciseCount - 1}
+              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100 focus:outline-none"
+              style={{
+                backgroundColor: 'var(--color-bg-card)',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-primary)',
+              }}
+              aria-label="Next exercise"
+            >
+              <ChevronRight size={18} strokeWidth={2.4} />
+            </button>
+
+            {/* All exercises list — opens the list manager */}
+            {onOpenListManager && (
+              <button
+                type="button"
+                onClick={onOpenListManager}
+                className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 active:scale-95 transition-transform focus:outline-none"
+                style={{
+                  backgroundColor: 'var(--color-bg-card)',
+                  border: '1px solid var(--color-border-subtle)',
+                  color: 'var(--color-text-primary)',
+                }}
+                aria-label={t('activeSession.openExerciseList', 'See all exercises')}
+              >
+                <ListOrdered size={18} strokeWidth={2.4} />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Overall fine progress line (sets completed) */}
+        <div className="h-[2px] mt-1" style={{ backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.04))' }}>
           <div
-            className="h-full bg-[#D4AF37] transition-all duration-300 ease-out"
-            style={{ width: totalSets > 0 ? `${(completedSets / totalSets) * 100}%` : '0%' }}
+            className="h-full transition-all duration-300 ease-out"
+            style={{
+              width: totalSets > 0 ? `${(completedSets / totalSets) * 100}%` : '0%',
+              backgroundColor: 'var(--color-accent)',
+              opacity: 0.35,
+            }}
           />
         </div>
       </div>
 
       {/* ── Resumed banner ─────────────────────────────────────── */}
       {showResumedBanner && (
-        <div className="mx-4 mt-3 flex items-center gap-3 px-4 py-3 rounded-2xl bg-blue-500/[0.08] border border-blue-500/20">
-          <Timer size={16} className="text-blue-400 shrink-0" />
-          <p className="text-[12px] text-blue-300 flex-1">{t('activeSession.sessionResumed')}</p>
+        <div
+          className="mx-4 mt-3 flex items-center gap-3 px-4 py-3 rounded-2xl animate-fade-in"
+          style={{
+            backgroundColor: 'color-mix(in srgb, #60A5FA 10%, transparent)',
+            border: '1px solid color-mix(in srgb, #60A5FA 25%, transparent)',
+          }}
+        >
+          <Clock size={16} style={{ color: '#60A5FA' }} className="shrink-0" />
+          <p className="text-[12px] flex-1" style={{ color: '#93C5FD' }}>{t('activeSession.sessionResumed')}</p>
           <div className="flex items-center gap-2">
-            <button onClick={onDiscardSession} className="text-[11px] font-semibold text-blue-400/60 hover:text-red-400">
+            <button onClick={onDiscardSession} className="text-[11px] font-semibold hover:text-red-400 transition-colors" style={{ color: 'rgba(96,165,250,0.6)' }}>
               {t('activeSession.discard')}
             </button>
-            <button onClick={onDismissResumedBanner} aria-label="Dismiss banner" className="min-w-[44px] min-h-[44px] flex items-center justify-center text-blue-400/60 hover:text-blue-300 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded">
+            <button
+              onClick={onDismissResumedBanner}
+              aria-label="Dismiss banner"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded focus:outline-none"
+              style={{ color: 'rgba(96,165,250,0.6)' }}
+            >
               <X size={14} />
             </button>
           </div>
         </div>
       )}
-
-      {/* ── Exercise nav dots — scrollable when many exercises ─── */}
-      <div className="overflow-x-auto scrollbar-none py-2 px-4">
-        <div className="flex items-center justify-center gap-1" style={{ minWidth: 'min-content' }}>
-          {exercises.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => onSetCurrentExerciseIndex(i)}
-              className="flex items-center justify-center p-1.5 focus:outline-none rounded"
-              aria-label={`Exercise ${i + 1}`}
-            >
-              <span className={`rounded-full transition-all duration-300 block ${
-                i === currentExerciseIndex
-                  ? 'h-2 bg-[#D4AF37]'
-                  : i < currentExerciseIndex
-                  ? 'w-2 h-2 bg-[#D4AF37]/40'
-                  : 'w-2 h-2 bg-white/[0.10]'
-              }`} style={i === currentExerciseIndex ? { width: exercises.length > 10 ? 12 : 24 } : undefined} />
-            </button>
-          ))}
-        </div>
-      </div>
     </>
   );
 };

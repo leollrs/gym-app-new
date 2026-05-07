@@ -3,7 +3,6 @@ import logger from './logger';
 import i18n from 'i18next';
 import {
   NOTIFICATION_TYPES,
-  createNotification,
   sendStreakWarning,
   sendMilestoneApproach,
   sendFriendActivityNotif,
@@ -11,7 +10,7 @@ import {
   sendHabitCheckIn,
   sendWeeklySummary,
   sendNotification,
-  isQuietHours,
+  sendRestDayCongrats,
 } from './notifications';
 import { getUserPoints } from './rewardsEngine';
 import { checkSmartVisitReminder, formatScheduleTime } from './workoutScheduleTracker';
@@ -128,7 +127,7 @@ async function checkStreakProtection(userId, gymId, profile) {
   if (todaySessions?.length) return;
 
   const streak = profile?.current_streak || 1;
-  await sendStreakWarning(userId, gymId, streak);
+  await sendStreakWarning(userId, gymId, streak, profile?.first_name || '');
 }
 
 /**
@@ -168,19 +167,25 @@ async function checkWorkoutReminder(userId, gymId, profile) {
     .order('created_at', { ascending: true });
 
   const localDay = localizedDayName(today);
-  let title = i18n.t('notifications.timeToTrain', { ns: 'common', defaultValue: 'Time to train!' });
-  let body = i18n.t('notifications.todayIsTrainingDay', { ns: 'common', day: localDay, defaultValue: `Today is ${localDay} — one of your training days. Let's get after it!` });
+  const firstName = profile?.first_name || '';
+  let title = i18n.t('notifications.timeToTrain', { ns: 'common', name: firstName, defaultValue: firstName ? `${firstName}, gym time` : 'Gym time' });
+  let body = i18n.t('notifications.todayIsTrainingDay', { ns: 'common', name: firstName, day: localDay, defaultValue: `Today's a training day. ${localDay} is on the schedule — own it.` });
 
   if (routines?.length) {
     // Rotate routines across training days
     const routine = routines[dayIndex % routines.length];
     if (routine?.name) {
-      title = i18n.t('notifications.todayIsRoutineDay', { ns: 'common', routine: routine.name, defaultValue: `Today is ${routine.name} day` });
-      body = i18n.t('notifications.dontForgetRoutine', { ns: 'common', routine: routine.name, defaultValue: `Don't forget to hit your ${routine.name} routine. Your body's ready for it!` });
+      title = i18n.t('notifications.todayIsRoutineDay', { ns: 'common', name: firstName, routine: routine.name, defaultValue: firstName ? `${firstName}, it's ${routine.name} day` : `It's ${routine.name} day` });
+      body = i18n.t('notifications.dontForgetRoutine', { ns: 'common', name: firstName, routine: routine.name, defaultValue: `Your ${routine.name} session is waiting. Hit it before the day gets away from you.` });
     }
   }
 
-  await sendNotification(userId, gymId, { type: NOTIFICATION_TYPES.SYSTEM, title, body });
+  await sendNotification(userId, gymId, {
+    type: NOTIFICATION_TYPES.SYSTEM,
+    title,
+    body,
+    dedupKey: `workout_reminder_${userId}_${new Date().toISOString().slice(0, 10)}`,
+  });
 }
 
 /**
@@ -208,7 +213,7 @@ async function checkWeeklyDigest(userId, gymId, profile) {
   const streakDays = profile?.current_streak || 0;
   const weekGoal = profile?.weekly_goal || 4;
 
-  await sendWeeklySummary(userId, gymId, { sessionsThisWeek, weekGoal, streakDays });
+  await sendWeeklySummary(userId, gymId, { sessionsThisWeek, weekGoal, streakDays, firstName: profile?.first_name || '' });
 }
 
 /**
@@ -242,6 +247,7 @@ async function checkMilestoneProximity(userId, gymId, profile) {
         await sendMilestoneApproach(userId, gymId, {
           milestoneName: i18n.t('notifications.nWorkouts', { ns: 'common', count: milestone, defaultValue: `${milestone} Workouts` }),
           remaining,
+          firstName: profile?.first_name || '',
         });
       }
       break;
@@ -267,6 +273,7 @@ async function checkMilestoneProximity(userId, gymId, profile) {
         await sendMilestoneApproach(userId, gymId, {
           milestoneName: i18n.t('notifications.nDayStreak', { ns: 'common', count: milestone, defaultValue: `${milestone}-Day Streak` }),
           remaining,
+          firstName: profile?.first_name || '',
         });
       }
       break;
@@ -304,18 +311,19 @@ async function checkReengagement(userId, gymId, profile) {
 
   let message;
   let offer = null;
+  const firstName = profile?.first_name || '';
 
   if (daysSince >= 7) {
-    message = i18n.t('notifications.reengageWeek', { ns: 'common', defaultValue: "It's been over a week since your last workout. Your body is ready — let's get back on track." });
-    offer = i18n.t('notifications.freshStart', { ns: 'common', defaultValue: 'A fresh start is just one session away' });
+    message = i18n.t('notifications.reengageWeek', { ns: 'common', name: firstName, days: daysSince, defaultValue: `It's been over a week. ${firstName ? firstName + ', ' : ''}your body's ready — even a light session puts you back on track.` });
+    offer = i18n.t('notifications.freshStart', { ns: 'common', defaultValue: 'A fresh start is one session away' });
   } else if (daysSince >= 5) {
-    message = i18n.t('notifications.reengageFiveDays', { ns: 'common', defaultValue: "You've been away for a few days. Don't lose the progress you've built!" });
+    message = i18n.t('notifications.reengageFiveDays', { ns: 'common', name: firstName, defaultValue: `${firstName ? firstName + ', ' : ''}you're 5 days out. Don't lose the progress you built.` });
     offer = i18n.t('notifications.quickSessionCounts', { ns: 'common', defaultValue: 'Even a quick session counts' });
   } else {
-    message = i18n.t('notifications.reengageThreeDays', { ns: 'common', defaultValue: "It's been a few days since your last session. A quick workout can reignite your momentum!" });
+    message = i18n.t('notifications.reengageThreeDays', { ns: 'common', name: firstName, defaultValue: `${firstName ? firstName + ', ' : ''}3 days off. Ten minutes today rebuilds the habit.` });
   }
 
-  await sendWinBackNotif(userId, gymId, { message, offer });
+  await sendWinBackNotif(userId, gymId, { message, offer, firstName, dedupKey: `winback_${userId}_${new Date().toISOString().slice(0, 10)}` });
 }
 
 /**
@@ -372,9 +380,12 @@ async function checkFriendActivity(userId, gymId, profile) {
     const currentCount = await notificationCountSince(userId, NOTIFICATION_TYPES.FRIEND_ACTIVITY, todayStart());
     if (currentCount >= 3) break;
 
+    const youName = profile?.first_name || '';
     await sendFriendActivityNotif(userId, gymId, {
       friendName,
-      activityDesc: i18n.t('notifications.friendCompletedWorkout', { ns: 'common', name: friendName, defaultValue: `${friendName} completed a workout today. Time to match their energy!` }),
+      firstName: youName,
+      activityDesc: i18n.t('notifications.friendCompletedWorkout', { ns: 'common', name: friendName, you: youName, defaultValue: youName ? `${friendName} just trained. ${youName}, your turn?` : `${friendName} just trained. Your turn?` }),
+      dedupKey: `friend_activity_${userId}_${session.profile_id}_${new Date().toISOString().slice(0, 10)}`,
     });
   }
 }
@@ -411,7 +422,7 @@ async function checkNewMemberCheckin(userId, gymId, profile) {
   if (sessionCount >= 3) return;
   if (daysSinceJoin < 2) return;
 
-  await sendHabitCheckIn(userId, gymId, sessionCount);
+  await sendHabitCheckIn(userId, gymId, sessionCount, profile?.first_name || '');
 }
 
 /**
@@ -448,12 +459,12 @@ async function checkRewardProximity(userId, gymId, profile) {
 
     if (remaining <= threshold && remaining > 0) {
       const rewardName = i18n.language?.startsWith('es') && reward.name_es ? reward.name_es : reward.name;
-      await createNotification({
-        profileId: userId,
-        gymId,
+      const firstName = profile?.first_name || '';
+      await sendNotification(userId, gymId, {
         type: NOTIFICATION_TYPES.SYSTEM,
-        title: i18n.t('notifications.closeToReward', { ns: 'common', reward: rewardName, defaultValue: `You're close to a ${rewardName}!` }),
-        body: i18n.t('notifications.closeToRewardBody', { ns: 'common', points: remaining, defaultValue: `Just ${remaining} more points to redeem. Keep training!` }),
+        title: i18n.t('notifications.closeToReward', { ns: 'common', name: firstName, reward: rewardName, defaultValue: firstName ? `${firstName}, you're close to a ${rewardName}` : `You're close to a ${rewardName}` }),
+        body: i18n.t('notifications.closeToRewardBody', { ns: 'common', points: remaining, defaultValue: `Just ${remaining} more points and it's yours. Keep training.` }),
+        dedupKey: `reward_proximity_${userId}_${reward.cost_points}_${new Date().toISOString().slice(0, 10)}`,
       });
       break; // only nudge for the nearest reward
     }
@@ -497,12 +508,11 @@ async function checkChallengeUpdates(userId, gymId, profile) {
     const challenge = unjoinedChallenges[0];
     const alreadyNotified = await wasNotificationWithTitleSince(userId, challenge.title, daysAgoStart(7));
     if (!alreadyNotified) {
-      await createNotification({
-        profileId: userId,
-        gymId,
+      await sendNotification(userId, gymId, {
         type: 'challenge_update',
         title: i18n.t('notifications.newChallenge', { ns: 'common', name: challenge.title, defaultValue: `New challenge: ${challenge.title}` }),
-        body: i18n.t('notifications.joinNowCompete', { ns: 'common', defaultValue: 'Join now and compete with your gym!' }),
+        body: i18n.t('notifications.joinNowCompete', { ns: 'common', defaultValue: 'Your gym is competing — jump in.' }),
+        dedupKey: `challenge_new_${challenge.id}_${userId}`,
       });
       return; // one notification per cycle
     }
@@ -531,12 +541,12 @@ async function checkChallengeUpdates(userId, gymId, profile) {
       const ch = activeJoined[0];
       const daysLeft = Math.ceil((new Date(ch.end_date) - new Date()) / (1000 * 60 * 60 * 24));
       if (daysLeft > 0) {
-        await createNotification({
-          profileId: userId,
-          gymId,
+        const firstName = profile?.first_name || '';
+        await sendNotification(userId, gymId, {
           type: 'challenge_update',
-          title: i18n.t('notifications.dontFallBehind', { ns: 'common', name: ch.name, defaultValue: `Don't fall behind in ${ch.name}!` }),
-          body: i18n.t('notifications.challengeDaysLeft', { ns: 'common', days: daysLeft, defaultValue: `${daysLeft} days left — a workout today keeps you in the running.` }),
+          title: i18n.t('notifications.dontFallBehind', { ns: 'common', name: firstName, challenge: ch.name, defaultValue: firstName ? `${firstName}, don't fall behind in ${ch.name}` : `Don't fall behind in ${ch.name}` }),
+          body: i18n.t('notifications.challengeDaysLeft', { ns: 'common', days: daysLeft, defaultValue: `${daysLeft} days left. A workout today keeps you in the running.` }),
+          dedupKey: `challenge_inactivity_${ch.id}_${userId}_${new Date().toISOString().slice(0, 10)}`,
         });
       }
     }
@@ -573,13 +583,12 @@ async function checkNutritionReminder(userId, gymId, profile) {
 
   if (logs?.length) return; // user has logged food today
 
-  const consumed = 0;
-  const target = targets.daily_calories;
-
+  const firstName = profile?.first_name || '';
   await sendNotification(userId, gymId, {
     type: 'overload_suggestion',
-    title: i18n.t('notifications.nutritionReminderTitle', { ns: 'common', defaultValue: "Don't forget your meals!" }),
-    body: i18n.t('notifications.nutritionReminderBody', { ns: 'common', consumed, target, defaultValue: `You've logged ${consumed} of ${target} calories today. Keep tracking!` }),
+    title: i18n.t('notifications.nutritionReminderTitle', { ns: 'common', name: firstName, defaultValue: firstName ? `${firstName}, log today's food` : "Log today's food" }),
+    body: i18n.t('notifications.nutritionReminderBody', { ns: 'common', defaultValue: `Nothing tracked yet. Even a quick estimate keeps you on target.` }),
+    dedupKey: `nutrition_reminder_${userId}_${new Date().toISOString().slice(0, 10)}`,
   });
 }
 
@@ -607,10 +616,12 @@ async function checkWeightLogReminder(userId, gymId, profile) {
 
   if (days < 7) return;
 
+  const firstName = profile?.first_name || '';
   await sendNotification(userId, gymId, {
     type: 'overload_suggestion',
-    title: i18n.t('notifications.weightReminderTitle', { ns: 'common', defaultValue: 'Time to log your weight!' }),
-    body: i18n.t('notifications.weightReminderBody', { ns: 'common', days, defaultValue: `It's been ${days} days since your last weigh-in. Stay on track!` }),
+    title: i18n.t('notifications.weightReminderTitle', { ns: 'common', name: firstName, defaultValue: firstName ? `${firstName}, time to weigh in` : 'Time to weigh in' }),
+    body: i18n.t('notifications.weightReminderBody', { ns: 'common', days, defaultValue: `${days} days since your last log. Track it now.` }),
+    dedupKey: `weight_reminder_${userId}_${new Date().toISOString().slice(0, 10)}`,
   });
 }
 
@@ -639,11 +650,13 @@ async function checkPunchCardProximity(userId, gymId, profile) {
       if (alreadySent) continue;
 
       const remaining = target - punches;
+      const firstName = profile?.first_name || '';
 
       await sendNotification(userId, gymId, {
         type: NOTIFICATION_TYPES.SYSTEM,
-        title: i18n.t('notifications.punchCardProximityTitle', { ns: 'common', defaultValue: 'Almost there! 🎉' }),
-        body: i18n.t('notifications.punchCardProximityBody', { ns: 'common', remaining, product: productName, defaultValue: `You're just ${remaining} away from a free ${productName}! Don't miss out!` }),
+        title: i18n.t('notifications.punchCardProximityTitle', { ns: 'common', name: firstName, defaultValue: firstName ? `${firstName}, almost there 🎉` : 'Almost there 🎉' }),
+        body: i18n.t('notifications.punchCardProximityBody', { ns: 'common', remaining, product: productName, defaultValue: `Just ${remaining} away from a free ${productName}. Don't leave it on the table.` }),
+        dedupKey: `punch_card_${userId}_${productName}_${punches}`,
       });
     }
   }
@@ -670,18 +683,20 @@ async function checkSmartVisitNotification(userId, gymId, profile) {
   if (!result || !result.shouldNotify) return;
 
   const localDay = localizedDayName(result.dayName);
+  const firstName = profile?.first_name || '';
 
   await sendNotification(userId, gymId, {
     type: NOTIFICATION_TYPES.SYSTEM,
     title: i18n.t('notifications.smartVisitTitle', {
       ns: 'common',
-      defaultValue: 'Time to hit the gym!',
+      name: firstName,
+      defaultValue: firstName ? `${firstName}, gym time` : 'Gym time',
     }),
     body: i18n.t('notifications.smartVisitBody', {
       ns: 'common',
       time: result.formattedTime,
       day: localDay,
-      defaultValue: `You usually work out around ${result.formattedTime} on ${localDay}s. Let's keep the streak going!`,
+      defaultValue: `${localDay}s at ${result.formattedTime} is your usual. Lock it in.`,
     }),
     dedupKey: `smart_visit_${userId}_${new Date().toISOString().slice(0, 10)}`,
   });
@@ -717,12 +732,18 @@ async function checkChallengeOnboardingNudge(userId, gymId) {
   if (!activeChallenges?.length) return;
 
   const challenge = activeChallenges[0];
-  await createNotification({
-    profileId: userId,
-    gymId,
+  // Look up first name for personalized title
+  const { data: prof } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', userId)
+    .maybeSingle();
+  const firstName = (prof?.full_name || '').trim().split(/\s+/)[0] || '';
+
+  await sendNotification(userId, gymId, {
     type: 'challenge_update',
-    title: i18n.t('notifications.challengeNudgeTitle', { ns: 'common', defaultValue: 'Ready for a challenge?' }),
-    body: i18n.t('notifications.challengeNudgeBody', { ns: 'common', name: challenge.name, defaultValue: `You've completed 3 workouts! Join "${challenge.name}" and compete with your gym.` }),
+    title: i18n.t('notifications.challengeNudgeTitle', { ns: 'common', name: firstName, defaultValue: firstName ? `${firstName}, ready to compete?` : 'Ready to compete?' }),
+    body: i18n.t('notifications.challengeNudgeBody', { ns: 'common', challenge: challenge.name, defaultValue: `You've stacked 3 workouts. "${challenge.name}" is live — jump in and stack points.` }),
     dedupKey: `challenge_nudge_${userId}`,
   });
 }
@@ -734,13 +755,17 @@ async function checkChallengeOnboardingNudge(userId, gymId) {
 async function checkStreakAtRisk(userId, gymId, profile) {
   const { data: streakData } = await supabase
     .from('streak_cache')
-    .select('current_streak, last_activity_date')
+    .select('current_streak_days, last_activity_date')
     .eq('profile_id', userId)
     .maybeSingle();
 
   if (!streakData) return;
 
-  const currentStreak = streakData.current_streak || 0;
+  // Column is current_streak_days, not current_streak — the prior selector
+  // returned undefined which (a) made the early-return below always hit OR
+  // (b) leaked through as an undefined `count` to i18next, causing
+  // "Tu racha de {{count}} días..." to render literally.
+  const currentStreak = streakData.current_streak_days || 0;
   if (currentStreak < 3) return;
 
   // Check if last_activity_date is yesterday
@@ -761,11 +786,77 @@ async function checkStreakAtRisk(userId, gymId, profile) {
   const alreadySent = await wasNotificationWithTitleSince(userId, 'streak', todayStart());
   if (alreadySent) return;
 
+  const firstName = profile?.first_name || '';
   await sendNotification(userId, gymId, {
     type: 'streak_warning',
-    title: i18n.t('notifications.streakAtRiskTitle', { ns: 'common', defaultValue: '🔥 Your streak is at risk!' }),
-    body: i18n.t('notifications.streakAtRiskBody', { ns: 'common', count: currentStreak, defaultValue: `Your ${currentStreak}-day streak breaks at midnight. One workout keeps it alive!` }),
+    title: i18n.t('notifications.streakAtRiskTitle', { ns: 'common', name: firstName, defaultValue: firstName ? `${firstName}, your streak ends at midnight 🔥` : 'Your streak ends at midnight 🔥' }),
+    body: i18n.t('notifications.streakAtRiskBody', { ns: 'common', count: currentStreak, defaultValue: `Your ${currentStreak}-day streak ends at midnight. 30 minutes today and it survives.` }),
     dedupKey: `streak_risk_${userId}_${new Date().toISOString().slice(0, 10)}`,
+  });
+}
+
+/**
+ * Rest-Day Acknowledgement
+ * On a non-training day (per profile.preferred_training_days), congratulate the
+ * member for protecting their streak with recovery and tease the next session.
+ * Fires once per day, only if the member has trained at least once in the last
+ * week (so we don't congratulate ghost users on rest days).
+ */
+async function checkRestDay(userId, gymId, profile) {
+  if (!profile.notif_workout_reminders) return;
+
+  const preferredDays = profile?.preferred_training_days || [];
+  if (!preferredDays.length) return;
+
+  const today = currentDayName();
+  if (preferredDays.includes(today)) return; // training day — different notif
+
+  // Only fire once per day
+  const alreadySent = await wasNotificationWithTitleSince(userId, 'rest', todayStart());
+  if (alreadySent) return;
+
+  // Only acknowledge for members who have actually been training recently
+  const weekAgo = daysAgoStart(7);
+  const { data: recent } = await supabase
+    .from('workout_sessions')
+    .select('id')
+    .eq('profile_id', userId)
+    .eq('gym_id', gymId)
+    .gte('created_at', weekAgo)
+    .limit(1);
+
+  if (!recent?.length) return;
+
+  // Find the next training day in their schedule and which routine rotates onto it
+  const dayOrder = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const todayIdx = dayOrder.indexOf(today);
+  let nextTrainingDay = null;
+  for (let offset = 1; offset <= 7; offset++) {
+    const candidate = dayOrder[(todayIdx + offset) % 7];
+    if (preferredDays.includes(candidate)) {
+      nextTrainingDay = candidate;
+      break;
+    }
+  }
+
+  let nextRoutineName = null;
+  if (nextTrainingDay) {
+    const { data: routines } = await supabase
+      .from('routines')
+      .select('id, name')
+      .eq('created_by', userId)
+      .eq('is_template', false)
+      .order('created_at', { ascending: true });
+    if (routines?.length) {
+      const dayIndex = preferredDays.indexOf(nextTrainingDay);
+      nextRoutineName = routines[dayIndex % routines.length]?.name || null;
+    }
+  }
+
+  await sendRestDayCongrats(userId, gymId, {
+    firstName: profile?.first_name || '',
+    nextRoutineName,
+    nextDayName: nextTrainingDay ? localizedDayName(nextTrainingDay) : null,
   });
 }
 
@@ -778,8 +869,9 @@ async function checkStreakAtRisk(userId, gymId, profile) {
 export async function runNotificationScheduler(userId, gymId) {
   if (!userId || !gymId) return;
 
-  // Do not run the scheduler during quiet hours (10pm–7am)
-  if (isQuietHours()) return;
+  // Note: quiet hours are enforced inside each helper (push skipped, DB row still inserted),
+  // so we always run the checks. Returning early here previously meant zero notifications
+  // ever flowed for users who only opened the app at night.
 
   // Fetch profile once — includes notification preferences
   const { data: profile } = await supabase
@@ -789,6 +881,18 @@ export async function runNotificationScheduler(userId, gymId) {
     .maybeSingle();
 
   if (!profile) return;
+
+  // Streak lives in streak_cache (renamed in migration 0352).
+  // Fetch alongside profile and surface as `current_streak` for downstream checks.
+  const { data: streakRow } = await supabase
+    .from('streak_cache')
+    .select('current_streak_days')
+    .eq('profile_id', userId)
+    .maybeSingle();
+  profile.current_streak = streakRow?.current_streak_days ?? 0;
+
+  // Derive first name once so all checks can personalize copy without re-querying.
+  profile.first_name = (profile.full_name || '').trim().split(/\s+/)[0] || '';
 
   // If push is completely disabled, skip everything
   if (profile.notif_push_enabled === false) return;
@@ -810,6 +914,7 @@ export async function runNotificationScheduler(userId, gymId) {
     checkSmartVisitNotification(userId, gymId, profile),
     checkChallengeOnboardingNudge(userId, gymId),
     checkStreakAtRisk(userId, gymId, profile),
+    checkRestDay(userId, gymId, profile),
   ];
 
   const results = await Promise.allSettled(checks);

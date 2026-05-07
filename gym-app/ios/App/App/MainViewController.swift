@@ -5,6 +5,7 @@ class MainViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(LiveActivityPlugin())
         bridge?.registerPluginInstance(WalletPassPlugin())
+        bridge?.registerPluginInstance(BackgroundLocationPlugin())
     }
 
     override func viewDidLoad() {

@@ -16,7 +16,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import {
   PageHeader, AdminPageShell, AdminCard, FadeIn, CardSkeleton,
-  SectionLabel, FilterBar,
+  SectionLabel,
 } from '../../components/admin';
 import StatCard from '../../components/admin/StatCard';
 
@@ -29,12 +29,12 @@ const PERIOD_OPTIONS = [
 ];
 
 const CATEGORY_COLORS = {
-  supplement: '#3B82F6',
-  drink:      '#06B6D4',
-  snack:      '#F59E0B',
-  merchandise:'#A855F7',
-  service:    '#10B981',
-  other:      '#6B7280',
+  supplement: 'var(--color-info)',
+  drink:      'var(--color-info)',
+  snack:      'var(--color-warning)',
+  merchandise:'var(--color-coach)',
+  service:    'var(--color-success)',
+  other:      'var(--color-admin-text-sub)',
 };
 
 // ── Custom Tooltip ─────────────────────────────────────────
@@ -77,24 +77,23 @@ export default function AdminRevenue() {
   const { data: pointsData, isLoading: loadingPoints } = useQuery({
     queryKey: adminKeys.revenue.points(gymId, period),
     queryFn: async () => {
-      let qIssued = supabase
+      // Single round-trip; partition positive vs negative client-side.
+      let q = supabase
         .from('reward_points_log')
         .select('points, created_at')
         .eq('gym_id', gymId)
-        .gt('points', 0);
-      let qSpent = supabase
-        .from('reward_points_log')
-        .select('points, created_at')
-        .eq('gym_id', gymId)
-        .lt('points', 0);
+        .neq('points', 0)
+        .limit(20000);
+      if (cutoffDate) q = q.gte('created_at', cutoffDate);
 
-      if (cutoffDate) {
-        qIssued = qIssued.gte('created_at', cutoffDate);
-        qSpent = qSpent.gte('created_at', cutoffDate);
+      const { data } = await q;
+      const issued = [];
+      const spent = [];
+      for (const row of (data || [])) {
+        if (row.points > 0) issued.push(row);
+        else spent.push(row);
       }
-
-      const [{ data: issued }, { data: spent }] = await Promise.all([qIssued, qSpent]);
-      return { issued: issued || [], spent: spent || [] };
+      return { issued, spent };
     },
     enabled: !!gymId,
   });
@@ -159,7 +158,19 @@ export default function AdminRevenue() {
 
   const flowData = useMemo(() => {
     if (!pointsData) return [];
-    const days = periodDays || 30;
+    // For "All time", use the date span of the actual data instead of falling
+    // back to 30 days. Without this fix, the chart silently displays only the
+    // last 30 days of buckets even though the period selector says "All".
+    let days = periodDays;
+    if (days == null) {
+      const allRows = [...pointsData.issued, ...pointsData.spent];
+      if (!allRows.length) return [];
+      const earliest = allRows.reduce((min, r) => {
+        const t = new Date(r.created_at).getTime();
+        return t < min ? t : min;
+      }, Date.now());
+      days = Math.max(7, Math.ceil((Date.now() - earliest) / (1000 * 60 * 60 * 24)) + 1);
+    }
     const map = {};
     for (let i = days - 1; i >= 0; i--) {
       const d = format(subDays(new Date(), i), 'MMM dd', dateFnsLocale);
@@ -239,60 +250,62 @@ export default function AdminRevenue() {
         />
       </FadeIn>
 
-      {/* Period Filter */}
+      {/* Period Filter — as admin-pills */}
       <FadeIn delay={30}>
-        <div className="mb-5">
-          <FilterBar
-            options={PERIOD_OPTIONS.map(opt => ({
-              key: opt.key,
-              label: t(`admin.revenue.period.${opt.key}`, opt.label),
-            }))}
-            active={period}
-            onChange={setPeriod}
-          />
+        <div className="flex gap-1.5 mb-4 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1 sm:mx-0 sm:px-0 sm:flex-wrap">
+          {PERIOD_OPTIONS.map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => setPeriod(opt.key)}
+              className={`admin-pill flex-shrink-0 ${period === opt.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
+              style={{ padding: '0 16px', fontSize: 12, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {t(`admin.revenue.period.${opt.key}`, opt.label)}
+            </button>
+          ))}
         </div>
       </FadeIn>
 
       {/* KPI Stats Row */}
       {isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6">
           {[...Array(4)].map((_, i) => <CardSkeleton key={i} className="h-[88px]" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6">
           <StatCard
             label={t('admin.revenue.pointsIssued', 'Points Issued')}
             value={kpis.issued}
             icon={Coins}
-            borderColor="#D4AF37"
+            borderColor="var(--color-accent)"
             delay={60}
           />
           <StatCard
             label={t('admin.revenue.pointsRedeemed', 'Points Redeemed')}
             value={kpis.redeemed}
             icon={Gift}
-            borderColor="#A855F7"
+            borderColor="var(--color-coach)"
             delay={90}
           />
           <StatCard
             label={t('admin.revenue.netCirculation', 'Net in Circulation')}
             value={kpis.net}
             icon={ArrowUpDown}
-            borderColor="#3B82F6"
+            borderColor="var(--color-info)"
             delay={120}
           />
           <StatCard
             label={t('admin.revenue.totalRedemptions', 'Total Redemptions')}
             value={kpis.redemptions}
             icon={ShoppingCart}
-            borderColor="#10B981"
+            borderColor="var(--color-success)"
             delay={150}
           />
         </div>
       )}
 
       {/* Charts: Category + Point Flow side by side on desktop */}
-      <div className="grid xl:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
         {/* Revenue by Category */}
         <FadeIn delay={180}>
           <AdminCard className="h-full">
@@ -304,18 +317,18 @@ export default function AdminRevenue() {
                 {t('admin.revenue.noRedemptions', 'No redemptions in this period')}
               </p>
             ) : (
-              <div className="h-[220px] mt-3">
+              <div className="h-[140px] sm:h-[170px] md:h-[220px] mt-3">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={categoryData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                     <XAxis
                       dataKey="label"
-                      tick={{ fill: '#6B7280', fontSize: 11 }}
+                      tick={{ fill: 'var(--color-admin-text-sub)', fontSize: 11 }}
                       axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
                       tickLine={false}
                     />
                     <YAxis
-                      tick={{ fill: '#6B7280', fontSize: 11 }}
+                      tick={{ fill: 'var(--color-admin-text-sub)', fontSize: 11 }}
                       axisLine={false}
                       tickLine={false}
                       allowDecimals={false}
@@ -323,7 +336,7 @@ export default function AdminRevenue() {
                     <Tooltip content={<ChartTooltip />} />
                     <Bar dataKey="count" name={t('admin.revenue.redemptions', 'Redemptions')} radius={[6, 6, 0, 0]}>
                       {categoryData.map((entry) => (
-                        <Cell key={entry.category} fill={CATEGORY_COLORS[entry.category] || '#6B7280'} />
+                        <Cell key={entry.category} fill={CATEGORY_COLORS[entry.category] || 'var(--color-admin-text-sub)'} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -347,19 +360,19 @@ export default function AdminRevenue() {
                 {t('admin.revenue.noData', 'No data available')}
               </p>
             ) : (
-              <div className="h-[220px]">
+              <div className="h-[160px] sm:h-[190px] md:h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={flowData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                     <XAxis
                       dataKey="date"
-                      tick={{ fill: '#6B7280', fontSize: 11 }}
+                      tick={{ fill: 'var(--color-admin-text-sub)', fontSize: 11 }}
                       axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
                       tickLine={false}
                       interval="preserveStartEnd"
                     />
                     <YAxis
-                      tick={{ fill: '#6B7280', fontSize: 11 }}
+                      tick={{ fill: 'var(--color-admin-text-sub)', fontSize: 11 }}
                       axisLine={false}
                       tickLine={false}
                       allowDecimals={false}
@@ -369,19 +382,19 @@ export default function AdminRevenue() {
                       type="monotone"
                       dataKey="earned"
                       name={t('admin.revenue.earned', 'Earned')}
-                      stroke="#D4AF37"
+                      stroke="var(--color-accent)"
                       strokeWidth={2}
                       dot={false}
-                      activeDot={{ r: 4, fill: '#D4AF37' }}
+                      activeDot={{ r: 4, fill: 'var(--color-accent)' }}
                     />
                     <Line
                       type="monotone"
                       dataKey="spent"
                       name={t('admin.revenue.spent', 'Spent')}
-                      stroke="#A855F7"
+                      stroke="var(--color-coach)"
                       strokeWidth={2}
                       dot={false}
-                      activeDot={{ r: 4, fill: '#A855F7' }}
+                      activeDot={{ r: 4, fill: 'var(--color-coach)' }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -395,7 +408,7 @@ export default function AdminRevenue() {
       <SectionLabel className="mb-3 mt-2">
         {t('admin.revenue.productAnalytics', 'Product Analytics')}
       </SectionLabel>
-      <div className="grid xl:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
         {/* Top Redeemed Products */}
         <FadeIn delay={300}>
           <AdminCard className="h-full">
@@ -408,26 +421,49 @@ export default function AdminRevenue() {
               </p>
             ) : (
               <div className="mt-3 space-y-0">
-                <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 text-[10px] font-semibold text-[#6B7280] uppercase tracking-wider">
-                  <span>{t('admin.revenue.product', 'Product')}</span>
-                  <span className="text-right">{t('admin.revenue.count', 'Count')}</span>
-                  <span className="text-right">{t('admin.revenue.revenue', 'Revenue')}</span>
-                </div>
-                {topProducts.map((p) => (
-                  <div
-                    key={p.id}
-                    className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2.5 rounded-lg hover:bg-white/[0.02] transition-colors border-b border-white/[0.03] last:border-0"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-[14px] flex-shrink-0">{p.emoji || '\uD83D\uDED2'}</span>
-                      <span className="text-[13px] text-[#E5E7EB] truncate">{p.name}</span>
-                    </div>
-                    <span className="text-[13px] text-[#9CA3AF] text-right tabular-nums">{p.count}</span>
-                    <span className="text-[13px] text-[#D4AF37] text-right tabular-nums font-medium">
-                      ${p.totalRevenue.toFixed(2)}
-                    </span>
+                {/* Desktop table */}
+                <div className="hidden md:block">
+                  <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 text-[10px] font-semibold text-[#6B7280] uppercase tracking-wider">
+                    <span>{t('admin.revenue.product', 'Product')}</span>
+                    <span className="text-right">{t('admin.revenue.count', 'Count')}</span>
+                    <span className="text-right">{t('admin.revenue.revenue', 'Revenue')}</span>
                   </div>
-                ))}
+                  {topProducts.map((p) => (
+                    <div
+                      key={p.id}
+                      className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2.5 rounded-lg hover:bg-white/[0.02] transition-colors border-b border-white/[0.03] last:border-0"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[14px] flex-shrink-0">{p.emoji || '\uD83D\uDED2'}</span>
+                        <span className="text-[13px] text-[#E5E7EB] truncate">{p.name}</span>
+                      </div>
+                      <span className="text-[13px] text-[#9CA3AF] text-right tabular-nums">{p.count}</span>
+                      <span className="text-[13px] text-[#D4AF37] text-right tabular-nums font-medium">
+                        ${p.totalRevenue.toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {/* Mobile card list */}
+                <div className="md:hidden">
+                  {topProducts.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center gap-2.5 px-2 py-2.5 border-b border-white/[0.03] last:border-0"
+                    >
+                      <span className="text-[16px] flex-shrink-0">{p.emoji || '\uD83D\uDED2'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] text-[#E5E7EB] truncate">{p.name}</p>
+                        <p className="text-[11px] text-[#6B7280] tabular-nums">
+                          {p.count} {t('admin.revenue.redemptions', 'redemptions')}
+                        </p>
+                      </div>
+                      <span className="text-[13px] text-[#D4AF37] tabular-nums font-medium flex-shrink-0">
+                        ${p.totalRevenue.toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </AdminCard>
@@ -470,10 +506,10 @@ export default function AdminRevenue() {
                         <p className="text-[10px] text-[#6B7280]">{t('admin.revenue.inProgress', 'In Progress')}</p>
                       </div>
                     </div>
-                    <div className="mt-2.5 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                    <div className="mt-2.5 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-admin-panel)' }}>
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#D4AF37] to-[#F59E0B] transition-all duration-500"
-                        style={{ width: `${card.completionRate}%` }}
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${card.completionRate}%`, background: 'var(--color-accent)' }}
                       />
                     </div>
                     <p className="text-[10px] text-[#6B7280] mt-1 text-right">
@@ -540,7 +576,7 @@ export default function AdminRevenue() {
                   onClick={() => setVisibleCanjes(prev => prev + 10)}
                   className="w-full mt-3 py-2.5 rounded-xl text-[12px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 hover:bg-[#D4AF37]/15 transition-colors"
                 >
-                  {t('admin.revenue.showMore', 'Mostrar m\u00e1s')}
+                  {t('admin.revenue.showMore', 'Show more')}
                 </button>
               )}
             </>

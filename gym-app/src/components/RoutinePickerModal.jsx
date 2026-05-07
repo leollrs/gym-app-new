@@ -1,10 +1,27 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Dumbbell, MinusCircle } from 'lucide-react';
+import { X, Dumbbell, MinusCircle, Check, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
+const FONT_BODY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
 
 const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRoutineId, onSelect, onClear }) => {
   const { t } = useTranslation('pages');
+  const navigate = useNavigate();
+
+  const startEmptySession = () => {
+    onClose();
+    navigate('/session/empty');
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
 
   if (!open) return null;
 
@@ -14,16 +31,19 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
     <AnimatePresence>
       {open && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-[60]"
+            style={{
+              background: 'rgba(0,0,0,0.65)',
+              backdropFilter: 'blur(18px)',
+              WebkitBackdropFilter: 'blur(18px)',
+            }}
             onClick={onClose}
           />
 
-          {/* Bottom sheet */}
           <motion.div
             role="dialog"
             aria-modal="true"
@@ -31,43 +51,136 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-[61] max-h-[75vh] flex flex-col rounded-t-3xl border-t border-white/[0.08]"
-            style={{ background: 'var(--color-bg-card)', paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+            transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+            className="fixed bottom-0 left-0 right-0 z-[61] max-h-[80vh] flex flex-col"
+            style={{
+              background: 'var(--color-bg-card)',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
+              boxShadow: '0 -20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04)',
+              fontFamily: FONT_BODY,
+            }}
           >
-            {/* Handle */}
-            <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 rounded-full bg-white/[0.15]" />
+            {/* Drag handle */}
+            <div className="flex justify-center pt-2.5 pb-1">
+              <div
+                style={{
+                  width: 44, height: 5, borderRadius: 999,
+                  background: 'var(--color-border-subtle, rgba(255,255,255,0.14))',
+                }}
+              />
             </div>
 
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3">
-              <div>
-                <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wider">
-                  {t('routinePicker.assignWorkout')}
+            <div
+              className="flex items-start justify-between px-6 pt-4 pb-5"
+              style={{ borderBottom: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))' }}
+            >
+              <div className="flex-1 min-w-0">
+                <p
+                  className="uppercase"
+                  style={{
+                    fontSize: 11, fontWeight: 800, letterSpacing: '0.16em',
+                    color: 'var(--color-accent)',
+                  }}
+                >
+                  {t('routinePicker.assignWorkout', 'Assign workout')}
                 </p>
-                <p id="routine-picker-title" className="text-[18px] font-bold mt-0.5 truncate" style={{ color: 'var(--color-text-primary)' }}>
+                <p
+                  id="routine-picker-title"
+                  className="truncate"
+                  style={{
+                    fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 900,
+                    letterSpacing: -0.6, marginTop: 4, lineHeight: 1.05,
+                    color: 'var(--color-text-primary)',
+                  }}
+                >
                   {dayName}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                className="w-11 h-11 rounded-full bg-white/[0.06] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                aria-label={t('routinePicker.close')}
+                className="flex items-center justify-center transition-transform active:scale-90"
+                style={{
+                  width: 38, height: 38, borderRadius: 19,
+                  background: 'var(--color-surface-hover, rgba(255,255,255,0.06))',
+                  border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',
+                  color: 'var(--color-text-primary)',
+                }}
+                aria-label={t('routinePicker.close', 'Close')}
               >
-                <X size={16} style={{ color: 'var(--color-text-subtle)' }} />
+                <X size={17} />
               </button>
             </div>
 
-            {/* Routine list */}
-            <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-2">
+            {/* List */}
+            <div className="flex-1 overflow-y-auto px-5 pt-4 pb-4 space-y-2.5">
+              {/* Empty workout — always available, regardless of saved routines */}
+              <button
+                type="button"
+                onClick={startEmptySession}
+                className="w-full flex items-center gap-3.5 transition-all active:scale-[0.985] focus:outline-none"
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: 18,
+                  background: 'color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-hover))',
+                  border: '1.5px solid color-mix(in srgb, var(--color-accent) 35%, transparent)',
+                  textAlign: 'left',
+                }}
+              >
+                <div
+                  className="flex items-center justify-center shrink-0"
+                  style={{
+                    width: 44, height: 44, borderRadius: 14,
+                    background: 'color-mix(in srgb, var(--color-accent) 22%, transparent)',
+                  }}
+                >
+                  <Sparkles size={18} strokeWidth={2.4} style={{ color: 'var(--color-accent)' }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p
+                    style={{
+                      fontFamily: FONT_DISPLAY, fontSize: 15.5, fontWeight: 800,
+                      letterSpacing: -0.2, color: 'var(--color-text-primary)', lineHeight: 1.15,
+                    }}
+                  >
+                    {t('routinePicker.emptyWorkoutTitle', 'Empty workout')}
+                  </p>
+                  <p
+                    className="mt-1"
+                    style={{
+                      fontSize: 11.5, fontWeight: 700, letterSpacing: 0.4,
+                      color: 'var(--color-accent)', textTransform: 'uppercase',
+                    }}
+                  >
+                    {t('routinePicker.emptyWorkoutHint', 'Start fresh — add exercises as you go')}
+                  </p>
+                </div>
+              </button>
+
               {routines.length === 0 ? (
-                <div className="text-center py-8">
-                  <Dumbbell size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-muted)' }} />
-                  <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('routinePicker.noRoutinesAvailable')}</p>
-                  <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
-                    {t('routinePicker.noRoutinesHint')}
+                <div className="text-center py-12 px-4">
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                    style={{ background: 'var(--color-surface-hover, rgba(255,255,255,0.06))' }}
+                  >
+                    <Dumbbell size={22} style={{ color: 'var(--color-text-muted)' }} />
+                  </div>
+                  <p
+                    style={{
+                      fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 800,
+                      color: 'var(--color-text-primary)',
+                    }}
+                  >
+                    {t('routinePicker.noRoutinesAvailable', 'No routines yet')}
+                  </p>
+                  <p
+                    className="mt-1.5"
+                    style={{ fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5 }}
+                  >
+                    {t('routinePicker.noRoutinesHint', 'Create one from the Workouts tab.')}
                   </p>
                 </div>
               ) : (
@@ -82,52 +195,117 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
                         key={r.id}
                         type="button"
                         onClick={() => { onSelect(r.id); onClose(); }}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
-                          isSelected
-                            ? 'bg-[#D4AF37]/[0.08] border-[#D4AF37]/25'
-                            : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.12]'
-                        }`}
+                        className="w-full flex items-center gap-3.5 transition-all active:scale-[0.985] focus:outline-none"
+                        style={{
+                          padding: '14px 16px',
+                          borderRadius: 18,
+                          background: isSelected
+                            ? 'color-mix(in srgb, var(--color-accent) 12%, var(--color-surface-hover))'
+                            : 'var(--color-surface-hover, rgba(255,255,255,0.04))',
+                          border: isSelected
+                            ? '1.5px solid color-mix(in srgb, var(--color-accent) 50%, transparent)'
+                            : '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',
+                          textAlign: 'left',
+                        }}
                       >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          isSelected ? 'bg-[#D4AF37]/15' : 'bg-white/[0.04]'
-                        }`}>
-                          <Dumbbell size={16} className={isSelected ? 'text-[#D4AF37]' : ''} style={!isSelected ? { color: 'var(--color-text-subtle)' } : undefined} />
+                        <div
+                          className="flex items-center justify-center shrink-0"
+                          style={{
+                            width: 44, height: 44, borderRadius: 14,
+                            background: isSelected
+                              ? 'color-mix(in srgb, var(--color-accent) 22%, transparent)'
+                              : 'var(--color-bg-card, rgba(255,255,255,0.05))',
+                            border: isSelected
+                              ? 'none'
+                              : '1px solid var(--color-border-subtle, rgba(255,255,255,0.04))',
+                          }}
+                        >
+                          <Dumbbell
+                            size={18}
+                            strokeWidth={2.4}
+                            style={{ color: isSelected ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
+                          />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-[14px] font-semibold truncate ${
-                            isSelected ? 'text-[#D4AF37]' : ''
-                          }`} style={!isSelected ? { color: 'var(--color-text-primary)' } : undefined}>
+                          <p
+                            className="truncate"
+                            style={{
+                              fontFamily: FONT_DISPLAY,
+                              fontSize: 15.5, fontWeight: 800,
+                              letterSpacing: -0.2,
+                              color: 'var(--color-text-primary)',
+                              lineHeight: 1.15,
+                            }}
+                          >
                             {label}
                           </p>
-                          <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                          <p
+                            className="mt-1"
+                            style={{
+                              fontSize: 11.5, fontWeight: 700, letterSpacing: 0.4,
+                              color: 'var(--color-text-muted)',
+                              textTransform: 'uppercase',
+                            }}
+                          >
                             {t('routinePicker.exercises_count', { count: exerciseCount })}
                           </p>
                         </div>
                         {isSelected && (
-                          <span className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-wider shrink-0">
-                            {t('routinePicker.current')}
-                          </span>
+                          <div
+                            className="flex items-center justify-center shrink-0"
+                            style={{
+                              width: 24, height: 24, borderRadius: 12,
+                              background: 'var(--color-accent)',
+                              color: 'var(--color-bg-card, #0A0D10)',
+                            }}
+                          >
+                            <Check size={14} strokeWidth={3} />
+                          </div>
                         )}
                       </button>
                     );
                   })}
 
-                  {/* Clear / rest day option */}
                   {currentRoutineId && (
                     <button
                       type="button"
                       onClick={() => { onClear(); onClose(); }}
-                      className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:border-red-500/20 transition-all text-left active:scale-[0.98] mt-1 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      className="w-full flex items-center gap-3.5 transition-all active:scale-[0.985] focus:outline-none"
+                      style={{
+                        padding: '14px 16px',
+                        borderRadius: 18,
+                        background: 'rgba(239, 68, 68, 0.08)',
+                        border: '1px dashed rgba(239, 68, 68, 0.32)',
+                        marginTop: 10,
+                        textAlign: 'left',
+                      }}
                     >
-                      <div className="w-10 h-10 rounded-xl bg-red-500/[0.08] flex items-center justify-center shrink-0">
-                        <MinusCircle size={16} className="text-red-400" />
+                      <div
+                        className="flex items-center justify-center shrink-0"
+                        style={{
+                          width: 44, height: 44, borderRadius: 14,
+                          background: 'rgba(239, 68, 68, 0.14)',
+                        }}
+                      >
+                        <MinusCircle size={18} strokeWidth={2.4} style={{ color: '#EF4444' }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[14px] font-semibold text-red-400">
-                          {t('routinePicker.restDay')}
+                        <p
+                          style={{
+                            fontFamily: FONT_DISPLAY, fontSize: 15.5, fontWeight: 800,
+                            letterSpacing: -0.2, color: '#F87171', lineHeight: 1.15,
+                          }}
+                        >
+                          {t('routinePicker.restDay', 'Make it a rest day')}
                         </p>
-                        <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                          {t('routinePicker.removeWorkoutFrom', { day: dayName })}
+                        <p
+                          className="mt-1"
+                          style={{
+                            fontSize: 11.5, fontWeight: 700, letterSpacing: 0.4,
+                            color: 'rgba(248, 113, 113, 0.7)', textTransform: 'uppercase',
+                          }}
+                        >
+                          {t('routinePicker.removeWorkoutFrom', { day: dayName, defaultValue: `Remove from ${dayName}` })}
                         </p>
                       </div>
                     </button>

@@ -10,61 +10,91 @@ struct RestTimerView: View {
     @State private var hasNotified: Bool = false
     @State private var initializedFromPhone: Bool = false
 
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("REST")
-                .font(.caption)
-                .fontWeight(.heavy)
-                .foregroundColor(DS.gold)
-                .tracking(2)
-                .accessibilityAddTraits(.isHeader)
+    private var timeString: String {
+        let m = max(countdown, 0) / 60
+        let s = max(countdown, 0) % 60
+        return String(format: "%d:%02d", m, s)
+    }
 
-            // Circular countdown
+    var body: some View {
+        VStack(spacing: 8) {
+            WatchStatusBar(title: session.tr("REST", "DESCANSO"), color: DS.amber)
+
+            // Circular countdown with amber ring, bold tabular MM:SS
             ZStack {
                 Circle()
-                    .stroke(DS.cardBg, lineWidth: 8)
-                    .frame(width: 110, height: 110)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 8)
+                    .frame(width: 130, height: 130)
 
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(DS.gold, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                    .frame(width: 110, height: 110)
+                    .stroke(DS.amber, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                    .frame(width: 130, height: 130)
                     .rotationEffect(.degrees(-90))
                     .animation(reduceMotion ? .none : .linear(duration: 1), value: countdown)
 
                 VStack(spacing: 2) {
-                    Text("\(countdown)")
-                        .font(.system(size: 48, weight: .black, design: .rounded))
-                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                        .foregroundColor(countdown <= 5 ? DS.gold : .white)
+                    Text(timeString)
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
                         .monospacedDigit()
+                        .foregroundColor(countdown <= 5 ? DS.amber : .white)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .accessibilityAddTraits(.updatesFrequently)
                         .accessibilityLabel("\(countdown) seconds remaining")
-                    Text("sec")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(DS.mutedText)
+                    Text(session.tr("REST TIMER", "DESCANSO"))
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .kerning(0.6)
+                        .foregroundColor(DS.amber)
                 }
             }
 
-            // Skip button
-            Button(action: {
-                timer?.invalidate()
-                session.skipRest()
-                WKInterfaceDevice.current().play(.click)
-            }) {
-                Text("Skip")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(DS.gold)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 10)
-                    .background(DS.gold.opacity(0.15))
-                    .cornerRadius(10)
+            // Next set hint
+            if session.totalSets > 0 && session.setNumber > 0 {
+                Text("\(session.tr("Next", "Sigue")) · \(session.tr("Set", "Serie")) \(min(session.setNumber + 1, session.totalSets)) \(session.tr("of", "de")) \(session.totalSets) · \(Int(session.suggestedWeight)) lbs")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(DS.textSub)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 8)
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("Skip rest timer")
+
+            // Controls: +30s (muted pill) · Skip (teal primary)
+            HStack(spacing: 6) {
+                Button {
+                    countdown += 30
+                    totalDuration = max(totalDuration, countdown)
+                    WKInterfaceDevice.current().play(.click)
+                } label: {
+                    Text("+30s")
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(DS.surface1)
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    timer?.invalidate()
+                    session.skipRest()
+                    WKInterfaceDevice.current().play(.click)
+                } label: {
+                    Text(session.tr("Skip", "Saltar"))
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundColor(Color(red: 0, green: 0.08, blue: 0.07))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(DS.brandAccent)
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Skip rest timer")
+            }
+            .padding(.horizontal, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DS.darkBg)
+        .background(Color.black)
         .onAppear {
             // Initialize from phone's remaining time
             totalDuration = session.restSeconds > 0 ? session.restSeconds : 90

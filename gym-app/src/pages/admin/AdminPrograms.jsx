@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import {
@@ -49,11 +50,11 @@ function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram }) {
       if (!topGoal) return null;
 
       const SUGGESTIONS = {
-        muscle_gain: { name_en: 'Hypertrophy Focus Program', name_es: 'Programa de Hipertrofia', desc_en: 'Most members want muscle gain — this program targets hypertrophy with progressive overload', desc_es: 'La mayoría de los miembros buscan ganar músculo — este programa se enfoca en hipertrofia con sobrecarga progresiva', template: 'ppl' },
-        strength: { name_en: 'Strength Builder Program', name_es: 'Programa de Fuerza', desc_en: 'Your members are focused on getting stronger — compound lifts with low reps', desc_es: 'Tus miembros se enfocan en fuerza — levantamientos compuestos con pocas repeticiones', template: 'upper_lower' },
-        fat_loss: { name_en: 'Fat Loss Circuit Program', name_es: 'Programa de Pérdida de Grasa', desc_en: 'Many members want fat loss — high-intensity circuits with short rest', desc_es: 'Muchos miembros buscan perder grasa — circuitos de alta intensidad con descanso corto', template: 'full_body' },
-        endurance: { name_en: 'Endurance Training Program', name_es: 'Programa de Resistencia', desc_en: 'Endurance is the top goal — high-rep work with progressive volume', desc_es: 'La resistencia es el objetivo principal — trabajo de muchas repeticiones con volumen progresivo', template: 'full_body' },
-        general_fitness: { name_en: 'General Fitness Program', name_es: 'Programa de Fitness General', desc_en: 'A balanced program for overall fitness', desc_es: 'Un programa equilibrado para fitness general', template: 'full_body' },
+        muscle_gain: { nameKey: 'hypertrophy', descKey: 'hypertrophy', nameDefault: 'Hypertrophy Focus Program', descDefault: 'Build muscle mass with high-volume training', template: 'ppl' },
+        strength: { nameKey: 'strength', descKey: 'strength', nameDefault: 'Strength Builder Program', descDefault: 'Maximize raw strength on key compound lifts', template: 'upper_lower' },
+        fat_loss: { nameKey: 'fatLoss', descKey: 'fatLoss', nameDefault: 'Fat Loss Circuit Program', descDefault: 'Burn fat with circuit-style training', template: 'full_body' },
+        endurance: { nameKey: 'endurance', descKey: 'endurance', nameDefault: 'Endurance Training Program', descDefault: 'Build cardiovascular and muscular endurance', template: 'full_body' },
+        general_fitness: { nameKey: 'general', descKey: 'general', nameDefault: 'General Fitness Program', descDefault: 'Well-rounded program for overall fitness', template: 'full_body' },
       };
 
       const s = SUGGESTIONS[topGoal[0]] || SUGGESTIONS.general_fitness;
@@ -72,29 +73,40 @@ function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram }) {
 
   if (!suggestion) return null;
 
-  const name = isEs ? suggestion.name_es : suggestion.name_en;
-  const desc = isEs ? suggestion.desc_es : suggestion.desc_en;
+  const name = t(`admin.programs.suggestion.${suggestion.nameKey}.name`, suggestion.nameDefault);
+  const desc = t(`admin.programs.suggestion.${suggestion.descKey}.desc`, suggestion.descDefault);
 
   return (
-    <AdminCard className="mb-5 border-[#D4AF37]/20 bg-gradient-to-r from-[#D4AF37]/[0.04] to-transparent">
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-          <Lightbulb size={20} className="text-[#D4AF37]" />
+    <div
+      className="mb-5 rounded-[16px] p-5"
+      style={{
+        background: 'linear-gradient(110deg, var(--color-coach-soft), color-mix(in srgb, var(--color-accent) 18%, transparent))',
+        border: '1px solid var(--color-coach-soft)',
+      }}
+    >
+      <div className="flex items-start gap-3.5">
+        <div
+          className="w-11 h-11 rounded-[12px] flex items-center justify-center flex-shrink-0"
+          style={{ background: 'var(--color-bg-card)' }}
+        >
+          <Lightbulb size={20} style={{ color: 'var(--color-coach)' }} strokeWidth={2} />
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-[12px] font-semibold text-[#D4AF37] uppercase tracking-wider mb-1.5">
-            {t('admin.programs.suggestion.title', 'Monthly Suggestion')}
-          </p>
-
-          <div className="flex items-center gap-2 mb-2">
-            <Dumbbell size={15} className="text-[#E5E7EB] flex-shrink-0" />
-            <p className="text-[16px] font-bold text-[#E5E7EB] truncate">{name}</p>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="admin-eyebrow" style={{ color: 'var(--color-accent)' }}>
+              {t('admin.programs.suggestion.title', 'Monthly Suggestion')}
+            </span>
           </div>
 
-          <p className="text-[13px] text-[#9CA3AF] leading-relaxed mb-2">{desc}</p>
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <Dumbbell size={16} style={{ color: 'var(--color-admin-text)' }} />
+            <p className="admin-page-title text-[20px] truncate" style={{ letterSpacing: '-0.02em' }}>{name}</p>
+          </div>
 
-          <p className="text-[11px] text-[#6B7280] mb-4">
+          <p className="text-[13px] leading-relaxed mb-2" style={{ color: 'var(--color-admin-text-sub)' }}>{desc}</p>
+
+          <p className="text-[11px] mb-3.5" style={{ color: 'var(--color-admin-text-muted)' }}>
             {t('admin.programs.suggestion.basedOn', 'Based on {{pct}}% of your members ({{count}}/{{total}})', {
               pct: suggestion.pct,
               count: suggestion.goalCount,
@@ -105,13 +117,14 @@ function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram }) {
           <button
             type="button"
             onClick={onCreateProgram}
-            className="px-5 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:bg-[#E6C766] active:scale-[0.97] transition-all"
+            className="px-5 py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97]"
+            style={{ background: 'var(--color-admin-text)', color: '#fff' }}
           >
             {t('admin.programs.suggestion.createButton', 'Create This Program')}
           </button>
         </div>
       </div>
-    </AdminCard>
+    </div>
   );
 }
 
@@ -119,6 +132,7 @@ function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram }) {
 export default function AdminPrograms() {
   const { t, i18n } = useTranslation('pages');
   const { profile, user } = useAuth();
+  const { showToast } = useToast();
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
   const isEs = i18n.language?.startsWith('es');
@@ -229,10 +243,50 @@ export default function AdminPrograms() {
   // ── Handlers ─────────────────────────────────────────────
 
   const handleSaveProgram = ({ name, description, durationWeeks, weeks }) => {
+    // Validation
+    if (!name?.trim()) {
+      showToast(t('admin.programs.nameRequired', { defaultValue: 'Program name is required' }), 'error');
+      return;
+    }
+    if (!durationWeeks || durationWeeks < 1 || durationWeeks > 52) {
+      showToast(t('admin.programs.invalidDuration', { defaultValue: 'Duration must be 1–52 weeks' }), 'error');
+      return;
+    }
+    const weekKeys = Object.keys(weeks || {});
+    if (weekKeys.length === 0) {
+      showToast(t('admin.programs.noWeeks', { defaultValue: 'Add at least one week of workouts' }), 'error');
+      return;
+    }
+    let totalExercises = 0;
+    let invalidExercise = false;
+    for (const weekData of Object.values(weeks)) {
+      const dayList = weekData?.days || weekData;
+      if (!dayList) continue;
+      for (const day of Object.values(dayList)) {
+        const exercises = Array.isArray(day) ? day : (day?.exercises || []);
+        for (const ex of exercises) {
+          totalExercises++;
+          const sets = Number(ex?.sets ?? ex?.target_sets);
+          const rest = Number(ex?.rest_seconds ?? ex?.rest);
+          if (!ex?.exercise_id && !ex?.id && !ex?.name) invalidExercise = true;
+          if (Number.isFinite(sets) && (sets < 1 || sets > 20)) invalidExercise = true;
+          if (Number.isFinite(rest) && (rest < 0 || rest > 600)) invalidExercise = true;
+        }
+      }
+    }
+    if (totalExercises === 0) {
+      showToast(t('admin.programs.noExercises', { defaultValue: 'Add at least one exercise' }), 'error');
+      return;
+    }
+    if (invalidExercise) {
+      showToast(t('admin.programs.invalidExercise', { defaultValue: 'Sets must be 1–20, rest 0–600s' }), 'error');
+      return;
+    }
+
     const payload = {
       gym_id: gymId,
       created_by: user.id,
-      name,
+      name: name.trim(),
       description,
       duration_weeks: durationWeeks,
       weeks,
@@ -303,19 +357,20 @@ export default function AdminPrograms() {
   const loading = loadingPrograms;
 
   return (
-    <div className="px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+    <div className="admin-shell px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title={t('admin.programs.title', 'Programs')}
         subtitle={t('admin.programs.subtitle', 'Gym-branded workout programs for members')}
         actions={
           <button
             onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C4A030] transition-colors"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-[13px] rounded-xl transition-colors w-full sm:w-auto"
+            style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}
           >
             <Plus size={15} /> {t('admin.programs.newProgram', 'New Program')}
           </button>
         }
-        className="mb-6"
+        className="mb-5"
       />
 
       {/* Program Suggestion */}
@@ -329,13 +384,13 @@ export default function AdminPrograms() {
       {/* Program Analytics Summary */}
       {!loading && programs.length > 0 && (
         <FadeIn>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-5">
             <StatCard label={t('admin.programs.publishedPrograms', 'Published Programs')} value={programStats.totalPrograms} borderColor="var(--color-accent)" delay={0} />
-            <StatCard label={t('admin.programs.activeEnrollments', 'Active Enrollments')} value={programStats.activeEnrollments} borderColor="#3B82F6" delay={50} />
-            <StatCard label={t('admin.programs.completionRate', 'Completion Rate')} value={`${programStats.completionRate}%`} borderColor="#10B981" delay={100} />
-            <AdminCard className="overflow-hidden">
-              <p className="text-[16px] font-bold text-[#E5E7EB] truncate">{programStats.topProgram}</p>
-              <p className="text-[11px] text-[#9CA3AF] truncate">{t('admin.programs.mostPopular', 'Most Popular')}</p>
+            <StatCard label={t('admin.programs.activeEnrollments', 'Active Enrollments')} value={programStats.activeEnrollments} borderColor="var(--color-info)" delay={50} />
+            <StatCard label={t('admin.programs.completionRate', 'Completion Rate')} value={`${programStats.completionRate}%`} borderColor="var(--color-success)" delay={100} />
+            <AdminCard className="admin-stat-card border-l-2" borderLeft="var(--color-coach)">
+              <p className="admin-kpi text-[18px] md:text-[20px] truncate">{programStats.topProgram}</p>
+              <p className="text-[11px] mt-1.5 truncate" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.mostPopular', 'Most Popular')}</p>
             </AdminCard>
           </div>
         </FadeIn>
@@ -344,35 +399,41 @@ export default function AdminPrograms() {
       {/* Search and filters */}
       {!loading && programs.length > 0 && (
         <FadeIn delay={0.05}>
-          <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="flex flex-wrap items-center gap-2.5 mb-4">
             {/* Search */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+            <div
+              className="relative flex-1 min-w-[200px] flex items-center gap-2"
+              style={{
+                padding: '8px 12px',
+                background: 'var(--color-bg-card)',
+                border: '1px solid var(--color-admin-border)',
+                borderRadius: 10,
+              }}
+            >
+              <Search size={13} style={{ color: 'var(--color-admin-text-muted)' }} />
               <input
                 type="text"
-                placeholder={t('admin.programs.searchPlaceholder', 'Search programs...')}
+                placeholder={t('admin.programs.searchPlaceholder', 'Search programs…')}
                 aria-label={t('admin.programs.searchPlaceholder', 'Search programs')}
                 value={programSearch}
                 onChange={e => setProgramSearch(e.target.value)}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/30"
+                className="flex-1 bg-transparent outline-none text-[13px]"
+                style={{ color: 'var(--color-admin-text)' }}
               />
             </div>
             {/* Duration filter pills */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide w-full md:w-auto md:flex-wrap pb-1">
               {[
                 { key: 'all', label: t('admin.programs.durationAll', 'All') },
-                { key: '4', label: t('admin.programs.durationShort', '1-4w') },
-                { key: '8', label: t('admin.programs.durationMed', '5-8w') },
+                { key: '4', label: t('admin.programs.durationShort', '1–4w') },
+                { key: '8', label: t('admin.programs.durationMed', '5–8w') },
                 { key: '12+', label: t('admin.programs.durationLong', '12w+') },
               ].map(f => (
                 <button
                   key={f.key}
                   onClick={() => setDurationFilter(f.key)}
-                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all ${
-                    durationFilter === f.key
-                      ? 'bg-[#D4AF37] text-black'
-                      : 'bg-[#0F172A] text-[#6B7280] border border-white/6 hover:text-[#9CA3AF]'
-                  }`}
+                  className={`admin-pill flex-shrink-0 ${durationFilter === f.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
+                  style={{ cursor: 'pointer', minHeight: 28 }}
                 >
                   {f.label}
                 </button>
@@ -391,21 +452,26 @@ export default function AdminPrograms() {
       ) : programs.length === 0 ? (
         <FadeIn>
           <div className="text-center py-20">
-            <Dumbbell size={32} className="text-[#4B5563] mx-auto mb-3" />
-            <p className="text-[14px] text-[#6B7280]">{t('admin.programs.noPrograms', 'No programs yet')}</p>
-            <p className="text-[12px] text-[#4B5563] mt-1">{t('admin.programs.noProgramsHint', 'Create structured programs for your members to follow')}</p>
+            <div
+              className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+              style={{ background: 'var(--color-admin-panel)' }}
+            >
+              <Dumbbell size={24} style={{ color: 'var(--color-admin-text-muted)' }} />
+            </div>
+            <p className="text-[14px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>{t('admin.programs.noPrograms', 'No programs yet')}</p>
+            <p className="text-[12.5px] mt-1" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.noProgramsHint', 'Create structured programs for your members to follow')}</p>
           </div>
         </FadeIn>
       ) : (
         <FadeIn>
           {filteredPrograms.length === 0 ? (
             <div className="text-center py-12">
-              <Search size={24} className="text-[#6B7280] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.programs.noMatchingPrograms', 'No programs match your search')}</p>
+              <Search size={24} className="mx-auto mb-2" style={{ color: 'var(--color-admin-text-muted)' }} />
+              <p className="text-[13px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.noMatchingPrograms', 'No programs match your search')}</p>
             </div>
           ) : (
-          <div className="space-y-3">
-            {filteredPrograms.map(p => {
+          <AdminCard padding="p-0" clipContent={false}>
+            {filteredPrograms.map((p, idx) => {
               const wks = normalizeWeeks(p.weeks);
               const allDays = Object.values(wks).flat();
               const totalDays = allDays.length;
@@ -413,84 +479,194 @@ export default function AdminPrograms() {
               const avgTime   = totalDays > 0
                 ? Math.round(allDays.reduce((s, d) => s + calcDaySeconds(d), 0) / totalDays)
                 : 0;
+              const isLast = idx === filteredPrograms.length - 1;
               return (
-                <AdminCard key={p.id} hover padding="p-0" className="overflow-hidden">
-                  <div className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                          <Dumbbell size={17} className="text-[#D4AF37]" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{p.name}</p>
-                          <p className="text-[11px] text-[#6B7280]">
-                            {p.duration_weeks}{t('admin.programs.weeksShort', 'w')} · {totalDays} {t('admin.programs.days', 'days')} · {totalEx} {t('admin.programs.exercises', 'exercises')}
-                            {avgTime > 0 && ` · ~${fmtTime(avgTime)}/${t('admin.programs.session', 'session')}`}
-                          </p>
-                        </div>
+                <div
+                  key={p.id}
+                  style={{ borderBottom: isLast ? 'none' : '1px solid var(--color-admin-border)' }}
+                >
+                  <div className="px-4 py-4">
+                    {/* Header row: icon + title + status pill */}
+                    <div className="flex items-start gap-3 md:gap-3.5">
+                      <div
+                        className="w-11 h-11 rounded-[11px] flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'var(--color-coach-soft)' }}
+                      >
+                        <Dumbbell size={20} style={{ color: 'var(--color-coach)' }} strokeWidth={2} />
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${p.is_published ? 'text-emerald-400 bg-emerald-500/10' : 'text-[#6B7280] bg-white/6'}`}>
-                          {p.is_published ? t('admin.programs.published', 'Published') : t('admin.programs.draft', 'Draft')}
-                        </span>
-                        <button onClick={() => setEditing(p)} aria-label={t('admin.programs.editProgram', 'Edit program')} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors p-1">
-                          <ChevronRight size={16} />
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <span className="admin-page-title text-[14.5px] truncate" style={{ letterSpacing: '-0.015em' }}>{p.name}</span>
+                          <span className="admin-pill admin-pill--outline">
+                            {p.duration_weeks}{t('admin.programs.weeksShort', 'w')}
+                          </span>
+                        </div>
+                        <p className="text-[11.5px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                          {totalDays} {t('admin.programs.days', 'days')} · {totalEx} {t('admin.programs.exercises', 'exercises')}
+                          {avgTime > 0 && ` · ~${fmtTime(avgTime)}/${t('admin.programs.session', 'session')}`}
+                        </p>
+                      </div>
+
+                      <span className={`admin-pill ${p.is_published ? 'admin-pill--good' : 'admin-pill--outline'} flex-shrink-0`}>
+                        {p.is_published ? t('admin.programs.published', 'Published') : t('admin.programs.draft', 'Draft')}
+                      </span>
+
+                      {/* Desktop-only inline edit/delete */}
+                      <div className="hidden md:flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => setEditing(p)}
+                          aria-label={t('admin.programs.editProgram', 'Edit program')}
+                          className="flex items-center justify-center transition-colors"
+                          style={{
+                            width: 30, height: 30, borderRadius: 8,
+                            border: '1px solid var(--color-admin-border)',
+                            background: 'var(--color-bg-card)',
+                            color: 'var(--color-admin-text-sub)',
+                          }}
+                        >
+                          <ChevronRight size={13} />
                         </button>
                         {confirmDeleteId === p.id ? (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-[#9CA3AF]">{t('admin.programs.deleteConfirm')}</span>
-                            <button onClick={() => deleteMutation.mutate(p.id)}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
+                            <button
+                              onClick={() => deleteMutation.mutate(p.id)}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
+                              style={{ background: 'var(--color-danger-soft)', color: 'var(--color-danger)' }}
+                            >
                               {t('admin.programs.confirm')}
                             </button>
-                            <button onClick={() => setConfirmDeleteId(null)}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors">
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
+                              style={{ background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)' }}
+                            >
                               {t('admin.programs.cancel')}
                             </button>
                           </div>
                         ) : (
-                          <button onClick={() => setConfirmDeleteId(p.id)} aria-label={t('admin.programs.deleteProgram', 'Delete program')} className="text-[#6B7280] hover:text-red-400 transition-colors p-1">
-                            <Trash2 size={14} />
+                          <button
+                            onClick={() => setConfirmDeleteId(p.id)}
+                            aria-label={t('admin.programs.deleteProgram', 'Delete program')}
+                            className="flex items-center justify-center transition-colors"
+                            style={{
+                              width: 30, height: 30, borderRadius: 8,
+                              border: '1px solid var(--color-admin-border)',
+                              background: 'var(--color-bg-card)',
+                              color: 'var(--color-danger)',
+                            }}
+                          >
+                            <Trash2 size={13} />
                           </button>
                         )}
                       </div>
                     </div>
+
+                    {/* Description */}
                     {p.description && (
-                      <p className="text-[12px] text-[#6B7280] mt-2 ml-12 line-clamp-2">{p.description}</p>
+                      <p className="text-[12px] mt-2 line-clamp-2" style={{ color: 'var(--color-admin-text-sub)', maxWidth: 600 }}>{p.description}</p>
                     )}
 
-                    {/* Enrollment toggle */}
-                    <button
-                      onClick={() => toggleEnroll(p.id)}
-                      className="ml-12 mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
-                    >
-                      <Users size={11} />
-                      <span>{enrollmentCounts[p.id] ?? 0} {t('admin.programs.enrolled', 'enrolled')}</span>
-                      <ChevronDown size={11} className={`transition-transform ${expandedEnroll === p.id ? 'rotate-180' : ''}`} />
-                    </button>
+                    {/* Meta + actions row */}
+                    <div className="flex items-center justify-between gap-2 mt-2.5 flex-wrap">
+                      <button
+                        onClick={() => toggleEnroll(p.id)}
+                        className="flex items-center gap-1.5 text-[11.5px] font-medium transition-colors"
+                        style={{ color: 'var(--color-admin-text-sub)' }}
+                      >
+                        <Users size={12} />
+                        <span>{enrollmentCounts[p.id] ?? 0} {t('admin.programs.enrolled', 'enrolled')}</span>
+                        <ChevronDown size={11} className={`transition-transform ${expandedEnroll === p.id ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {/* Mobile-only actions */}
+                      <div className="flex md:hidden items-center gap-1.5">
+                        <button
+                          onClick={() => setEditing(p)}
+                          aria-label={t('admin.programs.editProgram', 'Edit program')}
+                          className="flex items-center justify-center transition-colors"
+                          style={{
+                            width: 30, height: 30, borderRadius: 8,
+                            border: '1px solid var(--color-admin-border)',
+                            background: 'var(--color-bg-card)',
+                            color: 'var(--color-admin-text-sub)',
+                          }}
+                        >
+                          <ChevronRight size={13} />
+                        </button>
+                        {confirmDeleteId === p.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => deleteMutation.mutate(p.id)}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
+                              style={{ background: 'var(--color-danger-soft)', color: 'var(--color-danger)' }}
+                            >
+                              {t('admin.programs.confirm')}
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
+                              style={{ background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)' }}
+                            >
+                              {t('admin.programs.cancel')}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteId(p.id)}
+                            aria-label={t('admin.programs.deleteProgram', 'Delete program')}
+                            className="flex items-center justify-center transition-colors"
+                            style={{
+                              width: 30, height: 30, borderRadius: 8,
+                              border: '1px solid var(--color-admin-border)',
+                              background: 'var(--color-bg-card)',
+                              color: 'var(--color-danger)',
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Enrolled members panel */}
                   {expandedEnroll === p.id && (
-                    <div className="px-4 pb-4 border-t border-white/4 pt-3">
+                    <div
+                      className="px-4 pb-4 pt-3"
+                      style={{ borderTop: '1px solid var(--color-admin-border)' }}
+                    >
                       <SectionLabel className="mb-2">{t('admin.programs.enrolledMembers', 'Enrolled Members')}</SectionLabel>
                       {!enrolledMembers[p.id] ? (
                         <div className="flex justify-center py-3">
-                          <div className="w-4 h-4 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+                          <div
+                            className="w-4 h-4 border-2 rounded-full animate-spin"
+                            style={{
+                              borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)',
+                              borderTopColor: 'var(--color-accent)',
+                            }}
+                          />
                         </div>
                       ) : enrolledMembers[p.id].length === 0 ? (
-                        <p className="text-[12px] text-[#6B7280] text-center py-2">{t('admin.programs.noEnrolled', 'No members enrolled yet')}</p>
+                        <p className="text-[12px] text-center py-2" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.noEnrolled', 'No members enrolled yet')}</p>
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {enrolledMembers[p.id].map(e => {
                             const name = e.profiles?.full_name ?? '?';
                             const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
                             return (
-                              <div key={e.profile_id} className="flex items-center gap-1.5 bg-[#111827] rounded-xl px-2.5 py-1.5">
-                                <div className="w-6 h-6 rounded-full bg-[#D4AF37]/20 flex items-center justify-center flex-shrink-0">
-                                  <span className="text-[9px] font-bold text-[#D4AF37]">{initials}</span>
+                              <div
+                                key={e.profile_id}
+                                className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5"
+                                style={{ background: 'var(--color-admin-panel)' }}
+                              >
+                                <div
+                                  className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                                  style={{ background: 'color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+                                >
+                                  <span className="text-[9px] font-bold" style={{ color: 'var(--color-accent)' }}>{initials}</span>
                                 </div>
-                                <span className="text-[11px] font-medium text-[#E5E7EB]">{name}</span>
+                                <span className="text-[11px] font-medium" style={{ color: 'var(--color-admin-text)' }}>{name}</span>
                               </div>
                             );
                           })}
@@ -498,10 +674,10 @@ export default function AdminPrograms() {
                       )}
                     </div>
                   )}
-                </AdminCard>
+                </div>
               );
             })}
-          </div>
+          </AdminCard>
           )}
         </FadeIn>
       )}

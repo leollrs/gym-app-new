@@ -5,44 +5,47 @@ struct FriendsActiveView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 10) {
-                // Header
-                Text("FRIENDS")
-                    .font(.caption2)
-                    .fontWeight(.heavy)
-                    .foregroundColor(DS.mutedText)
-                    .tracking(1.5)
-                    .padding(.top, 4)
-                    .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 6) {
+                WatchStatusBar(title: session.tr("ACTIVE NOW", "ACTIVOS AHORA"))
 
                 if session.activeFriends.isEmpty {
                     // Empty state
                     VStack(spacing: 8) {
                         Image(systemName: "person.2.fill")
                             .font(.title3)
-                            .foregroundColor(Color(white: 0.25))
+                            .foregroundColor(DS.textFaint)
                             .padding(.top, 16)
+                            .accessibilityLabel(session.tr("Friends", "Amigos"))
 
-                        Text("No friends active")
-                            .font(.body)
-                            .fontWeight(.semibold)
-                            .foregroundColor(Color(white: 0.4))
+                        Text(session.tr("No friends active", "Sin amigos activos"))
+                            .font(.system(.body, design: .rounded).weight(.bold))
+                            .foregroundColor(DS.textSub)
 
-                        Text("Your gym friends' activity\nwill show up here")
-                            .font(.caption)
-                            .foregroundColor(Color(white: 0.3))
+                        Text(session.tr("Your gym friends' activity\nwill show up here",
+                                       "La actividad de tus amigos\naparecerá aquí"))
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundColor(DS.textFaint)
                             .multilineTextAlignment(.center)
                     }
-                    .padding(.top, 8)
+                    .padding(.top, 12)
                 } else {
+                    // Header sub-line
+                    HStack {
+                        Text("\(session.activeFriends.count) \(session.tr("friends lifting", "amigos entrenando"))")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundColor(DS.textSub)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 12)
+
                     ForEach(Array(session.activeFriends.enumerated()), id: \.offset) { _, friend in
                         FriendRow(friend: friend)
                     }
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
         }
-        .background(DS.darkBg)
+        .background(Color.black)
     }
 }
 
@@ -52,51 +55,79 @@ struct FriendRow: View {
     private var name: String { friend["name"] as? String ?? "Friend" }
     private var status: String { friend["status"] as? String ?? "" }
     private var isActive: Bool { (friend["isActive"] as? Bool) == true }
+    private var heartRate: Int { friend["heartRate"] as? Int ?? 0 }
+    private var colorHex: String? { friend["color"] as? String }
+
+    private var avatarColor: Color {
+        if let hex = colorHex, let c = Color(hex: hex) { return c }
+        return DS.streakOrange
+    }
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Avatar circle with initial
-            ZStack {
-                Circle()
-                    .fill(isActive ? DS.gold.opacity(0.2) : DS.cardBg)
-                    .frame(width: 32, height: 32)
-                Text(String(name.prefix(1)).uppercased())
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(isActive ? DS.gold : DS.mutedText)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-
-                HStack(spacing: 4) {
-                    if isActive {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 5, height: 5)
-                            .accessibilityLabel("Currently working out")
-                        Text("Working out")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .foregroundColor(.green)
-                    } else {
-                        Text(status)
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .foregroundColor(DS.mutedText)
-                    }
+        HStack(spacing: 8) {
+            // Avatar circle with initial + live dot
+            ZStack(alignment: .bottomTrailing) {
+                ZStack {
+                    Circle()
+                        .fill(avatarColor)
+                        .frame(width: 28, height: 28)
+                    Text(initials(from: name))
+                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                if isActive {
+                    Circle()
+                        .fill(Color(red: 62/255, green: 220/255, blue: 110/255))
+                        .frame(width: 9, height: 9)
+                        .overlay(
+                            Circle().stroke(Color.black, lineWidth: 1.5)
+                        )
                 }
             }
 
-            Spacer()
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name)
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                if isActive {
+                    Text(status.isEmpty ? "Working out" : status)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundColor(DS.textSub)
+                        .lineLimit(1)
+                } else {
+                    Text(status.isEmpty ? "Idle" : status)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundColor(DS.textFaint)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            if heartRate > 0 {
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("\(heartRate)")
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .foregroundColor(DS.amber)
+                        .monospacedDigit()
+                    Text("BPM")
+                        .font(.system(size: 7, weight: .heavy, design: .rounded))
+                        .foregroundColor(DS.textFaint)
+                        .kerning(0.3)
+                }
+            }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(DS.cardBg)
-        .cornerRadius(10)
+        .padding(.vertical, 7)
+        .background(DS.surface1)
+        .cornerRadius(14)
+        .padding(.horizontal, 8)
+    }
+
+    private func initials(from name: String) -> String {
+        let parts = name.split(separator: " ").prefix(2)
+        return parts.compactMap { $0.first }.map(String.init).joined().uppercased()
     }
 }

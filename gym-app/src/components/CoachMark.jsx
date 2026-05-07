@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 
 const STORAGE_KEY = 'gym_coach_marks_seen';
@@ -19,7 +20,8 @@ function markAsSeen(id) {
   }
 }
 
-export default function CoachMark({ id, title, description, position = 'bottom', delay = 500, children }) {
+export default function CoachMark({ id, title, description, position = 'bottom', delay = 300, dismissLabel, children }) {
+  const { t } = useTranslation('pages');
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export default function CoachMark({ id, title, description, position = 'bottom',
               <button
                 onClick={dismiss}
                 className="flex-shrink-0 w-11 h-11 rounded-full bg-white/5 flex items-center justify-center text-[var(--color-text-subtle)] hover:text-white transition-colors"
-                aria-label="Dismiss tip"
+                aria-label={t('coachMark.dismissTip', 'Dismiss tip')}
               >
                 <X size={14} />
               </button>
@@ -72,7 +74,7 @@ export default function CoachMark({ id, title, description, position = 'bottom',
               onClick={dismiss}
               className="mt-2 text-[11px] font-semibold text-[#D4AF37] hover:text-[#f2d36b] transition-colors"
             >
-              Got it
+              {dismissLabel || t('coachMark.gotIt', 'Got it')}
             </button>
           </div>
         </div>

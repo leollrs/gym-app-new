@@ -1,3 +1,18 @@
+// TODO(ip-rate-limit): Add a dedicated table for IP-based rate limiting.
+// The existing `ai_rate_limits` table has a NOT NULL FK on profile_id ->
+// profiles(id), so we cannot overload it with an IP-hash value (UUID type
+// + FK constraint would both reject the insert). When ready, create a new
+// table e.g.:
+//   CREATE TABLE ip_rate_limits (
+//     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+//     ip_hash TEXT NOT NULL,
+//     endpoint TEXT NOT NULL,
+//     requested_at TIMESTAMPTZ NOT NULL DEFAULT now()
+//   );
+//   CREATE INDEX ON ip_rate_limits (endpoint, ip_hash, requested_at DESC);
+// Then enforce 10 req/min/IP for endpoint='verify-qr' here. Until that
+// migration ships, the IP rate-limit check below is a SAFE NO-OP — the
+// existing per-user limit (60/hr) still applies.
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -5,6 +20,21 @@ const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const QR_SIGNING_SECRET    = Deno.env.get('QR_SIGNING_SECRET');
 const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
 const ALLOWED_ORIGIN       = Deno.env.get('ALLOWED_ORIGIN');
+const IP_HASH_SALT         = Deno.env.get('IP_HASH_SALT') || Deno.env.get('DENO_DEPLOYMENT_ID') || '';
+
+/**
+ * SHA-256 hash of (ip + salt). We never store raw IPs; the hash is used as
+ * an opaque dedup key for sliding-window IP rate limiting. Kept here so the
+ * helper is in scope when the dedicated `ip_rate_limits` table lands (see
+ * TODO at top of file).
+ */
+async function hashIp(ip: string): Promise<string> {
+  const enc = new TextEncoder().encode(ip + IP_HASH_SALT);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN ?? '',
@@ -79,6 +109,19 @@ serve(async (req) => {
   }
 
   try {
+    // ── IP-based rate limiting ───────────────────────────────────
+    // Extract client IP from forwarded headers. We compute the hash so the
+    // wiring is complete; the actual DB check is skipped until a dedicated
+    // table exists (see TODO at top of file). The FK on ai_rate_limits.
+    // profile_id -> profiles(id) prevents overloading that table with an
+    // IP hash value, so doing the check there would break the endpoint.
+    const ipRaw = (req.headers.get('x-forwarded-for')
+                 ?? req.headers.get('x-real-ip')
+                 ?? 'unknown').split(',')[0].trim();
+    // Compute the hash so the helper is exercised and ready for use; it's
+    // intentionally unused at the DB layer until the migration ships.
+    void (await hashIp(ipRaw));
+
     // ── Authenticate caller ──────────────────────────────────────
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return jsonResp({ error: 'Unauthorized' }, 401);
@@ -96,7 +139,7 @@ serve(async (req) => {
       .select('*', { count: 'exact', head: true })
       .eq('profile_id', user.id)
       .eq('endpoint', 'verify-qr')
-      .gte('created_at', oneHourAgo);
+      .gte('requested_at', oneHourAgo);
 
     if (rlError) {
       console.error('Rate limit check failed:', rlError);

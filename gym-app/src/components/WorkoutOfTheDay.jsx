@@ -44,7 +44,7 @@ export default function WorkoutOfTheDay() {
         const result = await generateAdaptiveWorkout(user.id, variant);
         if (!cancelled) setWorkout(result);
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to generate workout');
+        if (!cancelled) setError(err.message || t('workoutOfDay.generateFailed', 'Failed to generate workout'));
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -100,7 +100,7 @@ export default function WorkoutOfTheDay() {
 
       navigate(`/session/${routine.id}`);
     } catch (err) {
-      setError(err.message || 'Failed to start workout');
+      setError(err.message || t('workoutOfDay.startFailed', 'Failed to start workout'));
       setSaving(false);
     }
   };
@@ -189,7 +189,7 @@ export default function WorkoutOfTheDay() {
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span className="flex items-center gap-1 text-xs text-[var(--color-text-subtle)]">
           <Clock className="w-3.5 h-3.5" />
-          ~{workout.estimatedMinutes} min
+          ~{workout.estimatedMinutes} {t('dashboard.min', 'min')}
         </span>
         {workout.musclesFocused.map(muscle => (
           <span

@@ -20,6 +20,30 @@ private class LiveActivityManager {
     }
 
     static func start(routineName: String, totalSets: Int, completedSets: Int, exerciseName: String, startTimestamp: Double) async throws -> String {
+        // If the app was killed mid-workout and is cold-starting, we want to
+        // re-attach to the existing Live Activity rather than killing it and
+        // starting a new one (which causes the Dynamic Island to vanish for a
+        // moment and lose continuity). Only re-attach if the routineName still
+        // matches — otherwise it's a genuinely new workout and we replace.
+        if let existing = Activity<WorkoutActivityAttributes>.activities.first(where: { $0.attributes.routineName == routineName }) {
+            currentActivity = existing
+            // Refresh content with latest numbers
+            let refreshed = WorkoutActivityAttributes.ContentState(
+                elapsedSeconds: existing.content.state.elapsedSeconds,
+                completedSets: completedSets,
+                totalSets: totalSets,
+                currentExerciseName: exerciseName,
+                isResting: existing.content.state.isResting,
+                restEndDate: existing.content.state.restEndDate,
+                isRestFinished: existing.content.state.isRestFinished,
+                isPaused: existing.content.state.isPaused,
+                distanceKm: existing.content.state.distanceKm
+            )
+            await existing.update(ActivityContent(state: refreshed, staleDate: nil))
+            return existing.id
+        }
+
+        // Otherwise, end any stale activities (different routine) and start fresh
         for activity in Activity<WorkoutActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
@@ -32,18 +56,20 @@ private class LiveActivityManager {
 
         let attributes = WorkoutActivityAttributes(
             routineName: routineName,
-            totalSets: totalSets,
+            initialTotalSets: totalSets,
             startedAt: workoutStart
         )
 
         let state = WorkoutActivityAttributes.ContentState(
             elapsedSeconds: 0,
             completedSets: completedSets,
+            totalSets: totalSets,
             currentExerciseName: exerciseName,
             isResting: false,
             restEndDate: nil,
             isRestFinished: false,
-            isPaused: false
+            isPaused: false,
+            distanceKm: nil
         )
 
         let content = ActivityContent(state: state, staleDate: nil)
@@ -215,10 +241,22 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         if #available(iOS 16.2, *) {
             let elapsedSeconds = call.getInt("elapsedSeconds") ?? 0
             let completedSets = call.getInt("completedSets") ?? 0
+            // totalSets is dynamic now — read from JS every update so skip/remove
+            // immediately reflects in the Dynamic Island denominator. Fall back to
+            // existing activity's totalSets if JS omitted it.
+            let fallbackTotal = LiveActivityManager.currentActivity?.content.state.totalSets
+                ?? Activity<WorkoutActivityAttributes>.activities.first?.content.state.totalSets
+                ?? 0
+            let totalSets = call.getInt("totalSets") ?? fallbackTotal
             let exerciseName = call.getString("currentExerciseName") ?? ""
             let isResting = call.getBool("isResting") ?? false
             let restRemainingSeconds = call.getInt("restRemainingSeconds") ?? 0
             let isPaused = call.getBool("isPaused") ?? false
+            // Cardio mode distance (in km). Sent as Double. nil means workout mode.
+            let distanceKm: Double? = {
+                if let v = call.getDouble("distanceKm") { return v }
+                return nil
+            }()
 
             var restEndDate: Date? = nil
             if isResting && restRemainingSeconds > 0 {
@@ -228,11 +266,13 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             let state = WorkoutActivityAttributes.ContentState(
                 elapsedSeconds: elapsedSeconds,
                 completedSets: completedSets,
+                totalSets: totalSets,
                 currentExerciseName: exerciseName,
                 isResting: isResting,
                 restEndDate: restEndDate,
                 isRestFinished: false,
-                isPaused: isPaused
+                isPaused: isPaused,
+                distanceKm: distanceKm
             )
 
             Task {
@@ -248,15 +288,18 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         if #available(iOS 16.2, *) {
             let elapsedSeconds = call.getInt("elapsedSeconds") ?? 0
             let completedSets = call.getInt("completedSets") ?? 0
+            let totalSets = call.getInt("totalSets") ?? completedSets
 
             let state = WorkoutActivityAttributes.ContentState(
                 elapsedSeconds: elapsedSeconds,
                 completedSets: completedSets,
+                totalSets: totalSets,
                 currentExerciseName: "Done",
                 isResting: false,
                 restEndDate: nil,
                 isRestFinished: false,
-                isPaused: false
+                isPaused: false,
+                distanceKm: nil
             )
 
             Task {

@@ -282,6 +282,67 @@ export default function SupportConsole() {
     } catch { /* ignore */ }
   };
 
+  // ── Resend Invite ──────────────────────────────────────────
+  const handleResendInvite = async () => {
+    if (!selectedMember) return;
+    try {
+      // Try edge function first (does not currently exist — falls back below)
+      const { data: fnData, error: fnError } = await supabase.functions.invoke(
+        'admin-invite-member',
+        { body: { profileId: selectedMember.id, gymId: selectedMember.gym_id } },
+      );
+      if (!fnError && fnData) {
+        showToast(t('platform.support.inviteResent', 'Invite resent successfully'), 'success');
+        logAdminAction('resend_invite', 'member', selectedMember.id, { method: 'edge_function' });
+        return;
+      }
+      // Fallback: bump invite_token_regenerated_at so a backend job can pick it up.
+      // TODO: wire this column up to an actual transactional email send (Resend / SendGrid).
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ invite_token_regenerated_at: new Date().toISOString() })
+        .eq('id', selectedMember.id);
+      if (updateError) {
+        showToast(updateError.message, 'error');
+        return;
+      }
+      logAdminAction('resend_invite', 'member', selectedMember.id, { method: 'fallback_timestamp' });
+      showToast(
+        t('platform.support.inviteResentFallback', 'Invite flagged for resend (email send pending wiring)'),
+        'success',
+      );
+    } catch (err) {
+      showToast(err?.message || t('platform.support.inviteResendFailed', 'Failed to resend invite'), 'error');
+    }
+  };
+
+  // ── Deactivate ─────────────────────────────────────────────
+  const handleDeactivate = async () => {
+    if (!selectedMember) return;
+    const confirmMsg = t(
+      'platform.support.deactivateConfirm',
+      'Deactivate {{name}}? They will lose app access until reactivated.',
+      { name: selectedMember.full_name || selectedMember.username || 'this member' },
+    );
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(confirmMsg)) return;
+    // membership_status enum supports 'deactivated' (migration 0067)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ membership_status: 'deactivated' })
+      .eq('id', selectedMember.id);
+    if (error) {
+      showToast(error.message, 'error');
+      return;
+    }
+    logAdminAction('deactivate_member', 'member', selectedMember.id, {
+      from: selectedMember.membership_status,
+    });
+    showToast(t('platform.support.memberDeactivated', 'Member deactivated'), 'success');
+    setSelectedMember({ ...selectedMember, membership_status: 'deactivated' });
+    setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, membership_status: 'deactivated' } : m));
+  };
+
   const totalResults = members.length + gymResults.length + invites.length;
 
   return (
@@ -609,10 +670,10 @@ export default function SupportConsole() {
                         <button onClick={handleResetPassword} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
                           <RefreshCw size={13} />{t('platform.support.resetPassword', 'Reset Password')}
                         </button>
-                        <button onClick={() => showToast(t('platform.support.comingSoon', 'Coming soon'), 'info')} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                        <button onClick={handleResendInvite} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
                           <Mail size={13} />{t('platform.support.resendInvite', 'Resend Invite')}
                         </button>
-                        <button onClick={() => showToast(t('platform.support.comingSoon', 'Coming soon'), 'info')} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors">
+                        <button onClick={handleDeactivate} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors">
                           <UserX size={13} />{t('platform.support.deactivate', 'Deactivate')}
                         </button>
                       </div>

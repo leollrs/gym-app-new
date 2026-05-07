@@ -12,12 +12,39 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
  */
 export default function SwipeableTabView({ activeIndex, onChangeIndex, children, tabKeys }) {
   const containerRef = useRef(null);
+  const trackRef = useRef(null);
   const touchRef = useRef({ startX: 0, startY: 0, currentX: 0, startTime: 0, dragging: false, locked: null });
+  // Ref-based timeout trackers so we don't leak timers across gestures / renders
+  const settleTimerRef = useRef(null);
   const [offset, setOffset] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
   // Track which panels should be visible (active + neighbors during animation)
   const [visiblePanels, setVisiblePanels] = useState(new Set([0]));
   const count = React.Children.count(children);
+
+  // Centralised helper: clear any pending settle timer and hard-reset interaction flags.
+  // This is the critical fix: guarantees pointer-events / touch-action / drag locks
+  // are never left in a "half-swiped" state that would block subsequent button taps.
+  const clearInteractionLocks = useCallback(() => {
+    touchRef.current.dragging = false;
+    touchRef.current.locked = null;
+    const track = trackRef.current;
+    if (track) {
+      // Defensively clear any inline styles that might have been set during drag
+      track.style.pointerEvents = '';
+      track.style.touchAction = '';
+    }
+  }, []);
+
+  const scheduleSettle = useCallback((finalIndex) => {
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      settleTimerRef.current = null;
+      setTransitioning(false);
+      setVisiblePanels(new Set([finalIndex]));
+      clearInteractionLocks();
+    }, 320);
+  }, [clearInteractionLocks]);
 
   // Reset offset when activeIndex changes externally (e.g. tab button tap)
   useEffect(() => {
@@ -28,20 +55,23 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children,
     if (activeIndex > 0) panels.add(activeIndex - 1);
     if (activeIndex < count - 1) panels.add(activeIndex + 1);
     setVisiblePanels(panels);
-    const t = setTimeout(() => {
-      setTransitioning(false);
-      // After transition, only keep active panel visible
-      setVisiblePanels(new Set([activeIndex]));
-    }, 320);
-    return () => clearTimeout(t);
-  }, [activeIndex, count]);
+    scheduleSettle(activeIndex);
+    return () => {
+      if (settleTimerRef.current) {
+        clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
+    };
+  }, [activeIndex, count, scheduleSettle]);
 
   const onTouchStart = useCallback((e) => {
-    // Show adjacent panels so they're visible during drag
-    const panels = new Set([activeIndex]);
-    if (activeIndex > 0) panels.add(activeIndex - 1);
-    if (activeIndex < count - 1) panels.add(activeIndex + 1);
-    setVisiblePanels(panels);
+    // Don't start a gesture from form controls / buttons — lets taps pass through cleanly
+    const { target } = e;
+    if (target && target.closest && target.closest('button, a, input, textarea, select, [role="button"], [data-swipe-ignore]')) {
+      touchRef.current.dragging = false;
+      touchRef.current.locked = null;
+      return;
+    }
 
     touchRef.current = {
       startX: e.touches[0].clientX,
@@ -51,8 +81,10 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children,
       dragging: true,
       locked: null,
     };
-    setTransitioning(false);
-  }, [activeIndex, count]);
+    // NOTE: don't mount neighbor panels yet — wait until we've confirmed
+    // a horizontal drag. That way a plain tap never triggers a heavy re-render
+    // of sibling tabs, which is what was racing with click dispatch.
+  }, []);
 
   const onTouchMove = useCallback((e) => {
     const t = touchRef.current;
@@ -61,25 +93,36 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children,
     const dx = e.touches[0].clientX - t.startX;
     const dy = e.touches[0].clientY - t.startY;
 
-    // Lock direction on first significant move
+    // Lock direction on first significant move. Require dx > dy AND dx > 8px
+    // for horizontal lock — otherwise prefer vertical so page scroll is smooth.
     if (t.locked === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-      t.locked = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+        t.locked = 'h';
+        // Only now — once we KNOW it's a horizontal swipe — mount neighbors
+        const panels = new Set([activeIndex]);
+        if (activeIndex > 0) panels.add(activeIndex - 1);
+        if (activeIndex < count - 1) panels.add(activeIndex + 1);
+        setVisiblePanels(panels);
+        setTransitioning(false);
+      } else {
+        t.locked = 'v';
+      }
     }
 
-    if (t.locked === 'v') return;
-    if (t.locked === 'h') {
-      // Prevent vertical scroll while swiping horizontally
-      e.preventDefault();
-      // Stop propagation so parent swipe handlers don't fire
-      e.stopPropagation();
-    }
+    if (t.locked !== 'h') return;
+
+    // Horizontal swipe confirmed — prevent vertical scroll jitter
+    // (React 17+ listeners are passive, so preventDefault is a no-op there;
+    // that's fine — touchAction:pan-y on the container is what actually blocks it).
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
 
     t.currentX = e.touches[0].clientX;
 
     // Apply resistance at edges
     let raw = dx;
     if ((activeIndex === 0 && raw > 0) || (activeIndex === count - 1 && raw < 0)) {
-      raw = raw * 0.25; // rubber band
+      raw *= 0.25; // rubber band
     }
 
     setOffset(raw);
@@ -87,12 +130,14 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children,
 
   const onTouchEnd = useCallback(() => {
     const t = touchRef.current;
+    const wasHorizontal = t.locked === 'h';
     t.dragging = false;
 
-    if (t.locked !== 'h') {
+    if (!wasHorizontal) {
+      // Pure tap or vertical scroll — make sure nothing is stuck
       setOffset(0);
-      // Collapse back to just active panel
       setVisiblePanels(new Set([activeIndex]));
+      clearInteractionLocks();
       return;
     }
 
@@ -114,15 +159,27 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children,
 
     setOffset(0);
     setTransitioning(true);
-    setTimeout(() => {
-      setTransitioning(false);
-      setVisiblePanels(new Set([newIndex]));
-    }, 320);
 
     if (newIndex !== activeIndex) {
+      // Commit the change; the parent will feed the new activeIndex back in
+      // and the useEffect will schedule the final settle. Meanwhile we still
+      // fall through to scheduleSettle below as a safety net so flags can
+      // never get stuck if the parent ignores the callback.
       onChangeIndex(newIndex);
     }
-  }, [activeIndex, count, onChangeIndex]);
+
+    // Always schedule a settle — works for swipe-back (newIndex === activeIndex)
+    // AND as a belt-and-suspenders for the commit path.
+    scheduleSettle(newIndex);
+  }, [activeIndex, count, onChangeIndex, scheduleSettle, clearInteractionLocks]);
+
+  const onTouchCancel = useCallback(() => {
+    // OS can cancel a touch (e.g. phone call, notification). Never leave the
+    // track mid-drag — always snap back and release all locks.
+    setOffset(0);
+    setTransitioning(true);
+    scheduleSettle(activeIndex);
+  }, [activeIndex, scheduleSettle]);
 
   const translateX = -activeIndex * 100 + (offset / (containerRef.current?.offsetWidth || 375)) * 100;
 
@@ -134,8 +191,10 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children,
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchCancel}
     >
       <div
+        ref={trackRef}
         className="flex"
         style={{
           transform: `translateX(${translateX}%)`,
@@ -145,15 +204,24 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children,
       >
         {React.Children.map(children, (child, i) => {
           const isVisible = visiblePanels.has(i);
+          const isActive = i === activeIndex;
           return (
             <div
               key={i}
               role="tabpanel"
               id={tabKeys?.[i] ? `tabpanel-${tabKeys[i]}` : undefined}
               aria-labelledby={tabKeys?.[i] ? `tab-${tabKeys[i]}` : undefined}
-              aria-hidden={i !== activeIndex}
+              aria-hidden={!isActive}
               className="w-full shrink-0"
-              style={isVisible ? { minHeight: 1 } : { height: 0, overflow: 'hidden', visibility: 'hidden' }}
+              style={
+                isVisible
+                  ? {
+                      minHeight: 1,
+                      // Inactive but visible (neighbor during swipe) must not steal clicks
+                      pointerEvents: isActive ? 'auto' : 'none',
+                    }
+                  : { height: 0, overflow: 'hidden', visibility: 'hidden', pointerEvents: 'none' }
+              }
             >
               {child}
             </div>

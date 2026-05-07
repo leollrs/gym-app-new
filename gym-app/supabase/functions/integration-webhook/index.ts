@@ -105,9 +105,29 @@ async function webhookAdapter(
     headers['X-Webhook-Signature'] = `sha256=${hex}`;
   }
 
-  const resp = await fetch(url, { method: 'POST', headers, body: bodyStr });
-  const respBody = await resp.text();
-  return { status: resp.status, body: respBody.substring(0, 2000) };
+  // Bound the outbound webhook with a 5s timeout. If the upstream is
+  // slow or unreachable, abort silently — do not retry, do not surface
+  // the abort to the caller as a 5xx. Log and return a synthetic result
+  // so the integration log records the failure.
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: bodyStr,
+      signal: AbortSignal.timeout(5000),
+    });
+    const respBody = await resp.text();
+    return { status: resp.status, body: respBody.substring(0, 2000) };
+  } catch (err) {
+    const isAbort = (err as { name?: string })?.name === 'AbortError'
+      || (err as { name?: string })?.name === 'TimeoutError';
+    if (isAbort) {
+      console.warn(`[integration-webhook] outbound fetch to ${url} aborted after 5s`);
+      return { status: 504, body: 'Outbound webhook timeout' };
+    }
+    console.warn(`[integration-webhook] outbound fetch to ${url} failed:`, (err as Error)?.message);
+    return { status: 502, body: 'Outbound webhook failed' };
+  }
 }
 
 const ADAPTERS: Record<string, typeof webhookAdapter> = {
@@ -175,6 +195,21 @@ serve(async (req: Request) => {
 
     // Read raw body for signature verification (must happen before .json())
     const rawBody = await req.text();
+
+    // Payload size cap — reject large bodies up-front before any work.
+    if (rawBody.length > 1_000_000) {
+      return jsonResp({ error: 'payload_too_large' }, 413);
+    }
+
+    // When cron-authed, a webhook signature is mandatory — do not allow
+    // the warning-only fallback path. Service-role / admin JWT auth still
+    // permits a missing signature for backward compatibility.
+    const incomingSigEarly =
+      req.headers.get('x-webhook-signature') ?? req.headers.get('x-signature');
+    if (isCronAuth && !incomingSigEarly) {
+      return jsonResp({ error: 'signature_required_for_cron' }, 401);
+    }
+
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(rawBody);

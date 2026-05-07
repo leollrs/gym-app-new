@@ -7,7 +7,9 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const APNS_KEY_ID = Deno.env.get('APNS_KEY_ID') || '';
 const APNS_TEAM_ID = Deno.env.get('APNS_TEAM_ID') || '';
 const APNS_PRIVATE_KEY = Deno.env.get('APNS_PRIVATE_KEY') || '';
-const APNS_HOST = Deno.env.get('APNS_HOST') || 'api.sandbox.push.apple.com';
+// Default to APNs PRODUCTION host. Sandbox (api.sandbox.push.apple.com) is for
+// dev builds only and MUST be set explicitly via the APNS_HOST env var.
+const APNS_HOST = Deno.env.get('APNS_HOST') || 'api.push.apple.com';
 const APNS_BUNDLE_ID = 'com.tugympr.app';
 
 // FCM config
@@ -16,6 +18,59 @@ const FCM_CLIENT_EMAIL = Deno.env.get('FCM_CLIENT_EMAIL') || '';
 const FCM_PRIVATE_KEY = Deno.env.get('FCM_PRIVATE_KEY') || '';
 
 import { decode as base64Decode } from 'https://deno.land/std@0.177.0/encoding/base64.ts';
+
+// ── Timing-safe comparison (HMAC-based, no length leak) ─────
+// Mirrors the helper in auto-assign-referral-rewards / compute-churn-scores.
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const keyA = await crypto.subtle.importKey('raw', enc.encode(a), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const keyB = await crypto.subtle.importKey('raw', enc.encode(b), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const msg = enc.encode('timing-safe-compare');
+  const [sigA, sigB] = await Promise.all([
+    crypto.subtle.sign('HMAC', keyA, msg),
+    crypto.subtle.sign('HMAC', keyB, msg),
+  ]);
+  const bytesA = new Uint8Array(sigA);
+  const bytesB = new Uint8Array(sigB);
+  if (bytesA.length !== bytesB.length) return false;
+  let result = 0;
+  for (let i = 0; i < bytesA.length; i++) result |= bytesA[i] ^ bytesB[i];
+  return result === 0;
+}
+
+// ── Local time helpers ──────────────────────────────────────
+function localHour(timezone: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric', hour12: false, timeZone: timezone,
+    }).formatToParts(new Date());
+    const hourStr = parts.find(p => p.type === 'hour')?.value ?? '0';
+    let hour = parseInt(hourStr, 10);
+    if (hour === 24) hour = 0;
+    return hour;
+  } catch {
+    return new Date().getUTCHours();
+  }
+}
+
+function localDayOfWeek(timezone: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short', timeZone: timezone,
+    }).formatToParts(new Date());
+    const wd = parts.find(p => p.type === 'weekday')?.value ?? 'Sun';
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
+  } catch {
+    return new Date().getUTCDay();
+  }
+}
+
+// Apple G4.5.4 + general UX: no pushes between 10pm and 7am local time.
+// Returns true if the push should be SKIPPED (in-app row still inserted).
+function isQuietHours(timezone: string): boolean {
+  const hour = localHour(timezone);
+  return hour >= 22 || hour < 7;
+}
 
 // ── APNs JWT ────────────────────────────────────────────────
 let apnsJwtCache: { jwt: string; expiresAt: number } | null = null;
@@ -77,7 +132,18 @@ async function getFCMAccessToken(): Promise<string> {
 }
 
 // ── Send push to a user's devices ───────────────────────────
-async function sendPush(supabase: ReturnType<typeof createClient>, profileId: string, title: string, body: string, data: Record<string, string> = {}) {
+// `skipPush` — when true, no push is sent (caller has already decided this
+// based on quiet hours / per-user opt-out). The DB notification row is still
+// written by the caller, mirroring the client-side quiet-hours pattern.
+async function sendPush(
+  supabase: ReturnType<typeof createClient>,
+  profileId: string,
+  title: string,
+  body: string,
+  data: Record<string, string> = {},
+  skipPush = false,
+) {
+  if (skipPush) return;
   const { data: tokens } = await supabase.from('push_tokens').select('token, platform').eq('profile_id', profileId);
   if (!tokens?.length) return;
 
@@ -139,14 +205,36 @@ interface Member {
   gym_id: string;
   full_name: string;
   language: string | null;
-  training_days: number[] | null;
+  // English day names: ['Monday','Wednesday','Friday'] — see migration 0059.
+  preferred_training_days: string[] | null;
   last_active_at: string | null;
   created_at: string;
+  // Resolved timezone for quiet-hours computation. Pulled from
+  // profiles.timezone if/when that column exists, otherwise gyms.timezone,
+  // otherwise 'America/New_York'.
+  timezone: string;
+  // notif_reengagement opt-in for re-engagement / "we miss you" pushes
+  // (Apple G4.5.4 — re-engagement requires explicit opt-in). The column
+  // does not exist yet — `null` (legacy) is treated as enabled. The
+  // upcoming migration will add this column DEFAULT FALSE so new accounts
+  // must opt in explicitly. Flag for the migration agent.
+  notif_reengagement: boolean | null;
+  // Per-category opt-out columns (migration 0097)
+  notif_workout_reminders: boolean | null;
+  notif_streak_alerts: boolean | null;
+  notif_friend_activity: boolean | null;
+  notif_push_enabled: boolean | null;
 }
 
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 async function checkWorkoutReminder(supabase: ReturnType<typeof createClient>, member: Member, today: string, dayOfWeek: number) {
-  // Only on their training days
-  if (member.training_days && !member.training_days.includes(dayOfWeek)) return;
+  if (member.notif_workout_reminders === false) return;
+
+  // Only on their preferred training days (English day names — see migration 0059)
+  const todayName = DAY_NAMES[dayOfWeek];
+  const trainingDays = member.preferred_training_days || [];
+  if (trainingDays.length > 0 && !trainingDays.includes(todayName)) return;
 
   const lang = member.language || 'en';
   const dedupKey = `sched_workout_${member.id}_${today}`;
@@ -162,20 +250,54 @@ async function checkWorkoutReminder(supabase: ReturnType<typeof createClient>, m
     .eq('profile_id', member.id).eq('status', 'completed').gte('started_at', today);
   if ((sessionsToday ?? 0) > 0) return;
 
-  const title = msg(lang, `Time to train, ${firstName}!`, `¡Hora de entrenar, ${firstName}!`);
-  const body = msg(lang, "Your workout is waiting. Let's make today count!", '¡Tu entreno te espera. Haz que hoy cuente!');
+  // Try to find a matching routine for variety (rotate by day index in their training schedule)
+  let routineName: string | null = null;
+  const dayIdx = trainingDays.indexOf(todayName);
+  if (dayIdx >= 0) {
+    const { data: routines } = await supabase.from('routines')
+      .select('id, name')
+      .eq('created_by', member.id)
+      .eq('is_template', false)
+      .order('created_at', { ascending: true });
+    if (routines?.length) routineName = routines[dayIdx % routines.length]?.name || null;
+  }
+
+  let title: string, body: string;
+  if (routineName) {
+    title = msg(lang,
+      firstName ? `${firstName}, it's ${routineName} day` : `It's ${routineName} day`,
+      firstName ? `${firstName}, hoy toca ${routineName}` : `Hoy toca ${routineName}`,
+    );
+    body = msg(lang,
+      `Your ${routineName} session is waiting. Hit it before the day gets away from you.`,
+      `Tu sesión de ${routineName} te espera. Dale antes de que se te pase el día.`,
+    );
+  } else {
+    title = msg(lang,
+      firstName ? `${firstName}, gym time` : 'Gym time',
+      firstName ? `${firstName}, hora de entrenar` : 'Hora de entrenar',
+    );
+    body = msg(lang,
+      `Today's a training day. ${todayName} is on the schedule — own it.`,
+      `Hoy toca entrenar. Está en tu plan — a por ello.`,
+    );
+  }
 
   const suffix = (count ?? 0) === 0 ? '' : '_2';
   await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey + suffix);
-  await sendPush(supabase, member.id, title, body, { route: '/workouts', type: 'workout_reminder' });
+  await sendPush(supabase, member.id, title, body, { route: '/workouts', type: 'workout_reminder' }, isQuietHours(member.timezone));
 }
 
 async function checkStreakAtRisk(supabase: ReturnType<typeof createClient>, member: Member, today: string) {
+  if (member.notif_streak_alerts === false) return;
+
   const { data: streakData } = await supabase.from('streak_cache')
-    .select('current_streak, last_activity_date')
+    .select('current_streak_days, last_activity_date')
     .eq('profile_id', member.id).maybeSingle();
 
-  if (!streakData || (streakData.current_streak || 0) < 3) return;
+  // Column was renamed in migration 0352 — old `current_streak` no longer exists.
+  const streak = streakData?.current_streak_days || 0;
+  if (!streakData || streak < 3) return;
 
   // Check if last activity was yesterday
   const lastDate = new Date(streakData.last_activity_date);
@@ -185,16 +307,19 @@ async function checkStreakAtRisk(supabase: ReturnType<typeof createClient>, memb
 
   const dedupKey = `sched_streak_${member.id}_${today}`;
   const lang = member.language || 'en';
-  const streak = streakData.current_streak;
+  const firstName = member.full_name?.split(' ')[0] || '';
 
-  const title = msg(lang, '🔥 Your streak is at risk!', '🔥 ¡Tu racha está en riesgo!');
+  const title = msg(lang,
+    firstName ? `${firstName}, your streak ends at midnight 🔥` : 'Your streak ends at midnight 🔥',
+    firstName ? `${firstName}, tu racha termina a medianoche 🔥` : 'Tu racha termina a medianoche 🔥',
+  );
   const body = msg(lang,
-    `Your ${streak}-day streak breaks at midnight. One workout keeps it alive!`,
-    `¡Tu racha de ${streak} días se rompe a medianoche. Un entreno la mantiene viva!`
+    `Your ${streak}-day streak ends at midnight. 30 minutes today and it survives.`,
+    `Tu racha de ${streak} días termina a medianoche. 30 minutos hoy y la salvas.`
   );
 
   await insertNotif(supabase, member.id, member.gym_id, 'streak_warning', title, body, dedupKey);
-  await sendPush(supabase, member.id, title, body, { route: '/', type: 'streak_warning' });
+  await sendPush(supabase, member.id, title, body, { route: '/', type: 'streak_warning' }, isQuietHours(member.timezone));
 }
 
 async function checkReengagement(supabase: ReturnType<typeof createClient>, member: Member, today: string, nowMs: number) {
@@ -215,46 +340,154 @@ async function checkReengagement(supabase: ReturnType<typeof createClient>, memb
 
   let title: string, body: string;
   if (daysInactive >= 14) {
-    title = msg(lang, `${firstName}, your gym misses you!`, `¡${firstName}, tu gym te extraña!`);
-    body = msg(lang, "It's been a while. Come back and crush your goals — we're here for you.", 'Ha pasado un tiempo. Vuelve y cumple tus metas — estamos aquí para ti.');
+    title = msg(lang,
+      firstName ? `${firstName}, ready to come back?` : 'Ready to come back?',
+      firstName ? `${firstName}, ¿listo para volver?` : '¿Listo para volver?',
+    );
+    body = msg(lang,
+      "It's been a while. One light session today and you're back in motion — we're not keeping score.",
+      'Ha pasado un tiempo. Una sesión ligera hoy y vuelves a moverte — no llevamos la cuenta.',
+    );
   } else if (daysInactive >= 7) {
-    title = msg(lang, `Hey ${firstName}, time to get back!`, `¡Hey ${firstName}, hora de volver!`);
-    body = msg(lang, "A week without training? Let's fix that today.", '¿Una semana sin entrenar? Arreglemos eso hoy.');
+    title = msg(lang,
+      firstName ? `${firstName}, ready to come back?` : 'Ready to come back?',
+      firstName ? `${firstName}, ¿listo para volver?` : '¿Listo para volver?',
+    );
+    body = msg(lang,
+      `Over a week off. ${firstName ? firstName + ', ' : ''}your body's ready — even a light session puts you back on track.`,
+      `Más de una semana fuera. ${firstName ? firstName + ', ' : ''}tu cuerpo está listo — incluso una sesión ligera te devuelve al ritmo.`,
+    );
+  } else if (daysInactive >= 5) {
+    title = msg(lang,
+      firstName ? `${firstName}, don't lose momentum` : "Don't lose momentum",
+      firstName ? `${firstName}, no pierdas el impulso` : 'No pierdas el impulso',
+    );
+    body = msg(lang,
+      `${firstName ? firstName + ', ' : ''}you're 5 days out. Don't lose the progress you built.`,
+      `${firstName ? firstName + ', ' : ''}llevas 5 días sin entrenar. No pierdas lo que has construido.`,
+    );
   } else {
-    title = msg(lang, `${firstName}, don't lose momentum!`, `¡${firstName}, no pierdas el impulso!`);
-    body = msg(lang, `${daysInactive} days without a workout. Today is the day to come back!`, `${daysInactive} días sin entrenar. ¡Hoy es el día de volver!`);
+    title = msg(lang,
+      firstName ? `${firstName}, don't lose momentum` : "Don't lose momentum",
+      firstName ? `${firstName}, no pierdas el impulso` : 'No pierdas el impulso',
+    );
+    body = msg(lang,
+      `${firstName ? firstName + ', ' : ''}${daysInactive} days off. Ten minutes today rebuilds the habit.`,
+      `${firstName ? firstName + ', ' : ''}${daysInactive} días sin entrenar. Diez minutos hoy reconstruyen el hábito.`,
+    );
   }
 
+  // Apple G4.5.4: re-engagement / "we miss you" pushes require explicit opt-in.
+  // Gate the PUSH on notif_reengagement (treat null/legacy as opt-in for
+  // backward compatibility — the upcoming migration will add this column
+  // DEFAULT FALSE so new accounts must opt in explicitly). The in-app
+  // notification row is always written regardless, since other lifecycle
+  // automation (admin dashboards, in-app surfacing) still depends on it.
   await insertNotif(supabase, member.id, member.gym_id, 'churn_followup', title, body, dedupKey);
-  await sendPush(supabase, member.id, title, body, { route: '/', type: 'churn_followup' });
+  const reengagementOptedIn = member.notif_reengagement !== false; // null/true → allow
+  const skipPush = !reengagementOptedIn || isQuietHours(member.timezone);
+  await sendPush(supabase, member.id, title, body, { route: '/', type: 'churn_followup' }, skipPush);
 }
 
 async function checkNutritionReminder(supabase: ReturnType<typeof createClient>, member: Member, today: string) {
-  // Only if member has logged food before
-  const { count: foodLogs } = await supabase.from('food_log').select('id', { count: 'exact', head: true })
+  // Only if member has logged food before (correct table is `food_logs` plural — see migration 0048)
+  const { count: foodLogs } = await supabase.from('food_logs').select('id', { count: 'exact', head: true })
     .eq('profile_id', member.id).limit(1);
   if ((foodLogs ?? 0) === 0) return;
 
-  // Only if they haven't logged food today
-  const { count: todayLogs } = await supabase.from('food_log').select('id', { count: 'exact', head: true })
-    .eq('profile_id', member.id).gte('logged_at', today);
+  // Only if they haven't logged food today (column is `log_date` DATE — not `logged_at`)
+  const { count: todayLogs } = await supabase.from('food_logs').select('id', { count: 'exact', head: true })
+    .eq('profile_id', member.id).eq('log_date', today);
   if ((todayLogs ?? 0) > 0) return;
 
   // Max 1 per day
   const dedupKey = `sched_nutrition_${member.id}_${today}`;
   const lang = member.language || 'en';
+  const firstName = member.full_name?.split(' ')[0] || '';
 
-  const title = msg(lang, "Don't forget your meals!", '¡No olvides tus comidas!');
-  const body = msg(lang, 'Log your meals to stay on track with your nutrition goals.', 'Registra tus comidas para cumplir tus metas de nutrición.');
+  const title = msg(lang,
+    firstName ? `${firstName}, log today's food` : "Log today's food",
+    firstName ? `${firstName}, registra la comida de hoy` : 'Registra la comida de hoy',
+  );
+  const body = msg(lang,
+    'Nothing tracked yet. Even a quick estimate keeps you on target.',
+    'Aún no has registrado nada. Una estimación rápida te mantiene en tus números.',
+  );
 
   await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey);
-  await sendPush(supabase, member.id, title, body, { route: '/nutrition', type: 'workout_reminder' });
+  await sendPush(supabase, member.id, title, body, { route: '/nutrition', type: 'workout_reminder' }, isQuietHours(member.timezone));
+}
+
+async function checkRestDay(supabase: ReturnType<typeof createClient>, member: Member, today: string, dayOfWeek: number) {
+  if (member.notif_workout_reminders === false) return;
+
+  const trainingDays = member.preferred_training_days || [];
+  if (!trainingDays.length) return;
+
+  const todayName = DAY_NAMES[dayOfWeek];
+  if (trainingDays.includes(todayName)) return; // training day — different notif fires
+
+  const dedupKey = `sched_rest_${member.id}_${today}`;
+  // Already sent today?
+  const { count } = await supabase.from('notifications').select('id', { count: 'exact', head: true })
+    .eq('profile_id', member.id).eq('dedup_key', dedupKey);
+  if ((count ?? 0) > 0) return;
+
+  // Only acknowledge for members training in the last 7 days — don't congratulate ghost users
+  const weekAgo = new Date(Date.now() - 7 * MS_PER_DAY).toISOString();
+  const { count: recent } = await supabase.from('workout_sessions').select('id', { count: 'exact', head: true })
+    .eq('profile_id', member.id).eq('status', 'completed').gte('started_at', weekAgo);
+  if ((recent ?? 0) === 0) return;
+
+  // Find next training day + matching routine
+  let nextTrainingDay: string | null = null;
+  for (let offset = 1; offset <= 7; offset++) {
+    const candidate = DAY_NAMES[(dayOfWeek + offset) % 7];
+    if (trainingDays.includes(candidate)) { nextTrainingDay = candidate; break; }
+  }
+
+  let nextRoutineName: string | null = null;
+  if (nextTrainingDay) {
+    const { data: routines } = await supabase.from('routines')
+      .select('id, name')
+      .eq('created_by', member.id)
+      .eq('is_template', false)
+      .order('created_at', { ascending: true });
+    if (routines?.length) {
+      const dayIdx = trainingDays.indexOf(nextTrainingDay);
+      nextRoutineName = routines[dayIdx % routines.length]?.name || null;
+    }
+  }
+
+  const lang = member.language || 'en';
+  const firstName = member.full_name?.split(' ')[0] || '';
+
+  const title = msg(lang,
+    firstName ? `Rest day, ${firstName} 🛌` : 'Rest day 🛌',
+    firstName ? `Día de descanso, ${firstName} 🛌` : 'Día de descanso 🛌',
+  );
+
+  let body: string;
+  if (nextRoutineName && nextTrainingDay) {
+    body = msg(lang,
+      `${nextTrainingDay} is ${nextRoutineName} day — eat well, sleep deep.`,
+      `${nextTrainingDay} toca ${nextRoutineName} — come bien, duerme profundo.`,
+    );
+  } else {
+    body = msg(lang,
+      'Recovery is where the gains lock in. Be ready tomorrow.',
+      'La recuperación es donde se consolidan las ganancias. Mañana lo das todo.',
+    );
+  }
+
+  await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey);
+  await sendPush(supabase, member.id, title, body, { route: '/', type: 'rest_day' }, isQuietHours(member.timezone));
 }
 
 async function checkWeightLogReminder(supabase: ReturnType<typeof createClient>, member: Member, today: string, nowMs: number) {
-  // Check last weight log
-  const { data: lastLog } = await supabase.from('body_metrics')
-    .select('logged_at').eq('profile_id', member.id).eq('metric_type', 'weight')
+  // Correct table is `body_weight_logs` (no `body_metrics` table) — see initial schema.
+  const { data: lastLog } = await supabase.from('body_weight_logs')
+    .select('logged_at').eq('profile_id', member.id)
     .order('logged_at', { ascending: false }).limit(1).maybeSingle();
 
   if (!lastLog) return; // never logged weight — don't nag
@@ -270,12 +503,19 @@ async function checkWeightLogReminder(supabase: ReturnType<typeof createClient>,
 
   const dedupKey = `sched_weight_${member.id}_${today}`;
   const lang = member.language || 'en';
+  const firstName = member.full_name?.split(' ')[0] || '';
 
-  const title = msg(lang, 'Time to log your weight!', '¡Hora de registrar tu peso!');
-  const body = msg(lang, 'Tracking weekly keeps you on target. Quick log takes 10 seconds.', 'Registrar semanalmente te mantiene en objetivo. Solo toma 10 segundos.');
+  const title = msg(lang,
+    firstName ? `${firstName}, time to weigh in` : 'Time to weigh in',
+    firstName ? `${firstName}, hora de pesarte` : 'Hora de pesarte',
+  );
+  const body = msg(lang,
+    `${daysSinceLog} days since your last log. Track it now.`,
+    `${daysSinceLog} días desde tu último registro. Regístralo ya.`,
+  );
 
   await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey);
-  await sendPush(supabase, member.id, title, body, { route: '/progress', type: 'workout_reminder' });
+  await sendPush(supabase, member.id, title, body, { route: '/progress', type: 'workout_reminder' }, isQuietHours(member.timezone));
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -283,59 +523,128 @@ async function checkWeightLogReminder(supabase: ReturnType<typeof createClient>,
 // ═══════════════════════════════════════════════════════════════
 
 Deno.serve(async (req) => {
+  // ── Auth: require valid cron secret OR service-role token ──
+  // Existing pg_cron job (migration 0280) sends Authorization: Bearer <service_role_key>.
+  // Newer cron entries should send X-Cron-Secret. Either is accepted so the
+  // existing pg_cron schedule keeps working without a forced migration.
+  const cronSecret = Deno.env.get('CRON_SECRET');
+  const incomingCronSecret = req.headers.get('X-Cron-Secret') ?? '';
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, '');
+
+  const cronOk = !!(cronSecret && incomingCronSecret && await timingSafeEqual(cronSecret, incomingCronSecret));
+  const serviceRoleOk = !!(bearerToken && SUPABASE_SERVICE_KEY && await timingSafeEqual(bearerToken, SUPABASE_SERVICE_KEY));
+
+  if (!cronOk && !serviceRoleOk) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const startTime = Date.now();
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   try {
     const now = new Date();
-    const hour = now.getUTCHours();
-
-    // Quiet hours: skip push between 10 PM and 7 AM local
-    // Since we don't know each user's timezone, use a broad window
-    // UTC 3-12 covers 10PM-7AM for most Americas timezones
-    if (hour >= 3 && hour <= 12) {
-      // It's nighttime in the Americas — skip
-      // (We still insert DB notifications, just skip push)
-    }
-
-    const today = now.toISOString().slice(0, 10);
-    const dayOfWeek = now.getDay(); // 0=Sun
+    // Each per-member check derives its own local hour / day from member.timezone,
+    // so the hourly cron tick simply iterates members and lets each check decide.
     const nowMs = now.getTime();
 
-    // Fetch all active members across all active gyms
-    const { data: gyms } = await supabase.from('gyms').select('id').eq('is_active', true);
+    // Fetch all active gyms with timezone (used as fallback for quiet hours).
+    const { data: gyms } = await supabase
+      .from('gyms')
+      .select('id, timezone')
+      .eq('is_active', true);
     if (!gyms?.length) return new Response(JSON.stringify({ message: 'No active gyms' }), { status: 200 });
 
     let totalProcessed = 0;
-    let totalPushed = 0;
 
     for (const gym of gyms) {
-      const { data: members } = await supabase
+      const gymTimezone = gym.timezone || 'America/New_York';
+
+      // NOTE: profiles.timezone and profiles.notif_reengagement do not yet
+      // exist as columns. Only select fields known to exist; resolve
+      // timezone via gym fallback and treat notif_reengagement as null
+      // (legacy = opt-in). Migration agent will add these columns and at
+      // that point this select can include them.
+      // FIX: was selecting `training_days` (non-existent column) — the column
+      // is `preferred_training_days` (TEXT[] of English day names, migration 0059).
+      // The bad select previously caused this query to error out and the
+      // entire edge function to silently skip every gym.
+      const { data: rawMembers, error: profErr } = await supabase
         .from('profiles')
-        .select('id, gym_id, full_name, language, training_days, last_active_at, created_at')
+        .select('id, gym_id, full_name, language, preferred_training_days, last_active_at, created_at, notif_workout_reminders, notif_streak_alerts, notif_friend_activity, notif_push_enabled')
         .eq('gym_id', gym.id)
         .eq('role', 'member')
         .eq('membership_status', 'active');
 
-      if (!members?.length) continue;
+      if (profErr) {
+        console.warn(`Profile fetch failed for gym ${gym.id}:`, profErr.message);
+        continue;
+      }
+      if (!rawMembers?.length) continue;
+
+      const members: Member[] = rawMembers
+        .filter((m: any) => m.notif_push_enabled !== false) // master toggle
+        .map((m: any) => ({
+          id: m.id,
+          gym_id: m.gym_id,
+          full_name: m.full_name,
+          language: m.language,
+          preferred_training_days: m.preferred_training_days,
+          last_active_at: m.last_active_at,
+          created_at: m.created_at,
+          // profiles.timezone → gyms.timezone → 'America/New_York'
+          timezone: m.timezone || gymTimezone,
+          // null = legacy opt-in (handled by checkReengagement gate)
+          notif_reengagement: m.notif_reengagement ?? null,
+          notif_workout_reminders: m.notif_workout_reminders ?? null,
+          notif_streak_alerts: m.notif_streak_alerts ?? null,
+          notif_friend_activity: m.notif_friend_activity ?? null,
+          notif_push_enabled: m.notif_push_enabled ?? null,
+        }));
 
       for (const member of members) {
         try {
-          // Run time-appropriate checks
-          // Morning run (6-10 AM UTC = ~1-5 AM EST, 8 AM-12 PM CET): workout reminder
-          if (hour >= 13 && hour <= 17) {
-            await checkWorkoutReminder(supabase, member, today, dayOfWeek);
+          // Each check gates itself on the member's LOCAL hour / day so the
+          // hourly cron only fires the right notification at the right moment.
+          // Quiet hours (10pm–7am local) are enforced inside sendPush().
+          const memberHour = localHour(member.timezone);
+          const memberDow = localDayOfWeek(member.timezone);
+          // For the date used in dedup keys, use the local date so dedup
+          // resets at member-local midnight rather than UTC midnight.
+          const memberToday = new Intl.DateTimeFormat('en-CA', {
+            year: 'numeric', month: '2-digit', day: '2-digit', timeZone: member.timezone,
+          }).format(now);
+
+          // Morning window (8–10am local): workout reminder OR rest day
+          if (memberHour >= 8 && memberHour <= 10) {
+            await checkWorkoutReminder(supabase, member, memberToday, memberDow);
+            await checkRestDay(supabase, member, memberToday, memberDow);
           }
 
-          // Afternoon run (17-21 UTC = ~12-4 PM EST): streak + nutrition
-          if (hour >= 17 && hour <= 23) {
-            await checkStreakAtRisk(supabase, member, today);
-            await checkNutritionReminder(supabase, member, today);
+          // Late morning / early afternoon (11am–1pm local): nutrition nudge if untracked
+          if (memberHour >= 11 && memberHour <= 13) {
+            await checkNutritionReminder(supabase, member, memberToday);
           }
 
-          // Any run: reengagement (3+ days inactive) + weight log (weekly)
-          await checkReengagement(supabase, member, today, nowMs);
-          await checkWeightLogReminder(supabase, member, today, nowMs);
+          // Late afternoon (4–6pm local): second workout reminder + streak warning
+          if (memberHour >= 16 && memberHour <= 18) {
+            await checkWorkoutReminder(supabase, member, memberToday, memberDow);
+            await checkStreakAtRisk(supabase, member, memberToday);
+          }
+
+          // Evening (7–9pm local): final streak warning + weight log
+          if (memberHour >= 19 && memberHour <= 21) {
+            await checkStreakAtRisk(supabase, member, memberToday);
+            await checkWeightLogReminder(supabase, member, memberToday, nowMs);
+          }
+
+          // Re-engagement (3+ days inactive) — fires once mid-morning, once mid-afternoon
+          if (memberHour === 9 || memberHour === 15) {
+            await checkReengagement(supabase, member, memberToday, nowMs);
+          }
 
           totalProcessed++;
         } catch (err) {

@@ -55,14 +55,48 @@ serve(async (req) => {
     }
     // ── END AUTH CHECK ─────────────────────────────────────────
 
+    // ── GYM USAGE CAP CHECK (must run BEFORE any expensive call) ──
+    {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('gym_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      const gymId = profile?.gym_id;
+      if (gymId) {
+        const { data: cap } = await supabase
+          .from('gym_usage_caps').select('*').eq('gym_id', gymId).maybeSingle();
+        const limit = cap?.ai_translate_monthly_cap ?? 20000;
+        const { data: ok } = await supabase.rpc('check_and_increment_gym_usage', {
+          p_gym_id: gymId,
+          p_endpoint: 'translate',
+          p_profile_id: user.id,
+          p_window: '30 days',
+          p_limit: limit,
+        });
+        if (!ok) {
+          return new Response(
+            JSON.stringify({ error: 'gym_monthly_cap_exceeded' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+    // ── END GYM USAGE CAP CHECK ─────────────────────────────────
+
     // ── Database-based rate limiting (60 requests per user per hour) ──
+    // Insert FIRST, then count, then reject if over the cap. This avoids the
+    // TOCTOU race where two concurrent requests both see count<60 and both
+    // insert, blowing past the limit. With insert-first the post-check is
+    // race-free because every winning request is already counted.
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'translate' });
     const { count, error: rlError } = await supabase
       .from('ai_rate_limits')
       .select('*', { count: 'exact', head: true })
       .eq('profile_id', user.id)
       .eq('endpoint', 'translate')
-      .gte('created_at', oneHourAgo);
+      .gte('requested_at', oneHourAgo);
 
     if (rlError) {
       console.error('Rate limit check failed:', rlError);
@@ -72,14 +106,12 @@ serve(async (req) => {
       );
     }
 
-    if ((count ?? 0) >= 60) {
+    if ((count ?? 0) > 60) {
       return new Response(
         JSON.stringify({ error: 'Rate limit exceeded — max 60 requests per hour' }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'translate' });
 
     if (!DEEPL_API_KEY) {
       return new Response(JSON.stringify({ error: 'DeepL API key not configured' }), {

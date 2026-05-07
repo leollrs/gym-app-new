@@ -2,6 +2,7 @@ import SwiftUI
 import WatchKit
 
 struct EndWorkoutConfirmView: View {
+    @EnvironmentObject var session: WatchSessionManager
     let elapsedTime: Int
     let completedSets: Int
     let onSaveAndEnd: () -> Void
@@ -13,9 +14,9 @@ struct EndWorkoutConfirmView: View {
             Image(systemName: "flag.checkered")
                 .font(.title3)
                 .foregroundColor(DS.gold)
-                .accessibilityLabel("Workout complete")
+                .accessibilityLabel(session.tr("Workout complete", "Entrenamiento completo"))
 
-            Text("End Workout?")
+            Text(session.tr("End Workout?", "¿Terminar entrenamiento?"))
                 .font(.headline)
                 .foregroundColor(.white)
 
@@ -25,7 +26,7 @@ struct EndWorkoutConfirmView: View {
                     Text(DS.formatTime(elapsedTime))
                         .font(.system(.subheadline, design: .rounded).weight(.black))
                         .foregroundColor(.white)
-                    Text("TIME")
+                    Text(session.tr("TIME", "TIEMPO"))
                         .font(.caption2.weight(.heavy))
                         .foregroundColor(DS.mutedText)
                         .tracking(0.5)
@@ -34,7 +35,7 @@ struct EndWorkoutConfirmView: View {
                     Text("\(completedSets)")
                         .font(.system(.subheadline, design: .rounded).weight(.black))
                         .foregroundColor(.white)
-                    Text("SETS")
+                    Text(session.tr("SETS", "SERIES"))
                         .font(.caption2.weight(.heavy))
                         .foregroundColor(DS.mutedText)
                         .tracking(0.5)
@@ -43,16 +44,16 @@ struct EndWorkoutConfirmView: View {
             .padding(.vertical, 4)
 
             // Save & End
-            GoldButton("Save & End", icon: "checkmark.circle.fill") {
+            GoldButton(session.tr("Save & End", "Guardar y terminar"), icon: "checkmark.circle.fill") {
                 onSaveAndEnd()
             }
-            .accessibilityHint("Saves workout and returns to home")
+            .accessibilityHint(session.tr("Saves workout and returns to home", "Guarda el entrenamiento y vuelve al inicio"))
 
             // Keep Going
             Button {
                 onKeepGoing()
             } label: {
-                Text("Keep Going")
+                Text(session.tr("Keep Going", "Seguir"))
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(DS.gold)
                     .frame(maxWidth: .infinity)

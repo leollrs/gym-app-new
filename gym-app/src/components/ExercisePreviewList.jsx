@@ -1,8 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Dumbbell } from 'lucide-react';
 
 const ExercisePreviewList = ({ exercises = [], maxVisible = 3 }) => {
+  const { t } = useTranslation('pages');
   const visible = exercises.slice(0, maxVisible);
   const remaining = exercises.length - maxVisible;
 
@@ -11,7 +13,7 @@ const ExercisePreviewList = ({ exercises = [], maxVisible = 3 }) => {
   return (
     <div className="space-y-2">
       <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-1">
-        Up Next
+        {t('workoutHeroCard.upNext', 'Up Next')}
       </p>
       <div className="space-y-1.5">
         {visible.map((ex, i) => (
@@ -59,7 +61,7 @@ const ExercisePreviewList = ({ exercises = [], maxVisible = 3 }) => {
 
       {remaining > 0 && (
         <p className="text-[11px] text-[#4B5563] text-center pt-1">
-          +{remaining} more exercise{remaining !== 1 ? 's' : ''}
+          + {t('workoutHeroCard.moreExercises', { count: remaining, defaultValue: `${remaining} more exercise${remaining !== 1 ? 's' : ''}` })}
         </p>
       )}
     </div>

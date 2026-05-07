@@ -21,7 +21,14 @@ function jsonResp(body: Record<string, unknown>, status = 200) {
   });
 }
 
+// Strict email regex (RFC 5322 simplified)
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 Deno.serve(async (req) => {
+  const t0 = Date.now();
+  const padTiming = () =>
+    new Promise((r) => setTimeout(r, Math.max(200 - (Date.now() - t0), 0)));
+
   if (!corsHeaders) return new Response('Server misconfiguration: ALLOWED_ORIGIN not set', { status: 500 });
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
@@ -60,6 +67,9 @@ Deno.serve(async (req) => {
     }
     if (typeof email !== 'undefined' && typeof email !== 'string') {
       return jsonResp({ error: 'email must be a string' }, 400);
+    }
+    if (typeof email === 'string' && (!EMAIL_REGEX.test(email) || email.length > 254)) {
+      return jsonResp({ error: 'Invalid email format' }, 400);
     }
     if (!new_password || typeof new_password !== 'string' || new_password.length < 8) {
       return jsonResp({ error: 'Password must be at least 8 characters' }, 400);
@@ -157,6 +167,7 @@ Deno.serve(async (req) => {
       .update({ used_at: new Date().toISOString(), status: 'used' })
       .eq('id', request.id);
 
+    await padTiming();
     return jsonResp({ success: true });
   } catch (err) {
     console.error('reset-password error:', err);

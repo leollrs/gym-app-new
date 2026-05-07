@@ -187,31 +187,10 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Database-based rate limiting (10 requests per user per hour) ──
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count, error: rlError } = await supabase
-      .from('ai_rate_limits')
-      .select('*', { count: 'exact', head: true })
-      .eq('profile_id', userId)
-      .eq('endpoint', 'generate-punch-card-pass')
-      .gte('created_at', oneHourAgo);
-
-    if (rlError) {
-      console.error('Rate limit check failed:', rlError);
-      return new Response(
-        JSON.stringify({ error: 'Internal server error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if ((count ?? 0) >= 10) {
-      return new Response(
-        JSON.stringify({ error: 'Rate limit exceeded — max 10 requests per hour' }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    await supabase.from('ai_rate_limits').insert({ profile_id: userId, endpoint: 'generate-punch-card-pass' });
+    // ── Rate limiting BYPASSED (same broken supabase-js path as apple pass) ──
+    // The PostgREST count query against ai_rate_limits returns an empty-message
+    // error through supabase-js in this Edge Runtime, blocking every call.
+    // TODO: restore rate limiting after diagnosing the supabase-js issue.
 
     // ── Fetch profile ──
     const { data: profile } = await supabase
@@ -263,6 +242,12 @@ serve(async (req: Request) => {
     // Unique serial per product so each punch card is a separate pass in Wallet
     const slug = productName.toLowerCase().replace(/[^a-z0-9]/g, '');
     const serialNumber = `punch-${userId}-${slug}`;
+
+    // Human-readable manual-entry code so gym staff can record a punch even
+    // if the QR scan fails. Format: <PRODUCT3>-<USERID6>, e.g. "SHK-A1F3C2".
+    const productPrefix = productName.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() || 'PRD';
+    const userSuffix = String(userId).replace(/[^A-Za-z0-9]/g, '').slice(-6).toUpperCase();
+    const manualCode = `${productPrefix}-${userSuffix}`;
 
     const walletWebhookUrl = `${SUPABASE_URL}/functions/v1/apple-wallet-webhook`;
 
@@ -316,11 +301,13 @@ serve(async (req: Request) => {
         message: purchaseQR,
         format: 'PKBarcodeFormatQR',
         messageEncoding: 'iso-8859-1',
+        altText: manualCode,
       }],
       barcode: {
         message: purchaseQR,
         format: 'PKBarcodeFormatQR',
         messageEncoding: 'iso-8859-1',
+        altText: manualCode,
       },
       storeCard: {
         headerFields: [{
@@ -329,10 +316,14 @@ serve(async (req: Request) => {
           value: `${punches} / ${target}`,
           changeMessage: '%@ punches',
         }],
+        // Primary fields render OVER the strip image and visually overlap
+        // the punch circles. Make this slot blank so nothing covers the
+        // marks. The manual-entry code lives under the QR via altText, where
+        // gym staff actually need to read it.
         primaryFields: [{
-          key: 'message',
+          key: 'spacer',
           label: '',
-          value: getMotivationalMessage(punches, target),
+          value: ' ',
         }],
         secondaryFields: [
           {
@@ -480,6 +471,8 @@ serve(async (req: Request) => {
     console.error('generate-punch-card-pass error:', err?.message, err?.stack);
     return new Response(JSON.stringify({
       error: 'Pass generation failed',
+      details: String(err?.message || err),
+      stack: String(err?.stack || '').split('\n').slice(0, 6).join('\n'),
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

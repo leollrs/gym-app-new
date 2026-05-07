@@ -36,9 +36,9 @@ export default function GymPeopleTab({
       {/* Sub-tabs */}
       <div className="flex gap-1 mb-4">
         {[
-          { key: 'members', label: `Members (${members.length})` },
-          { key: 'staff', label: `Staff (${members.filter(m => m.role === 'admin' || m.role === 'trainer').length})` },
-          { key: 'invites', label: `Invites (${invites.length})` },
+          { key: 'members', label: t('platform.gymDetail.people.membersTab', { count: members.length }) },
+          { key: 'staff', label: t('platform.gymDetail.people.staffTab', { count: members.filter(m => m.role === 'admin' || m.role === 'trainer').length }) },
+          { key: 'invites', label: t('platform.gymDetail.people.invitesTab', { count: invites.length }) },
         ].map(st => (
           <button
             key={st.key}
@@ -62,8 +62,8 @@ export default function GymPeopleTab({
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search members..."
-                aria-label="Search members"
+                placeholder={t('platform.gymDetail.people.searchPlaceholder')}
+                aria-label={t('platform.gymDetail.people.searchAria')}
                 className="w-full bg-[#111827] border border-white/6 rounded-lg pl-9 pr-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors"
               />
             </div>
@@ -72,7 +72,7 @@ export default function GymPeopleTab({
               className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors whitespace-nowrap"
             >
               <UserPlus className="w-3.5 h-3.5" />
-              Add Member
+              {t('platform.gymDetail.people.addMember')}
             </button>
           </div>
 
@@ -80,18 +80,18 @@ export default function GymPeopleTab({
           <div className="bg-[#0F172A] border border-white/6 rounded-xl overflow-hidden">
             {/* Desktop header */}
             <div className="hidden md:grid md:grid-cols-[1fr_120px_100px_120px_120px_100px_100px_40px] gap-3 px-4 py-3 border-b border-white/6 text-[11px] text-[#6B7280] font-medium uppercase tracking-wider">
-              <span>Name</span>
-              <span>Username</span>
-              <span>Role</span>
-              <span>Joined</span>
-              <span>Last Active</span>
-              <span>Status</span>
-              <span>Actions</span>
+              <span>{t('platform.gymDetail.columns.name')}</span>
+              <span>{t('platform.gymDetail.columns.username')}</span>
+              <span>{t('platform.gymDetail.columns.role')}</span>
+              <span>{t('platform.gymDetail.columns.joined')}</span>
+              <span>{t('platform.gymDetail.columns.lastActive')}</span>
+              <span>{t('platform.gymDetail.columns.status')}</span>
+              <span>{t('platform.gymDetail.columns.actions')}</span>
               <span></span>
             </div>
 
             {filteredMembers.length === 0 && (
-              <div className="py-12 text-center text-[#6B7280] text-sm">No members found.</div>
+              <div className="py-12 text-center text-[#6B7280] text-sm">{t('platform.gymDetail.people.noMembersFound')}</div>
             )}
 
             {filteredMembers.map(m => (
@@ -115,7 +115,7 @@ export default function GymPeopleTab({
                   <select
                     value={m.role ?? 'member'}
                     onChange={e => updateMemberRole(m.id, e.target.value)}
-                    aria-label="Member role"
+                    aria-label={t('platform.gymDetail.people.memberRoleAria')}
                     className="bg-[#111827] border border-white/6 rounded px-1.5 py-0.5 text-[11px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer"
                   >
                     {ROLE_OPTIONS.map(r => (
@@ -148,7 +148,7 @@ export default function GymPeopleTab({
                   <select
                     value={m.membership_status ?? 'active'}
                     onChange={e => updateMemberStatus(m.id, e.target.value)}
-                    aria-label="Member status"
+                    aria-label={t('platform.gymDetail.people.memberStatusAria')}
                     className="bg-[#111827] border border-white/6 rounded px-1.5 py-0.5 text-[11px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer"
                   >
                     {STATUS_ACTIONS.map(s => (
@@ -162,8 +162,8 @@ export default function GymPeopleTab({
                   <button
                     onClick={() => deleteMember(m)}
                     className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#4B5563] hover:text-red-400 transition-colors"
-                    title="Delete member"
-                    aria-label="Delete member"
+                    title={t('platform.gymDetail.people.deleteMemberAria')}
+                    aria-label={t('platform.gymDetail.people.deleteMemberAria')}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -173,7 +173,7 @@ export default function GymPeopleTab({
           </div>
 
           <p className="text-[11px] text-[#6B7280] mt-2">
-            Showing {filteredMembers.length} of {members.length} members
+            {t('platform.gymDetail.people.showingOf', { filtered: filteredMembers.length, total: members.length })}
           </p>
         </div>
       )}
@@ -183,7 +183,7 @@ export default function GymPeopleTab({
         <div className="space-y-2">
           {members.filter(m => m.role === 'admin' || m.role === 'trainer' || m.role === 'super_admin').length === 0 ? (
             <div className="bg-[#0F172A] border border-white/6 rounded-xl p-8 text-center">
-              <p className="text-[13px] text-[#6B7280]">No staff members</p>
+              <p className="text-[13px] text-[#6B7280]">{t('platform.gymDetail.people.noStaff')}</p>
             </div>
           ) : (
             members.filter(m => m.role === 'admin' || m.role === 'trainer' || m.role === 'super_admin').map(m => (
@@ -206,7 +206,7 @@ export default function GymPeopleTab({
         <div className="space-y-2">
           {invites.length === 0 ? (
             <div className="bg-[#0F172A] border border-white/6 rounded-xl p-8 text-center">
-              <p className="text-[13px] text-[#6B7280]">No invites</p>
+              <p className="text-[13px] text-[#6B7280]">{t('platform.gymDetail.people.noInvites')}</p>
             </div>
           ) : (
             invites.map(inv => {
@@ -215,7 +215,7 @@ export default function GymPeopleTab({
                 <div key={inv.id} className="bg-[#0F172A] border border-white/6 rounded-xl px-4 py-3 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-medium text-[#E5E7EB] font-mono">{inv.code}</p>
-                    <p className="text-[11px] text-[#6B7280]">Role: {inv.role || 'member'}</p>
+                    <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.people.inviteRole', { role: inv.role || 'member' })}</p>
                   </div>
                   <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
                     inv.is_used ? 'bg-emerald-500/15 text-emerald-400' : isExpired ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-400'

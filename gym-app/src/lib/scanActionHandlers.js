@@ -168,6 +168,18 @@ export async function handleRewardRedemptionScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.memberNotFound', 'Member not found') };
   }
 
+  // Guard: ensure the redemption row belongs to the member encoded in the QR
+  // (prevents a stolen/forwarded QR from being claimed against the wrong member).
+  const { data: redemptionRow, error: redemptionErr } = await supabase
+    .from('reward_redemptions')
+    .select('id, profile_id, gym_id')
+    .eq('id', parsed.redemptionId)
+    .maybeSingle();
+
+  if (redemptionRow && !redemptionErr && redemptionRow.profile_id !== parsed.memberId) {
+    return { success: false, message: t('admin.scan.rewardMemberMismatch', 'Reward does not match this member') };
+  }
+
   // Claim via RPC directly — it's SECURITY DEFINER so it bypasses RLS
   // and handles all validation (status checks, permissions, point deduction)
   const { data: claimResult, error: claimErr } = await supabase.rpc('claim_redemption', {
@@ -335,11 +347,80 @@ export async function handleVoucherScan(parsed, ctx) {
   };
 }
 
+// ── Earned reward (birthday / referral milestone / manual grant) ────
+export async function handleEarnedRewardScan(parsed, ctx) {
+  const { gymId, supabase, t } = ctx;
+
+  if (!parsed?.qrCode || parsed.qrCode.length < 6) {
+    return { success: false, message: t('admin.scan.invalidQR', 'Invalid QR code') };
+  }
+
+  // Look up the earned reward by qr_code (admin RLS allows reading rows in own gym)
+  const { data: earned, error: lookupErr } = await supabase
+    .from('earned_rewards')
+    .select('id, gym_id, profile_id, reward_label, reward_label_es, reward_emoji, source, status')
+    .eq('qr_code', parsed.qrCode)
+    .maybeSingle();
+
+  if (lookupErr || !earned) {
+    return { success: false, message: t('admin.scan.earnedNotFound', 'Earned reward not found') };
+  }
+
+  if (earned.gym_id !== gymId) {
+    return { success: false, message: t('admin.scan.wrongGym', 'QR code is for a different gym') };
+  }
+
+  if (earned.status !== 'pending') {
+    return { success: false, message: t('admin.scan.alreadyClaimed', 'This reward was already claimed') };
+  }
+
+  const { data: member } = await supabase
+    .from('profiles')
+    .select('full_name, avatar_url, qr_external_id')
+    .eq('id', earned.profile_id)
+    .eq('gym_id', gymId)
+    .single();
+
+  if (!member) {
+    return { success: false, message: t('admin.scan.memberNotFound', 'Member not found') };
+  }
+
+  const { error: redeemErr } = await supabase.rpc('redeem_earned_reward', { p_id: earned.id });
+  if (redeemErr) {
+    logger.error('redeem_earned_reward failed:', redeemErr);
+    return { success: false, message: t('admin.scan.claimFailed', 'Failed to claim reward') };
+  }
+
+  logAdminAction('redeem_earned_reward', 'member', earned.profile_id, {
+    earned_id: earned.id, source: earned.source, reward: earned.reward_label,
+  });
+
+  return {
+    success: true,
+    message: t('admin.scan.earnedRewardClaimed', '{{name}} claimed: {{reward}}', {
+      name: member.full_name, reward: earned.reward_label,
+    }),
+    memberName: member.full_name,
+    memberId: earned.profile_id,
+    avatarUrl: member.avatar_url,
+    data: { rewardName: earned.reward_label, source: earned.source },
+    externalPayload: {
+      action: 'earned_reward',
+      memberId: earned.profile_id,
+      memberExternalId: member.qr_external_id,
+      memberName: member.full_name,
+      timestamp: new Date().toISOString(),
+      data: { earnedId: earned.id, rewardName: earned.reward_label, source: earned.source },
+    },
+  };
+}
+
 // ── Dispatcher ───────────────────────────────────────────
 const HANDLERS = {
   checkin: handleCheckinScan,
   purchase: handlePurchaseScan,
   reward_redemption: handleRewardRedemptionScan,
+  earned_reward: handleEarnedRewardScan,
   referral: handleReferralScan,
   voucher: handleVoucherScan,
 };

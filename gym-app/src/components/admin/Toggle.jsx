@@ -36,7 +36,7 @@ export default function Toggle({
       disabled={disabled}
       onClick={() => !disabled && onChange(!on)}
       className={`${trackClass} rounded-full relative flex-shrink-0 transition-colors focus:ring-2 focus:ring-[var(--color-accent)]/40 focus:outline-none ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-      style={{ backgroundColor: on ? 'var(--color-accent, #D4AF37)' : '#6B7280' }}
+      style={{ backgroundColor: on ? 'var(--color-accent, #D4AF37)' : 'var(--color-admin-text-sub)' }}
     >
       <span
         className={`absolute top-0.5 ${knobClass} rounded-full bg-white shadow transition-transform`}

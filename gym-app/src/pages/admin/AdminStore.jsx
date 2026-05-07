@@ -45,14 +45,14 @@ const categoryLabel = (cat, t) => {
 
 // ── Product Modal ──────────────────────────────────────────
 const PRODUCT_COVERS = [
-  { key: 'smoothie',   label: 'Batido',        icon: CupSoda,     gradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)' },
-  { key: 'guest_pass', label: 'Pase Invitado', icon: Ticket,      gradient: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)' },
-  { key: 'merch',      label: 'Merchandise',   icon: ShoppingBag, gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' },
-  { key: 'pt_session', label: 'Sesión PT',     icon: Dumbbell,    gradient: 'linear-gradient(135deg, #D4AF37 0%, #92751E 100%)' },
-  { key: 'free_month', label: 'Mes Gratis',    icon: Crown,       gradient: 'linear-gradient(135deg, #EC4899 0%, #BE185D 100%)' },
-  { key: 'discount',   label: 'Descuento',     icon: Percent,     gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' },
-  { key: 'water',      label: 'Agua/Bebida',   icon: Droplets,    gradient: 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)' },
-  { key: 'towel',      label: 'Toalla',        icon: Wind,        gradient: 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)' },
+  { key: 'smoothie',   labelKey: 'smoothie',  defaultLabel: 'Smoothie',   icon: CupSoda,     gradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)' },
+  { key: 'guest_pass', labelKey: 'guestPass', defaultLabel: 'Guest Pass', icon: Ticket,      gradient: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)' },
+  { key: 'merch',      labelKey: 'merch',     defaultLabel: 'Merch',      icon: ShoppingBag, gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' },
+  { key: 'pt_session', labelKey: 'ptSession', defaultLabel: 'PT Session', icon: Dumbbell,    gradient: 'linear-gradient(135deg, #D4AF37 0%, #92751E 100%)' },
+  { key: 'free_month', labelKey: 'freeMonth', defaultLabel: 'Free Month', icon: Crown,       gradient: 'linear-gradient(135deg, #EC4899 0%, #BE185D 100%)' },
+  { key: 'discount',   labelKey: 'discount',  defaultLabel: 'Discount',   icon: Percent,     gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' },
+  { key: 'water',      labelKey: 'drink',     defaultLabel: 'Drink',      icon: Droplets,    gradient: 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)' },
+  { key: 'towel',      labelKey: 'towel',     defaultLabel: 'Towel',      icon: Wind,        gradient: 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)' },
 ];
 
 function ProductCoverBadge({ preset, size = 40, iconSize = 18 }) {
@@ -105,7 +105,11 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!form.name.trim()) throw new Error(t('admin.store.nameRequired', 'Product name is required.'));
-      if (!form.price || parseFloat(form.price) < 0) throw new Error(t('admin.store.priceRequired', 'Valid price is required.'));
+      if (!form.price || parseFloat(form.price) <= 0) throw new Error(t('admin.store.priceRequired', 'Valid price is required.'));
+      if (form.punch_card_enabled) {
+        const pt = parseInt(form.punch_card_target);
+        if (!Number.isFinite(pt) || pt < 2 || pt > 50) throw new Error(t('admin.store.invalidPunchTarget', 'Punch target must be 2–50.'));
+      }
 
       const payload = {
         gym_id: gymId,
@@ -178,7 +182,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
                   className={`rounded-xl p-2.5 flex flex-col items-center gap-1 transition-all ${selected ? 'ring-2 ring-white scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
                   style={{ background: c.gradient }}>
                   <Icon size={20} className="text-white/90" />
-                  <span className="text-[8px] font-bold text-white/80 uppercase tracking-wide">{c.label}</span>
+                  <span className="text-[8px] font-bold text-white/80 uppercase tracking-wide">{t(`admin.store.covers.${c.labelKey}`, c.defaultLabel)}</span>
                 </button>
               );
             })}
@@ -376,56 +380,63 @@ const ProductsTab = ({ gymId, t, addProductOpen, onAddProductClose }) => {
           </AdminCard>
         </FadeIn>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {products.map((p, idx) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 md:gap-3">
+          {products.map((p, idx) => {
+            // category tone for tint
+            const toneMap = {
+              supplement: 'info', drink: 'info', snack: 'warn',
+              merchandise: 'coach', service: 'good', other: 'info',
+            };
+            const tone = toneMap[p.category] || 'info';
+            const tintBg = tone === 'good' ? 'var(--color-success-soft)'
+              : tone === 'warn' ? 'var(--color-warning-soft)'
+              : tone === 'coach' ? 'var(--color-coach-soft)'
+              : 'var(--color-info-soft)';
+            return (
             <FadeIn key={p.id} delay={idx * 40}>
-              <AdminCard hover>
-                <div className="flex items-start gap-3">
-                  {/* Cover / Emoji */}
-                  {p.cover_preset ? (
-                    <ProductCoverBadge preset={p.cover_preset} size={44} iconSize={20} />
-                  ) : (
-                    <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/6 flex items-center justify-center flex-shrink-0">
-                      <Package size={22} className="text-[#6B7280]" />
-                    </div>
-                  )}
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <p className={`text-[14px] font-semibold truncate ${p.is_active !== false ? 'text-[#E5E7EB]' : 'text-[#6B7280] line-through'}`}>
-                        {p.name}
-                      </p>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${categoryStyle(p.category)}`}>
-                        {categoryLabel(p.category, t)}
-                      </span>
-                      {p.is_active === false && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10">
-                          {t('admin.store.inactive', 'Inactive')}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3 text-[12px] text-[#9CA3AF]">
-                      <span className="font-semibold text-[#E5E7EB]">${parseFloat(p.price).toFixed(2)}</span>
-                      <span className="flex items-center gap-1">
-                        <Star size={11} className="text-[#D4AF37]" />
-                        {p.points_per_purchase ?? 0} {t('admin.store.pts', 'pts')}
-                      </span>
-                      {p.punch_card_enabled && (
-                        <span className="flex items-center gap-1 text-emerald-400">
-                          <Gift size={11} />
-                          {t('admin.store.freeEvery', '1 free / {{count}}', { count: p.punch_card_target })}
-                        </span>
-                      )}
-                    </div>
+              <div className={`admin-card p-3 sm:p-4 h-full flex flex-col ${p.is_active === false ? 'opacity-60' : ''}`}>
+                {/* Cover / Emoji */}
+                {p.cover_preset ? (
+                  <div className="mb-3">
+                    <ProductCoverBadge preset={p.cover_preset} size={44} iconSize={22} />
                   </div>
+                ) : (
+                  <div className="w-11 h-11 rounded-[11px] grid place-items-center flex-shrink-0 text-[22px] mb-3"
+                    style={{ background: tintBg }}>
+                    📦
+                  </div>
+                )}
+
+                {/* Name + category pill */}
+                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                  <span className="admin-kpi text-[14.5px]" style={{ fontWeight: 800 }}>
+                    {p.name}
+                  </span>
+                  <span className={`admin-pill admin-pill--${tone === 'info' ? 'info' : tone}`} style={{ fontSize: '9.5px' }}>
+                    {categoryLabel(p.category, t)}
+                  </span>
+                  {p.is_active === false && (
+                    <span className="admin-pill admin-pill--hot" style={{ fontSize: '9.5px' }}>
+                      {t('admin.store.inactive', 'Inactive')}
+                    </span>
+                  )}
+                </div>
+
+                {/* Price / points / punch meta */}
+                <div className="flex items-center gap-2.5 text-[11.5px] flex-wrap mb-2" style={{ color: 'var(--color-admin-text-muted)' }}>
+                  <span className="admin-mono font-bold" style={{ color: 'var(--color-admin-text)' }}>
+                    ${parseFloat(p.price).toFixed(2)}
+                  </span>
+                  <span>⭐ {p.points_per_purchase ?? 0} {t('admin.store.pts', 'pts')}</span>
+                  {p.punch_card_enabled && (
+                    <span>🎫 {t('admin.store.freeEvery', '1 free / {{count}}', { count: p.punch_card_target })}</span>
+                  )}
                 </div>
 
                 {/* Actions row */}
-                <div className="flex items-center justify-end gap-1 mt-3 pt-3 border-t border-white/[0.04]">
+                <div className="flex items-center justify-end gap-1 mt-auto pt-2 flex-nowrap">
                   {confirmDeleteId === p.id ? (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       <span className="text-[11px] text-[#9CA3AF]">{t('admin.store.deleteConfirm', 'Delete?')}</span>
                       <button
                         onClick={() => deleteMutation.mutate(p.id)}
@@ -444,34 +455,35 @@ const ProductsTab = ({ gymId, t, addProductOpen, onAddProductClose }) => {
                     <>
                       <button
                         onClick={() => toggleMutation.mutate({ id: p.id, is_active: p.is_active !== false })}
-                        className={`p-2 rounded-lg transition-colors ${
+                        className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
                           p.is_active !== false ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10' : 'text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.04]'
                         }`}
                         title={p.is_active !== false ? t('admin.store.deactivate', 'Deactivate') : t('admin.store.activate', 'Activate')}
                         aria-label={p.is_active !== false ? t('admin.store.deactivate', 'Deactivate product') : t('admin.store.activate', 'Activate product')}
                       >
-                        {p.is_active !== false ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                        {p.is_active !== false ? <ToggleRight size={16} className="sm:w-[18px] sm:h-[18px]" /> : <ToggleLeft size={16} className="sm:w-[18px] sm:h-[18px]" />}
                       </button>
                       <button
                         onClick={() => openEdit(p)}
                         aria-label={t('admin.store.editProduct', 'Edit product')}
-                        className="p-2 rounded-lg text-[#6B7280] hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                        className="p-1.5 sm:p-2 rounded-lg text-[#6B7280] hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none md:min-w-[44px] md:min-h-[44px]"
                       >
-                        <Pencil size={15} />
+                        <Pencil size={14} className="sm:w-[15px] sm:h-[15px]" />
                       </button>
                       <button
                         onClick={() => setConfirmDeleteId(p.id)}
                         aria-label={t('admin.store.deleteProduct', 'Delete product')}
-                        className="p-2 rounded-lg text-[#6B7280] hover:text-red-400 hover:bg-red-500/10 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                        className="p-1.5 sm:p-2 rounded-lg text-[#6B7280] hover:text-red-400 hover:bg-red-500/10 transition-colors flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none md:min-w-[44px] md:min-h-[44px]"
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={14} className="sm:w-[15px] sm:h-[15px]" />
                       </button>
                     </>
                   )}
                 </div>
-              </AdminCard>
+              </div>
             </FadeIn>
-          ))}
+          );
+          })}
         </div>
       )}
 
@@ -584,8 +596,8 @@ const RedemptionsTab = ({ gymId, t, dateFnsLocale }) => {
   return (
     <div className="space-y-4">
       {/* Date filters */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[140px]">
+      <div className="flex flex-wrap items-end gap-2.5 sm:gap-3">
+        <div className="flex-1 min-w-[130px] sm:min-w-[140px] sm:flex-initial">
           <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.store.from', 'From')}</label>
           <input
             type="date"
@@ -594,7 +606,7 @@ const RedemptionsTab = ({ gymId, t, dateFnsLocale }) => {
             className="w-full bg-white/[0.04] border border-white/8 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30 transition-all"
           />
         </div>
-        <div className="min-w-[140px]">
+        <div className="flex-1 min-w-[130px] sm:min-w-[140px] sm:flex-initial">
           <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.store.to', 'To')}</label>
           <input
             type="date"
@@ -616,7 +628,7 @@ const RedemptionsTab = ({ gymId, t, dateFnsLocale }) => {
       {/* Redemption queue */}
       {recentRedemptions.length > 0 && (
         <FadeIn delay={0.05}>
-          <AdminCard borderLeft="#10B981">
+          <AdminCard borderLeft="var(--color-success)">
             <div className="flex items-center gap-2 mb-3">
               <Gift size={14} className="text-emerald-400" />
               <SectionLabel>{t('admin.store.recentRedemptions', 'Recent Redemptions')}</SectionLabel>
@@ -707,15 +719,17 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
     enabled: !!gymId,
   });
 
-  // Load all gym members
+  // Load all gym members. Excludes deactivated/banned members so they don't
+  // surface in the redemption recipient picker (they can't redeem either way).
   const { data: allMembers = [], isLoading: membersLoading } = useQuery({
     queryKey: storeKeys.members(gymId),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, username, avatar_url, role')
+        .select('id, full_name, username, avatar_url, role, membership_status')
         .eq('gym_id', gymId)
         .in('role', ['member', 'trainer'])
+        .not('membership_status', 'in', '(deactivated,banned)')
         .order('full_name')
         .limit(500);
       if (error) throw error;
@@ -917,7 +931,7 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
           .eq('profile_id', redemption.profile_id);
       }
 
-      showToast(`${redemption.profiles?.full_name || 'Member'} — ${redemption.reward_name} (${redemption.points_spent} pts) ${t('admin.store.rewardClaimed', 'claimed!')}`, 'success');
+      showToast(`${redemption.profiles?.full_name || t('admin.store.memberFallback', 'Member')} — ${redemption.reward_name} (${redemption.points_spent} pts) ${t('admin.store.rewardClaimed', 'claimed!')}`, 'success');
     }
   };
 
@@ -928,7 +942,7 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
     <div className="space-y-6">
       {/* ── Log Purchase section ── */}
       <FadeIn>
-        <AdminCard borderLeft="#D4AF37">
+        <AdminCard borderLeft="var(--color-accent)">
           <div className="flex items-center gap-2 mb-4">
             <DollarSign size={14} className="text-[#D4AF37]" />
             <SectionLabel>{t('admin.store.logPurchase', 'Log Purchase')}</SectionLabel>
@@ -1065,9 +1079,10 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
                   </button>
                   <span className="text-[20px] font-bold text-[#E5E7EB] w-12 text-center tabular-nums">{quantity}</span>
                   <button
-                    onClick={() => setQuantity(q => q + 1)}
+                    onClick={() => setQuantity(q => Math.min(1000, q + 1))}
+                    disabled={quantity >= 1000}
                     aria-label={t('admin.store.increaseQuantity', 'Increase quantity')}
-                    className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/6 flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/12 transition-colors"
+                    className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/6 flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/12 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                   >
                     <Plus size={16} />
                   </button>
@@ -1251,7 +1266,7 @@ export default function AdminStore() {
   const [addProductOpen, setAddProductOpen] = useState(false);
   const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
 
-  useEffect(() => { document.title = `Admin - Store | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
+  useEffect(() => { document.title = `${t('admin.store.pageTitle', 'Admin - Store')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   const tabOptions = useMemo(() => [
     { key: 'products', label: t('admin.store.products', 'Products') },

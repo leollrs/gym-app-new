@@ -76,7 +76,7 @@ export default function SendMessageModal({ member, gymId, adminId, onClose, onSe
           </button>
           <button onClick={handleSend} disabled={sending || !msg.trim() || sent}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
-            style={{ background: sent ? 'rgba(16,185,129,0.15)' : 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: sent ? 'var(--color-success)' : 'var(--color-accent)', border: `1px solid ${sent ? 'rgba(16,185,129,0.25)' : 'color-mix(in srgb, var(--color-accent) 25%, transparent)'}` }}>
+            style={{ background: sent ? 'var(--color-success-soft)' : 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: sent ? 'var(--color-success)' : 'var(--color-accent)', border: `1px solid ${sent ? 'var(--color-success-soft)' : 'color-mix(in srgb, var(--color-accent) 25%, transparent)'}` }}>
             {sent ? <><CheckCircle size={14} /> {t('admin.churn.sent', 'Sent!')}</> : sending ? t('admin.churn.sendingMsg', 'Sending\u2026') : <><Send size={13} /> {t('admin.churn.sendMessage', 'Send Message')}</>}
           </button>
         </>

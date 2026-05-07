@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="false"
@@ -10,6 +11,8 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false"
         android:largeHeap="true"
+        android:localeConfig="@xml/locales_config"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:networkSecurityConfig="@xml/network_security_config">
 
         <activity
@@ -69,11 +72,20 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 
-        <!-- Foreground service for active workout tracking -->
-        <service
-            android:name="com.tugympr.app.WorkoutForegroundService"
-            android:foregroundServiceType="health"
-            android:exported="false" />
+        <!-- Workout tracking handled in foreground WebView; no foreground service required. iOS uses Live Activities. -->
+
+        <!-- Home screen widget -->
+        <receiver
+            android:name=".WorkoutWidget"
+            android:permission="android.permission.BIND_APPWIDGET"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/workout_widget_info" />
+        </receiver>
 
         <!-- FCM default notification channel -->
         <meta-data
@@ -98,11 +110,24 @@
     <!-- Permissions: Camera (QR scanning, food photos, progress photos) -->
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- Permissions: Storage (photo access) -->
+    <!-- Permissions: Storage (photo access)
+         Notes:
+         - READ_EXTERNAL_STORAGE: legacy gallery read, scoped to API ≤32 only.
+         - WRITE_EXTERNAL_STORAGE: legacy write, scoped to API ≤29 only (scoped storage on 30+).
+         - READ_MEDIA_IMAGES / READ_MEDIA_VIDEO are intentionally NOT declared.
+           App uses the system Photo Picker via Capacitor Camera v8 (CameraSource.Photos)
+           and one-shot HTML <input type="file"> for background photos and progress photos.
+           The Photo Picker / file input require NO media permissions on Android API 33+,
+           and we never enumerate the full gallery or read video libraries. Omitting these
+           permissions also removes the Google Play Photo & Video Permissions Declaration
+           requirement.
+         - READ_MEDIA_VISUAL_USER_SELECTED (API 34+): kept so the OS treats partial-photo
+           access (the new "Select photos…" option) as granted instead of denied if a
+           future code path ever requests media access. Safe to ship without the broader
+           media perms above. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
 
     <!-- Permissions: Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -111,11 +136,12 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Permissions: Boot (scheduled notifications) -->
+    <!-- Justified by @capacitor/local-notifications: the plugin contributes
+         <receiver android:name="com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver">
+         (with intent-filters for BOOT_COMPLETED / LOCKED_BOOT_COMPLETED / QUICKBOOT_POWERON)
+         via manifest merge, so scheduled local notifications survive device reboots.
+         See android/app/build/intermediates/merged_manifest for the resolved version. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-    <!-- Permissions: Foreground service (workout tracking) -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
 
     <!-- Permissions: Health / fitness (activity recognition for health plugin) -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
@@ -127,11 +153,52 @@
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
     <uses-permission android:name="android.permission.health.WRITE_WEIGHT" />
 
-    <!-- Permissions: Biometric (MFA) -->
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!--
+         Suppress unused permissions auto-injected by @capgo/capacitor-health to comply
+         with Play Health Apps attestation policy. The plugin's manifest declares 39
+         Health Connect permissions, but TuGymPR only uses 7 (declared above). All
+         others are removed via tools:node="remove" so they do not appear in the merged
+         manifest, the Play permission declaration form, or the Health Connect
+         permission picker shown to the user.
 
-    <!-- Permissions: Exact alarms for local notifications -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+         If a new health data type is ever needed, delete the corresponding remove line
+         AND add the matching uses-permission above.
+    -->
+    <uses-permission android:name="android.permission.health.WRITE_STEPS" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_DISTANCE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_SLEEP" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_RESPIRATORY_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_RESPIRATORY_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_OXYGEN_SATURATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_RESTING_HEART_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE_VARIABILITY" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_BLOOD_PRESSURE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_BLOOD_GLUCOSE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_BLOOD_GLUCOSE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_BODY_TEMPERATURE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_BODY_TEMPERATURE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_HEIGHT" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_HEIGHT" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_FLOORS_CLIMBED" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_FLOORS_CLIMBED" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_BODY_FAT" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_BODY_FAT" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_BASAL_BODY_TEMPERATURE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_BASAL_BODY_TEMPERATURE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_BASAL_METABOLIC_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_BASAL_METABOLIC_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_MINDFULNESS" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.WRITE_MINDFULNESS" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" tools:node="remove" />
 
     <!-- Hardware feature declarations (optional, not required) -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />

@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Share2 } from 'lucide-react';
+import { tg } from '../lib/genderText';
+import ShareAchievementSheet from './share/ShareAchievementSheet';
 
 // ── AchievementToast ──────────────────────────────────────────────────────────
 // Full-screen celebration overlay that sequences through earned achievements.
@@ -11,6 +14,7 @@ export default function AchievementToast({ achievements, onDone }) {
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Animate in on mount / when index changes
   useEffect(() => {
@@ -33,12 +37,12 @@ export default function AchievementToast({ achievements, onDone }) {
     }, 350);
   }, [index, achievements, onDone]);
 
-  // Auto-dismiss after 4 seconds
+  // Auto-dismiss after 4 seconds (paused while share sheet is open)
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || shareOpen) return;
     const t = setTimeout(() => advance(), 4000);
     return () => clearTimeout(t);
-  }, [visible, advance]);
+  }, [visible, advance, shareOpen]);
 
   if (!achievements?.length) return null;
 
@@ -133,13 +137,34 @@ export default function AchievementToast({ achievements, onDone }) {
             letterSpacing: '-0.01em',
           }}
         >
-          {t(current.labelKey, current.label)}
+          {tg(t, current.labelKey, { defaultValue: current.label })}
         </h2>
 
         {/* Description */}
-        <p className="text-[14px] leading-relaxed mb-8" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-[14px] leading-relaxed mb-5" style={{ color: 'var(--color-text-muted)' }}>
           {t(current.descKey, current.desc)}
         </p>
+
+        {/* Share button */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShareOpen(true);
+          }}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-4 transition-colors"
+          style={{
+            background: `${current.color}22`,
+            border: `1.5px solid ${current.color}55`,
+            color: current.color,
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: 0.4,
+          }}
+        >
+          <Share2 size={14} strokeWidth={2.4} />
+          {t('profile.share', 'Share')}
+        </button>
 
         {/* Dismiss hint */}
         <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
@@ -205,6 +230,23 @@ export default function AchievementToast({ achievements, onDone }) {
           to { opacity: 0.8; transform: scale(1.3); }
         }
       `}</style>
+
+      {shareOpen && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ShareAchievementSheet
+            open={shareOpen}
+            onClose={() => setShareOpen(false)}
+            achievement={{
+              key: current.key,
+              label: tg(t, current.labelKey, { defaultValue: current.label }),
+              description: t(current.descKey, current.desc),
+              icon: current.icon,
+              color: current.color,
+              unlockedAt: new Date().toISOString(),
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

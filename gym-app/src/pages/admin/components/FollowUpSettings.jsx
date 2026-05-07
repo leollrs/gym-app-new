@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
 import { FadeIn, AdminCard, AdminModal } from '../../../components/admin';
 import { formatDistanceToNow } from 'date-fns';
+import { es as esLocale, enUS as enLocale } from 'date-fns/locale';
 import logger from '../../../lib/logger';
 
 const DEFAULT_SETTINGS = {
@@ -37,8 +38,9 @@ const DEFAULT_MILESTONES = [
 ];
 
 export default function FollowUpSettings({ gymId, initialSettings, initialSteps, atRiskCount = 0, delay = 0 }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? esLocale : enLocale;
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [fupDraft, setFupDraft] = useState({ ...DEFAULT_SETTINGS, ...initialSettings });
@@ -95,7 +97,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
   );
 
   const lastRunLabel = initialSettings?.last_run_at
-    ? formatDistanceToNow(new Date(initialSettings.last_run_at), { addSuffix: true })
+    ? formatDistanceToNow(new Date(initialSettings.last_run_at), { addSuffix: true, locale: dateFnsLocale })
     : null;
 
   const CHANNEL_DEFAULTS = ['notification', 'email', 'sms'];
@@ -152,7 +154,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
             </span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button onClick={() => setFupDraft(d => ({ ...d, enabled: !d.enabled }))} aria-label={fupDraft.enabled ? 'Disable automated follow-up' : 'Enable automated follow-up'} className="flex items-center gap-1 transition-colors">
+            <button onClick={() => setFupDraft(d => ({ ...d, enabled: !d.enabled }))} aria-label={fupDraft.enabled ? t('admin.followUp.disableAria', 'Disable automated follow-up') : t('admin.followUp.enableAria', 'Enable automated follow-up')} className="flex items-center gap-1 transition-colors">
               {fupDraft.enabled ? <ToggleRight size={22} className="text-[#D4AF37]" /> : <ToggleLeft size={22} className="text-[#4B5563]" />}
             </button>
             <button onClick={() => setShowFollowUp(v => !v)} className="flex items-center gap-1 text-[11px] text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors ml-1 whitespace-nowrap">
@@ -208,7 +210,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
                     <Mail size={14} className="text-[#D4AF37]" />
                     <p className="text-[12px] font-semibold text-[#E5E7EB]">{t('adminChurn.digest.title', { defaultValue: 'Weekly Digest' })}</p>
                   </div>
-                  <button onClick={() => setFupDraft(d => ({ ...d, digest_enabled: !d.digest_enabled }))} aria-label={fupDraft.digest_enabled ? 'Disable weekly digest' : 'Enable weekly digest'} className="flex items-center gap-1 transition-colors">
+                  <button onClick={() => setFupDraft(d => ({ ...d, digest_enabled: !d.digest_enabled }))} aria-label={fupDraft.digest_enabled ? t('admin.followUp.digestDisableAria', 'Disable weekly digest') : t('admin.followUp.digestEnableAria', 'Enable weekly digest')} className="flex items-center gap-1 transition-colors">
                     {fupDraft.digest_enabled ? <ToggleRight size={20} className="text-[#D4AF37]" /> : <ToggleLeft size={20} className="text-[#4B5563]" />}
                   </button>
                 </div>
@@ -271,9 +273,9 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
                         {/* Channel selector */}
                         <div className="flex gap-1.5 mb-1.5">
                           {[
-                            { key: 'notification', icon: Bell, label: t('adminChurn.followUp.channelNotif', { defaultValue: 'Push' }), color: '#10B981' },
-                            { key: 'email', icon: Mail, label: t('adminChurn.followUp.channelEmail', { defaultValue: 'Email' }), color: '#60A5FA' },
-                            { key: 'sms', icon: Smartphone, label: t('adminChurn.followUp.channelSms', { defaultValue: 'SMS' }), color: '#F59E0B' },
+                            { key: 'notification', icon: Bell, label: t('adminChurn.followUp.channelNotif', { defaultValue: 'Push' }), color: 'var(--color-success)' },
+                            { key: 'email', icon: Mail, label: t('adminChurn.followUp.channelEmail', { defaultValue: 'Email' }), color: 'var(--color-info)' },
+                            { key: 'sms', icon: Smartphone, label: t('adminChurn.followUp.channelSms', { defaultValue: 'SMS' }), color: 'var(--color-warning)' },
                           ].map(ch => (
                             <button key={ch.key} onClick={() => updateStep(i, 'channel', ch.key)}
                               className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold border transition-colors ${
@@ -396,7 +398,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
             </span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button onClick={() => setTenureEnabled(v => !v)} aria-label={tenureEnabled ? 'Disable tenure milestones' : 'Enable tenure milestones'} className="flex items-center gap-1 transition-colors">
+            <button onClick={() => setTenureEnabled(v => !v)} aria-label={tenureEnabled ? t('admin.followUp.tenureDisableAria', 'Disable tenure milestones') : t('admin.followUp.tenureEnableAria', 'Enable tenure milestones')} className="flex items-center gap-1 transition-colors">
               {tenureEnabled ? <ToggleRight size={22} className="text-[#D4AF37]" /> : <ToggleLeft size={22} className="text-[#4B5563]" />}
             </button>
             <button onClick={() => setShowTenure(v => !v)} className="flex items-center gap-1 text-[11px] text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors ml-1 whitespace-nowrap">

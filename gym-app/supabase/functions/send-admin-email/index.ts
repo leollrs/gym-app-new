@@ -200,7 +200,74 @@ Deno.serve(async (req) => {
       return jsonResp({ error: 'Admin access required' }, 403);
     }
 
-    const { memberId, subject, body, overrideEmail, emailOverrideAcknowledged, lang, rewardType, rewardLabel } = await req.json();
+    // ── GYM USAGE CAP CHECK (must run BEFORE any expensive call) ──
+    if (callerProfile.gym_id) {
+      const { data: cap } = await supabase
+        .from('gym_usage_caps').select('*').eq('gym_id', callerProfile.gym_id).maybeSingle();
+      const limit = cap?.email_daily_cap ?? 500;
+      const { data: ok } = await supabase.rpc('check_and_increment_gym_usage', {
+        p_gym_id: callerProfile.gym_id,
+        p_endpoint: 'send-admin-email',
+        p_profile_id: user.id,
+        p_window: '1 day',
+        p_limit: limit,
+      });
+      if (!ok) {
+        return jsonResp({ error: 'gym_monthly_cap_exceeded' }, 429);
+      }
+    }
+    // ── END GYM USAGE CAP CHECK ─────────────────────────────────
+
+    const payload = await req.json();
+    const { memberId, subject, body, overrideEmail, emailOverrideAcknowledged, lang, rewardType, rewardLabel, testMode, to, html } = payload;
+
+    // ── TEST MODE: admin previewing a template by sending it to a free-form address ──
+    // Skips member lookup, audit-log linkage, and the buildEmailHtml branding wrap —
+    // the client provides the fully-rendered HTML.
+    if (testMode === true) {
+      if (typeof to !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+        return jsonResp({ error: 'Valid `to` is required in testMode' }, 400);
+      }
+      if (typeof subject !== 'string' || subject.length === 0 || subject.length > 200) {
+        return jsonResp({ error: 'Subject must be 1-200 characters' }, 400);
+      }
+      if (typeof html !== 'string' || html.length === 0 || html.length > 200000) {
+        return jsonResp({ error: 'HTML must be 1-200000 characters' }, 400);
+      }
+
+      const { data: gymRow } = await supabase
+        .from('gyms').select('name').eq('id', callerProfile.gym_id).single();
+      const fromName = gymRow?.name || 'Your Gym';
+
+      const resp = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: `${fromName} <noreply@tugympr.com>`,
+          to: [to],
+          subject,
+          html,
+        }),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        return jsonResp({ error: `Email send failed: ${errText}` }, 502);
+      }
+
+      // Light audit (no member_id since this is a self-test).
+      await supabase.from('admin_audit_log').insert({
+        actor_id: user.id,
+        action: 'send_test_email',
+        target_type: 'template',
+        target_id: null,
+        metadata: { to, subject },
+      }).catch(() => {});
+
+      return jsonResp({ ok: true, testMode: true });
+    }
 
     if (!memberId || !subject || !body) {
       return jsonResp({ error: 'memberId, subject, and body are required' }, 400);
@@ -228,6 +295,20 @@ Deno.serve(async (req) => {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (typeof overrideEmail !== 'string' || !emailRegex.test(overrideEmail)) {
         return jsonResp({ error: 'Invalid overrideEmail format' }, 400);
+      }
+      // SECURITY: restrict overrideEmail to an explicit allowlist of domains.
+      // Fail closed: if ALLOWED_OVERRIDE_DOMAINS is unset, reject all overrides.
+      const allowedDomainsRaw = Deno.env.get('ALLOWED_OVERRIDE_DOMAINS') || '';
+      const allowedDomains = allowedDomainsRaw
+        .split(',')
+        .map((d) => d.trim().toLowerCase())
+        .filter((d) => d.length > 0);
+      if (allowedDomains.length === 0) {
+        return jsonResp({ error: 'override_domain_not_allowed' }, 403);
+      }
+      const overrideDomain = overrideEmail.split('@')[1]?.toLowerCase() || '';
+      if (!allowedDomains.includes(overrideDomain)) {
+        return jsonResp({ error: 'override_domain_not_allowed' }, 403);
       }
     }
 
@@ -284,21 +365,50 @@ Deno.serve(async (req) => {
     let logoBase64: string | undefined;
     let logoMimeType: string | undefined;
     if (logoUrl) {
+      // SSRF guard: reject loopback / private network targets (best-effort hostname check).
+      let safeToFetch = false;
       try {
-        const logoResp = await fetch(logoUrl);
-        if (logoResp.ok) {
-          const contentType = logoResp.headers.get('content-type') || 'image/png';
-          const arrayBuf = await logoResp.arrayBuffer();
-          const bytes = new Uint8Array(arrayBuf);
-          let binary = '';
-          for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          logoBase64 = btoa(binary);
-          logoMimeType = contentType;
-        }
+        const parsed = new URL(logoUrl);
+        const host = parsed.hostname.toLowerCase();
+        const isLoopback =
+          host === 'localhost' ||
+          host === '127.0.0.1' ||
+          host === '0.0.0.0' ||
+          host === '::1';
+        const isPrivate =
+          host.startsWith('10.') ||
+          host.startsWith('192.168.') ||
+          host.startsWith('169.254.') ||
+          /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+        safeToFetch = !isLoopback && !isPrivate;
       } catch {
-        // Fall back to URL or letter initial
+        safeToFetch = false;
+      }
+
+      if (safeToFetch) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        try {
+          const logoResp = await fetch(logoUrl, { signal: controller.signal });
+          if (logoResp.ok) {
+            const contentType = logoResp.headers.get('content-type') || 'image/png';
+            const arrayBuf = await logoResp.arrayBuffer();
+            const bytes = new Uint8Array(arrayBuf);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+              binary += String.fromCharCode(bytes[i]);
+            }
+            logoBase64 = btoa(binary);
+            logoMimeType = contentType;
+          }
+        } catch (e) {
+          // AbortError or network failure — fall back to URL or letter initial.
+          if ((e as Error)?.name === 'AbortError') {
+            console.warn('Logo fetch timed out after 5s');
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
       }
     }
 

@@ -1,6 +1,15 @@
 import { Component } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
+import i18n from 'i18next';
 import { trackError } from '../lib/errorTracker';
+
+const tr = (key, fallback) => {
+  try {
+    return i18n.t(key, { ns: 'pages', defaultValue: fallback });
+  } catch {
+    return fallback;
+  }
+};
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -31,9 +40,9 @@ class ErrorBoundary extends Component {
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-[20px] font-semibold text-[#E5E7EB]">Something went wrong</h2>
+              <h2 className="text-[20px] font-semibold text-[#E5E7EB]">{tr('errorBoundary.title', 'Something went wrong')}</h2>
               <p className="text-[14px] text-[#6B7280] leading-relaxed">
-                An unexpected error occurred. Please try again or refresh the page.
+                {tr('errorBoundary.body', 'An unexpected error occurred. Please try again or refresh the page.')}
               </p>
             </div>
 
@@ -50,7 +59,7 @@ class ErrorBoundary extends Component {
               className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] transition-colors duration-200"
             >
               <RotateCcw size={16} />
-              Try Again
+              {tr('errorBoundary.tryAgain', 'Try Again')}
             </button>
           </div>
         </div>

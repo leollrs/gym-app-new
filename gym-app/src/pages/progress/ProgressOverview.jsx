@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Trophy, Zap, Activity, BarChart3, ChevronDown, ChevronRight, Clock, Dumbbell, Calendar,
@@ -8,10 +9,7 @@ import {
 import MonthlyProgressReport from '../../components/MonthlyProgressReport';
 import Skeleton from '../../components/Skeleton';
 import EmptyState from '../../components/EmptyState';
-import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid,
-} from 'recharts';
+// recharts removed — using CSS bar chart
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,46 +19,74 @@ import { LevelCard } from '../../components/LevelBadge';
 import { ACHIEVEMENT_DEFS } from '../../lib/achievements';
 import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
-import ChartTooltip from '../../components/ChartTooltip';
+// ChartTooltip removed — using CSS bar chart
 import { sanitize } from '../../lib/sanitize';
 import { formatStatNumber, statFontSize } from '../../lib/formatStatValue';
 import GoalsSection from '../../components/GoalsSection';
 import { usePostHog } from '@posthog/react';
+import { useCachedState, hasCachedState } from '../../hooks/useCachedState';
 
 export default function ProgressOverview() {
   const { t, i18n } = useTranslation('pages');
-  const { user, lifetimePoints: ctxLifetimePoints } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [pointsData, setPointsData] = useState({ total_points: 0, lifetime_points: ctxLifetimePoints ?? 0 });
-  const [weekStats, setWeekStats] = useState({ sessions: 0, volume: 0, prs: 0 });
-  const [volumeChart, setVolumeChart] = useState([]);
-  const [earnedAchievements, setEarnedAchievements] = useState([]);
+  const { user, profile, lifetimePoints: ctxLifetimePoints } = useAuth();
+  const navigate = useNavigate();
+
+  // Cache keys are user-scoped so switching accounts doesn't leak data
+  const uid = user?.id || 'anon';
+  const cacheKey = `progress-overview-${uid}`;
+
+  // Only show the skeleton when we have no cached data — otherwise paint from
+  // cache and silently refresh behind the scenes. We treat the week-stats
+  // cache entry as the "seen before" sentinel since every successful load
+  // writes it.
+  const [loading, setLoading] = useState(() => !hasCachedState(`${cacheKey}-week-stats`));
+  const [pointsData, setPointsData] = useCachedState(`${cacheKey}-points`, { total_points: 0, lifetime_points: ctxLifetimePoints ?? 0 });
+  const [weekStats, setWeekStats] = useCachedState(`${cacheKey}-week-stats`, { sessions: 0, volume: 0, prs: 0 });
+  const [volumeChart, setVolumeChart] = useCachedState(`${cacheKey}-volume-chart`, []);
+  const [earnedAchievements, setEarnedAchievements] = useCachedState(`${cacheKey}-achievements`, []);
   const [showMonthlyReport, setShowMonthlyReport] = useState(false);
-  const [weeklyCardio, setWeeklyCardio] = useState({ minutes: 0, distance: 0, calories: 0, hasData: false });
+  const [weeklyCardio, setWeeklyCardio] = useCachedState(`${cacheKey}-weekly-cardio`, { minutes: 0, distance: 0, calories: 0, hasData: false });
 
   // Sync lifetime points from context when it loads
   useEffect(() => { if (ctxLifetimePoints != null) setPointsData(prev => ({ ...prev, lifetime_points: ctxLifetimePoints })); }, [ctxLifetimePoints]);
+
+  // Refresh trigger — bumped on visibility/focus to bust the cardio cache so
+  // newly logged cardio distance/calories reflects without a hard reload.
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const onFocus = () => setRefreshKey(k => k + 1);
+    const onVisibility = () => { if (document.visibilityState === 'visible') setRefreshKey(k => k + 1); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
 
     const load = async () => {
-      setLoading(true);
+      // Only show the skeleton on the very first load for this user — if we
+      // already have cached data from a previous mount, paint it immediately
+      // and revalidate silently.
+      if (!hasCachedState(`${cacheKey}-week-stats`)) setLoading(true);
 
       // Date range for "this week"
       const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
       const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-      const [pts, weekSessions, volumeData, achievementData, streakData, prCountData, friendCountData, totalVolumeData, weekCardioData] = await Promise.all([
+      // allSettled so one bad query (e.g. a missing column) can't blank the
+      // whole page — the cards just render zeros for the failing slot.
+      const settled = await Promise.allSettled([
         getUserPoints(user.id),
-        // This week's completed sessions
+        // This week's completed lifting sessions
         supabase
           .from('workout_sessions')
-          .select(`
-            id, total_volume_lbs, completed_at,
-            session_exercises(session_sets(is_pr, is_completed))
-          `)
+          .select('id, total_volume_lbs, completed_at')
           .eq('profile_id', user.id)
           .eq('status', 'completed')
           .gte('completed_at', weekStart.toISOString())
@@ -102,32 +128,56 @@ export default function ProgressOverview() {
           .select('total_volume_lbs')
           .eq('profile_id', user.id)
           .eq('status', 'completed'),
-        // This week's cardio sessions
+        // This week's cardio sessions (counted toward Sessions stat + cardio summary)
         supabase
           .from('cardio_sessions')
-          .select('duration_seconds, distance_km, calories_burned')
+          .select('id, started_at, duration_seconds, distance_km, calories_burned')
           .eq('profile_id', user.id)
           .gte('started_at', weekStart.toISOString())
           .lte('started_at', weekEnd.toISOString()),
+        // This week's PRs — pull straight from personal_records so the count
+        // matches the Strength tab + lifetime stat instead of relying on the
+        // is_pr flag inside session_sets (which can drift if a PR was deleted).
+        supabase
+          .from('personal_records')
+          .select('id', { count: 'exact', head: true })
+          .eq('profile_id', user.id)
+          .gte('achieved_at', weekStart.toISOString())
+          .lte('achieved_at', weekEnd.toISOString()),
       ]);
 
       if (cancelled) return;
 
+      // Helper: pull the resolved value or fall back to a default
+      const valueOf = (idx, fallback) => settled[idx].status === 'fulfilled'
+        ? settled[idx].value
+        : fallback;
+      const pts             = valueOf(0, { total_points: 0, lifetime_points: 0 });
+      const weekSessions    = valueOf(1, { data: [] });
+      const volumeData      = valueOf(2, { data: [] });
+      const achievementData = valueOf(3, { count: 0 });
+      const streakData      = valueOf(4, { data: null });
+      const prCountData     = valueOf(5, { count: 0 });
+      const friendCountData = valueOf(6, { count: 0 });
+      const totalVolumeData = valueOf(7, { data: [] });
+      const weekCardioData  = valueOf(8, { data: [] });
+      const weekPRsData     = valueOf(9, { count: 0 });
+
       setPointsData(pts);
 
-      // Week stats
-      const ws = weekSessions.data ?? [];
-      const weekPRs = ws.reduce((sum, s) => {
-        const prCount = (s.session_exercises ?? [])
-          .flatMap(e => e.session_sets ?? [])
-          .filter(set => set.is_pr && set.is_completed).length;
-        return sum + prCount;
-      }, 0);
-      const weekVol = ws.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
-      setWeekStats({ sessions: ws.length, volume: weekVol, prs: weekPRs });
+      // Top stats card uses LIFETIME totals (matches the Profile page strip:
+      // workouts / volume / records). The previous week-scoped variant looked
+      // empty for casual users and was the source of the "stats don't show"
+      // complaint. We reuse the existing lifetime queries below so we don't
+      // need extra round trips.
+      const totalSessions  = achievementData?.count ?? 0;
+      const totalPRs       = prCountData?.count ?? 0;
+      const totalVolumeLbs = (totalVolumeData?.data ?? [])
+        .reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
+      setWeekStats({ sessions: totalSessions, volume: totalVolumeLbs, prs: totalPRs });
 
       // Volume chart — group by week
-      const volRaw = volumeData.data ?? [];
+      const volRaw = volumeData?.data ?? [];
       const weeklyMap = {};
       volRaw.forEach(s => {
         const wk = format(startOfWeek(new Date(s.completed_at), { weekStartsOn: 1 }), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined });
@@ -140,24 +190,35 @@ export default function ProgressOverview() {
         }))
       );
 
-      // Achievements — compute earned ones
-      const totalSessions = achievementData.count ?? 0;
-      const currentStreak = streakData.data?.current_streak_days ?? 0;
-      const totalPRs = prCountData.count ?? 0;
-      const friendCount = friendCountData.count ?? 0;
-      const totalVolumeLbs = (totalVolumeData.data ?? []).reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
+      // Achievements — compute earned ones (uses the lifetime totals above)
+      const currentStreak = streakData?.data?.current_streak_days ?? 0;
+      const friendCount = friendCountData?.count ?? 0;
       const achieveData = { totalSessions, currentStreak, totalPRs, friendCount, sessionsInFirst6Weeks: 0, challengesCompleted: 0, totalVolumeLbs };
       const earned = ACHIEVEMENT_DEFS.filter(a => a.check(achieveData));
       setEarnedAchievements(earned.slice(-3));
 
       // Weekly cardio stats
-      const cardioRows = weekCardioData.data ?? [];
+      const cardioRows = weekCardioData?.data ?? [];
       if (cardioRows.length > 0) {
         const cardioMinutes = Math.round(cardioRows.reduce((s, r) => s + (r.duration_seconds || 0), 0) / 60);
         const cardioDistance = cardioRows.reduce((s, r) => s + (parseFloat(r.distance_km) || 0), 0);
         const cardioCals = cardioRows.reduce((s, r) => s + (r.calories_burned || 0), 0);
-        setWeeklyCardio({ minutes: cardioMinutes, distance: Math.round(cardioDistance * 10) / 10, calories: cardioCals, hasData: true });
+        const next = { minutes: cardioMinutes, distance: Math.round(cardioDistance * 10) / 10, calories: cardioCals, hasData: true };
+        // Diagnostic — surfaces the raw cardio rows + aggregated values used by
+        // the "Distancia" stat. If users report stale data, these logs let us
+        // verify whether the query is returning fresh rows or whether the
+        // render is reading from a stale cache.
+        // eslint-disable-next-line no-console
+        console.log('[ProgressOverview] weeklyCardio refresh', {
+          refreshKey,
+          rowsCount: cardioRows.length,
+          rawRows: cardioRows,
+          rendered: next,
+        });
+        setWeeklyCardio(next);
       } else {
+        // eslint-disable-next-line no-console
+        console.log('[ProgressOverview] weeklyCardio refresh — no rows', { refreshKey });
         setWeeklyCardio({ minutes: 0, distance: 0, calories: 0, hasData: false });
       }
 
@@ -166,7 +227,17 @@ export default function ProgressOverview() {
 
     load();
     return () => { cancelled = true; };
-  }, [user?.id]);
+  }, [user?.id, refreshKey]);
+
+  // Sparkline data — normalized 0..1 arrays for last 7 data points
+  // Must be before early return so hook count is stable
+  const sparkFromChart = useMemo(() => {
+    const vols = volumeChart.map(d => d.volume);
+    const last7 = vols.slice(-7);
+    while (last7.length < 7) last7.unshift(0);
+    const max = Math.max(...last7, 1);
+    return last7.map(v => v / max);
+  }, [volumeChart]);
 
   if (loading) {
     return (
@@ -186,45 +257,134 @@ export default function ProgressOverview() {
     ? `${(weekStats.volume / 1000).toFixed(1)}k`
     : `${Math.round(weekStats.volume)}`;
 
-  return (
-    <div className="flex flex-col gap-6 stagger-fade-in">
-      {/* Monthly Report button (right-aligned) + Level / XP */}
-      <div className="flex justify-end -mb-1">
-        <button
-          onClick={() => setShowMonthlyReport(true)}
-          aria-label="View monthly report"
-          className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
-          style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
-        >
-          <BarChart3 size={14} />
-          {t('progress.overview.monthlyReport')}
-        </button>
-      </div>
-      <LevelCard totalPoints={pointsData.total_points} lifetimePoints={pointsData.lifetime_points} />
+  const TU_DISPLAY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
+  const TU_ACCENT = 'var(--color-accent, #2EC4C4)';
 
-      {/* This week stats */}
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { label: t('progress.overview.sessions'), value: weekStats.sessions, icon: Activity, color: 'var(--color-blue-soft)' },
-          { label: t('progress.overview.volume'), value: `${volFormatted} lbs`, icon: Zap, color: 'var(--color-accent)' },
-          { label: t('progress.overview.prsHit'), value: weekStats.prs, icon: Trophy, color: 'var(--color-danger)' },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <div
-            key={label}
-            className="rounded-2xl border border-white/[0.06] p-3 flex flex-col items-center gap-1 text-center overflow-hidden min-w-0"
-            style={{ background: 'var(--color-bg-card)' }}
-          >
-            <Icon size={14} style={{ color }} strokeWidth={2} />
-            <p className={`${statFontSize(value, 'text-[24px]')} font-bold leading-none truncate`} style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>{typeof value === 'number' ? formatStatNumber(value) : value}</p>
-            <p className="text-[9px] font-semibold uppercase tracking-wider truncate" style={{ color: 'var(--color-text-subtle)' }}>{label}</p>
+  // Show the welcome / "first session" banner only when the account is
+  // genuinely brand new: hasn't completed onboarding, hasn't earned any
+  // lifetime points, no week activity, no 8-week volume history. Without the
+  // onboarding + lifetime gates the banner re-appeared after a quiet week
+  // (or whenever one of the parallel queries silently returned zero), which
+  // looked like a bug to anyone who'd already finished onboarding.
+  const lifetimePts = ctxLifetimePoints ?? pointsData.lifetime_points ?? 0;
+  const isOnboarded = profile?.is_onboarded === true;
+  const isNewUser = !isOnboarded
+    && lifetimePts === 0
+    && weekStats.sessions === 0
+    && volumeChart.length === 0;
+
+  // For sessions/PRs we don't have per-week breakdown readily, so show volume spark for all
+  const sparkSessions = sparkFromChart;
+  const sparkVolume = sparkFromChart;
+  const sparkPRs = sparkFromChart.map(() => 0); // PRs don't have weekly chart data
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Level card with Report inside */}
+      <LevelCard
+        totalPoints={pointsData.total_points}
+        lifetimePoints={pointsData.lifetime_points}
+        onReport={() => setShowMonthlyReport(true)}
+      />
+
+      {/* Onboarding checklist for new users */}
+      {isNewUser && (
+        <div className="rounded-[22px] overflow-hidden" style={{ background: `${TU_ACCENT}08`, border: `1px solid ${TU_ACCENT}18` }}>
+          <div className="px-5 pt-5 pb-4">
+            <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: TU_ACCENT, letterSpacing: '0.1em' }}>
+              {t('progress.overview.welcomeLabel', 'Welcome to Progress')}
+            </div>
+            <div style={{ fontFamily: TU_DISPLAY, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5, lineHeight: 1.2 }}>
+              {t('progress.overview.welcomeTitle', 'Your first session unlocks your stats')}
+            </div>
+            <button className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-bold active:scale-95"
+              style={{ background: TU_ACCENT, color: '#001512' }}
+              onClick={() => navigate('/workouts')}>
+              {t('progress.overview.startFirstWorkout', 'Start your first workout')} {'\u2192'}
+            </button>
           </div>
-        ))}
+        </div>
+      )}
+
+      {isNewUser && (
+        <div className="rounded-[22px] p-5" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+          <div className="text-[11px] font-bold uppercase tracking-wider mb-4" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.08em' }}>
+            {t('progress.overview.getStarted', 'Get started')}
+          </div>
+          <div className="flex flex-col gap-1">
+            {[
+              { label: t('progress.overview.checkSetUpProfile', 'Set up your profile'), done: true, href: '/profile' },
+              { label: t('progress.overview.checkLogWorkout', 'Log your first workout'), done: false, cta: t('progress.overview.next', 'NEXT'), href: '/workouts' },
+              { label: t('progress.overview.checkSetGoal', 'Set a goal'), done: false, href: '/profile?openGoals=1' },
+              { label: t('progress.overview.checkAddBody', 'Add body measurements'), done: false, href: '/progress/body' },
+            ].map((item, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => { if (item.href) navigate(item.href); }}
+                className="flex items-center gap-3 w-full text-left py-2.5 px-1 rounded-xl active:scale-[0.99] transition-transform focus:outline-none"
+                style={{ background: 'transparent' }}
+              >
+                <div className="w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: item.done ? TU_ACCENT : 'transparent',
+                    border: item.done ? 'none' : '1.5px solid var(--color-border-subtle)',
+                  }}>
+                  {item.done && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>}
+                </div>
+                <span className="flex-1 text-[14px] font-medium" style={{
+                  color: item.done ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+                  textDecoration: item.done ? 'line-through' : 'none',
+                }}>{item.label}</span>
+                {item.cta && <span className="text-[11px] font-bold" style={{ color: TU_ACCENT }}>{item.cta}</span>}
+                {!item.done && (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-subtle)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m9 18 6-6-6-6"/>
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Lifetime stats — workouts, volume, records (mirrors Profile strip) */}
+      <div className="grid grid-cols-3 gap-2.5">
+        {[
+          { label: t('progress.overview.workouts', 'Workouts'), value: weekStats.sessions, sub: weekStats.sessions === 0 ? t('progress.overview.startToday', 'Start today') : '', icon: Activity, color: 'var(--color-accent, #2EC4C4)', spark: sparkSessions },
+          { label: t('progress.overview.volume', 'Volume'), value: weekStats.volume > 0 ? `${volFormatted}` : '\u2014', unit: weekStats.volume > 0 ? 'lbs' : 'lbs', sub: weekStats.volume === 0 ? t('progress.overview.log1set', 'Log 1 set') : '', icon: Zap, color: '#6D5FDB', spark: sparkVolume },
+          { label: t('progress.overview.records', 'Records'), value: weekStats.prs, sub: weekStats.prs === 0 ? t('progress.overview.beatALift', 'Beat a lift') : '', icon: Trophy, color: '#FF5A2E', spark: sparkPRs },
+        ].map(({ label, value, unit, sub, icon: Icon, color, spark }) => {
+          const allZero = spark.every(v => v === 0);
+          return (
+            <div key={label} className="rounded-[22px] p-3.5 flex flex-col items-center text-center gap-1"
+              style={{ background: 'var(--color-bg-card)', boxShadow: 'var(--color-shadow-card, 0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05))' }}>
+              <Icon size={14} style={{ color }} strokeWidth={2} />
+              <div className="flex items-baseline justify-center gap-1 mt-1.5">
+                <p style={{ fontFamily: TU_DISPLAY, fontSize: 26, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                  {typeof value === 'number' ? formatStatNumber(value) : value}
+                </p>
+                {unit && <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{unit}</span>}
+              </div>
+              <p className="text-[9px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.08em', marginTop: 2 }}>{label}</p>
+              {/* Sparkline mini-bars */}
+              <div className="flex items-end justify-center gap-[2px] mt-2 w-full" style={{ height: 18 }}>
+                {allZero ? (
+                  <p className="text-[9px] font-semibold" style={{ color: 'var(--color-text-subtle)' }}>{sub}</p>
+                ) : spark.map((v, i) => (
+                  <div key={i} className="flex-1 rounded-[2px]"
+                    style={{ height: `${Math.max(v * 100, 4)}%`, background: color, opacity: 0.5 }} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Cardio This Week */}
       {weeklyCardio.hasData && (
-        <div className="rounded-2xl border border-white/[0.06] p-5 overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
-          <p className="text-[14px] font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>{t('progress.overview.cardioThisWeek')}</p>
+        <div className="rounded-[22px] p-[18px]" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
+          <p style={{ fontFamily: TU_DISPLAY, fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3, marginBottom: 12 }}>{t('progress.overview.cardioThisWeek')}</p>
           <div className="grid grid-cols-3 gap-2">
             {[
               { label: t('progress.overview.cardioTime'), value: weeklyCardio.minutes, unit: t('progress.overview.cardioMin'), icon: Clock, color: 'var(--color-blue-soft)' },
@@ -233,10 +393,10 @@ export default function ProgressOverview() {
             ].map(({ label, value, unit, icon: Icon, color }) => (
               <div key={label} className="flex flex-col items-center gap-1 text-center">
                 <Icon size={14} style={{ color }} strokeWidth={2} />
-                <p className="text-[20px] font-bold leading-none" style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                  {value}{unit ? <span className="text-[10px] font-semibold ml-0.5" style={{ color: 'var(--color-text-subtle)' }}>{unit}</span> : null}
+                <p style={{ fontFamily: TU_DISPLAY, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                  {value}{unit ? <span className="text-[10px] font-semibold ml-0.5" style={{ color: 'var(--color-text-muted)' }}>{unit}</span> : null}
                 </p>
-                <p className="text-[9px] font-semibold uppercase tracking-wider truncate" style={{ color: 'var(--color-text-subtle)' }}>{label}</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>{label}</p>
               </div>
             ))}
           </div>
@@ -246,54 +406,16 @@ export default function ProgressOverview() {
       {/* Goals Section */}
       <GoalsSection />
 
-      {/* Weekly volume chart */}
+      {/* Weekly volume — CSS bar chart with tap-to-reveal value */}
       {volumeChart.length >= 2 && (
-        <div className="rounded-2xl border border-white/[0.06] p-5 overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
-          <p className="text-[14px] font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>{t('progress.overview.weeklyVolume')}</p>
-          <ResponsiveContainer width="100%" height={150}>
-            <AreaChart data={volumeChart} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-              <defs>
-                <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-              <XAxis
-                dataKey="week"
-                tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-              />
-              <Tooltip content={<ChartTooltip formatter={(v) => `${v.toLocaleString()} lbs`} />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
-              <Area
-                type="monotone"
-                dataKey="volume"
-                name={t('progress.overview.volume')}
-                stroke="var(--color-accent)"
-                strokeWidth={2}
-                fill="url(#volGrad)"
-                dot={false}
-                activeDot={{ r: 6, strokeWidth: 2 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        <WeeklyVolumeBarChart volumeChart={volumeChart} />
       )}
 
       {/* Nutrition Impact Insight */}
       <NutritionImpactCard userId={user?.id} />
 
-      {/* Workout History — Monthly Timeline */}
-      <div className="mt-6">
-        <MonthlyTimeline userId={user?.id} />
-      </div>
+      {/* Workout History */}
+      <MonthlyTimeline userId={user?.id} />
 
       {showMonthlyReport && createPortal(
         <MonthlyProgressReport
@@ -302,6 +424,98 @@ export default function ProgressOverview() {
         />,
         document.body
       )}
+    </div>
+  );
+}
+
+// ── Weekly Volume Bar Chart (tap-to-reveal value) ──────────────────────────
+function WeeklyVolumeBarChart({ volumeChart }) {
+  const { t } = useTranslation('pages');
+  const last7 = volumeChart.slice(-7);
+  const maxVol = Math.max(...last7.map(d => d.volume), 1);
+  const TU_DISPLAY_LOCAL = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
+  const TU_ACCENT_LOCAL = 'var(--color-accent, #2EC4C4)';
+  // Default-select the most recent bar so the value is always visible.
+  const [activeIdx, setActiveIdx] = useState(last7.length - 1);
+
+  // Keep activeIdx valid when data array length changes.
+  useEffect(() => {
+    setActiveIdx(prev => {
+      if (prev >= last7.length) return last7.length - 1;
+      if (prev < 0) return last7.length - 1;
+      return prev;
+    });
+  }, [last7.length]);
+
+  const active = last7[activeIdx];
+  const activeVol = active?.volume ?? 0;
+  const activeVolStr = activeVol >= 1000
+    ? `${(activeVol / 1000).toFixed(1)}k`
+    : `${Math.round(activeVol)}`;
+
+  return (
+    <div>
+      <div className="px-1 mb-2.5 flex items-baseline justify-between">
+        <p style={{ fontFamily: TU_DISPLAY_LOCAL, fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>
+          {t('progress.overview.weeklyVolume')}
+        </p>
+        {active && (
+          <p className="text-[12px] font-bold tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+            <span style={{ color: 'var(--color-text-primary)' }}>{activeVolStr}</span>{' '}
+            <span style={{ color: 'var(--color-text-subtle)' }}>lbs · {activeIdx === last7.length - 1 ? t('progress.overview.now', 'NOW') : active.week}</span>
+          </p>
+        )}
+      </div>
+      <div className="rounded-[22px] p-[18px]" style={{ background: 'var(--color-bg-card)', boxShadow: 'var(--color-shadow-card, 0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05))' }}>
+        <div className="flex items-end gap-1.5 mb-2.5" style={{ height: 100 }}>
+          {last7.map((d, i) => {
+            const pct = d.volume / maxVol;
+            const isActive = i === activeIdx;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setActiveIdx(i)}
+                aria-label={t('progressOverview.barAriaLabel', { week: d.week, volume: d.volume, defaultValue: '{{week}}: {{volume}} lbs' })}
+                aria-pressed={isActive}
+                className="flex-1 rounded-[6px] transition-all duration-300 active:scale-95"
+                style={{
+                  height: `${Math.max(pct * 100, 3)}%`,
+                  background: isActive ? TU_ACCENT_LOCAL : `color-mix(in srgb, ${TU_ACCENT_LOCAL} 25%, transparent)`,
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  outline: 'none',
+                }}
+              />
+            );
+          })}
+        </div>
+        <div className="flex justify-between">
+          {last7.map((d, i) => {
+            const isActive = i === activeIdx;
+            const isLast = i === last7.length - 1;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setActiveIdx(i)}
+                className="flex-1 text-center text-[10px] font-bold"
+                style={{
+                  color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  outline: 'none',
+                }}
+              >
+                {isLast ? t('progress.overview.now', 'NOW') : d.week}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -428,10 +642,11 @@ function NutritionImpactCard({ userId }) {
 
   if (insight.type === 'insufficient') {
     return (
-      <div className="rounded-2xl border border-white/[0.06] p-4 flex items-start gap-3" style={{ background: 'var(--color-bg-card)' }}>
-        <Apple size={16} className="text-[#10B981] flex-shrink-0 mt-0.5" />
+      <div className="rounded-[22px] p-4 flex items-start gap-3"
+        style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 4px 12px rgba(15,20,25,0.04)' }}>
+        <Apple size={15} className="flex-shrink-0 mt-0.5" style={{ color: '#10B981' }} strokeWidth={2} />
         <div>
-          <p className="text-[13px] font-semibold mb-0.5" style={{ color: 'var(--color-text-primary)' }}>{t('progress.overview.nutritionImpact')}</p>
+          <p className="text-[13px] font-bold mb-0.5" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.1 }}>{t('progress.overview.nutritionImpact')}</p>
           <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{t('progress.overview.nutritionInsufficient')}</p>
         </div>
       </div>
@@ -441,16 +656,18 @@ function NutritionImpactCard({ userId }) {
   if (insight.type === 'noCorrelation') return null;
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] p-4" style={{ background: 'var(--color-bg-card)' }}>
+    <div className="rounded-[22px] p-4"
+      style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 4px 12px rgba(15,20,25,0.04)' }}>
       <div className="flex items-center gap-2 mb-3">
-        <Apple size={14} className="text-[#10B981]" />
-        <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('progress.overview.nutritionImpact')}</p>
+        <Apple size={14} style={{ color: '#10B981' }} strokeWidth={2} />
+        <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.1 }}>{t('progress.overview.nutritionImpact')}</p>
       </div>
       <div className="flex flex-col gap-2">
         {insight.results.map((r) => (
-          <div key={r.key} className="flex items-start gap-2.5 rounded-xl px-3 py-2.5" style={{ backgroundColor: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.12)' }}>
-            <Zap size={12} className="text-[#10B981] flex-shrink-0 mt-0.5" />
-            <p className="text-[12px] text-[#D1D5DB] leading-relaxed">
+          <div key={r.key} className="flex items-start gap-2.5 rounded-[14px] px-3.5 py-3"
+            style={{ background: 'color-mix(in srgb, #10B981 8%, transparent)', border: '1px solid color-mix(in srgb, #10B981 15%, transparent)' }}>
+            <Zap size={12} className="flex-shrink-0 mt-0.5" style={{ color: '#10B981' }} strokeWidth={2} />
+            <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
               {r.key === 'proteinVolume' && t('progress.overview.proteinVolumeInsight', { pct: r.pct })}
               {r.key === 'calorieVolume' && t('progress.overview.calorieVolumeInsight', { pct: r.pct })}
               {r.key === 'prProtein' && t('progress.overview.prProteinInsight', { grams: r.grams })}
@@ -472,6 +689,10 @@ const formatDuration = (seconds) => {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 };
 
+// ── Design tokens (shared by timeline components) ────────────────────────
+const TL_DISPLAY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
+const TL_ACCENT = 'var(--color-accent, #2EC4C4)';
+
 // ── Compact Session Row ──────────────────────────────────────────────────
 function SessionRow({ session, onDelete }) {
   const { t, i18n } = useTranslation('pages');
@@ -483,46 +704,48 @@ function SessionRow({ session, onDelete }) {
   const volStr = vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : `${Math.round(vol)}`;
 
   return (
-    <div className="relative bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden">
+    <div className="relative rounded-[18px] overflow-hidden"
+      style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 4px 12px rgba(15,20,25,0.04)' }}>
       <button
-        className="w-full text-left px-4 pr-10 py-3.5 flex items-start gap-3 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
+        className="w-full text-left px-4 pr-10 py-3.5 flex items-start gap-3 focus:outline-none rounded-[18px]"
         onClick={() => setExpanded(e => !e)}
         aria-label={`Toggle details for ${sanitize(session.name)}`}
       >
-        <div className="flex-shrink-0 w-9 text-center pt-0.5">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#D4AF37]">
+        <div className="flex-shrink-0 w-10 text-center pt-0.5">
+          <p className="text-[9px] font-bold uppercase" style={{ color: TL_ACCENT, letterSpacing: '0.08em' }}>
             {new Date(session.completed_at).toLocaleDateString(i18n.language === 'es' ? 'es-ES' : 'en-US', { month: 'short' })}
           </p>
-          <p className="text-[22px] font-bold leading-none" style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+          <p style={{ fontFamily: TL_DISPLAY, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
             {new Date(session.completed_at).getDate()}
           </p>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
+          <p className="font-bold text-[14px] leading-tight truncate" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>
             {sanitize(session.name)}
           </p>
-          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1">
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5">
             <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              <Clock size={10} /> {formatDuration(session.duration_seconds)}
+              <Clock size={10} strokeWidth={2} /> {formatDuration(session.duration_seconds)}
             </span>
             <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              <Zap size={10} /> {volStr} lbs
+              <Zap size={10} strokeWidth={2} /> {volStr} lbs
             </span>
             <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              <Dumbbell size={10} /> {exercises.length}
+              <Dumbbell size={10} strokeWidth={2} /> {exercises.length}
             </span>
             {prCount > 0 && (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-[#D4AF37]">
-                <Trophy size={10} /> {prCount} PR{prCount !== 1 ? 's' : ''}
+              <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: '#FF5A2E' }}>
+                <Trophy size={10} strokeWidth={2} /> {prCount} PR{prCount !== 1 ? 's' : ''}
               </span>
             )}
           </div>
         </div>
         <ChevronDown
-          size={16}
+          size={15}
           className="flex-shrink-0 mt-1 transition-transform duration-200"
+          strokeWidth={2}
           style={{
-            color: 'var(--color-text-muted)',
+            color: 'var(--color-text-subtle)',
             transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
           }}
         />
@@ -530,7 +753,7 @@ function SessionRow({ session, onDelete }) {
       {onDelete && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(session.id, session.name); }}
-          className="absolute top-3 right-2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
+          className="absolute top-3 right-2 w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
           style={{ color: '#EF4444' }}
           aria-label={t('dashboard.deleteSession', 'Delete session')}
         >
@@ -538,8 +761,8 @@ function SessionRow({ session, onDelete }) {
         </button>
       )}
       {expanded && (
-        <div className="px-4 pb-3 border-t border-white/[0.06]">
-          <div className="pt-2.5 flex flex-col gap-2.5">
+        <div className="px-4 pb-3.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+          <div className="pt-3 flex flex-col gap-3">
             {exercises
               .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
               .map(ex => {
@@ -547,21 +770,21 @@ function SessionRow({ session, onDelete }) {
                 const hasPR = completedSets.some(s => s.is_pr);
                 return (
                   <div key={ex.id}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-semibold text-[13px]" style={{ color: 'var(--color-text-primary)' }}>{sanitize(ex.snapshot_name)}</p>
-                      {hasPR && <Trophy size={12} className="text-[#D4AF37]" />}
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <p className="font-bold text-[12px]" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.1 }}>{sanitize(ex.snapshot_name)}</p>
+                      {hasPR && <Trophy size={11} style={{ color: '#FF5A2E' }} strokeWidth={2} />}
                     </div>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {completedSets
                         .sort((a, b) => a.set_number - b.set_number)
                         .map(set => (
                           <div
                             key={`${set.set_number}-${set.weight_lbs}-${set.reps}`}
-                            className="rounded-lg px-2 py-0.5 text-[11px] font-semibold"
+                            className="rounded-lg px-2.5 py-1 text-[11px] font-semibold"
                             style={
                               set.is_pr
-                                ? { background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }
-                                : { background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid rgba(255,255,255,0.06)' }
+                                ? { background: `color-mix(in srgb, ${TL_ACCENT} 12%, transparent)`, color: TL_ACCENT, border: `1px solid color-mix(in srgb, ${TL_ACCENT} 25%, transparent)` }
+                                : { background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
                             }
                           >
                             {set.weight_lbs} × {set.reps}{set.is_pr && ' PR'}
@@ -581,46 +804,51 @@ function SessionRow({ session, onDelete }) {
 // ── Cardio Session Row ──────────────────────────────────────────────────
 function CardioSessionRow({ session }) {
   const { t, i18n } = useTranslation('pages');
+  const navigate = useNavigate();
   const dur = formatDuration(session.duration_seconds);
   const dist = session.distance_km ? `${parseFloat(session.distance_km).toFixed(1)} km` : null;
   const cals = session.calories_burned ? `${session.calories_burned} kcal` : null;
   const typeLabel = t(`cardio.types.${session.cardio_type}`, session.cardio_type.replace(/_/g, ' '));
 
   return (
-    <div className="relative bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden">
+    <div
+      onClick={() => navigate(`/cardio/${session.id}`)}
+      className="relative rounded-[18px] overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
+      style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 4px 12px rgba(15,20,25,0.04)' }}
+    >
       <div className="w-full text-left px-4 py-3.5 flex items-start gap-3">
-        <div className="flex-shrink-0 w-9 text-center pt-0.5">
-          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-success)' }}>
+        <div className="flex-shrink-0 w-10 text-center pt-0.5">
+          <p className="text-[9px] font-bold uppercase" style={{ color: 'var(--color-success)', letterSpacing: '0.08em' }}>
             {new Date(session.completed_at).toLocaleDateString(i18n.language === 'es' ? 'es-ES' : 'en-US', { month: 'short' })}
           </p>
-          <p className="text-[22px] font-bold leading-none" style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+          <p style={{ fontFamily: TL_DISPLAY, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
             {new Date(session.completed_at).getDate()}
           </p>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <Activity size={13} style={{ color: 'var(--color-success)' }} />
-            <p className="font-semibold text-[15px] leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
+            <Activity size={13} style={{ color: 'var(--color-success)' }} strokeWidth={2} />
+            <p className="font-bold text-[14px] leading-tight truncate" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>
               {typeLabel}
             </p>
           </div>
-          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1">
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5">
             <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              <Clock size={10} /> {dur}
+              <Clock size={10} strokeWidth={2} /> {dur}
             </span>
             {dist && (
               <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                <MapPin size={10} /> {dist}
+                <MapPin size={10} strokeWidth={2} /> {dist}
               </span>
             )}
             {cals && (
               <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                <Flame size={10} /> {cals}
+                <Flame size={10} strokeWidth={2} /> {cals}
               </span>
             )}
             {session.intensity && (
-              <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-md"
-                style={{ background: 'color-mix(in srgb, var(--color-success) 10%, transparent)', color: 'var(--color-success)' }}>
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
+                style={{ background: 'color-mix(in srgb, var(--color-success) 12%, transparent)', color: 'var(--color-success)' }}>
                 {session.intensity}
               </span>
             )}
@@ -644,20 +872,20 @@ function MonthBlock({ monthLabel, sessions, defaultOpen, onDelete }) {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 w-full text-left py-2 group"
+        className="flex items-center gap-2 w-full text-left py-2.5 group"
       >
         <div className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}>
-          <ChevronDown size={14} style={{ color: 'var(--color-text-subtle)' }} />
+          <ChevronDown size={13} style={{ color: 'var(--color-text-subtle)' }} strokeWidth={2.2} />
         </div>
-        <p className="text-[12px] font-bold uppercase tracking-[0.12em] transition-colors" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-[12px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>
           {monthLabel}
         </p>
-        <span className="text-[11px] font-medium ml-1" style={{ color: 'var(--color-text-subtle)', fontVariantNumeric: 'tabular-nums' }}>
+        <span className="text-[11px] font-semibold ml-1 tabular-nums" style={{ color: 'var(--color-text-subtle)' }}>
           {t('progress.overview.sessions_count', { count: sessions.length })}
         </span>
       </button>
       {open && (
-        <div className="ml-1 pl-4 border-l border-white/[0.06]">
+        <div className="ml-1 pl-4" style={{ borderLeft: '1.5px solid var(--color-border-subtle)' }}>
           <div className="flex flex-col gap-2.5 pt-1 pb-3">
             {visible.map(s => s._type === 'cardio'
               ? <CardioSessionRow key={s.id} session={s} />
@@ -667,7 +895,8 @@ function MonthBlock({ monthLabel, sessions, defaultOpen, onDelete }) {
           {hasMore && !showAll && (
             <button
               onClick={() => setShowAll(true)}
-              className="text-[12px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors pb-3 pl-1"
+              className="text-[12px] font-bold transition-colors pb-3 pl-1"
+              style={{ color: TL_ACCENT }}
             >
               {t('progress.overview.showMore', { count: sessions.length - 5 })}
             </button>
@@ -693,7 +922,6 @@ function YearBlock({ year, monthsData, onDelete }) {
   const [open, setOpen] = useState(false);
   const totalSessions = Object.values(monthsData).reduce((sum, arr) => sum + arr.length, 0);
 
-  // Sort months descending (Dec → Jan)
   const sortedMonths = Object.keys(monthsData).sort((a, b) => b - a);
 
   return (
@@ -704,18 +932,18 @@ function YearBlock({ year, monthsData, onDelete }) {
         className="flex items-center gap-2 w-full text-left py-2.5 group"
       >
         <div className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}>
-          <ChevronDown size={16} style={{ color: 'var(--color-text-subtle)' }} />
+          <ChevronDown size={15} style={{ color: 'var(--color-text-subtle)' }} strokeWidth={2} />
         </div>
-        <Calendar size={14} className="text-[#D4AF37]" />
-        <p className="text-[14px] font-bold transition-colors" style={{ color: 'var(--color-text-primary)' }}>
+        <Calendar size={14} style={{ color: TL_ACCENT }} strokeWidth={2} />
+        <p style={{ fontFamily: TL_DISPLAY, fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>
           {year}
         </p>
-        <span className="text-[12px] font-medium ml-1" style={{ color: 'var(--color-text-subtle)', fontVariantNumeric: 'tabular-nums' }}>
+        <span className="text-[12px] font-semibold ml-1 tabular-nums" style={{ color: 'var(--color-text-subtle)' }}>
           {t('progress.overview.sessions_count', { count: totalSessions })}
         </span>
       </button>
       {open && (
-        <div className="ml-2 pl-4 border-l border-white/[0.06] flex flex-col gap-1 pt-1 pb-2">
+        <div className="ml-2 pl-4 flex flex-col gap-1 pt-1 pb-2" style={{ borderLeft: '1.5px solid var(--color-border-subtle)' }}>
           {sortedMonths.map(monthIdx => (
             <MonthBlock
               key={monthIdx}
@@ -735,8 +963,10 @@ function YearBlock({ year, monthsData, onDelete }) {
 function MonthlyTimeline({ userId }) {
   const { t } = useTranslation('pages');
   const { showToast } = useToast();
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const timelineCacheKey = `progress-overview-timeline-${userId || 'anon'}`;
+  const [sessions, setSessions] = useCachedState(timelineCacheKey, []);
+  // Only show skeleton if we've never loaded this timeline before
+  const [loading, setLoading] = useState(() => !hasCachedState(timelineCacheKey));
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const handleDeleteSession = async () => {
@@ -758,7 +988,8 @@ function MonthlyTimeline({ userId }) {
     let cancelled = false;
 
     const load = async () => {
-      setLoading(true);
+      // Only show skeleton if there's no cached timeline — otherwise revalidate silently
+      if (!hasCachedState(timelineCacheKey)) setLoading(true);
       const [workoutRes, cardioRes] = await Promise.all([
         supabase
           .from('workout_sessions')
@@ -850,22 +1081,24 @@ function MonthlyTimeline({ userId }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] mb-2" style={{ color: 'var(--color-text-subtle)' }}>
-        {t('progress.overview.workoutHistory', { year: currentYear })}
-      </p>
+      <div className="flex items-center gap-2 mb-3 px-1">
+        <BarChart3 size={15} style={{ color: TL_ACCENT }} strokeWidth={2} />
+        <p style={{ fontFamily: TL_DISPLAY, fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>
+          {t('progress.overview.workoutHistory', { year: currentYear })}
+        </p>
+      </div>
 
       {/* Current year months */}
       {currentYearMonths.map(({ monthIdx, sessions: monthSessions }) => {
         const isActive = monthIdx === currentMonth;
         if (monthSessions.length === 0) {
-          // Empty month — show as disabled row
           return (
-            <div key={monthIdx} className="flex items-center gap-2 py-2 opacity-40">
-              <ChevronRight size={14} style={{ color: 'var(--color-text-muted)' }} />
-              <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>
+            <div key={monthIdx} className="flex items-center gap-2 py-2 opacity-35">
+              <ChevronRight size={13} style={{ color: 'var(--color-text-muted)' }} strokeWidth={2} />
+              <p className="text-[12px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>
                 {t(`months.${MONTH_KEYS[monthIdx]}`)}
               </p>
-              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>—</span>
+              <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{'\u2014'}</span>
             </div>
           );
         }
@@ -891,32 +1124,32 @@ function MonthlyTimeline({ userId }) {
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[200] flex items-center justify-center px-6"
-            style={{ background: 'rgba(0,0,0,0.6)' }}
+            style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
             onClick={() => setDeleteConfirm(null)}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
-              className="w-full max-w-sm rounded-2xl p-6 border"
-              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border-subtle)' }}
+              className="w-full max-w-sm rounded-[22px] p-6"
+              style={{ background: 'var(--color-bg-card)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
             >
-              <p className="font-bold text-[16px] mb-2" style={{ color: 'var(--color-text-primary)' }}>
+              <p style={{ fontFamily: TL_DISPLAY, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3, marginBottom: 8 }}>
                 {t('dashboard.deleteSessionTitle', 'Delete session?')}
               </p>
-              <p className="text-[13px] mb-1" style={{ color: 'var(--color-text-subtle)' }}>
-                <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{deleteConfirm.name}</span>
+              <p className="text-[13px] mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                <span className="font-bold" style={{ color: 'var(--color-text-primary)' }}>{deleteConfirm.name}</span>
               </p>
-              <p className="text-[12px] mb-5" style={{ color: 'var(--color-text-muted)' }}>
+              <p className="text-[12px] mb-5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
                 {t('dashboard.deleteSessionWarning', 'This will permanently remove this session and all its data. This cannot be undone.')}
               </p>
               <div className="flex gap-3">
                 <button onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-                  style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}>
+                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-95"
+                  style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-primary)' }}>
                   {t('common.cancel', { ns: 'common', defaultValue: 'Cancel' })}
                 </button>
                 <button onClick={handleDeleteSession}
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-colors active:opacity-80"
+                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-95"
                   style={{ background: '#EF4444', color: '#fff' }}>
                   {t('dashboard.deleteConfirm', 'Delete')}
                 </button>

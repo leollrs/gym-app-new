@@ -1,16 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Heart, Activity, Dumbbell, RefreshCw, Settings } from 'lucide-react';
-import { isAvailable, readTodaySteps, readWeeklyActivitySummary, requestPermissions } from '../lib/healthSync';
+import { ArrowLeft, Activity, Dumbbell, RefreshCw, Settings } from 'lucide-react';
+import { AppleHealthIcon, PoweredByHealthKit } from '../components/AppleHealthBadge';
+import PermissionExplainerModal from '../components/PermissionExplainerModal';
+import { isAvailable, readTodaySteps, readWeeklyActivitySummary } from '../lib/healthSync';
+import { ensurePermission } from '../lib/devicePermissions';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
+import logger from '../lib/logger';
 import { usePostHog } from '@posthog/react';
 
 const HealthSync = () => {
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const { user } = useAuth();
+  const { showToast } = useToast();
   const posthog = usePostHog();
 
   const [connected, setConnected] = useState(false);
@@ -19,6 +25,29 @@ const HealthSync = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [todaySteps, setTodaySteps] = useState(0);
   const [weeklyCalories, setWeeklyCalories] = useState(0);
+  // Permission explainer modal — shown before triggering the OS prompt so
+  // the user understands *why* we want Health access (App Store 5.1.1).
+  const [explainerOpen, setExplainerOpen] = useState(false);
+  const explainerResolverRef = useRef(null);
+
+  const openExplainer = useCallback(() => new Promise((resolve) => {
+    explainerResolverRef.current = resolve;
+    setExplainerOpen(true);
+  }), []);
+
+  const handleExplainerAgree = useCallback(() => {
+    const resolve = explainerResolverRef.current;
+    explainerResolverRef.current = null;
+    setExplainerOpen(false);
+    resolve?.(true);
+  }, []);
+
+  const handleExplainerCancel = useCallback(() => {
+    const resolve = explainerResolverRef.current;
+    explainerResolverRef.current = null;
+    setExplainerOpen(false);
+    resolve?.(false);
+  }, []);
 
   // Check availability
   useEffect(() => {
@@ -94,26 +123,34 @@ const HealthSync = () => {
     }
   }, [user?.id]);
 
-  // Connect — requests all permissions, enables everything
+  // Connect — shows the explainer modal first, then triggers the OS Health
+  // permission sheet via ensurePermission (which is what the Settings page
+  // uses for camera/location/notifications, so behaviour is consistent).
+  const isIOS = /iphone|ipad/i.test(navigator.userAgent);
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      await requestPermissions();
+      const status = await ensurePermission('health', () => openExplainer());
+      if (status !== 'granted') {
+        const msg = status === 'unsupported'
+          ? t('healthSync.permissionUnsupported', { defaultValue: 'Health data isn’t available on this device.' })
+          : t('healthSync.permissionDenied', { defaultValue: 'Permission denied. Open Settings to enable Health access.' });
+        showToast?.(msg, status === 'unsupported' ? 'info' : 'error');
+        setConnecting(false);
+        return;
+      }
       setConnected(true);
       await persistConnected(true);
       posthog?.capture('health_sync_connected', { provider: isIOS ? 'apple' : 'google' });
-      // Enable all syncs (settings kept in localStorage for now)
       localStorage.setItem('tugympr_health_settings', JSON.stringify({
         syncWeight: true, syncWorkouts: true, importWeight: true,
       }));
-    } catch {
-      if (/iphone|ipad/i.test(navigator.userAgent)) {
-        setConnected(true);
-        await persistConnected(true);
-        posthog?.capture('health_sync_connected', { provider: 'apple' });
-      }
+    } catch (err) {
+      logger.warn?.('handleConnect: permission flow failed', err);
+      showToast?.(t('healthSync.permissionFailed', { defaultValue: 'Could not enable Health sync.' }), 'error');
+    } finally {
+      setConnecting(false);
     }
-    setConnecting(false);
   };
 
   const handleDisconnect = async () => {
@@ -127,14 +164,13 @@ const HealthSync = () => {
     setWeeklyCalories(0);
   };
 
-  const isIOS = /iphone|ipad/i.test(navigator.userAgent);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
       <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
         <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto flex items-center gap-3 px-4 py-3">
-          <button type="button" onClick={() => navigate(-1)} aria-label="Go back" className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
+          <button type="button" onClick={() => navigate(-1)} aria-label={t('healthSync.goBack', 'Go back')} className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
             <ArrowLeft size={20} />
           </button>
           <h1 className="text-[22px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('healthSync.title')}</h1>
@@ -145,8 +181,8 @@ const HealthSync = () => {
         {/* Connection Card */}
         <div className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: connected ? 'rgba(16,185,129,0.1)' : 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
-              <Heart size={24} style={{ color: connected ? 'var(--color-success)' : 'var(--color-accent)' }} />
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: connected ? 'rgba(255,45,85,0.1)' : 'rgba(255,45,85,0.06)' }}>
+              <AppleHealthIcon size={26} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[16px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -197,11 +233,16 @@ const HealthSync = () => {
         {connected && (
           <div className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
-                {t('healthSync.todaysActivity')}
-              </h2>
+              <div>
+                <h2 className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('healthSync.todaysActivity')}
+                </h2>
+                <p className="text-[10px] mt-0.5" style={{ color: '#FF2D55' }}>
+                  {isIOS ? t('healthSync.dataFromAppleHealth', 'Data from Apple Health') : t('healthSync.dataFromHealthConnect', 'Data from Health Connect')}
+                </p>
+              </div>
               <button type="button" onClick={fetchActivity} disabled={refreshing}
-                aria-label="Refresh activity data"
+                aria-label={t('healthSync.refreshActivityData', 'Refresh activity data')}
                 className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                 style={{ color: 'var(--color-text-muted)' }}>
                 <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
@@ -235,7 +276,19 @@ const HealthSync = () => {
             </p>
           </div>
         </div>
+
+        {/* HealthKit attribution footer */}
+        {isIOS && (
+          <PoweredByHealthKit label={t('healthSync.poweredByHealthKit', 'Powered by Apple HealthKit')} />
+        )}
       </div>
+
+      <PermissionExplainerModal
+        open={explainerOpen}
+        type="health"
+        onAgree={handleExplainerAgree}
+        onCancel={handleExplainerCancel}
+      />
     </div>
   );
 };

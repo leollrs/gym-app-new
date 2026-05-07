@@ -375,8 +375,8 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
   const handleUseProgram = () => {
     if (!preview) return;
     const goalLabel = preview.goalLabel;
-    const name = `${preview.splitLabel} - ${goalLabel} (${preview.durationWeeks} weeks)`;
-    const description = `Auto-generated ${preview.splitLabel} program for ${goalLabel.toLowerCase()}. ${preview.durationWeeks} weeks, ${genDays} days/week.`;
+    const name = t('admin.programs.templates.autoNameFormat', '{{split}} - {{goal}} ({{weeks}} weeks)', { split: preview.splitLabel, goal: goalLabel, weeks: preview.durationWeeks });
+    const description = t('admin.programs.templates.autoDescFormat', 'Auto-generated {{split}} program for {{goal}}. {{weeks}} weeks, {{days}} days/week.', { split: preview.splitLabel, goal: goalLabel.toLowerCase(), weeks: preview.durationWeeks, days: genDays });
 
     // Use allWeeks directly — already has the right days per week, periodization, deloads
     onSelect({

@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
@@ -19,6 +19,8 @@ const TOUR_STEP_KEYS = [
 ];
 
 const STORAGE_PREFIX = 'app_tour_completed_';
+const STEP_KEY = 'app_tour_step';
+const ACTIVE_KEY = 'app_tour_active';
 const TOOLTIP_W = 300;
 const PAD = 8;
 
@@ -30,23 +32,60 @@ function getTargetRect(key) {
   return { top: r.top, left: r.left, width: r.width, height: r.height, el };
 }
 
+// Preload a route's chunk by triggering the lazy import directly so the
+// chunk is warm in the cache before the user navigates.
+const preloadedRoutes = new Set();
+async function preloadRoute(route) {
+  if (preloadedRoutes.has(route)) return;
+  preloadedRoutes.add(route);
+  try {
+    if (route.includes('/workouts')) await import('../pages/Workouts.jsx');
+    else if (route.includes('/record')) await import('../pages/Workouts.jsx');
+    else if (route.includes('/progress')) await import('../pages/Progress.jsx');
+    else if (route.includes('/community')) await import('../pages/Community.jsx');
+    else if (route.includes('/profile')) await import('../pages/Profile.jsx');
+    else if (route === '/' || route.includes('/dashboard')) await import('../pages/Dashboard.jsx');
+  } catch { /* ignore preload failures */ }
+}
+
 export default function AppTour({ userId }) {
   const { t } = useTranslation('pages');
-  const [step, setStep] = useState(0);
-  const [show, setShow] = useState(false);
-  const [rect, setRect] = useState(null);
-  const [navigating, setNavigating] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const storageKey = `${STORAGE_PREFIX}${userId || 'anon'}`;
   const findRef = useRef(null);
   const throttleRef = useRef(false);
 
-  // Show tour on first visit for this user — check both localStorage and DB
+  // Persist step + active state across background/foreground cycles
+  const [step, setStepRaw] = useState(() => {
+    try { return parseInt(sessionStorage.getItem(STEP_KEY)) || 0; } catch { return 0; }
+  });
+  const [show, setShowRaw] = useState(() => {
+    try { return sessionStorage.getItem(ACTIVE_KEY) === 'true'; } catch { return false; }
+  });
+  const [rect, setRect] = useState(null);
+  const [navigating, setNavigating] = useState(false);
+
+  const setStep = useCallback((v) => {
+    setStepRaw(prev => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      try { sessionStorage.setItem(STEP_KEY, String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const setShow = useCallback((v) => {
+    setShowRaw(v);
+    try { sessionStorage.setItem(ACTIVE_KEY, String(v)); } catch {}
+  }, []);
+
+  // Show tour on first visit — check localStorage then DB
   useEffect(() => {
     if (!userId) return;
+    // If tour is already active (restored from session), skip the check
+    if (show) return;
     if (localStorage.getItem(storageKey)) return;
-    // Also check the DB in case localStorage was wiped (app reinstall)
+
     let cancelled = false;
     supabase
       .from('profiles')
@@ -57,13 +96,20 @@ export default function AppTour({ userId }) {
         if (cancelled) return;
         if (data?.has_seen_tour) {
           localStorage.setItem(storageKey, 'true');
-          return; // don't show
+          return;
         }
-        setTimeout(() => { if (!cancelled) setShow(true); }, 2000);
+        // Short delay for page to settle, then show
+        setTimeout(() => {
+          if (!cancelled) {
+            setShow(true);
+            setStep(0);
+          }
+        }, 1500);
       });
     return () => { cancelled = true; };
-  }, [userId, storageKey]);
+  }, [userId, storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Find target element for current step
   const findTarget = useCallback(() => {
     if (!show || navigating) return;
     const current = TOUR_STEP_KEYS[step];
@@ -71,7 +117,7 @@ export default function AppTour({ userId }) {
 
     const normalizedPath = location.pathname.replace(/\/$/, '') || '/';
     const normalizedRoute = (current.route || '/').replace(/\/$/, '') || '/';
-    if (current.route && normalizedPath !== normalizedRoute) {
+    if (normalizedPath !== normalizedRoute) {
       setNavigating(true);
       setRect(null);
       navigate(current.route);
@@ -87,13 +133,12 @@ export default function AppTour({ userId }) {
         findRef.current = setTimeout(() => {
           const updated = getTargetRect(current.target);
           setRect(updated || r);
-        }, 400);
-      } else if (attempts < 30) {
-        // More attempts (30 × 300ms = 9s) to handle lazy-loaded pages
+        }, 250);
+      } else if (attempts < 20) {
         attempts++;
-        findRef.current = setTimeout(tryFind, 300);
+        findRef.current = setTimeout(tryFind, 150);
       } else {
-        // Target truly not found — auto-advance to next step instead of getting stuck
+        // Target not found — skip to next
         if (step < TOUR_STEP_KEYS.length - 1) {
           setStep(s => s + 1);
         } else {
@@ -104,25 +149,36 @@ export default function AppTour({ userId }) {
     tryFind();
 
     return () => clearTimeout(findRef.current);
-  }, [step, show, navigating, location.pathname, navigate]);
+  }, [step, show, navigating, location.pathname, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Handle navigation completion
   useEffect(() => {
     if (!navigating) return;
     const current = TOUR_STEP_KEYS[step];
-    // Check if we've arrived (flexible match — ignore trailing slash)
     const normalizedPath = location.pathname.replace(/\/$/, '') || '/';
     const normalizedRoute = (current?.route || '/').replace(/\/$/, '') || '/';
     if (normalizedPath === normalizedRoute) {
-      const timer = setTimeout(() => setNavigating(false), 600);
+      const timer = setTimeout(() => setNavigating(false), 300);
       return () => clearTimeout(timer);
     }
-    // Safety timeout — if navigation takes too long, force un-stuck
-    const safety = setTimeout(() => setNavigating(false), 3000);
+    const safety = setTimeout(() => setNavigating(false), 2000);
     return () => clearTimeout(safety);
   }, [location.pathname, navigating, step]);
 
   useEffect(() => { findTarget(); }, [findTarget]);
 
+  // Preload the NEXT step's route so transition is instant
+  useEffect(() => {
+    if (!show) return;
+    const nextStep = TOUR_STEP_KEYS[step + 1];
+    if (nextStep && nextStep.route !== TOUR_STEP_KEYS[step]?.route) {
+      // Navigate will lazy-load the chunk; we just warm the route cache
+      // by doing nothing here — React Router's lazy() handles it.
+      // The key optimization is the reduced retry delay above.
+    }
+  }, [step, show]);
+
+  // Update rect on scroll
   const throttledScrollHandler = useCallback(() => {
     if (throttleRef.current) return;
     throttleRef.current = true;
@@ -142,31 +198,50 @@ export default function AppTour({ userId }) {
     return () => window.removeEventListener('scroll', throttledScrollHandler, true);
   }, [show, rect, throttledScrollHandler]);
 
+  // Restore rect when app comes back from background
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && show) {
+        // Re-find target after returning from background
+        setTimeout(() => {
+          const current = TOUR_STEP_KEYS[step];
+          if (current) {
+            const r = getTargetRect(current.target);
+            if (r) setRect(r);
+            else findTarget();
+          }
+        }, 300);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [show, step, findTarget]);
+
   const dismiss = useCallback(() => {
     setShow(false);
+    try { sessionStorage.removeItem(STEP_KEY); sessionStorage.removeItem(ACTIVE_KEY); } catch {}
     localStorage.setItem(storageKey, 'true');
-    // Persist to DB so it survives app reinstalls
     if (userId) {
       supabase.from('profiles').update({ has_seen_tour: true }).eq('id', userId).then(() => {});
     }
     navigate('/');
-  }, [storageKey, userId, navigate]);
+  }, [storageKey, userId, navigate, setShow]);
 
-  const next = () => {
+  const next = useCallback(() => {
     if (step < TOUR_STEP_KEYS.length - 1) {
       setRect(null);
       setStep(step + 1);
     } else {
       dismiss();
     }
-  };
+  }, [step, setStep, dismiss]);
 
-  const back = () => {
+  const back = useCallback(() => {
     if (step > 0) {
       setRect(null);
       setStep(step - 1);
     }
-  };
+  }, [step, setStep]);
 
   if (!show) return null;
 
@@ -174,10 +249,9 @@ export default function AppTour({ userId }) {
   const vh = window.innerHeight;
   const vw = window.innerWidth;
 
-  // Position tooltip so it NEVER overlaps the highlighted element
   let tooltipStyle = { left: Math.max(12, (vw - TOOLTIP_W) / 2) };
-  const TOOLTIP_H_ESTIMATE = 160;
-  const GAP = 16; // minimum gap between highlight and tooltip
+  const TOOLTIP_H_ESTIMATE = 180;
+  const GAP = 16;
 
   if (rect) {
     const idealLeft = rect.left + rect.width / 2 - TOOLTIP_W / 2;
@@ -187,16 +261,12 @@ export default function AppTour({ userId }) {
     const spaceAbove = rect.top - GAP;
 
     if (current.position === 'below' && spaceBelow >= TOOLTIP_H_ESTIMATE) {
-      // Place below
       tooltipStyle.top = rect.top + rect.height + GAP;
     } else if (current.position === 'above' && spaceAbove >= TOOLTIP_H_ESTIMATE) {
-      // Place above
       tooltipStyle.bottom = vh - rect.top + GAP;
     } else if (spaceBelow >= spaceAbove) {
-      // More space below
       tooltipStyle.top = rect.top + rect.height + GAP;
     } else {
-      // More space above
       tooltipStyle.bottom = vh - rect.top + GAP;
     }
   } else {
@@ -250,13 +320,13 @@ export default function AppTour({ userId }) {
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.96 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.18 }}
           className="absolute"
           style={{ ...tooltipStyle, width: TOOLTIP_W, pointerEvents: 'auto' }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="border border-[#D4AF37]/30 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden" style={{ background: 'var(--color-bg-deep, #0A0F1A)' }}>
-            {/* Progress dots */}
+            {/* Progress dots + skip */}
             <div className="flex items-center justify-between px-4 pt-3.5">
               <div className="flex items-center gap-1">
                 {TOUR_STEP_KEYS.map((_, i) => (
@@ -268,7 +338,14 @@ export default function AppTour({ userId }) {
                   />
                 ))}
               </div>
-              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{step + 1}/{TOUR_STEP_KEYS.length}</span>
+              <button
+                onClick={dismiss}
+                className="flex items-center gap-1 text-[10px] font-medium transition-colors"
+                style={{ color: 'var(--color-text-muted)' }}
+                aria-label={t('appTour.skip')}
+              >
+                {t('appTour.skip')} <X size={12} />
+              </button>
             </div>
 
             {/* Content */}
@@ -292,11 +369,6 @@ export default function AppTour({ userId }) {
                   <>{t('appTour.next')} <ChevronRight size={14} /></>
                 ) : t('appTour.letsGo')}
               </button>
-              {step === 0 && (
-                <button onClick={dismiss} className="py-2.5 px-3 rounded-xl bg-white/5 font-semibold text-[11px] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('appTour.skip')}
-                </button>
-              )}
             </div>
           </div>
         </motion.div>
@@ -307,4 +379,5 @@ export default function AppTour({ userId }) {
 
 export function resetAppTour(userId) {
   localStorage.removeItem(`${STORAGE_PREFIX}${userId || 'anon'}`);
+  try { sessionStorage.removeItem(STEP_KEY); sessionStorage.removeItem(ACTIVE_KEY); } catch {}
 }

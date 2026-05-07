@@ -18,6 +18,19 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.tugympr.app.siri</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>tugympr</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -36,18 +49,23 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>TuGymPR saves your workouts and weight logs to Apple Health so all your fitness data stays in one place.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TuGymPR uses your location to verify you're at the gym for check-in.</string>
+	<string>TuGymPR uses your location to track your outdoor runs and cardio workouts with distance, pace, and route mapping.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>TuGymPR keeps tracking your cardio session in the background while your phone is locked, so your distance, pace, and route stay accurate for the entire workout.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>TuGymPR uses motion data to count steps and estimate calories during your outdoor runs.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>TuGymPR saves progress photos and workout summaries to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>TuGymPR accesses your photo library to upload profile pictures and progress photos.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>fetch</string>
-		<string>processing</string>
 		<string>remote-notification</string>
+		<string>location</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
@@ -55,10 +73,10 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UIRequiresFullScreen</key>
-	<true/>
+	<false/>
 	<key>UIStatusBarStyle</key>
 	<string>UIStatusBarStyleLightContent</string>
 	<key>UISupportedInterfaceOrientations</key>

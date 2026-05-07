@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Activity, Dumbbell, Users } from 'lucide-react';
@@ -150,7 +150,7 @@ const GymPulse = () => {
       for (const s of allSessions) {
         sessionMap.set(s.profile_id, {
           id: s.profile_id,
-          name: s.profiles?.full_name || 'Member',
+          name: s.profiles?.full_name || t('dashboard.memberFallback', 'Member'),
           avatar: s.profiles?.avatar_url,
           avatar_type: s.profiles?.avatar_type,
           avatar_value: s.profiles?.avatar_value,
@@ -186,7 +186,7 @@ const GymPulse = () => {
     let debounceTimer;
     const debouncedFetch = () => {
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => fetchPulse(), 2000);
+      debounceTimer = setTimeout(() => fetchPulse(), 5000);
     };
     const channel = supabase
       .channel('gym-pulse-realtime')
@@ -231,7 +231,7 @@ const GymPulse = () => {
       onClick={() => setShowDetail(true)}
       className="rounded-[14px] bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] p-5 cursor-pointer hover:border-[var(--color-border-subtle)] transition-colors overflow-hidden"
       aria-live="polite"
-      aria-label="Gym activity pulse"
+      aria-label={t('gymPulse.ariaPulseLabel', 'Gym activity pulse')}
     >
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
@@ -306,59 +306,109 @@ const GymPulse = () => {
       )}
     </motion.div>
 
-    {/* Detail Modal */}
+    {/* Detail Modal — centered card */}
     {showDetail && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowDetail(false)}>
+      <div
+        className="fixed inset-0 z-[80] flex items-center justify-center px-4"
+        style={{
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(18px)',
+          WebkitBackdropFilter: 'blur(18px)',
+        }}
+        onClick={() => setShowDetail(false)}
+      >
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="gym-pulse-detail-title"
-          className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-[24px] bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden mx-4"
+          className="w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
+          style={{
+            background: 'var(--color-bg-card)',
+            borderRadius: 24,
+            border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',
+            boxShadow: '0 30px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
+          }}
           onClick={e => e.stopPropagation()}
         >
-          {/* Handle + Close */}
-          <div className="relative flex justify-center pt-4 pb-3 shrink-0">
-            <div className="w-8 h-[3px] rounded-full bg-[var(--color-border-subtle)]" />
+
+          {/* Header */}
+          <div
+            className="flex items-start justify-between px-6 pt-3 pb-4 shrink-0"
+            style={{ borderBottom: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))' }}
+          >
+            <div className="flex-1 min-w-0">
+              <p
+                className="uppercase"
+                style={{
+                  fontSize: 11, fontWeight: 800, letterSpacing: '0.16em',
+                  color: 'var(--color-accent)',
+                }}
+              >
+                {t('dashboard.gymActivity', 'Gym activity')}
+              </p>
+              <h2
+                id="gym-pulse-detail-title"
+                className="truncate"
+                style={{
+                  fontFamily: '"Archivo", "Familjen Grotesk", system-ui',
+                  fontSize: 24, fontWeight: 900, letterSpacing: -0.5,
+                  color: 'var(--color-text-primary)',
+                  marginTop: 4, lineHeight: 1.1,
+                }}
+              >
+                {t('dashboard.todaysActivity')}
+              </h2>
+              <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2">
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)' }}>
+                  {t('dashboard.xTrained', { count: membersToday })}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)' }}>
+                  {t('dashboard.xLbsTotal', { count: fmtNumber(volumeToday) })}
+                </span>
+                {activeNow > 0 && (
+                  <span className="flex items-center gap-1" style={{ fontSize: 12, fontWeight: 700, color: '#10B981' }}>
+                    <PulsingDot color="bg-emerald-400" size="w-1.5 h-1.5" />
+                    {t('dashboard.xActiveNow', { count: activeNow })}
+                  </span>
+                )}
+              </div>
+            </div>
             <button
               onClick={() => setShowDetail(false)}
-              className="absolute right-4 top-3 w-11 h-11 rounded-full bg-[var(--color-surface-hover)] flex items-center justify-center text-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              aria-label="Close"
+              className="flex items-center justify-center transition-transform active:scale-90 shrink-0"
+              style={{
+                width: 38, height: 38, borderRadius: 19,
+                background: 'var(--color-surface-hover, rgba(255,255,255,0.06))',
+                border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',
+                color: 'var(--color-text-primary)',
+              }}
+              aria-label={t('gymPulse.ariaClose', 'Close')}
             >
-              <span className="text-[16px]">{'\u2715'}</span>
+              <span style={{ fontSize: 16 }}>{'\u2715'}</span>
             </button>
           </div>
 
-          {/* Header */}
-          <div className="px-5 pb-3 border-b border-[var(--color-border-subtle)]">
-            <div className="flex items-center gap-2">
-              <Activity size={18} className="text-[#D4AF37]" />
-              <h2 id="gym-pulse-detail-title" className="text-[17px] font-bold text-[var(--color-text-primary)] truncate">{t('dashboard.todaysActivity')}</h2>
-            </div>
-            <div className="flex items-center gap-4 mt-2">
-              <span className="text-[12px] text-[var(--color-text-muted)]">{t('dashboard.xTrained', { count: membersToday })}</span>
-              <span className="text-[12px] text-[var(--color-text-muted)]">{t('dashboard.xLbsTotal', { count: fmtNumber(volumeToday) })}</span>
-              {activeNow > 0 && (
-                <span className="flex items-center gap-1 text-[12px] text-emerald-400">
-                  <PulsingDot color="bg-emerald-400" size="w-1.5 h-1.5" />
-                  {t('dashboard.xActiveNow', { count: activeNow })}
-                </span>
-              )}
-            </div>
-          </div>
-
           {/* Member list */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2.5">
             {todaySessions
               .filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i)
               .sort((a, b) => (a.status === 'in_progress' ? -1 : 1) - (b.status === 'in_progress' ? -1 : 1))
               .map((s, i) => (
-                <div key={`${s.id}-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[var(--color-surface-hover)] border border-[var(--color-border-subtle)]">
+                <div
+                  key={`${s.id}-${i}`}
+                  className="flex items-center gap-3"
+                  style={{
+                    padding: '12px 14px', borderRadius: 16,
+                    background: 'var(--color-surface-hover, rgba(255,255,255,0.04))',
+                    border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',
+                  }}
+                >
                   {/* Avatar — tappable for profile preview */}
                   <button
                     type="button"
                     onClick={() => setPreviewUserId(s.id)}
                     className="flex-shrink-0 rounded-full focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                    aria-label={`View ${s.name}'s profile`}
+                    aria-label={t('gymPulse.ariaViewProfile', { name: s.name, defaultValue: `View ${s.name}'s profile` })}
                   >
                     <UserAvatar user={{ avatar_url: s.avatar, full_name: s.name, avatar_type: s.avatar_type, avatar_value: s.avatar_value }} size={40} />
                   </button>
@@ -410,4 +460,4 @@ const GymPulse = () => {
   );
 };
 
-export default GymPulse;
+export default memo(GymPulse);

@@ -36,9 +36,9 @@ export default function GymContentTab({
       {/* Content sub-tabs */}
       <div className="flex gap-1 mb-4">
         {[
-          { key: 'challenges', label: `Challenges (${challenges.length})` },
-          { key: 'programs', label: `Programs (${programs.length})` },
-          { key: 'achievements', label: `Achievements (${achievements.length})` },
+          { key: 'challenges', label: t('platform.gymDetail.contentTab.challengesTab', { count: challenges.length }) },
+          { key: 'programs', label: t('platform.gymDetail.contentTab.programsTab', { count: programs.length }) },
+          { key: 'achievements', label: t('platform.gymDetail.contentTab.achievementsTab', { count: achievements.length }) },
           { key: 'rewards', label: t('platform.gymDetail.contentTab.rewardsTab') },
         ].map(st => (
           <button
@@ -56,20 +56,20 @@ export default function GymContentTab({
       {contentSubTab === 'challenges' && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[14px] font-semibold text-[#E5E7EB]">Gym Challenges</h3>
+            <h3 className="text-[14px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.contentTab.gymChallenges')}</h3>
             <button
               onClick={() => { setEditingChallenge(null); setShowChallengeModal(true); }}
               className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              Add Challenge
+              {t('platform.gymDetail.contentTab.addChallenge')}
             </button>
           </div>
 
           {challenges.length === 0 ? (
             <div className="bg-[#0F172A] border border-white/6 rounded-xl py-16 text-center">
               <Trophy className="w-8 h-8 text-[#6B7280] mx-auto mb-3" />
-              <p className="text-[#6B7280] text-sm">No challenges yet. Create your first one!</p>
+              <p className="text-[#6B7280] text-sm">{t('platform.gymDetail.contentTab.noChallenges')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -94,11 +94,11 @@ export default function GymContentTab({
                           <p className="text-[12px] text-[#6B7280] mb-1 line-clamp-1">{c.description}</p>
                         )}
                         <div className="flex items-center gap-4 text-[11px] text-[#6B7280]">
-                          {c.start_date && <span>Start: {format(new Date(c.start_date), 'MMM d, yyyy')}</span>}
-                          {c.end_date && <span>End: {format(new Date(c.end_date), 'MMM d, yyyy')}</span>}
+                          {c.start_date && <span>{t('platform.gymDetail.contentTab.start')} {format(new Date(c.start_date), 'MMM d, yyyy')}</span>}
+                          {c.end_date && <span>{t('platform.gymDetail.contentTab.end')} {format(new Date(c.end_date), 'MMM d, yyyy')}</span>}
                           <span className="flex items-center gap-1">
                             <Users className="w-3 h-3" />
-                            {participantCount} participants
+                            {t('platform.gymDetail.contentTab.participants', { count: participantCount })}
                           </span>
                         </div>
                       </div>
@@ -106,14 +106,14 @@ export default function GymContentTab({
                         <button
                           onClick={() => { setEditingChallenge(c); setShowChallengeModal(true); }}
                           className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
-                          aria-label="Edit challenge"
+                          aria-label={t('platform.gymDetail.contentTab.editChallenge')}
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => setDeleteConfirm({ type: 'challenge', id: c.id, name: c.name })}
                           className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
-                          aria-label="Delete challenge"
+                          aria-label={t('platform.gymDetail.contentTab.deleteChallenge')}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -130,20 +130,20 @@ export default function GymContentTab({
       {contentSubTab === 'programs' && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[14px] font-semibold text-[#E5E7EB]">Gym Programs</h3>
+            <h3 className="text-[14px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.contentTab.gymPrograms')}</h3>
             <button
               onClick={() => { setEditingProgram(null); setShowProgramModal(true); }}
               className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              Add Program
+              {t('platform.gymDetail.contentTab.addProgram')}
             </button>
           </div>
 
           {programs.length === 0 ? (
             <div className="bg-[#0F172A] border border-white/6 rounded-xl py-16 text-center">
               <BookOpen className="w-8 h-8 text-[#6B7280] mx-auto mb-3" />
-              <p className="text-[#6B7280] text-sm">No programs yet. Create your first one!</p>
+              <p className="text-[#6B7280] text-sm">{t('platform.gymDetail.contentTab.noPrograms')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -170,8 +170,8 @@ export default function GymContentTab({
                         <p className="text-[12px] text-[#6B7280] mb-1 line-clamp-1">{p.description}</p>
                       )}
                       <div className="flex items-center gap-4 text-[11px] text-[#6B7280]">
-                        {p.duration_weeks && <span>{p.duration_weeks} weeks</span>}
-                        {p.created_at && <span>Created {format(new Date(p.created_at), 'MMM d, yyyy')}</span>}
+                        {p.duration_weeks && <span>{t('platform.gymDetail.contentTab.weeks', { count: p.duration_weeks })}</span>}
+                        {p.created_at && <span>{t('platform.gymDetail.contentTab.created', { date: format(new Date(p.created_at), 'MMM d, yyyy') })}</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -189,14 +189,14 @@ export default function GymContentTab({
                       <button
                         onClick={() => { setEditingProgram(p); setShowProgramModal(true); }}
                         className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
-                        aria-label="Edit program"
+                        aria-label={t('platform.gymDetail.contentTab.editProgram')}
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => setDeleteConfirm({ type: 'program', id: p.id, name: p.name })}
                         className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
-                        aria-label="Delete program"
+                        aria-label={t('platform.gymDetail.contentTab.deleteProgram')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -212,20 +212,20 @@ export default function GymContentTab({
       {contentSubTab === 'achievements' && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[14px] font-semibold text-[#E5E7EB]">Achievement Definitions</h3>
+            <h3 className="text-[14px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.contentTab.achievementDefs')}</h3>
             <button
               onClick={() => { setEditingAchievement(null); setShowAchievementModal(true); }}
               className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              Add Achievement
+              {t('platform.gymDetail.contentTab.addAchievement')}
             </button>
           </div>
 
           {achievements.length === 0 ? (
             <div className="bg-[#0F172A] border border-white/6 rounded-xl py-16 text-center">
               <Award className="w-8 h-8 text-[#6B7280] mx-auto mb-3" />
-              <p className="text-[#6B7280] text-sm">No achievements defined yet.</p>
+              <p className="text-[#6B7280] text-sm">{t('platform.gymDetail.contentTab.noAchievements')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -243,7 +243,7 @@ export default function GymContentTab({
                             </span>
                           )}
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            {earnedCount} earned
+                            {t('platform.gymDetail.contentTab.earned', { count: earnedCount })}
                           </span>
                         </div>
                         {a.description && (
@@ -251,7 +251,7 @@ export default function GymContentTab({
                         )}
                         {a.requirement_value != null && (
                           <span className="text-[11px] text-[#6B7280]">
-                            Requirement: {a.requirement_value}
+                            {t('platform.gymDetail.contentTab.requirement', { value: a.requirement_value })}
                           </span>
                         )}
                       </div>
@@ -259,14 +259,14 @@ export default function GymContentTab({
                         <button
                           onClick={() => { setEditingAchievement(a); setShowAchievementModal(true); }}
                           className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
-                          aria-label="Edit achievement"
+                          aria-label={t('platform.gymDetail.contentTab.editAchievement')}
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => setDeleteConfirm({ type: 'achievement', id: a.id, name: a.name })}
                           className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
-                          aria-label="Delete achievement"
+                          aria-label={t('platform.gymDetail.contentTab.deleteAchievement')}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -285,15 +285,15 @@ export default function GymContentTab({
           {rewardsAvailable === false ? (
             <div className="bg-[#0F172A] border border-white/6 rounded-xl py-20 text-center">
               <Gift className="w-10 h-10 text-[#D4AF37]/40 mx-auto mb-4" />
-              <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">Rewards System Coming Soon</h3>
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">{t('platform.gymDetail.contentTab.rewardsComingSoon')}</h3>
               <p className="text-[12px] text-[#6B7280] max-w-sm mx-auto">
-                The rewards and points system is under development. Members will be able to earn and redeem points for achievements, challenges, and consistency.
+                {t('platform.gymDetail.contentTab.rewardsComingSoonDesc')}
               </p>
             </div>
           ) : Array.isArray(rewardsAvailable) && rewardsAvailable.length === 0 ? (
             <div className="bg-[#0F172A] border border-white/6 rounded-xl py-16 text-center">
               <Gift className="w-8 h-8 text-[#6B7280] mx-auto mb-3" />
-              <p className="text-[#6B7280] text-sm">No reward items configured for this gym.</p>
+              <p className="text-[#6B7280] text-sm">{t('platform.gymDetail.contentTab.noRewards')}</p>
             </div>
           ) : Array.isArray(rewardsAvailable) ? (
             <div className="space-y-3">
@@ -304,14 +304,14 @@ export default function GymContentTab({
                       <Gift className="w-5 h-5 text-[#D4AF37]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{r.name ?? r.title ?? 'Reward'}</h4>
+                      <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{r.name ?? r.title ?? t('platform.gymDetail.contentTab.rewardFallback')}</h4>
                       {r.description && (
                         <p className="text-[12px] text-[#6B7280] line-clamp-1">{r.description}</p>
                       )}
                     </div>
                     {r.points != null && (
                       <span className="text-[12px] font-semibold text-[#D4AF37] bg-[#D4AF37]/10 px-3 py-1 rounded-lg">
-                        {r.points} pts
+                        {r.points} {t('platform.gymDetail.contentTab.pointsSuffix')}
                       </span>
                     )}
                   </div>

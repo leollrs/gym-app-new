@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Clock, MapPin, Calendar, Megaphone, Info, CalendarCheck, ChevronRight, Tag } from 'lucide-react';
+import { ChevronLeft, Clock, MapPin, Calendar, Megaphone, Info, CalendarCheck, ChevronRight, Tag, Users } from 'lucide-react';
+import UserAvatar from '../components/UserAvatar';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { sanitize } from '../lib/sanitize';
+import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { formatDistanceToNow, format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 
@@ -42,13 +44,19 @@ export default function MyGym() {
   const fmt = (timeStr) => fmtTime(timeStr, use24h);
   const { profile, gymName, gymLogoUrl, gymConfig } = useAuth();
   const navigate = useNavigate();
-  const [gym, setGym] = useState(null);
-  const [hours, setHours] = useState([]);
-  const [holidays, setHolidays] = useState([]);
-  const [announcements, setAnnouncements] = useState([]);
-  const [upcomingClasses, setUpcomingClasses] = useState([]);
-  const [offers, setOffers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const gid = profile?.gym_id;
+  const cacheKey = `mygym-${gid}`;
+  const hasCache = !!gid && hasCachedState(`${cacheKey}-gym`);
+  const [gym, setGym] = useCachedState(`${cacheKey}-gym`, null);
+  const [hours, setHours] = useCachedState(`${cacheKey}-hours`, []);
+  const [holidays, setHolidays] = useCachedState(`${cacheKey}-holidays`, []);
+  const [announcements, setAnnouncements] = useCachedState(`${cacheKey}-ann`, []);
+  const [upcomingClasses, setUpcomingClasses] = useCachedState(`${cacheKey}-classes`, []);
+  const [offers, setOffers] = useCachedState(`${cacheKey}-offers`, []);
+  const [trainers, setTrainers] = useCachedState(`${cacheKey}-trainers`, []);
+  // Only show the full-screen spinner on the VERY first visit. After that,
+  // cached data paints instantly and we refetch silently in the background.
+  const [loading, setLoading] = useState(!hasCache);
 
   useEffect(() => {
     if (!profile?.gym_id) return;
@@ -77,7 +85,7 @@ export default function MyGym() {
         // Fetch schedules for all days of the week, then sort client-side by proximity
         const classRes = await supabase
           .from('gym_class_schedules')
-          .select('id, day_of_week, start_time, end_time, gym_classes(name, color, instructor)')
+          .select('id, day_of_week, start_time, end_time, gym_classes(name, color, instructor, trainer:profiles!trainer_id(id, full_name))')
           .eq('gym_id', profile.gym_id)
           .order('start_time');
         const allSchedules = classRes.data || [];
@@ -102,6 +110,16 @@ export default function MyGym() {
         .order('sort_order');
       setOffers(offersRes.data || []);
 
+      // Fetch active trainers at this gym
+      const trainersRes = await supabase
+        .from('profiles')
+        .select('id, full_name, username, avatar_url, avatar_type, avatar_value, trainer_tagline, trainer_years_exp')
+        .eq('gym_id', profile.gym_id)
+        .eq('role', 'trainer')
+        .order('full_name', { ascending: true })
+        .limit(20);
+      setTrainers(trainersRes.data || []);
+
       setLoading(false);
     };
     load();
@@ -124,14 +142,14 @@ export default function MyGym() {
       {/* Header */}
       <div className="sticky top-0 z-20 backdrop-blur-xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
         <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
-          <button onClick={() => navigate(-1)} aria-label="Go back" className="p-2 -ml-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
+          <button onClick={() => navigate(-1)} aria-label={t('myGym.goBack', { defaultValue: 'Go back' })} className="p-2 -ml-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none" style={{ color: 'var(--color-text-muted)', '--tw-ring-color': 'var(--color-accent, #2EC4C4)' }}>
             <ChevronLeft size={24} strokeWidth={2} />
           </button>
           {gymLogoUrl && (
             <img src={gymLogoUrl} alt={gym?.name} className="h-9 w-9 rounded-xl object-contain flex-shrink-0" style={{ border: '1px solid var(--color-border-default)', backgroundColor: 'var(--color-bg-secondary)' }} />
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{gym?.name || gymName}</h1>
+            <h1 className="text-[28px] truncate" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.4px' }}>{gym?.name || gymName}</h1>
             <p className="text-[12px]" style={{ color: isOpenToday ? 'var(--color-success)' : 'var(--color-danger)' }}>
               {isOpenToday
                 ? `${t('myGym.openToday')} · ${fmt(todayHours?.open_time || gym?.open_time)} – ${fmt(todayHours?.close_time || gym?.close_time)}`
@@ -144,10 +162,10 @@ export default function MyGym() {
       <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-5 space-y-5">
 
         {/* Hours Card — per-day */}
-        <section className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+        <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
           <div className="flex items-center gap-2 mb-4">
             <Clock size={16} style={{ color: 'var(--color-accent)' }} />
-            <h2 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('myGym.hoursSchedule')}</h2>
+            <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('myGym.hoursSchedule')}</h2>
           </div>
           <div className="space-y-1">
             {DAY_KEYS.map((dayKey, i) => {
@@ -186,10 +204,10 @@ export default function MyGym() {
         </section>
 
         {/* Upcoming Holidays */}
-        <section className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+        <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
           <div className="flex items-center gap-2 mb-4">
             <Calendar size={16} style={{ color: 'var(--color-accent)' }} />
-            <h2 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('myGym.upcomingHolidays')}</h2>
+            <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('myGym.upcomingHolidays')}</h2>
           </div>
           {holidays.length === 0 ? (
             <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('myGym.noUpcomingHolidays')}</p>
@@ -216,16 +234,16 @@ export default function MyGym() {
 
         {/* Upcoming Classes */}
         {gymConfig?.classesEnabled && (
-          <section className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+          <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <CalendarCheck size={16} style={{ color: 'var(--color-accent)' }} />
-                <h2 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('classes.upcomingClasses')}</h2>
+                <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('classes.upcomingClasses')}</h2>
               </div>
               <button
                 onClick={() => navigate('/classes')}
-                className="flex items-center gap-1 text-[12px] font-semibold min-h-[44px] min-w-[44px] justify-end focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
-                style={{ color: 'var(--color-accent)' }}
+                className="flex items-center gap-1 text-[12px] font-semibold min-h-[44px] min-w-[44px] justify-end focus:ring-2 focus:outline-none rounded-full px-3"
+                style={{ color: 'var(--color-accent)', '--tw-ring-color': 'var(--color-accent, #2EC4C4)' }}
               >
                 {t('classes.viewAll')}
                 <ChevronRight size={14} />
@@ -254,7 +272,19 @@ export default function MyGym() {
                         <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{cls.name}</p>
                         <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                           {dayLabel} · {fmt(sched.start_time)} – {fmt(sched.end_time)}
-                          {cls.instructor ? ` · ${cls.instructor}` : ''}
+                          {cls.trainer?.id ? (
+                            <>
+                              {' · '}
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); navigate(`/trainers/${cls.trainer.id}`); }}
+                                className="underline-offset-2 hover:underline active:opacity-80"
+                                style={{ color: 'var(--color-accent)', background: 'transparent', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer' }}
+                              >
+                                {cls.trainer.full_name || cls.instructor}
+                              </button>
+                            </>
+                          ) : cls.instructor ? ` · ${cls.instructor}` : ''}
                         </p>
                       </div>
                       <ChevronRight size={16} style={{ color: 'var(--color-text-faint)' }} />
@@ -267,10 +297,10 @@ export default function MyGym() {
         )}
 
         {/* Gym Info Card */}
-        <section className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+        <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
           <div className="flex items-center gap-2 mb-4">
             <Info size={16} style={{ color: 'var(--color-accent)' }} />
-            <h2 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('myGym.gymInfo')}</h2>
+            <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('myGym.gymInfo')}</h2>
           </div>
           <div className="space-y-3">
             {gym?.country && (
@@ -291,11 +321,51 @@ export default function MyGym() {
           </div>
         </section>
 
+        {/* Trainers at your gym */}
+        {trainers.length > 0 && (
+          <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
+            <div className="flex items-center gap-2 mb-4">
+              <Users size={16} style={{ color: 'var(--color-accent)' }} />
+              <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>
+                {t('publicTrainerProfile.trainersAtGym', { defaultValue: 'Trainers at your gym' })}
+              </h2>
+            </div>
+            <div className="space-y-2">
+              {trainers.map((tr) => (
+                <button
+                  key={tr.id}
+                  type="button"
+                  onClick={() => navigate(`/trainers/${tr.id}`)}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-colors active:scale-[0.98] text-left focus:outline-none"
+                  style={{ backgroundColor: 'var(--color-bg-secondary)', border: 'none' }}
+                  aria-label={t('publicTrainerProfile.viewProfile', { defaultValue: 'View profile' })}
+                >
+                  <UserAvatar user={tr} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                      {tr.full_name || tr.username || t('publicTrainerProfile.trainerLabel', { defaultValue: 'Trainer' })}
+                    </p>
+                    {(tr.trainer_tagline || tr.trainer_years_exp != null) && (
+                      <p className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>
+                        {tr.trainer_tagline ||
+                          (tr.trainer_years_exp != null
+                            ? t('publicTrainerProfile.yrsExp', { n: tr.trainer_years_exp, defaultValue: '{{n}} yrs' })
+                            : '')}
+                      </p>
+                    )}
+                  </div>
+                  <ChevronRight size={16} style={{ color: 'var(--color-text-faint)' }} />
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Recent News */}
-        <section className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+        <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
           <div className="flex items-center gap-2 mb-4">
             <Megaphone size={16} style={{ color: 'var(--color-accent)' }} />
-            <h2 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('myGym.recentNews')}</h2>
+            <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('myGym.recentNews')}</h2>
           </div>
           {announcements.length === 0 ? (
             <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('myGym.noRecentAnnouncements')}</p>
@@ -322,10 +392,10 @@ export default function MyGym() {
 
         {/* Offers */}
         {offers.length > 0 && (
-          <section className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+          <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
             <div className="flex items-center gap-2 mb-4">
               <Tag size={16} style={{ color: 'var(--color-accent)' }} />
-              <h2 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('myGym.offers')}</h2>
+              <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('myGym.offers')}</h2>
             </div>
             <div className="space-y-3">
               {offers.map(offer => {
@@ -364,7 +434,7 @@ export default function MyGym() {
                         className="text-[10px] font-medium px-2 py-0.5 rounded-full"
                         style={{ backgroundColor: `${typeColor}18`, color: typeColor }}
                       >
-                        {offer.offer_type?.replace(/_/g, ' ')}
+                        {t(`memberOffers.types.${offer.offer_type}`, offer.offer_type?.replace(/_/g, ' '))}
                       </span>
                     </div>
                   </div>

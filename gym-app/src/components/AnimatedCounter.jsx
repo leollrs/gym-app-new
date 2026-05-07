@@ -27,17 +27,11 @@ export default function AnimatedCounter({
   const [display, setDisplay] = useState(null); // null = not yet triggered
   const hasAnimated = useRef(false);
 
-  // Null / undefined / 0 → static render
-  if (value == null || value === 0) {
-    return (
-      <span className={className}>
-        {value === 0 ? `${prefix}0${suffix}` : '—'}
-      </span>
-    );
-  }
-
-  // Observe visibility
+  // Observe visibility — must be declared before any early return so the hook
+  // count stays constant across renders (otherwise transitioning from value=0
+  // to a non-zero value adds a hook and trips "Rendered more hooks…").
   useEffect(() => {
+    if (value == null || value === 0) return;
     const el = ref.current;
     if (!el || hasAnimated.current) return;
 
@@ -55,6 +49,15 @@ export default function AnimatedCounter({
     observer.observe(el);
     return () => observer.disconnect();
   }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Null / undefined / 0 → static render
+  if (value == null || value === 0) {
+    return (
+      <span className={className}>
+        {value === 0 ? `${prefix}0${suffix}` : '—'}
+      </span>
+    );
+  }
 
   function animate() {
     const start = performance.now();

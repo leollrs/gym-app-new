@@ -10,6 +10,13 @@ import { supabase } from './supabase';
 export function foodImageUrl(path) {
   if (!path) return null;
   if (path.startsWith('http')) return path;
+  // Pass through base64 data URLs (e.g. AI photo previews captured locally).
+  // Without this guard the data URL was sent to supabase.storage as a "path"
+  // and we rendered the wrong product image — that surfaced as the
+  // "Recently scanned" tile / re-open modal showing a stale food image.
+  if (path.startsWith('data:')) return path;
+  // Same for blob: object URLs created from File APIs.
+  if (path.startsWith('blob:')) return path;
   let clean = path.startsWith('/') ? path.slice(1) : path;
   clean = clean.replace(/\.png$/i, '.jpg');
   const { data } = supabase.storage.from('food-images').getPublicUrl(clean);

@@ -1,6 +1,14 @@
 import { useTranslation } from 'react-i18next';
 import { BODY_REGION_DEFINITIONS } from '../data/muscleRegions';
 
+// TODO: female variant of body diagram needed.
+// All current /muscles/*.webp overlays are sourced from a male reference
+// figure. We need a parallel female asset set (same region IDs, same 440×800
+// transparent layering) plus a `sex`-aware switch in this component to pick
+// the right overlay path. Probably wire it through `profiles.sex` so each
+// member sees their own anatomy in readiness, exercise library, and 1RM
+// strength-standard breakdowns.
+
 const regionMeta = Object.fromEntries(
   BODY_REGION_DEFINITIONS.map((r) => [r.id, r])
 );

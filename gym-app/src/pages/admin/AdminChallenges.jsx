@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trophy, ChevronDown, Users, Gift, Pencil, Trash2, Award, BarChart3, Flame, Dumbbell, Zap, TrendingUp, Timer, Crown } from 'lucide-react';
+import { Plus, Trophy, ChevronDown, Users, Gift, Pencil, Trash2, Award, BarChart3, Flame, Dumbbell, Zap, TrendingUp, Timer, Crown, Sparkles } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -83,9 +83,9 @@ function ChallengeCoverBadge({ preset }) {
 }
 
 const statusBadge = (c) => {
-  if (isFuture(new Date(c.start_date))) return { labelKey: 'admin.challenges.upcoming', color: 'text-blue-400 bg-blue-500/10' };
-  if (isPast(new Date(c.end_date)))     return { labelKey: 'admin.challenges.ended',    color: 'text-[#6B7280] bg-white/6' };
-  return                                       { labelKey: 'admin.challenges.live',     color: 'text-emerald-400 bg-emerald-500/10' };
+  if (isFuture(new Date(c.start_date))) return { labelKey: 'admin.challenges.upcoming', tone: 'info' };
+  if (isPast(new Date(c.end_date)))     return { labelKey: 'admin.challenges.ended',    tone: 'outline' };
+  return                                       { labelKey: 'admin.challenges.live',     tone: 'good' };
 };
 
 // ── Leaderboard panel ─────────────────────────────────────
@@ -97,6 +97,32 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
   useEffect(() => {
     const fetchScores = async () => {
       setLoading(true);
+      // Source of truth: challenge_participants.score (maintained by award/score
+      // engine). Fall back to live aggregation if no participant rows exist yet.
+      const { data: participants } = await supabase
+        .from('challenge_participants')
+        .select('profile_id, score, profiles(full_name)')
+        .eq('challenge_id', challenge.id)
+        .order('score', { ascending: false })
+        .limit(10);
+
+      if (participants && participants.length > 0) {
+        setEntries(participants.map(p => ({
+          id: p.profile_id,
+          name: p.profiles?.full_name ?? '—',
+          score: p.score ?? 0,
+        })));
+        setLoading(false);
+        return;
+      }
+
+      // Fallback: live recompute (only over enrolled members)
+      const { data: enrolled } = await supabase
+        .from('challenge_participants')
+        .select('profile_id')
+        .eq('challenge_id', challenge.id);
+      const enrolledIds = new Set((enrolled || []).map(e => e.profile_id));
+
       if (challenge.type === 'consistency' || challenge.type === 'volume') {
         const { data } = await supabase
           .from('workout_sessions')
@@ -108,6 +134,7 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
 
         const agg = {};
         (data || []).forEach(s => {
+          if (enrolledIds.size > 0 && !enrolledIds.has(s.profile_id)) return;
           if (!agg[s.profile_id]) agg[s.profile_id] = { name: s.profiles?.full_name ?? '—', count: 0, volume: 0 };
           agg[s.profile_id].count++;
           agg[s.profile_id].volume += parseFloat(s.total_volume_lbs || 0);
@@ -132,6 +159,7 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
 
         const agg = {};
         (data || []).forEach(r => {
+          if (enrolledIds.size > 0 && !enrolledIds.has(r.profile_id)) return;
           if (!agg[r.profile_id]) agg[r.profile_id] = { name: r.profiles?.full_name ?? '—', score: 0 };
           agg[r.profile_id].score++;
         });
@@ -140,15 +168,29 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
       setLoading(false);
     };
 
-    // Subscribe to realtime changes
+    // Subscribe to realtime changes — Supabase realtime can't filter by challenge_id
+    // here (workout_sessions has no challenge_id column), so we debounce the
+    // recompute to avoid running it on every single workout insert in the gym.
+    let debounceHandle = null;
     const channel = supabase.channel(`challenge-${challenge.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `gym_id=eq.${gymId}` },
+        () => {
+          if (debounceHandle) clearTimeout(debounceHandle);
+          debounceHandle = setTimeout(() => fetchScores(), 1500);
+        }
+      )
+      // Also listen for direct score updates on challenge_participants — those are
+      // authoritative once the score engine runs. Filtered to this challenge only.
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'challenge_participants', filter: `challenge_id=eq.${challenge.id}` },
         () => fetchScores()
       )
       .subscribe();
 
     fetchScores();
-    return () => supabase.removeChannel(channel);
+    return () => {
+      if (debounceHandle) clearTimeout(debounceHandle);
+      supabase.removeChannel(channel);
+    };
   }, [challenge, gymId]);
 
   const scoreLabel = challenge.type === 'volume' ? t('admin.challenges.scoreLbs', 'lbs') : challenge.type === 'consistency' ? t('admin.challenges.scoreWorkouts', 'workouts') : t('admin.challenges.scorePRs', 'PRs');
@@ -195,6 +237,7 @@ export default function AdminChallenges() {
   const [tab, setTab] = useState('active');
   const [awardingId, setAwardingId] = useState(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState({});
+  const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => { document.title = t('admin.challenges.title', 'Challenges') + ' | ' + (window.__APP_NAME || 'TuGymPR'); }, [t]);
 
@@ -265,13 +308,83 @@ export default function AdminChallenges() {
         title={t('admin.challenges.title', 'Challenges')}
         subtitle={t('admin.challenges.subtitle', 'Create and manage gym challenges')}
         actions={
-          <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 text-black font-bold text-[13px] rounded-xl transition-colors" style={{ backgroundColor: 'var(--color-accent)' }}>
-            <Plus size={15} /> {t('admin.challenges.newChallenge', 'New Challenge')}
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button onClick={() => setShowTemplates(s => !s)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 font-semibold text-[13px] rounded-xl transition-colors flex-1 sm:flex-none"
+              style={{
+                backgroundColor: showTemplates ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'var(--color-bg-elevated)',
+                color: 'var(--color-text-primary)',
+                border: '1px solid var(--color-border-subtle)',
+              }}>
+              <Sparkles size={14} /> {t('admin.challenges.quickTemplates', 'Quick Templates')}
+            </button>
+            <button onClick={() => setShowCreate(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-[13px] rounded-xl transition-colors flex-1 sm:flex-none"
+              style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}>
+              <Plus size={15} /> {t('admin.challenges.newChallenge', 'New Challenge')}
+            </button>
+          </div>
         }
-        className="mb-6"
+        className="mb-5"
       />
+
+      {/* Quick Templates — collapsible drawer near the top, opened by the toolbar button. */}
+      {showTemplates && (
+        <FadeIn>
+          <AdminCard padding="p-0" className="mb-5">
+            <div className="p-4 pb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="admin-page-title text-[15px] mb-0.5" style={{ letterSpacing: '-0.01em' }}>
+                  {t('admin.challenges.quickTemplates', 'Quick Templates')}
+                </h3>
+                <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                  {t('admin.challenges.quickTemplatesSub', 'One-click challenges based on your data')}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowTemplates(false)}
+                aria-label={t('admin.challenges.cancel', 'Close')}
+                className="p-1.5 rounded-lg transition-colors hover:bg-white/5 flex-shrink-0"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                <ChevronDown size={16} className="rotate-180" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3">
+              {[
+                { id: 'streak5', title: t('admin.challenges.tpl5Streak', '5-Day Streak'), desc: t('admin.challenges.tpl5StreakDesc', 'Visit 5 days in a row'), Icon: Flame, tone: 'hot' },
+                { id: 'prparty', title: t('admin.challenges.tplPRParty', 'PR Party'), desc: t('admin.challenges.tplPRPartyDesc', 'Set any PR this week'), Icon: Trophy, tone: 'warn' },
+                { id: 'bringfriend', title: t('admin.challenges.tplBringFriend', 'Bring a Friend'), desc: t('admin.challenges.tplBringFriendDesc', 'Referral bonus doubled'), Icon: Users, tone: 'coach' },
+              ].map((tpl) => {
+                const softVar = tpl.tone === 'hot' ? 'var(--color-danger-soft)' : tpl.tone === 'warn' ? 'var(--color-warning-soft)' : 'var(--color-coach-soft)';
+                const inkVar  = tpl.tone === 'hot' ? 'var(--color-danger)'      : tpl.tone === 'warn' ? 'var(--color-warning)'      : 'var(--color-coach)';
+                return (
+                  <div
+                    key={tpl.id}
+                    className="p-4 flex items-start gap-3 border-b md:border-b-0 md:border-r last:border-b-0 md:last:border-r-0"
+                    style={{ borderColor: 'var(--color-admin-border)' }}
+                  >
+                    <div className="w-9 h-9 rounded-[9px] flex items-center justify-center flex-shrink-0" style={{ background: softVar }}>
+                      <tpl.Icon size={16} style={{ color: inkVar }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-bold" style={{ color: 'var(--color-admin-text)' }}>{tpl.title}</p>
+                      <p className="text-[11.5px] mt-0.5 mb-2" style={{ color: 'var(--color-admin-text-muted)' }}>{tpl.desc}</p>
+                      <button
+                        onClick={() => { setShowTemplates(false); setShowCreate(true); }}
+                        className="text-[11.5px] font-semibold inline-flex items-center gap-1 transition-colors"
+                        style={{ color: 'var(--color-accent)' }}
+                      >
+                        <Sparkles size={11} /> {t('admin.challenges.useTemplate', 'Use template')}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </AdminCard>
+        </FadeIn>
+      )}
 
       {/* AI Suggestion */}
       <ChallengeSuggestionCard
@@ -344,7 +457,7 @@ export default function AdminChallenges() {
                 return (
                   <FadeIn key={c.id} delay={idx * 40}>
                     <AdminCard hover className="overflow-hidden !p-0">
-                      <button className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/2 transition-colors"
+                      <button className="w-full flex items-center gap-3 p-3 sm:p-4 text-left hover:bg-white/2 transition-colors"
                         onClick={() => setExpanded(isOpen ? null : c.id)}>
                         {c.cover_preset ? (
                           <ChallengeCoverBadge preset={c.cover_preset} />
@@ -358,12 +471,21 @@ export default function AdminChallenges() {
                           <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                             {format(new Date(c.start_date), 'MMM d', dateFnsLocale)} – {format(new Date(c.end_date), 'MMM d, yyyy', dateFnsLocale)}
                           </p>
+                          <div className="flex md:hidden items-center gap-2 mt-1.5">
+                            <span className={`admin-pill admin-pill--${badge.tone} flex-shrink-0`}>
+                              {t(badge.labelKey)}
+                            </span>
+                            <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                              <Users size={11} />
+                              {c._participantCount}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 text-[11px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+                        <div className="hidden md:flex items-center gap-1.5 text-[11px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
                           <Users size={11} />
                           <span>{c._participantCount}</span>
                         </div>
-                        <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${badge.color} flex-shrink-0`}>
+                        <span className={`hidden md:inline-flex admin-pill admin-pill--${badge.tone} flex-shrink-0`}>
                           {t(badge.labelKey)}
                         </span>
                         <ChevronDown size={16} className={`transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
@@ -397,7 +519,7 @@ export default function AdminChallenges() {
                       {isOpen && (
                         <div className="px-4 pb-4 border-t border-white/4">
                           {/* Edit / Delete buttons */}
-                          <div className="flex items-center gap-2 mt-3 mb-3">
+                          <div className="flex items-center gap-2 mt-3 mb-3 flex-wrap">
                             <button onClick={(e) => { e.stopPropagation(); setEditChallenge(c); }}
                               className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-white/5 hover:bg-white/10 border rounded-lg transition-colors" style={{ color: 'var(--color-text-primary)', borderColor: 'var(--color-border-subtle)' }}>
                               <Pencil size={12} /> {t('admin.challenges.edit', 'Edit')}
@@ -428,7 +550,7 @@ export default function AdminChallenges() {
                             <p className="text-[12px] mt-3 mb-2" style={{ color: 'var(--color-text-secondary)' }}>{c.description}</p>
                           )}
                           <div className="flex items-center gap-2 mb-3">
-                            <span className="text-[11px] bg-white/5 px-2 py-0.5 rounded-lg capitalize" style={{ color: 'var(--color-text-muted)' }}>{c.type.replace('_', ' ')}</span>
+                            <span className="text-[11px] bg-white/5 px-2 py-0.5 rounded-lg capitalize" style={{ color: 'var(--color-text-muted)' }}>{t(`admin.challengeTypes.${c.type}`, c.type.replace('_', ' '))}</span>
                             {badge.labelKey === 'admin.challenges.live' && (
                               <span className="flex items-center gap-1 text-[11px] text-emerald-400">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

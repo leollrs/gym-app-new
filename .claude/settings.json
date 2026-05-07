@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(find /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations -type f -name \"*.sql\" -exec grep -l \"video\" {} \\\\;)",
+      "Bash(ls -la /Users/leollorens/Downloads/TuGymPR/*.html)",
+      "Bash(rm -rf /Users/leollorens/Downloads/gym-app-new-main/gym-app/ios/DerivedData)",
+      "Bash(rm -rf /Users/leollorens/Downloads/gym-app-new-main/gym-app/build_output)",
+      "Bash(rm -rf ~/Library/Caches/CocoaPods/Pods)",
+      "Bash(system_profiler SPHardwareDataType)",
+      "Bash(memory_pressure)",
+      "Bash(ps -Ao rss,comm)",
+      "Bash(awk 'NR>1 {arr[$2]+=$1} END {for \\(k in arr\\) print arr[k]/1024\" MB\\\\t\"k}')",
+      "Bash(sysctl vm.swapusage)"
+    ]
+  }
+}

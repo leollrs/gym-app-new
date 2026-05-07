@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, Target, Search, FlaskConical, Award, Wrench, UserCog,
+  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, Target, Search, FlaskConical, Award, Wrench, UserCog, Bell,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,6 +22,7 @@ const NAV_SECTIONS = [
       { to: '/admin/members',      labelKey: 'adminNav.members',        icon: Users },
       { to: '/admin/classes',      labelKey: 'adminNav.classes',        icon: CalendarDays, requiresConfig: 'classesEnabled' },
       { to: '/admin/messages',     labelKey: 'adminNav.messages',       icon: MessageSquare },
+      { to: '/admin/notifications',labelKey: 'adminNav.notifications',  icon: Bell, badge: 'unreadAdminNotifs' },
       { to: '/admin/announcements',labelKey: 'adminNav.announcements',  icon: Megaphone },
     ],
   },
@@ -100,6 +101,7 @@ export default function AdminLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [highRiskCount, setHighRiskCount] = useState(0);
+  const [unreadAdminNotifs, setUnreadAdminNotifs] = useState(0);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef(null);
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
@@ -219,6 +221,33 @@ export default function AdminLayout({ children }) {
     fetchHighRisk();
   }, [profile?.gym_id]);
 
+  // Unread admin-audience notifications (live).
+  useEffect(() => {
+    if (!profile?.id) return;
+    const audValues = profile.role === 'super_admin' ? ['admin', 'super_admin'] : ['admin'];
+    const refreshUnread = () => {
+      supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', profile.id)
+        .in('audience', audValues)
+        .is('read_at', null)
+        .is('dismissed_at', null)
+        .then(({ count }) => setUnreadAdminNotifs(count || 0));
+    };
+    refreshUnread();
+    const ch = supabase
+      .channel(`admin-notifs-${profile.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'notifications',
+        filter: `profile_id=eq.${profile.id}`,
+      }, refreshUnread)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [profile?.id, profile?.role]);
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/login');
@@ -319,6 +348,12 @@ export default function AdminLayout({ children }) {
                         <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white leading-none"
                           style={{ background: 'var(--color-danger)' }}>
                           {highRiskCount}
+                        </span>
+                      )}
+                      {to === '/admin/notifications' && unreadAdminNotifs > 0 && (
+                        <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+                          style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
+                          {unreadAdminNotifs > 9 ? '9+' : unreadAdminNotifs}
                         </span>
                       )}
                     </NavLink>
@@ -468,23 +503,41 @@ export default function AdminLayout({ children }) {
             <p className="text-[16px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{gymName || 'Dashboard'}</p>
           </div>
 
-          {/* Right: alert badge + admin avatar (sign-out on tap) */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          {/* Right: notifications + alert badge + admin avatar */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => navigate('/admin/notifications')}
+              aria-label={t('adminNav.notifications', 'Notifications')}
+              className="relative w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--color-bg-hover)' }}
+            >
+              <Bell size={16} style={{ color: 'var(--color-text-primary)' }} />
+              {unreadAdminNotifs > 0 && (
+                <span
+                  className="absolute top-1 right-1 w-2 h-2 rounded-full"
+                  style={{
+                    background: 'var(--color-accent)',
+                    boxShadow: '0 0 0 2px var(--color-bg-hover)',
+                  }}
+                />
+              )}
+            </button>
             <button
               onClick={() => navigate('/admin/churn')}
               aria-label={t('adminNav.churnIntel')}
-              className="relative flex items-center justify-center w-10 h-10"
+              className="relative w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--color-bg-hover)' }}
             >
-              <AlertTriangle size={18} style={{ color: 'var(--color-text-subtle)' }} />
+              <AlertTriangle size={16} style={{ color: 'var(--color-text-primary)' }} />
               {highRiskCount > 0 && (
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full"
-                  style={{ background: 'var(--color-danger)', boxShadow: '0 0 0 2px var(--color-admin-shell)' }} />
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full"
+                  style={{ background: 'var(--color-danger)', boxShadow: '0 0 0 2px var(--color-bg-hover)' }} />
               )}
             </button>
             <button
               onClick={() => navigate('/admin/profile')}
               aria-label={t('adminNav.profile')}
-              className="flex-shrink-0 focus:ring-2 focus:outline-none rounded-full overflow-hidden"
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 focus:ring-2 focus:outline-none overflow-hidden"
             >
               <UserAvatar
                 user={{
@@ -501,7 +554,7 @@ export default function AdminLayout({ children }) {
         {/* Spacer for fixed header on mobile */}
         <div className="md:hidden flex-shrink-0" style={{ height: 'calc(56px + env(safe-area-inset-top))' }} />
         {/* Page content */}
-        <div className="flex-1 pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="flex-1 pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-0">
           {children}
         </div>
       </main>
