@@ -2434,16 +2434,47 @@ const ActiveSession = () => {
   const activeSet = activeSetIndex >= 0 ? currentSets[activeSetIndex] : null;
   const allSetsComplete = activeSetIndex === -1;
   const hasNextExercise = currentExerciseIndex < exercises.length - 1;
-  // Allow 0 weight for all exercises (bodyweight, rehab, warm-up sets, etc.)
-  const canComplete = activeSet
-    && activeSet.reps
-    && !isNaN(Number(activeSet.reps)) && Number(activeSet.reps) > 0
-    && activeSet.weight !== '' && activeSet.weight !== undefined
+  // The user can complete a set if either: (a) they've manually entered both
+  // weight and reps, OR (b) the overload engine produced a suggestion we can
+  // commit on their behalf. (b) prevents the previous bug where the input
+  // appeared to show "75 lb" via placeholder but committed empty when the
+  // user tapped Complete. Cardio exercises also satisfy the suggestion path.
+  // Use first source that yields a positive number (??-fallback would stop on 0).
+  const _firstPositive = (...vals) => {
+    for (const v of vals) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return null;
+  };
+  const _trMatch = String(currentExercise?.targetReps ?? '').match(/^\s*(\d+)/);
+  const suggestedW = _firstPositive(
+    currentExercise?.suggestion?.suggestedWeight,
+    currentExercise?.suggestedWeight,
+  );
+  const suggestedR = _firstPositive(
+    currentExercise?.suggestion?.suggestedReps,
+    currentExercise?.suggestedReps,
+    _trMatch ? _trMatch[1] : null,
+  );
+  const repsValid  = activeSet && activeSet.reps !== '' && activeSet.reps != null
+    && !isNaN(Number(activeSet.reps)) && Number(activeSet.reps) > 0;
+  const weightValid = activeSet && activeSet.weight !== '' && activeSet.weight !== undefined
     && !isNaN(Number(activeSet.weight)) && Number(activeSet.weight) >= 0;
+  const canComplete = activeSet && (repsValid || (suggestedR && Number(suggestedR) > 0))
+    && (weightValid || (suggestedW && Number(suggestedW) > 0));
   const handleCompleteSet = () => {
     if (!canComplete || !currentExercise) return;
+    // Backfill empty fields with the engine suggestion before committing.
+    const exId = currentExercise.id;
+    if (!weightValid && suggestedW && Number(suggestedW) > 0) {
+      handleUpdateSet(exId, activeSetIndex, 'weight', String(suggestedW));
+    }
+    if (!repsValid && suggestedR && Number(suggestedR) > 0) {
+      handleUpdateSet(exId, activeSetIndex, 'reps', String(suggestedR));
+    }
     handleToggleComplete(
-      currentExercise.id,
+      exId,
       activeSetIndex,
       exName(currentExercise),
       adjustedRestSeconds ?? currentExercise.restSeconds ?? 90
@@ -2907,6 +2938,23 @@ const ActiveSession = () => {
                 <span className="block">{t('activeSession.saveForLater', { defaultValue: 'Save for later' })}</span>
                 <span className="block text-[11px] font-normal mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
                   {t('activeSession.saveForLaterDesc', { defaultValue: 'Stop tracking — your progress is saved.' })}
+                </span>
+              </button>
+
+              {/* Finalize workout — go to summary now */}
+              <button
+                type="button"
+                onClick={() => { setShowPauseSheet(false); setIsPaused(false); setShowFinishModal(true); }}
+                className="w-full py-3.5 rounded-2xl font-semibold text-[14px] transition-colors text-left px-4"
+                style={{
+                  backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.06))',
+                  color: 'var(--color-text-primary)',
+                  border: '1px solid var(--color-border-subtle)',
+                }}
+              >
+                <span className="block">{t('activeSession.finishWorkoutNow', { defaultValue: 'Finalizar Entrenamiento' })}</span>
+                <span className="block text-[11px] font-normal mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('activeSession.finishWorkoutNowDesc', { defaultValue: 'Termina aquí y ve al resumen.' })}
                 </span>
               </button>
 
@@ -3645,7 +3693,7 @@ const ActiveSession = () => {
                       disabled={idx === 0}
                       className="w-9 h-9 flex items-center justify-center rounded-lg disabled:opacity-25 active:scale-90 transition-transform focus:outline-none"
                       style={{ color: 'var(--color-text-muted)' }}
-                      aria-label="Move up"
+                      aria-label={t('activeSession.moveUpAria', 'Move up')}
                     >
                       <ChevronLeft size={18} className="rotate-90" />
                     </button>
@@ -3654,7 +3702,7 @@ const ActiveSession = () => {
                       disabled={idx === exercises.length - 1}
                       className="w-9 h-9 flex items-center justify-center rounded-lg disabled:opacity-25 active:scale-90 transition-transform focus:outline-none"
                       style={{ color: 'var(--color-text-muted)' }}
-                      aria-label="Move down"
+                      aria-label={t('activeSession.moveDownAria', 'Move down')}
                     >
                       <ChevronLeft size={18} className="-rotate-90" />
                     </button>
@@ -3721,7 +3769,7 @@ const ActiveSession = () => {
                   {t('activeSession.swapTitle', { exercise: exName(swapTargetExercise) })}
                 </h3>
                 <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
-                  {swapTargetMuscle && `${swapTargetMuscle} · `}{t('activeSession.swapSubtitle')}
+                  {swapTargetMuscle && `${t(`muscleGroups.${swapTargetMuscle}`, swapTargetMuscle)} · `}{t('activeSession.swapSubtitle')}
                 </p>
               </div>
               <button

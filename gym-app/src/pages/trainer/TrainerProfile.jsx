@@ -855,6 +855,14 @@ export default function TrainerProfile() {
   const { showToast } = useToast();
   const { t, i18n } = useTranslation(['pages', 'common']);
 
+  // Set the browser tab title — without this it stays at whatever the
+  // previous page had set (e.g. "Notificaciones | TuGymPR").
+  useEffect(() => {
+    const prev = document.title;
+    document.title = `${t('trainerProfile.title', 'Profile')} | TuGymPR`;
+    return () => { document.title = prev; };
+  }, [t]);
+
   const [activeTab, setActiveTab] = useState('services');
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);

@@ -13,7 +13,7 @@
 // trigger a false positive.
 
 import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertTriangle, X } from 'lucide-react';
 import { resetAppCaches } from '../lib/resetAppCaches';
 
 const STUCK_THRESHOLD_MS = 10_000;
@@ -36,6 +36,7 @@ function rootIsEmpty() {
 export default function StuckLoadingRecovery() {
   const [stuck, setStuck] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     let pollTimer = null;
@@ -76,7 +77,7 @@ export default function StuckLoadingRecovery() {
     }
   }, []);
 
-  if (!stuck) return null;
+  if (!stuck || dismissed) return null;
 
   return (
     <div
@@ -156,6 +157,25 @@ export default function StuckLoadingRecovery() {
         >
           <RefreshCw size={13} className={resetting ? 'animate-spin' : ''} />
           {resetting ? 'Limpiando…' : 'Restablecer'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          aria-label="Cerrar"
+          style={{
+            background: 'transparent',
+            color: '#9CA3AF',
+            border: 'none',
+            borderRadius: 8,
+            padding: 6,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <X size={16} />
         </button>
       </div>
     </div>

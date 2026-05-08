@@ -76,7 +76,7 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '', onRepor
             </span>
           </div>
           <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-            {pts.toLocaleString()} XP {'\u00B7'} {xpForNext - xpIntoLevel} {t('rewards.xpTo', 'to')} {levelLabel} {level + 1}
+            {pts.toLocaleString()} XP {'\u00B7'} {t('progress.xpToNextLevel', { defaultValue: '{{xp}} to Level {{level}}', xp: xpForNext - xpIntoLevel, level: level + 1 })}
           </p>
         </div>
         {onReport && (

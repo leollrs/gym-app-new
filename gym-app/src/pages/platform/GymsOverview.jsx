@@ -1,18 +1,16 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search, Plus, Building2, Users, Activity, Dumbbell,
+  Search, Plus, Building2, Users, Activity,
   X, ChevronRight, Loader2, UserPlus, Eye, EyeOff,
-  TrendingUp, TrendingDown, AlertTriangle, ArrowUpDown,
-  Download, Calendar,
+  TrendingUp, AlertTriangle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
-import { logAdminAction } from '../../lib/adminAudit';
 import logger from '../../lib/logger';
-import { format, subDays, formatDistanceToNow } from 'date-fns';
+import { subDays } from 'date-fns';
 import FadeIn from '../../components/platform/FadeIn';
 import StatCard from '../../components/platform/StatCard';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
@@ -84,6 +82,10 @@ export default function GymsOverview() {
   const [sort, setSort] = useState('newest');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [addMemberGym, setAddMemberGym] = useState(null);
+
+  useEffect(() => {
+    document.title = `${t('platform.gyms.title', 'Gyms')} | ${window.__APP_NAME || 'TuGymPR'}`;
+  }, [t]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -385,142 +387,8 @@ export default function GymsOverview() {
   );
 }
 
-function CreateGymModal({ onClose, onCreated, t, showToast, profile }) {
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminName, setAdminName] = useState('');
-  const [tier, setTier] = useState('starter');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const PLAN_OPTIONS = ['starter', 'pro', 'enterprise', 'free'];
-
-  const autoSlug = (val) => {
-    setName(val);
-    setSlug(val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
-  };
-
-  const handleCreate = async () => {
-    if (!name.trim()) { setError(t('platform.gyms.errorNameRequired', 'Gym name is required')); return; }
-    if (!adminEmail.trim()) { setError(t('platform.gyms.errorAdminEmailRequired', 'Admin email is required')); return; }
-    if (!adminName.trim()) { setError(t('platform.gyms.errorAdminNameRequired', 'Admin name is required')); return; }
-    setSaving(true);
-    setError('');
-    try {
-      const finalSlug = slug.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-
-      // 1. Insert gym
-      const { data: newGym, error: insertErr } = await supabase.from('gyms').insert({
-        name: name.trim(), slug: finalSlug, subscription_tier: tier, plan_type: tier,
-        is_active: true,
-      }).select('id').single();
-      if (insertErr) { setError(insertErr.message); setSaving(false); return; }
-
-      const newGymId = newGym.id;
-
-      // 2. Create admin invite in gym_invites
-      let inviteCode = null;
-      try {
-        const { data: invite, error: inviteErr } = await supabase.from('gym_invites').insert({
-          gym_id: newGymId,
-          created_by: profile.id,
-          email: adminEmail.trim().toLowerCase(),
-          member_name: adminName.trim(),
-          role: 'member', // DB constraint only allows member/trainer; admin role assigned after claim
-          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        }).select('token, invite_code').single();
-        if (!inviteErr && invite) {
-          inviteCode = invite.invite_code || invite.token;
-        }
-      } catch (invErr) {
-        logger.error('Failed to create admin invite:', invErr);
-      }
-
-      // 3. Log the action
-      logAdminAction('create_gym', 'gym', newGymId, {
-        name: name.trim(),
-        admin_email: adminEmail.trim().toLowerCase(),
-        admin_name: adminName.trim(),
-        plan: tier,
-      });
-
-      // 4. Show success toast with invite code
-      const successMsg = inviteCode
-        ? t('platform.gyms.createSuccessWithCode', { code: inviteCode, defaultValue: `Gym created! Invite code: ${inviteCode}` })
-        : t('platform.gyms.createSuccess', 'Gym created successfully');
-      showToast(successMsg, 'success');
-
-      onCreated();
-    } catch (err) {
-      setError(err.message || t('platform.gyms.createFailed', 'Failed to create gym'));
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[#0F172A] border border-white/8 rounded-xl w-full max-w-md p-6 animate-fade-in-up">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-[16px] font-bold text-[#E5E7EB]">{t('platform.gyms.createTitle', 'Create Gym')}</h2>
-          <button onClick={onClose} className="text-[#6B7280] hover:text-[#9CA3AF] transition-colors"><X size={18} /></button>
-        </div>
-        <div className="space-y-4">
-          {/* Gym Name */}
-          <div>
-            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">{t('platform.gyms.gymName', 'Gym Name')} *</label>
-            <input value={name} onChange={(e) => autoSlug(e.target.value)} placeholder="Iron Forge Fitness"
-              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
-          </div>
-
-          {/* Admin Email */}
-          <div>
-            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">{t('platform.gyms.adminEmail', 'Admin Email')} *</label>
-            <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="admin@gym.com"
-              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
-          </div>
-
-          {/* Admin Name */}
-          <div>
-            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">{t('platform.gyms.adminName', 'Admin Name')} *</label>
-            <input value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="John Smith"
-              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
-          </div>
-
-          {/* Plan Tier */}
-          <div>
-            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">{t('platform.gyms.planTier', 'Plan')}</label>
-            <div className="grid grid-cols-4 gap-1.5 bg-[#111827] border border-white/6 rounded-lg p-1">
-              {PLAN_OPTIONS.map((p) => (
-                <button key={p} onClick={() => setTier(p)}
-                  className={`px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors capitalize ${
-                    tier === p ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'text-[#6B7280] hover:text-[#9CA3AF]'
-                  }`}>{t(`platform.gyms.plan${p.charAt(0).toUpperCase() + p.slice(1)}`, p)}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Invite note */}
-          <div className="bg-[#111827] border border-white/6 rounded-lg px-3 py-2.5">
-            <p className="text-[11px] text-[#6B7280] leading-relaxed">
-              {t('platform.gyms.inviteNote', 'An invite will be sent to the admin email. After claiming the invite, promote them to admin role from the gym detail page.')}
-            </p>
-          </div>
-
-          {error && <p className="text-[12px] text-[#EF4444]">{error}</p>}
-          <button onClick={handleCreate} disabled={saving}
-            className="w-full bg-[#D4AF37] text-black hover:bg-[#E6C766] disabled:opacity-50 rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors">
-            {saving && <Loader2 size={14} className="animate-spin" />}
-            {saving ? t('platform.gyms.creating', 'Creating...') : t('platform.gyms.createGym', 'Create Gym')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AddMemberModal({ gymId, gymName, onClose, onCreated }) {
+  const { t } = useTranslation('pages');
   const [form, setForm] = useState({ email: '', password: '', fullName: '', username: '', role: 'member' });
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -529,18 +397,24 @@ function AddMemberModal({ gymId, gymName, onClose, onCreated }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.email.trim() || !form.password || !form.fullName.trim() || !form.username.trim()) { setError('All fields are required'); return; }
-    if (form.password.length < 8 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password)) { setError('Password must be 8+ characters with uppercase, lowercase, and a number'); return; }
+    if (!form.email.trim() || !form.password || !form.fullName.trim() || !form.username.trim()) {
+      setError(t('platform.gymDetail.modals.allFieldsRequired', 'All fields are required'));
+      return;
+    }
+    if (form.password.length < 8 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password)) {
+      setError(t('platform.gymDetail.modals.passwordRequirements', 'Password must be 8+ characters with uppercase, lowercase, and a number'));
+      return;
+    }
     setSaving(true);
     try {
       const { error: rpcErr } = await supabase.rpc('admin_create_gym_member', {
         p_email: form.email.trim(), p_password: form.password, p_full_name: form.fullName.trim(),
         p_username: form.username.trim().toLowerCase(), p_gym_id: gymId, p_role: form.role,
       });
-      if (rpcErr) { setError(rpcErr.message || 'Failed to create member'); setSaving(false); return; }
+      if (rpcErr) { setError(rpcErr.message || t('platform.gyms.createMemberFailed', 'Failed to create member')); setSaving(false); return; }
       onCreated();
     } catch (err) {
-      setError(err.message || 'Failed to create member');
+      setError(err.message || t('platform.gyms.createMemberFailed', 'Failed to create member'));
       setSaving(false);
     }
   };
@@ -558,41 +432,47 @@ function AddMemberModal({ gymId, gymName, onClose, onCreated }) {
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4 animate-fade-in-up">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[15px] font-semibold text-[#E5E7EB] flex items-center gap-2">
-            <UserPlus className="w-4 h-4 text-[#D4AF37]" />Add Member
+            <UserPlus className="w-4 h-4 text-[#D4AF37]" />{t('platform.gymDetail.modals.addMember', 'Add Member')}
           </h3>
           <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"><X className="w-4 h-4" /></button>
         </div>
-        <p className="text-[12px] text-[#9CA3AF] mb-4">Adding to <span className="text-[#E5E7EB] font-medium">{gymName}</span></p>
+        <p className="text-[12px] text-[#9CA3AF] mb-4">
+          {t('platform.gyms.addingToPrefix', 'Adding to')} <span className="text-[#E5E7EB] font-medium">{gymName}</span>
+        </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Full Name *</label>
-            <input type="text" value={form.fullName} onChange={e => autoUsername(e.target.value)} placeholder="John Smith"
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.fullName', 'Full Name')} *</label>
+            <input type="text" value={form.fullName} onChange={e => autoUsername(e.target.value)} placeholder={t('platform.gymDetail.modals.fullNamePlaceholder', 'John Smith')}
               className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
           </div>
           <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Username *</label>
-            <input type="text" value={form.username} onChange={e => setForm(prev => ({ ...prev, username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '') }))} placeholder="johnsmith"
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.usernameLabel', 'Username')} *</label>
+            <input type="text" value={form.username} onChange={e => setForm(prev => ({ ...prev, username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '') }))} placeholder={t('platform.gymDetail.modals.usernamePlaceholder', 'johnsmith')}
               className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 font-mono" required />
           </div>
           <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Email *</label>
-            <input type="email" value={form.email} onChange={e => setForm(prev => ({ ...prev, email: e.target.value }))} placeholder="john@example.com"
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.emailLabel', 'Email')} *</label>
+            <input type="email" value={form.email} onChange={e => setForm(prev => ({ ...prev, email: e.target.value }))} placeholder={t('platform.gymDetail.modals.emailPlaceholder', 'john@example.com')}
               className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
           </div>
           <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Temporary Password *</label>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.tempPassword', 'Temporary Password')} *</label>
             <div className="relative">
-              <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={e => setForm(prev => ({ ...prev, password: e.target.value }))} placeholder="Min. 6 characters"
-                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 pr-9 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required minLength={6} />
+              <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={e => setForm(prev => ({ ...prev, password: e.target.value }))} placeholder={t('platform.gymDetail.modals.passwordPlaceholder', 'Min. 8 characters')}
+                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 pr-9 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required minLength={8} />
               <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#9CA3AF] transition-colors">
                 {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
           </div>
           <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Role *</label>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.roleLabel', 'Role')} *</label>
             <div className="grid grid-cols-3 gap-1.5 bg-[#111827] border border-white/6 rounded-lg p-1">
-              {[{ value: 'member', label: 'Member' }, { value: 'trainer', label: 'Trainer' }, { value: 'admin', label: 'Admin' }].map(r => (
+              {[
+                { value: 'member', label: t('platform.gymDetail.roles.member', 'Member') },
+                { value: 'trainer', label: t('platform.gymDetail.roles.trainer', 'Trainer') },
+                { value: 'admin', label: t('platform.gymDetail.roles.admin', 'Admin') },
+              ].map(r => (
                 <button key={r.value} type="button" onClick={() => setForm(prev => ({ ...prev, role: r.value }))}
                   className={`px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
                     form.role === r.value
@@ -604,11 +484,11 @@ function AddMemberModal({ gymId, gymName, onClose, onCreated }) {
           </div>
           {error && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">Cancel</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel', 'Cancel')}</button>
             <button type="submit" disabled={saving}
               className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 flex items-center gap-2">
               {saving && <Loader2 size={14} className="animate-spin" />}
-              {saving ? 'Creating...' : 'Create Member'}
+              {saving ? t('platform.gymDetail.modals.creating', 'Creating...') : t('platform.gymDetail.modals.createMember', 'Create Member')}
             </button>
           </div>
         </form>

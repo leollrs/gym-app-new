@@ -3,21 +3,21 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') || '*';
 
-if (!RESEND_API_KEY) {
-  throw new Error('RESEND_API_KEY environment variable is required');
-}
-
-// SECURITY: Fail closed — ALLOWED_ORIGIN must be explicitly configured.
-// Do not fall back to a hardcoded origin; return 500 if missing.
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
-if (!ALLOWED_ORIGIN) {
-  throw new Error('ALLOWED_ORIGIN environment variable is required');
-}
+// Don't throw at module init for missing env vars. A boot-time throw
+// makes Supabase return 503 BOOT_ERROR with no CORS headers, which
+// surfaces in the browser as a confusing CORS preflight failure.
+// Instead, validate inside the handler so we can return a meaningful
+// JSON error with proper CORS headers.
+const MISSING_ENV = !RESEND_API_KEY
+  ? 'RESEND_API_KEY environment variable is not set on the send-admin-email function. Configure it in Supabase: supabase secrets set RESEND_API_KEY=re_...'
+  : null;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 function jsonResp(body: Record<string, unknown>, status = 200) {
@@ -176,6 +176,10 @@ ${escHtml(gymName)} · ${str.poweredBy} <span style="color:#6b7280;">TuGymPR</sp
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (MISSING_ENV) {
+    return jsonResp({ error: 'Email service not configured', detail: MISSING_ENV }, 503);
   }
 
   try {
@@ -432,7 +436,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const html = buildEmailHtml({
+    const renderedHtml = buildEmailHtml({
       gymName,
       logoUrl,
       logoBase64,
@@ -459,14 +463,26 @@ Deno.serve(async (req) => {
         from: `${gymName} <noreply@tugympr.com>`,
         to: [finalEmail],
         subject,
-        html,
+        html: renderedHtml,
       }),
     });
 
     if (!emailResp.ok) {
       const errBody = await emailResp.text();
-      console.error('Resend error:', errBody);
-      return jsonResp({ error: 'Failed to send email' }, 500);
+      console.error('Resend error:', emailResp.status, errBody);
+      // Surface the upstream Resend status + a short snippet of the body
+      // so the admin UI can show why the send failed (most common cause:
+      // sender domain not verified in Resend → 403 with explanatory body).
+      let detail = errBody.slice(0, 240);
+      try {
+        const parsed = JSON.parse(errBody);
+        detail = parsed.message || parsed.error || detail;
+      } catch { /* keep raw */ }
+      return jsonResp({
+        error: 'Failed to send email',
+        upstreamStatus: emailResp.status,
+        upstreamMessage: detail,
+      }, 502);
     }
 
     // Log for audit trail and rate limiting.

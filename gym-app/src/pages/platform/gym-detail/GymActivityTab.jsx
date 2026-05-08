@@ -1,9 +1,11 @@
 import { Dumbbell, MapPin } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 
 export default function GymActivityTab({ sessions, checkIns }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -28,11 +30,11 @@ export default function GymActivityTab({ sessions, checkIns }) {
                       ? 'bg-emerald-500/10 text-emerald-400'
                       : 'bg-amber-500/10 text-amber-400'
                   }`}>
-                    {s.status ?? 'unknown'}
+                    {t(`platform.gymDetail.activity.status.${s.status ?? 'unknown'}`, s.status ?? t('platform.gymDetail.activity.status.unknown', 'unknown'))}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-[11px] text-[#6B7280]">
-                  <span>{s.started_at ? format(new Date(s.started_at), 'MMM d, h:mm a') : '\u2014'}</span>
+                  <span>{s.started_at ? format(new Date(s.started_at), 'MMM d, h:mm a', dateFnsLocale || {}) : '\u2014'}</span>
                   {s.total_volume_lbs != null && (
                     <span>{Number(s.total_volume_lbs).toLocaleString()} lbs</span>
                   )}
@@ -59,7 +61,7 @@ export default function GymActivityTab({ sessions, checkIns }) {
                   {ci.profiles?.full_name ?? t('platform.gymDetail.people.unknown')}
                 </span>
                 <span className="text-[11px] text-[#6B7280]">
-                  {ci.checked_in_at ? format(new Date(ci.checked_in_at), 'MMM d, h:mm a') : '\u2014'}
+                  {ci.checked_in_at ? format(new Date(ci.checked_in_at), 'MMM d, h:mm a', dateFnsLocale || {}) : '\u2014'}
                 </span>
               </div>
             ))}

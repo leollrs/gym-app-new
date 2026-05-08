@@ -22,6 +22,7 @@ import { getRewardTier } from '../lib/rewardsEngine';
 import { getLevel } from '../components/LevelBadge';
 import { exercises as exerciseLibrary } from '../data/exercises';
 import { localizeRoutineName } from '../lib/exerciseName';
+import { getCurrentWeekClamped, getTotalProgramWeeks, getProgramWeekNum } from '../lib/programWeek';
 import { AppleHealthSourceBadge } from '../components/AppleHealthBadge';
 import { tg } from '../lib/genderText';
 import GymPulse from '../components/GymPulse';
@@ -405,7 +406,7 @@ const Dashboard = () => {
         ? supabase
             .from('gym_class_bookings')
             .select('id, schedule_id, status, booking_date, gym_class_schedules(start_time, end_time, gym_classes(name, name_es, image_url))')
-            .eq('user_id', user.id)
+            .eq('profile_id', user.id)
             .eq('booking_date', new Date().toISOString().split('T')[0])
             .in('status', ['confirmed', 'attended'])
         : Promise.resolve({ data: [] });
@@ -494,10 +495,23 @@ const Dashboard = () => {
 
       const scheduleMap = {};
       const sMap = fetchedProgram?.schedule_map;
-      const programWeekNum = fetchedProgram && programStart
-        ? Math.floor((today - programStart) / (7 * 86400000)) + 1 : 0;
+      // Calendar week index (Sun-Sat) since the week containing program_start.
+      // Anniversary-based math (`floor(days/7)+1`) broke for mid-week signups:
+      // the user thinks of "this week" as Sun→Sat, not Thu→Wed.
+      const programWeekNum = (() => {
+        if (!fetchedProgram || !programStart) return 0;
+        const start = new Date(programStart);
+        start.setHours(0, 0, 0, 0);
+        const startSunday = new Date(start);
+        startSunday.setDate(startSunday.getDate() - startSunday.getDay());
+        const todayMid = new Date(today);
+        todayMid.setHours(0, 0, 0, 0);
+        return Math.floor((todayMid - startSunday) / 86400000 / 7) + 1;
+      })();
       const isWeek1 = programWeekNum === 1;
-      const totalProgramWeeks = fetchedProgram?.duration_weeks || 6;
+      // Prefer the new total_calendar_weeks field; fall back to duration_weeks
+      // for legacy programs that don't have partial-week metadata.
+      const totalProgramWeeks = sMap?.total_calendar_weeks ?? fetchedProgram?.duration_weeks ?? 6;
       const hasWrappedDays = (sMap?.wrapped_dows?.length ?? 0) > 0;
       const isLastWeek = hasWrappedDays && programWeekNum === totalProgramWeeks;
 
@@ -1023,13 +1037,7 @@ const Dashboard = () => {
               // Default the modal to the user's CURRENT program week so they
               // see what's happening now, not week 1 of an in-progress program.
               if (activeProgram?.program_start) {
-                const totalW = activeProgram?.duration_weeks
-                  || Math.ceil((new Date(activeProgram.expires_at) - new Date(activeProgram.program_start)) / (7 * 86400000));
-                const curW = Math.min(
-                  Math.floor((new Date() - new Date(activeProgram.program_start)) / (7 * 86400000)) + 1,
-                  totalW || 1
-                );
-                setPlanWeek(Math.max(1, curW));
+                setPlanWeek(Math.max(1, getCurrentWeekClamped(activeProgram)));
               }
               setShowPlanInfo(true);
             }}
@@ -2037,10 +2045,8 @@ const Dashboard = () => {
       {/* ── PLAN INFO MODAL (warm-paper redesign) ─────────── */}
       {showPlanInfo && (() => {
         const prog = activeProgram;
-        const totalWeeks = prog?.duration_weeks || (prog ? Math.ceil((new Date(prog.expires_at) - new Date(prog.program_start)) / (7 * 86400000)) : 0);
-        const weekNum = prog
-          ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, totalWeeks)
-          : 0;
+        const totalWeeks = prog ? getTotalProgramWeeks(prog) : 0;
+        const weekNum = prog ? getCurrentWeekClamped(prog) : 0;
         const daysElapsed = prog ? Math.floor((new Date() - new Date(prog.program_start)) / 86400000) : 0;
         const daysTotal = prog ? Math.max(1, totalWeeks * 7) : 1;
         const progress = Math.min(Math.round((daysElapsed / daysTotal) * 100), 100);

@@ -25,14 +25,17 @@ if (Capacitor.isNativePlatform()) {
 const DM_DISCLOSURE_KEY = 'dm_encryption_disclosure_seen_v1';
 
 // ── Helpers ──────────────────────────────────────────────────────
-const formatTime = (dateStr, t) => {
+// Pass `lang` (i18next language) so dates render in the user-selected app
+// language, not whatever the OS / browser locale happens to be.
+const formatTime = (dateStr, t, lang) => {
   const d = new Date(dateStr);
   const now = new Date();
   const diff = now - d;
   const oneDay = 86400000;
+  const locale = lang || undefined;
 
   if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   }
 
   const yesterday = new Date(now);
@@ -42,17 +45,18 @@ const formatTime = (dateStr, t) => {
   }
 
   if (diff < 7 * oneDay) {
-    return d.toLocaleDateString(undefined, { weekday: 'short' });
+    return d.toLocaleDateString(locale, { weekday: 'short' });
   }
 
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 };
 
-const formatTimestamp = (dateStr, t) => {
+const formatTimestamp = (dateStr, t, lang) => {
   const d = new Date(dateStr);
   const now = new Date();
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
+  const locale = lang || undefined;
 
   let dayPart;
   if (d.toDateString() === now.toDateString()) {
@@ -60,9 +64,9 @@ const formatTimestamp = (dateStr, t) => {
   } else if (d.toDateString() === yesterday.toDateString()) {
     dayPart = t('messages.yesterday') + ' ';
   } else {
-    dayPart = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' ';
+    dayPart = d.toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' }) + ' ';
   }
-  return dayPart + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return dayPart + d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 };
 
 /** Returns true if two timestamps are more than 5 minutes apart. */
@@ -284,7 +288,7 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
 
 // ── Chat View (iMessage style) ──────────────────────────────────
 const ChatView = ({ conversationId, onBack }) => {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { user, profile } = useAuth();
   const { showToast } = useToast();
   const posthog = usePostHog();
@@ -578,7 +582,7 @@ const ChatView = ({ conversationId, onBack }) => {
 
     // Show timestamp if 5+ min gap from previous message
     if (shouldShowTimestamp(prevMsg?.created_at, msg.created_at)) {
-      chatItems.push({ type: 'timestamp', label: formatTimestamp(msg.created_at, t), key: `ts-${msg.id}` });
+      chatItems.push({ type: 'timestamp', label: formatTimestamp(msg.created_at, t, i18n.language), key: `ts-${msg.id}` });
     }
 
     const isSent = msg.sender_id === user.id;
@@ -1014,7 +1018,7 @@ const SwipeableRow = ({ children, onArchive, onDelete, openRowId, setOpenRowId, 
 
 // ── Conversation List View (iMessage style) ─────────────────────
 const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, headerExtra }) => {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { user } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1281,7 +1285,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
                       </div>
                       {conv.lastMessage && (
                         <span className="text-[12px] flex-shrink-0" style={{ color: hasUnread ? 'var(--color-accent, #D4AF37)' : 'var(--color-text-muted)' }}>
-                          {formatTime(conv.lastMessage.created_at, t)}
+                          {formatTime(conv.lastMessage.created_at, t, i18n.language)}
                         </span>
                       )}
                     </div>

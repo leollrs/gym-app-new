@@ -211,16 +211,17 @@ export default function GymPeopleTab({
           ) : (
             invites.map(inv => {
               const isExpired = inv.expires_at && new Date(inv.expires_at) < new Date();
+              const isUsed = !!inv.used_at;
               return (
                 <div key={inv.id} className="bg-[#0F172A] border border-white/6 rounded-xl px-4 py-3 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-[#E5E7EB] font-mono">{inv.code}</p>
+                    <p className="text-[13px] font-medium text-[#E5E7EB] font-mono">{inv.token}</p>
                     <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.people.inviteRole', { role: inv.role || 'member' })}</p>
                   </div>
                   <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                    inv.is_used ? 'bg-emerald-500/15 text-emerald-400' : isExpired ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-400'
+                    isUsed ? 'bg-emerald-500/15 text-emerald-400' : isExpired ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-400'
                   }`}>
-                    {inv.is_used ? t('platform.gymDetail.people.claimed') : isExpired ? t('platform.gymDetail.people.expired') : t('platform.gymDetail.people.pending')}
+                    {isUsed ? t('platform.gymDetail.people.claimed') : isExpired ? t('platform.gymDetail.people.expired') : t('platform.gymDetail.people.pending')}
                   </span>
                 </div>
               );

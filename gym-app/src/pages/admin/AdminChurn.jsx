@@ -766,7 +766,7 @@ export default function AdminChurn() {
     let list = members.filter(m => m.churnScore >= 30);
     if (riskFilter === 'needs-action') list = list.filter(m => !contactedIds.has(m.id));
     else if (riskFilter === 'critical') list = list.filter(m => m.churnScore >= 80);
-    else if (riskFilter === 'high') list = list.filter(m => m.churnScore >= 55);
+    else if (riskFilter === 'high') list = list.filter(m => m.churnScore >= 55 && m.churnScore < 80);
     else if (riskFilter === 'medium') list = list.filter(m => m.churnScore >= 30 && m.churnScore < 55);
     else if (riskFilter === 'contacted') list = list.filter(m => contactedIds.has(m.id));
     else if (riskFilter === 'returned') {

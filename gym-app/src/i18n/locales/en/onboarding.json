@@ -2,6 +2,22 @@
   "title": "Let's set you up",
   "subtitle": "A few quick questions so we can build your perfect plan",
 
+  "stepLabels": {
+    "invite":    "INVITE",
+    "language":  "LANGUAGE",
+    "level":     "LEVEL",
+    "goal":      "GOAL",
+    "training":  "EQUIPMENT",
+    "schedule":  "SCHEDULE",
+    "privacy":   "PRIVACY",
+    "health":    "HEALTH",
+    "body":      "BODY",
+    "phone":     "PHONE",
+    "squad":     "SQUAD",
+    "program":   "PROGRAM",
+    "nutrition": "NUTRITION"
+  },
+
   "inviteCode": {
     "title": "Do you have an invite code?",
     "subtitle": "If your gym gave you a code, enter it to link your account.",
@@ -217,6 +233,9 @@
     "minAgo": "2 min ago",
     "minAgo18": "18 min ago",
     "hrAgo": "1 hr ago",
+    "badgePR": "PR",
+    "badgeSession": "SESSION",
+    "badgeStreak": "STREAK",
     "nice": "Nice",
     "crushIt": "Crush it",
     "insane": "Insane",
@@ -240,6 +259,7 @@
     "pill": "PLAN GENERATED",
     "dayFallback": "Day {{n}}",
     "dayCounter": "DAY {{current}} / {{total}}",
+    "programMeta": "{{days}}-day · {{minutes}} min · {{weeks}}-week program",
     "goToDashboard": "Let's go",
     "skip": "I'll set up later"
   },

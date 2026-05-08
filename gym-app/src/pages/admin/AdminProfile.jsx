@@ -713,7 +713,10 @@ export default function AdminProfile() {
                 {t('admin.profile.deleteWarning', 'This action is permanent. All your data will be deleted and cannot be undone.')}
               </p>
               <p className="text-[12px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
-                {t('admin.profile.deleteTypeConfirm', 'Type DELETE to confirm:')}
+                {t('admin.profile.deleteTypeConfirm', {
+                  word: t('admin.profile.deleteTypeConfirmWord', i18n.language === 'es' ? 'ELIMINAR' : 'DELETE'),
+                  defaultValue: 'Type {{word}} to confirm:',
+                })}
               </p>
               <input
                 type="text"

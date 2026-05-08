@@ -429,8 +429,11 @@ function getDefaultDays(freq, closedDays) {
 const CORE_STEPS = 11;   // steps 0-10: invite → social (phone inserted at step 9)
 const TOTAL_STEPS = 13;  // + step 11 (Program) + step 12 (Nutrition)
 
-// Step labels (for OB progress "SECTION" tag) + analytics names
-const STEP_LABELS = ['Invite', 'Language', 'Level', 'Goal', 'Training', 'Schedule', 'Privacy', 'Health', 'Body', 'Phone', 'Squad', 'Program', 'Nutrition'];
+// Step labels (for OB progress "SECTION" tag) + analytics names. The labels
+// here are i18n keys (under the `onboarding.stepLabels.*` namespace) — kept
+// in array order so STEP_LABELS[step] continues to work.
+const STEP_LABEL_KEYS = ['invite', 'language', 'level', 'goal', 'training', 'schedule', 'privacy', 'health', 'body', 'phone', 'squad', 'program', 'nutrition'];
+const STEP_LABELS = STEP_LABEL_KEYS.map(k => `stepLabels.${k}`);
 const STEP_NAMES  = ['invite', 'language', 'fitness_level', 'goal', 'equipment', 'schedule', 'data_consent', 'health_sync', 'body_stats', 'phone', 'social', 'program', 'nutrition'];
 
 // ── MAIN COMPONENT ─────────────────────────────────────────
@@ -461,6 +464,47 @@ const Onboarding = () => {
         }
       });
   }, [profile?.gym_id]);
+
+  // ── Restore onboarding draft from localStorage ──
+  // Two keys are used:
+  //   - DRAFT_KEY (legacy): step + data only. Kept for back-compat with users
+  //     mid-flight when this change ships.
+  //   - PERSIST_KEY (new): step + data + dietary/allergies/dislikes +
+  //     lastUpdated timestamp. Used as the source of truth on hydration when
+  //     fresh (<24h). Cleared on successful completion.
+  // NOTE: savedDraft must be declared BEFORE any useEffect that reads it in
+  // its dependency array — otherwise the deps tuple hits a TDZ during render.
+  const DRAFT_KEY   = 'onboarding_draft';
+  const PERSIST_KEY = 'tugympr_onboarding_state';
+  const PERSIST_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+  const savedPersist = useMemo(() => {
+    try {
+      const raw = localStorage.getItem(PERSIST_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      const ts = Number(parsed.lastUpdated) || 0;
+      if (!ts || Date.now() - ts > PERSIST_TTL_MS) {
+        try { localStorage.removeItem(PERSIST_KEY); } catch {}
+        return null;
+      }
+      return parsed;
+    } catch {
+      try { localStorage.removeItem(PERSIST_KEY); } catch {}
+      return null;
+    }
+  }, []);
+
+  const savedDraft = useMemo(() => {
+    if (savedPersist) {
+      return { step: savedPersist.step, data: savedPersist.data };
+    }
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }, [savedPersist]);
 
   // Pre-fill onboarding from any profile fields the gym already set when
   // creating the account (CreateInviteModal). Runs once when no local draft
@@ -504,47 +548,6 @@ const Onboarding = () => {
 
   // Guard: wait for i18n translations to load before rendering
   if (!i18nReady) return null;
-
-  // ── Restore onboarding draft from localStorage ──
-  // Two keys are used:
-  //   - DRAFT_KEY (legacy): step + data only. Kept for back-compat with users
-  //     mid-flight when this change ships.
-  //   - PERSIST_KEY (new): step + data + dietary/allergies/dislikes +
-  //     lastUpdated timestamp. Used as the source of truth on hydration when
-  //     fresh (<24h). Cleared on successful completion.
-  const DRAFT_KEY   = 'onboarding_draft';
-  const PERSIST_KEY = 'tugympr_onboarding_state';
-  const PERSIST_TTL_MS = 24 * 60 * 60 * 1000; // 24h
-
-  const savedPersist = useMemo(() => {
-    try {
-      const raw = localStorage.getItem(PERSIST_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return null;
-      const ts = Number(parsed.lastUpdated) || 0;
-      if (!ts || Date.now() - ts > PERSIST_TTL_MS) {
-        // Stale — discard and start fresh.
-        try { localStorage.removeItem(PERSIST_KEY); } catch {}
-        return null;
-      }
-      return parsed;
-    } catch {
-      try { localStorage.removeItem(PERSIST_KEY); } catch {}
-      return null;
-    }
-  }, []);
-
-  const savedDraft = useMemo(() => {
-    // Prefer the new persisted state when valid; fall back to legacy draft.
-    if (savedPersist) {
-      return { step: savedPersist.step, data: savedPersist.data };
-    }
-    try {
-      const raw = localStorage.getItem(DRAFT_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch { return null; }
-  }, [savedPersist]);
 
   // Skip Step 0 (invite code) if user already has gym attached.
   const initialStep = (() => {
@@ -1285,19 +1288,55 @@ const Onboarding = () => {
       pickedDows.sort((a, b) => a - b);
     }
 
-    // Minimum 8 weeks — product goal is 6-week stickiness, 8 weeks gives buffer.
+    // Program duration in *training weeks* (each = N sessions). The calendar
+    // span is always at least DURATION_WEEKS — usually a bit longer because
+    // signup mid-week steals sessions from week 0 that we make up at the end.
     const DURATION_WEEKS = 12;
+    const startDow = startDate.getDay();
+
+    // ── Partial-week scheduling ──────────────────────────────────────────
+    // pickedDows is the user's full weekly cadence (e.g., Mon/Wed/Fri/Sat).
+    // routine_index N→day_of_week mapping is the canonical week.
+    // Week 0 (signup week): only days from today onwards.
+    // Final week: only as many days as needed to total DURATION_WEEKS × N
+    // sessions across the whole program. Result: signup Thu w/ M/W/F/S +
+    // 12 weeks → 2 (Fri+Sat) + 11×4 + 2 (Mon+Wed) = 48 sessions, ends Wed.
+    const week1Dows = pickedDows.filter(d => d >= startDow);
+    const sessionsPerWeek = pickedDows.length;
+    const totalSessionsTarget = DURATION_WEEKS * sessionsPerWeek;
+    const sessionsAfterWeek1 = totalSessionsTarget - week1Dows.length;
+    const fullMidWeeks = Math.floor(sessionsAfterWeek1 / sessionsPerWeek);
+    const lastWeekSessionCount = sessionsAfterWeek1 - fullMidWeeks * sessionsPerWeek;
+    const lastWeekDows = pickedDows.slice(0, lastWeekSessionCount);
+
+    // routine_index for any given day_of_week: determined by position in
+    // pickedDows (canonical order). week1_map / last_week_map use the SAME
+    // routine_index per dow so the week's exercise variety is preserved.
+    const dowToRoutineIdx = new Map(pickedDows.map((dow, i) => [dow, i]));
+    const week1Map = week1Dows.map(dow => ({ routine_index: dowToRoutineIdx.get(dow), day_of_week: dow }));
+    const lastWeekMap = lastWeekDows.map(dow => ({ routine_index: dowToRoutineIdx.get(dow), day_of_week: dow }));
+
+    const totalCalendarWeeks = 1 + fullMidWeeks + (lastWeekSessionCount > 0 ? 1 : 0);
     const expiresAt = new Date(startDate);
-    expiresAt.setDate(expiresAt.getDate() + DURATION_WEEKS * 7);
+    if (lastWeekSessionCount > 0) {
+      const lastSessionDow = lastWeekDows[lastWeekDows.length - 1];
+      const daysToEnd = (totalCalendarWeeks - 1) * 7 + (lastSessionDow - startDow);
+      expiresAt.setDate(expiresAt.getDate() + daysToEnd + 1); // +1 so the last session day is included
+    } else {
+      const lastSessionDow = pickedDows[pickedDows.length - 1];
+      const daysToEnd = (totalCalendarWeeks - 1) * 7 + (lastSessionDow - startDow);
+      expiresAt.setDate(expiresAt.getDate() + daysToEnd + 1);
+    }
 
     const scheduleMapData = {
       routine_day_map: pickedDows.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
-      week1_map:       pickedDows.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
-      last_week_map:   [],
-      start_dow:       startDate.getDay(),
-      week1_dows:      pickedDows,
-      wrapped_dows:    [],
+      week1_map:       week1Map,
+      last_week_map:   lastWeekMap,
+      start_dow:       startDow,
+      week1_dows:      week1Dows,
+      wrapped_dows:    lastWeekDows,
       normal_dows:     pickedDows,
+      total_calendar_weeks: totalCalendarWeeks,
     };
 
     const { error: progErr } = await supabase.from('generated_programs').insert({
@@ -1638,7 +1677,7 @@ const Onboarding = () => {
             STEP HEADER
             ══════════════════════════════════════════════════════ */}
         <OBStepHead
-          label={STEP_LABELS[step]}
+          label={t(STEP_LABELS[step], STEP_LABEL_KEYS[step].toUpperCase())}
           step={displayStep}
           total={TOTAL_STEPS}
           title={
@@ -2949,9 +2988,9 @@ const Onboarding = () => {
             }}>{t('social.feedPreview')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
-                { u: 'Alex',    tx: t('social.mockPR'),      m: t('social.mockPRDetail', { defaultValue: 'Bench Press · 225 lb × 5' }),      ago: t('social.minAgo'),     type: 'PR',      color: OB.orange, bg: OB.orangeSoft },
-                { u: 'Jordan',  tx: t('social.mockSession'), m: t('social.mockSessionDetail', { defaultValue: 'Upper Body · 14 sets · 42 min' }), ago: t('social.minAgo18'),   type: 'SESSION', color: OB.teal,   bg: OB.tealSoft },
-                { u: 'Morgan',  tx: t('social.mockStreak'),  m: t('social.mockStreakDesc'),       ago: t('social.hrAgo'),      type: 'STREAK',  color: OB.purple, bg: OB.purpleSoft },
+                { u: 'Alex',    tx: t('social.mockPR'),      m: t('social.mockPRDetail', { defaultValue: 'Bench Press · 225 lb × 5' }),      ago: t('social.minAgo'),     type: t('social.badgePR',      'PR'),      color: OB.orange, bg: OB.orangeSoft },
+                { u: 'Jordan',  tx: t('social.mockSession'), m: t('social.mockSessionDetail', { defaultValue: 'Upper Body · 14 sets · 42 min' }), ago: t('social.minAgo18'),   type: t('social.badgeSession', 'SESSION'), color: OB.teal,   bg: OB.tealSoft },
+                { u: 'Morgan',  tx: t('social.mockStreak'),  m: t('social.mockStreakDesc'),       ago: t('social.hrAgo'),      type: t('social.badgeStreak',  'STREAK'),  color: OB.purple, bg: OB.purpleSoft },
               ].map((f, i) => (
                 <div key={i} style={{
                   background: OB.surface, borderRadius: 16, padding: 14,
@@ -3095,7 +3134,12 @@ const Onboarding = () => {
               letterSpacing: -1.1, color: OB.ink, lineHeight: 1.05,
             }}>{t('generatePlan.readyHeadline', "Here's your week.")}</div>
             <div style={{ fontSize: 14, color: OB.sub, marginTop: 4 }}>
-              {data.training_days_per_week}-day · {data.workout_duration_min} min
+              {t('generatePlan.programMeta', {
+                defaultValue: '{{days}}-day · {{minutes}} min · {{weeks}}-week program',
+                days: data.training_days_per_week,
+                minutes: data.workout_duration_min,
+                weeks: 12,
+              })}
             </div>
 
             {/* Day tabs with arrows */}
@@ -3195,7 +3239,7 @@ const Onboarding = () => {
                           background: c.bg, color: c.fg,
                           fontSize: 10, fontWeight: 800, letterSpacing: 0.4,
                           textTransform: 'uppercase', flexShrink: 0,
-                        }}>{ex.muscle}</div>
+                        }}>{t(`muscleGroups.${String(ex.muscle).toLowerCase()}`, { ns: 'pages', defaultValue: ex.muscle })}</div>
                       )}
                     </div>
                   );

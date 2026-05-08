@@ -2,6 +2,22 @@
   "title": "Vamos a configurarte",
   "subtitle": "Unas preguntas rápidas para crear tu plan perfecto",
 
+  "stepLabels": {
+    "invite":    "INVITACIÓN",
+    "language":  "IDIOMA",
+    "level":     "NIVEL",
+    "goal":      "OBJETIVO",
+    "training":  "EQUIPO",
+    "schedule":  "HORARIO",
+    "privacy":   "PRIVACIDAD",
+    "health":    "SALUD",
+    "body":      "CUERPO",
+    "phone":     "TELÉFONO",
+    "squad":     "EQUIPO SOCIAL",
+    "program":   "PROGRAMA",
+    "nutrition": "NUTRICIÓN"
+  },
+
   "inviteCode": {
     "title": "\u00bfTienes un c\u00f3digo de invitaci\u00f3n?",
     "subtitle": "Si tu gym te dio un c\u00f3digo, ingr\u00e9salo para vincular tu cuenta.",
@@ -217,6 +233,9 @@
     "minAgo": "hace 2 min",
     "minAgo18": "hace 18 min",
     "hrAgo": "hace 1 hr",
+    "badgePR": "RÉCORD",
+    "badgeSession": "SESIÓN",
+    "badgeStreak": "RACHA",
     "nice": "Bien",
     "crushIt": "Dale duro",
     "insane": "Increíble",
@@ -240,6 +259,7 @@
     "pill": "PLAN GENERADO",
     "dayFallback": "D\u00eda {{n}}",
     "dayCounter": "D\u00cdA {{current}} / {{total}}",
+    "programMeta": "{{days}} d\u00edas/sem \u00b7 {{minutes}} min \u00b7 programa de {{weeks}} semanas",
     "goToDashboard": "Vamos",
     "skip": "Lo configuro despu\u00e9s"
   },

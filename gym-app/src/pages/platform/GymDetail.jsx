@@ -28,26 +28,24 @@ const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'advanced'];
 function ChallengeModal({ challenge, onSave, onClose }) {
   const { t } = useTranslation('pages');
   const [form, setForm] = useState({
-    title: challenge?.title ?? '',
+    name: challenge?.name ?? '',
     type: challenge?.type ?? 'consistency',
     description: challenge?.description ?? '',
     start_date: challenge?.start_date ? challenge.start_date.slice(0, 10) : '',
     end_date: challenge?.end_date ? challenge.end_date.slice(0, 10) : '',
-    scoring_method: challenge?.scoring_method ?? '',
   });
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.title.trim()) return;
+    if (!form.name.trim()) return;
     setSaving(true);
     await onSave({
-      title: form.title.trim(),
+      name: form.name.trim(),
       type: form.type,
       description: form.description.trim() || null,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
-      scoring_method: form.scoring_method.trim() || null,
     });
     setSaving(false);
   };
@@ -68,7 +66,7 @@ function ChallengeModal({ challenge, onSave, onClose }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.titleLabel')}</label>
-            <input type="text" value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} placeholder={t('platform.gymDetail.modals.titlePlaceholder')} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
+            <input type="text" value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder={t('platform.gymDetail.modals.titlePlaceholder')} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
           </div>
           <div>
             <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.typeLabel')}</label>
@@ -89,10 +87,6 @@ function ChallengeModal({ challenge, onSave, onClose }) {
               <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.endDate')}</label>
               <input type="date" value={form.end_date} onChange={e => setForm(prev => ({ ...prev, end_date: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
             </div>
-          </div>
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.scoringMethod')}</label>
-            <input type="text" value={form.scoring_method} onChange={e => setForm(prev => ({ ...prev, scoring_method: e.target.value }))} placeholder={t('platform.gymDetail.modals.scoringPlaceholder')} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
@@ -368,6 +362,10 @@ export default function GymDetail() {
 
   useEffect(() => { const load = async () => { setLoading(true); await Promise.all([fetchGym(), fetchMembers(), fetchActivity(), fetchInvites(), fetchChallenges(), fetchPrograms(), fetchAchievements(), fetchRewards()]); setLoading(false); }; load(); }, [gymId]);
 
+  useEffect(() => {
+    if (gym?.name) document.title = `${gym.name} | ${window.__APP_NAME || 'TuGymPR'}`;
+  }, [gym?.name]);
+
   const stats = useMemo(() => { const thirtyDaysAgo = subDays(new Date(), 30).toISOString(); const totalMembers = members.length; const activeMembers = members.filter(m => m.last_active_at && m.last_active_at >= thirtyDaysAgo).length; const recentSessions = sessions.filter(s => s.started_at >= thirtyDaysAgo).length; const avgSessions = activeMembers > 0 ? (recentSessions / activeMembers).toFixed(1) : '0'; return { totalMembers, activeMembers, recentSessions, avgSessions }; }, [members, sessions]);
   const gymStatus = !gym?.is_active && gym?.subscription_tier === 'cancelled' ? 'deactivated' : !gym?.is_active ? 'paused' : 'active';
 
@@ -392,15 +390,15 @@ export default function GymDetail() {
   const getChallengeStatus = (c) => { const now = new Date(); if (c.status) return c.status; if (c.end_date && new Date(c.end_date) < now) return 'ended'; if (c.start_date && new Date(c.start_date) > now) return 'upcoming'; return 'active'; };
 
   // ── Loading / not found ───────────────────────────────────
-  if (loading) return (<div className="min-h-screen bg-[#05070B] flex items-center justify-center" aria-busy="true"><div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" role="status" aria-label="Loading gym details" /></div>);
-  if (!gym) return (<div className="min-h-screen bg-[#05070B] flex flex-col items-center justify-center gap-4"><p className="text-[#9CA3AF] text-sm">Gym not found.</p><button onClick={() => navigate('/platform')} className="text-[#D4AF37] text-sm hover:underline">Back to Platform</button></div>);
+  if (loading) return (<div className="min-h-screen bg-[#05070B] flex items-center justify-center" aria-busy="true"><div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" role="status" aria-label={t('platform.gymDetail.loadingAria', 'Loading gym details')} /></div>);
+  if (!gym) return (<div className="min-h-screen bg-[#05070B] flex flex-col items-center justify-center gap-4"><p className="text-[#9CA3AF] text-sm">{t('platform.gymDetail.gymNotFound', 'Gym not found.')}</p><button onClick={() => navigate('/platform')} className="text-[#D4AF37] text-sm hover:underline">{t('platform.gymDetail.backToPlatform', 'Back to Platform')}</button></div>);
 
   const tabs = [
-    { key: 'overview', label: 'Overview', icon: Activity },
-    { key: 'people', label: 'People', icon: Users },
-    { key: 'activity', label: 'Activity', icon: Dumbbell },
-    { key: 'content', label: 'Content', icon: Trophy },
-    { key: 'settings', label: 'Settings', icon: Settings },
+    { key: 'overview', label: t('platform.gymDetail.tabs.overview', 'Overview'), icon: Activity },
+    { key: 'people',   label: t('platform.gymDetail.tabs.people',   'People'),   icon: Users },
+    { key: 'activity', label: t('platform.gymDetail.tabs.activity', 'Activity'), icon: Dumbbell },
+    { key: 'content',  label: t('platform.gymDetail.tabs.content',  'Content'),  icon: Trophy },
+    { key: 'settings', label: t('platform.gymDetail.tabs.settings', 'Settings'), icon: Settings },
   ];
 
   return (
@@ -408,7 +406,7 @@ export default function GymDetail() {
       <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
         {/* Header */}
         <div className="mb-6">
-          <button onClick={() => navigate('/platform')} className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#9CA3AF] text-sm mb-4 transition-colors"><ArrowLeft className="w-4 h-4" />Back to Platform</button>
+          <button onClick={() => navigate('/platform')} className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#9CA3AF] text-sm mb-4 transition-colors"><ArrowLeft className="w-4 h-4" />{t('platform.gymDetail.backToPlatform', 'Back to Platform')}</button>
           <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {logoUrl ? (
@@ -442,10 +440,10 @@ export default function GymDetail() {
         {/* Stats row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           {[
-            { label: 'Total Members', value: stats.totalMembers, icon: Users },
-            { label: 'Active (30d)', value: stats.activeMembers, icon: Activity },
-            { label: 'Sessions (30d)', value: stats.recentSessions, icon: Dumbbell },
-            { label: 'Avg Sessions/Member', value: stats.avgSessions, icon: Clock },
+            { label: t('platform.gymDetail.stats.totalMembers',      'Total Members'),       value: stats.totalMembers,  icon: Users },
+            { label: t('platform.gymDetail.stats.active30d',         'Active (30d)'),         value: stats.activeMembers, icon: Activity },
+            { label: t('platform.gymDetail.stats.sessions30d',       'Sessions (30d)'),       value: stats.recentSessions, icon: Dumbbell },
+            { label: t('platform.gymDetail.stats.avgSessionsMember', 'Avg Sessions/Member'),  value: stats.avgSessions,   icon: Clock },
           ].map(s => (
             <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
               <div className="flex items-center gap-2 mb-2"><s.icon className="w-4 h-4 text-[#D4AF37] flex-shrink-0" /><span className="text-[11px] text-[#6B7280] font-medium truncate">{s.label}</span></div>
@@ -482,11 +480,11 @@ export default function GymDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => setDeleteConfirm(null)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setDeleteConfirm(null); }} />
           <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-sm w-full mx-4">
-            <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">Delete {deleteConfirm.type}?</h3>
-            <p className="text-[13px] text-[#6B7280] mb-6">Are you sure you want to delete <span className="text-[#E5E7EB]">{deleteConfirm.name}</span>? This action cannot be undone.</p>
+            <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">{t(`platform.gymDetail.deleteEntity.title.${deleteConfirm.type}`, t('platform.gymDetail.deleteEntity.titleFallback', { type: deleteConfirm.type, defaultValue: 'Delete {{type}}?' }))}</h3>
+            <p className="text-[13px] text-[#6B7280] mb-6">{t('platform.gymDetail.deleteEntity.body', { name: deleteConfirm.name, defaultValue: 'Are you sure you want to delete {{name}}? This action cannot be undone.' })}</p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">Cancel</button>
-              <button onClick={() => { if (deleteConfirm.type === 'challenge') deleteChallenge(deleteConfirm.id); else if (deleteConfirm.type === 'program') deleteProgram(deleteConfirm.id); else if (deleteConfirm.type === 'achievement') deleteAchievement(deleteConfirm.id); }} className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors">Delete</button>
+              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.lifecycle.cancel', 'Cancel')}</button>
+              <button onClick={() => { if (deleteConfirm.type === 'challenge') deleteChallenge(deleteConfirm.id); else if (deleteConfirm.type === 'program') deleteProgram(deleteConfirm.id); else if (deleteConfirm.type === 'achievement') deleteAchievement(deleteConfirm.id); }} className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors">{t('platform.gymDetail.deleteEntity.confirm', 'Delete')}</button>
             </div>
           </div>
         </div>

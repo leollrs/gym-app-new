@@ -29,17 +29,17 @@ function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram }) {
   const { data: suggestion } = useQuery({
     queryKey: ['program-suggestion', gymId],
     queryFn: async () => {
-      const { data: profiles } = await supabase
-        .from('profiles')
+      // fitness_level + primary_goal live on member_onboarding (not profiles).
+      const { data: onboardings } = await supabase
+        .from('member_onboarding')
         .select('fitness_level, primary_goal')
-        .eq('gym_id', gymId)
-        .eq('role', 'member');
+        .eq('gym_id', gymId);
 
-      if (!profiles?.length) return null;
+      if (!onboardings?.length) return null;
 
       const goalCounts = {};
       const levelCounts = {};
-      profiles.forEach(p => {
+      onboardings.forEach(p => {
         if (p.primary_goal) goalCounts[p.primary_goal] = (goalCounts[p.primary_goal] || 0) + 1;
         if (p.fitness_level) levelCounts[p.fitness_level] = (levelCounts[p.fitness_level] || 0) + 1;
       });
@@ -175,7 +175,7 @@ export default function AdminPrograms() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('gym_program_enrollments')
-        .select('program_id, completed_at')
+        .select('program_id')
         .eq('gym_id', gymId);
       if (error) throw error;
       return data || [];
@@ -192,9 +192,9 @@ export default function AdminPrograms() {
 
   const programStats = (() => {
     const publishedCount = programs.filter(p => p.is_published).length;
-    const activeCount = enrollments.filter(e => !e.completed_at).length;
-    const completedCount = enrollments.filter(e => e.completed_at).length;
-    const compRate = enrollments.length > 0 ? Math.round((completedCount / enrollments.length) * 100) : 0;
+    // gym_program_enrollments has no completion tracking yet — every enrollment counts as active.
+    const activeCount = enrollments.length;
+    const compRate = 0;
 
     let topName = '\u2014';
     if (Object.keys(enrollmentCounts).length > 0) {

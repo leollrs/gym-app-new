@@ -83,6 +83,30 @@ export default function TrainerHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.gym_id, profile?.id]);
 
+  // Realtime: keep `liveClientIds` in sync as clients start/finish workouts.
+  // Without this, the "En vivo ahora" pill on the roster only refreshes on
+  // page reload — the trainer would miss a client going live.
+  useEffect(() => {
+    if (!profile?.id || clients.length === 0) return;
+    const clientIds = clients.map(c => c.id);
+    const channel = supabase
+      .channel(`trainer-home-live-${profile.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'session_drafts' },
+        (payload) => {
+          const row = payload.new || payload.old;
+          if (!row || !clientIds.includes(row.profile_id)) return;
+          setLiveClientIds(prev => {
+            const next = new Set(prev);
+            if (payload.eventType === 'DELETE') next.delete(row.profile_id);
+            else next.add(row.profile_id);
+            return next;
+          });
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [profile?.id, clients.map(c => c.id).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function fetchHomeData() {
     setLoading(true);
     setError(null);
@@ -135,10 +159,10 @@ export default function TrainerHome() {
           .order('scheduled_at', { ascending: true }),
         supabase
           .from('personal_records')
-          .select('id, profile_id, exercise_id, weight_lbs, reps, recorded_at, exercises(name)')
+          .select('id, profile_id, exercise_id, weight_lbs, reps, achieved_at, exercises(name)')
           .in('profile_id', clientIds)
-          .gte('recorded_at', sevenDaysAgo)
-          .order('recorded_at', { ascending: false })
+          .gte('achieved_at', sevenDaysAgo)
+          .order('achieved_at', { ascending: false })
           .limit(8),
         // In-progress workout drafts — feeds the "Watch live" button on session
         // cards. Cheap query: 24h cutoff, just profile_id.
@@ -237,9 +261,14 @@ export default function TrainerHome() {
       const sessionCount = bars.reduce((a, b) => a + b, 0);
       // crude adherence: capped to 5 sessions/wk target
       const adh = Math.min(1, sessionCount / 4);
-      const lastLabel = c.last_active_at
-        ? format(new Date(c.last_active_at), 'MMM d', { locale: dateFnsLocale })
-        : '—';
+      const isLive = liveClientIds.has(c.id);
+      // When the client is mid-workout, show that prominently instead of the
+      // stale "last active 2 days ago" label.
+      const lastLabel = isLive
+        ? t('trainerHome.liveNow', 'En vivo ahora')
+        : c.last_active_at
+          ? format(new Date(c.last_active_at), 'MMM d', { locale: dateFnsLocale })
+          : '—';
       return {
         id: c.id,
         name: c.full_name || c.username || t('trainerCalendar.client', 'Client'),
@@ -249,9 +278,10 @@ export default function TrainerHome() {
         sessionCount,
         adh,
         lastLabel,
+        isLive,
       };
     });
-  }, [clients, churnScores, weekSessions, dateFnsLocale, t]);
+  }, [clients, churnScores, weekSessions, liveClientIds, dateFnsLocale, t]);
 
   // ── Today's sessions horizontal strip ──
   const todayStrip = useMemo(() => {
@@ -560,8 +590,10 @@ export default function TrainerHome() {
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => navigate(`/trainer/clients/${c.id}`)}
-                  aria-label={t('trainerHome.openClient', 'Open {{name}}', { name: fullName })}
+                  onClick={() => navigate(c.isLive ? `/trainer/live/${c.id}` : `/trainer/clients/${c.id}`)}
+                  aria-label={c.isLive
+                    ? t('trainerHome.openLive', 'Open live session for {{name}}', { name: fullName })
+                    : t('trainerHome.openClient', 'Open {{name}}', { name: fullName })}
                   style={{
                     width: '100%', display: 'grid',
                     gridTemplateColumns: '1.6fr 1fr 50px 36px',
@@ -572,12 +604,33 @@ export default function TrainerHome() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                    <TAvatar name={fullName} size={32} idx={avatarIdx(c.id)} src={c.avatarUrl} />
+                    <div style={{ position: 'relative' }}>
+                      <TAvatar name={fullName} size={32} idx={avatarIdx(c.id)} src={c.avatarUrl} />
+                      {c.isLive && (
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            position: 'absolute', bottom: -2, right: -2,
+                            width: 10, height: 10, borderRadius: '50%',
+                            background: '#FF3B30',
+                            boxShadow: `0 0 0 2px ${TT.cardBg || '#fff'}, 0 0 0 4px rgba(255,59,48,0.30)`,
+                            animation: 'live-pulse 1.4s ease-in-out infinite',
+                          }}
+                        />
+                      )}
+                    </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TT.text }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, display: 'flex', alignItems: 'center', gap: 6 }}>
                         {firstName} {lastInitial}
+                        {c.isLive && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 800, letterSpacing: 0.6,
+                            padding: '2px 6px', borderRadius: 999,
+                            background: '#FF3B30', color: '#fff',
+                          }}>{t('trainerHome.liveBadge', 'EN VIVO')}</span>
+                        )}
                       </div>
-                      <div style={{ fontSize: 10.5, color: TT.textMute, marginTop: 1 }}>{c.lastLabel}</div>
+                      <div style={{ fontSize: 10.5, color: c.isLive ? '#FF3B30' : TT.textMute, marginTop: 1, fontWeight: c.isLive ? 700 : 400 }}>{c.lastLabel}</div>
                     </div>
                   </div>
                   <div>

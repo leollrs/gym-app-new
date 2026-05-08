@@ -15,13 +15,20 @@ export default function StatCard({
   size = 'default',
 }) {
   const isPercent = typeof value === 'string' && value.endsWith('%');
+  const isDecimal = typeof value === 'string' && !isPercent && /^-?\d+\.\d+$/.test(value);
   const numericVal = isPercent
     ? parseInt(value)
     : typeof value === 'number'
       ? value
-      : parseInt(value) || 0;
+      : isDecimal
+        ? parseFloat(value)
+        : parseInt(value) || 0;
   const animated = useCountUp(numericVal, 900);
-  const displayVal = isPercent ? `${animated}%` : animated.toLocaleString();
+  const displayVal = isPercent
+    ? `${animated}%`
+    : isDecimal
+      ? animated.toFixed(1)
+      : animated.toLocaleString();
 
   const isHero = size === 'hero';
 

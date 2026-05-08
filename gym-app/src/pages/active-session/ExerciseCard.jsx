@@ -113,13 +113,27 @@ const SetNoteInput = ({ value, onChange, onClose, t }) => (
 );
 
 /* ── Stepper (big = weight, small = reps) ─────────────────── */
-const Stepper = ({ value, onChange, step = 1, big = false, min = 0, max = 9999, placeholder, inputId, onInputChange }) => {
-  const parsedValue = value === '' || value == null ? 0 : Number(value);
+const Stepper = ({ value, onChange, step = 1, big = false, min = 0, max = 9999, placeholder, inputId, onInputChange, t }) => {
+  const isEmpty = value === '' || value == null;
+  const placeholderNum = placeholder != null && placeholder !== '' ? Number(placeholder) : NaN;
+  const hasValidPlaceholder = Number.isFinite(placeholderNum) && placeholderNum > 0;
+  const parsedValue = isEmpty ? 0 : Number(value);
+  // When the field is empty and a suggestion exists, the first +/- tap commits
+  // the suggestion (so the user can't accidentally log "5 lb" when the
+  // displayed placeholder said "75").
+  const handleDec = () => {
+    if (isEmpty && hasValidPlaceholder) { onChange(placeholderNum); return; }
+    onChange(Math.max(min, parsedValue - step));
+  };
+  const handleInc = () => {
+    if (isEmpty && hasValidPlaceholder) { onChange(placeholderNum); return; }
+    onChange(Math.min(max, parsedValue + step));
+  };
   return (
     <div className="flex items-center gap-2.5">
       <button
         type="button"
-        onClick={() => onChange(Math.max(min, parsedValue - step))}
+        onClick={handleDec}
         className="rounded-2xl active:scale-95 transition-transform focus:outline-none shrink-0"
         style={{
           width: 52,
@@ -128,7 +142,7 @@ const Stepper = ({ value, onChange, step = 1, big = false, min = 0, max = 9999, 
           color: 'var(--color-text-primary)',
           border: '1px solid var(--color-border-subtle)',
         }}
-        aria-label="Decrease"
+        aria-label={t?.('activeSession.decrease') ?? 'Decrease'}
       >
         <Minus size={20} strokeWidth={2.6} className="mx-auto" />
       </button>
@@ -163,7 +177,7 @@ const Stepper = ({ value, onChange, step = 1, big = false, min = 0, max = 9999, 
       />
       <button
         type="button"
-        onClick={() => onChange(Math.min(max, parsedValue + step))}
+        onClick={handleInc}
         className="rounded-2xl active:scale-95 transition-transform focus:outline-none shrink-0"
         style={{
           width: 52,
@@ -172,7 +186,7 @@ const Stepper = ({ value, onChange, step = 1, big = false, min = 0, max = 9999, 
           color: '#001512',
           border: 'none',
         }}
-        aria-label="Increase"
+        aria-label={t?.('activeSession.increase') ?? 'Increase'}
       >
         <Plus size={20} strokeWidth={2.6} className="mx-auto" />
       </button>
@@ -233,7 +247,7 @@ const ExerciseHeaderCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, on
           <button
             onClick={(e) => { e.stopPropagation(); setShowVideo(false); }}
             className="absolute top-3 right-3 z-20 w-10 h-10 rounded-full bg-black/70 flex items-center justify-center text-white active:scale-90 transition-transform"
-            aria-label="Hide demo"
+            aria-label={t?.('activeSession.hideDemoAria', 'Hide demo') ?? 'Hide demo'}
           >
             <X size={18} strokeWidth={2.5} />
           </button>
@@ -253,7 +267,7 @@ const ExerciseHeaderCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, on
             opacity: videoUrl ? 1 : 0.55,
             cursor: videoUrl ? 'pointer' : 'default',
           }}
-          aria-label={showVideo ? 'Hide demo' : 'Show demo'}
+          aria-label={showVideo ? (t?.('activeSession.hideDemoAria', 'Hide demo') ?? 'Hide demo') : (t?.('activeSession.showDemoAria', 'Show demo') ?? 'Show demo')}
         >
           <div
             className="flex items-center justify-center rounded-full"
@@ -565,6 +579,20 @@ const ExerciseCard = ({
   // Inline edit-past-set affordance — fix #F. Tapping the pencil opens a small
   // weight/reps editor on the row; saving writes back through onUpdateSet.
   const [editingSet, setEditingSet] = useState(null); // { index, weight, reps } | null
+  const editPanelRef = useRef(null);
+
+  // When the inline edit panel opens, scroll it into view so the user can see
+  // the inputs without manually scrolling — important on small phones where
+  // the panel can land below the fold.
+  useEffect(() => {
+    if (editingSet?.index != null) {
+      // Defer one tick so the panel is mounted before we scroll.
+      const id = requestAnimationFrame(() => {
+        try { editPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch { /* non-critical */ }
+      });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [editingSet?.index]);
 
   useEffect(() => {
     if (!user) return;
@@ -730,7 +758,7 @@ const ExerciseCard = ({
                   type="button"
                   onClick={onToggleUnit}
                   disabled={!onToggleUnit}
-                  aria-label={`Switch to ${unit === 'kg' ? 'pounds' : 'kilograms'}`}
+                  aria-label={t?.('activeSession.switchUnitAria', { defaultValue: 'Switch unit' }) ?? 'Switch unit'}
                   className="active:scale-95 transition-transform"
                   style={{
                     padding: '3px 9px', borderRadius: 999,
@@ -779,6 +807,7 @@ const ExerciseCard = ({
                     max={9999}
                     placeholder={placeholderVal}
                     inputId={`weight-${exercise.id}`}
+                    t={t}
                   />
                 );
               })()}
@@ -835,8 +864,14 @@ const ExerciseCard = ({
                 big={false}
                 min={0}
                 max={999}
-                placeholder={suggestedReps ? String(suggestedReps) : '0'}
+                placeholder={(() => {
+                  if (suggestedReps) return String(suggestedReps);
+                  // Fall back to the lower bound of the target range (e.g. "8-12" → 8)
+                  const tr = String(exercise.targetReps ?? '').match(/^\s*(\d+)/);
+                  return tr ? tr[1] : '0';
+                })()}
                 inputId={`reps-${exercise.id}`}
+                t={t}
               />
               {/* Quick pick chips */}
               <div className="flex gap-1.5 mt-3">
@@ -970,7 +1005,7 @@ const ExerciseCard = ({
 
                   {/* Inline edit editor for past completed sets (fix #F) */}
                   {editingSet?.index === i && (
-                    <div className="mt-1.5 animate-fade-in rounded-2xl p-3" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                    <div ref={editPanelRef} className="mt-1.5 animate-fade-in rounded-2xl p-3" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
                       <p className="text-[10px] font-semibold uppercase tracking-wider mb-2 px-1" style={{ color: 'var(--color-text-subtle)' }}>
                         {t('activeSession.editSetTitle', { n: i + 1, defaultValue: `Edit set ${i + 1}` })}
                       </p>

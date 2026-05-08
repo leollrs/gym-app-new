@@ -56,8 +56,8 @@ export default function PlatformAnalytics() {
   const [topMetric, setTopMetric] = useState('members');
 
   useEffect(() => {
-    document.title = `Platform Analytics | ${window.__APP_NAME || 'TuGymPR'}`;
-  }, []);
+    document.title = `${t('platform.analytics.title', 'Analytics')} | ${window.__APP_NAME || 'TuGymPR'}`;
+  }, [t]);
 
   // ── Fetch all data ─────────────────────────────────────────
   useEffect(() => {
@@ -278,7 +278,7 @@ export default function PlatformAnalytics() {
     const perGymChurn = Object.entries(gymScoreMap)
       .map(([gymId, { sum, count }]) => ({
         gymId,
-        name: gymNameMap[gymId] || 'Unknown',
+        name: gymNameMap[gymId] || t('platform.analytics.unknown', 'Unknown'),
         avgScore: +(sum / count).toFixed(1),
         count,
       }))
@@ -316,7 +316,7 @@ export default function PlatformAnalytics() {
       .slice(0, 10);
 
     return { totalAtRisk, platformAvgScore, gymsRisingChurn, perGymChurn, topSignals };
-  }, [churnScores, gyms]);
+  }, [churnScores, gyms, t]);
 
   // ── Onboarding Effectiveness ──────────────────────────────
   const onboardingData = useMemo(() => {
@@ -334,7 +334,7 @@ export default function PlatformAnalytics() {
     const perGym = Object.entries(gymOnboardingMap)
       .map(([gymId, { total, onboarded }]) => ({
         gymId,
-        name: gymNameMap[gymId] || 'Unknown',
+        name: gymNameMap[gymId] || t('platform.analytics.unknown', 'Unknown'),
         total,
         onboarded,
         rate: total ? +((onboarded / total) * 100).toFixed(1) : 0,
@@ -350,7 +350,7 @@ export default function PlatformAnalytics() {
     const gapsGyms = perGym.filter(g => g.rate < 60);
 
     return { perGym, platformAvgRate, best, worst, gapsGyms };
-  }, [profiles, gyms]);
+  }, [profiles, gyms, t]);
 
   // ── Render ─────────────────────────────────────────────────
   if (loading) return <PlatformSpinner />;

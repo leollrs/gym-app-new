@@ -8,11 +8,12 @@ import { Download } from 'lucide-react';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale';
 import { exportCSV } from '../../../../lib/csvExport';
 import { BENCHMARKS } from '../../../../lib/benchmarks';
 import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
 
-async function fetchRetentionData(gymId) {
+async function fetchRetentionData(gymId, dateFnsLocale) {
   const now = new Date();
 
   const { data: allMembers, error } = await supabase
@@ -38,7 +39,7 @@ async function fetchRetentionData(gymId) {
     const pct = starting > 0 ? Math.round((retained / starting) * 100) : 0;
 
     months.push({
-      month: format(subMonths(now, i), 'MMM yy'),
+      month: format(subMonths(now, i), 'MMM yy', dateFnsLocale),
       retention: pct,
       retained,
       total: starting,
@@ -49,10 +50,11 @@ async function fetchRetentionData(gymId) {
 }
 
 function RetentionChart({ gymId }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : {};
   const { data: retentionData = [], isLoading, isError, refetch } = useQuery({
-    queryKey: adminKeys.analytics.retention(gymId),
-    queryFn: () => fetchRetentionData(gymId),
+    queryKey: [...adminKeys.analytics.retention(gymId), i18n.language],
+    queryFn: () => fetchRetentionData(gymId, dateFnsLocale),
     enabled: !!gymId,
   });
 

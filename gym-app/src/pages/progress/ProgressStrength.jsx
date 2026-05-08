@@ -10,14 +10,18 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, parseISO } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
+import { useTranslation } from 'react-i18next';
 import ChartTooltip from '../../components/ChartTooltip';
 
 // ── PRRow (has data) ─────────────────────────────────────────────────────────
 const PRRow = ({ pr, history }) => {
+  const { i18n } = useTranslation('pages');
+  const dateLocale = i18n.language === 'es' ? esLocale : undefined;
   const [open, setOpen] = useState(false);
 
   const chartData = (history ?? []).map(h => ({
-    date: format(parseISO(h.achieved_at.slice(0, 10)), 'MMM d'),
+    date: format(parseISO(h.achieved_at.slice(0, 10)), 'MMM d', { locale: dateLocale }),
     orm: Math.round(parseFloat(h.estimated_1rm)),
   }));
 
@@ -42,7 +46,7 @@ const PRRow = ({ pr, history }) => {
             {pr.exercises?.name}
           </p>
           <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-            {pr.weight_lbs} lbs x {pr.reps} · {format(parseISO(pr.achieved_at.slice(0, 10)), 'MMM d, yyyy')}
+            {pr.weight_lbs} lbs x {pr.reps} · {format(parseISO(pr.achieved_at.slice(0, 10)), 'MMM d, yyyy', { locale: dateLocale })}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">

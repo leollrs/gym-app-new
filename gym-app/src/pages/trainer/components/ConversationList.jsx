@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Search, MessageCircle, Pin, Archive, Trash2, Ban } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 // eslint-disable-next-line no-unused-vars
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import UserAvatar from '../../../components/UserAvatar';
@@ -11,14 +12,17 @@ const ACTION_WIDTH = 80; // px per action button (Archive / Delete / Block)
 const REVEAL_WIDTH = ACTION_WIDTH * 3;
 const SWIPE_THRESHOLD = -50; // drag past this → snap open
 
-function formatRelative(dateStr, t) {
+function formatRelative(dateStr, t, lang) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
   const now = new Date();
   const diff = now - d;
   const oneDay = 86400000;
+  // Use the i18next language so dates render in Spanish ("abr 29") for an
+  // ES-locale user even when the OS / browser locale is English.
+  const locale = lang || undefined;
   if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   }
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
@@ -26,16 +30,16 @@ function formatRelative(dateStr, t) {
     return t('trainerMessages.list.yesterday', 'Yesterday');
   }
   if (diff < 7 * oneDay) {
-    return d.toLocaleDateString(undefined, { weekday: 'short' });
+    return d.toLocaleDateString(locale, { weekday: 'short' });
   }
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 }
 
 // ── Swipe row ──────────────────────────────────────────────────────────────
 // One conversation row with iOS-style swipe-left to reveal Archive / Delete /
 // Block actions. Tap the row body to open the conversation; tap an action to
 // invoke its handler. Swiping a different row collapses this one.
-function SwipeRow({
+function SwipeRow({ lang,
   conv,
   isActive,
   isPinned,
@@ -191,7 +195,7 @@ function SwipeRow({
               </p>
               {isPinned && <Pin size={11} style={{ color: 'var(--color-accent)' }} />}
               <span className="ml-auto text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>
-                {formatRelative(conv.last_message_at, t)}
+                {formatRelative(conv.last_message_at, t, lang)}
               </span>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
@@ -279,6 +283,8 @@ export default function ConversationList({
   onBlock = () => {},
   t,
 }) {
+  const { i18n } = useTranslation();
+  const lang = i18n.language;
   const totalUnread = useMemo(
     () => conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0),
     [conversations]
@@ -378,6 +384,7 @@ export default function ConversationList({
               onBlock={() => onBlock(conv)}
               renderTime={renderTime}
               t={t}
+              lang={lang}
             />
           );
         })}

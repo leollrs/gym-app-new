@@ -153,7 +153,11 @@ const Profile = () => {
   const posthog = usePostHog();
   const [activeTab, setActiveTab] = useState('activity');
 
-  useEffect(() => { document.title = `Profile | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
+  useEffect(() => {
+    const prev = document.title;
+    document.title = `${t('profile.title', 'Profile')} | ${window.__APP_NAME || 'TuGymPR'}`;
+    return () => { document.title = prev; };
+  }, [t]);
 
   // Data state — useCachedState survives unmount so back-nav is instant
   const cacheKey = `profile-${user?.id}`;
@@ -302,12 +306,13 @@ const Profile = () => {
           .sort((a, b) => b.sets - a.sets));
       }
 
-      // 5. Onboarding / goals
+      // 5. Onboarding / goals — trainers/admins won't have a member_onboarding
+      // row; .single() throws PGRST 406 in that case, .maybeSingle() returns null.
       const { data: ob } = await supabase
         .from('member_onboarding')
         .select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes')
         .eq('profile_id', user.id)
-        .single();
+        .maybeSingle();
       setOnboarding(ob ?? null);
 
       // 5b. Check-ins this month

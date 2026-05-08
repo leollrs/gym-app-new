@@ -2857,12 +2857,20 @@ export default function AdminClasses() {
   };
 
   // ── Delete schedule slot ──
+  // Returning the deleted row + early-exit prevents flooding the audit log
+  // when the user double-clicks (or React renders fire several handlers).
   const handleDeleteSlot = async (slotId) => {
-    const { error } = await supabase.from('gym_class_schedules').delete().eq('id', slotId).eq('gym_id', gymId);
+    const { data: deletedRows, error } = await supabase
+      .from('gym_class_schedules')
+      .delete()
+      .eq('id', slotId)
+      .eq('gym_id', gymId)
+      .select('id');
     if (error) {
       showToast(error.message || tc('somethingWentWrong'), 'error');
       return;
     }
+    if (!deletedRows || deletedRows.length === 0) return; // already gone — skip audit
     logAdminAction('delete_schedule_slot', 'gym_class_schedule', slotId);
     queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
   };

@@ -12,6 +12,7 @@ import posthog from 'posthog-js';
 import i18n from '../i18n/i18n';
 import { getSessionCreatedAt, setSessionCreatedAt, clearSessionCreatedAt, isSessionExpired } from '../lib/sessionAge';
 import { safeNavigate } from '../lib/navigationRef';
+import { getProgramWeekNum } from '../lib/programWeek';
 
 const AuthContext = createContext({});
 
@@ -113,6 +114,7 @@ export const AuthProvider = ({ children }) => {
   const [gymConfig, setGymConfig] = useState({});
   const [memberBlocked, setMemberBlocked] = useState(null); // null = not blocked, 'deactivated' | 'banned'
   const [lifetimePoints, setLifetimePoints] = useState(null); // null = not loaded yet, 0+ = loaded
+  const [mfaRequired, setMfaRequired] = useState(false);
   const watchSyncTimeoutRef = useRef(null);
 
   // ── Multi-role view switching ─────────────────────────────
@@ -508,7 +510,7 @@ export const AuthProvider = ({ children }) => {
           let todayIds = new Set();
           const prog = programsRes.data?.[0];
           if (prog && new Date(prog.expires_at) > new Date()) {
-            const weekNum = Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1;
+            const weekNum = getProgramWeekNum(prog.program_start);
             const isWeekA = weekNum % 2 === 1;
             todayIds = new Set(
               routines.filter(r => r.name?.startsWith('Auto:') && (isWeekA ? (r.name.endsWith(' A') || !r.name.endsWith(' B')) : r.name.endsWith(' B'))).map(r => r.id)

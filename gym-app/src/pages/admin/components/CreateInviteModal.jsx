@@ -48,6 +48,11 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const [trainingDaysPerWeek, setTrainingDaysPerWeek] = useState('');
   const [externalId, setExternalId] = useState('');
   const [adminNote, setAdminNote] = useState('');
+  // Optional admin override for the member's actual gym join date.
+  // When set, the churn engine uses this for tenure calculations
+  // instead of the app signup date — important for members who
+  // pre-date the app, otherwise they get flagged as 90-day-risk.
+  const [membershipStartedAt, setMembershipStartedAt] = useState('');
 
   // Generate a random 6-char alphanumeric code (excludes ambiguous chars)
   const generateCode = () => {
@@ -158,6 +163,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
       if (trainingDays !== null && !Number.isNaN(trainingDays)) profileInsert.training_days_per_week = trainingDays;
       if (externalId.trim()) profileInsert.qr_external_id = externalId.trim();
       if (adminNote.trim()) profileInsert.admin_note = adminNote.trim();
+      if (membershipStartedAt) profileInsert.membership_started_at = membershipStartedAt;
 
       const { data: newProfile, error: profileError } = await supabase
         .from('profiles')
@@ -325,6 +331,25 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
             />
           </div>
 
+          {/* Gym join date — primary field. Overrides 90-day onboarding
+              risk window so members who pre-date the app aren't flagged. */}
+          <div>
+            <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+              {k('membershipStartedAt')}
+            </label>
+            <input
+              type="date"
+              value={membershipStartedAt}
+              onChange={e => setMembershipStartedAt(e.target.value)}
+              max={new Date().toISOString().slice(0, 10)}
+              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+              style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+            />
+            <p className="text-[10px] mt-1.5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+              {k('membershipStartedAtHelp')}
+            </p>
+          </div>
+
           {/* Referral — scan or type */}
           <div>
             <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
@@ -429,6 +454,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
                   style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
                 />
               </div>
+
 
               {/* Age + Sex */}
               <div className="grid grid-cols-2 gap-2">

@@ -980,6 +980,12 @@ button {
 
 .animate-pulse-glow { animation: pulse-glow 2s infinite; }
 
+/* ── Live indicator pulse (used for "trainer sees client live" dot) ───── */
+@keyframes live-pulse {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%      { transform: scale(1.18); opacity: 0.85; }
+}
+
 /* ── Staggered fade-in (children animate sequentially) ───────── */
 @keyframes staggerFadeIn {
   from { opacity: 0; transform: translateY(12px); }

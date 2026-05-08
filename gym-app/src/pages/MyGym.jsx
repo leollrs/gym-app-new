@@ -59,6 +59,12 @@ export default function MyGym() {
   const [loading, setLoading] = useState(!hasCache);
 
   useEffect(() => {
+    const prev = document.title;
+    document.title = `${t('myGym.title', 'My Gym')} | ${window.__APP_NAME || 'TuGymPR'}`;
+    return () => { document.title = prev; };
+  }, [t]);
+
+  useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {
       const [gymRes, hoursRes, holidaysRes, annRes] = await Promise.all([

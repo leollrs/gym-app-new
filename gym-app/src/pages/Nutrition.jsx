@@ -3943,7 +3943,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                     <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1"
                       style={{ background: 'rgba(255,255,255,0.92)', color: 'var(--color-text-primary)' }}>
                       <span className="w-1.5 h-1.5 rounded-full bg-[#2ECC71]" />
-                      {matchPct}% match
+                      {t('nutrition.macroMatch', { defaultValue: '{{pct}}% match', pct: matchPct })}
                     </div>
                     <div className="absolute bottom-2.5 right-2.5 w-[30px] h-[30px] rounded-full flex items-center justify-center"
                       style={{ background: 'rgba(255,255,255,0.95)' }}>

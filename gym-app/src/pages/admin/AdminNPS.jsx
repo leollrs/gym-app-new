@@ -255,7 +255,12 @@ export default function AdminNPS() {
   );
 
   const feedbackResponses = useMemo(
-    () => (responses || []).filter((r) => r.feedback?.trim()),
+    () => (responses || []).filter((r) => {
+      if (!r.feedback?.trim()) return false;
+      const s = Number(r.score);
+      // Drop out-of-range scores (legacy 0-10 data or stray writes); scale is 1-5.
+      return Number.isFinite(s) && s >= 1 && s <= 5;
+    }),
     [responses],
   );
 
@@ -604,7 +609,10 @@ export default function AdminNPS() {
           </AdminCard>
         ) : (
           <div className="space-y-2 mb-5">
-            {responses.map((r) => {
+            {responses.filter(r => {
+              const s = Number(r.score);
+              return Number.isFinite(s) && s >= 1 && s <= 5;
+            }).map((r) => {
               const name = r.profiles?.full_name || t('admin.nps.member', 'Member');
               const initial = name.charAt(0).toUpperCase();
 

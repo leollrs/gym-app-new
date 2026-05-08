@@ -69,8 +69,12 @@ export function getRewardTier(points) {
 }
 
 // ── getUserPoints ────────────────────────────────────────────────────────────
-// Fetches total points from reward_points table. Creates row via upsert if not exists.
-export async function getUserPoints(userId) {
+// Fetches total points from reward_points table. Creates row via upsert if not
+// exists. Optionally accepts gymId — required by the table's NOT NULL on
+// gym_id when we have to insert a fresh row. If gymId isn't supplied, look it
+// up from the user's profile (avoids the "gym_id violates not-null
+// constraint" upsert errors that fired for trainers/admins on first load).
+export async function getUserPoints(userId, gymId) {
   const { data, error } = await supabase
     .from('reward_points')
     .select('total_points, lifetime_points, last_updated')
@@ -83,11 +87,24 @@ export async function getUserPoints(userId) {
   }
 
   if (!data) {
-    // Row doesn't exist yet — create it
+    let resolvedGymId = gymId;
+    if (!resolvedGymId) {
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('gym_id')
+        .eq('id', userId)
+        .maybeSingle();
+      resolvedGymId = profileRow?.gym_id;
+    }
+    if (!resolvedGymId) {
+      // No gym attached — can't create a row. Return zeros silently.
+      return { total_points: 0, lifetime_points: 0 };
+    }
+
     const { data: newRow, error: upsertErr } = await supabase
       .from('reward_points')
       .upsert(
-        { profile_id: userId, total_points: 0, lifetime_points: 0, last_updated: new Date().toISOString() },
+        { profile_id: userId, gym_id: resolvedGymId, total_points: 0, lifetime_points: 0, last_updated: new Date().toISOString() },
         { onConflict: 'profile_id' }
       )
       .select('total_points, lifetime_points, last_updated')

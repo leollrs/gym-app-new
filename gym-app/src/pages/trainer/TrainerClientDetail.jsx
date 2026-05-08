@@ -273,7 +273,7 @@ export default function TrainerClientNotes() {
 
         const { data: enr } = await supabase
           .from('gym_program_enrollments')
-          .select('started_at, gym_programs(name, duration_weeks, days_per_week)')
+          .select('started_at, gym_programs(name, duration_weeks, weeks)')
           .eq('profile_id', clientId)
           .eq('program_id', clientRes.data.assigned_program_id)
           .order('started_at', { ascending: false })
@@ -329,7 +329,7 @@ export default function TrainerClientNotes() {
       const [progsRes, photosRes, checkInsRes] = await Promise.all([
         supabase
           .from('gym_programs')
-          .select('id, name, duration_weeks, days_per_week')
+          .select('id, name, duration_weeks, weeks')
           .eq('gym_id', profile.gym_id)
           .eq('is_published', true)
           .order('name'),
@@ -399,15 +399,19 @@ export default function TrainerClientNotes() {
     }
   }, [isAssigned, loadClientData]);
 
-  // Bug 3: one-time check for an active session_drafts row for this client.
-  // Drives the "Watch live" pill + the "Start" button precheck.
+  // Check for an active session_drafts row for this client. Drives the
+  // "Watch live" pill + the "Start" button precheck.
+  // Filter on updated_at within the last 6 hours so a stale draft from days
+  // ago doesn't keep saying the client is "live".
   const checkLiveDraft = useCallback(async () => {
     if (!clientId) return;
     try {
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
       const { data } = await supabase
         .from('session_drafts')
         .select('profile_id, routine_id, started_at, updated_at, is_paused')
         .eq('profile_id', clientId)
+        .gte('updated_at', sixHoursAgo)
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -420,6 +424,25 @@ export default function TrainerClientNotes() {
   useEffect(() => {
     if (isAssigned) checkLiveDraft();
   }, [isAssigned, checkLiveDraft]);
+
+  // Realtime: pick up the live indicator the moment the client starts a
+  // session — without this, the trainer has to refresh the page to see it.
+  useEffect(() => {
+    if (!isAssigned || !clientId) return;
+    const channel = supabase
+      .channel(`trainer-client-live-${clientId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'session_drafts', filter: `profile_id=eq.${clientId}` },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            dispatch({ type: 'SET', payload: { liveDraft: null } });
+          } else {
+            dispatch({ type: 'SET', payload: { liveDraft: payload.new || null } });
+          }
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [isAssigned, clientId]);
 
   // Bug 3: Start/Watch live session — precheck draft first.
   // - If a draft exists -> navigate to /trainer/live/:clientId (spectator)
@@ -784,16 +807,21 @@ export default function TrainerClientNotes() {
     return Math.min(Math.round((stats.count / expected) * 100), 100);
   }, [stats.count, client?.created_at]);
 
-  // Program progress
+  // Program progress. Days/week is derived from the JSONB `weeks` column —
+  // the schema doesn't have a top-level `days_per_week`. We pick week 1's
+  // day count as representative; programs may technically vary week-to-week
+  // but for a simple progress card this is enough.
   const programProgress = useMemo(() => {
     if (!enrollment?.gym_programs || !enrollment.started_at) return null;
-    const { duration_weeks, days_per_week, name } = enrollment.gym_programs;
+    const { duration_weeks, weeks, name } = enrollment.gym_programs;
     const started = new Date(enrollment.started_at);
     const now = new Date();
     const currentWeek = Math.min(Math.max(differenceInWeeks(now, started) + 1, 1), duration_weeks || 1);
     const totalWeeks = duration_weeks || 0;
     const progressPct = totalWeeks > 0 ? Math.round((currentWeek / totalWeeks) * 100) : 0;
-    return { name, currentWeek, totalWeeks, daysPerWeek: days_per_week || 3, progressPct };
+    const week1 = weeks && typeof weeks === 'object' ? (weeks['1'] || weeks[1]) : null;
+    const daysPerWeek = Array.isArray(week1) ? week1.length : (week1?.days?.length ?? 3);
+    return { name, currentWeek, totalWeeks, daysPerWeek, progressPct };
   }, [enrollment]);
 
   // Weight chart data (reversed so chart goes left-to-right chronologically)
@@ -1122,6 +1150,14 @@ export default function TrainerClientNotes() {
           }}>
             {firstName}{lastName ? <><br/>{lastName}</> : null}
           </div>
+          {client?.username && (
+            <div style={{
+              fontSize: 13, fontWeight: 500, marginTop: 4,
+              color: 'rgba(255,255,255,0.7)',
+            }}>
+              @{client.username}
+            </div>
+          )}
           <div style={{ fontSize: 13, marginTop: 6, opacity: 0.85, fontWeight: 600 }}>
             {programName || t('trainerClientDetail.noProgram', 'No program')}
             {programProgress && (

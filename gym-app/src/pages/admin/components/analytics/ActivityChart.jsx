@@ -8,10 +8,11 @@ import { Download } from 'lucide-react';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale';
 import { exportCSV } from '../../../../lib/csvExport';
 import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
 
-async function fetchActivityData(gymId) {
+async function fetchActivityData(gymId, dateFnsLocale) {
   const now = new Date();
 
   const { data: allMembers, error: actMemError } = await supabase
@@ -43,7 +44,7 @@ async function fetchActivityData(gymId) {
     const pct = totalThatMonth > 0 ? Math.round((uniqueActive / totalThatMonth) * 100) : 0;
 
     months.push({
-      month: format(subMonths(now, i), 'MMM yy'),
+      month: format(subMonths(now, i), 'MMM yy', dateFnsLocale),
       engagement: pct,
       active: uniqueActive,
       total: totalThatMonth,
@@ -54,10 +55,11 @@ async function fetchActivityData(gymId) {
 }
 
 function ActivityChart({ gymId }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : {};
   const { data: activityData = [], isLoading, isError, refetch } = useQuery({
-    queryKey: adminKeys.analytics.activity(gymId),
-    queryFn: () => fetchActivityData(gymId),
+    queryKey: [...adminKeys.analytics.activity(gymId), i18n.language],
+    queryFn: () => fetchActivityData(gymId, dateFnsLocale),
     enabled: !!gymId,
   });
 

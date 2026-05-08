@@ -169,6 +169,11 @@ function ErrorRow({ entry, t }) {
 export default function ErrorLogs() {
   const { user } = useAuth();
   const { t } = useTranslation('pages');
+
+  useEffect(() => {
+    document.title = `${t('platform.errors.title', 'Errors')} | ${window.__APP_NAME || 'TuGymPR'}`;
+  }, [t]);
+
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);

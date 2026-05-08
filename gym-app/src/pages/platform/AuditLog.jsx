@@ -108,25 +108,162 @@ const ACTION_TYPE_KEYS = [
 ];
 
 function buildDescription(action, metadata, t) {
+  const unknown = () => t('platform.audit.unknown', 'Unknown');
+  const aMember = () => t('platform.audit.aMember', 'a member');
+  const target = metadata?.target_name || metadata?.member_name || aMember();
+  const setting = metadata?.setting || metadata?.field;
+  const flag = metadata?.flag;
+  const banReason = metadata?.reason ? ` — ${metadata.reason}` : '';
+
   switch (action) {
+    // Platform-level
     case 'gym_created':
-      return t('platform.audit.desc.gymCreated', { name: metadata?.gym_name || t('platform.audit.unknown', 'Unknown'), defaultValue: 'created gym "{{name}}"' });
+    case 'create_gym':
+      return t('platform.audit.desc.gymCreated', { name: metadata?.gym_name || metadata?.name || unknown(), defaultValue: 'created gym "{{name}}"' });
     case 'gym_deactivated':
-      return t('platform.audit.desc.gymDeactivated', { name: metadata?.gym_name || t('platform.audit.unknown', 'Unknown'), defaultValue: 'deactivated gym "{{name}}"' });
+    case 'permanently_deactivate_gym':
+      return t('platform.audit.desc.gymDeactivated', { name: metadata?.gym_name || unknown(), defaultValue: 'deactivated gym "{{name}}"' });
+    case 'pause_gym':
+      return t('platform.audit.desc.gymPaused', { name: metadata?.gym_name || unknown(), defaultValue: 'paused gym "{{name}}"' });
+    case 'reactivate_gym':
+      return t('platform.audit.desc.gymReactivated', { name: metadata?.gym_name || unknown(), defaultValue: 'reactivated gym "{{name}}"' });
+    case 'toggle_feature_flag':
+      return t('platform.audit.desc.toggleFlag', { flag: flag || unknown(), state: metadata?.enabled ? t('platform.audit.on', 'on') : t('platform.audit.off', 'off'), defaultValue: 'turned {{state}} feature flag "{{flag}}"' });
+    case 'toggle_email_flag':
+      return t('platform.audit.desc.toggleEmail', { flag: flag || unknown(), state: metadata?.enabled ? t('platform.audit.on', 'on') : t('platform.audit.off', 'off'), defaultValue: 'turned {{state}} email "{{flag}}"' });
+    case 'save_gym_defaults':
+      return t('platform.audit.desc.saveDefaults', 'updated default gym configuration');
+
+    // Member status
     case 'role_changed':
-      return t('platform.audit.desc.roleChanged', { target: metadata?.target_name || t('platform.audit.aMember', 'a member'), oldRole: metadata?.old_role || '?', newRole: metadata?.new_role || '?', defaultValue: 'changed role of {{target}} from {{oldRole}} to {{newRole}}' });
+    case 'change_role':
+      return t('platform.audit.desc.roleChanged', { target, oldRole: metadata?.from || metadata?.old_role || '?', newRole: metadata?.to || metadata?.new_role || '?', defaultValue: 'changed role of {{target}} from {{oldRole}} to {{newRole}}' });
+    case 'change_status':
+      return t('platform.audit.desc.statusChanged', { target, oldStatus: metadata?.from || '?', newStatus: metadata?.to || '?', defaultValue: 'changed {{target}} status from {{oldStatus}} to {{newStatus}}' });
     case 'member_banned':
-      return t('platform.audit.desc.memberBanned', { target: metadata?.target_name || t('platform.audit.aMember', 'a member'), defaultValue: 'banned {{target}}' }) + (metadata?.reason ? ` — ${metadata.reason}` : '');
+      return t('platform.audit.desc.memberBanned', { target, defaultValue: 'banned {{target}}' }) + banReason;
     case 'member_frozen':
-      return t('platform.audit.desc.memberFrozen', { target: metadata?.target_name || t('platform.audit.aMember', 'a member'), defaultValue: 'froze membership of {{target}}' });
+      return t('platform.audit.desc.memberFrozen', { target, defaultValue: 'froze membership of {{target}}' });
+    case 'deactivate_member':
+      return t('platform.audit.desc.memberDeactivated', { target, defaultValue: 'deactivated {{target}}' });
+    case 'reset_password':
+      return t('platform.audit.desc.resetPassword', { target, defaultValue: 'generated a password reset for {{target}}' });
+    case 'resend_invite':
+      return t('platform.audit.desc.resendInvite', { target, defaultValue: 'resent invite to {{target}}' });
+    case 'revoke_invite':
+      return t('platform.audit.desc.revokeInvite', { target, defaultValue: 'revoked invite for {{target}}' });
+
+    // Communications
+    case 'send_message':
+    case 'quick_message':
+    case 'bulk_message':
+      return t('platform.audit.desc.sendMessage', { target, defaultValue: 'messaged {{target}}' });
+    case 'send_sms':
+      return t('platform.audit.desc.sendSms', { target, defaultValue: 'texted {{target}}' });
+    case 'send_email':
+      return t('platform.audit.desc.sendEmail', { target, defaultValue: 'emailed {{target}}' });
+    case 'send_winback':
+      return t('platform.audit.desc.sendWinback', { target, defaultValue: 'sent win-back to {{target}}' });
+    case 'send_followup':
+      return t('platform.audit.desc.sendFollowup', { target, defaultValue: 'sent follow-up to {{target}}' });
+    case 'bulk_followup':
+      return t('platform.audit.desc.bulkFollowup', { count: metadata?.count || '?', defaultValue: 'sent follow-ups to {{count}} members' });
+    case 'bulk_freeze':
+      return t('platform.audit.desc.bulkFreeze', { count: metadata?.count || '?', defaultValue: 'froze {{count}} memberships' });
+    case 'set_outcome':
+      return t('platform.audit.desc.setOutcome', { target, outcome: metadata?.outcome || '?', defaultValue: 'set follow-up outcome for {{target}}: {{outcome}}' });
+    case 'update_note':
+      return t('platform.audit.desc.updateNote', { target, defaultValue: 'updated note on {{target}}' });
+    case 'update_info':
+      return t('platform.audit.desc.updateInfo', { target, defaultValue: 'updated profile info for {{target}}' });
+
+    // Settings
     case 'settings_updated':
-      return t('platform.audit.desc.settingsUpdated', { setting: metadata?.setting || t('platform.audit.settings', 'settings'), defaultValue: 'updated {{setting}}' });
+    case 'update_settings':
+      return t('platform.audit.desc.settingsUpdated', { setting: setting || t('platform.audit.settings', 'settings'), defaultValue: 'updated {{setting}}' });
+    case 'update_hours':
+      return t('platform.audit.desc.updateHours', 'updated gym hours');
+    case 'update_closures':
+      return t('platform.audit.desc.updateClosures', 'updated gym closures');
+
+    // Content
     case 'exercise_created':
-      return t('platform.audit.desc.exerciseCreated', { name: metadata?.exercise_name || t('platform.audit.unknown', 'Unknown'), defaultValue: 'created exercise "{{name}}"' });
+      return t('platform.audit.desc.exerciseCreated', { name: metadata?.exercise_name || metadata?.name || unknown(), defaultValue: 'created exercise "{{name}}"' });
+    case 'create_announcement':
+      return t('platform.audit.desc.createAnnouncement', { title: metadata?.title || unknown(), defaultValue: 'posted announcement "{{title}}"' });
+    case 'create_class':
+      return t('platform.audit.desc.createClass', { name: metadata?.class_name || metadata?.name || unknown(), defaultValue: 'created class "{{name}}"' });
+    case 'update_class':
+      return t('platform.audit.desc.updateClass', { name: metadata?.class_name || metadata?.name || unknown(), defaultValue: 'updated class "{{name}}"' });
+    case 'delete_class':
+      return t('platform.audit.desc.deleteClass', { name: metadata?.class_name || metadata?.name || unknown(), defaultValue: 'deleted class "{{name}}"' });
+    case 'delete_schedule_slot':
+      return t('platform.audit.desc.deleteSlot', 'removed a class schedule slot');
+    case 'create_program':
+      return t('platform.audit.desc.createProgram', { name: metadata?.program_name || metadata?.name || unknown(), defaultValue: 'created program "{{name}}"' });
+    case 'update_program':
+      return t('platform.audit.desc.updateProgram', { name: metadata?.program_name || metadata?.name || unknown(), defaultValue: 'updated program "{{name}}"' });
+    case 'delete_program':
+      return t('platform.audit.desc.deleteProgram', { name: metadata?.program_name || metadata?.name || unknown(), defaultValue: 'deleted program "{{name}}"' });
+
+    // Challenges
     case 'challenge_created':
-      return t('platform.audit.desc.challengeCreated', { name: metadata?.challenge_name || t('platform.audit.unknown', 'Unknown'), defaultValue: 'created challenge "{{name}}"' });
+    case 'create_challenge':
+      return t('platform.audit.desc.challengeCreated', { name: metadata?.challenge_name || metadata?.name || unknown(), defaultValue: 'created challenge "{{name}}"' });
+    case 'update_challenge':
+      return t('platform.audit.desc.challengeUpdated', { name: metadata?.challenge_name || metadata?.name || unknown(), defaultValue: 'updated challenge "{{name}}"' });
+    case 'delete_challenge':
+      return t('platform.audit.desc.challengeDeleted', { name: metadata?.challenge_name || metadata?.name || unknown(), defaultValue: 'deleted challenge "{{name}}"' });
+    case 'award_prizes':
+      return t('platform.audit.desc.awardPrizes', { name: metadata?.challenge_name || unknown(), defaultValue: 'awarded prizes for "{{name}}"' });
+
+    // Store / rewards
+    case 'create_product':
+      return t('platform.audit.desc.createProduct', { name: metadata?.name || unknown(), defaultValue: 'created product "{{name}}"' });
+    case 'update_product':
+      return t('platform.audit.desc.updateProduct', { name: metadata?.name || unknown(), defaultValue: 'updated product "{{name}}"' });
+    case 'toggle_product':
+      return t('platform.audit.desc.toggleProduct', { name: metadata?.name || unknown(), state: metadata?.is_active ? t('platform.audit.on', 'on') : t('platform.audit.off', 'off'), defaultValue: 'turned {{state}} product "{{name}}"' });
+    case 'delete_product':
+      return t('platform.audit.desc.deleteProduct', { name: metadata?.name || unknown(), defaultValue: 'deleted product "{{name}}"' });
+    case 'create_reward':
+      return t('platform.audit.desc.createReward', { name: metadata?.name || unknown(), defaultValue: 'created reward "{{name}}"' });
+    case 'update_reward':
+      return t('platform.audit.desc.updateReward', { name: metadata?.name || unknown(), defaultValue: 'updated reward "{{name}}"' });
+    case 'delete_reward':
+      return t('platform.audit.desc.deleteReward', { name: metadata?.name || unknown(), defaultValue: 'deleted reward "{{name}}"' });
+    case 'create_milestone':
+      return t('platform.audit.desc.createMilestone', { name: metadata?.name || unknown(), defaultValue: 'created milestone "{{name}}"' });
+    case 'delete_milestone':
+      return t('platform.audit.desc.deleteMilestone', { name: metadata?.name || unknown(), defaultValue: 'deleted milestone "{{name}}"' });
+    case 'claim_reward':
+      return t('platform.audit.desc.claimReward', { name: metadata?.name || metadata?.reward || unknown(), defaultValue: 'claimed reward "{{name}}"' });
+
+    // Trainers
+    case 'add_trainer':
+      return t('platform.audit.desc.addTrainer', { target, defaultValue: 'promoted {{target}} to trainer' });
+    case 'demote_trainer':
+      return t('platform.audit.desc.demoteTrainer', { target, defaultValue: 'demoted trainer {{target}}' });
+
+    // Moderation
+    case 'moderate_post':
+      return t('platform.audit.desc.moderatePost', { action: metadata?.moderation_action || metadata?.outcome || 'reviewed', defaultValue: 'moderated a post: {{action}}' });
+    case 'moderate_comment':
+      return t('platform.audit.desc.moderateComment', { action: metadata?.moderation_action || metadata?.outcome || 'reviewed', defaultValue: 'moderated a comment: {{action}}' });
+    case 'action_report':
+      return t('platform.audit.desc.actionReport', { outcome: metadata?.outcome || 'reviewed', defaultValue: 'actioned report: {{outcome}}' });
+
+    // Scans
+    case 'checkin_scan':
+      return t('platform.audit.desc.checkinScan', { target, defaultValue: 'scanned check-in for {{target}}' });
+    case 'purchase_scan':
+      return t('platform.audit.desc.purchaseScan', { target, defaultValue: 'scanned purchase for {{target}}' });
+    case 'referral_scan':
+      return t('platform.audit.desc.referralScan', { target, defaultValue: 'scanned referral for {{target}}' });
+
     default:
-      return t('platform.audit.desc.genericAction', { action, defaultValue: 'performed action: {{action}}' });
+      // Last resort — use the action name verbatim, but at least translate the wrapper
+      return t('platform.audit.desc.genericAction', { action: action.replace(/_/g, ' '), defaultValue: 'performed action: {{action}}' });
   }
 }
 
@@ -187,6 +324,11 @@ export default function AuditLog() {
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
+
+  useEffect(() => {
+    document.title = `${t('platform.audit.title', 'Audit Log')} | ${window.__APP_NAME || 'TuGymPR'}`;
+  }, [t]);
+
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);

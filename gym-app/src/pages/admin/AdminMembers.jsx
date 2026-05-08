@@ -40,14 +40,15 @@ const ChurnRiskBadge = ({ member, navigate }) => {
   const tier = getRiskTier(score);
   if (score < 30) return null;
   const toneClass = score >= 80 ? 'admin-pill--hot' : score >= 55 ? 'admin-pill--hot' : 'admin-pill--warn';
+  const label = i18n.t(`admin.members.riskTier.${tier.tier}`, { ns: 'pages', defaultValue: tier.label });
   return (
     <span onClick={e => { e.stopPropagation(); navigate('/admin/churn'); }}
       role="link"
       tabIndex={0}
-      title={i18n.t('admin.members.churnTooltip', { ns: 'pages', defaultValue: '{{label}} — click to view in Churn Intel', label: tier.label })}
+      title={i18n.t('admin.members.churnTooltip', { ns: 'pages', defaultValue: '{{label}} — click to view in Churn Intel', label })}
       className={`admin-pill ${toneClass} flex items-center gap-1 cursor-pointer hover:opacity-80 flex-shrink-0`}>
       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'currentColor' }} />
-      {tier.label}
+      {label}
     </span>
   );
 };
@@ -77,7 +78,7 @@ async function fetchMembers(gymId, page = 0) {
   const from = page * MEMBERS_PAGE_SIZE;
   const to = from + MEMBERS_PAGE_SIZE - 1;
   const [membersRes, followupRes, sessionsRes, scoredAll] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
+    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, membership_started_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
     supabase.from('churn_risk_scores').select('profile_id, followup_sent_at, computed_at').eq('gym_id', gymId).order('computed_at', { ascending: false }),
     supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()).limit(5000),
     fetchMembersWithChurnScores(gymId, supabase).catch((err) => {
@@ -364,8 +365,10 @@ export default function AdminMembers() {
   };
 
   // Thresholds aligned with churn engine (lib/churn/riskScoring.js): 80 / 55 / 30.
-  // Critical (>=80) + High (>=55) both count as "at risk", matching AdminOverview.
-  const atRiskCount = members.filter(m => m.score >= 55).length;
+  // Buckets are mutually exclusive — Critical (>=80), At Risk (55-79),
+  // Watch (30-54), Healthy (<30). The four counts sum to total members.
+  const criticalCount = members.filter(m => m.score >= 80).length;
+  const atRiskCount = members.filter(m => m.score >= 55 && m.score < 80).length;
   const watchCount = members.filter(m => m.score >= 30 && m.score < 55).length;
   const frozenCount = members.filter(m => m.membership_status === 'frozen').length;
   const lowRiskCount = members.filter(m => m.score < 30).length;
@@ -376,9 +379,16 @@ export default function AdminMembers() {
       const q = debouncedSearch.toLowerCase();
       list = list.filter(m => (m.full_name || '').toLowerCase().includes(q) || (m.username || '').toLowerCase().includes(q));
     }
-    if (filter === 'at-risk') list = list.filter(m => m.score >= 55);
+    if (filter === 'critical') list = list.filter(m => m.score >= 80);
+    else if (filter === 'at-risk') list = list.filter(m => m.score >= 55 && m.score < 80);
     else if (filter === 'watch') list = list.filter(m => m.score >= 30 && m.score < 55);
     else if (filter === 'healthy') list = list.filter(m => m.score < 30);
+    // When viewing a risk bucket, sort by score DESC so the most-urgent
+    // (and most-inactive) members surface first — otherwise the
+    // last-active-at sort buries never-active members at the bottom.
+    if (filter !== 'all') {
+      list = [...list].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    }
     return list;
   }, [members, debouncedSearch, filter]);
 
@@ -544,6 +554,7 @@ export default function AdminMembers() {
 
   const filterOptions = [
     { key: 'all', label: t('admin.members.filterAll', 'All'), count: members.length },
+    { key: 'critical', label: t('admin.members.filterCritical', 'Critical'), count: criticalCount },
     { key: 'at-risk', label: t('admin.members.filterAtRisk', 'At Risk'), count: atRiskCount },
     { key: 'watch', label: t('admin.members.filterWatch', 'Watch'), count: watchCount },
     { key: 'healthy', label: t('admin.members.filterLowRisk', 'Low Risk'), count: lowRiskCount },
@@ -705,7 +716,7 @@ export default function AdminMembers() {
       />
 
       {/* Top summary row -- visible on all tabs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 md:gap-3 mt-6 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 md:gap-3 mt-6 mb-6">
         <StatCard
           label={t('admin.members.statTotal', 'Total Members')}
           value={members.length}
@@ -714,9 +725,16 @@ export default function AdminMembers() {
           delay={0}
         />
         <StatCard
+          label={t('admin.members.statCritical', 'Critical')}
+          value={criticalCount}
+          borderColor="var(--color-danger)"
+          icon={AlertTriangle}
+          delay={0.025}
+        />
+        <StatCard
           label={t('admin.members.statAtRisk', 'At Risk')}
           value={atRiskCount}
-          borderColor="var(--color-danger)"
+          borderColor="var(--color-warning)"
           icon={AlertTriangle}
           delay={0.05}
         />

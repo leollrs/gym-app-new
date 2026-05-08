@@ -93,6 +93,13 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [memberName, setMemberName] = useState(member.full_name ?? '');
   const [memberUsername, setMemberUsername] = useState(member.username ?? '');
   const [memberEmail, setMemberEmail] = useState(member.email ?? '');
+  // Admin override for the member's actual gym join date — drives
+  // the tenure-based churn signal so members who pre-date the app
+  // aren't penalized by the 90-day onboarding window.
+  const [memberStartedAt, setMemberStartedAt] = useState(
+    member.membership_started_at ?? '',
+  );
+  const originalStartedAtRef = useRef(member.membership_started_at ?? '');
   const originalEmailRef = useRef(member.email ?? '');
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailSaved, setEmailSaved] = useState(false);
@@ -147,20 +154,24 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       setChallenges(chalRes.count ?? 0);
 
       if (isFollowupCandidate) {
-        const { data: churnRow } = await supabase.from('churn_risk_scores').select('id, followup_sent_at, followup_outcome').eq('profile_id', member.id).eq('gym_id', gymId).order('created_at', { ascending: false }).limit(1).maybeSingle();
-        if (churnRow) {
-          setChurnRowId(churnRow.id);
-          setFollowupSentAt(churnRow.followup_sent_at ?? null);
-          setFollowupOutcome(churnRow.followup_outcome ?? null);
-        }
+        // Wrapped in try/catch — followup_* columns require migration 0260; if it
+        // hasn't been deployed yet the select 400s and we just skip the followup state.
+        try {
+          const { data: churnRow, error: churnErr } = await supabase.from('churn_risk_scores').select('id, followup_sent_at, followup_outcome').eq('profile_id', member.id).eq('gym_id', gymId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+          if (!churnErr && churnRow) {
+            setChurnRowId(churnRow.id);
+            setFollowupSentAt(churnRow.followup_sent_at ?? null);
+            setFollowupOutcome(churnRow.followup_outcome ?? null);
+          }
+        } catch { /* migration 0260 not deployed — skip silently */ }
       }
 
-      // Load referral data
-      const [refProfileRes, refListRes] = await Promise.all([
-        supabase.from('profiles').select('referral_code').eq('id', member.id).single(),
+      // Load referral data — referral_code lives on the referral_codes table, not profiles.
+      const [refCodeRes, refListRes] = await Promise.all([
+        supabase.from('referral_codes').select('code').eq('profile_id', member.id).eq('gym_id', gymId).maybeSingle(),
         supabase.from('referrals').select('id, referred_id, status, created_at, profiles!referrals_referred_id_fkey(full_name)').eq('referrer_id', member.id).eq('gym_id', gymId).order('created_at', { ascending: false }).limit(50),
       ]);
-      if (refProfileRes.data?.referral_code) setReferralCode(refProfileRes.data.referral_code);
+      if (refCodeRes.data?.code) setReferralCode(refCodeRes.data.code);
 
       // Fetch the invite code used by this member (check both tables)
       const { data: inviteRow } = await supabase
@@ -253,9 +264,16 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     if (normalizePhone(phoneVal) !== normalizePhone(originalPhoneRef.current)) {
       updates.phone_number = phoneVal;
     }
+    const startedVal = memberStartedAt || null;
+    if (startedVal !== (originalStartedAtRef.current || null)) {
+      updates.membership_started_at = startedVal;
+    }
     if (Object.keys(updates).length > 0) {
       await supabase.from('profiles').update(updates).eq('id', member.id).eq('gym_id', gymId);
       logAdminAction('update_info', 'member', member.id);
+      if (updates.membership_started_at !== undefined) {
+        originalStartedAtRef.current = updates.membership_started_at ?? '';
+      }
     }
     setInfoSaving(false);
     setInfoSaved(true);
@@ -653,8 +671,23 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                   ariaLabel={t('admin.memberDetail.phoneNumber', 'Phone Number')}
                 />
               </div>
+              <div>
+                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">
+                  {t('admin.memberDetail.membershipStartedAt', 'Gym join date')}
+                </label>
+                <input
+                  type="date"
+                  value={memberStartedAt}
+                  onChange={e => setMemberStartedAt(e.target.value)}
+                  max={new Date().toISOString().slice(0, 10)}
+                  className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40"
+                />
+                <p className="text-[10px] text-[#6B7280] mt-1.5 leading-relaxed">
+                  {t('admin.memberDetail.membershipStartedAtHelp', 'Set this to the member\'s actual gym join date if they joined before installing the app. Overrides the 90-day onboarding risk window for tenure-based churn scoring.')}
+                </p>
+              </div>
               <button onClick={handleSaveInfo}
-                disabled={infoSaving || (memberName === (member.full_name ?? '') && memberUsername === (member.username ?? '') && memberPhone === originalPhoneRef.current)}
+                disabled={infoSaving || (memberName === (member.full_name ?? '') && memberUsername === (member.username ?? '') && memberPhone === originalPhoneRef.current && (memberStartedAt || '') === (originalStartedAtRef.current || ''))}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
                 style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
                 <Save size={12} />

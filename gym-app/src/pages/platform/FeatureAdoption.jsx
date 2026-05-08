@@ -30,8 +30,8 @@ const FEATURES_DEF = [
   { key: 'rewards',     labelKey: 'platform.adoption.feat.rewards',     labelDefault: 'Rewards',        table: 'referral_milestones', field: 'gym_id', hasCreatedAt: true },
   { key: 'nps',         labelKey: 'platform.adoption.feat.nps',         labelDefault: 'NPS',            table: 'nps_responses',     field: 'gym_id', hasCreatedAt: true },
   { key: 'announcements',labelKey: 'platform.adoption.feat.announcements',labelDefault: 'Announcements', table: 'announcements',     field: 'gym_id', hasCreatedAt: true },
-  { key: 'analytics',   labelKey: 'platform.adoption.feat.analytics',   labelDefault: 'Analytics',      table: 'churn_risk_scores', field: 'gym_id', hasCreatedAt: true },
-  { key: 'store',       labelKey: 'platform.adoption.feat.store',       labelDefault: 'Store',          table: 'gym_store_products',field: 'gym_id', hasCreatedAt: true },
+  { key: 'analytics',   labelKey: 'platform.adoption.feat.analytics',   labelDefault: 'Analytics',      table: 'churn_risk_scores', field: 'gym_id', hasCreatedAt: false, timeField: 'computed_at' },
+  { key: 'store',       labelKey: 'platform.adoption.feat.store',       labelDefault: 'Store',          table: 'gym_products',      field: 'gym_id', hasCreatedAt: true },
   { key: 'segments',    labelKey: 'platform.adoption.feat.segments',    labelDefault: 'Segments',       table: 'member_segments',   field: 'gym_id', hasCreatedAt: true },
 ];
 

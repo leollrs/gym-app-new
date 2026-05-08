@@ -92,8 +92,8 @@ export default function GymHealth() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    document.title = `Gym Health | ${window.__APP_NAME || 'TuGymPR'}`;
-  }, []);
+    document.title = `${t('platform.gymHealth.title', 'Gym Health')} | ${window.__APP_NAME || 'TuGymPR'}`;
+  }, [t]);
 
   // ── Fetch all data ─────────────────────────────────────────
   useEffect(() => {
@@ -264,11 +264,11 @@ export default function GymHealth() {
       .filter(g => g.healthScore < 40)
       .slice(0, 3)
       .map(g => {
-        let issue = 'Low overall health';
-        if (g.activePct < 20) issue = 'Very low activity (' + g.activePct + '%)';
-        else if (g.avgChurnScore > 60) issue = 'High churn risk (' + g.avgChurnScore + ')';
-        else if (g.checkinRate < 10) issue = 'Minimal check-ins (' + g.checkinRate + '%)';
-        else if (g.onboardingPct < 30) issue = 'Poor onboarding (' + g.onboardingPct + '%)';
+        let issue = t('platform.gymHealth.issue.lowOverall', 'Low overall health');
+        if (g.activePct < 20) issue = t('platform.gymHealth.issue.veryLowActivity', { pct: g.activePct, defaultValue: 'Very low activity ({{pct}}%)' });
+        else if (g.avgChurnScore > 60) issue = t('platform.gymHealth.issue.highChurn', { score: g.avgChurnScore, defaultValue: 'High churn risk ({{score}})' });
+        else if (g.checkinRate < 10) issue = t('platform.gymHealth.issue.minimalCheckins', { pct: g.checkinRate, defaultValue: 'Minimal check-ins ({{pct}}%)' });
+        else if (g.onboardingPct < 30) issue = t('platform.gymHealth.issue.poorOnboarding', { pct: g.onboardingPct, defaultValue: 'Poor onboarding ({{pct}}%)' });
         return { ...g, issue };
       });
 
@@ -284,7 +284,7 @@ export default function GymHealth() {
       .slice(0, 5);
 
     return { biggestImprovement, needsAttention, onboardingGap, adminInactive };
-  }, [gymHealthData]);
+  }, [gymHealthData, t]);
 
   // ── Trend arrow helper ─────────────────────────────────────
   const TrendArrow = ({ score }) => {
@@ -463,7 +463,7 @@ export default function GymHealth() {
                             </td>
                             <td className="px-3 py-3">
                               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${tier.bg} ${tier.text}`}>
-                                {tier.label}
+                                {t(`platform.gymHealth.tier.${tier.key}`, tier.label)}
                               </span>
                             </td>
                             <td className="px-3 py-3">

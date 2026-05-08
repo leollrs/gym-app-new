@@ -81,7 +81,26 @@ const NPSSurveyModal = () => {
     ? localStorage.getItem(`nps_dismissed_${surveyId}`) === 'true'
     : false;
 
-  const visible = !!survey && !isDismissedLocally && !dismissed && !submitted;
+  // Defer the survey until the user has actually used the app — asking a
+  // brand-new account "how likely are you to recommend us?" before they've
+  // logged a single workout produces noisy/uninformative scores.
+  const { data: hasActivity } = useQuery({
+    queryKey: ['nps-eligibility', userId],
+    queryFn: async () => {
+      if (!userId) return false;
+      const { count } = await supabase
+        .from('workout_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', userId)
+        .eq('status', 'completed');
+      return (count || 0) >= 1;
+    },
+    enabled: !!userId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const visible = !!survey && !!hasActivity && !isDismissedLocally && !dismissed && !submitted;
 
   // Lock body scroll when modal is visible
   useEffect(() => {

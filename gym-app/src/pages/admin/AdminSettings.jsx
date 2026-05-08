@@ -1522,10 +1522,10 @@ export default function AdminSettings() {
 
                         {/* Name & description */}
                         <p className="text-[13px] font-bold truncate" style={{ color: isActive ? palette.primary : 'var(--color-text-primary)' }}>
-                          {palette.name}
+                          {t(`admin.settings.palettes.${palette.id}.name`, palette.name)}
                         </p>
                         <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>
-                          {palette.description}
+                          {t(`admin.settings.palettes.${palette.id}.description`, palette.description)}
                         </p>
                       </button>
                     );

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, parseISO } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
 import CoachMark from '../components/CoachMark';
@@ -159,7 +160,8 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
 
 // ── PR history chart row ──────────────────────────────────────────────────────
 const PRRow = ({ pr, history }) => {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateLocale = i18n.language === 'es' ? esLocale : undefined;
   const [open, setOpen] = useState(false);
 
   // Group by date and take max 1RM per day to avoid duplicate data points
@@ -174,7 +176,7 @@ const PRRow = ({ pr, history }) => {
   const chartData = Object.values(byDate)
     .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
     .map(d => ({
-      date: format(parseISO(d.dateKey), 'MMM d'),
+      date: format(parseISO(d.dateKey), 'MMM d', { locale: dateLocale }),
       orm:  Math.round(d.orm),
     }));
 
@@ -199,7 +201,7 @@ const PRRow = ({ pr, history }) => {
             {pr.exercises?.name}
           </p>
           <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-            {pr.weight_lbs} lbs × {pr.reps} · {format(parseISO(pr.achieved_at.slice(0, 10)), 'MMM d, yyyy')}
+            {pr.weight_lbs} lbs × {pr.reps} · {format(parseISO(pr.achieved_at.slice(0, 10)), 'MMM d, yyyy', { locale: dateLocale })}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">

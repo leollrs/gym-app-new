@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2,
-  Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info,
+  Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info, RotateCcw,
 } from 'lucide-react';
 import { useRoutines } from '../hooks/useRoutines';
 import { useCachedState, hasCachedState, useSyncedCachedState } from '../hooks/useCachedState';
@@ -18,6 +18,8 @@ import { timeAgo } from '../lib/dateUtils';
 import { exercises as exerciseLibrary } from '../data/exercises';
 import { useTranslation } from 'react-i18next';
 import { exName, localizeRoutineName } from '../lib/exerciseName';
+import { getCurrentWeekClamped, getTotalProgramWeeks } from '../lib/programWeek';
+import { regenerateMemberProgram } from '../lib/personalProgramService';
 import { loadAdaptationSuggestions, dismissAdaptationSuggestions } from '../lib/programAdaptation';
 import { usePostHog } from '@posthog/react';
 import { programImageUrl } from '../lib/imageUrl';
@@ -397,6 +399,8 @@ const Workouts = () => {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [leaveProgramConfirm, setLeaveProgramConfirm] = useState(null); // { id, name, source } or null
+  const [regenerateConfirm, setRegenerateConfirm] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [deletingId, setDeletingId]           = useState(null);
   const [showGenerator, setShowGenerator]     = useState(false);
   const [programCategoryFilter, setProgramCategoryFilter] = useState('All');
@@ -703,15 +707,33 @@ const Workouts = () => {
   const today = new Date();
   const programActive  = generatedProgram && new Date(generatedProgram.expires_at) > today;
   const programExpired = generatedProgram && new Date(generatedProgram.expires_at) <= today;
-  const totalProgramWeeks = generatedProgram?.duration_weeks || 6;
-  const rawWeekNum = programActive ? Math.floor((today - new Date(generatedProgram.program_start)) / (7 * 86400000)) + 1 : 0;
-  const currentWeekNum = Math.min(rawWeekNum, totalProgramWeeks);
-  const isWeekA = currentWeekNum % 2 === 1;
-
   // Use schedule_map from generated_programs (authoritative)
   const schedMap = generatedProgram?.schedule_map || null;
   const programStartDow = schedMap?.start_dow ?? (programActive ? new Date(generatedProgram.program_start).getDay() : 1);
   const hasWrappedDays = (schedMap?.wrapped_dows?.length ?? 0) > 0;
+  // Total weeks the user sees on the "Semana X de Y" pill. With partial-week
+  // scheduling there are typically `duration_weeks + 1` calendar weeks because
+  // mid-week signups bleed into a 13th week. `total_calendar_weeks` is set by
+  // the onboarding generator; older programs without it fall back to
+  // `duration_weeks`.
+  const totalProgramWeeks = schedMap?.total_calendar_weeks ?? generatedProgram?.duration_weeks ?? 6;
+  // Week number = calendar weeks (Sun-Sat) since the calendar week containing
+  // program_start. Anniversary-based math broke for mid-week signups: a Thu
+  // start kept the user on "Week 1" through the following Wednesday, even
+  // though the Sun→Sat boundary clearly rolled them into Week 2.
+  const rawWeekNum = (() => {
+    if (!programActive) return 0;
+    const start = new Date(generatedProgram.program_start);
+    start.setHours(0, 0, 0, 0);
+    const startSunday = new Date(start);
+    startSunday.setDate(startSunday.getDate() - startSunday.getDay());
+    const todayMidnight = new Date(today);
+    todayMidnight.setHours(0, 0, 0, 0);
+    const days = Math.floor((todayMidnight - startSunday) / 86400000);
+    return Math.floor(days / 7) + 1;
+  })();
+  const currentWeekNum = Math.min(rawWeekNum, totalProgramWeeks);
+  const isWeekA = currentWeekNum % 2 === 1;
 
   // Build DOW→routine_index maps for each week type
   const normalDowToIdx = {}; // week 2+ (steady state)
@@ -824,6 +846,30 @@ const Workouts = () => {
     await supabase.from('gym_program_enrollments').delete().eq('program_id', programId).eq('profile_id', user.id);
     setEnrolledIds(prev => { const s = new Set(prev); s.delete(programId); return s; });
   };
+  // Regenerate the active personal program from the user's stored
+  // onboarding/profile data. The previous program is expired (history kept).
+  // workout_schedule rows are upserted onto the new picks.
+  const handleRegenerateProgram = async () => {
+    setRegenerating(true);
+    try {
+      await regenerateMemberProgram({ supabase, user, posthog });
+      // Refetch programs + routines so the UI reflects the new program.
+      const { data: allGp } = await supabase.from('generated_programs')
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+        .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+      const programs = allGp || [];
+      setAllPrograms(programs);
+      setGeneratedProgram(programs[0] || null);
+      await refetch?.();
+      setRegenerateConfirm(false);
+    } catch (err) {
+      console.error('[regenerate program] failed:', err);
+      alert(t('workouts.regenerateFailed', { defaultValue: 'Could not regenerate program: {{msg}}', msg: err.message || 'unknown' }));
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   // Confirmed leave/end program — called after "Are you sure?" modal
   const handleConfirmLeaveProgram = async () => {
     if (!leaveProgramConfirm) return;
@@ -1518,6 +1564,18 @@ const Workouts = () => {
               );
             })()}
             </div>
+            {/* Regenerate this program — small footer link inside the card */}
+            <div className="px-5 pb-4 pt-1 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setRegenerateConfirm(true)}
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] rounded-md px-2 py-1"
+                style={{ color: 'var(--color-text-muted)', letterSpacing: 0.4 }}
+              >
+                <RotateCcw size={12} strokeWidth={2.4} />
+                {t('workouts.regenerateProgram', 'Regenerar programa')}
+              </button>
+            </div>
           </div>
         </section>
         );
@@ -1703,9 +1761,8 @@ const Workouts = () => {
           <div className="space-y-2">
             {(showAllMyPrograms ? allPrograms : allPrograms.slice(0, 3)).map(prog => {
               const isActive = new Date(prog.expires_at) > new Date();
-              const progTotalWeeks = prog.duration_weeks || 6;
-              const weekNum = isActive
-                ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, progTotalWeeks) : progTotalWeeks;
+              const progTotalWeeks = getTotalProgramWeeks(prog) || 6;
+              const weekNum = isActive ? getCurrentWeekClamped(prog) : progTotalWeeks;
               const totalDays = progTotalWeeks * 7;
               const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), totalDays);
               const progress = Math.round((daysElapsed / totalDays) * 100);
@@ -2028,8 +2085,8 @@ const Workouts = () => {
     {selectedMyProgram && (() => {
       const prog = selectedMyProgram;
       const isActive = new Date(prog.expires_at) > new Date();
-      const progTotalWeeks = prog.duration_weeks || 6;
-      const weekNum = isActive ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, progTotalWeeks) : progTotalWeeks;
+      const progTotalWeeks = getTotalProgramWeeks(prog) || 6;
+      const weekNum = isActive ? getCurrentWeekClamped(prog) : progTotalWeeks;
       const totalDays = progTotalWeeks * 7;
       const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), totalDays);
       const progress = Math.round((daysElapsed / totalDays) * 100);
@@ -2600,6 +2657,42 @@ const Workouts = () => {
               className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors"
             >
               {t('workouts.confirmLeave', 'Yes, leave program')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {/* ── Regenerate Program confirm ──────────────────────────────── */}
+    {regenerateConfirm && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => !regenerating && setRegenerateConfirm(false)}>
+        <div className="w-full max-w-sm rounded-[20px] p-6" style={{ backgroundColor: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)' }}>
+            <RotateCcw size={26} style={{ color: 'var(--color-accent)' }} />
+          </div>
+          <h3 className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+            {t('workouts.regenerateTitle', 'Regenerar tu programa?')}
+          </h3>
+          <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-muted)' }}>
+            {t('workouts.regenerateDesc', 'Crearemos un programa nuevo desde tus respuestas de onboarding. Tu programa actual quedará en el historial y los entrenamientos que ya registraste se mantienen.')}
+          </p>
+          <div className="space-y-2.5">
+            <button
+              onClick={handleRegenerateProgram}
+              disabled={regenerating}
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors disabled:opacity-60"
+              style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+            >
+              {regenerating
+                ? t('workouts.regenerating', 'Regenerando…')
+                : t('workouts.regenerateConfirm', 'Sí, regenerar')}
+            </button>
+            <button
+              onClick={() => setRegenerateConfirm(false)}
+              disabled={regenerating}
+              className="w-full py-3 rounded-2xl font-medium text-[13px] disabled:opacity-50"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {t('common:cancel', 'Cancelar')}
             </button>
           </div>
         </div>

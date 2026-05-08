@@ -198,13 +198,19 @@ export default function TrainerLiveSession() {
     spec: `${ex.target_sets} × ${ex.target_reps || '—'}`,
   }));
 
+  // Live-elapsed math.
+  // The member persists `elapsed_time` as their cumulative pause-aware seconds
+  // up to `updated_at`. So the trainer's clock = (now - updated_at) + that
+  // saved value. The original code used `started_at` instead of `updated_at`
+  // and double-counted, which made the timer drift far ahead of reality.
   const elapsedSec = useMemo(() => {
     void tick;
-    if (!draft?.started_at) return draft?.elapsed_time || 0;
-    if (draft?.is_paused) return draft?.elapsed_time || 0;
-    const startMs = new Date(draft.started_at).getTime();
-    return Math.floor((Date.now() - startMs) / 1000) + (draft?.elapsed_time || 0);
-  }, [draft?.started_at, draft?.is_paused, draft?.elapsed_time, tick]);
+    const stored = draft?.elapsed_time || 0;
+    if (!draft?.updated_at) return stored;
+    if (draft?.is_paused) return stored;
+    const updatedMs = new Date(draft.updated_at).getTime();
+    return stored + Math.floor((Date.now() - updatedMs) / 1000);
+  }, [draft?.updated_at, draft?.is_paused, draft?.elapsed_time, tick]);
 
   // ── Coach toolbar handlers — fire trainer_send_cue RPC ────────────────
   const [sending, setSending] = useState(false);

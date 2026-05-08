@@ -237,8 +237,10 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
     setEditing(false);
   };
 
+  const { i18n } = useTranslation('pages');
+  const dateLocale = i18n.language?.startsWith('es') ? 'es-ES' : 'en-US';
   const createdDate = ex.created_at
-    ? new Date(ex.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    ? new Date(ex.created_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'short', day: 'numeric' })
     : null;
 
   return (
@@ -274,7 +276,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
             )}
             {ex.video_url && (
               <span className="text-[10px] text-[#D4AF37] flex items-center gap-0.5">
-                <Video className="w-3 h-3" /> Video
+                <Video className="w-3 h-3" /> {tp('video')}
               </span>
             )}
             {createdDate && (
@@ -465,6 +467,10 @@ export default function PlatformSettings() {
   const { profile } = useAuth();
   const { t } = useTranslation('pages');
   const tp = (key) => t(`platformSettings.${key}`);
+
+  useEffect(() => {
+    document.title = `${tp('title')} | ${window.__APP_NAME || 'TuGymPR'}`;
+  }, [tp]);
 
   /* ── section open/close ── */
   const [settingsTab, setSettingsTab] = useState('content');

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { getCached, setCache } from '../lib/queryCache';
 import { syncRoutinesToWatch } from '../lib/watchBridge';
+import { getProgramWeekNum } from '../lib/programWeek';
 
 /**
  * Determine which program routines are for today based on the active generated_program.
@@ -18,7 +19,7 @@ async function getTodayProgramRoutineIds(userId, routines) {
       .limit(1);
     const program = programs?.[0];
     if (!program || new Date(program.expires_at) <= new Date()) return new Set();
-    const weekNum = Math.floor((new Date() - new Date(program.program_start)) / (7 * 86400000)) + 1;
+    const weekNum = getProgramWeekNum(program.program_start);
     const isWeekA = weekNum % 2 === 1;
     return new Set(
       routines

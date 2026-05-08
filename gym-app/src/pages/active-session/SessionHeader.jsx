@@ -93,7 +93,7 @@ const SessionHeader = ({
               border: '1px solid var(--color-border-subtle)',
               color: 'var(--color-text-primary)',
             }}
-            aria-label="Back"
+            aria-label={t('activeSession.backAria', 'Back')}
           >
             <ChevronLeft size={20} strokeWidth={2.2} />
           </button>
@@ -131,7 +131,7 @@ const SessionHeader = ({
           <button
             type="button"
             tabIndex={-1}
-            aria-label={`Elapsed ${formatTime(elapsedTime)}`}
+            aria-label={t('activeSession.elapsedAria', { defaultValue: 'Elapsed {{time}}', time: formatTime(elapsedTime) })}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl shrink-0"
             style={{
               backgroundColor: '#0A0D10',
@@ -166,7 +166,7 @@ const SessionHeader = ({
               border: '1px solid var(--color-border-subtle)',
               color: 'var(--color-text-primary)',
             }}
-            aria-label="Pause"
+            aria-label={t('activeSession.pauseAria', 'Pause')}
           >
             <Pause size={16} fill="currentColor" strokeWidth={0} />
           </button>
@@ -186,7 +186,7 @@ const SessionHeader = ({
                 border: '1px solid var(--color-border-subtle)',
                 color: 'var(--color-text-primary)',
               }}
-              aria-label="Previous exercise"
+              aria-label={t('activeSession.prevExerciseAria', 'Previous exercise')}
             >
               <ChevronLeft size={18} strokeWidth={2.4} />
             </button>
@@ -205,7 +205,7 @@ const SessionHeader = ({
                         ? 'color-mix(in srgb, var(--color-accent) 100%, transparent)'
                         : 'var(--color-surface-hover, rgba(255,255,255,0.12))',
                   }}
-                  aria-label={`Go to exercise ${i + 1}`}
+                  aria-label={t('activeSession.goToExerciseAria', { defaultValue: 'Go to exercise {{n}}', n: i + 1 })}
                 >
                   {s.active && (
                     <span
@@ -231,7 +231,7 @@ const SessionHeader = ({
                 border: '1px solid var(--color-border-subtle)',
                 color: 'var(--color-text-primary)',
               }}
-              aria-label="Next exercise"
+              aria-label={t('activeSession.nextExerciseAria', 'Next exercise')}
             >
               <ChevronRight size={18} strokeWidth={2.4} />
             </button>
@@ -285,7 +285,7 @@ const SessionHeader = ({
             </button>
             <button
               onClick={onDismissResumedBanner}
-              aria-label="Dismiss banner"
+              aria-label={t('activeSession.dismissBannerAria', 'Dismiss banner')}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded focus:outline-none"
               style={{ color: 'rgba(96,165,250,0.6)' }}
             >

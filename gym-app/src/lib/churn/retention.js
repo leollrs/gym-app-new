@@ -6,7 +6,7 @@
  * members in a gym.
  */
 
-import { DEFAULT_WEIGHTS, calculateChurnScore } from './riskScoring.js';
+import { DEFAULT_WEIGHTS, calculateChurnScore, getRiskTier } from './riskScoring.js';
 import { calculateVelocity } from './metrics.js';
 import { signalTenureRiskV2 } from './churnSignalsV2.js';
 
@@ -79,7 +79,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   // ── 1. Member profiles ───────────────────────────────────────
   const { data: memberRows, error: membersError } = await supabase
     .from('profiles')
-    .select('id, full_name, username, phone_number, created_at, gym_id, preferred_training_days, membership_status')
+    .select('id, full_name, username, phone_number, created_at, membership_started_at, gym_id, preferred_training_days, membership_status')
     .eq('gym_id', gymId)
     .eq('role', 'member')
     .not('membership_status', 'in', '(cancelled,banned,deactivated)')
@@ -250,14 +250,16 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   const idsL = (sidL30 || []).map((s) => s.id).slice(0, 2000);
   const idsP = (sidP30 || []).map((s) => s.id).slice(0, 2000);
 
+  // muscle_group lives on the `exercises` table (not session_exercises),
+  // so we join through the exercise_id FK.
   let exL = [];
   let exP = [];
   if (idsL.length) {
-    const { data } = await supabase.from('session_exercises').select('session_id, muscle_group').in('session_id', idsL).limit(10000);
+    const { data } = await supabase.from('session_exercises').select('session_id, exercises(muscle_group)').in('session_id', idsL).limit(10000);
     exL = data || [];
   }
   if (idsP.length) {
-    const { data } = await supabase.from('session_exercises').select('session_id, muscle_group').in('session_id', idsP).limit(10000);
+    const { data } = await supabase.from('session_exercises').select('session_id, exercises(muscle_group)').in('session_id', idsP).limit(10000);
     exP = data || [];
   }
 
@@ -265,15 +267,17 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   const muscleGroupSetsP = {};
   exL.forEach((r) => {
     const pid = sessionToProfile[r.session_id];
-    if (!pid || !r.muscle_group) return;
+    const mg = r.exercises?.muscle_group;
+    if (!pid || !mg) return;
     if (!muscleGroupSetsL[pid]) muscleGroupSetsL[pid] = new Set();
-    muscleGroupSetsL[pid].add(r.muscle_group);
+    muscleGroupSetsL[pid].add(mg);
   });
   exP.forEach((r) => {
     const pid = sessionToProfile[r.session_id];
-    if (!pid || !r.muscle_group) return;
+    const mg = r.exercises?.muscle_group;
+    if (!pid || !mg) return;
     if (!muscleGroupSetsP[pid]) muscleGroupSetsP[pid] = new Set();
-    muscleGroupSetsP[pid].add(r.muscle_group);
+    muscleGroupSetsP[pid].add(mg);
   });
 
   // ── Build lookup maps ──────────────────────────────────────────
@@ -433,8 +437,14 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
 
   // ── Compute scores ─────────────────────────────────────────────
   const scored = memberRows.map(m => {
-    const createdAt = new Date(m.created_at);
-    const tenureMonths = (now - createdAt) / (MS_PER_DAY * 30.44);
+    // Tenure source: admin-entered membership_started_at takes
+    // priority — when an admin records the actual physical gym
+    // join date, that's the truth for tenure-based churn signals.
+    // Otherwise fall back to profiles.created_at (app signup date).
+    const tenureAnchor = m.membership_started_at
+      ? new Date(m.membership_started_at)
+      : new Date(m.created_at);
+    const tenureMonths = (now - tenureAnchor) / (MS_PER_DAY * 30.44);
 
     const lastCheckIn = lastCheckInMap[m.id] ?? null;
     const daysSinceLastCheckIn = lastCheckIn
@@ -506,6 +516,27 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     const result = calculateChurnScore(memberData, gymWeights);
     const velocityData = calculateVelocity(historyMap[m.id] || []);
 
+    // ── Inactivity override ────────────────────────────────────
+    // Members who have never logged a workout, or who haven't trained
+    // in 30+ days, are forced to Critical (95). The weighted v2 engine
+    // can otherwise score them anywhere from 50–80 depending on signal
+    // mix, which made them disappear from the "at risk" lists. The
+    // simple inactivity heuristic is the source of truth here so the
+    // home page, members page, and churn page all agree.
+    const totalSessions = totalSessionsMap[m.id] || 0;
+    const neverActive = totalSessions === 0;
+    const longInactive = daysSinceLastActivity != null && daysSinceLastActivity >= 30;
+    let finalScore = result.score;
+    let finalTier = result.riskTier;
+    let finalKeySignals = result.keySignals;
+    if (neverActive || longInactive) {
+      finalScore = 95;
+      finalTier = getRiskTier(95);
+      finalKeySignals = neverActive
+        ? ['Never logged a workout']
+        : [`No activity in ${daysSinceLastActivity}+ days`];
+    }
+
     return {
       ...m,
       username: m.username || m.full_name,
@@ -518,13 +549,13 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       prevAvgWeeklyVisits,
       challengeParticipation: challengeSet.has(m.id),
       friendCount: friendCountMap[m.id] || 0,
-      totalSessions: totalSessionsMap[m.id] || 0,
+      totalSessions,
       // v2 — detailed breakdown
-      churnScore: result.score,
-      riskTier: result.riskTier,
+      churnScore: finalScore,
+      riskTier: finalTier,
       signals: result.signals,
-      keySignals: result.keySignals,
-      keySignal: result.keySignals[0] || 'Engagement looks healthy',
+      keySignals: finalKeySignals,
+      keySignal: finalKeySignals[0] || 'Engagement looks healthy',
       velocity: velocityData.velocity,
       velocityTrend: velocityData.trend,
       velocityLabel: velocityData.label,

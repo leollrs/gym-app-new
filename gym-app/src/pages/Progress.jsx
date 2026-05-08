@@ -38,6 +38,12 @@ export default function Progress() {
   const [activeTab, setActiveTab] = useState(initialTab);
   const [loadedTabs, setLoadedTabs] = useState(new Set([initialTab]));
 
+  useEffect(() => {
+    const prev = document.title;
+    document.title = `${t('progress.title', 'Progress')} | ${window.__APP_NAME || 'TuGymPR'}`;
+    return () => { document.title = prev; };
+  }, [t]);
+
   // Sync tab from URL changes (e.g. redirect navigations)
   useEffect(() => {
     if (tabParam) {

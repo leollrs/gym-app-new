@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 
 const CHALLENGE_STATUS_STYLES = {
   active:   'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
@@ -28,7 +29,8 @@ export default function GymContentTab({
   setDeleteConfirm,
   initialSubTab,
 }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const [contentSubTab, setContentSubTab] = useState(initialSubTab || 'challenges');
 
   return (
@@ -84,18 +86,18 @@ export default function GymContentTab({
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{c.name}</h4>
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusStyle}`}>
-                            {status}
+                            {t(`platform.gymDetail.contentTab.status.${status}`, status)}
                           </span>
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20">
-                            {c.type ?? 'general'}
+                            {t(`platform.gymDetail.contentTab.challengeType.${c.type ?? 'general'}`, c.type ?? 'general')}
                           </span>
                         </div>
                         {c.description && (
                           <p className="text-[12px] text-[#6B7280] mb-1 line-clamp-1">{c.description}</p>
                         )}
                         <div className="flex items-center gap-4 text-[11px] text-[#6B7280]">
-                          {c.start_date && <span>{t('platform.gymDetail.contentTab.start')} {format(new Date(c.start_date), 'MMM d, yyyy')}</span>}
-                          {c.end_date && <span>{t('platform.gymDetail.contentTab.end')} {format(new Date(c.end_date), 'MMM d, yyyy')}</span>}
+                          {c.start_date && <span>{t('platform.gymDetail.contentTab.start')} {format(new Date(c.start_date), 'MMM d, yyyy', dateFnsLocale || {})}</span>}
+                          {c.end_date && <span>{t('platform.gymDetail.contentTab.end')} {format(new Date(c.end_date), 'MMM d, yyyy', dateFnsLocale || {})}</span>}
                           <span className="flex items-center gap-1">
                             <Users className="w-3 h-3" />
                             {t('platform.gymDetail.contentTab.participants', { count: participantCount })}
@@ -162,7 +164,7 @@ export default function GymContentTab({
                         </span>
                         {p.difficulty_level && (
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/6 text-[#9CA3AF] border border-white/10">
-                            {p.difficulty_level}
+                            {t(`platform.gymDetail.contentTab.difficulty.${p.difficulty_level}`, p.difficulty_level)}
                           </span>
                         )}
                       </div>
@@ -171,7 +173,7 @@ export default function GymContentTab({
                       )}
                       <div className="flex items-center gap-4 text-[11px] text-[#6B7280]">
                         {p.duration_weeks && <span>{t('platform.gymDetail.contentTab.weeks', { count: p.duration_weeks })}</span>}
-                        {p.created_at && <span>{t('platform.gymDetail.contentTab.created', { date: format(new Date(p.created_at), 'MMM d, yyyy') })}</span>}
+                        {p.created_at && <span>{t('platform.gymDetail.contentTab.created', { date: format(new Date(p.created_at), 'MMM d, yyyy', dateFnsLocale || {}) })}</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -239,7 +241,7 @@ export default function GymContentTab({
                           <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{a.name}</h4>
                           {a.type && (
                             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20">
-                              {a.type}
+                              {t(`platform.gymDetail.contentTab.achievementType.${a.type}`, a.type)}
                             </span>
                           )}
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">

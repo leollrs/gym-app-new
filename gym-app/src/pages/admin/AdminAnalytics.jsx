@@ -72,7 +72,7 @@ function KPITargets({ gymId }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('admin_kpi_targets')
-        .select('metric, target_value, current_value')
+        .select('metric, target_value')
         .eq('gym_id', gymId)
         .eq('month', month);
       const map = {};

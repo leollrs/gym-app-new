@@ -11,8 +11,9 @@ import { format, subMonths, startOfMonth } from 'date-fns';
 import { exportCSV } from '../../../../lib/csvExport';
 import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
 import ChartTooltip from '../../../../components/ChartTooltip';
+import { es as esLocale } from 'date-fns/locale';
 
-async function fetchGrowthData(gymId) {
+async function fetchGrowthData(gymId, dateFnsLocale) {
   const now = new Date();
   const from = subMonths(startOfMonth(now), 11).toISOString();
 
@@ -26,11 +27,11 @@ async function fetchGrowthData(gymId) {
 
   const monthMap = {};
   for (let i = 11; i >= 0; i--) {
-    const label = format(subMonths(now, i), 'MMM yy');
+    const label = format(subMonths(now, i), 'MMM yy', dateFnsLocale);
     monthMap[label] = 0;
   }
   (members || []).forEach(m => {
-    const label = format(new Date(m.created_at), 'MMM yy');
+    const label = format(new Date(m.created_at), 'MMM yy', dateFnsLocale);
     if (label in monthMap) monthMap[label]++;
   });
 
@@ -38,10 +39,11 @@ async function fetchGrowthData(gymId) {
 }
 
 function GrowthChart({ gymId }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : {};
   const { data: growthData = [], isLoading, isError, refetch } = useQuery({
-    queryKey: adminKeys.analytics.growth(gymId),
-    queryFn: () => fetchGrowthData(gymId),
+    queryKey: [...adminKeys.analytics.growth(gymId), i18n.language],
+    queryFn: () => fetchGrowthData(gymId, dateFnsLocale),
     enabled: !!gymId,
   });
 

@@ -217,7 +217,11 @@ onWatchMessage(async (msg) => {
               let todayIds = new Set();
               const prog = programs?.[0];
               if (prog && new Date(prog.expires_at) > new Date()) {
-                const weekNum = Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1;
+                // Inline calendar-week math (no top-level import — main.jsx is the bootstrap).
+                const _start = new Date(prog.program_start); _start.setHours(0, 0, 0, 0);
+                const _sunday = new Date(_start); _sunday.setDate(_sunday.getDate() - _sunday.getDay());
+                const _today = new Date(); _today.setHours(0, 0, 0, 0);
+                const weekNum = Math.floor((_today - _sunday) / 86400000 / 7) + 1;
                 const isWeekA = weekNum % 2 === 1;
                 todayIds = new Set(
                   cached.data

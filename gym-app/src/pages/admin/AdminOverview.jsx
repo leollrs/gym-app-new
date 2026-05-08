@@ -21,7 +21,7 @@ import { FadeIn, StatCard, AdminCard, CardSkeleton, Avatar, AdminPageShell, Page
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
 
 // ── Helpers ──────────────────────────────────────────────
-import { getRiskTier } from '../../lib/churnScore';
+import { getRiskTier, fetchMembersWithChurnScores } from '../../lib/churnScore';
 import { translateSignal } from '../../lib/churn/signalI18n';
 
 // ── Data fetching function ────────────────────────────────
@@ -31,10 +31,19 @@ async function fetchOverviewData(gymId) {
   const fortyEightHoursAgo = subDays(now, 2).toISOString();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
 
+  // Run the v2 churn engine alongside the other Overview queries — same
+  // source of truth as AdminChurn so the Critical / At Risk counts line
+  // up across both pages. fetchMembersWithChurnScores handles its own
+  // member fetch + signal aggregation internally.
   const [
+    scoredMembers,
     membersRes, sessionsRes, churnScoresRes,
     notOnboardedRes, checkInsRes,
   ] = await Promise.all([
+    fetchMembersWithChurnScores(gymId, supabase).catch(err => {
+      logger.error('AdminOverview v2 churn scoring failed:', err);
+      return null;
+    }),
     supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').limit(2000),
     supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).limit(1000),
     supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).limit(2000),
@@ -124,13 +133,31 @@ async function fetchOverviewData(gymId) {
     if (Number.isNaN(t)) return 0;
     return Math.max(0, Math.floor((nowMs - t) / 86400000));
   };
+  // Index v2 scores by member id when available — same calculation as
+  // AdminChurn so the two pages can never disagree on who is critical
+  // vs at risk vs healthy.
+  const v2ScoreMap = {};
+  if (Array.isArray(scoredMembers)) {
+    scoredMembers.forEach(s => {
+      v2ScoreMap[s.id] = {
+        score: Math.round(s.churnScore ?? 0),
+        risk_tier: s.riskTier?.tier ?? 'low',
+        key_signals: s.keySignals ?? (s.keySignal ? [s.keySignal] : []),
+      };
+    });
+  }
   const allMemberScores = members.map(m => {
-    const dbRow = latestScoreMap[m.id];
     const lastSeenAt = m.last_active_at || lastSessionAt[m.id] || null;
     const neverActive = !lastSeenAt;
     const daysInactive = lastSeenAt ? daysSince(lastSeenAt) : daysSince(m.created_at);
     const recentWorkouts = sessionsLast14[m.id] ?? 0;
 
+    // 1. v2 engine (matches AdminChurn). 2. DB row from edge fn. 3. Local estimate.
+    const v2 = v2ScoreMap[m.id];
+    if (v2) {
+      return { ...m, ...v2, daysInactive, neverActive };
+    }
+    const dbRow = latestScoreMap[m.id];
     if (dbRow) {
       return { ...m, score: dbRow.score, risk_tier: dbRow.risk_tier, key_signals: dbRow.key_signals, daysInactive, neverActive };
     }

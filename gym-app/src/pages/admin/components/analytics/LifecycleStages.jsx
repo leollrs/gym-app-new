@@ -29,7 +29,7 @@ async function fetchLifecycleData(gymId) {
       .limit(2000),
     supabase
       .from('win_back_attempts')
-      .select('profile_id')
+      .select('user_id')
       .eq('gym_id', gymId)
       .eq('outcome', 'returned')
       .limit(1000),
@@ -57,8 +57,8 @@ async function fetchLifecycleData(gymId) {
     churnMap[s.profile_id] = s.risk_tier;
   });
 
-  // Build win-back set
-  const wonBackSet = new Set((winBacks || []).map(w => w.profile_id));
+  // Build win-back set (win_back_attempts uses user_id, not profile_id)
+  const wonBackSet = new Set((winBacks || []).map(w => w.user_id));
 
   // Need recent sessions for "total < 3" check (90-day window — long enough
   // for new-onboarding bucket without unbounded scans on huge gyms).

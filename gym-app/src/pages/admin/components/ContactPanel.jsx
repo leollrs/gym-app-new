@@ -155,14 +155,35 @@ export default function ContactPanel({
     setEmailSending(true);
     try {
       const reqBody = { memberId: member.id, subject: emailSubject.trim(), body: emailBody.trim(), lang: i18n.language?.startsWith('es') ? 'es' : 'en' };
-      if (emailTo && emailTo !== email) reqBody.overrideEmail = emailTo.trim();
+      // Only flag as override when the admin actually changed the
+      // recipient. Compare on trimmed lowercase so cosmetic-only
+      // differences don't trigger the spoofing-protection branch
+      // (which 400s without `emailOverrideAcknowledged: true` and
+      // 403s without an ALLOWED_OVERRIDE_DOMAINS env allowlist).
+      const norm = (s) => (s || '').trim().toLowerCase();
+      if (emailTo && norm(emailTo) !== norm(email)) {
+        reqBody.overrideEmail = emailTo.trim();
+        reqBody.emailOverrideAcknowledged = true;
+      }
       if (rewardType && rewardType !== 'none') {
         const selected = rewardOptions.find(o => o.value === rewardType);
         reqBody.rewardType = rewardType;
         reqBody.rewardLabel = selected?.label || rewardType;
       }
       const { data, error: fnError } = await supabase.functions.invoke('send-admin-email', { body: reqBody });
-      if (fnError) throw fnError;
+      // supabase.functions.invoke surfaces 4xx/5xx as `data` with the error
+      // payload AND sets `error`. Inspect the data for the upstream detail.
+      if (fnError || (data && data.error)) {
+        const upstreamStatus = data?.upstreamStatus;
+        const upstreamMessage = data?.upstreamMessage;
+        const baseMsg = t('admin.churn.emailSendFailed', 'Failed to send email. Please try again.');
+        const detail = upstreamMessage
+          ? `${baseMsg} (${upstreamStatus || ''} ${upstreamMessage})`
+          : (data?.error || fnError?.message || baseMsg);
+        logger.error('ContactPanel: send email failed:', { fnError, data });
+        showToast(detail, 'error');
+        return;
+      }
       logAdminAction('send_email', 'member', member.id);
       setEmailSent(true);
       showToast(t('admin.churn.emailSentSuccess', 'Email sent successfully'), 'success');

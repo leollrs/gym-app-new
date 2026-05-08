@@ -6,7 +6,8 @@ import {
   Building2, ChevronRight, ToggleLeft, ToggleRight, Bell,
   Wifi, WifiOff, Lock, Eye, Loader2,
 } from 'lucide-react';
-import { formatDistanceToNow, subHours, subMinutes } from 'date-fns';
+import { formatDistanceToNow, subHours } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
@@ -58,7 +59,7 @@ function HealthCard({ label, icon: Icon, status, detail, delay = 0, t }) {
 }
 
 // ── Incident card ────────────────────────────────────────────
-function IncidentCard({ severity, area, message, gymsAffected, startedAt, onAcknowledge, t }) {
+function IncidentCard({ severity, area, message, gymsAffected, startedAt, onAcknowledge, t, dateFnsLocale }) {
   const sev = SEVERITY[severity] || SEVERITY.medium;
   return (
     <div className={`bg-[#0F172A] border ${sev.border} rounded-xl p-4 hover:bg-[#111827] transition-colors`}>
@@ -81,7 +82,7 @@ function IncidentCard({ severity, area, message, gymsAffected, startedAt, onAckn
             )}
             <span className="flex items-center gap-1">
               <Clock size={10} />
-              {formatDistanceToNow(new Date(startedAt), { addSuffix: true })}
+              {formatDistanceToNow(new Date(startedAt), { addSuffix: true, ...(dateFnsLocale || {}) })}
             </span>
           </div>
         </div>
@@ -160,7 +161,12 @@ function KillSwitch({ label, description, enabled, onToggle, loading: busy }) {
 // ── Main component ───────────────────────────────────────────
 export default function Operations() {
   const navigate = useNavigate();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
+
+  useEffect(() => {
+    document.title = `${t('platform.ops.title', 'Operations')} | ${window.__APP_NAME || 'TuGymPR'}`;
+  }, [t]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [configWarning, setConfigWarning] = useState(null);
@@ -276,31 +282,32 @@ export default function Operations() {
       details.storage = err.message;
     }
 
-    // 4. Edge functions — invoke a function and check if runtime is reachable
+    // 4. Edge functions — invoke the health-check function. If it
+    // hasn't been deployed yet (CORS / network failure), fall back to
+    // 'unknown' silently rather than surfacing a raw English error.
     try {
       const start = performance.now();
       const { error } = await supabase.functions.invoke('health-check', { method: 'POST' });
       const elapsed = Math.round(performance.now() - start);
       if (error) {
-        // A 404 (function not found) or 401 still means the edge runtime responded
         const msg = error.message || '';
+        // 4xx response means runtime is reachable — count as healthy.
         const isRuntimeReachable = msg.includes('404') || msg.includes('not found')
           || msg.includes('401') || msg.includes('403') || msg.includes('Invalid');
         if (isRuntimeReachable) {
           newHealth.edge = elapsed > 3000 ? 'degraded' : 'healthy';
           details.edge = elapsed > 3000 ? `Slow: ${elapsed}ms` : `${elapsed}ms`;
         } else {
-          newHealth.edge = 'degraded';
-          details.edge = msg || 'Unexpected error';
+          newHealth.edge = 'unknown';
+          details.edge = null;
         }
       } else {
         newHealth.edge = elapsed > 3000 ? 'degraded' : 'healthy';
         details.edge = `${elapsed}ms`;
       }
-    } catch (err) {
-      // Network/connection error — runtime unreachable
-      newHealth.edge = 'failing';
-      details.edge = err.message || 'Connection failed';
+    } catch {
+      newHealth.edge = 'unknown';
+      details.edge = null;
     }
 
     // 5. Realtime — check channel subscription capability
@@ -610,7 +617,7 @@ export default function Operations() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-[#4B5563] hidden sm:block">
-              Updated {formatDistanceToNow(lastRefresh, { addSuffix: true })}
+              {t('platform.ops.updatedPrefix', 'Updated')} {formatDistanceToNow(lastRefresh, { addSuffix: true, ...(dateFnsLocale || {}) })}
             </span>
             <button
               onClick={handleRefresh}
@@ -676,7 +683,7 @@ export default function Operations() {
           ) : (
             <div className="space-y-2.5">
               {incidents.map((inc) => (
-                <IncidentCard key={inc.id} {...inc} t={t} />
+                <IncidentCard key={inc.id} {...inc} t={t} dateFnsLocale={dateFnsLocale} />
               ))}
             </div>
           )}

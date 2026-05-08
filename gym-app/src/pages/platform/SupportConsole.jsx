@@ -11,6 +11,7 @@ import {
   Activity, Clock, AlertTriangle, Dumbbell, ChevronRight, Copy, Check,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import FadeIn from '../../components/platform/FadeIn';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
 import UserAvatar from '../../components/UserAvatar';
@@ -43,14 +44,14 @@ function Spinner() {
   return <PlatformSpinner />;
 }
 
-function relativeDate(dateStr) {
-  if (!dateStr) return 'Never';
-  try { return formatDistanceToNow(new Date(dateStr), { addSuffix: true }); } catch { return 'Unknown'; }
+function relativeDate(dateStr, t, dateFnsLocale) {
+  if (!dateStr) return t('platform.support.never', 'Never');
+  try { return formatDistanceToNow(new Date(dateStr), { addSuffix: true, ...(dateFnsLocale || {}) }); } catch { return t('platform.support.unknown', 'Unknown'); }
 }
 
-function formatDate(dateStr) {
+function formatDate(dateStr, dateFnsLocale) {
   if (!dateStr) return '—';
-  try { return format(new Date(dateStr), 'MMM d, yyyy'); } catch { return '—'; }
+  try { return format(new Date(dateStr), 'MMM d, yyyy', dateFnsLocale || {}); } catch { return '—'; }
 }
 
 function formatDuration(seconds) {
@@ -73,9 +74,14 @@ const churnTierColor = (tier) => {
 export default function SupportConsole() {
   const { profile } = useAuth();
   const { showToast } = useToast();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const navigate = useNavigate();
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    document.title = `${t('platform.support.title', 'Support')} | ${window.__APP_NAME || 'TuGymPR'}`;
+  }, [t]);
 
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -130,8 +136,8 @@ export default function SupportConsole() {
         .order('name', { ascending: true }),
       supabase
         .from('gym_invites')
-        .select('id, code, gym_id, role, is_used, expires_at, created_at, gyms(id, name)')
-        .ilike('code', pattern)
+        .select('id, token, gym_id, role, used_at, expires_at, created_at, gyms(id, name)')
+        .ilike('token', pattern)
         .limit(10),
     ]);
 
@@ -400,7 +406,7 @@ export default function SupportConsole() {
                           <UserAvatar user={{ full_name: r.name }} size={28} />
                           <div className="min-w-0 flex-1">
                             <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{r.name}</p>
-                            <p className="text-[10px] text-[#6B7280] truncate">{r.gym || 'No gym'} &middot; {r.role}</p>
+                            <p className="text-[10px] text-[#6B7280] truncate">{r.gym || t('platform.support.noGym', 'No gym')} &middot; {r.role}</p>
                           </div>
                           <ChevronRight size={12} className="text-[#4B5563] flex-shrink-0" />
                         </button>
@@ -430,7 +436,7 @@ export default function SupportConsole() {
           {/* Grouped results */}
           {!searching && hasSearched && totalResults > 0 && (
             <div className="space-y-5">
-              <p className="text-[12px] text-[#6B7280]">{totalResults} result{totalResults !== 1 ? 's' : ''}</p>
+              <p className="text-[12px] text-[#6B7280]">{t('platform.support.resultsCount', { count: totalResults, defaultValue: '{{count}} result' })}</p>
 
               {/* Members */}
               {members.length > 0 && (
@@ -456,17 +462,17 @@ export default function SupportConsole() {
                           <UserAvatar user={member} size={36} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-[13px] font-medium text-[#E5E7EB] truncate">{member.full_name || 'No name'}</span>
+                              <span className="text-[13px] font-medium text-[#E5E7EB] truncate">{member.full_name || t('platform.support.noName', 'No name')}</span>
                               {member.username && <span className="text-[11px] text-[#6B7280] truncate">@{member.username}</span>}
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className="text-[11px] text-[#9CA3AF] truncate">{member.gyms?.name || 'No gym'}</span>
+                              <span className="text-[11px] text-[#9CA3AF] truncate">{member.gyms?.name || t('platform.support.noGym', 'No gym')}</span>
                               <Badge label={member.role || 'member'} variant={roleBadge[member.role] || roleBadge.member} />
                               <Badge label={member.membership_status || 'active'} variant={statusBadge[member.membership_status] || statusBadge.active} />
                             </div>
                           </div>
                           <div className="hidden sm:flex flex-col items-end flex-shrink-0 mr-1">
-                            <span className="text-[10px] text-[#6B7280]">{relativeDate(member.last_active_at)}</span>
+                            <span className="text-[10px] text-[#6B7280]">{relativeDate(member.last_active_at, t, dateFnsLocale)}</span>
                           </div>
                           <ChevronRight size={14} className="text-[#4B5563] flex-shrink-0" />
                         </button>
@@ -517,26 +523,30 @@ export default function SupportConsole() {
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/5 text-[#6B7280]">{invites.length}</span>
                   </p>
                   <div className="space-y-1">
-                    {invites.map((inv) => (
-                      <div key={inv.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#0F172A] border border-white/4">
-                        <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
-                          <KeyRound size={15} className="text-purple-400" />
+                    {invites.map((inv) => {
+                      const isUsed = !!inv.used_at;
+                      const isExpired = inv.expires_at && new Date(inv.expires_at) < new Date();
+                      return (
+                        <div key={inv.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#0F172A] border border-white/4">
+                          <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                            <KeyRound size={15} className="text-purple-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-medium text-[#E5E7EB] font-mono truncate">{inv.token}</p>
+                            <p className="text-[11px] text-[#6B7280] truncate">{inv.gyms?.name || t('platform.support.unknownGym', 'Unknown gym')} &middot; {inv.role}</p>
+                          </div>
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                            isUsed
+                              ? 'bg-emerald-500/15 text-emerald-400'
+                              : isExpired
+                              ? 'bg-red-500/15 text-red-400'
+                              : 'bg-amber-500/15 text-amber-400'
+                          }`}>
+                            {isUsed ? t('platform.support.claimed', 'Claimed') : isExpired ? t('platform.support.expired', 'Expired') : t('platform.support.pending', 'Pending')}
+                          </span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-medium text-[#E5E7EB] font-mono truncate">{inv.code}</p>
-                          <p className="text-[11px] text-[#6B7280] truncate">{inv.gyms?.name || 'Unknown gym'} &middot; {inv.role}</p>
-                        </div>
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                          inv.is_used
-                            ? 'bg-emerald-500/15 text-emerald-400'
-                            : new Date(inv.expires_at) < new Date()
-                            ? 'bg-red-500/15 text-red-400'
-                            : 'bg-amber-500/15 text-amber-400'
-                        }`}>
-                          {inv.is_used ? t('platform.support.claimed', 'Claimed') : new Date(inv.expires_at) < new Date() ? t('platform.support.expired', 'Expired') : t('platform.support.pending', 'Pending')}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -561,7 +571,7 @@ export default function SupportConsole() {
                   <div className="flex items-center gap-3">
                     <UserAvatar user={selectedMember} size={44} />
                     <div>
-                      <p className="text-[15px] font-semibold text-[#E5E7EB]">{selectedMember.full_name || 'No name'}</p>
+                      <p className="text-[15px] font-semibold text-[#E5E7EB]">{selectedMember.full_name || t('platform.support.noName', 'No name')}</p>
                       {selectedMember.username && <p className="text-[12px] text-[#6B7280]">@{selectedMember.username}</p>}
                     </div>
                   </div>
@@ -577,13 +587,13 @@ export default function SupportConsole() {
                     <span className="text-[11px] text-[#9CA3AF] flex items-center gap-1"><Building2 size={10} />{selectedMember.gyms.name}</span>
                   )}
                   {!selectedMember.is_onboarded && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">Not onboarded</span>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">{t('platform.support.notOnboarded', 'Not onboarded')}</span>
                   )}
                 </div>
 
                 <div className="flex items-center gap-4 mt-3 text-[11px] text-[#6B7280]">
-                  <span className="flex items-center gap-1"><Clock size={10} />Active {relativeDate(selectedMember.last_active_at)}</span>
-                  <span>Joined {formatDate(selectedMember.created_at)}</span>
+                  <span className="flex items-center gap-1"><Clock size={10} />{t('platform.support.activePrefix', 'Active')} {relativeDate(selectedMember.last_active_at, t, dateFnsLocale)}</span>
+                  <span>{t('platform.support.joinedPrefix', 'Joined')} {formatDate(selectedMember.created_at, dateFnsLocale)}</span>
                 </div>
               </div>
 
@@ -619,7 +629,7 @@ export default function SupportConsole() {
                       <div className="bg-[#111827] rounded-lg p-3">
                         <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">{t('platform.support.streak', 'Streak')}</p>
                         <p className="text-[18px] font-bold text-[#D4AF37]">
-                          {detailData.currentStreak} <span className="text-[11px] font-normal text-[#6B7280]">days</span>
+                          {detailData.currentStreak} <span className="text-[11px] font-normal text-[#6B7280]">{t('platform.support.daysUnit', 'days')}</span>
                         </p>
                       </div>
                       <div className="bg-[#111827] rounded-lg p-3">
@@ -641,7 +651,7 @@ export default function SupportConsole() {
                         <div className="space-y-1">
                           {detailData.recentSessions.map((s) => (
                             <div key={s.id} className="flex items-center justify-between bg-[#111827] rounded-lg px-3 py-2">
-                              <span className="text-[12px] text-[#E5E7EB]">{formatDate(s.started_at)}</span>
+                              <span className="text-[12px] text-[#E5E7EB]">{formatDate(s.started_at, dateFnsLocale)}</span>
                               <div className="flex items-center gap-3">
                                 <span className="text-[11px] text-[#9CA3AF]">{formatDuration(s.duration_seconds)}</span>
                                 <span className="text-[11px] text-[#9CA3AF]">{s.total_volume_lbs ? `${s.total_volume_lbs.toLocaleString()} lbs` : '—'}</span>

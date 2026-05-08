@@ -586,7 +586,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
               style={{ color: 'var(--color-text-primary)' }}
             />
           </div>
-          <button onClick={handleSave} disabled={saving}
+          <button onClick={handleSave} disabled={saving || !name?.trim()}
             className="px-4 py-2.5 rounded-xl font-bold text-[13px] text-black disabled:opacity-50 transition-colors whitespace-nowrap min-h-[44px]"
             style={{ backgroundColor: 'var(--color-accent)' }}>
             {saving ? t('trainerPlans.saving', 'Saving...') : isEdit ? t('trainerPlans.saveChanges', 'Save') : t('trainerPlans.createPlan', 'Create')}
@@ -1466,7 +1466,11 @@ export default function TrainerPlans() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
           <div>
             <TEyebrow>{t('trainerPlans.heroLabel', 'Library')}</TEyebrow>
-            <TPageTitle>{t('trainerPlans.title', 'Plans')}</TPageTitle>
+            <TPageTitle>
+              {section === 'training'
+                ? t('trainerPlans.titleTraining', 'Training Plans')
+                : t('trainerPlans.titleNutrition', 'Nutrition Plans')}
+            </TPageTitle>
           </div>
           <TDarkButton
             onClick={() => section === 'training' ? openBuilder() : setShowMealModal(true)}

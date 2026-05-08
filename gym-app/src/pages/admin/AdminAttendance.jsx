@@ -47,7 +47,7 @@ export default function AdminAttendance() {
 
   // ── Fetch attendance data ──
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: [...adminKeys.attendance(gymId), period],
+    queryKey: [...adminKeys.attendance(gymId), period, i18n.language],
     enabled: !!gymId,
     queryFn: async () => {
       if (!gymId) return { sessions: [], checkIns: [] };
@@ -77,13 +77,13 @@ export default function AdminAttendance() {
       // Daily trend
       const dayMap = {};
       const interval = eachDayOfInterval({ start: subDays(new Date(), parseInt(period)), end: new Date() });
-      interval.forEach(d => { dayMap[format(d, 'MMM d')] = { workouts: 0, checkins: 0 }; });
+      interval.forEach(d => { dayMap[format(d, 'MMM d', dateFnsLocale)] = { workouts: 0, checkins: 0 }; });
       sessionList.forEach(s => {
-        const key = format(new Date(s.started_at), 'MMM d');
+        const key = format(new Date(s.started_at), 'MMM d', dateFnsLocale);
         if (key in dayMap) dayMap[key].workouts++;
       });
       checkInList.forEach(c => {
-        const key = format(new Date(c.checked_in_at), 'MMM d');
+        const key = format(new Date(c.checked_in_at), 'MMM d', dateFnsLocale);
         if (key in dayMap) dayMap[key].checkins++;
       });
       const dailyData = Object.entries(dayMap).map(([date, vals]) => ({ date, ...vals }));

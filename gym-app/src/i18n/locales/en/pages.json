@@ -155,6 +155,8 @@
   },
   "progress": {
     "title": "Progress",
+    "statWorkouts": "WORKOUTS",
+    "xpToNextLevel": "{{xp}} to Level {{level}}",
     "tabs": {
       "overview": "Overview",
       "body": "Body",
@@ -234,6 +236,7 @@
     "report": "Report"
   },
   "profile": {
+    "title": "Profile",
     "memberSince": "Member since",
     "level": "Level",
     "workouts": "Workouts",
@@ -685,6 +688,7 @@
   },
   "nutrition": {
     "title": "Nutrition",
+    "macroMatch": "{{pct}}% match",
     "caloriesLeft": "Calories Left",
     "overBy": "Over by",
     "eaten": "Eaten",
@@ -735,6 +739,7 @@
     "instructions": "Instructions",
     "selectIngredients": "Select your ingredients",
     "meals": {
+      "title": "Meals",
       "breakfast": "Breakfast",
       "lunch": "Lunch",
       "dinner": "Dinner",
@@ -1276,7 +1281,32 @@
     "editSet": "Edit set",
     "editSetTitle": "Edit set {{n}}",
     "save": "Save",
-    "liveActivityTitle": "Workout"
+    "liveActivityTitle": "Workout",
+    "pauseAria": "Pause",
+    "backAria": "Back",
+    "prevExerciseAria": "Previous exercise",
+    "nextExerciseAria": "Next exercise",
+    "seeAllExercisesAria": "See all exercises",
+    "showDemoAria": "Show demo",
+    "hideDemoAria": "Hide demo",
+    "switchUnitAria": "Switch unit",
+    "moveUpAria": "Move up",
+    "moveDownAria": "Move down",
+    "removeAria": "Remove",
+    "goToExerciseAria": "Go to exercise {{n}}",
+    "elapsedAria": "Elapsed {{time}}",
+    "dismissBannerAria": "Dismiss banner",
+    "exerciseListTitle": "Exercise list",
+    "exerciseListSubtitle": "{{count}} exercises · reorder, swap, or remove",
+    "swapCustomPlaceholder": "Custom exercise (e.g. Sitting Trap Raise)",
+    "swapCustomCreate": "Create",
+    "swapCustomSaving": "Saving…",
+    "swapCustomHint": "We'll add it under {{muscle}} so it's available next time.",
+    "swapCustomMuscleFallback": "this muscle",
+    "muscleAlternatives": "{{muscle}} alternatives",
+    "swapSameMuscle": "{{muscle}} alternatives",
+    "finishWorkoutNow": "Finish Workout",
+    "finishWorkoutNowDesc": "End here and see the summary."
   },
   "blocking": {
     "gymDeactivatedTitle": "Account Deactivated",
@@ -1331,6 +1361,9 @@
     "exportSuccess": "Export downloaded successfully",
     "exportError": "Export failed — please try again",
     "appearance": "Appearance",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
     "darkMode": "Dark mode",
     "deleteWarning": "This action is permanent and cannot be undone. All your data, including client assignments and session history, will be permanently deleted.",
     "confirmDelete": "Delete My Account",
@@ -1383,6 +1416,12 @@
     "emptyDescription": "Create your first routine to start tracking your workouts",
     "library": "Library",
     "new": "New",
+    "regenerateProgram": "Regenerate program",
+    "regenerateTitle": "Regenerate your program?",
+    "regenerateDesc": "We'll build a new program from your onboarding answers. Your current program is kept in history and any workouts you've already logged stay intact.",
+    "regenerateConfirm": "Yes, regenerate",
+    "regenerating": "Regenerating…",
+    "regenerateFailed": "Could not regenerate program: {{msg}}",
     "currentProgram": "Current Program",
     "getStarted": "Get started",
     "programEndedWhatsNext": "Program ended — what's next?",
@@ -2574,7 +2613,21 @@
     "Hamstrings": "Hamstrings",
     "Lats": "Lats",
     "Warm-Up": "Warm-Up",
-    "Cardio": "Cardio"
+    "Cardio": "Cardio",
+    "chest": "Chest",
+    "back": "Back",
+    "shoulders": "Shoulders",
+    "legs": "Legs",
+    "arms": "Arms",
+    "core": "Core",
+    "glutes": "Glutes",
+    "biceps": "Biceps",
+    "triceps": "Triceps",
+    "hamstrings": "Hamstrings",
+    "quads": "Quads",
+    "calves": "Calves",
+    "abs": "Abs",
+    "cardio": "Cardio"
   },
   "admin": {
     "overview": {
@@ -2650,7 +2703,7 @@
       "navClasses": "Classes",
       "navMessages": "Messages",
       "needsAttention": "Needs Attention Now",
-      "atRiskDesc": "{{critical}} critical, {{high}} high risk",
+      "atRiskDesc": "{{critical}} critical, {{high}} at risk",
       "allClearDesc": "All clear — no issues detected",
       "pendingResetsDesc": "{{count}} password resets awaiting review",
       "onboardingGapsDesc": "{{count}} members haven't completed setup",
@@ -2868,9 +2921,9 @@
     },
     "riskLabels": {
       "critical": "Critical",
-      "high": "High",
-      "medium": "Medium",
-      "low": "Low"
+      "high": "At Risk",
+      "medium": "Watch",
+      "low": "Low Risk"
     },
     "roles": {
       "member": "Member",
@@ -2966,7 +3019,44 @@
         "store_item_created": "store item created",
         "trainer_added": "trainer added",
         "trainer_demoted": "trainer demoted",
-        "moderation_action": "moderation action"
+        "moderation_action": "moderation action",
+        "create_announcement": "announcement created",
+        "create_challenge": "challenge created",
+        "create_class": "class created",
+        "create_product": "product created",
+        "create_program": "program created",
+        "delete_challenge": "challenge deleted",
+        "delete_class": "class deleted",
+        "delete_closure": "closure deleted",
+        "delete_email_template": "template deleted",
+        "delete_product": "product deleted",
+        "delete_program": "program deleted",
+        "delete_reward": "reward deleted",
+        "delete_schedule_slot": "schedule slot deleted",
+        "delete_segment": "segment deleted",
+        "demote_trainer": "trainer demoted",
+        "expire_reward_redemption": "redemption expired",
+        "invite_member": "member invited",
+        "send_followup": "follow-up sent",
+        "send_message": "message sent",
+        "send_winback": "win-back sent",
+        "update_birthday_rewards": "birthday rewards",
+        "update_challenge": "challenge updated",
+        "update_class": "class updated",
+        "update_closures": "closures updated",
+        "update_email": "email updated",
+        "update_hours": "hours updated",
+        "update_info": "info updated",
+        "update_note": "note updated",
+        "update_product": "product updated",
+        "update_program": "program updated",
+        "update_settings": "settings updated",
+        "add_trainer": "trainer added",
+        "deactivate_member": "member deactivated",
+        "block_user": "user blocked",
+        "unblock_user": "user unblocked",
+        "change_role": "role changed",
+        "change_status": "status changed"
       },
       "deleteConfirmBtn": "Delete account",
       "deleteTypeConfirmWord": "DELETE",
@@ -3027,10 +3117,18 @@
       "confirm": "Confirm",
       "bulkFollowup": "Bulk Follow-up",
       "filterAll": "All",
+      "filterCritical": "Critical",
       "filterAtRisk": "At Risk",
       "filterWatch": "Watch",
       "filterHealthy": "Healthy",
       "filterLowRisk": "Low Risk",
+      "riskTier": {
+        "critical": "Critical",
+        "high": "At Risk",
+        "medium": "Watch",
+        "low": "Low Risk"
+      },
+      "statCritical": "Critical",
       "filterPending": "Pending",
       "filterResets": "Resets",
       "exporting": "Exporting…",
@@ -3090,6 +3188,8 @@
     "createInvite": {
       "title": "Add Member",
       "addMemberTitle": "Add Member",
+      "membershipStartedAt": "Gym join date",
+      "membershipStartedAtHelp": "Set this if the member joined the gym before installing the app. Skips the 90-day onboarding risk window.",
       "memberName": "Name",
       "memberNamePlaceholder": "Full name",
       "phone": "Phone",
@@ -3460,8 +3560,8 @@
       "title": "Churn Intelligence",
       "analyzing": "Analyzing member activity…",
       "critical": "Critical",
-      "highRisk": "High Risk",
-      "mediumRisk": "Medium Risk",
+      "highRisk": "At Risk",
+      "mediumRisk": "Watch",
       "churned": "Churned",
       "export": "Export",
       "scoreGte80": "score ≥ 80",
@@ -3824,7 +3924,77 @@
         "store_item_created": "Store Item Created",
         "trainer_added": "Trainer Added",
         "trainer_demoted": "Trainer Demoted",
-        "moderation_action": "Moderation Action"
+        "moderation_action": "Moderation Action",
+        "add_member": "Member Added",
+        "add_trainer": "Trainer Added",
+        "award_prizes": "Prizes Awarded",
+        "block_user": "User Blocked",
+        "bulk_export": "Bulk Export",
+        "bulk_followup": "Bulk Follow-up",
+        "bulk_freeze": "Bulk Freeze",
+        "bulk_message": "Bulk Message",
+        "change_role": "Role Changed",
+        "change_status": "Status Changed",
+        "checkin_scan": "Check-in Scan",
+        "claim_reward": "Reward Claimed",
+        "create_announcement": "Announcement Created",
+        "create_challenge": "Challenge Created",
+        "create_class": "Class Created",
+        "create_gym": "Gym Created",
+        "create_product": "Product Created",
+        "create_program": "Program Created",
+        "deactivate_member": "Member Deactivated",
+        "delete_account": "Account Deleted",
+        "delete_challenge": "Challenge Deleted",
+        "delete_class": "Class Deleted",
+        "delete_closure": "Closure Deleted",
+        "delete_conversation": "Conversation Deleted",
+        "delete_email_template": "Template Deleted",
+        "delete_offer": "Offer Deleted",
+        "delete_product": "Product Deleted",
+        "delete_program": "Program Deleted",
+        "delete_reward": "Reward Deleted",
+        "delete_schedule_slot": "Schedule Slot Deleted",
+        "delete_segment": "Segment Deleted",
+        "delete_win_back_attempt": "Win-back Deleted",
+        "demote_trainer": "Trainer Demoted",
+        "expire_reward_redemption": "Redemption Expired",
+        "invite_member": "Member Invited",
+        "moderation": "Moderation",
+        "pause_gym": "Gym Paused",
+        "permanently_deactivate_gym": "Gym Deactivated",
+        "purchase_scan": "Purchase Scan",
+        "quick_message": "Quick Message",
+        "reactivate_gym": "Gym Reactivated",
+        "redeem_earned_reward": "Reward Redeemed",
+        "referral_scan": "Referral Scan",
+        "resend_invite": "Invite Resent",
+        "reset_notification_prefs": "Notifications Reset",
+        "reset_password": "Password Reset",
+        "revoke_invite": "Invite Revoked",
+        "save_gym_defaults": "Defaults Saved",
+        "send_email": "Email Sent",
+        "send_followup": "Follow-up Sent",
+        "send_message": "Message Sent",
+        "send_sms": "SMS Sent",
+        "send_winback": "Win-back Sent",
+        "set_outcome": "Outcome Set",
+        "toggle_email_flag": "Email Flag Toggled",
+        "toggle_feature_flag": "Feature Flag Toggled",
+        "toggle_product": "Product Toggled",
+        "unblock_user": "User Unblocked",
+        "update_birthday_rewards": "Birthday Rewards",
+        "update_challenge": "Challenge Updated",
+        "update_class": "Class Updated",
+        "update_closures": "Closures Updated",
+        "update_email": "Email Updated",
+        "update_hours": "Hours Updated",
+        "update_info": "Info Updated",
+        "update_note": "Note Updated",
+        "update_product": "Product Updated",
+        "update_program": "Program Updated",
+        "update_settings": "Settings Updated",
+        "update_win_back_outcome": "Win-back Outcome"
       },
       "userAvatarAlt": "User avatar"
     },
@@ -3859,6 +4029,27 @@
       "saving": "Saving...",
       "saved": "Saved!",
       "saveTheme": "Save Theme",
+      "save": "Save",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "palettes": {
+        "obsidian_amber": { "name": "Obsidian & Amber", "description": "Warm luxury feel — golden amber on deep navy" },
+        "electric_night": { "name": "Electric Night", "description": "Tech-forward indigo for modern gyms" },
+        "crimson_power": { "name": "Crimson Power", "description": "Bold red energy for CrossFit and powerlifting" },
+        "ocean_drive": { "name": "Ocean Drive", "description": "Cool cyan for beach and wellness studios" },
+        "neon_surge": { "name": "Neon Surge", "description": "Bright cyan and purple for boutique gyms" },
+        "forest_iron": { "name": "Forest Iron", "description": "Natural green for outdoor and functional fitness" },
+        "sunset_blaze": { "name": "Sunset Blaze", "description": "High-energy orange and pink for studios" },
+        "royal_purple": { "name": "Royal Purple", "description": "Elegant purple for yoga and premium studios" },
+        "stealth_mono": { "name": "Stealth", "description": "Minimalist monochrome for luxury gyms" },
+        "classic_gold": { "name": "Classic Gold", "description": "The original TuGymPR gold palette" }
+      },
+      "birthdayRewardSection": "BIRTHDAY REWARD",
+      "birthdayNoReward": "— Pick a reward from the catalog —",
+      "birthdayRewardHint": "The member sees this reward as a claimable item in their Rewards page on their birthday.",
+      "birthdayPointsToggle": "+ Add bonus points (optional)",
+      "birthdayCustomMessage": "CUSTOM MESSAGE",
+      "birthdayPoints": "POINTS TO GIFT",
       "reset": "Reset",
       "gymHours": "Gym Hours",
       "gymHoursDesc": "Set opening hours for each day. Toggle days off to mark as closed.",
@@ -3900,6 +4091,7 @@
       "digestLoadFailed": "Failed to load digest settings",
       "birthdayTitle": "Birthday rewards",
       "birthdayDesc": "Send a celebration message and gift points to members on their birthday",
+      "birthdayReward": "Birthday reward",
       "birthdayPoints": "Points to gift",
       "birthdayPointsUnit": "pts",
       "birthdayPointsHint": "Set to 0 to send only the celebration message without points",
@@ -3968,6 +4160,22 @@
         "reviewed": "Reviewed",
         "dismissed": "Dismissed",
         "actioned": "Actioned"
+      },
+      "contentTypes": {
+        "activity": "Post",
+        "comment": "Comment",
+        "profile": "Profile",
+        "message": "Message"
+      },
+      "reasons": {
+        "spam": "Spam",
+        "inappropriate": "Inappropriate",
+        "harassment": "Harassment",
+        "hate_speech": "Hate speech",
+        "nudity": "Nudity",
+        "violence": "Violence",
+        "dangerous": "Dangerous",
+        "other": "Other"
       }
     },
     "segments": {
@@ -4070,6 +4278,11 @@
         "noWorkoutsDesc": "Members who never logged a workout",
         "longTermMembers": "Long-term Members",
         "longTermMembersDesc": "Joined 6+ months ago"
+      },
+      "fitnessLevel": {
+        "beginner": "Beginner",
+        "intermediate": "Intermediate",
+        "advanced": "Advanced"
       }
     },
     "reports": {
@@ -4237,6 +4450,8 @@
       "confirmResetMessage": "This will delete all your custom notification preferences and restore the default settings. This action cannot be undone."
     },
     "memberDetail": {
+      "membershipStartedAt": "Gym join date",
+      "membershipStartedAtHelp": "Set this to the member's actual gym join date if they joined before installing the app. Overrides the 90-day onboarding risk window for tenure-based churn scoring.",
       "confirmStatusTitle": "Confirm Action",
       "confirmStatusMessage": "Are you sure you want to {{action}} for {{name}}?",
       "reasonPlaceholder": "Reason (optional)",
@@ -5112,7 +5327,8 @@
       "emojiIcon": "Emoji",
       "costPoints": "Points Cost",
       "sortOrder": "Sort Order",
-      "active": "Active",
+      "active": "active",
+      "inactive": "inactive",
       "deactivate": "Deactivate",
       "activate": "Activate",
       "pts": "pts",
@@ -5152,6 +5368,14 @@
       "deactivateNotePlaceholder": "Reason for deactivating...",
       "expire": "Expire",
       "rewardDeactivated": "Reward deactivated",
+      "statusPill": {
+        "pending": "pending",
+        "active": "active",
+        "claimed": "claimed",
+        "redeemed": "redeemed",
+        "cancelled": "cancelled",
+        "expired": "expired"
+      },
       "tabCatalog": "Catalog",
       "tabRedemptions": "Redemptions",
       "tabPerformance": "Performance",
@@ -6578,6 +6802,7 @@
     "december": "December"
   },
   "myGym": {
+    "title": "My Gym",
     "hoursSchedule": "Hours & Schedule",
     "upcomingHolidays": "Upcoming Holidays",
     "gymInfo": "Gym Info",
@@ -7039,6 +7264,9 @@
     "heroTitle": "Today's coaching",
     "heroQuiet": "Quiet day — focus on at-risk clients",
     "roster": "Roster",
+    "liveNow": "Live now",
+    "liveBadge": "LIVE",
+    "openLive": "Open live session for {{name}}",
     "colClient": "Client",
     "colWeek": "Week",
     "colAdh": "Adh.",
@@ -7742,6 +7970,7 @@
     "select": "Select...",
     "coachingCues": "Coaching cues...",
     "exerciseVideo": "Exercise Video (optional)",
+    "video": "Video",
     "removeVideo": "Remove Video",
     "videoWillBeRemoved": "Video will be removed on save.",
     "undo": "Undo",
@@ -7774,6 +8003,8 @@
   },
   "trainerPlans": {
     "title": "Workout Plans",
+    "titleTraining": "Workout Plans",
+    "titleNutrition": "Nutrition Plans",
     "planCount": "{{count}} plan",
     "createPlan": "Create Plan",
     "saveChanges": "Save Changes",
@@ -8128,11 +8359,22 @@
     },
     "snapshot": {
       "title": "Snapshot",
-      "streak": "Day streak",
+      "streak": "Streak",
       "workouts": "Workouts",
       "lastActive": "Last active",
-      "adherence": "Adherence"
+      "adherence": "Adherence",
+      "sessions": "Sessions",
+      "last30d": "Last 30d",
+      "thisBlock": "This block",
+      "active": "Active"
     },
+    "noProgram": "No program",
+    "nextSession": "Next session",
+    "recentLog": "Recent log",
+    "start": "Start",
+    "statusOnTrack": "On track",
+    "statusAtRisk": "At risk",
+    "statusChurn": "Churn",
     "body": {
       "title": "Body metrics",
       "weight": "Weight",
@@ -8811,6 +9053,7 @@
         "staffTab": "Staff ({{count}})",
         "invitesTab": "Invites ({{count}})",
         "searchPlaceholder": "Search members...",
+        "searchAria": "Search members",
         "addMember": "Add Member",
         "noMembersFound": "No members found.",
         "showingOf": "Showing {{filtered}} of {{total}} members",
@@ -8821,7 +9064,21 @@
         "expired": "Expired",
         "pending": "Pending",
         "never": "Never",
-        "unknown": "Unknown"
+        "unknown": "Unknown",
+        "memberRoleAria": "Member role",
+        "memberStatusAria": "Member status",
+        "deleteMemberAria": "Delete member"
+      },
+      "loadingAria": "Loading gym details",
+      "deleteEntity": {
+        "title": {
+          "challenge": "Delete challenge?",
+          "program": "Delete program?",
+          "achievement": "Delete achievement?"
+        },
+        "titleFallback": "Delete {{type}}?",
+        "body": "Are you sure you want to delete {{name}}? This action cannot be undone.",
+        "confirm": "Delete"
       },
       "columns": {
         "name": "Name",
@@ -8836,7 +9093,14 @@
         "recentSessions": "Recent Workout Sessions",
         "noSessions": "No sessions recorded.",
         "recentCheckIns": "Recent Check-Ins",
-        "noCheckIns": "No check-ins recorded."
+        "noCheckIns": "No check-ins recorded.",
+        "status": {
+          "completed": "completed",
+          "in_progress": "in progress",
+          "draft": "draft",
+          "cancelled": "cancelled",
+          "unknown": "unknown"
+        }
       },
       "contentTab": {
         "challengesTab": "Challenges ({{count}})",
@@ -8863,7 +9127,41 @@
         "requirement": "Requirement: {{value}}",
         "rewardsComingSoon": "Rewards System Coming Soon",
         "rewardsComingSoonDesc": "The rewards and points system is under development. Members will be able to earn and redeem points for achievements, challenges, and consistency.",
-        "noRewards": "No reward items configured for this gym."
+        "noRewards": "No reward items configured for this gym.",
+        "rewardFallback": "Reward",
+        "pointsSuffix": "pts",
+        "editChallenge": "Edit challenge",
+        "deleteChallenge": "Delete challenge",
+        "editProgram": "Edit program",
+        "deleteProgram": "Delete program",
+        "editAchievement": "Edit achievement",
+        "deleteAchievement": "Delete achievement",
+        "status": {
+          "active": "Active",
+          "upcoming": "Upcoming",
+          "ended": "Ended",
+          "draft": "Draft"
+        },
+        "challengeType": {
+          "consistency": "Consistency",
+          "volume": "Volume",
+          "pr": "PRs",
+          "team": "Team",
+          "specific_lift": "Specific Lift",
+          "general": "General"
+        },
+        "difficulty": {
+          "beginner": "Beginner",
+          "intermediate": "Intermediate",
+          "advanced": "Advanced"
+        },
+        "achievementType": {
+          "streak": "Streak",
+          "volume": "Volume",
+          "pr": "PR",
+          "workouts": "Workouts",
+          "checkins": "Check-ins"
+        }
       },
       "settings": {
         "gymInfo": "Gym Info",
@@ -9036,7 +9334,24 @@
       "reasonPlaceholder": "Why is this status changing?",
       "statusChanged": "Status changed successfully",
       "resetCodeLabel": "Share this reset code with the member:",
-      "viewInGymAdmin": "View in Gym Admin"
+      "viewInGymAdmin": "View in Gym Admin",
+      "never": "Never",
+      "unknown": "Unknown",
+      "noGym": "No gym",
+      "noName": "No name",
+      "unknownGym": "Unknown gym",
+      "notOnboarded": "Not onboarded",
+      "activePrefix": "Active",
+      "joinedPrefix": "Joined",
+      "daysUnit": "days",
+      "resultsCount": "{{count}} result",
+      "resultsCount_plural": "{{count}} results",
+      "superAdminBlocked": "Super admin can only be assigned via database",
+      "memberDeactivated": "Member deactivated",
+      "inviteResent": "Invite resent successfully",
+      "inviteResentFallback": "Invite flagged for resend (email send pending wiring)",
+      "inviteResendFailed": "Failed to resend invite",
+      "deactivateConfirm": "Deactivate {{name}}? They will lose app access until reactivated."
     },
     "errors": {
       "title": "Errors",
@@ -9146,7 +9461,8 @@
       "confirmAffectsAll": "This affects all gyms.",
       "confirmAffectsAllGyms": "This will affect all gyms on the platform.",
       "cancel": "Cancel",
-      "confirm": "Confirm"
+      "confirm": "Confirm",
+      "updatedPrefix": "Updated"
     },
     "gyms": {
       "title": "Gyms",
@@ -9218,7 +9534,9 @@
       "createMember": "Create Member",
       "creatingMember": "Creating...",
       "allFieldsRequired": "All fields are required",
-      "passwordRequirements": "Password must be 8+ characters with uppercase, lowercase, and a number"
+      "passwordRequirements": "Password must be 8+ characters with uppercase, lowercase, and a number",
+      "addingToPrefix": "Adding to",
+      "createMemberFailed": "Failed to create member"
     },
     "analytics": {
       "title": "Analytics",
@@ -9284,7 +9602,8 @@
       "viewGym": "View Gym",
       "onboarded": "onboarded",
       "inactive": "inactive",
-      "perMonth": "/mo"
+      "perMonth": "/mo",
+      "unknown": "Unknown"
     },
     "gymHealth": {
       "title": "Gym Health",
@@ -9329,7 +9648,14 @@
       "allHealthy": "All gyms above risk threshold",
       "allOnboarded": "All gyms above 50% onboarding",
       "allAdminsActive": "All gym admins active",
-      "noAdminLogin": "No admin login in 7+ days"
+      "noAdminLogin": "No admin login in 7+ days",
+      "issue": {
+        "lowOverall": "Low overall health",
+        "veryLowActivity": "Very low activity ({{pct}}%)",
+        "highChurn": "High churn risk ({{score}})",
+        "minimalCheckins": "Minimal check-ins ({{pct}}%)",
+        "poorOnboarding": "Poor onboarding ({{pct}}%)"
+      }
     },
     "adoption": {
       "title": "Feature Adoption",
