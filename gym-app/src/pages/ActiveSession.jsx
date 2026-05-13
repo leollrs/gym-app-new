@@ -29,6 +29,7 @@ import ExerciseCard from './active-session/ExerciseCard';
 import SupersetPickerModal from '../components/SupersetPickerModal';
 import LazyVideoTile from '../components/LazyVideoTile';
 import { getSessionSuggestions } from '../lib/sessionExerciseSuggestions';
+import { getSwapMatchScore, filterByReason } from '../lib/swapMatchScore';
 import RestTimer from './active-session/RestTimer';
 import SessionSummary from './active-session/SessionSummary';
 import { selectWarmUps } from '../lib/warmUpSelector';
@@ -2247,12 +2248,13 @@ const ActiveSession = () => {
     if (!showSwapModal || !swapTargetExercise) return { sameMuscle: [], otherMuscles: [] };
     const q = swapSearch.toLowerCase().trim();
     const currentIds = new Set(exercises.map(e => e.id));
+    // Pull the static-library row for the swap target so we have its
+    // primaryRegions / muscleScores / movementPattern for the match score.
+    const targetLib = localExercises.find((e) => e.id === swapTargetExercise.id) || swapTargetExercise;
     const sameMuscle = [];
     const otherMuscles = [];
-    // Source = enriched local + DB customs, so any exercise the user has
-    // created in a previous (or current) session shows up here too.
     for (const ex of enrichedLocalExercises) {
-      if (currentIds.has(ex.id)) continue; // already in session
+      if (currentIds.has(ex.id)) continue;
       if (q) {
         const hay = `${ex.name || ''} ${ex.name_es || ''}`.toLowerCase();
         if (!hay.includes(q)) continue;
@@ -2262,13 +2264,19 @@ const ActiveSession = () => {
       } else {
         otherMuscles.push(ex);
       }
-      if (sameMuscle.length + otherMuscles.length >= 80) break;
+      if (sameMuscle.length + otherMuscles.length >= 100) break;
     }
+    // Reason-driven filtering — equipment_busy / injury cull candidates
+    // that wouldn't help. Decorate each survivor with a `_swapMatch` score
+    // and sort within each bucket so the highest-fit alternative is first.
+    const decorate = (list) => list
+      .map((ex) => ({ ...ex, _swapMatch: getSwapMatchScore(targetLib, ex) }))
+      .sort((a, b) => (b._swapMatch || 0) - (a._swapMatch || 0));
     return {
-      sameMuscle: sameMuscle.slice(0, 50),
-      otherMuscles: otherMuscles.slice(0, 30),
+      sameMuscle: decorate(filterByReason(sameMuscle, swapSelectedReason, targetLib)).slice(0, 50),
+      otherMuscles: decorate(filterByReason(otherMuscles, swapSelectedReason, targetLib)).slice(0, 30),
     };
-  }, [showSwapModal, swapSearch, swapTargetExercise, swapTargetMuscle, exercises, enrichedLocalExercises]);
+  }, [showSwapModal, swapSearch, swapTargetExercise, swapTargetMuscle, exercises, enrichedLocalExercises, swapSelectedReason]);
 
   const handleSwapExercise = (newLibEx) => {
     if (!swapTargetExercise) return;
@@ -3929,7 +3937,7 @@ const ActiveSession = () => {
                           onClick={() => handleAddExerciseToSession(ex)}
                           className="relative aspect-[4/5] rounded-xl overflow-hidden text-left active:scale-[0.98] transition-transform"
                           style={{
-                            background: 'var(--color-bg-card)',
+                            background: '#000',
                             border: '1px solid color-mix(in srgb, var(--color-accent) 32%, transparent)',
                             boxShadow: '0 0 0 1px color-mix(in srgb, var(--color-accent) 10%, transparent)',
                           }}
@@ -3938,7 +3946,7 @@ const ActiveSession = () => {
                           {vsrc ? (
                             <LazyVideoTile
                               src={vsrc}
-                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }}
+                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                             />
                           ) : (
                             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 16%, transparent), transparent)' }} />
@@ -4010,13 +4018,13 @@ const ActiveSession = () => {
                         type="button"
                         onClick={() => handleAddExerciseToSession(ex)}
                         className="relative aspect-[4/5] rounded-xl overflow-hidden text-left active:scale-[0.98] transition-transform"
-                        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+                        style={{ background: '#000', border: '1px solid var(--color-border-subtle)' }}
                         aria-label={t('activeSession.addExerciseAria', { name: exName(ex) || ex.name, defaultValue: `Add ${exName(ex) || ex.name}` })}
                       >
                         {vsrc ? (
                           <LazyVideoTile
                             src={vsrc}
-                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                           />
                         ) : (
                           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent)' }} />
@@ -4495,7 +4503,7 @@ const ActiveSession = () => {
                         onClick={() => handleSwapExercise(ex)}
                         className="relative aspect-[4/5] rounded-xl overflow-hidden text-left active:scale-[0.98] transition-transform"
                         style={{
-                          background: 'var(--color-bg-card)',
+                          background: '#000',
                           border: '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)',
                         }}
                         aria-label={t('activeSession.swapToAria', { name: exName(ex) || ex.name, defaultValue: `Swap to ${exName(ex) || ex.name}` })}
@@ -4503,7 +4511,7 @@ const ActiveSession = () => {
                         {vsrc ? (
                           <LazyVideoTile
                             src={vsrc}
-                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                           />
                         ) : (
                           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent)' }} />
@@ -4515,6 +4523,19 @@ const ActiveSession = () => {
                         >
                           <ArrowLeftRight size={13} strokeWidth={2.6} />
                         </span>
+                        {typeof ex._swapMatch === 'number' && (
+                          <span
+                            className="absolute top-2 right-2 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded tabular-nums"
+                            style={{
+                              background: 'var(--color-accent)',
+                              color: '#0A0D14',
+                              letterSpacing: 0.4,
+                            }}
+                            aria-label={t('activeSession.swapMatchAria', { pct: ex._swapMatch, defaultValue: `${ex._swapMatch}% match` })}
+                          >
+                            {ex._swapMatch}%
+                          </span>
+                        )}
                         <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff' }}>
                           <p className="text-[11px] font-extrabold leading-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
                             {exName(ex) || ex.name}
@@ -4549,13 +4570,13 @@ const ActiveSession = () => {
                         type="button"
                         onClick={() => handleSwapExercise(ex)}
                         className="relative aspect-[4/5] rounded-xl overflow-hidden text-left active:scale-[0.98] transition-transform"
-                        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+                        style={{ background: '#000', border: '1px solid var(--color-border-subtle)' }}
                         aria-label={t('activeSession.swapToAria', { name: exName(ex) || ex.name, defaultValue: `Swap to ${exName(ex) || ex.name}` })}
                       >
                         {vsrc ? (
                           <LazyVideoTile
                             src={vsrc}
-                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                           />
                         ) : (
                           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(255,255,255,0.05), transparent)' }} />
@@ -4567,6 +4588,19 @@ const ActiveSession = () => {
                         >
                           <ArrowLeftRight size={13} strokeWidth={2.6} />
                         </span>
+                        {typeof ex._swapMatch === 'number' && (
+                          <span
+                            className="absolute top-2 right-2 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded tabular-nums"
+                            style={{
+                              background: 'rgba(0,0,0,0.55)',
+                              color: '#fff',
+                              letterSpacing: 0.4,
+                            }}
+                            aria-label={t('activeSession.swapMatchAria', { pct: ex._swapMatch, defaultValue: `${ex._swapMatch}% match` })}
+                          >
+                            {ex._swapMatch}%
+                          </span>
+                        )}
                         <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff' }}>
                           <p className="text-[11px] font-extrabold leading-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
                             {exName(ex) || ex.name}

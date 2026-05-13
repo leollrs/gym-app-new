@@ -6,7 +6,9 @@ import {
   ChevronRight, RotateCcw, Link2, Unlink, ArrowLeftRight
 } from 'lucide-react';
 import ExerciseLibrary from './ExerciseLibrary';
-import { getExerciseById } from '../data/exercises';
+import LazyVideoTile from '../components/LazyVideoTile';
+import { getExerciseById, exercises as ALL_EXERCISES } from '../data/exercises';
+import { getSwapMatchScore, filterByReason } from '../lib/swapMatchScore';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { goalAdjustedDefaults } from '../lib/goalAdjustedDefaults';
@@ -24,7 +26,7 @@ const nanoid = (len = 8) => {
 
 const REST_OPTIONS = [30, 60, 90, 120, 180, 240];
 
-const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveUp, onMoveDown, onSwap, isSelected, onToggleSelect, t }) => {
+const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveUp, onMoveDown, onSwap, isSelected, onToggleSelect, t, primaryGoal }) => {
   if (!exercise) return null;
 
   return (
@@ -139,6 +141,27 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
               style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)', color: 'var(--color-text-primary)' }}
             />
           </div>
+          {/* Goal-tailored rep recommendation — pulled from the same
+              goal-adjusted defaults table the auto-workout generator uses,
+              so what we recommend matches what the engine would have set. */}
+          {(() => {
+            if (!exercise) return null;
+            const rec = goalAdjustedDefaults(exercise, primaryGoal || 'general_fitness');
+            if (!rec?.reps || rec.reps === '—') return null;
+            const matches = String(item.reps).trim() === String(rec.reps).trim();
+            return (
+              <p
+                className="text-[9px] font-bold uppercase tracking-wider mt-1.5 tabular-nums"
+                style={{
+                  color: matches ? 'var(--color-accent)' : 'var(--color-text-subtle)',
+                  letterSpacing: 0.6,
+                }}
+                aria-label={t('workoutBuilder.recommendedRepsAria', { reps: rec.reps, defaultValue: `Recommended ${rec.reps} reps` })}
+              >
+                {t('workoutBuilder.recommendedRepsShort', { defaultValue: 'rec' })} {rec.reps}
+              </p>
+            );
+          })()}
         </div>
 
         {/* Rest */}
@@ -222,6 +245,9 @@ const WorkoutBuilder = () => {
   // When non-null, the exercise picker swaps the row at this index instead
   // of appending. Used by the swap icon on each routine row.
   const [swapTargetIndex, setSwapTargetIndex] = useState(null);
+  // Same reason chips as the in-session swap modal — used to cull
+  // alternatives that wouldn't help (busy equipment / aggravating muscle).
+  const [swapReason, setSwapReason] = useState(null);
 
   const [name, setName]                       = useState(t('workoutBuilder.newWorkoutDefault', 'New Workout'));
   const [routineExercises, setRoutineExercises] = useState([]);
@@ -337,6 +363,7 @@ const WorkoutBuilder = () => {
         i === swapTargetIndex ? { ...row, id: exercise.id } : row
       ));
       setSwapTargetIndex(null);
+      setSwapReason(null);
       setShowLibrary(false);
       return;
     }
@@ -354,6 +381,7 @@ const WorkoutBuilder = () => {
 
   const handleSwap = (index) => {
     setSwapTargetIndex(index);
+    setSwapReason(null);
     setShowLibrary(true);
   };
 
@@ -557,25 +585,18 @@ const WorkoutBuilder = () => {
           />
         </div>
 
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="font-bold transition-all disabled:opacity-50 flex-shrink-0 active:scale-95"
-          style={{
-            padding: '10px 18px',
-            borderRadius: 999,
-            fontSize: 13,
-            letterSpacing: 0.2,
-            background: saved ? '#10B981' : 'var(--color-accent)',
-            color: saved ? '#fff' : 'var(--color-bg-card, #0A0D10)',
-            border: 'none',
-            boxShadow: saved
-              ? '0 4px 14px rgba(16,185,129,0.35)'
-              : '0 4px 14px color-mix(in srgb, var(--color-accent) 35%, transparent)',
-          }}
-        >
-          {saving ? '…' : saved ? `${t('workoutBuilder.saved')} ✓` : t('workoutBuilder.save')}
-        </button>
+        {/* Save lives on the sticky bottom bar ("Save and Done") + a quiet
+            "saved ✓" inline indicator here when the autosave round trip
+            completes. One canonical write action; the header just confirms. */}
+        {saved && (
+          <span
+            className="font-bold text-[12px] flex-shrink-0 inline-flex items-center gap-1"
+            style={{ color: '#10B981' }}
+            aria-live="polite"
+          >
+            ✓ {t('workoutBuilder.saved')}
+          </span>
+        )}
       </header>
 
       {/* Scrollable body */}
@@ -596,7 +617,7 @@ const WorkoutBuilder = () => {
           <div className="sticky top-0 z-10 border-b border-white/[0.06] backdrop-blur-2xl" style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
             <div className="px-4 py-3.5 flex items-center gap-3">
               <button
-                onClick={() => { setShowLibrary(false); setSwapTargetIndex(null); }}
+                onClick={() => { setShowLibrary(false); setSwapTargetIndex(null); setSwapReason(null); }}
                 className="text-[#D4AF37] hover:text-[#E6C766] flex items-center gap-0.5 transition-colors"
               >
                 <ChevronLeft size={24} strokeWidth={2.5} />
@@ -605,55 +626,203 @@ const WorkoutBuilder = () => {
               <h2 className="flex-1 text-center font-semibold text-[16px] truncate" style={{ color: 'var(--color-text-primary)' }}>{swapTargetIndex !== null ? t('workoutBuilder.swapExercise', 'Swap Exercise') : t('workoutBuilder.addExercise')}</h2>
               <div className="w-16" />
             </div>
-            {/* Tabs */}
-            <div className="flex px-4 gap-5">
-              {[
-                { key: 'library', label: t('workoutBuilder.library') },
-                { key: 'mine',    label: `${t('workoutBuilder.mine')}${myExs.length ? ` (${myExs.length})` : ''}` },
-                { key: 'friends', label: `${t('workoutBuilder.friends')}${friendExs.length ? ` (${friendExs.length})` : ''}` },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setPickerTab(key)}
-                  className={`pb-2.5 text-[13px] font-semibold border-b-2 transition-colors ${
-                    pickerTab === key
-                      ? 'border-[#D4AF37] text-[#D4AF37]'
-                      : 'border-transparent'
-                  }`}
-                  style={pickerTab !== key ? { color: 'var(--color-text-subtle)' } : undefined}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {/* Tabs — hidden in swap mode, which shows a dedicated tile-grid
+                view instead of the multi-tab picker. */}
+            {swapTargetIndex === null && (
+              <div className="flex px-4 gap-5">
+                {[
+                  { key: 'library', label: t('workoutBuilder.library') },
+                  { key: 'mine',    label: `${t('workoutBuilder.mine')}${myExs.length ? ` (${myExs.length})` : ''}` },
+                  { key: 'friends', label: `${t('workoutBuilder.friends')}${friendExs.length ? ` (${friendExs.length})` : ''}` },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setPickerTab(key)}
+                    className={`pb-2.5 text-[13px] font-semibold border-b-2 transition-colors ${
+                      pickerTab === key
+                        ? 'border-[#D4AF37] text-[#D4AF37]'
+                        : 'border-transparent'
+                    }`}
+                    style={pickerTab !== key ? { color: 'var(--color-text-subtle)' } : undefined}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
-            {pickerTab === 'library' && (
-              <ExerciseLibrary
-                selectable
-                selectedIds={selectedIds}
-                onSelect={handleAdd}
-              />
-            )}
-            {pickerTab === 'mine' && (
-              <PickerList
-                exercises={myExs}
-                selectedIds={selectedIds}
-                onSelect={handleAdd}
-                emptyText={t('workoutBuilder.noOwnExercises')}
-                t={t}
-              />
-            )}
-            {pickerTab === 'friends' && (
-              <PickerList
-                exercises={friendExs}
-                selectedIds={selectedIds}
-                onSelect={handleAdd}
-                emptyText={t('workoutBuilder.noFriendExercises')}
-                t={t}
-              />
+            {/* Swap mode — same video-tile grid as the active-session swap.
+                Same-muscle picks first, then other muscles. Tap a tile to
+                run handleAdd, which replaces the target row's exercise id. */}
+            {swapTargetIndex !== null ? (() => {
+              const targetItem = routineExercises[swapTargetIndex];
+              const targetLib = targetItem ? findExercise(targetItem.id) : null;
+              const targetMuscle = targetLib?.muscle || '';
+              const currentIds = new Set(routineExercises.map((r) => r.id));
+              const VIDEO_BASE = 'https://erdhnixjnjullhjzmvpm.supabase.co/storage/v1/object/public/exercise-videos/';
+              const toVideoSrc = (ex) => {
+                const raw = ex.videoUrl || ex.video_url || ex.video;
+                if (!raw) return null;
+                if (/^(https?:|blob:|data:)/.test(raw)) return raw;
+                return `${VIDEO_BASE}${raw}`;
+              };
+              const sameMuscleRaw = [];
+              const otherMusclesRaw = [];
+              for (const ex of ALL_EXERCISES) {
+                if (currentIds.has(ex.id)) continue;
+                if (targetMuscle && ex.muscle === targetMuscle) sameMuscleRaw.push(ex);
+                else otherMusclesRaw.push(ex);
+                if (sameMuscleRaw.length + otherMusclesRaw.length >= 120) break;
+              }
+              const decorate = (list) => filterByReason(list, swapReason, targetLib)
+                .map((ex) => ({ ...ex, _swapMatch: getSwapMatchScore(targetLib, ex) }))
+                .sort((a, b) => (b._swapMatch || 0) - (a._swapMatch || 0));
+              const sameMuscle = decorate(sameMuscleRaw).slice(0, 50);
+              const otherMuscles = decorate(otherMusclesRaw).slice(0, 30);
+              const renderTile = (ex, accent = false) => {
+                const vsrc = toVideoSrc(ex);
+                return (
+                  <button
+                    key={ex.id}
+                    type="button"
+                    onClick={() => handleAdd(ex)}
+                    className="relative aspect-[4/5] rounded-xl overflow-hidden text-left active:scale-[0.98] transition-transform"
+                    style={{
+                      background: '#000',
+                      border: accent
+                        ? '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)'
+                        : '1px solid var(--color-border-subtle)',
+                    }}
+                    aria-label={t('workoutBuilder.swapToAria', { name: exName(ex) || ex.name, defaultValue: `Swap to ${exName(ex) || ex.name}` })}
+                  >
+                    {vsrc ? (
+                      <LazyVideoTile
+                        src={vsrc}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent)' }} />
+                    )}
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0) 100%)' }} />
+                    <span
+                      className="absolute top-2 left-2 inline-flex items-center justify-center rounded-full"
+                      style={{ width: 26, height: 26, background: accent ? 'var(--color-accent)' : 'rgba(0,0,0,0.55)', color: accent ? '#0A0D14' : 'var(--color-text-primary)' }}
+                    >
+                      <ArrowLeftRight size={13} strokeWidth={2.6} />
+                    </span>
+                    {typeof ex._swapMatch === 'number' && (
+                      <span
+                        className="absolute top-2 right-2 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded tabular-nums"
+                        style={{
+                          background: accent ? 'var(--color-accent)' : 'rgba(0,0,0,0.55)',
+                          color: accent ? '#0A0D14' : '#fff',
+                          letterSpacing: 0.4,
+                        }}
+                        aria-label={t('activeSession.swapMatchAria', { pct: ex._swapMatch, defaultValue: `${ex._swapMatch}% match` })}
+                      >
+                        {ex._swapMatch}%
+                      </span>
+                    )}
+                    <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff' }}>
+                      <p className="text-[11px] font-extrabold leading-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                        {exName(ex) || ex.name}
+                      </p>
+                      <p className="text-[10px] font-semibold mt-0.5 opacity-85" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                        {t(`muscleGroups.${ex.muscle}`, ex.muscle)}{ex.equipment ? ` · ${ex.equipment}` : ''}
+                      </p>
+                    </div>
+                  </button>
+                );
+              };
+              return (
+                <>
+                  {/* Reason chips — same vocabulary as the in-session swap.
+                      Selecting one filters out candidates that wouldn't help
+                      (busy equipment / aggravating muscle). */}
+                  <div className="flex gap-2 mb-3 flex-wrap">
+                    {[
+                      { key: 'equipment_busy', label: t('activeSession.swapReasonEquipment', 'Equipment busy') },
+                      { key: 'injury', label: t('activeSession.swapReasonInjury', 'Injury') },
+                      { key: 'preference', label: t('activeSession.swapReasonPreference', 'Preference') },
+                    ].map((r) => {
+                      const active = swapReason === r.key;
+                      return (
+                        <button
+                          key={r.key}
+                          type="button"
+                          onClick={() => setSwapReason(active ? null : r.key)}
+                          className="shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors active:scale-95"
+                          style={{
+                            background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
+                            color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                            border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
+                          }}
+                        >
+                          {r.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {sameMuscle.length > 0 && targetMuscle && (
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] pb-2" style={{ color: 'var(--color-text-subtle)' }}>
+                      {t('activeSession.swapSameMuscle', { defaultValue: '{{muscle}} alternatives', muscle: t(`muscleGroups.${targetMuscle}`, targetMuscle) })}
+                    </p>
+                  )}
+                  {sameMuscle.length > 0 && (
+                    <div className="grid grid-cols-2 gap-3 mb-5">
+                      {sameMuscle.slice(0, 50).map((ex) => renderTile(ex, true))}
+                    </div>
+                  )}
+                  {otherMuscles.length > 0 && (
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] pb-2" style={{ color: 'var(--color-text-subtle)' }}>
+                      {t('activeSession.swapOtherMuscles', 'Other muscles')}
+                    </p>
+                  )}
+                  {otherMuscles.length > 0 && (
+                    <div className="grid grid-cols-2 gap-3">
+                      {otherMuscles.slice(0, 30).map((ex) => renderTile(ex, false))}
+                    </div>
+                  )}
+                  {sameMuscle.length === 0 && otherMuscles.length === 0 && (
+                    <div className="rounded-2xl py-12 px-4 text-center" style={{ background: 'var(--color-surface-hover)', border: '1px dashed var(--color-border-subtle)' }}>
+                      <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                        {t('activeSession.swapNoResults')}
+                      </p>
+                    </div>
+                  )}
+                </>
+              );
+            })() : (
+              <>
+                {pickerTab === 'library' && (
+                  <ExerciseLibrary
+                    selectable
+                    selectedIds={selectedIds}
+                    onSelect={handleAdd}
+                  />
+                )}
+                {pickerTab === 'mine' && (
+                  <PickerList
+                    exercises={myExs}
+                    selectedIds={selectedIds}
+                    onSelect={handleAdd}
+                    emptyText={t('workoutBuilder.noOwnExercises')}
+                    t={t}
+                  />
+                )}
+                {pickerTab === 'friends' && (
+                  <PickerList
+                    exercises={friendExs}
+                    selectedIds={selectedIds}
+                    onSelect={handleAdd}
+                    emptyText={t('workoutBuilder.noFriendExercises')}
+                    t={t}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>
@@ -766,6 +935,7 @@ const WorkoutBuilder = () => {
                       isSelected={selectedIndices.has(index)}
                       onToggleSelect={handleToggleSelect}
                       t={t}
+                      primaryGoal={profile?.primary_goal}
                     />
                   </div>
                 </React.Fragment>
@@ -830,8 +1000,17 @@ const WorkoutBuilder = () => {
 
       </div>{/* end scrollable body */}
 
-      {/* Mobile bottom bar — flex-shrink-0 so it stays pinned at the bottom */}
-      <div className="md:hidden flex-shrink-0 px-5 pt-3 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))] backdrop-blur-xl border-t border-white/[0.06]" style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}>
+      {/* Mobile bottom bar — pinned just above the iOS home indicator.
+          Was using `0.75rem + safe-area` which left a chunky empty band
+          under the buttons; clamped to a tighter max so the bar hugs the
+          bottom edge without overlapping system UI. */}
+      <div
+        className="md:hidden flex-shrink-0 px-5 pt-3 backdrop-blur-xl border-t border-white/[0.06]"
+        style={{
+          background: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)',
+          paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))',
+        }}
+      >
         <div className="flex gap-3">
           <button
             onClick={() => setShowLibrary(true)}

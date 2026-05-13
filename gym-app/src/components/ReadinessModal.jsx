@@ -84,6 +84,12 @@ const READINESS_BUCKETS = [
   { id: 'forearm-flex',      label: 'Forearm Flexors',     regionIds: ['forearms'] },
   { id: 'forearm-ext',       label: 'Forearm Extensors',   regionIds: ['forearms'] },
   { id: 'abs',               label: 'Abs',                 regionIds: ['upper_abs', 'mid_abs', 'lower_abs', 'abs'] },
+  // Granular abs buckets — match the polygon bucketIds in musclePolygons.js
+  // (`upper-abs / mid-abs / lower-abs`) so tapping a core polygon resolves
+  // to a known bucket and the DetailSheet actually opens.
+  { id: 'upper-abs',         label: 'Upper Abs',           regionIds: ['upper_abs', 'abs'] },
+  { id: 'mid-abs',           label: 'Mid Abs',             regionIds: ['mid_abs', 'abs'] },
+  { id: 'lower-abs',         label: 'Lower Abs',           regionIds: ['lower_abs', 'abs'] },
   { id: 'obliques',          label: 'Obliques',            regionIds: ['obliques'] },
   { id: 'quads',             label: 'Quads',               regionIds: ['quads', 'hip_flexors'] },
   { id: 'adductors',         label: 'Inner Thigh',         regionIds: ['adductors'] },
@@ -643,12 +649,9 @@ function SubBar({ sub, color }) {
 
 function DetailSheet({ bucketId, readiness, onClose, regionLabels, t, i18n, onAppend }) {
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const suggestions = useMemo(
-    () => bucketId ? rankExercisesForRegions(BUCKET_BY_ID.get(bucketId)?.regionIds || [], { topN: 6 }) : [],
-    [bucketId]
-  );
+  // Per-sub-region collapse state. Keyed by region id so each muscle
+  // (e.g. calves, soleus) tracks its own expanded/collapsed state.
+  const [expandedSubs, setExpandedSubs] = useState({});
   if (!bucketId) return null;
   const bucket = BUCKET_BY_ID.get(bucketId);
   if (!bucket) return null;
@@ -788,123 +791,163 @@ function DetailSheet({ bucketId, readiness, onClose, regionLabels, t, i18n, onAp
             {t ? t('readinessModal.breakdownThisWeek', { defaultValue: 'Breakdown · This week' }) : 'Breakdown · This week'}
           </div>
         </div>
-        {agg.subs.map((sub) => (
-          <SubBar
-            key={sub.id}
-            sub={{
-              id: sub.id,
-              label: regionLabels.get(sub.id) || sub.id,
-              sets: sub.sets,
-              targetSets: 10,
-            }}
-            color={color}
-          />
-        ))}
-
-        {suggestions.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <button
-              type="button"
-              onClick={() => setShowSuggestions((v) => !v)}
-              aria-expanded={showSuggestions}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 12px',
-                borderRadius: 12,
-                background: 'var(--color-surface-hover, rgba(15,20,25,0.04))',
-                border: '1px solid var(--color-border-subtle)',
-                cursor: 'pointer',
-              }}
-            >
-              <span
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontFamily: FONT_BODY,
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: 1.2,
-                  color: 'var(--color-text-primary)',
-                  textTransform: 'uppercase',
+        {agg.subs.map((sub) => {
+          const subLabel = regionLabels.get(sub.id) || sub.id;
+          const subSuggestions = rankExercisesForRegions([sub.id], { topN: 6 });
+          const isExpanded = !!expandedSubs[sub.id];
+          return (
+            <div key={sub.id} style={{ marginBottom: 14 }}>
+              <SubBar
+                sub={{
+                  id: sub.id,
+                  label: subLabel,
+                  sets: sub.sets,
+                  targetSets: 10,
                 }}
-              >
-                <Sparkles size={12} style={{ color: STATE_HEX.fresh }} />
-                {t ? t('readinessModal.suggestExercises', { defaultValue: 'Exercises for this muscle' }) : 'Exercises for this muscle'}
-              </span>
-              <ChevronDown
-                size={14}
-                style={{
-                  color: 'var(--color-text-muted)',
-                  transition: 'transform 180ms',
-                  transform: showSuggestions ? 'rotate(180deg)' : 'rotate(0)',
-                }}
+                color={color}
               />
-            </button>
-
-            {showSuggestions && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-                {suggestions.map((ex) => {
-                  const label = i18n?.language === 'es' && ex.name_es ? ex.name_es : ex.name;
-                  return (
-                    <button
-                      key={ex.id}
-                      type="button"
-                      onClick={() => onAppend?.(ex)}
+              {subSuggestions.length === 0 && (
+                <p
+                  style={{
+                    marginTop: 4,
+                    fontFamily: FONT_BODY,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: 0.6,
+                    color: 'var(--color-text-subtle)',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {t ? t('readinessModal.noExercisesForRegion', { defaultValue: 'No exercises tagged for this region yet' }) : 'No exercises tagged for this region yet'}
+                </p>
+              )}
+              {subSuggestions.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedSubs((prev) => ({ ...prev, [sub.id]: !prev[sub.id] }))}
+                    aria-expanded={isExpanded}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 10px',
+                      borderRadius: 10,
+                      background: 'var(--color-surface-hover, rgba(15,20,25,0.04))',
+                      border: '1px solid var(--color-border-subtle)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                        padding: '8px 10px',
-                        borderRadius: 10,
-                        background: 'var(--color-bg-card)',
-                        border: '1px solid var(--color-border-subtle)',
-                        cursor: 'pointer',
-                        textAlign: 'left',
+                        gap: 6,
+                        fontFamily: FONT_BODY,
+                        fontSize: 10,
+                        fontWeight: 800,
+                        letterSpacing: 1.1,
+                        color: 'var(--color-text-primary)',
+                        textTransform: 'uppercase',
                       }}
-                      aria-label={t ? t('readinessModal.addToRoutine', { defaultValue: 'Add to routine' }) : 'Add to routine'}
                     >
-                      <span
-                        style={{
-                          fontFamily: FONT_BODY,
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: 'var(--color-text-primary)',
-                          flex: 1,
-                          minWidth: 0,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {label}
-                      </span>
-                      <span
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: 999,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: `color-mix(in srgb, ${STATE_HEX.fresh} 18%, transparent)`,
-                          color: STATE_HEX.fresh,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Plus size={12} strokeWidth={2.6} />
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                      <Sparkles size={11} style={{ color: STATE_HEX.fresh }} />
+                      {t ? t('readinessModal.suggestExercisesFor', { muscle: subLabel, defaultValue: `Exercises for ${subLabel}` }) : `Exercises for ${subLabel}`}
+                    </span>
+                    <ChevronDown
+                      size={13}
+                      style={{
+                        color: 'var(--color-text-muted)',
+                        transition: 'transform 180ms',
+                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
+                      }}
+                    />
+                  </button>
+
+                  {isExpanded && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+                      {subSuggestions.map((ex) => {
+                        const label = i18n?.language === 'es' && ex.name_es ? ex.name_es : ex.name;
+                        const pct = typeof ex._regionMatch === 'number' ? Math.round(ex._regionMatch) : null;
+                        return (
+                          <button
+                            key={ex.id}
+                            type="button"
+                            onClick={() => onAppend?.(ex)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                              padding: '8px 10px',
+                              borderRadius: 10,
+                              background: 'var(--color-bg-card)',
+                              border: '1px solid var(--color-border-subtle)',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                            }}
+                            aria-label={t ? t('readinessModal.addToRoutine', { defaultValue: 'Add to routine' }) : 'Add to routine'}
+                          >
+                            <span
+                              style={{
+                                fontFamily: FONT_BODY,
+                                fontSize: 13,
+                                fontWeight: 700,
+                                color: 'var(--color-text-primary)',
+                                flex: 1,
+                                minWidth: 0,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {label}
+                            </span>
+                            {pct != null && (
+                              <span
+                                style={{
+                                  fontFamily: FONT_BODY,
+                                  fontSize: 10,
+                                  fontWeight: 800,
+                                  letterSpacing: 0.4,
+                                  color: STATE_HEX.fresh,
+                                  fontVariantNumeric: 'tabular-nums',
+                                  padding: '2px 6px',
+                                  borderRadius: 6,
+                                  background: `color-mix(in srgb, ${STATE_HEX.fresh} 14%, transparent)`,
+                                  border: `1px solid color-mix(in srgb, ${STATE_HEX.fresh} 28%, transparent)`,
+                                }}
+                                aria-label={t ? t('readinessModal.effectivenessAria', { pct, defaultValue: `${pct}% effective` }) : `${pct}% effective`}
+                              >
+                                {pct}%
+                              </span>
+                            )}
+                            <span
+                              style={{
+                                width: 24,
+                                height: 24,
+                                borderRadius: 999,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: `color-mix(in srgb, ${STATE_HEX.fresh} 18%, transparent)`,
+                                color: STATE_HEX.fresh,
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Plus size={12} strokeWidth={2.6} />
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

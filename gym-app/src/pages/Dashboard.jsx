@@ -31,6 +31,9 @@ import { getTodayChallenge } from '../lib/dailyChallenges';
 
 import DayStrip from '../components/DayStrip';
 import WorkoutHeroCard from '../components/WorkoutHeroCard';
+import ReadinessModal from '../components/ReadinessModal';
+import { useRecentSessionsWithSets } from '../hooks/useSupabaseQuery';
+import { computeDashboardReadiness, loadCachedRecoveryMetrics } from '../lib/readinessEngine';
 import CoachMark from '../components/CoachMark';
 // 8 modals lazy-loaded — most users never open them in a session, but eagerly
 // importing them inflated the Dashboard chunk by ~30-50 KB. Each is gated by
@@ -216,6 +219,10 @@ const Dashboard = () => {
   const [allActiveDrafts, setAllActiveDrafts] = useState(() => readAllActiveSessions());
   const [showBackdatedModal, setShowBackdatedModal] = useState(false);
   const [showDeletedModal, setShowDeletedModal] = useState(false);
+  // Opens the Recovery / Readiness modal from the post-workout action row
+  // (next to Edit / Swap). Independent from the hero-card pill so both
+  // surfaces can drive the same modal without lifting state from the card.
+  const [readinessOpen, setReadinessOpen] = useState(false);
   // Refresh active drafts when page becomes visible (user returns from a workout)
   useEffect(() => {
     const handleVisibility = () => {
@@ -1033,6 +1040,30 @@ const Dashboard = () => {
   }, [profile?.date_of_birth]);
   const hasTrainedToday = todaysSessions.length > 0 || todayCardioSessions.length > 0;
 
+  // Recovery score shown on the post-completion Recovery chip. Mirrors the
+  // memo in WorkoutHeroCard so the chip and the hero pill never drift.
+  const { data: recoveryRecentSessions = [] } = useRecentSessionsWithSets(user?.id, 14);
+  const readinessScore = useMemo(() => {
+    let todaySoreness = null;
+    try {
+      const d = new Date();
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const raw = localStorage.getItem('tugympr_wellness_last_checkin');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.date === dateKey && typeof parsed.soreness === 'number') {
+          todaySoreness = parsed.soreness;
+        }
+      }
+    } catch { /* ignore */ }
+    const cachedMetrics = loadCachedRecoveryMetrics();
+    return computeDashboardReadiness({
+      sessions: recoveryRecentSessions,
+      recoveryMetrics: cachedMetrics,
+      soreness: todaySoreness,
+    });
+  }, [recoveryRecentSessions, readinessOpen]);
+
   // Gym is only "closed" if gym_hours says closed AND there's no program workout scheduled
   // (user who chose "Start Today" on a closed day overrides the gym schedule)
   const gymNormallyClosed = gymClosedDays.has(selectedDate.getDay());
@@ -1357,7 +1388,10 @@ const Dashboard = () => {
                     })()}
                   </p>
                   <div className="flex items-center gap-2">
-                    {selectedRoutine && !isGymClosedToday && (
+                    {/* Edit + Swap make no sense once the day's workout is
+                        already in the bag — collapse them so the Recovery
+                        chip has room to breathe and show its score. */}
+                    {selectedRoutine && !isGymClosedToday && !(isToday && hasTrainedToday) && (
                       <>
                         <button
                           type="button"
@@ -1386,6 +1420,28 @@ const Dashboard = () => {
                           {t('dashboard.swap', 'Swap')}
                         </button>
                       </>
+                    )}
+                    {/* Post-completion access to the Recovery / Readiness map,
+                        with the current readiness score baked into the pill
+                        so the user gets the headline number at a glance. */}
+                    {isToday && hasTrainedToday && (
+                      <button
+                        type="button"
+                        onClick={() => setReadinessOpen(true)}
+                        aria-label={t('workoutHeroCard.openReadiness', 'View recovery map')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold tracking-[0.04em] active:scale-[0.95] transition-all"
+                        style={{
+                          background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                          color: 'var(--color-accent)',
+                          border: '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)',
+                        }}
+                      >
+                        <Activity size={13} strokeWidth={2.4} />
+                        {t('dashboard.recovery', 'Recovery')}
+                        <span className="tabular-nums" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {readinessScore}%
+                        </span>
+                      </button>
                     )}
                     <button
                       type="button"
@@ -2511,6 +2567,9 @@ const Dashboard = () => {
           />
         </Suspense>
       )}
+
+      {/* ── RECOVERY / READINESS MODAL ─────────────────── */}
+      <ReadinessModal open={readinessOpen} onClose={() => setReadinessOpen(false)} />
 
       {/* ── RECENTLY DELETED WORKOUTS MODAL ─────────────── */}
       {showDeletedModal && (

@@ -17,10 +17,16 @@ import { exercises as DEFAULT_LIBRARY } from '../data/exercises';
 // Rank exercises by their best `muscleScores` match across the given region
 // ids. Used by the Recovery modal's per-muscle dropdown — the user taps a
 // muscle and sees the top picks that hit those exact regions.
+//
+// Decorates each result with `_regionMatch` so the UI can render a per-pick
+// effectiveness percentage. Falls back to a lower minScore if the strict
+// pass returns nothing — niche regions like soleus/hip_flexors have at most
+// 1-3 exercises in the catalogue with low coverage scores, but they're
+// still the right picks for that muscle.
 export function rankExercisesForRegions(regionIds, options = {}) {
   const { topN = 5, minScore = 50, library = DEFAULT_LIBRARY } = options;
   if (!Array.isArray(regionIds) || regionIds.length === 0) return [];
-  return library
+  const scored = library
     .map((ex) => {
       const scores = ex.muscleScores || {};
       let best = 0;
@@ -30,10 +36,14 @@ export function rankExercisesForRegions(regionIds, options = {}) {
       }
       return { ex, score: best };
     })
-    .filter((r) => r.score >= minScore)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topN)
-    .map((r) => r.ex);
+    .filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const strict = scored.filter((r) => r.score >= minScore).slice(0, topN);
+  // If the strict pass came back empty, return whatever hits at all — even
+  // a 25 means the exercise touches that muscle.
+  const pool = strict.length > 0 ? strict : scored.slice(0, topN);
+  return pool.map((r) => ({ ...r.ex, _regionMatch: r.score }));
 }
 
 export function getUntrainedGroupSuggestions(readiness, options = {}) {

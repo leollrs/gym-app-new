@@ -500,39 +500,39 @@ const WorkoutHeroCard = ({
             : t('workoutHeroCard.startWorkout')}
         </button>
 
-        {/* Readiness indicator — opens detailed map modal on tap */}
-        {!isCompleted && !isActive && (
-          <button
-            type="button"
-            onClick={() => setReadinessOpen(true)}
-            aria-label={t('workoutHeroCard.openReadiness', 'View recovery map')}
-            className="flex flex-col items-center justify-center rounded-[16px] transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+        {/* Readiness indicator — always visible (including post-completion
+            and mid-session) so the recovery map is one tap away regardless
+            of the workout state. */}
+        <button
+          type="button"
+          onClick={() => setReadinessOpen(true)}
+          aria-label={t('workoutHeroCard.openReadiness', 'View recovery map')}
+          className="flex flex-col items-center justify-center rounded-[16px] transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+          style={{
+            width: 56,
+            background: 'var(--color-surface-hover, #F2F2EF)',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '8px 0',
+          }}
+        >
+          <span
+            className="leading-none"
             style={{
-              width: 56,
-              background: 'var(--color-surface-hover, #F2F2EF)',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px 0',
+              fontFamily: '"Familjen Grotesk", "Archivo", system-ui',
+              fontSize: 20,
+              fontWeight: 800,
+              color: 'var(--color-accent, #2EC4C4)',
+              letterSpacing: -0.5,
+              fontVariantNumeric: 'tabular-nums',
             }}
           >
-            <span
-              className="leading-none"
-              style={{
-                fontFamily: '"Familjen Grotesk", "Archivo", system-ui',
-                fontSize: 20,
-                fontWeight: 800,
-                color: 'var(--color-accent, #2EC4C4)',
-                letterSpacing: -0.5,
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {readinessScore}
-            </span>
-            <span className="text-[9px] font-bold mt-0.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
-              {t('workoutHeroCard.ready', 'READY')}
-            </span>
-          </button>
-        )}
+            {readinessScore}
+          </span>
+          <span className="text-[9px] font-bold mt-0.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
+            {t('workoutHeroCard.ready', 'READY')}
+          </span>
+        </button>
       </div>
       <ReadinessModal open={readinessOpen} onClose={() => setReadinessOpen(false)} />
     </div>
