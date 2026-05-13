@@ -393,7 +393,6 @@ export default function TrainerMessages() {
 
   const inputRef = useRef(null);
   const bottomRef = useRef(null);
-  const [kbHeight, setKbHeight] = useState(0);
 
   // ── Page title ─────────────
   useEffect(() => { document.title = `${t('trainerMessages.list.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
@@ -407,15 +406,13 @@ export default function TrainerMessages() {
     return () => clearTimeout(id);
   }, [searchQuery]);
 
-  // ── Native keyboard ─────────
+  // ── Native keyboard — WebView resizes natively, we only snap to bottom ─────
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || !Keyboard) return undefined;
     const listeners = [];
-    Keyboard.addListener('keyboardWillShow', (info) => {
-      setKbHeight(info.keyboardHeight);
+    Keyboard.addListener('keyboardWillShow', () => {
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 50);
     }).then(h => listeners.push(h));
-    Keyboard.addListener('keyboardWillHide', () => setKbHeight(0)).then(h => listeners.push(h));
     return () => { listeners.forEach(h => h.remove()); };
   }, []);
 
@@ -951,7 +948,6 @@ export default function TrainerMessages() {
                 {/* Messages */}
                 <div
                   className="flex-1 overflow-y-auto px-3 py-2"
-                  style={{ paddingBottom: kbHeight ? `${kbHeight}px` : undefined }}
                 >
                   {threadLoading ? (
                     <div className="flex items-center justify-center py-16">
@@ -1025,7 +1021,7 @@ export default function TrainerMessages() {
                   style={{
                     borderTop: '1px solid var(--color-border-subtle)',
                     background: 'var(--color-bg-card)',
-                    paddingBottom: kbHeight > 0 ? '0.5rem' : 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
+                    paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
                   }}
                 >
                   <textarea

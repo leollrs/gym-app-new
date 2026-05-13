@@ -136,34 +136,50 @@ const SessionCard = ({ session, onEdit }) => {
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <div className="flex flex-wrap gap-1.5">
-                        {sortedSets
-                          .map((set) => (
-                            <div
-                              key={`${set.set_number}-${set.weight_lbs}-${set.reps}`}
-                              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold"
-                              style={
-                                set.is_pr
-                                  ? { background: 'rgba(212,175,55,0.1)', color: 'var(--color-accent)', border: '1px solid rgba(212,175,55,0.25)' }
-                                  : { background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid rgba(255,255,255,0.08)' }
-                              }
-                            >
-                              <span>{set.weight_lbs} × {set.reps}</span>
-                              {set.is_pr && <span>PR</span>}
-                              {set.rpe && (
-                                <span
-                                  className="text-[10px] font-bold rounded px-1 py-px ml-0.5"
+                      <div className="flex flex-col gap-1.5">
+                        {sortedSets.map((set) => {
+                          const drops = Array.isArray(set.drops) ? set.drops.filter(d => (parseInt(d.reps, 10) || 0) > 0) : [];
+                          return (
+                            <div key={`set-${set.set_number}`} className="flex flex-wrap items-center gap-1.5">
+                              <div
+                                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold"
+                                style={
+                                  set.is_pr
+                                    ? { background: 'rgba(212,175,55,0.1)', color: 'var(--color-accent)', border: '1px solid rgba(212,175,55,0.25)' }
+                                    : { background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid rgba(255,255,255,0.08)' }
+                                }
+                              >
+                                <span>{set.weight_lbs} × {set.reps}</span>
+                                {set.is_pr && <span>PR</span>}
+                                {set.rpe && (
+                                  <span
+                                    className="text-[10px] font-bold rounded px-1 py-px ml-0.5"
+                                    style={{
+                                      background: set.rpe <= 3 ? 'rgba(16,185,129,0.15)' : set.rpe <= 6 ? 'rgba(234,179,8,0.15)' : set.rpe <= 8 ? 'rgba(249,115,22,0.15)' : 'rgba(239,68,68,0.15)',
+                                      color: set.rpe <= 3 ? '#34D399' : set.rpe <= 6 ? '#FBBF24' : set.rpe <= 8 ? '#FB923C' : '#F87171',
+                                    }}
+                                  >
+                                    @{set.rpe}
+                                  </span>
+                                )}
+                              </div>
+                              {drops.map((d, di) => (
+                                <div
+                                  key={`drop-${set.set_number}-${di}`}
+                                  className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold"
                                   style={{
-                                    background: set.rpe <= 3 ? 'rgba(16,185,129,0.15)' : set.rpe <= 6 ? 'rgba(234,179,8,0.15)' : set.rpe <= 8 ? 'rgba(249,115,22,0.15)' : 'rgba(239,68,68,0.15)',
-                                    color: set.rpe <= 3 ? '#34D399' : set.rpe <= 6 ? '#FBBF24' : set.rpe <= 8 ? '#FB923C' : '#F87171',
+                                    background: 'rgba(212,175,55,0.06)',
+                                    color: 'var(--color-text-muted)',
+                                    border: '1px dashed rgba(212,175,55,0.30)',
                                   }}
                                 >
-                                  @{set.rpe}
-                                </span>
-                              )}
+                                  <span className="text-[9px] font-extrabold tracking-wider opacity-70">↓D{di + 1}</span>
+                                  <span>{d.weight || 0} × {d.reps}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))
-                        }
+                          );
+                        })}
                       </div>
                       {/* Show notes for sets that have them */}
                       {sortedSets.filter(s => s.notes).length > 0 && (
@@ -226,7 +242,7 @@ const WorkoutLog = ({ embedded = false }) => {
         id, name, routine_id, started_at, completed_at, duration_seconds, total_volume_lbs,
         session_exercises(
           id, exercise_id, snapshot_name, position,
-          session_sets(set_number, weight_lbs, reps, is_completed, is_pr, rpe, notes)
+          session_sets(set_number, weight_lbs, reps, is_completed, is_pr, rpe, notes, drops)
         )
       `)
       .eq('profile_id', user.id)
@@ -250,7 +266,7 @@ const WorkoutLog = ({ embedded = false }) => {
           id, name, routine_id, started_at, completed_at, duration_seconds, total_volume_lbs,
           session_exercises(
             id, exercise_id, snapshot_name, position,
-            session_sets(set_number, weight_lbs, reps, is_completed, is_pr, rpe, notes)
+            session_sets(set_number, weight_lbs, reps, is_completed, is_pr, rpe, notes, drops)
           )
         `)
         .eq('profile_id', user.id)

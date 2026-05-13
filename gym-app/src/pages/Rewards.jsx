@@ -267,7 +267,12 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
   const [signedPayload, setSignedPayload] = useState(null);
 
   useEffect(() => {
-    signQRPayload(payload).then(setSignedPayload);
+    // Unhandled rejections from signQRPayload (network/edge-function/auth)
+    // crash the Capacitor WebView. Swallow them — the QR still renders with
+    // the unsigned payload via `signedPayload || payload`.
+    signQRPayload(payload)
+      .then(setSignedPayload)
+      .catch((err) => logger.warn('signQRPayload failed (redemption)', err));
   }, [payload]);
 
   useEffect(() => {
@@ -495,7 +500,9 @@ const ChallengePrizeQRModal = ({ prize, onClose }) => {
   const [signedPayload, setSignedPayload] = useState(null);
 
   useEffect(() => {
-    signQRPayload(challengePayload).then(setSignedPayload);
+    signQRPayload(challengePayload)
+      .then(setSignedPayload)
+      .catch((err) => logger.warn('signQRPayload failed (challenge prize)', err));
   }, [challengePayload]);
 
   useEffect(() => {
@@ -647,7 +654,9 @@ const EarnedRewardQRModal = ({ reward, onClose, t, isEs }) => {
   const [signedPayload, setSignedPayload] = useState(null);
 
   useEffect(() => {
-    signQRPayload(payload).then(setSignedPayload);
+    signQRPayload(payload)
+      .then(setSignedPayload)
+      .catch((err) => logger.warn('signQRPayload failed (earned reward)', err));
   }, [payload]);
 
   useEffect(() => {

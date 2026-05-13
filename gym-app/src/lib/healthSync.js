@@ -621,15 +621,46 @@ export async function readSleepLastNight() {
   const candidates = ['sleep'];
   let samples = null;
   for (const dt of candidates) {
-    samples = await _readSamplesSafe(dt, { days: 2, limit: 200 });
+    // 7-day pull so we can surface the most recent night even when the user
+    // didn't track last night (very common with iPhone-only sleep tracking).
+    samples = await _readSamplesSafe(dt, { days: 7, limit: 500 });
+    // DEBUG: surface what the plugin returned. Remove once verified.
+    // eslint-disable-next-line no-console
+    console.log('[sleep] readSamples returned', samples?.length ?? 0, 'samples; first 3:', JSON.stringify(samples?.slice(0, 3) ?? []));
     if (samples && samples.length > 0) break;
   }
-  if (!samples || samples.length === 0) return null;
+  if (!samples || samples.length === 0) {
+    // eslint-disable-next-line no-console
+    console.log('[sleep] no samples in last 2 days');
+    return null;
+  }
 
-  // Filter to "last night" — anything overlapping the last 16h window. Apple
-  // Health typically returns one main asleep block with optional stage subs.
-  const cutoff = Date.now() - 16 * 60 * 60 * 1000;
-  let totalMs = 0;
+  // "Last night" = sleep session ending on TODAY (user's local calendar).
+  // If no block ended today, return null and let the UI surface a clear
+  // "no data for last night" state instead of silently showing a 2-day-old
+  // reading the user would misread as last night.
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const todayCutoff = todayMidnight.getTime();
+  const SESSION_WINDOW_MS = 16 * 60 * 60 * 1000;
+  let mostRecentEnd = 0;
+  for (const s of samples) {
+    const end = new Date(s.endDate || s.end || 0).getTime();
+    const stage = String(s.sleepState || s.stage || s.type || '').toLowerCase();
+    if (stage.includes('awake')) continue;
+    if (end < todayCutoff) continue;
+    if (end > mostRecentEnd) mostRecentEnd = end;
+  }
+  if (mostRecentEnd === 0) {
+    // eslint-disable-next-line no-console
+    console.log('[sleep] no sleep block ended today — returning null');
+    return null;
+  }
+  const sessionStart = mostRecentEnd - SESSION_WINDOW_MS;
+
+  let asleepMs = 0;  // sum of asleep* (and unstaged "sleep") blocks
+  let inBedMs = 0;   // Time-in-Bed (iPhone-only fallback)
+  let awakeMs = 0;
   let deepMs = 0;
   let remMs = 0;
 
@@ -637,33 +668,80 @@ export async function readSleepLastNight() {
     const start = new Date(s.startDate || s.start || 0).getTime();
     const end = new Date(s.endDate || s.end || 0).getTime();
     if (!start || !end || end <= start) continue;
-    if (end < cutoff) continue;
+    // Only count samples inside the most-recent-session window.
+    if (end < sessionStart || end > mostRecentEnd) continue;
 
     const dur = end - start;
-    const stage = String(s.stage || s.value || s.type || '').toLowerCase();
+    const stage = String(s.sleepState || s.stage || s.type || '').toLowerCase();
 
-    // Apple stage labels: 'asleep', 'asleepCore', 'asleepDeep', 'asleepREM',
-    // 'awake', 'inBed'. Health Connect stages: 'deep', 'rem', 'light'.
-    if (stage.includes('awake') || stage === 'inbed' || stage === 'in_bed') continue;
+    if (stage.includes('awake')) { awakeMs += dur; continue; }
+    if (stage === 'inbed' || stage === 'in_bed') { inBedMs += dur; continue; }
 
     if (stage.includes('deep')) deepMs += dur;
     if (stage.includes('rem')) remMs += dur;
 
-    // Only count "asleep" stages toward total. If no stage info is present,
-    // count the whole sample.
-    if (!stage || stage.includes('asleep') || stage === 'sleeping' || stage === 'sleep'
-        || stage.includes('deep') || stage.includes('rem') || stage.includes('light')
-        || stage.includes('core')) {
-      totalMs += dur;
-    }
+    asleepMs += dur;
   }
 
+  // Prefer staged asleep data (Apple Watch users). Fall back to inBed-minus-
+  // awake for iPhone-only users where only Time-in-Bed is recorded — this is
+  // what their Health app actually shows as "sleep" in that scenario.
+  const totalMs = asleepMs > 0 ? asleepMs : Math.max(0, inBedMs - awakeMs);
+  // eslint-disable-next-line no-console
+  console.log('[sleep] session end', new Date(mostRecentEnd).toISOString(), 'asleep=', Math.round(asleepMs / 60000), 'inBed=', Math.round(inBedMs / 60000), 'awake=', Math.round(awakeMs / 60000), 'total=', Math.round(totalMs / 60000), 'min');
   if (totalMs <= 0) return null;
 
   return {
     totalMinutes: Math.round(totalMs / 60000),
     deepMinutes: deepMs > 0 ? Math.round(deepMs / 60000) : null,
     remMinutes: remMs > 0 ? Math.round(remMs / 60000) : null,
+    source: Capacitor.getPlatform() === 'ios' ? 'apple_health' : 'health_connect',
+  };
+}
+
+/**
+ * Average sleep across the last N nights (default 7). Returns null when
+ * there's no usable data. Used as a fallback for the recovery score on
+ * days where last night wasn't tracked — better than a blank score.
+ * Returns { totalMinutes (avg), nightsCount, source } or null.
+ */
+export async function readSleepWeekAverage(days = 7) {
+  const candidates = ['sleep'];
+  let samples = null;
+  for (const dt of candidates) {
+    samples = await _readSamplesSafe(dt, { days, limit: 500 });
+    if (samples && samples.length > 0) break;
+  }
+  if (!samples || samples.length === 0) return null;
+
+  // Bucket samples by the LOCAL calendar date of their end. Each bucket
+  // approximates one night. We sum minutes per bucket then average buckets.
+  const byDate = new Map();
+  for (const s of samples) {
+    const end = new Date(s.endDate || s.end || 0);
+    const start = new Date(s.startDate || s.start || 0);
+    if (!end.getTime() || !start.getTime() || end <= start) continue;
+    const dateKey = `${end.getFullYear()}-${end.getMonth()}-${end.getDate()}`;
+    if (!byDate.has(dateKey)) byDate.set(dateKey, { asleepMs: 0, inBedMs: 0, awakeMs: 0 });
+    const b = byDate.get(dateKey);
+    const dur = end - start;
+    const stage = String(s.sleepState || s.stage || s.type || '').toLowerCase();
+    if (stage.includes('awake')) { b.awakeMs += dur; continue; }
+    if (stage === 'inbed' || stage === 'in_bed') { b.inBedMs += dur; continue; }
+    b.asleepMs += dur;
+  }
+
+  const totals = [];
+  for (const b of byDate.values()) {
+    const total = b.asleepMs > 0 ? b.asleepMs : Math.max(0, b.inBedMs - b.awakeMs);
+    if (total > 0) totals.push(total);
+  }
+  if (totals.length === 0) return null;
+
+  const avgMs = totals.reduce((a, b) => a + b, 0) / totals.length;
+  return {
+    totalMinutes: Math.round(avgMs / 60000),
+    nightsCount: totals.length,
     source: Capacitor.getPlatform() === 'ios' ? 'apple_health' : 'health_connect',
   };
 }
@@ -755,7 +833,7 @@ export async function readRestingHR() {
  */
 export async function getRecoveryMetrics() {
   if (!isNative()) {
-    return { sleepHours: null, sleepQuality: null, hrv: null, restingHR: null, source: null };
+    return { sleepHours: null, sleepQuality: null, sleepIsAverage: false, sleepAvgNights: 0, hrv: null, restingHR: null, source: null };
   }
 
   const [sleep, hrv, rhr] = await Promise.all([
@@ -764,13 +842,28 @@ export async function getRecoveryMetrics() {
     readRestingHR().catch(() => null),
   ]);
 
-  // Sleep quality: % of total that is deep + REM. Null if stage data missing.
+  // Fallback: when last night isn't tracked (iPhone Sleep Schedule didn't
+  // fire, etc.), use the 7-day average so the recovery score still has a
+  // meaningful sleep input. UI surfaces this with a "7d avg" label so the
+  // user knows the number isn't fresh.
+  let effectiveSleep = sleep;
+  let sleepIsAverage = false;
+  let sleepAvgNights = 0;
+  if (!sleep) {
+    const avg = await readSleepWeekAverage(7).catch(() => null);
+    if (avg) {
+      effectiveSleep = avg;
+      sleepIsAverage = true;
+      sleepAvgNights = avg.nightsCount || 0;
+    }
+  }
+
+  // Sleep quality: % of total that is deep + REM. Null if stage data missing
+  // or when we're working from the weekly average (we don't aggregate stages).
   let sleepQuality = null;
-  if (sleep && (sleep.deepMinutes != null || sleep.remMinutes != null) && sleep.totalMinutes > 0) {
-    const restorative = (sleep.deepMinutes || 0) + (sleep.remMinutes || 0);
-    // Healthy adult: ~20-25% of sleep is deep+REM combined ≈ baseline 100.
-    // Map: 25%+ → 100, 10% → 50, <5% → 20.
-    const pct = (restorative / sleep.totalMinutes) * 100;
+  if (!sleepIsAverage && effectiveSleep && (effectiveSleep.deepMinutes != null || effectiveSleep.remMinutes != null) && effectiveSleep.totalMinutes > 0) {
+    const restorative = (effectiveSleep.deepMinutes || 0) + (effectiveSleep.remMinutes || 0);
+    const pct = (restorative / effectiveSleep.totalMinutes) * 100;
     if (pct >= 25) sleepQuality = 100;
     else if (pct >= 20) sleepQuality = 90;
     else if (pct >= 15) sleepQuality = 75;
@@ -780,13 +873,15 @@ export async function getRecoveryMetrics() {
   }
 
   const platform = Capacitor.getPlatform();
-  const source = sleep?.source || (platform === 'ios' ? 'apple_health' : platform === 'android' ? 'health_connect' : null);
+  const source = effectiveSleep?.source || (platform === 'ios' ? 'apple_health' : platform === 'android' ? 'health_connect' : null);
 
   return {
-    sleepHours: sleep ? Math.round((sleep.totalMinutes / 60) * 10) / 10 : null,
+    sleepHours: effectiveSleep ? Math.round((effectiveSleep.totalMinutes / 60) * 10) / 10 : null,
     sleepQuality,
+    sleepIsAverage,
+    sleepAvgNights,
     hrv: hrv?.value ?? null,
     restingHR: rhr?.value ?? null,
-    source: (sleep || hrv || rhr) ? source : null,
+    source: (effectiveSleep || hrv || rhr) ? source : null,
   };
 }

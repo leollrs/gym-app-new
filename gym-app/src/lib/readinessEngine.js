@@ -83,7 +83,7 @@ export function computeReadiness(sessions, options = {}) {
       volume: 0,
       lastTrained: null,
       daysSince: Infinity,
-      state: 'rest',
+      state: 'fresh',
     });
   }
 
@@ -142,7 +142,9 @@ export function computeReadiness(sessions, options = {}) {
     const rate = RECOVERY_RATE[regionId] || 1.0;
 
     if (r.sets === 0) {
-      r.state = 'rest';
+      // No training data → render as 'fresh' so the body diagram looks
+      // ready-to-train rather than an empty gray slate.
+      r.state = 'fresh';
       r.recovery = 100;
       continue;
     }
@@ -220,7 +222,10 @@ export function aggregateRegions(readinessMap, regionIds) {
     daysSince = weightedDaysSince / totalSets;
   }
 
-  let state = 'rest';
+  // Untrained muscles are treated as 'fresh' too — semantically the message
+  // is the same ("you can train this"). Keeps the body diagram from looking
+  // like an apathetic gray sea before the user has logged anything.
+  let state = 'fresh';
   if (totalSets > 0) {
     if (recovery >= 80) state = 'fresh';
     else if (recovery >= 50) state = 'moderate';
@@ -393,26 +398,42 @@ function _scoreRHR(rhr, baseline) {
 }
 
 /**
- * Compute a single recovery score (0-100) from sleep + HRV + RHR metrics.
+ * Score the user's subjective soreness check-in (1-10 → 0-100).
+ * 1 = fully recovered → 100. 10 = completely smoked → 0. Linear.
+ * Returns null when no check-in available.
+ */
+function _scoreWellness(soreness) {
+  if (typeof soreness !== 'number' || !Number.isFinite(soreness)) return null;
+  const clamped = Math.max(1, Math.min(10, soreness));
+  return Math.round((10 - clamped) * (100 / 9));
+}
+
+/**
+ * Compute a single recovery score (0-100) from sleep + wellness check-in
+ * (and optionally HRV/RHR if a Watch is paired — kept available but not
+ * shown in the iPhone-only UI).
  *
- * Side effects: updates the HRV / RHR rolling baselines in localStorage.
+ * Side effects: updates the HRV / RHR rolling baselines in localStorage
+ * when those values are present.
  *
- * @param {object} metrics  output of getRecoveryMetrics()
+ * @param {object} metrics  Merged output of getRecoveryMetrics() + today's
+ *   wellness check-in. Recognized fields:
+ *     sleepHours, sleepQuality, soreness, hrv, restingHR
  * @param {object} [opts]
- * @param {boolean} [opts.persistBaseline=true]  set false in pure-test paths
+ * @param {boolean} [opts.persistBaseline=true]
  * @param {Date}   [opts.now=new Date()]
  *
  * @returns {{
  *   score: number|null,
- *   factors: { sleep: number|null, hrv: number|null, rhr: number|null },
+ *   factors: { sleep: number|null, wellness: number|null, hrv: number|null, rhr: number|null },
  *   baseline: { hrv: object, rhr: object }
- * } | null}  null when no metrics at all
+ * } | null}
  */
 export function computeRecoveryScore(metrics, opts = {}) {
   if (!metrics) return null;
   const { persistBaseline = true, now = new Date() } = opts;
 
-  const { sleepHours, sleepQuality, hrv, restingHR } = metrics;
+  const { sleepHours, sleepQuality, soreness, hrv, restingHR } = metrics;
 
   // Update baselines first so their averages reflect today's reading.
   let hrvBaseline = _readBaseline(HRV_BASELINE_KEY);
@@ -423,40 +444,70 @@ export function computeRecoveryScore(metrics, opts = {}) {
   }
 
   const sleepScore = _scoreSleep(sleepHours, sleepQuality);
+  const wellnessScore = _scoreWellness(soreness);
   const hrvScore = _scoreHRV(hrv, hrvBaseline);
-  // Only fall back to RHR when HRV is unavailable (per spec).
   const rhrScore = hrvScore === null ? _scoreRHR(restingHR, rhrBaseline) : null;
 
-  if (sleepScore === null && hrvScore === null && rhrScore === null) {
+  // "Autonomic" replacement signal — prefer the user's subjective check-in
+  // (works for every user, no hardware needed), fall back to HRV then RHR.
+  const autonomic = wellnessScore !== null
+    ? wellnessScore
+    : (hrvScore !== null ? hrvScore : rhrScore);
+
+  if (sleepScore === null && autonomic === null) {
     return {
       score: null,
-      factors: { sleep: null, hrv: hrvScore, rhr: rhrScore },
+      factors: { sleep: null, wellness: wellnessScore, hrv: hrvScore, rhr: rhrScore },
       baseline: { hrv: hrvBaseline, rhr: rhrBaseline },
     };
   }
 
-  // Composite: 40% sleep + 60% (hrv || rhr || neutral 70 default).
-  // If only sleep is available (no autonomic signal yet), use sleep alone.
+  // Composite: 40% sleep + 60% autonomic (wellness || hrv || rhr).
   let composite;
-  const autonomic = hrvScore !== null ? hrvScore : rhrScore;
   if (sleepScore !== null && autonomic !== null) {
     composite = sleepScore * 0.4 + autonomic * 0.6;
   } else if (sleepScore !== null) {
     composite = sleepScore;
-  } else if (autonomic !== null) {
-    // Sleep missing but autonomic present — use autonomic with a neutral 70
-    // weighted against it so a great HRV night doesn't read as 100 when we
-    // know nothing about sleep.
-    composite = 70 * 0.4 + autonomic * 0.6;
   } else {
-    composite = null;
+    // Sleep missing but autonomic present — blend with a neutral 70 so a
+    // perfect wellness check doesn't read as 100 when sleep is unknown.
+    composite = 70 * 0.4 + autonomic * 0.6;
   }
 
   return {
     score: composite === null ? null : Math.round(Math.max(0, Math.min(100, composite))),
-    factors: { sleep: sleepScore, hrv: hrvScore, rhr: rhrScore },
+    factors: { sleep: sleepScore, wellness: wellnessScore, hrv: hrvScore, rhr: rhrScore },
     baseline: { hrv: hrvBaseline, rhr: rhrBaseline },
   };
+}
+
+/**
+ * Single source of truth for the "Listo" number shown on the Dashboard
+ * chip and inside the Recovery modal. Wraps trainingLoad + recovery so
+ * both surfaces compute identically — drifts here used to manifest as
+ * "dashboard says 79, modal says 73" UX bugs.
+ *
+ * @param {object} args
+ * @param {Array} args.sessions       — recent sessions with sets (14-day pull)
+ * @param {object|null} args.recoveryMetrics — output of getRecoveryMetrics()
+ *                                              (sleep/HRV/RHR), or cached copy
+ * @param {number|null} args.soreness — today's wellness check-in soreness (1-10)
+ * @param {object} [args.options]
+ * @param {boolean} [args.options.persistBaseline=false]
+ * @returns {number} 0-100 readiness score.
+ */
+export function computeDashboardReadiness({ sessions, recoveryMetrics, soreness, options = {} }) {
+  const trainingLoad = overallReadiness(computeReadiness(sessions || [], { windowDays: 7 }));
+  const hasMetrics = !!(recoveryMetrics && Object.keys(recoveryMetrics).length > 0);
+  const hasSoreness = typeof soreness === 'number' && Number.isFinite(soreness);
+  if (!hasMetrics && !hasSoreness) {
+    return trainingLoad;
+  }
+  const recovery = computeRecoveryScore(
+    { ...(recoveryMetrics || {}), soreness: hasSoreness ? soreness : null },
+    { persistBaseline: false, ...options },
+  );
+  return blendedReadiness(trainingLoad, recovery);
 }
 
 /**

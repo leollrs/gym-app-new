@@ -217,8 +217,10 @@ function parseRewards(challenge) {
 }
 
 // ── Podium (matches Leaderboard page) ──────────────────────
+// Renders with as few as 1 entry — empty positions show "—" placeholder
+// pedestals so the podium silhouette is preserved for small-gym cases.
 const ChallengePodium = ({ entries, unit }) => {
-  if (!entries || entries.length < 3) return null;
+  if (!entries || entries.length < 1) return null;
   const top3 = entries.slice(0, 3);
   const podiumOrder = [top3[1], top3[0], top3[2]]; // 2nd | 1st | 3rd
   const PODIUM_HEIGHTS = [60, 80, 45];
@@ -250,6 +252,50 @@ const ChallengePodium = ({ entries, unit }) => {
           const rank = RANKS_ORDERED[i];
           const avatarSize = AVATAR_SIZES[i];
           const isFirst = rank === 1;
+          // Placeholder for missing rank — keep the podium pedestal visible.
+          if (!entry) {
+            return (
+              <motion.div
+                key={`empty-${rank}`}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 0.45, y: 0 }}
+                transition={{ duration: 0.28, delay: ANIM_DELAY[i], ease: 'easeOut' }}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+              >
+                <span style={{ fontSize: isFirst ? 18 : 14, lineHeight: 1, marginBottom: 2, opacity: 0.55 }}>{MEDALS_ORDERED[i]}</span>
+                <div style={{
+                  width: avatarSize, height: avatarSize, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, marginBottom: 6,
+                  background: 'transparent',
+                  border: '2px dashed var(--color-border-strong, rgba(120,120,120,0.5))',
+                  color: 'var(--color-text-muted)',
+                  fontSize: 18, fontWeight: 800,
+                }}>—</div>
+                <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--color-text-muted)' }}>—</p>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', marginTop: 2 }}>&nbsp;</p>
+                <motion.div
+                  initial={{ height: 0 }}
+                  animate={{ height: PODIUM_HEIGHTS[i] }}
+                  transition={{ duration: 0.32, delay: ANIM_DELAY[i] + 0.05, ease: 'easeOut' }}
+                  style={{
+                    width: '100%', marginTop: 8,
+                    background: PODIUM_BG[i],
+                    borderRadius: '8px 8px 0 0',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    opacity: 0.55,
+                  }}
+                >
+                  <span style={{
+                    fontFamily: DISPLAY_FONT,
+                    fontSize: 22, fontWeight: 800,
+                    color: isFirst ? '#000' : 'var(--color-text-primary)',
+                    opacity: 0.5,
+                  }}>{rank}</span>
+                </motion.div>
+              </motion.div>
+            );
+          }
           return (
             <motion.div
               key={entry.id}
@@ -422,12 +468,13 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
         </p>
       ) : (
         <div className="space-y-3">
-          {/* Podium for ended challenges with ≥3 entries */}
-          {status === 'ended' && entries.length >= 3 && (
+          {/* Podium for ended challenges — renders with even 1 entry; the
+              missing 2nd/3rd slots show placeholder pedestals. */}
+          {status === 'ended' && entries.length >= 1 && (
             <ChallengePodium entries={entries} unit={unit} />
           )}
-          {(status === 'ended' && entries.length >= 3 ? entries.slice(3, 10) : entries.slice(0, 10)).map((e, idx) => {
-            const i = status === 'ended' && entries.length >= 3 ? idx + 3 : idx;
+          {(status === 'ended' && entries.length >= 1 ? entries.slice(3, 10) : entries.slice(0, 10)).map((e, idx) => {
+            const i = status === 'ended' && entries.length >= 1 ? idx + 3 : idx;
             const isMe = e.id === myId;
             const top = entries[0]?.score || 1;
             const barPct = Math.max((e.score / top) * 100, 2);

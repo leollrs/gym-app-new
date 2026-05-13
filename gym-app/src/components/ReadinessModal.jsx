@@ -20,16 +20,19 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { X, Flame, Zap, Leaf, Moon, AlertTriangle, ChevronRight, ChevronDown, Heart, Activity, Dumbbell } from 'lucide-react';
+import { X, Flame, Zap, Leaf, Moon, AlertTriangle, ChevronRight, ChevronDown, Heart, Activity, Dumbbell, Plus, Sparkles } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRecentSessionsWithSets } from '../hooks/useSupabaseQuery';
+import { supabase } from '../lib/supabase';
+import WellnessCheckinModal from './WellnessCheckinModal';
+import { FRONT_POLYGONS, BACK_POLYGONS, FRONT_DIM, BACK_DIM } from '../lib/musclePolygons';
 import {
   computeReadiness,
   overallReadiness,
   aggregateRegions,
   bucketCounts,
   computeRecoveryScore,
-  blendedReadiness,
+  computeDashboardReadiness,
   loadCachedRecoveryMetrics,
   saveCachedRecoveryMetrics,
 } from '../lib/readinessEngine';
@@ -39,14 +42,16 @@ import {
   requestPermissions as requestHealthPermissions,
 } from '../lib/healthSync';
 import { useToast } from '../contexts/ToastContext';
+import { rankExercisesForRegions } from '../lib/untrainedSuggestions';
+import AppendToRoutineModal from './AppendToRoutineModal';
 
 const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
 const FONT_BODY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
 
 const FRONT_PHOTO = '/readiness/male_trainer_front.jpeg';
 const BACK_PHOTO = '/readiness/male_trainer_back.jpeg';
-const FRONT_VB = '0 0 823 1024';
-const BACK_VB = '0 0 791 992';
+const FRONT_VB = `0 0 ${FRONT_DIM.w} ${FRONT_DIM.h}`;
+const BACK_VB = `0 0 ${BACK_DIM.w} ${BACK_DIM.h}`;
 
 // State colors — softer than the prototype's neon, tuned for warm-paper bg.
 const STATE_HEX = {
@@ -63,24 +68,42 @@ const STATE_LABEL = {
 };
 
 // ── Visual buckets ──────────────────────────────────────────────────────────
-// Each marker on the body represents a *bucket* of one or more anatomical
-// regions. Aggregating gives users a meaningful "Chest" stat instead of three
-// separate upper/mid/lower-chest stats.
+// Each polygon on the body maps to a bucket. The bucket's `regionIds` are the
+// engine-side anatomical region keys (see readinessEngine.js) so aggregation
+// against logged exercises stays accurate.
 const READINESS_BUCKETS = [
-  { id: 'front-deltoids', label: 'Front Delts',  regionIds: ['front_delts', 'side_delts'] },
-  { id: 'chest',          label: 'Chest',         regionIds: ['upper_chest', 'mid_chest', 'lower_chest', 'serratus'] },
-  { id: 'biceps',         label: 'Biceps',        regionIds: ['biceps', 'brachialis'] },
-  { id: 'abs',            label: 'Abs',           regionIds: ['upper_abs', 'mid_abs', 'lower_abs', 'obliques', 'abs'] },
-  { id: 'forearm',        label: 'Forearms',      regionIds: ['forearms'] },
-  { id: 'quads',          label: 'Quads',         regionIds: ['quads', 'hip_flexors'] },
-  { id: 'traps',          label: 'Traps',         regionIds: ['traps'] },
-  { id: 'rear-delts',     label: 'Rear Delts',    regionIds: ['rear_delts'] },
-  { id: 'upper-back',     label: 'Upper Back',    regionIds: ['upper_back', 'mid_back', 'lats'] },
-  { id: 'triceps',        label: 'Triceps',       regionIds: ['triceps'] },
-  { id: 'lower-back',     label: 'Lower Back',    regionIds: ['lower_back'] },
-  { id: 'glutes',         label: 'Glutes',        regionIds: ['glutes', 'glute_med'] },
-  { id: 'hamstrings',     label: 'Hamstrings',    regionIds: ['hamstrings'] },
-  { id: 'calves',         label: 'Calves',        regionIds: ['calves', 'soleus', 'tibialis'] },
+  // ── Front ──────────────────────────────────────────────────────────────
+  { id: 'chest-upper',       label: 'Upper Chest',         regionIds: ['upper_chest'] },
+  { id: 'chest-mid',         label: 'Mid Chest',           regionIds: ['mid_chest'] },
+  { id: 'chest-lower',       label: 'Lower Chest',         regionIds: ['lower_chest'] },
+  { id: 'serratus',          label: 'Serratus',            regionIds: ['serratus'] },
+  { id: 'front-delts',       label: 'Front Delts',         regionIds: ['front_delts'] },
+  { id: 'side-delts',        label: 'Side Delts',          regionIds: ['side_delts'] },
+  { id: 'biceps',            label: 'Biceps',              regionIds: ['biceps'] },
+  { id: 'brachialis',        label: 'Brachialis',          regionIds: ['brachialis'] },
+  { id: 'forearm-flex',      label: 'Forearm Flexors',     regionIds: ['forearms'] },
+  { id: 'forearm-ext',       label: 'Forearm Extensors',   regionIds: ['forearms'] },
+  { id: 'abs',               label: 'Abs',                 regionIds: ['upper_abs', 'mid_abs', 'lower_abs', 'abs'] },
+  { id: 'obliques',          label: 'Obliques',            regionIds: ['obliques'] },
+  { id: 'quads',             label: 'Quads',               regionIds: ['quads', 'hip_flexors'] },
+  { id: 'adductors',         label: 'Inner Thigh',         regionIds: ['adductors'] },
+  { id: 'tibialis',          label: 'Shin',                regionIds: ['tibialis'] },
+  { id: 'calves-front',      label: 'Calves (front)',      regionIds: ['calves', 'soleus'] },
+
+  // ── Back ───────────────────────────────────────────────────────────────
+  { id: 'traps',             label: 'Traps',               regionIds: ['traps'] },
+  { id: 'upper-back',        label: 'Upper Back',          regionIds: ['upper_back', 'mid_back'] },
+  { id: 'lats',              label: 'Lats',                regionIds: ['lats'] },
+  { id: 'rear-delts',        label: 'Rear Delts',          regionIds: ['rear_delts'] },
+  { id: 'triceps',           label: 'Triceps',             regionIds: ['triceps'] },
+  { id: 'lower-back',        label: 'Lower Back',          regionIds: ['lower_back'] },
+  { id: 'side-waist',        label: 'Side Waist',          regionIds: ['obliques', 'lower_back'] },
+  { id: 'glutes',            label: 'Glutes',              regionIds: ['glutes'] },
+  { id: 'abductors',         label: 'Abductors',           regionIds: ['abductors', 'glute_med'] },
+  { id: 'hamstrings',        label: 'Hamstrings',          regionIds: ['hamstrings'] },
+  { id: 'calves',            label: 'Calves',              regionIds: ['calves', 'soleus'] },
+  { id: 'forearm-back-ext',  label: 'Forearm Ext. (back)', regionIds: ['forearms'] },
+  { id: 'forearm-back-flex', label: 'Forearm Flex. (back)',regionIds: ['forearms'] },
 ];
 const BUCKET_BY_ID = new Map(READINESS_BUCKETS.map(b => [b.id, b]));
 
@@ -92,34 +115,9 @@ function bucketLabel(bucket, t) {
   return t(`readinessModal.buckets.${bucket.id}`, { defaultValue: bucket.label });
 }
 
-// Marker positions in the photo's native pixel coordinate space.
-const FRONT_MARKERS = [
-  { id: 'front-deltoids', cx: 301, cy: 235, r: 22 },
-  { id: 'chest',          cx: 459, cy: 252, r: 28 },
-  { id: 'biceps',         cx: 535, cy: 314, r: 20 },
-  { id: 'abs',            cx: 409, cy: 358, r: 24 },
-  { id: 'forearm',        cx: 269, cy: 422, r: 18 },
-  { id: 'quads',          cx: 336, cy: 621, r: 24 },
-];
-// Back was tuned for 815×1022 — rescale to this photo's native 791×992.
-const _RAW_BACK = [
-  { id: 'traps',      cx: 417, cy: 178, r: 22 },
-  { id: 'rear-delts', cx: 530, cy: 238, r: 22 },
-  { id: 'upper-back', cx: 414, cy: 282, r: 28 },
-  { id: 'triceps',    cx: 287, cy: 311, r: 20 },
-  { id: 'lower-back', cx: 414, cy: 377, r: 22 },
-  { id: 'glutes',     cx: 414, cy: 502, r: 28 },
-  { id: 'hamstrings', cx: 339, cy: 642, r: 22 },
-  { id: 'calves',     cx: 495, cy: 785, r: 20 },
-];
-const _BACK_SX = 791 / 815;
-const _BACK_SY = 992 / 1022;
-const BACK_MARKERS = _RAW_BACK.map(m => ({
-  id: m.id,
-  cx: Math.round(m.cx * _BACK_SX),
-  cy: Math.round(m.cy * _BACK_SY),
-  r: Math.round(m.r * _BACK_SX),
-}));
+// Marker geometry is now sourced from src/data/muscleRegions.json — user-
+// traced polygons grouped into the 14 visual buckets above. The two
+// constants below stay for the polygon-side render path.
 
 // ── Swipe gesture helpers ───────────────────────────────────────────────────
 
@@ -395,9 +393,9 @@ function FilterChip({ icon: Icon, count, label, color, active, onClick }) {
 function Figure({ view, setView, selected, onSelect, readiness, filterState, t }) {
   const isFront = view === 'front';
   const photo = isFront ? FRONT_PHOTO : BACK_PHOTO;
-  const markers = isFront ? FRONT_MARKERS : BACK_MARKERS;
+  const polygons = isFront ? FRONT_POLYGONS : BACK_POLYGONS;
   const vb = isFront ? FRONT_VB : BACK_VB;
-  const aspect = isFront ? '823 / 1024' : '791 / 992';
+  const aspect = isFront ? `${FRONT_DIM.w} / ${FRONT_DIM.h}` : `${BACK_DIM.w} / ${BACK_DIM.h}`;
 
   // Track flip direction so we can run a directional slide animation.
   const [flipDir, setFlipDir] = useState(null); // 'left' | 'right' | null
@@ -437,7 +435,7 @@ function Figure({ view, setView, selected, onSelect, readiness, filterState, t }
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: 280,
+          maxWidth: 420,
           margin: '0 auto',
           borderRadius: 22,
           background: 'var(--color-surface-hover, rgba(15,20,25,0.04))',
@@ -482,69 +480,35 @@ function Figure({ view, setView, selected, onSelect, readiness, filterState, t }
             preserveAspectRatio="xMidYMid meet"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
           >
-            <defs>
-              {Object.entries(STATE_HEX).map(([k, v]) => (
-                <radialGradient key={k} id={`rd-${k}`}>
-                  <stop offset="0%" stopColor={v} stopOpacity="0.95" />
-                  <stop offset="60%" stopColor={v} stopOpacity="0.78" />
-                  <stop offset="100%" stopColor={v} stopOpacity="0.55" />
-                </radialGradient>
-              ))}
-            </defs>
-            {markers.map((m) => {
-              const bucket = BUCKET_BY_ID.get(m.id);
+            {polygons.map((poly) => {
+              const bucket = BUCKET_BY_ID.get(poly.bucketId);
               const agg = bucket
                 ? aggregateRegions(readiness, bucket.regionIds)
-                : { state: 'rest' };
+                : { state: 'fresh' };
               const c = STATE_HEX[agg.state];
-              const isSel = selected === m.id;
+              const isSel = selected === poly.bucketId;
               const isHot = agg.state === 'fatigued';
               const dimmed = filterState && agg.state !== filterState;
 
               return (
-                <g
-                  key={m.id}
-                  onClick={() => onSelect(m.id)}
+                <polygon
+                  key={poly.id}
+                  points={poly.points}
+                  onClick={() => onSelect(poly.bucketId)}
+                  fill={c}
+                  fillOpacity={dimmed ? 0.08 : isSel ? 0.85 : 0.55}
+                  stroke={isSel ? '#3B82F6' : 'rgba(0,0,0,0.7)'}
+                  strokeWidth={isSel ? 3 : 1.4}
+                  strokeLinejoin="round"
                   style={{
                     cursor: 'pointer',
-                    opacity: dimmed ? 0.18 : 1,
-                    transition: 'opacity 200ms',
+                    transition: 'fill-opacity 200ms, stroke 200ms, stroke-width 200ms',
+                    animation: (isHot && !dimmed)
+                      ? 'rd-hot 2.4s ease-in-out infinite'
+                      : undefined,
+                    filter: isSel ? 'drop-shadow(0 0 6px rgba(59,130,246,0.65))' : undefined,
                   }}
-                >
-                  <circle
-                    cx={m.cx}
-                    cy={m.cy}
-                    r={m.r + 12}
-                    fill={c}
-                    opacity={isSel ? 0.28 : 0.14}
-                  >
-                    {isHot && !dimmed && (
-                      <animate
-                        attributeName="r"
-                        values={`${m.r + 8};${m.r + 18};${m.r + 8}`}
-                        dur="2.4s"
-                        repeatCount="indefinite"
-                      />
-                    )}
-                    {isHot && !dimmed && (
-                      <animate
-                        attributeName="opacity"
-                        values="0.28;0.06;0.28"
-                        dur="2.4s"
-                        repeatCount="indefinite"
-                      />
-                    )}
-                  </circle>
-                  <circle cx={m.cx} cy={m.cy} r={m.r} fill={`url(#rd-${agg.state})`} />
-                  <circle
-                    cx={m.cx}
-                    cy={m.cy}
-                    r={m.r}
-                    fill="none"
-                    stroke={isSel ? 'var(--color-text-primary)' : 'rgba(255,255,255,0.95)'}
-                    strokeWidth={isSel ? 3 : 2}
-                  />
-                </g>
+                />
               );
             })}
           </svg>
@@ -613,11 +577,12 @@ function RecoveryRing({ pct, color }) {
 }
 
 function SubBar({ sub, color }) {
-  // Estimate a "max sets" target from group: large=14, medium=10, small=8.
-  // Could be replaced with goal-based weekly targets later.
+  // % of this week's weekly-volume target hit for this region. The target
+  // (sub.targetSets) is "weighted sets" — exercise's contribution × set
+  // count — so the percentage cleanly answers "how trained is this muscle
+  // relative to a healthy week" without exposing the math.
   const max = sub.targetSets || 12;
-  const setsRounded = Math.round(sub.sets * 10) / 10;
-  const pct = max > 0 ? Math.min(100, (sub.sets / max) * 100) : 0;
+  const pct = max > 0 ? Math.min(100, Math.round((sub.sets / max) * 100)) : 0;
   return (
     <div style={{ marginBottom: 12 }}>
       <div
@@ -642,17 +607,14 @@ function SubBar({ sub, color }) {
         <div
           style={{
             fontFamily: FONT_BODY,
-            fontSize: 11,
-            fontWeight: 700,
-            color: 'var(--color-text-muted)',
+            fontSize: 13,
+            fontWeight: 800,
+            color: 'var(--color-text-primary)',
             fontVariantNumeric: 'tabular-nums',
             letterSpacing: 0.2,
           }}
         >
-          <span style={{ color: 'var(--color-text-primary)', fontWeight: 800 }}>
-            {setsRounded}
-          </span>
-          <span> / {max} sets</span>
+          {pct}%
         </div>
       </div>
       <div
@@ -679,9 +641,14 @@ function SubBar({ sub, color }) {
   );
 }
 
-function DetailSheet({ bucketId, readiness, onClose, regionLabels, t }) {
-  // Hooks must be called unconditionally — bail with null after they run.
-  const drag = useDragToDismiss({ onDismiss: onClose, threshold: 80 });
+function DetailSheet({ bucketId, readiness, onClose, regionLabels, t, i18n, onAppend }) {
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const suggestions = useMemo(
+    () => bucketId ? rankExercisesForRegions(BUCKET_BY_ID.get(bucketId)?.regionIds || [], { topN: 6 }) : [],
+    [bucketId]
+  );
   if (!bucketId) return null;
   const bucket = BUCKET_BY_ID.get(bucketId);
   if (!bucket) return null;
@@ -707,54 +674,20 @@ function DetailSheet({ bucketId, readiness, onClose, regionLabels, t }) {
   return (
     <div
       style={{
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 30,
-        maxHeight: '60%',
+        margin: '4px 22px 14px',
         background: 'var(--color-bg-card, #FAFAF7)',
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        borderTop: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
-        boxShadow: '0 -12px 44px rgba(15,20,25,0.18)',
-        animation: drag.isDragging || drag.translateY > 0
-          ? undefined
-          : 'rd-slideUp 280ms cubic-bezier(0.2,0.8,0.2,1)',
-        transform: `translateY(${drag.translateY}px)`,
-        transition: drag.isDragging
-          ? undefined
-          : 'transform 200ms cubic-bezier(0.2,0.8,0.2,1)',
+        borderRadius: 18,
+        border: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
+        boxShadow: '0 4px 18px rgba(15,20,25,0.06)',
+        animation: 'rd-zoomIn 220ms cubic-bezier(0.2,0.8,0.2,1)',
         display: 'flex',
         flexDirection: 'column',
-        willChange: 'transform',
+        overflow: 'hidden',
       }}
     >
-      {/* Grip — drag down to dismiss the detail sheet */}
-      <div
-        {...drag.bind}
-        style={{
-          ...drag.bind.style,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: 22,
-          cursor: 'grab',
-        }}
-      >
-        <div
-          style={{
-            width: 38,
-            height: 4,
-            borderRadius: 2,
-            background: 'var(--color-border-subtle, rgba(15,20,25,0.16))',
-          }}
-        />
-      </div>
-
       <div
         style={{
-          padding: '8px 22px 14px',
+          padding: '14px 18px 10px',
           display: 'flex',
           alignItems: 'flex-start',
           gap: 14,
@@ -867,6 +800,111 @@ function DetailSheet({ bucketId, readiness, onClose, regionLabels, t }) {
             color={color}
           />
         ))}
+
+        {suggestions.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <button
+              type="button"
+              onClick={() => setShowSuggestions((v) => !v)}
+              aria-expanded={showSuggestions}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                borderRadius: 12,
+                background: 'var(--color-surface-hover, rgba(15,20,25,0.04))',
+                border: '1px solid var(--color-border-subtle)',
+                cursor: 'pointer',
+              }}
+            >
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontFamily: FONT_BODY,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: 1.2,
+                  color: 'var(--color-text-primary)',
+                  textTransform: 'uppercase',
+                }}
+              >
+                <Sparkles size={12} style={{ color: STATE_HEX.fresh }} />
+                {t ? t('readinessModal.suggestExercises', { defaultValue: 'Exercises for this muscle' }) : 'Exercises for this muscle'}
+              </span>
+              <ChevronDown
+                size={14}
+                style={{
+                  color: 'var(--color-text-muted)',
+                  transition: 'transform 180ms',
+                  transform: showSuggestions ? 'rotate(180deg)' : 'rotate(0)',
+                }}
+              />
+            </button>
+
+            {showSuggestions && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                {suggestions.map((ex) => {
+                  const label = i18n?.language === 'es' && ex.name_es ? ex.name_es : ex.name;
+                  return (
+                    <button
+                      key={ex.id}
+                      type="button"
+                      onClick={() => onAppend?.(ex)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        padding: '8px 10px',
+                        borderRadius: 10,
+                        background: 'var(--color-bg-card)',
+                        border: '1px solid var(--color-border-subtle)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                      aria-label={t ? t('readinessModal.addToRoutine', { defaultValue: 'Add to routine' }) : 'Add to routine'}
+                    >
+                      <span
+                        style={{
+                          fontFamily: FONT_BODY,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: 'var(--color-text-primary)',
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {label}
+                      </span>
+                      <span
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 999,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: `color-mix(in srgb, ${STATE_HEX.fresh} 18%, transparent)`,
+                          color: STATE_HEX.fresh,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Plus size={12} strokeWidth={2.6} />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1046,15 +1084,9 @@ function HowCalculated({ t }) {
           </p>
           <p style={{ margin: '0 0 8px' }}>
             <strong style={{ color: 'var(--color-text-primary)' }}>
-              {t('readinessModal.hrv', 'HRV')}.{' '}
+              {t('readinessModal.wellness', 'Wellness')}.{' '}
             </strong>
-            {t('readinessModal.explainHRV')}
-          </p>
-          <p style={{ margin: '0 0 8px' }}>
-            <strong style={{ color: 'var(--color-text-primary)' }}>
-              {t('readinessModal.restingHR', 'Recovery HR')}.{' '}
-            </strong>
-            {t('readinessModal.explainRHR')}
+            {t('readinessModal.explainWellness')}
           </p>
           <p style={{ margin: '0 0 8px' }}>
             <strong style={{ color: 'var(--color-text-primary)' }}>
@@ -1277,6 +1309,10 @@ export default function ReadinessModal({ open, onClose }) {
   const [healthAvailable, setHealthAvailable] = useState(true); // assume true until proven otherwise
   const [healthDenied, setHealthDenied] = useState(false);
   const [deloadDismissed, setDeloadDismissed] = useState(false);
+  // Today's subjective soreness check-in (1-10). Independent from the health
+  // bridge — works for every user including those without an Apple Watch.
+  const [todayWellness, setTodayWellness] = useState(null);
+  const [showWellnessCheckin, setShowWellnessCheckin] = useState(false);
 
   // Region-id → translated label lookup for breakdown display.
   // English defaults match the prior inline list so missing es keys still
@@ -1308,18 +1344,27 @@ export default function ReadinessModal({ open, onClose }) {
   );
   const trainingLoadScore = useMemo(() => overallReadiness(readiness), [readiness]);
 
-  // Recovery score derived from health metrics (null when unavailable). The
-  // call also updates the rolling baselines in localStorage as a side effect.
+  // Recovery score = sleep + subjective soreness (+ HRV/RHR if a Watch is
+  // paired, but those aren't surfaced in the UI). The wellness check-in is
+  // the primary "autonomic" signal — works for every user.
   const recovery = useMemo(
-    () => computeRecoveryScore(recoveryMetrics),
-    [recoveryMetrics]
+    () => computeRecoveryScore({
+      ...(recoveryMetrics || {}),
+      soreness: typeof todayWellness?.soreness === 'number' ? todayWellness.soreness : null,
+    }),
+    [recoveryMetrics, todayWellness]
   );
 
-  // Final composite shown in the header chip. Falls back to training-load
-  // alone when no recovery signal is available.
+  // Final composite shown in the header chip. Routed through the shared
+  // computeDashboardReadiness so the modal's number and the dashboard
+  // chip can't disagree on the same inputs.
   const score = useMemo(
-    () => blendedReadiness(trainingLoadScore, recovery),
-    [trainingLoadScore, recovery]
+    () => computeDashboardReadiness({
+      sessions: sessions || [],
+      recoveryMetrics,
+      soreness: typeof todayWellness?.soreness === 'number' ? todayWellness.soreness : null,
+    }),
+    [sessions, recoveryMetrics, todayWellness]
   );
   const counts = useMemo(
     () => bucketCounts(readiness, READINESS_BUCKETS),
@@ -1341,6 +1386,11 @@ export default function ReadinessModal({ open, onClose }) {
     return worst;
   }, [readiness]);
 
+  // When the user taps an exercise inside the per-muscle suggestion dropdown
+  // (rendered inside DetailSheet, scoped to the selected bucket's regions),
+  // we open the AppendToRoutineModal so they can pick a destination routine.
+  const [suggestionForAppend, setSuggestionForAppend] = useState(null);
+
   // Reset when reopened
   useEffect(() => {
     if (open) {
@@ -1350,6 +1400,54 @@ export default function ReadinessModal({ open, onClose }) {
       setDeloadDismissed(false);
     }
   }, [open]);
+
+  // Fetch today's wellness check-in whenever the modal opens. One row per
+  // user per local calendar date, primary-keyed by (profile_id, checkin_date).
+  // Falls back to localStorage if the DB read fails or returns nothing — the
+  // WellnessCheckinModal mirrors saves to localStorage so offline check-ins
+  // still appear here and stop the auto-prompt loop.
+  useEffect(() => {
+    if (!open || !userId) return;
+    let cancelled = false;
+    const d = new Date();
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    // Hydrate from localStorage immediately so the card paints with the
+    // local value even before the DB roundtrip.
+    try {
+      const raw = localStorage.getItem('tugympr_wellness_last_checkin');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.date === dateKey && typeof parsed.soreness === 'number') {
+          setTodayWellness({ soreness: parsed.soreness, checkin_date: dateKey });
+        }
+      }
+    } catch {}
+    (async () => {
+      const { data } = await supabase
+        .from('wellness_checkins')
+        .select('soreness, checkin_date, notes')
+        .eq('profile_id', userId)
+        .eq('checkin_date', dateKey)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data) {
+        setTodayWellness(data);
+        // Mirror DB value into localStorage so the Dashboard hero card —
+        // which only reads localStorage — uses the same soreness value
+        // we just used to compute the modal's score. Without this the
+        // two surfaces drift whenever the check-in was done on another
+        // device or after localStorage was cleared.
+        try {
+          localStorage.setItem('tugympr_wellness_last_checkin', JSON.stringify({
+            date: dateKey,
+            soreness: data.soreness,
+            notes: data.notes ?? null,
+          }));
+        } catch { /* ignore quota / disabled storage */ }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, userId]);
 
   // Fetch recovery metrics on open. Uses 4h cache to avoid hammering the
   // health bridge; refreshes when stale. Sets `healthAvailable` based on the
@@ -1369,9 +1467,17 @@ export default function ReadinessModal({ open, onClose }) {
           return;
         }
         const cached = loadCachedRecoveryMetrics();
-        if (cached) {
+        // Only short-circuit on a cache that has at least one real reading.
+        // An "all-null" cache means the previous fetch was made before the
+        // user granted Health — we must refetch, otherwise they're stuck
+        // with a blank UI for the full TTL even after granting.
+        const cacheHasData = cached && (
+          cached.sleepHours != null
+          || cached.hrv != null
+          || cached.restingHR != null
+        );
+        if (cacheHasData) {
           setRecoveryMetrics(cached);
-          // If the cache is fresh (<4h), skip the live read.
           return;
         }
         const fresh = await getRecoveryMetrics();
@@ -1545,6 +1651,14 @@ export default function ReadinessModal({ open, onClose }) {
           from { transform: translateX(-40px); opacity: 0; }
           to   { transform: translateX(0);     opacity: 1; }
         }
+        @keyframes rd-hot {
+          0%, 100% { fill-opacity: 0.55; }
+          50%      { fill-opacity: 0.85; }
+        }
+        @keyframes rd-zoomIn {
+          from { transform: scale(0.96) translateY(-4px); opacity: 0; }
+          to   { transform: scale(1) translateY(0);       opacity: 1; }
+        }
       `}</style>
       <div
         onClick={(e) => e.stopPropagation()}
@@ -1605,7 +1719,8 @@ export default function ReadinessModal({ open, onClose }) {
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: 'space-between',
-            padding: '14px 22px 0',
+            padding: '14px 22px 14px',
+            borderBottom: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
           }}
         >
           <div>
@@ -1698,8 +1813,7 @@ export default function ReadinessModal({ open, onClose }) {
           style={{
             flex: 1,
             overflowY: 'auto',
-            paddingBottom: selected ? '60vh' : 24,
-            transition: 'padding 280ms',
+            paddingBottom: 24,
           }}
         >
           {/* Coach line */}
@@ -1738,6 +1852,21 @@ export default function ReadinessModal({ open, onClose }) {
               t={t}
             />
           </div>
+
+          {/* Inline detail card for the selected muscle — sits directly
+              below the figure so the tapped polygon and its breakdown are
+              visible at the same time. */}
+          {selected && (
+            <DetailSheet
+              bucketId={selected}
+              readiness={readiness}
+              onClose={() => setSelected(null)}
+              regionLabels={regionLabels}
+              t={t}
+              i18n={i18n}
+              onAppend={(ex) => setSuggestionForAppend(ex)}
+            />
+          )}
 
           {/* Filter chips — clickable */}
           <div
@@ -1895,33 +2024,41 @@ export default function ReadinessModal({ open, onClose }) {
                   score={recovery?.factors?.sleep ?? null}
                   sublabel={
                     typeof recoveryMetrics?.sleepHours === 'number'
-                      ? `${recoveryMetrics.sleepHours.toFixed(1)}${t('readinessModal.hours', 'h')}`
-                      : '–'
+                      ? recoveryMetrics?.sleepIsAverage
+                        ? `${recoveryMetrics.sleepHours.toFixed(1)}${t('readinessModal.hours', 'h')} · ${t('readinessModal.sleepAvgLabel', '7d avg')}`
+                        : `${recoveryMetrics.sleepHours.toFixed(1)}${t('readinessModal.hours', 'h')}`
+                      : t('readinessModal.noSleepLastNight', 'No data last night')
                   }
                   delay={0}
                 />
-                {/* HRV (or RHR fallback) */}
-                <FactorCard
-                  Icon={Heart}
-                  label={
-                    recovery?.factors?.hrv != null
-                      ? t('readinessModal.hrv', 'HRV')
-                      : t('readinessModal.restingHR', 'Recovery HR')
-                  }
-                  score={recovery?.factors?.hrv ?? recovery?.factors?.rhr ?? null}
-                  sublabel={
-                    recovery?.factors?.hrv != null && typeof recoveryMetrics?.hrv === 'number'
-                      ? `${recoveryMetrics.hrv} ${t('readinessModal.ms', 'ms')}`
-                      : recovery?.factors?.rhr != null && typeof recoveryMetrics?.restingHR === 'number'
-                        ? `${recoveryMetrics.restingHR} ${t('readinessModal.bpm', 'bpm')}`
-                        : recoveryMetrics?.hrv != null
-                          ? t('readinessModal.noBaselineHRV')
-                          : recoveryMetrics?.restingHR != null
-                            ? t('readinessModal.noBaselineRHR')
-                            : '–'
-                  }
-                  delay={50}
-                />
+                {/* Wellness check-in (subjective soreness 1-10). Replaces
+                    the Apple-Watch-only HRV/RHR card so every user gets a
+                    real recovery signal. Tap → open the check-in modal. */}
+                <button
+                  type="button"
+                  onClick={() => setShowWellnessCheckin(true)}
+                  aria-label={t('readinessModal.wellnessTap', 'Log today\'s soreness')}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: 0,
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FactorCard
+                    Icon={Heart}
+                    label={t('readinessModal.wellness', 'Wellness')}
+                    score={recovery?.factors?.wellness ?? null}
+                    sublabel={
+                      typeof todayWellness?.soreness === 'number'
+                        ? t('readinessModal.sorenessVal', { value: todayWellness.soreness, defaultValue: 'Soreness {{value}}/10' })
+                        : t('readinessModal.tapToLog', 'Tap to log')
+                    }
+                    delay={50}
+                  />
+                </button>
                 {/* Training load */}
                 <FactorCard
                   Icon={Dumbbell}
@@ -1996,27 +2133,21 @@ export default function ReadinessModal({ open, onClose }) {
           )}
         </div>
 
-        {/* Detail sheet backdrop */}
-        {selected && (
-          <div
-            onClick={() => setSelected(null)}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(15,20,25,0.18)',
-              zIndex: 25,
-              animation: 'rd-fadeIn 180ms',
-            }}
-          />
-        )}
-        <DetailSheet
-          bucketId={selected}
-          readiness={readiness}
-          onClose={() => setSelected(null)}
-          regionLabels={regionLabels}
-          t={t}
-        />
       </div>
+      <WellnessCheckinModal
+        open={showWellnessCheckin}
+        onClose={() => setShowWellnessCheckin(false)}
+        onSaved={(row) => {
+          // Optimistic update so the Wellness card reflects the new value
+          // immediately, before any re-fetch.
+          setTodayWellness({ soreness: row.soreness, checkin_date: row.checkin_date, notes: row.notes ?? null });
+        }}
+      />
+      <AppendToRoutineModal
+        open={!!suggestionForAppend}
+        exercise={suggestionForAppend}
+        onClose={() => setSuggestionForAppend(null)}
+      />
     </div>,
     document.body
   );

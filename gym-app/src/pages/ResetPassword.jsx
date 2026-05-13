@@ -34,9 +34,14 @@ const ResetPassword = () => {
     // PASSWORD_RECOVERY. We mark the form ready as soon as we see the event,
     // OR if a session already exists (page loaded after the SDK initialized).
     let active = true;
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (active && session) setRecoveryReady(true);
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (active && session) setRecoveryReady(true);
+      })
+      .catch(() => {
+        // Transport failure — the auth-state listener below will still fire
+        // PASSWORD_RECOVERY when Supabase parses the URL hash.
+      });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') setRecoveryReady(true);
     });

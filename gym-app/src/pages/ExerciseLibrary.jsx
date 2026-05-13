@@ -2,7 +2,14 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import { Search, X, ChevronDown, ChevronRight, Dumbbell, Plus, Bookmark, Check, Users, SlidersHorizontal, ArrowUpDown, Star, Pencil, Edit3, Sparkles, Play, Minus, Heart, MoreHorizontal, Trophy, Flame } from 'lucide-react';
 import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT, CATEGORIES } from '../data/exercises';
-import BodyDiagram from '../components/BodyDiagram';
+import BodyMusclePicker from '../components/BodyMusclePicker';
+import MuscleExercisesSheet from '../components/MuscleExercisesSheet';
+import AllExercisesModal from '../components/AllExercisesModal';
+import ExerciseMuscleHighlight from '../components/ExerciseMuscleHighlight';
+import MuscleGroupPicker from '../components/MuscleGroupPicker';
+import { MUSCLE_BUCKET_BY_ID, bucketGroup } from '../lib/muscleBuckets';
+import { goalAdjustedDefaults, formatRest } from '../lib/goalAdjustedDefaults';
+import { LayoutList, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
@@ -97,9 +104,13 @@ const FilterChip = ({ active, onClick, children }) => (
 /* ── Exercise list row (warm-paper card) ────────────────────────────────────── */
 const ExerciseRow = ({ exercise, onClick, lang = 'en' }) => {
   const { t } = useTranslation('pages');
+  const { profile } = useAuth();
   const tint = getMuscleColor(exercise.muscle);
-  const sets = exercise.defaultSets;
-  const reps = exercise.defaultReps;
+  // Goal-adjusted defaults so the row's sets/reps match what the detail
+  // modal and Workout Builder will actually use.
+  const adj = goalAdjustedDefaults(exercise, profile?.primary_goal || 'general_fitness');
+  const sets = adj.sets;
+  const reps = adj.reps;
   const name = lang === 'es' && exercise.name_es ? exercise.name_es : exercise.name;
   return (
     <div
@@ -139,12 +150,8 @@ const ExerciseRow = ({ exercise, onClick, lang = 'en' }) => {
           <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}</span>
           <span style={{ color: 'var(--color-text-muted)' }}>·</span>
           <span>{t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}</span>
-          {exercise.category && (
-            <>
-              <span style={{ color: 'var(--color-text-muted)' }}>·</span>
-              <span>{t(`exerciseLibrary.categoryNames.${exercise.category}`, exercise.category)}</span>
-            </>
-          )}
+          {/* Static `category` removed — sets/reps now reflect the user's
+              primary_goal, and the detail card's goal badge owns that info. */}
         </div>
         <div className="mt-2 flex items-center gap-1.5">
           {sets != null && (
@@ -199,6 +206,20 @@ const MUSCLE_LABEL_TO_REGIONS = {
 };
 const muscleLabelToRegions = (label) => MUSCLE_LABEL_TO_REGIONS[label] || [];
 
+/* ── Chip → anatomical region map ──────────────────────────────────────────── */
+// Muscle-based chips (push/pull/legs/core) light up the trainer figure AND
+// open a multi-muscle exercise sheet. Other chips (recent/mobility/hiit)
+// route to the AllExercisesModal pre-filtered instead.
+const CHIP_REGIONS = {
+  push:  ['front_delts', 'side_delts', 'upper_chest', 'mid_chest', 'lower_chest', 'triceps'],
+  pull:  ['upper_back', 'mid_back', 'lats', 'lower_back', 'traps', 'biceps', 'rear_delts'],
+  chest: ['upper_chest', 'mid_chest', 'lower_chest'],
+  back:  ['upper_back', 'mid_back', 'lats', 'lower_back', 'traps'],
+  arms:  ['biceps', 'triceps', 'forearms', 'front_delts', 'side_delts', 'rear_delts'],
+  legs:  ['quads', 'hamstrings', 'glutes', 'adductors', 'abductors', 'glute_med', 'calves', 'tibialis', 'soleus'],
+  core:  ['upper_abs', 'mid_abs', 'lower_abs', 'abs', 'obliques', 'serratus'],
+};
+
 /**
  * Build the regions to highlight for an exercise card. The muscle group's
  * full region set is the baseline (so "Back" always lights up the whole back),
@@ -213,52 +234,6 @@ const buildExerciseRegions = (exercise) => {
     primary:   merged,
     secondary: Array.isArray(exercise?.secondaryRegions) ? exercise.secondaryRegions : [],
   };
-};
-
-/* ── Muscle Map — wraps BodyDiagram using real /public/muscles/ images ─────── */
-const MuscleMap = ({ primary, secondary = [] }) => {
-  const primaryRegions = muscleLabelToRegions(primary);
-  const secondaryRegions = (secondary || []).flatMap((m) => muscleLabelToRegions(m));
-  // Constrain to a standard phone-friendly size so the 440×800 source images
-  // never overflow their card container.
-  return (
-    <div className="w-full mx-auto" style={{ maxWidth: 340 }}>
-      <BodyDiagram
-        primaryRegions={primaryRegions}
-        secondaryRegions={secondaryRegions}
-        compact
-        inline
-        title=" "
-      />
-    </div>
-  );
-};
-
-/* ── Muscle chip (primary/secondary selector) ───────────────────────────────── */
-const MuscleChip = ({ label, selected, primary, onClick }) => {
-  const bg = primary ? 'var(--color-accent)' : selected ? ACCENT_SOFT : 'var(--color-bg-card)';
-  const fg = primary ? '#001512' : selected ? 'var(--color-accent)' : 'var(--color-text-subtle)';
-  const bd = primary ? 'transparent' : selected ? 'transparent' : 'var(--color-border-subtle)';
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-full transition-all active:scale-95"
-      style={{
-        padding: '9px 13px',
-        background: bg,
-        color: fg,
-        border: `1px solid ${bd}`,
-        fontSize: 13,
-        fontWeight: primary ? 800 : 600,
-        letterSpacing: '-0.1px',
-        boxShadow: primary ? '0 2px 8px color-mix(in srgb, var(--color-accent) 22%, transparent)' : 'none',
-      }}
-    >
-      {primary && <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#001512' }} />}
-      {label}
-    </button>
-  );
 };
 
 /* ── Equipment picker tiles (3×2) ───────────────────────────────────────────── */
@@ -586,12 +561,41 @@ const HistorySpark = ({ sessions, emptyLabel, emptySub }) => {
 };
 
 /* ── Premium Exercise Card ──────────────────────────────────────────────────── */
-const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, onToggleFavorite, onEdit, onDelete, onSave, onUnsave, isMine, isSaved }) => {
+const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, onToggleFavorite, onEdit, onDelete, onSave, onUnsave, isMine, isSaved, modalOnly = false, initiallyOpen = false, onExternalClose }) => {
   const { t } = useTranslation('pages');
   const posthog = usePostHog();
-  const [expanded, setExpanded] = useState(false);
+  const { profile } = useAuth();
+  // Re-cast the static defaultSets/Reps/restSeconds into the rep range /
+  // rest window the user's primary_goal actually trains in. Surfaces in
+  // the numbers strip (and is what the Workout Builder will inherit when
+  // an exercise is added to a custom routine).
+  const userGoal = profile?.primary_goal || 'general_fitness';
+  const goalAdjusted = React.useMemo(
+    () => goalAdjustedDefaults(exercise, userGoal),
+    [exercise, userGoal]
+  );
+  const [expanded, setExpanded] = useState(initiallyOpen);
   const [detailTab, setDetailTab] = useState('overview');
   const [showFullDescription, setShowFullDescription] = useState(false);
+  // Carousel container for the three tab panels. Native horizontal scroll
+  // with CSS scroll-snap delivers the "feel like scrolling, not page
+  // changing" UX — the panel physically slides under the finger.
+  const tabScrollRef = useRef(null);
+  const TAB_ORDER = ['overview', 'muscles', 'history'];
+  const scrollToTab = (key) => {
+    const el = tabScrollRef.current;
+    if (!el) return;
+    const idx = TAB_ORDER.indexOf(key);
+    if (idx < 0) return;
+    el.scrollTo({ left: idx * el.clientWidth, behavior: 'smooth' });
+  };
+  const handleTabsScroll = (e) => {
+    const w = e.currentTarget.clientWidth;
+    if (w <= 0) return;
+    const idx = Math.round(e.currentTarget.scrollLeft / w);
+    const next = TAB_ORDER[idx];
+    if (next && next !== detailTab) setDetailTab(next);
+  };
   const tint = getMuscleColor(exercise.muscle);
 
   const hasVideo = !!exercise.videoUrl;
@@ -636,16 +640,20 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
     return () => { document.body.style.overflow = prev; };
   }, [expanded]);
 
+  const closeModal = () => {
+    setExpanded(false);
+    onExternalClose?.();
+  };
   const openModal = () => {
     posthog?.capture('exercise_viewed', { exercise_name: exName(exercise), muscle_group: exercise.muscle });
     setDetailTab('overview');
     setShowFullDescription(false);
     setExpanded(true);
   };
-  const closeModal = () => setExpanded(false);
 
   return (
     <>
+    {!modalOnly && (
     <div
       className="group rounded-[18px] overflow-hidden transition-all duration-200"
       style={{
@@ -710,12 +718,23 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
         />
       </div>
     </div>
+    )}
 
-    {/* ── Detail modal (portaled, scroll-locked, warm-paper aesthetic) ─────── */}
+    {/* ── Detail modal (portaled, scroll-locked, warm-paper aesthetic).
+        Uses z-[10000] so it lands ABOVE MuscleExercisesSheet (z-9999) when
+        opened from a tapped video box in the body picker flow. */}
     {expanded && createPortal(
       <div
-        className="fixed inset-0 z-[200] flex items-center justify-center px-4 animate-fade-in"
-        style={{ background: 'rgba(10,13,16,0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+        className="fixed inset-0 z-[10000] flex items-center justify-center px-4 animate-fade-in"
+        style={{
+          background: 'rgba(10,13,16,0.55)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          // Respect device safe areas so the modal never lands under the
+          // iOS Dynamic Island/notch or under the Android nav bar.
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
+        }}
         onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
         role="dialog"
         aria-modal="true"
@@ -725,7 +744,9 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
           className="relative w-full max-w-[460px] animate-fade-in flex flex-col"
           style={{
             background: 'var(--color-bg-card)',
-            maxHeight: 'calc(100dvh - 32px)',
+            // Subtract safe-area insets so the card never exceeds the
+            // usable viewport regardless of device chrome.
+            maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 32px)',
             overflow: 'hidden',
             borderRadius: 24,
             boxShadow: '0 24px 60px rgba(10,13,16,0.35)',
@@ -813,22 +834,44 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
               </span>
               <span style={{ color: 'var(--color-text-muted)' }}>·</span>
               <span>{t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}</span>
-              {exercise.category && (
-                <>
-                  <span style={{ color: 'var(--color-text-muted)' }}>·</span>
-                  <span>{t(`exerciseLibrary.categoryNames.${exercise.category}`, exercise.category)}</span>
-                </>
-              )}
+              {/* The exercise's hardcoded `category` (Strength/Hypertrophy/...) used
+                  to live here, but it doesn't reflect the user's training goal —
+                  the goal badge below the numbers strip now owns that info, and
+                  the stats themselves auto-adjust to the user's primary_goal. */}
             </div>
           </div>
 
-          {/* Numbers strip */}
+          {/* Numbers strip — adapted to the user's primary_goal. The
+              `Para tu meta` badge tells the user these aren't generic
+              defaults; they're tailored to hypertrophy / strength / etc. */}
           <div className="px-4 pb-2.5 flex-shrink-0">
+            {goalAdjusted.adjusted && (
+              <div className="mb-2 flex items-center gap-1.5">
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '3px 9px',
+                    borderRadius: 999,
+                    background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',
+                    color: 'var(--color-accent)',
+                    border: '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {t(`exerciseLibrary.goalLabels.${userGoal}`, { defaultValue: t('exerciseLibrary.forYourGoal', 'For your goal') })}
+                </span>
+              </div>
+            )}
             <NumbersStrip
               items={[
-                { k: t('exerciseLibrary.sets', 'SETS').toUpperCase(), v: exercise.defaultSets ?? '—' },
-                { k: t('exerciseLibrary.reps', 'REPS').toUpperCase(), v: exercise.defaultReps ?? '—' },
-                { k: t('exerciseLibrary.rest', 'REST').toUpperCase(), v: exercise.restSeconds ? `${Math.floor(exercise.restSeconds / 60)}:${String(exercise.restSeconds % 60).padStart(2, '0')}` : '—' },
+                { k: t('exerciseLibrary.sets', 'SETS').toUpperCase(), v: goalAdjusted.sets ?? '—' },
+                { k: t('exerciseLibrary.reps', 'REPS').toUpperCase(), v: goalAdjusted.reps ?? '—' },
+                { k: t('exerciseLibrary.rest', 'REST').toUpperCase(), v: formatRest(goalAdjusted.rest) },
                 ...(prValue ? [{ k: t('exerciseLibrary.pr', 'PR').toUpperCase(), v: prValue, gold: true }] : []),
               ]}
             />
@@ -844,7 +887,7 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
               ].map(tab => (
                 <button
                   key={tab.key}
-                  onClick={(e) => { e.stopPropagation(); setDetailTab(tab.key); }}
+                  onClick={(e) => { e.stopPropagation(); setDetailTab(tab.key); scrollToTab(tab.key); }}
                   className="relative pb-2.5 pt-1 transition-colors text-center"
                   style={{
                     flex: '1 1 0',
@@ -866,92 +909,141 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
             </div>
           </div>
 
-          {/* Tab content — fills remaining space; inner auto-scroll only if content exceeds */}
-          <div className="px-4 pt-3 pb-3 flex flex-col gap-2.5 flex-1" style={{ minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            {/* OVERVIEW: video (or fallback) + cues */}
-            {detailTab === 'overview' && (
-              <>
-                {hasVideo ? (
-                  <div
-                    className="rounded-[18px] overflow-hidden"
-                    style={{
-                      aspectRatio: '12/9',
-                      background: 'var(--color-bg-primary)',
-                      boxShadow: WARM_SHADOW,
-                      border: '1px solid var(--color-border-subtle)',
-                    }}
-                  >
-                    <video
-                      src={resolveVideoUrl(exercise.videoUrl)}
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      aria-label={`${exName(exercise)} demonstration`}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div
-                    className="rounded-[18px] flex items-center justify-center"
-                    style={{
-                      aspectRatio: '12/9',
-                      background: 'var(--color-bg-card)',
-                      boxShadow: WARM_SHADOW,
-                      border: '1px dashed var(--color-border-subtle)',
-                    }}
-                  >
-                    <div className="flex flex-col items-center gap-1">
-                      <Play size={22} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                        {t('exerciseLibrary.videoComingSoon', 'Video coming soon')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {instructionCues.length > 0 && (
-                  <CuesList
-                    title={t('exerciseLibrary.formCues', 'Form Cues')}
-                    cues={showFullDescription || instructionCues.length <= 4 ? instructionCues : instructionCues.slice(0, 4)}
+          {/* Tab content — horizontal scroll-snap carousel. All three panels
+              render side-by-side; user can swipe between them with a native-
+              feeling scroll. Vertical scroll inside each panel is independent. */}
+          <style>{`
+            .ex-tab-carousel::-webkit-scrollbar { display: none; }
+          `}</style>
+          <div
+            ref={tabScrollRef}
+            className="ex-tab-carousel flex flex-1"
+            onScroll={handleTabsScroll}
+            style={{
+              minHeight: 0,
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              scrollSnapType: 'x mandatory',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+            }}
+          >
+            {/* OVERVIEW panel */}
+            <div
+              className="flex flex-col gap-2.5 px-4 pt-3 pb-3"
+              style={{
+                flex: '0 0 100%',
+                minWidth: '100%',
+                overflowY: 'auto',
+                scrollSnapAlign: 'start',
+                scrollSnapStop: 'always',
+              }}
+            >
+              {hasVideo ? (
+                <div
+                  className="rounded-[18px] overflow-hidden"
+                  style={{
+                    aspectRatio: '12/9',
+                    background: 'var(--color-bg-primary)',
+                    boxShadow: WARM_SHADOW,
+                    border: '1px solid var(--color-border-subtle)',
+                  }}
+                >
+                  <video
+                    src={resolveVideoUrl(exercise.videoUrl)}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    aria-label={`${exName(exercise)} demonstration`}
+                    className="w-full h-full object-cover"
                   />
-                )}
-                {instructionCues.length > 4 && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setShowFullDescription(s => !s); }}
-                    className="self-start px-3 py-1.5 rounded-full transition-colors"
-                    style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-accent)', background: ACCENT_SOFT }}
-                  >
-                    {showFullDescription ? t('exerciseLibrary.showLess') : t('exerciseLibrary.readMore')}
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* MUSCLES */}
-            {detailTab === 'muscles' && hasMuscles && (
-              <div
-                className="rounded-[18px] p-4"
-                style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW, border: '1px solid var(--color-border-subtle)' }}
-              >
-                <BodyDiagram
-                  compact
-                  inline
-                  title={t('exerciseLibrary.musclesWorked')}
-                  primaryRegions={cardPrimaryRegions}
-                  secondaryRegions={cardSecondaryRegions}
+                </div>
+              ) : (
+                <div
+                  className="rounded-[18px] flex items-center justify-center"
+                  style={{
+                    aspectRatio: '12/9',
+                    background: 'var(--color-bg-card)',
+                    boxShadow: WARM_SHADOW,
+                    border: '1px dashed var(--color-border-subtle)',
+                  }}
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <Play size={22} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                      {t('exerciseLibrary.videoComingSoon', 'Video coming soon')}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {instructionCues.length > 0 && (
+                <CuesList
+                  title={t('exerciseLibrary.formCues', 'Form Cues')}
+                  cues={showFullDescription || instructionCues.length <= 4 ? instructionCues : instructionCues.slice(0, 4)}
                 />
-              </div>
-            )}
+              )}
+              {instructionCues.length > 4 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowFullDescription(s => !s); }}
+                  className="self-start px-3 py-1.5 rounded-full transition-colors"
+                  style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-accent)', background: ACCENT_SOFT }}
+                >
+                  {showFullDescription ? t('exerciseLibrary.showLess') : t('exerciseLibrary.readMore')}
+                </button>
+              )}
+            </div>
 
-            {/* HISTORY */}
-            {detailTab === 'history' && (
+            {/* MUSCLES panel */}
+            <div
+              className="flex flex-col gap-2.5 px-4 pt-3 pb-3"
+              style={{
+                flex: '0 0 100%',
+                minWidth: '100%',
+                overflowY: 'auto',
+                scrollSnapAlign: 'start',
+                scrollSnapStop: 'always',
+              }}
+            >
+              {hasMuscles ? (
+                <div
+                  className="rounded-[18px] p-4"
+                  style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW, border: '1px solid var(--color-border-subtle)' }}
+                >
+                  <ExerciseMuscleHighlight
+                    primaryRegions={cardPrimaryRegions}
+                    secondaryRegions={cardSecondaryRegions}
+                    title={t('exerciseLibrary.musclesWorked')}
+                  />
+                </div>
+              ) : (
+                <div className="text-center py-10 px-4 rounded-[18px]"
+                     style={{ background: 'var(--color-surface-hover)', border: '1px dashed var(--color-border-subtle)' }}>
+                  <p className="text-[12px] font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('exerciseLibrary.noMuscleData', { defaultValue: 'No muscle data for this exercise' })}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* HISTORY panel */}
+            <div
+              className="flex flex-col gap-2.5 px-4 pt-3 pb-3"
+              style={{
+                flex: '0 0 100%',
+                minWidth: '100%',
+                overflowY: 'auto',
+                scrollSnapAlign: 'start',
+                scrollSnapStop: 'always',
+              }}
+            >
               <HistorySpark
                 sessions={exercise.recentSessions || []}
                 emptyLabel={t('exerciseLibrary.noHistoryYet', 'No history yet')}
                 emptySub={t('exerciseLibrary.startFirstSet', 'Log your first set to see progress here')}
               />
-            )}
-
+            </div>
           </div>
 
           {/* Bottom action row — fixed at bottom of modal */}
@@ -1087,6 +1179,18 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
   const [activeEquipment, setActiveEquipment] = useState('All');
   const [activeCategory, setActiveCategory] = useState('All');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  // ── Body-picker mode ──
+  // Persist the user's last choice between sessions so power users who
+  // prefer the list aren't fighting the toggle every visit.
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem('exerciseLibrary.viewMode') === 'body' ? 'body' : 'list'; }
+    catch { return 'list'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('exerciseLibrary.viewMode', viewMode); } catch {}
+  }, [viewMode]);
+  const [pickedBucket, setPickedBucket] = useState(null);
+  const [expandToGroup, setExpandToGroup] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchInput), 300);
@@ -1139,6 +1243,24 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       return matchesQuery && matchesMuscle && matchesEquipment && matchesCategory;
     });
   }, [debouncedQuery, activeMuscle, activeEquipment, activeCategory, allExercises]);
+
+  // Same filter set as `filtered` but WITHOUT the muscle-pill filter. In
+  // body view, the tapped polygon supplies muscle selection, so the
+  // high-level muscle pill would only narrow results in confusing ways
+  // ("tap quads but Chest filter active = no exercises").
+  const bodyModeExercises = useMemo(() => {
+    const q = debouncedQuery.toLowerCase();
+    return allExercises.filter(e => {
+      const matchesQuery = !q ||
+        e.name.toLowerCase().includes(q) ||
+        (e.name_es && e.name_es.toLowerCase().includes(q)) ||
+        e.muscle.toLowerCase().includes(q) ||
+        e.equipment.toLowerCase().includes(q);
+      const matchesEquipment = activeEquipment === 'All' || e.equipment === activeEquipment;
+      const matchesCategory  = activeCategory  === 'All' || e.category  === activeCategory;
+      return matchesQuery && matchesEquipment && matchesCategory;
+    });
+  }, [debouncedQuery, activeEquipment, activeCategory, allExercises]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -1199,12 +1321,45 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       </div>
 
       {/* Results + Sort row */}
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-[12.5px] font-medium text-[var(--color-text-muted)]">
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <p className="text-[12.5px] font-medium text-[var(--color-text-muted)] min-w-0 truncate">
           {t('exerciseLibrary.resultCount', { count: sorted.length })}
           {debouncedQuery && <span style={{ color: 'var(--color-text-muted)' }}> {t('exerciseLibrary.forQuery', { query: debouncedQuery })}</span>}
         </p>
-        <div ref={sortRef} className="relative">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Lista | Cuerpo view toggle */}
+          <div
+            className="inline-flex items-center rounded-lg p-[3px]"
+            style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              aria-label={t('exerciseLibrary.viewList', 'List view')}
+              aria-pressed={viewMode === 'list'}
+              className="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-colors"
+              style={{
+                background: viewMode === 'list' ? 'var(--color-bg-card)' : 'transparent',
+                color: viewMode === 'list' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+              }}
+            >
+              <LayoutList size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('body')}
+              aria-label={t('exerciseLibrary.viewBody', 'Body view')}
+              aria-pressed={viewMode === 'body'}
+              className="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-colors"
+              style={{
+                background: viewMode === 'body' ? 'var(--color-bg-card)' : 'transparent',
+                color: viewMode === 'body' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+              }}
+            >
+              <User size={13} />
+            </button>
+          </div>
+          <div ref={sortRef} className="relative">
           <button
             onClick={() => setShowSortMenu(s => !s)}
             aria-label={t('exerciseLibrary.sort')}
@@ -1230,9 +1385,26 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
             </div>
           )}
         </div>
+        </div>
       </div>
 
-      {/* Exercise list */}
+      {/* Body picker mode — tap a muscle, slide-up sheet shows the
+          exercises that target it. Honors active search + filter chips. */}
+      {viewMode === 'body' && (
+        <div className="mb-4">
+          <BodyMusclePicker
+            selected={pickedBucket}
+            onSelect={(bucketId) => {
+              setExpandToGroup(false);
+              setPickedBucket(bucketId);
+            }}
+            maxWidth={420}
+          />
+        </div>
+      )}
+
+      {/* List view — preserved as-is when viewMode === 'list'. */}
+      {viewMode === 'list' && (
       <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 xl:grid-cols-3">
         {sorted.map(ex => (
           <ExerciseCard
@@ -1256,6 +1428,31 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           </div>
         )}
       </div>
+      )}
+
+      {/* Body-mode: muscle-region sheet (opens when picker selection is set).
+          Source list intentionally ignores the muscle-pill filter — the
+          body itself is the muscle selector here. */}
+      <MuscleExercisesSheet
+        open={!!pickedBucket && viewMode === 'body'}
+        bucketId={pickedBucket}
+        expandToGroup={expandToGroup}
+        exercises={bodyModeExercises}
+        onClose={() => { setPickedBucket(null); setExpandToGroup(false); }}
+        onToggleExpand={setExpandToGroup}
+        onExerciseTap={(ex) => {
+          // Reuse the same selection behavior as the list view: if the
+          // library is in "select-multiple" mode (picker for routine
+          // builder), add to selection. Otherwise just bubble up so the
+          // detail page opens.
+          if (selectable) {
+            onSelect?.(ex);
+          } else {
+            // Fallback — same flow ExerciseCard click triggers.
+            try { posthog?.capture('exercise_viewed', { exercise_name: exName(ex), muscle_group: ex.muscle, source: 'body_picker' }); } catch {}
+          }
+        }}
+      />
 
       {/* Advanced Filters Bottom Sheet */}
       {showAdvancedFilters && createPortal(
@@ -1606,37 +1803,69 @@ const DropdownSelect = ({ value, options, onChange, placeholder, label, renderOp
 };
 
 /* ── Add Exercise Modal ─────────────────────────────────────────────────────── */
-const SECONDARY_MUSCLES = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms', 'Core', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Traps', 'Lats'];
 
 const AddExerciseModal = ({ onSave, onClose }) => {
   const { t } = useTranslation('pages');
   const [form, setForm] = useState({
-    name: '', muscle: MUSCLE_GROUPS[0], equipment: EQUIPMENT[0],
+    name: '', primaryBuckets: ['chest-mid'], secondaryBuckets: [], equipment: EQUIPMENT[0],
     category: CATEGORIES[0], defaultSets: 3, defaultReps: '8-12',
     repLow: 8, repHigh: 12, rest: 90, difficulty: 'Intermediate',
-    instructions: '', secondaryMuscles: [], shareWithFriends: false,
+    instructions: '', shareWithFriends: false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const toggleSecondary = (muscle) => {
+  const togglePrimaryBucket = (bucketId) => {
+    setForm(f => {
+      // Toggle in primary; if it was a secondary, remove from there too.
+      const inPrimary = f.primaryBuckets.includes(bucketId);
+      return {
+        ...f,
+        primaryBuckets: inPrimary
+          ? f.primaryBuckets.filter(b => b !== bucketId)
+          : [...f.primaryBuckets, bucketId],
+        secondaryBuckets: inPrimary ? f.secondaryBuckets : f.secondaryBuckets.filter(b => b !== bucketId),
+      };
+    });
+  };
+
+  const toggleSecondaryBucket = (bucketId) => {
     setForm(f => ({
       ...f,
-      secondaryMuscles: f.secondaryMuscles.includes(muscle)
-        ? f.secondaryMuscles.filter(m => m !== muscle)
-        : [...f.secondaryMuscles, muscle],
+      secondaryBuckets: f.secondaryBuckets.includes(bucketId)
+        ? f.secondaryBuckets.filter(b => b !== bucketId)
+        : [...f.secondaryBuckets, bucketId],
     }));
   };
 
   const handleSave = async () => {
     if (!form.name.trim()) { setError(t('exerciseLibrary.nameRequired')); return; }
+    if (form.primaryBuckets.length === 0) { setError(t('exerciseLibrary.primaryRequired', 'Selecciona al menos un músculo principal')); return; }
     setSaving(true);
     setError('');
     const reps = `${form.repLow}-${form.repHigh}`;
+    // Resolve bucket selections back to muscle_group enum + region arrays.
+    // muscle_group enum can only hold one value — we use the FIRST primary
+    // bucket's parent group. The granular primary_regions array preserves
+    // every selected primary bucket, so filtering by sub-region still works.
+    const primaryGroups = Array.from(new Set(
+      form.primaryBuckets.map((b) => bucketGroup(b)).filter(Boolean)
+    ));
+    const muscleGroup = primaryGroups[0] || MUSCLE_GROUPS[0];
+    const primaryRegions = Array.from(new Set(
+      form.primaryBuckets.flatMap((b) => MUSCLE_BUCKET_BY_ID.get(b)?.regionIds || [])
+    ));
+    const secondaryRegions = Array.from(new Set(
+      form.secondaryBuckets.flatMap((b) => MUSCLE_BUCKET_BY_ID.get(b)?.regionIds || [])
+    ));
     const result = await onSave({
       ...form,
+      muscle:          muscleGroup,
+      secondaryMuscles: Array.from(new Set(form.secondaryBuckets.map((b) => bucketGroup(b)).filter(Boolean))),
+      primaryRegions,
+      secondaryRegions,
       name:        form.name.trim(),
       defaultSets: parseInt(form.defaultSets) || 3,
       defaultReps: reps,
@@ -1777,82 +2006,95 @@ const AddExerciseModal = ({ onSave, onClose }) => {
             </div>
           </div>
 
-          {/* Muscles worked card */}
+          {/* Muscles worked card — tap the trainer figure to set primary
+              (deep red) and add secondaries (light red). Mode pill under
+              the figure controls which slot the next tap targets. */}
           <div className="px-4 pt-6">
             <SectionLabel required>{t('exerciseLibrary.musclesWorked', 'Muscles worked')}</SectionLabel>
             <div
               className="rounded-[20px] p-4"
               style={{ background: 'var(--color-bg-card)', boxShadow: WARM_SHADOW }}
             >
-              {/* Diagram full-width on top (images are 440×800) */}
-              <div className="w-full" style={{ maxHeight: 220, overflow: 'hidden' }}>
-                <MuscleMap primary={form.muscle} secondary={form.secondaryMuscles} />
-              </div>
-              {/* Primary label + legend row below */}
-              <div className="mt-3 flex items-end justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
-                    {t('exerciseLibrary.primaryMuscleLabel', 'Primary')}
-                  </div>
-                  <div
-                    className="mt-0.5 truncate"
-                    style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--color-text-primary)' }}
-                  >
-                    {t(`muscleGroups.${form.muscle}`, form.muscle)}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 text-[11px] flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
-                  <span className="w-2 h-2 rounded-full" style={{ background: 'var(--color-accent)' }} />
-                  Primary
-                  <span className="w-2 h-2 rounded-full ml-2" style={{ background: 'var(--color-accent)', opacity: 0.35 }} />
-                  Secondary · {form.secondaryMuscles.length}
-                </div>
-              </div>
+              <MuscleGroupPicker
+                primaryBuckets={form.primaryBuckets}
+                secondaryBuckets={form.secondaryBuckets}
+                onPrimaryToggle={(b) => togglePrimaryBucket(b)}
+                onSecondaryToggle={(b) => toggleSecondaryBucket(b)}
+                maxWidth={300}
+              />
 
-              {/* Primary picker */}
-              <div className="mt-3.5 pt-3.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-                <div className="text-[10px] font-extrabold uppercase tracking-[0.1em] mb-2.5" style={{ color: 'var(--color-text-subtle)' }}>
-                  {t('exerciseLibrary.tapToChangePrimary', 'TAP TO CHANGE PRIMARY')}
+              {/* Selection summary — lists every selected bucket so a
+                  compound lift can be tagged with multiple primary
+                  movers (e.g. bench → upper + mid chest). */}
+              <div className="mt-3.5 pt-3.5 flex items-center justify-between gap-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                <div className="text-[10px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('exerciseLibrary.primaryMuscleLabel', 'Primary')} · {form.primaryBuckets.length}
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {MUSCLE_GROUPS.map((m) => (
-                    <MuscleChip
-                      key={m}
-                      label={t(`muscleGroups.${m}`, m)}
-                      primary={m === form.muscle}
-                      onClick={() => set('muscle', m)}
-                    />
+                {form.primaryBuckets.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => set('primaryBuckets', [])}
+                    className="text-[10px] font-bold uppercase tracking-[0.06em] active:opacity-70 flex-shrink-0"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >{t('exerciseLibrary.clear', 'CLEAR')}</button>
+                )}
+              </div>
+              {form.primaryBuckets.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {form.primaryBuckets.map((b) => (
+                    <span
+                      key={b}
+                      className="text-[11px] font-bold px-2 py-1 rounded-full"
+                      style={{
+                        background: 'color-mix(in srgb, #DC2626 18%, transparent)',
+                        color: '#DC2626',
+                        border: '1px solid #DC2626',
+                      }}
+                    >
+                      {t(`readinessModal.buckets.${b}`, {
+                        defaultValue: MUSCLE_BUCKET_BY_ID.get(b)?.label || b,
+                      })}
+                    </span>
                   ))}
                 </div>
-              </div>
+              ) : (
+                <p className="mt-2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('exerciseLibrary.tapToSetPrimary', 'Toca un músculo en el modo Primario para empezar.')}
+                </p>
+              )}
 
-              {/* Secondary */}
-              <div className="mt-3.5 pt-3.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-                <div className="flex items-center justify-between mb-2.5">
-                  <div className="text-[10px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
-                    {t('exerciseLibrary.secondaryMusclesLabel', 'SECONDARY')}
-                    <span className="ml-1 font-semibold normal-case tracking-[0.02em]" style={{ color: 'var(--color-text-muted)' }}>— {t('exerciseLibrary.optional')}</span>
-                  </div>
-                  {form.secondaryMuscles.length > 0 && (
+              {form.secondaryBuckets.length > 0 && (
+                <>
+                  <div className="mt-3.5 pt-3.5 flex items-center justify-between gap-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                    <div className="text-[10px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
+                      {t('exerciseLibrary.secondaryMusclesLabel', 'Secondary')} · {form.secondaryBuckets.length}
+                    </div>
                     <button
                       type="button"
-                      onClick={() => set('secondaryMuscles', [])}
-                      className="text-[10px] font-bold uppercase tracking-[0.06em] active:opacity-70"
+                      onClick={() => set('secondaryBuckets', [])}
+                      className="text-[10px] font-bold uppercase tracking-[0.06em] active:opacity-70 flex-shrink-0"
                       style={{ color: 'var(--color-text-muted)' }}
                     >{t('exerciseLibrary.clear', 'CLEAR')}</button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {SECONDARY_MUSCLES.filter((m) => m !== form.muscle).map((m) => (
-                    <MuscleChip
-                      key={m}
-                      label={t(`muscleGroups.${m}`, m)}
-                      selected={form.secondaryMuscles.includes(m)}
-                      onClick={() => toggleSecondary(m)}
-                    />
-                  ))}
-                </div>
-              </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {form.secondaryBuckets.map((b) => (
+                      <span
+                        key={b}
+                        className="text-[11px] font-bold px-2 py-1 rounded-full"
+                        style={{
+                          background: 'color-mix(in srgb, #FCA5A5 22%, transparent)',
+                          color: '#DC2626',
+                          border: '1px solid color-mix(in srgb, #FCA5A5 50%, transparent)',
+                        }}
+                      >
+                        {t(`readinessModal.buckets.${b}`, {
+                          defaultValue: MUSCLE_BUCKET_BY_ID.get(b)?.label || b,
+                        })}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -2290,6 +2532,16 @@ export const ExerciseLibraryPage = () => {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [recentExerciseIds, setRecentExerciseIds] = useState(new Set());
   const sortMenuRef = useRef(null);
+  // Exercise tapped from the muscle sheet — opens the same detail modal
+  // ExerciseCard uses, via a phantom card in modalOnly mode.
+  const [sheetExercise, setSheetExercise] = useState(null);
+  const [pickedBucket, setPickedBucket] = useState(null);
+  const [expandToGroup, setExpandToGroup] = useState(false);
+  // Set when a muscle-based chip (push/pull/legs/core) opens the sheet
+  // with a custom region set; null otherwise.
+  const [chipSheet, setChipSheet] = useState(null); // { regions, label }
+  // Fullscreen "browse all" modal opened by tapping the search bar.
+  const [showAllExercises, setShowAllExercises] = useState(false);
 
   // Close sort menu on outside click
   useEffect(() => {
@@ -2395,7 +2647,7 @@ export const ExerciseLibraryPage = () => {
     const since = new Date(Date.now() - 30 * 86400000).toISOString();
     supabase
       .from('workout_sessions')
-      .select('id, completed_at, workout_sets(exercise_id, completed)')
+      .select('id, completed_at, session_exercises(exercise_id, session_sets(is_completed))')
       .eq('profile_id', user.id)
       .eq('status', 'completed')
       .gte('completed_at', since)
@@ -2405,8 +2657,9 @@ export const ExerciseLibraryPage = () => {
           logger.error('Recent sessions load error:', error);
         } else {
           (data || []).forEach(s => {
-            (s.workout_sets || []).forEach(ws => {
-              if (ws?.exercise_id && ws.completed !== false) ids.add(ws.exercise_id);
+            (s.session_exercises || []).forEach(se => {
+              const completedAny = (se.session_sets || []).some(set => set?.is_completed !== false);
+              if (se?.exercise_id && completedAny) ids.add(se.exercise_id);
             });
           });
         }
@@ -2450,6 +2703,8 @@ export const ExerciseLibraryPage = () => {
           default_reps: form.defaultReps,
           rest_seconds: restSeconds,
           instructions: form.instructions || null,
+          primary_regions:   Array.isArray(form.primaryRegions)   ? form.primaryRegions   : null,
+          secondary_regions: Array.isArray(form.secondaryRegions) ? form.secondaryRegions : null,
           is_active:    true,
         }));
     } catch (err) {
@@ -2478,8 +2733,8 @@ export const ExerciseLibraryPage = () => {
       defaultReps:       form.defaultReps,
       restSeconds,
       instructions:      form.instructions ?? '',
-      primaryRegions:    [],
-      secondaryRegions:  [],
+      primaryRegions:    Array.isArray(form.primaryRegions)   ? form.primaryRegions   : [],
+      secondaryRegions:  Array.isArray(form.secondaryRegions) ? form.secondaryRegions : [],
       createdBy:         user.id,
       createdByName:     profile.full_name,
       createdByUsername:  profile.username,
@@ -2577,14 +2832,27 @@ export const ExerciseLibraryPage = () => {
     { key: 'friends', label: t('exerciseLibrary.tabFriends'), count: friendExercises.length || null },
   ];
 
-  // Chip filters map to muscle category + custom keys (push/pull/hiit/mobility/recent).
+  // Chip filters map to muscle category + custom keys. On the main page
+  // we only show the chips that visually do something — i.e. the ones
+  // that paint a region on the body picker. Recent / Mobility / HIIT
+  // only filter the list, so they're stashed into the search-modal-only
+  // set (rendered inside AllExercisesModal).
   const chipDefs = [
-    { id: 'all',      label: t('exerciseLibrary.filterAll', 'All') },
+    { id: 'all',   label: t('exerciseLibrary.filterAll', 'All') },
+    { id: 'push',  label: `↑ ${t('exerciseLibrary.filterPush', 'Push')}` },
+    { id: 'pull',  label: `↓ ${t('exerciseLibrary.filterPull', 'Pull')}` },
+    { id: 'chest', label: t('muscleGroups.Chest', 'Chest') },
+    { id: 'back',  label: t('muscleGroups.Back', 'Back') },
+    { id: 'arms',  label: t('exerciseLibrary.filterArms', 'Arms') },
+    { id: 'legs',  label: t('muscleGroups.Legs', 'Legs') },
+    { id: 'core',  label: t('muscleGroups.Core', 'Core') },
+  ];
+  // Extended set used only inside the AllExercisesModal search page —
+  // adds the list-only filters (Recent / Mobility / HIIT) that have no
+  // visual representation on the trainer figure.
+  const modalChipDefs = [
+    ...chipDefs,
     { id: 'recent',   label: t('exerciseLibrary.filterRecent', 'Recent') },
-    { id: 'push',     label: `↑ ${t('exerciseLibrary.filterPush', 'Push')}` },
-    { id: 'pull',     label: `↓ ${t('exerciseLibrary.filterPull', 'Pull')}` },
-    { id: 'legs',     label: t('muscleGroups.Legs', 'Legs') },
-    { id: 'core',     label: t('muscleGroups.Core', 'Core') },
     { id: 'mobility', label: t('exerciseLibrary.filterMobility', 'Mobility') },
     { id: 'hiit',     label: t('exerciseLibrary.filterHIIT', 'HIIT') },
   ];
@@ -2595,12 +2863,25 @@ export const ExerciseLibraryPage = () => {
   const activeList = useMemo(() => {
     if (tab === 'mine') return mineExercises.map(e => ({ ...e, isMine: e.createdBy === user?.id }));
     if (tab === 'friends') return friendExercises;
-    // all — combine local + global + custom
+    // all — combine local + global + custom. When a DB row shadows a local
+    // exercise, merge non-empty local fields back in: the local catalog is
+    // the authoritative source for muscleScores / primaryRegions / video,
+    // which the DB rows don't carry.
     const localById = Object.fromEntries(localExercises.map(e => [e.id, e]));
     const uniqueLocal = localExercises.filter(e => !dbIds.has(e.id));
-    const dbFallback = [...globalDbExercises, ...customExercises].map(e => (
-      (!e.videoUrl && localById[e.id]?.videoUrl) ? { ...e, videoUrl: localById[e.id].videoUrl } : e
-    ));
+    const dbFallback = [...globalDbExercises, ...customExercises].map((e) => {
+      const local = localById[e.id];
+      if (!local) return e;
+      const dbPrim = Array.isArray(e.primaryRegions)   ? e.primaryRegions   : [];
+      const dbSec  = Array.isArray(e.secondaryRegions) ? e.secondaryRegions : [];
+      return {
+        ...e,
+        videoUrl:        e.videoUrl        || local.videoUrl,
+        muscleScores:    e.muscleScores    || local.muscleScores,
+        primaryRegions:   dbPrim.length > 0 ? dbPrim : (local.primaryRegions   || []),
+        secondaryRegions: dbSec.length  > 0 ? dbSec  : (local.secondaryRegions || []),
+      };
+    });
     return [...uniqueLocal, ...dbFallback];
   }, [tab, mineExercises, friendExercises, globalDbExercises, customExercises, dbIds, user?.id]);
 
@@ -2627,6 +2908,9 @@ export const ExerciseLibraryPage = () => {
       if (activeChip === 'core')     return m === 'core' || m === 'abs';
       if (activeChip === 'push')     return m === 'chest' || m === 'shoulders' || m === 'triceps';
       if (activeChip === 'pull')     return m === 'back' || m === 'lats' || m === 'biceps' || m === 'traps';
+      if (activeChip === 'chest')    return m === 'chest';
+      if (activeChip === 'back')     return m === 'back' || m === 'lats' || m === 'traps';
+      if (activeChip === 'arms')     return m === 'biceps' || m === 'triceps' || m === 'forearms';
       if (activeChip === 'mobility') return cat.includes('mobility') || cat.includes('stretch');
       if (activeChip === 'hiit')     return cat.includes('hiit') || cat.includes('cardio');
       return true;
@@ -2643,6 +2927,58 @@ export const ExerciseLibraryPage = () => {
 
   const activeFilterCount = (filterMuscle !== 'All' ? 1 : 0) + (filterEquipment !== 'All' ? 1 : 0);
 
+  // Chip click router: muscle-based chips only paint the body picker —
+  // the user opens the grouped sheet manually via the "See N exercises"
+  // CTA underneath. Non-muscle chips (recent/mobility/hiit) open the All
+  // Exercises modal pre-filtered to that chip.
+  const handleChipTap = useCallback((chipId) => {
+    setActiveChip(chipId);
+    setChipSheet(null);
+    if (chipId === 'all') {
+      setShowAllExercises(false);
+      return;
+    }
+    if (CHIP_REGIONS[chipId]) {
+      // Muscle chip → just paint, do not auto-open the sheet.
+      return;
+    }
+    // recent / mobility / hiit → open all-exercises modal with this chip active
+    setShowAllExercises(true);
+  }, []);
+
+  // Opens the grouped multi-muscle sheet for the currently-active chip.
+  // Used by the CTA under the body picker.
+  const openChipSheet = useCallback(() => {
+    if (!CHIP_REGIONS[activeChip]) return;
+    setChipSheet({
+      regions: CHIP_REGIONS[activeChip],
+      label: chipDefs.find((c) => c.id === activeChip)?.label || activeChip,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChip]);
+
+  // Regions currently painted on the body picker. Chip overrides any
+  // bucket selection so the user sees what category they're filtering.
+  const paintedRegions = useMemo(() => {
+    if (CHIP_REGIONS[activeChip]) return CHIP_REGIONS[activeChip];
+    return null;
+  }, [activeChip]);
+
+  // Body-mode source list: same `activeList` (respects current tab —
+  // All / Mine / Friends) and search + equipment, but ignores the
+  // chip + muscle pill. In body view, the polygon IS the muscle selector.
+  const bodyModeExercises = useMemo(() => {
+    const q = debouncedQuery.toLowerCase().trim();
+    return activeList.filter((e) => {
+      if (q) {
+        const hay = `${e.name} ${e.name_es || ''} ${e.muscle} ${e.equipment}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (filterEquipment !== 'All' && e.equipment !== filterEquipment) return false;
+      return true;
+    });
+  }, [activeList, debouncedQuery, filterEquipment]);
+
   return (
     <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 md:px-8 pt-5 md:pt-10 pb-28 md:pb-12 animate-fade-in">
 
@@ -2658,21 +2994,23 @@ export const ExerciseLibraryPage = () => {
           >
             {t('exerciseLibrary.title')}
           </h1>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1 px-3.5 py-2.5 rounded-full active:scale-95 transition-all whitespace-nowrap flex-shrink-0"
-            style={{
-              background: 'var(--color-accent)',
-              color: '#001512',
-              fontSize: 13,
-              fontWeight: 800,
-              letterSpacing: '-0.1px',
-              boxShadow: '0 6px 16px color-mix(in srgb, var(--color-accent) 28%, transparent)',
-              border: 'none',
-            }}
-          >
-            <Plus size={15} strokeWidth={2.6} /> {t('exerciseLibrary.new', 'New')}
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-1 px-3.5 py-2.5 rounded-full active:scale-95 transition-all whitespace-nowrap"
+              style={{
+                background: 'var(--color-accent)',
+                color: '#001512',
+                fontSize: 13,
+                fontWeight: 800,
+                letterSpacing: '-0.1px',
+                boxShadow: '0 6px 16px color-mix(in srgb, var(--color-accent) 28%, transparent)',
+                border: 'none',
+              }}
+            >
+              <Plus size={15} strokeWidth={2.6} /> {t('exerciseLibrary.new', 'New')}
+            </button>
+          </div>
         </div>
 
       </header>
@@ -2711,50 +3049,29 @@ export const ExerciseLibraryPage = () => {
         })}
       </div>
 
-      {/* ── Search bar ──────────────────────────────────────────────────────── */}
-      <div
-        className="mb-3 flex items-center gap-2.5 rounded-[14px] px-3.5 py-3"
+      {/* ── Search bar — tappable trigger that opens the fullscreen
+          AllExercisesModal. The actual input lives inside the modal. */}
+      <button
+        type="button"
+        onClick={() => setShowAllExercises(true)}
+        className="mb-3 w-full flex items-center gap-2.5 rounded-[14px] px-3.5 py-3 text-left active:scale-[0.99] transition-transform"
         style={{ background: 'var(--color-bg-card)', border: '1.5px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(15,20,25,0.03)' }}
       >
         <Search size={16} strokeWidth={2} style={{ color: 'var(--color-text-subtle)' }} />
-        <input
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder={t('exerciseLibrary.searchPlaceholder', 'Search exercises, muscles, gear…')}
-          className="flex-1 bg-transparent border-0 outline-none"
-          style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', letterSpacing: '-0.2px' }}
-          maxLength={100}
-        />
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setShowFilters(true); }}
-          aria-label={t('exerciseLibrary.ariaFilters', 'Filters')}
-          className="relative min-w-[44px] min-h-[44px] rounded-[10px] flex items-center justify-center active:scale-95 transition-all flex-shrink-0"
-          style={{
-            background: activeFilterCount > 0 ? ACCENT_SOFT : 'var(--color-surface-hover)',
-          }}
+        <span
+          className="flex-1 truncate"
+          style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-muted)', letterSpacing: '-0.2px' }}
         >
-          <SlidersHorizontal
-            size={14}
-            strokeWidth={2.2}
-            style={{ color: activeFilterCount > 0 ? 'var(--color-accent)' : 'var(--color-text-subtle)' }}
-          />
-          {activeFilterCount > 0 && (
-            <span
-              className="absolute -top-1 -right-1 w-[14px] h-[14px] rounded-full text-[8px] font-bold flex items-center justify-center"
-              style={{ background: 'var(--color-accent)', color: '#001512' }}
-            >
-              {activeFilterCount}
-            </span>
-          )}
-        </button>
-      </div>
+          {t('exerciseLibrary.searchPlaceholder', 'Search exercises, muscles, gear…')}
+        </span>
+      </button>
 
-      {/* ── Filter chips (scrollable) ───────────────────────────────────────── */}
+      {/* ── Filter chips (scrollable) — tap to highlight muscles + open sheet,
+          or open the All Exercises modal for non-muscle chips. */}
       <div className="mb-3 -mx-4 px-4 overflow-x-auto no-scrollbar">
         <div className="flex gap-1.5 whitespace-nowrap">
           {chipDefs.map((c) => (
-            <FilterChip key={c.id} active={c.id === activeChip} onClick={() => setActiveChip(c.id)}>
+            <FilterChip key={c.id} active={c.id === activeChip} onClick={() => handleChipTap(c.id)}>
               {c.label}
             </FilterChip>
           ))}
@@ -2804,11 +3121,29 @@ export const ExerciseLibraryPage = () => {
       )}
 
       {/* ── Section label + sort ────────────────────────────────────────────── */}
-      <div className="mt-4 mb-2.5 flex items-center justify-between">
-        <span className="text-[10px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
-          {t('exerciseLibrary.exerciseCount', { count: filteredRows.length, defaultValue: '{{count}} exercises' })}
-        </span>
-        <div ref={sortMenuRef} className="relative">
+      <div className="mt-4 mb-2.5 flex items-center justify-between gap-3">
+        {tab === 'all' && CHIP_REGIONS[activeChip] ? (
+          <button
+            type="button"
+            onClick={openChipSheet}
+            className="text-[11px] font-extrabold uppercase tracking-[0.08em] min-w-0 truncate inline-flex items-center gap-1.5 active:opacity-70"
+            style={{ color: 'var(--color-accent)' }}
+          >
+            {t('exerciseLibrary.seeAllInFilter', {
+              filter: chipDefs.find((c) => c.id === activeChip)?.label || activeChip,
+              defaultValue: `Ver todo ${chipDefs.find((c) => c.id === activeChip)?.label || activeChip}`,
+            })}
+            <ChevronRight size={12} strokeWidth={2.4} />
+          </button>
+        ) : (
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] min-w-0 truncate" style={{ color: 'var(--color-text-subtle)' }}>
+            {tab === 'all'
+              ? t('exerciseLibrary.tapMuscle', { defaultValue: 'Toca un músculo' }).toUpperCase()
+              : t('exerciseLibrary.exerciseCount', { count: filteredRows.length, defaultValue: '{{count}} exercises' })}
+          </span>
+        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div ref={sortMenuRef} className="relative">
           <button
             type="button"
             onClick={() => setShowSortMenu(s => !s)}
@@ -2842,34 +3177,84 @@ export const ExerciseLibraryPage = () => {
             </div>
           )}
         </div>
+        </div>
       </div>
 
-      {/* ── Tab Content ─────────────────────────────────────────────────────── */}
-
-      {/* All tab — preserves ExerciseCard expand-to-detail flow */}
+      {/* ── Tab Content — All tab is body-only now (list view removed). */}
       {tab === 'all' && (
-        filteredRows.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-                 style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
-              <Dumbbell size={28} className="text-[var(--color-text-muted)]" />
-            </div>
-            <p className="text-[15px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('exerciseLibrary.noExercisesFound')}</p>
-            <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.tryDifferentSearch')}</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 xl:grid-cols-3">
-            {filteredRows.map((ex) => (
-              <ExerciseCard
-                key={ex.id}
-                exercise={ex}
-                selectable={false}
-                isFavorite={favoriteIds.has(ex.id)}
-                onToggleFavorite={handleToggleFavorite}
-              />
-            ))}
-          </div>
-        )
+        <div className="mb-4">
+          <BodyMusclePicker
+            selected={pickedBucket}
+            onSelect={(bucketId) => { setExpandToGroup(false); setPickedBucket(bucketId); }}
+            maxWidth={420}
+            highlightedRegions={paintedRegions}
+          />
+        </div>
+      )}
+
+      {/* Single-muscle sheet (tapping a polygon) */}
+      <MuscleExercisesSheet
+        open={tab === 'all' && !!pickedBucket}
+        bucketId={pickedBucket}
+        expandToGroup={expandToGroup}
+        exercises={bodyModeExercises}
+        onClose={() => { setPickedBucket(null); setExpandToGroup(false); }}
+        onToggleExpand={setExpandToGroup}
+        onExerciseTap={(ex) => setSheetExercise(ex)}
+      />
+
+      {/* Chip-driven multi-muscle sheet (Push/Pull/Legs/Core) */}
+      <MuscleExercisesSheet
+        open={tab === 'all' && !!chipSheet}
+        customRegions={chipSheet?.regions}
+        customLabel={chipSheet?.label}
+        exercises={bodyModeExercises}
+        onClose={() => setChipSheet(null)}
+        onExerciseTap={(ex) => setSheetExercise(ex)}
+      />
+
+      {/* Full "Browse All" modal — opened by tapping the search bar or
+          a non-muscle chip (Recent / Mobility / HIIT). */}
+      <AllExercisesModal
+        open={showAllExercises}
+        onClose={() => setShowAllExercises(false)}
+        exercises={bodyModeExercises}
+        onExerciseTap={(ex) => setSheetExercise(ex)}
+        initialSearch=""
+        initialChip={activeChip}
+        chipDefs={modalChipDefs}
+        filterByChip={(ex, chipId) => {
+          const m = (ex.muscle || '').toLowerCase();
+          const cat = (ex.category || '').toLowerCase();
+          if (chipId === 'recent') {
+            if (recentExerciseIds.size > 0) return recentExerciseIds.has(ex.id);
+            return favoriteIds.has(ex.id);
+          }
+          if (chipId === 'legs')     return m === 'legs' || m === 'quads' || m === 'hamstrings' || m === 'glutes' || m === 'calves';
+          if (chipId === 'core')     return m === 'core' || m === 'abs';
+          if (chipId === 'push')     return m === 'chest' || m === 'shoulders' || m === 'triceps';
+          if (chipId === 'pull')     return m === 'back' || m === 'lats' || m === 'biceps' || m === 'traps';
+          if (chipId === 'chest')    return m === 'chest';
+          if (chipId === 'back')     return m === 'back' || m === 'lats' || m === 'traps';
+          if (chipId === 'arms')     return m === 'biceps' || m === 'triceps' || m === 'forearms';
+          if (chipId === 'mobility') return cat.includes('mobility') || cat.includes('stretch');
+          if (chipId === 'hiit')     return cat.includes('hiit') || cat.includes('cardio');
+          return true;
+        }}
+      />
+
+      {/* Phantom ExerciseCard rendered in modal-only mode — surfaces the
+          exact same detail card the list view uses when a user taps a
+          video-bg tile inside the muscle sheet. */}
+      {sheetExercise && (
+        <ExerciseCard
+          exercise={sheetExercise}
+          modalOnly
+          initiallyOpen
+          isFavorite={favoriteIds.has(sheetExercise.id)}
+          onToggleFavorite={handleToggleFavorite}
+          onExternalClose={() => setSheetExercise(null)}
+        />
       )}
 
       {/* Mine tab */}

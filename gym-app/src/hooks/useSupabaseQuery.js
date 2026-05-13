@@ -1,6 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
+// Flatten the nested session_exercises → session_sets shape returned by
+// Supabase into the flat workout_sets shape readinessEngine.js expects.
+function flattenSessionSets(sessions) {
+  return (sessions ?? []).map((s) => ({
+    ...s,
+    workout_sets: (s.session_exercises ?? []).flatMap((se) =>
+      (se.session_sets ?? []).map((set) => ({
+        exercise_id: se.exercise_id,
+        weight_lbs: set.weight_lbs,
+        reps: set.reps,
+        completed: set.is_completed,
+      }))
+    ),
+  }));
+}
+
 // ── Generic Supabase query hook ─────────────────────────────────────────────
 // Wraps any supabase query builder in TanStack Query for caching + deduplication.
 export function useSupabaseQuery(queryKey, queryFn, options = {}) {
@@ -31,23 +47,38 @@ export function useDashboardSessions(userId) {
 }
 
 // ── Recent sessions WITH sets (for readiness/recovery analysis) ─────────────
-// Heavier than useDashboardSessions because it pulls workout_sets per session.
+// Heavier than useDashboardSessions because it pulls every set per session.
 // Use only on screens that actually need set-level detail.
+//
+// Real schema: workout_sessions → session_exercises → session_sets. We embed
+// that path then flatten into a `workout_sets` array shape that
+// readinessEngine.js expects (legacy name, pre-rename to session_sets).
 export function useRecentSessionsWithSets(userId, daysBack = 14) {
-  return useSupabaseQuery(
-    ['recent-sessions-with-sets', userId, daysBack],
-    () => {
+  return useQuery({
+    // v2 suffix busts any persisted cache from the broken pre-fix shape
+    // (workout_sets join → always empty). Without this users see stale 0/7.
+    queryKey: ['recent-sessions-with-sets:v2', userId, daysBack],
+    enabled: !!userId,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
       const since = new Date(Date.now() - daysBack * 86400000).toISOString();
-      return supabase
+      const { data, error } = await supabase
         .from('workout_sessions')
-        .select('id, completed_at, total_volume_lbs, duration_seconds, workout_sets(exercise_id, weight_lbs, reps, completed)')
+        .select(`
+          id, completed_at, total_volume_lbs, duration_seconds,
+          session_exercises(
+            exercise_id,
+            session_sets(weight_lbs, reps, is_completed)
+          )
+        `)
         .eq('profile_id', userId)
         .eq('status', 'completed')
         .gte('completed_at', since)
         .order('completed_at', { ascending: false });
+      if (error) throw error;
+      return flattenSessionSets(data);
     },
-    { enabled: !!userId, staleTime: 5 * 60_000 },
-  );
+  });
 }
 
 export function useRoutines(userId) {

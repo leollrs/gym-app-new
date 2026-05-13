@@ -8,10 +8,7 @@ import ReadinessModal from './ReadinessModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useRecentSessionsWithSets } from '../hooks/useSupabaseQuery';
 import {
-  computeReadiness,
-  overallReadiness,
-  computeRecoveryScore,
-  blendedReadiness,
+  computeDashboardReadiness,
   loadCachedRecoveryMetrics,
 } from '../lib/readinessEngine';
 
@@ -41,23 +38,32 @@ const WorkoutHeroCard = ({
   const [readinessOpen, setReadinessOpen] = useState(false);
   const videoRefs = useRef({});
 
-  // Live readiness score — same data the modal renders so the chip + modal
-  // never disagree.
+  // Live readiness score — uses the same function the Recovery modal does
+  // so the two surfaces can't drift. `readinessOpen` is in the dep array
+  // so closing the modal (where a fresh wellness check-in / metric fetch
+  // may have updated localStorage) re-runs the memo immediately.
   const { user } = useAuth();
   const { data: recentSessions = [] } = useRecentSessionsWithSets(user?.id, 14);
   const readinessScore = React.useMemo(() => {
-    const trainingLoad = overallReadiness(computeReadiness(recentSessions || [], { windowDays: 7 }));
-    // Use whatever recovery metrics the modal cached on its last open (4h TTL).
-    // We deliberately don't issue a fresh health-bridge call here — the chip
-    // is supposed to render instantly from cache; the modal does the live
-    // refresh.
+    let todaySoreness = null;
+    try {
+      const d = new Date();
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const raw = localStorage.getItem('tugympr_wellness_last_checkin');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.date === dateKey && typeof parsed.soreness === 'number') {
+          todaySoreness = parsed.soreness;
+        }
+      }
+    } catch { /* ignore */ }
     const cachedMetrics = loadCachedRecoveryMetrics();
-    if (!cachedMetrics) return trainingLoad;
-    // persistBaseline:false because we don't want every dashboard render to
-    // mutate the rolling baseline — the modal owns that side effect.
-    const recovery = computeRecoveryScore(cachedMetrics, { persistBaseline: false });
-    return blendedReadiness(trainingLoad, recovery);
-  }, [recentSessions]);
+    return computeDashboardReadiness({
+      sessions: recentSessions,
+      recoveryMetrics: cachedMetrics,
+      soreness: todaySoreness,
+    });
+  }, [recentSessions, readinessOpen]);
 
   // Preload all exercise videos on mount
   useEffect(() => {

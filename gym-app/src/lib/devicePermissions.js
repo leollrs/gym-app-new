@@ -48,9 +48,11 @@ export async function checkPermission(type) {
     }
     if (type === 'health') {
       // The @capgo/capacitor-health plugin does not expose a synchronous
-      // permission-status check (no `isAuthorized` method). We rely on a
-      // cached flag the request flow sets, falling back to 'prompt'.
+      // permission-status check (no `isAuthorized` method). We rely on the
+      // canonical "user opted in" flag written by Onboarding / Settings /
+      // Recovery, falling back to the request-flow status cache.
       try {
+        if (localStorage.getItem('tugympr_health_connected') === 'true') return 'granted';
         const cached = localStorage.getItem('healthPermissionStatus');
         if (cached === 'granted' || cached === 'denied') return cached;
       } catch {}
@@ -90,7 +92,16 @@ export async function requestPermission(type) {
         if (!avail) return 'unsupported';
         const result = await requestHealth();
         const status = result?.granted ? 'granted' : 'denied';
-        try { localStorage.setItem('healthPermissionStatus', status); } catch {}
+        try {
+          localStorage.setItem('healthPermissionStatus', status);
+          // Also write the canonical "user opted in" flag that Onboarding
+          // and Recovery use — so granting in Settings propagates to those
+          // surfaces. Caller still needs to update profiles.health_sync_enabled
+          // for cross-device / cold-start visibility.
+          if (status === 'granted') {
+            localStorage.setItem('tugympr_health_connected', 'true');
+          }
+        } catch {}
         return status;
       } catch (err) {
         console.warn('[devicePermissions] health request failed', err);

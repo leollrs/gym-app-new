@@ -300,7 +300,6 @@ const ChatView = ({ conversationId, onBack }) => {
   const bottomRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const inputRef = useRef(null);
-  const [kbHeight, setKbHeight] = useState(0);
   const encryptionSeedRef = useRef(null);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
@@ -339,16 +338,14 @@ const ChatView = ({ conversationId, onBack }) => {
     onBack();
   }, [otherUser, user?.id, showToast, t, onBack]);
 
-  // Native keyboard events — get exact height from Capacitor plugin
+  // Native keyboard events — WebView already resizes natively (capacitor.config
+  // Keyboard.resize="native"), so we only listen for the side effect of
+  // scrolling the conversation to its latest message when the keyboard opens.
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || !Keyboard) return;
     const listeners = [];
-    Keyboard.addListener('keyboardWillShow', (info) => {
-      setKbHeight(info.keyboardHeight);
+    Keyboard.addListener('keyboardWillShow', () => {
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 50);
-    }).then(h => listeners.push(h));
-    Keyboard.addListener('keyboardWillHide', () => {
-      setKbHeight(0);
     }).then(h => listeners.push(h));
     return () => { listeners.forEach(h => h.remove()); };
   }, []);
@@ -423,27 +420,37 @@ const ChatView = ({ conversationId, onBack }) => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages', filter: `conversation_id=eq.${conversationId}` },
         (payload) => {
-          decryptMessage(payload.new.body, conversationId, encryptionSeedRef.current).then(decryptedBody => {
-            setMessages(prev => {
-              // Already inserted via realtime
-              if (prev.some(m => m.id === payload.new.id)) return prev;
-              // Reconcile with optimistic temp messages: if we sent something
-              // moments ago that matches this real row, swap the temp for the
-              // real one instead of duplicating.
-              const tempIdx = prev.findIndex(m =>
-                m._pending
-                && m.sender_id === payload.new.sender_id
-                && m.body === decryptedBody
-                && Math.abs(new Date(m.created_at).getTime() - new Date(payload.new.created_at).getTime()) < 60000
-              );
-              if (tempIdx >= 0) {
-                const next = [...prev];
-                next[tempIdx] = { ...payload.new, body: decryptedBody };
-                return next;
-              }
-              return [...prev, { ...payload.new, body: decryptedBody }];
+          decryptMessage(payload.new.body, conversationId, encryptionSeedRef.current)
+            .then(decryptedBody => {
+              setMessages(prev => {
+                // Already inserted via realtime
+                if (prev.some(m => m.id === payload.new.id)) return prev;
+                // Reconcile with optimistic temp messages: if we sent something
+                // moments ago that matches this real row, swap the temp for the
+                // real one instead of duplicating.
+                const tempIdx = prev.findIndex(m =>
+                  m._pending
+                  && m.sender_id === payload.new.sender_id
+                  && m.body === decryptedBody
+                  && Math.abs(new Date(m.created_at).getTime() - new Date(payload.new.created_at).getTime()) < 60000
+                );
+                if (tempIdx >= 0) {
+                  const next = [...prev];
+                  next[tempIdx] = { ...payload.new, body: decryptedBody };
+                  return next;
+                }
+                return [...prev, { ...payload.new, body: decryptedBody }];
+              });
+            })
+            .catch(() => {
+              // Decryption failed (legacy/corrupted ciphertext). Insert a
+              // placeholder so the message still appears — never let the
+              // rejection bubble up and crash the WebView.
+              setMessages(prev => {
+                if (prev.some(m => m.id === payload.new.id)) return prev;
+                return [...prev, { ...payload.new, body: '' }];
+              });
             });
-          });
 
           if (payload.new.sender_id !== user.id) {
             supabase
@@ -606,7 +613,7 @@ const ChatView = ({ conversationId, onBack }) => {
   const displayName = otherUser?.full_name || otherUser?.username || t('messages.member', { defaultValue: 'Member' });
 
   return (
-    <div className="fixed left-0 right-0 top-0 z-[60] flex flex-col" style={{ background: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))', bottom: kbHeight > 0 ? kbHeight + 'px' : '0px', transition: 'bottom 0.25s ease-out' }}>
+    <div className="fixed left-0 right-0 top-0 bottom-0 z-[60] flex flex-col" style={{ background: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
       {/* Header — iMessage style: back left, name centered, avatar right */}
       <div
         className="flex items-center px-2 py-2 border-b border-white/[0.06] flex-shrink-0"
@@ -783,7 +790,7 @@ const ChatView = ({ conversationId, onBack }) => {
       {/* Input bar — pill style, sits above keyboard via native Capacitor events */}
       <div
         className="flex items-end gap-2 px-3 py-2 border-t border-white/[0.06] flex-shrink-0"
-        style={{ background: 'var(--color-bg-card)', paddingBottom: kbHeight > 0 ? '0.5rem' : 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+        style={{ background: 'var(--color-bg-card)', paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <textarea
           ref={inputRef}

@@ -193,6 +193,8 @@
   "termsOfService": "Terms of Service",
   "notifications": {
     "newTitle": "New notification",
+    "wellnessTitle": "Daily check-in",
+    "wellnessBody": "How sore are you today? Tap to log.",
     "viewAction": "View",
     "timeToTrain": "{{name}}, gym time",
     "todayIsTrainingDay": "{{name}}, today's a training day. {{day}} is on the schedule — own it.",

@@ -17,7 +17,10 @@ export default function ProductQRModal({ memberId, memberName, gymId, product, o
 
   useEffect(() => {
     if (product && memberId) {
-      signQRPayload(payload).then(setSignedPayload);
+      // Swallow rejections — unhandled promise rejections from the edge
+      // function crash the Capacitor WebView. QR falls back to unsigned
+      // payload via `signedPayload || payload`.
+      signQRPayload(payload).then(setSignedPayload).catch(() => {});
     }
   }, [payload, product, memberId]);
 

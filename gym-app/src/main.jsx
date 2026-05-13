@@ -19,7 +19,6 @@ import { getCached } from './lib/queryCache';
 import { supabase } from './lib/supabase';
 import { hydrateFromDurable, flushToDurable, whenHydrated } from './lib/durableStorage';
 import { i18nPrimaryReady } from './i18n/i18n';
-import StuckLoadingRecovery from './components/StuckLoadingRecovery.jsx';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -691,27 +690,7 @@ function LazyPostHogProvider({ apiKey, options, children }) {
   return children;
 }
 
-// Mount the stuck-loading recovery in its OWN React root, isolated from the
-// app's provider tree. If AuthProvider/QueryProvider/Router/etc. throws and
-// the main tree fails to render, the recovery banner still gets a chance to
-// appear after 10 s and offer a one-tap cache wipe + reload.
-const mountRecoveryRoot = () => {
-  try {
-    let host = document.getElementById('recovery-root');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'recovery-root';
-      document.body.appendChild(host);
-    }
-    ReactDOM.createRoot(host).render(<StuckLoadingRecovery />);
-  } catch { /* if even this fails, nothing we can do */ }
-};
-
 const renderApp = () => {
-  // Mount recovery FIRST so it's already running its 10s timer regardless of
-  // whether the main render below throws synchronously.
-  mountRecoveryRoot();
-
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
       <LazyPostHogProvider apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN} options={posthogOptions}>

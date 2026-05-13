@@ -147,9 +147,17 @@ export default function MemberSettings() {
   }, [showToast, t]);
 
   // ── Device permissions (notifications, camera, location, health) ──
-  const [permStatuses, setPermStatuses] = useState({
-    notifications: 'prompt', camera: 'prompt', location: 'prompt', health: 'prompt',
-  });
+  const [permStatuses, setPermStatuses] = useState(() => ({
+    notifications: 'prompt',
+    camera: 'prompt',
+    location: 'prompt',
+    // Seed health from the canonical flag so we don't flash "Tap to allow"
+    // before the async checkPermission resolves on mount.
+    health: (profile?.health_sync_enabled === true
+      || (typeof window !== 'undefined' && window.localStorage?.getItem('tugympr_health_connected') === 'true'))
+      ? 'granted'
+      : 'prompt',
+  }));
   const [permExplainerType, setPermExplainerType] = useState(null);
   const explainerResolverRef = useRef(null);
 
@@ -157,11 +165,18 @@ export default function MemberSettings() {
     const types = ['notifications', 'camera', 'location', 'health'];
     try {
       const results = await Promise.all(types.map((tp) => checkPermission(tp).catch(() => 'prompt')));
-      setPermStatuses(types.reduce((acc, tp, i) => ({ ...acc, [tp]: results[i] }), {}));
+      const next = types.reduce((acc, tp, i) => ({ ...acc, [tp]: results[i] }), {});
+      // Health: the DB column is the cross-device source of truth (Onboarding /
+      // Recovery / Settings all write it). If the user opted in anywhere, show
+      // "Allowed" here regardless of what the local plugin cache says.
+      if (profile?.health_sync_enabled === true && next.health !== 'denied' && next.health !== 'unsupported') {
+        next.health = 'granted';
+      }
+      setPermStatuses(next);
     } catch (err) {
       console.warn('[Settings] refreshPermissions failed', err);
     }
-  }, []);
+  }, [profile?.health_sync_enabled]);
 
   useEffect(() => {
     refreshPermissions();
@@ -207,8 +222,16 @@ export default function MemberSettings() {
       showToast(t('settings.healthOpenSettings', 'Enable in iOS Settings → Privacy & Security → Health → TuGymPR'), 'info');
       try { await CapApp.openUrl({ url: 'app-settings:' }); } catch {}
     }
+    // Persist the canonical opt-in flag when health is newly granted from
+    // Settings, so Onboarding's prefill flow + Recovery's connect CTA both
+    // see the connection on cold start. Mirrors what Onboarding/Recovery do.
+    if (type === 'health' && result === 'granted' && user?.id) {
+      supabase.from('profiles').update({ health_sync_enabled: true }).eq('id', user.id).then(() => {
+        refreshProfile?.();
+      }, () => {});
+    }
     refreshPermissions();
-  }, [openExplainer, refreshPermissions, showToast, t]);
+  }, [openExplainer, refreshPermissions, showToast, t, user?.id, refreshProfile]);
 
   // Deep-link into the OS settings app for the current app. We can't grant
   // permissions from JS once a user has denied them — only iOS/Android

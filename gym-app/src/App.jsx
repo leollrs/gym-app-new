@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, useRef, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { usePostHog } from '@posthog/react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -529,9 +529,20 @@ const AgeVerificationScreen = () => {
 // failed to load" — the first case auto-recovers as soon as network returns,
 // so we shouldn't scare the user with an error screen + Sign out button.
 const ProfileUnavailableScreen = () => {
-  const { signOut } = useAuth();
+  const { signOut, refreshProfile } = useAuth();
   const { t } = useTranslation('pages');
   const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = useCallback(async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await refreshProfile?.();
+    } finally {
+      setRetrying(false);
+    }
+  }, [retrying, refreshProfile]);
 
   // Auto-reload when we come back online — the next boot will hydrate the
   // profile from a fresh getSession + fetchProfile. safeReload uses navigate(0)
@@ -576,11 +587,12 @@ const ProfileUnavailableScreen = () => {
         </p>
         <div className="flex items-center justify-center gap-3">
           <button
-            onClick={() => safeReload()}
-            className="rounded-xl px-5 py-3 text-[13px] font-semibold transition-colors"
+            onClick={offline ? () => safeReload() : handleRetry}
+            disabled={retrying}
+            className="rounded-xl px-5 py-3 text-[13px] font-semibold transition-colors disabled:opacity-60"
             style={{ background: 'var(--color-accent, #D4AF37)', color: 'var(--color-bg-card, #000)' }}
           >
-            {t('blocking.retry')}
+            {retrying ? t('blocking.retrying', 'Reintentando…') : t('blocking.retry')}
           </button>
           {!offline && (
             <button

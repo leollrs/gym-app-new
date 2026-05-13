@@ -153,12 +153,19 @@ export const AuthProvider = ({ children }) => {
     // Fallback to direct query if RPC fails (e.g. migration not yet applied)
     let data, branding, gym;
     if (rpcError || !rpcResult) {
-      const { data: fallback } = await supabase
-        .from('profiles')
-        .select('id, gym_id, full_name, username, role, additional_roles, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience, date_of_birth, age_verified_at, created_at')
-        .eq('id', userId)
-        .maybeSingle();
-      data = fallback;
+      const [{ data: fallback }, { data: onboarding }] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, gym_id, full_name, username, role, additional_roles, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience, date_of_birth, age_verified_at, created_at, health_sync_enabled')
+          .eq('id', userId)
+          .maybeSingle(),
+        supabase
+          .from('member_onboarding')
+          .select('primary_goal, fitness_level, sex')
+          .eq('profile_id', userId)
+          .maybeSingle(),
+      ]);
+      data = fallback ? { ...fallback, ...(onboarding ?? {}) } : null;
       branding = null;
       gym = null;
 

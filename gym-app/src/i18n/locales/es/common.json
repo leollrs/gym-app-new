@@ -193,6 +193,8 @@
   "termsOfService": "Términos de Servicio",
   "notifications": {
     "newTitle": "Nueva notificación",
+    "wellnessTitle": "Check-in diario",
+    "wellnessBody": "¿Qué tan adolorido estás hoy? Toca para registrar.",
     "viewAction": "Ver",
     "timeToTrain": "{{name}}, hora de entrenar",
     "todayIsTrainingDay": "{{name}}, hoy toca entrenar. {{day}} está en tu plan — a por ello.",

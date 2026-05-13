@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, Component } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame } from 'lucide-react';
+import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame, Unlink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,18 +19,35 @@ import { clearCache as clearQueryCache } from '../lib/queryCache';
 import { useToast } from '../contexts/ToastContext';
 
 import { usePostHog } from '@posthog/react';
+import { useQueryClient } from '@tanstack/react-query';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT } from '../data/exercises';
 import Confetti from '../components/Confetti';
 
 import SessionHeader from './active-session/SessionHeader';
 import ExerciseCard from './active-session/ExerciseCard';
+import SupersetPickerModal from '../components/SupersetPickerModal';
+import LazyVideoTile from '../components/LazyVideoTile';
+import { getSessionSuggestions } from '../lib/sessionExerciseSuggestions';
 import RestTimer from './active-session/RestTimer';
 import SessionSummary from './active-session/SessionSummary';
 import { selectWarmUps } from '../lib/warmUpSelector';
 import { selectCoolDownStretches } from '../lib/cooldownSelector';
 
 const IS_EMPTY_SESSION = (id) => id === 'empty';
+
+// Chip filters for the in-session Add Exercise modal. Mirrors the chip set
+// used by the standalone Exercise Library so the same mental model carries.
+// `all` is the no-op default.
+const ADD_EXERCISE_CHIP_REGIONS = {
+  push:  ['front_delts', 'side_delts', 'upper_chest', 'mid_chest', 'lower_chest', 'triceps'],
+  pull:  ['upper_back', 'mid_back', 'lats', 'lower_back', 'traps', 'biceps', 'rear_delts'],
+  chest: ['upper_chest', 'mid_chest', 'lower_chest'],
+  back:  ['upper_back', 'mid_back', 'lats', 'lower_back', 'traps'],
+  arms:  ['biceps', 'triceps', 'forearms', 'front_delts', 'side_delts', 'rear_delts'],
+  legs:  ['quads', 'hamstrings', 'glutes', 'adductors', 'abductors', 'glute_med', 'calves', 'tibialis', 'soleus'],
+  core:  ['upper_abs', 'mid_abs', 'lower_abs', 'abs', 'obliques', 'serratus'],
+};
 
 // ── Warm-Up Timer — auto-starting, drift-free, same style as rest timer ─────
 const WarmUpTimer = ({ durationSec, onComplete }) => {
@@ -358,6 +375,7 @@ const ActiveSession = () => {
   const { user, profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
   const posthog = usePostHog();
+  const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   // ── Display unit toggle for weight inputs (lb / kg) ─────────────────────────
@@ -734,9 +752,84 @@ const ActiveSession = () => {
   // Inline custom-exercise creator inside the swap modal (Feat 1).
   const [swapCustomName, setSwapCustomName] = useState('');
   const [swapCustomSaving, setSwapCustomSaving] = useState(false);
+  // Same inline creator inside the Add Exercise modal so the user can spin
+  // up a brand-new exercise without first having to pick one to swap. The
+  // active chip filter seeds the muscle group when possible (Chest chip →
+  // muscle_group: 'Chest', etc.).
+  const [addCustomName, setAddCustomName] = useState('');
+  const [addCustomSaving, setAddCustomSaving] = useState(false);
   // In-session list manager (Feat 3) — full-list view with reorder / swap /
   // delete / add. Triggered by the list icon next to the segmented nav.
   const [showListManager, setShowListManager] = useState(false);
+  // Multi-select inside the in-session list manager — picks 2+ exercises to
+  // group as a superset/circuit on the fly without leaving the workout.
+  const [listGroupSel, setListGroupSel] = useState(() => new Set());
+  const toggleListGroupSel = (idx) => {
+    setListGroupSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+  const handleListGroup = (type) => {
+    if (listGroupSel.size < 2) return;
+    const gid = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    setExercises((prev) => prev.map((ex, i) =>
+      listGroupSel.has(i) ? { ...ex, groupId: gid, groupType: type } : ex
+    ));
+    setListGroupSel(new Set());
+  };
+  const handleListUngroup = (groupId) => {
+    setExercises((prev) => prev.map((ex) =>
+      ex.groupId === groupId ? { ...ex, groupId: null, groupType: null } : ex
+    ));
+  };
+  // Quick-superset state: when the user taps the inline "Superset" pill we
+  // either open a picker (to choose a partner from the routine / add a new
+  // one) or — if the current exercise is already grouped — unlink the group.
+  const [showSupersetPicker, setShowSupersetPicker] = useState(false);
+  // When true, the next `handleAddExerciseToSession` call also groups the
+  // newly-added exercise with whatever exercise was active when the picker
+  // opened. Cleared once consumed (or when the AddExercise modal closes).
+  const supersetPendingForRef = useRef(null);
+
+  const handleQuickSupersetToggle = useCallback(() => {
+    setExercises((prev) => {
+      const idx = currentExerciseIndex;
+      if (idx < 0 || idx >= prev.length) return prev;
+      const cur = prev[idx];
+      if (cur.groupId) {
+        // Already in a group — single-tap dissolves it.
+        return prev.map((ex) => ex.groupId === cur.groupId ? { ...ex, groupId: null, groupType: null } : ex);
+      }
+      // Not in a group — defer the actual pairing to the picker.
+      setShowSupersetPicker(true);
+      return prev;
+    });
+  }, [currentExerciseIndex]);
+
+  const handleSupersetPickExisting = useCallback((otherExerciseId) => {
+    setExercises((prev) => {
+      const idx = currentExerciseIndex;
+      if (idx < 0 || idx >= prev.length) return prev;
+      const gid = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      return prev.map((ex, i) => {
+        if (i === idx || ex.id === otherExerciseId) {
+          return { ...ex, groupId: gid, groupType: 'superset' };
+        }
+        return ex;
+      });
+    });
+    setShowSupersetPicker(false);
+  }, [currentExerciseIndex]);
+
+  const handleSupersetAddNew = useCallback(() => {
+    const cur = exercises[currentExerciseIndex];
+    if (cur) supersetPendingForRef.current = cur.id;
+    setShowSupersetPicker(false);
+    setShowAddExercise(true);
+  }, [exercises, currentExerciseIndex]);
   const [exerciseSwaps, setExerciseSwaps] = useState([]); // { original_exercise_id, new_exercise_id, reason }
   useEffect(() => {
     if (showSwapModal) {
@@ -911,6 +1004,12 @@ const ActiveSession = () => {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [exerciseSearch, setExerciseSearch] = useState('');
   const [selectedMuscle, setSelectedMuscle] = useState('');
+  // Active chip filter for the in-session library grid. 'all' = no filter.
+  const [addExerciseChip, setAddExerciseChip] = useState('all');
+  // Tracks where the AddExercise modal was opened from so closing returns
+  // the user to that surface (e.g. tapping X from inside the list manager
+  // reopens the list manager instead of dropping back to the workout view).
+  const [addExerciseOrigin, setAddExerciseOrigin] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState('');
@@ -918,13 +1017,16 @@ const ActiveSession = () => {
   const [adjustedRestSeconds, setAdjustedRestSeconds] = useState(null);
   // Favorites: user's own saved exercises are auto-favorites
   const [favoriteExerciseIds, setFavoriteExerciseIds] = useState(new Set());
-  // DB exercises (with Spanish names) — fetched when modal opens
+  // DB exercises (gym's own catalogue + user-created customs). Fetched once
+  // per session so customs added via the swap modal show up in search/swap
+  // next time without a page reload. Re-fetched when the Add Exercise modal
+  // opens too, so a brand-new custom created mid-session is visible.
   const [dbExerciseMap, setDbExerciseMap] = useState({});
   useEffect(() => {
-    if (!user?.id || !showAddExercise) return;
+    if (!user?.id) return;
     Promise.all([
       supabase.from('exercise_favorites').select('exercise_id').eq('profile_id', user.id),
-      supabase.from('exercises').select('id, name, name_es, muscle_group, equipment'),
+      supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, default_sets, default_reps, rest_seconds, instructions, instructions_es, video_url, primary_regions, secondary_regions'),
     ]).then(([favRes, exRes]) => {
       if (favRes.data) setFavoriteExerciseIds(new Set(favRes.data.map(r => r.exercise_id)));
       if (exRes.data) {
@@ -935,30 +1037,67 @@ const ActiveSession = () => {
     });
   }, [user?.id, showAddExercise]);
 
-  // Merge local exercises with DB Spanish names
+  // Library-shaped list = static local data (with DB Spanish names merged in)
+  // + any DB-only customs that don't exist locally. Custom rows lack the
+  // hand-curated `muscleScores`; we default them to {} so they still pass
+  // muscle-filter checks and just won't rank high in suggestions.
   const enrichedLocalExercises = useMemo(() => {
-    return localExercises.map(ex => {
+    const localIds = new Set(localExercises.map(e => e.id));
+    const dbCustoms = Object.values(dbExerciseMap)
+      .filter((db) => !localIds.has(db.id))
+      .map((db) => ({
+        id: db.id,
+        name: db.name,
+        name_es: db.name_es || null,
+        muscle: db.muscle_group || 'Full Body',
+        equipment: db.equipment || 'Bodyweight',
+        category: 'Strength',
+        defaultSets: db.default_sets || 3,
+        defaultReps: db.default_reps || 10,
+        restSeconds: db.rest_seconds || 90,
+        instructions: db.instructions || null,
+        instructions_es: db.instructions_es || null,
+        primaryRegions: db.primary_regions || [],
+        secondaryRegions: db.secondary_regions || [],
+        videoUrl: db.video_url || null,
+        muscleScores: {},
+      }));
+    const enrichedLocal = localExercises.map((ex) => {
       const db = dbExerciseMap[ex.id];
       return db ? { ...ex, name_es: db.name_es } : ex;
     });
+    return [...enrichedLocal, ...dbCustoms];
   }, [dbExerciseMap]);
 
   const filteredLibraryExercises = useMemo(() => {
     if (!showAddExercise) return [];
     const q = exerciseSearch.toLowerCase().trim();
     const addedIds = new Set(exercises.map(e => e.id));
+    const chipRegions = ADD_EXERCISE_CHIP_REGIONS[addExerciseChip] || null;
     return enrichedLocalExercises.filter(ex => {
       if (addedIds.has(ex.id)) return false;
       if (selectedMuscle && ex.muscle !== selectedMuscle) return false;
       if (selectedEquipment && ex.equipment !== selectedEquipment) return false;
       if (showFavoritesOnly && !favoriteExerciseIds.has(ex.id)) return false;
+      if (chipRegions) {
+        const exRegions = ex.primaryRegions || [];
+        if (!exRegions.some((r) => chipRegions.includes(r))) return false;
+      }
       if (q) {
         const name = (exName(ex) || ex.name).toLowerCase();
         if (!name.includes(q)) return false;
       }
       return true;
     }).slice(0, 50);
-  }, [exerciseSearch, selectedMuscle, selectedEquipment, showAddExercise, exercises, showFavoritesOnly, favoriteExerciseIds, enrichedLocalExercises]);
+  }, [exerciseSearch, selectedMuscle, selectedEquipment, showAddExercise, exercises, showFavoritesOnly, favoriteExerciseIds, enrichedLocalExercises, addExerciseChip]);
+
+  // Suggested-for-this-session picks — computed once per `exercises` list
+  // change. Hidden when the user is searching/filtering so it doesn't fight
+  // for attention.
+  const suggestedExercises = useMemo(() => {
+    if (!showAddExercise) return [];
+    return getSessionSuggestions(exercises, { topN: 6, library: enrichedLocalExercises });
+  }, [exercises, enrichedLocalExercises, showAddExercise]);
 
   const handleAddExerciseToSession = (libEx) => {
     const newEx = {
@@ -974,7 +1113,21 @@ const ActiveSession = () => {
       history:     [],
       suggestion:  null,
     };
-    setExercises(prev => [...prev, newEx]);
+    // Superset pending: when the user opened the AddExercise modal from the
+    // SupersetPickerModal's "Add new" CTA, group the newly-added exercise
+    // with the originating exercise. Cleared after consumption.
+    const supersetWithId = supersetPendingForRef.current;
+    supersetPendingForRef.current = null;
+    setExercises(prev => {
+      if (supersetWithId) {
+        const gid = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+        return [
+          ...prev.map(ex => ex.id === supersetWithId ? { ...ex, groupId: gid, groupType: 'superset' } : ex),
+          { ...newEx, groupId: gid, groupType: 'superset' },
+        ];
+      }
+      return [...prev, newEx];
+    });
     setLoggedSets(prev => ({
       ...prev,
       [libEx.id]: Array.from({ length: newEx.targetSets }).map(() => ({
@@ -998,9 +1151,18 @@ const ActiveSession = () => {
     setExerciseSearch('');
     setSelectedMuscle('');
     setWorkoutComplete(false);
-    // Navigate to the newly added exercise
-    if (exercises.length > 0) {
-      setCurrentExerciseIndex(exercises.length); // will be the new last index after state update
+    // Return to whichever surface the user opened the modal from. If they
+    // came from the list manager, drop them back into the list (which now
+    // includes the newly-added exercise) so they can keep adding without
+    // bouncing through the workout view.
+    const wasFromListManager = addExerciseOrigin === 'list-manager';
+    setAddExerciseOrigin(null);
+    setAddExerciseChip('all');
+    if (wasFromListManager) {
+      setShowListManager(true);
+    } else if (exercises.length > 0) {
+      // Workout-origin path: focus the newly-added exercise.
+      setCurrentExerciseIndex(exercises.length);
     }
   };
 
@@ -1773,9 +1935,18 @@ const ActiveSession = () => {
     });
   };
 
+  // Drops contribute to total volume (weight × reps per drop) so a set with
+  // an extended dropset still rolls up correctly into session stats.
   const totalVolume = Object.entries(loggedSets).reduce((sum, [, sets]) =>
-    sum + sets.filter(s => s.completed && !s.skipped).reduce((s2, set) =>
-      s2 + (parseFloat(set.weight) || 0) * (parseInt(set.reps, 10) || 0), 0)
+    sum + sets.filter(s => s.completed && !s.skipped).reduce((s2, set) => {
+      let setVol = (parseFloat(set.weight) || 0) * (parseInt(set.reps, 10) || 0);
+      if (Array.isArray(set.drops)) {
+        for (const d of set.drops) {
+          setVol += (parseFloat(d.weight) || 0) * (parseInt(d.reps, 10) || 0);
+        }
+      }
+      return s2 + setVol;
+    }, 0)
   , 0);
 
   // Helper: is an exercise bodyweight? Local data uses `equipment === 'Bodyweight'`.
@@ -1852,6 +2023,13 @@ const ActiveSession = () => {
       set.completed = completing;
 
       if (completing) {
+        // Snapshot the exercise's group state onto the set itself so the
+        // completed-set chip remembers whether it was logged while the
+        // exercise was supersetted, even if the user ungroups later.
+        const curEx = exercises.find(e => e.id === exerciseId);
+        set.groupType = curEx?.groupType || null;
+        set.groupId = curEx?.groupId || null;
+
         const prDetected = isPR(exerciseId, set.weight, set.reps, livePRs.current);
         set.isPR = prDetected;
 
@@ -2071,9 +2249,14 @@ const ActiveSession = () => {
     const currentIds = new Set(exercises.map(e => e.id));
     const sameMuscle = [];
     const otherMuscles = [];
-    for (const ex of localExercises) {
+    // Source = enriched local + DB customs, so any exercise the user has
+    // created in a previous (or current) session shows up here too.
+    for (const ex of enrichedLocalExercises) {
       if (currentIds.has(ex.id)) continue; // already in session
-      if (q && !ex.name.toLowerCase().includes(q)) continue;
+      if (q) {
+        const hay = `${ex.name || ''} ${ex.name_es || ''}`.toLowerCase();
+        if (!hay.includes(q)) continue;
+      }
       if (swapTargetMuscle && ex.muscle === swapTargetMuscle) {
         sameMuscle.push(ex);
       } else {
@@ -2085,7 +2268,7 @@ const ActiveSession = () => {
       sameMuscle: sameMuscle.slice(0, 50),
       otherMuscles: otherMuscles.slice(0, 30),
     };
-  }, [showSwapModal, swapSearch, swapTargetExercise, swapTargetMuscle, exercises]);
+  }, [showSwapModal, swapSearch, swapTargetExercise, swapTargetMuscle, exercises, enrichedLocalExercises]);
 
   const handleSwapExercise = (newLibEx) => {
     if (!swapTargetExercise) return;
@@ -2183,9 +2366,112 @@ const ActiveSession = () => {
         instructions: null,
         instructions_es: null,
       };
+      // Cache the new row into `dbExerciseMap` immediately so search /
+      // swap / suggestions can use it for the rest of this session
+      // without waiting for a refetch.
+      setDbExerciseMap((prev) => ({
+        ...prev,
+        [id]: {
+          id,
+          name,
+          name_es: null,
+          muscle_group,
+          equipment,
+          default_sets: swapTargetExercise.targetSets || 3,
+          default_reps: swapTargetExercise.targetReps || 10,
+          rest_seconds: swapTargetExercise.restSeconds || 90,
+          instructions: null,
+          instructions_es: null,
+          video_url: null,
+          primary_regions: [],
+          secondary_regions: [],
+        },
+      }));
       handleSwapExercise(newLibEx);
     } finally {
       setSwapCustomSaving(false);
+    }
+  };
+
+  // Inline "Create custom exercise" inside the Add Exercise modal. Inserts
+  // into the gym's `exercises` catalogue (visible to this user in future
+  // sessions), then appends the new exercise to the active session in one
+  // shot. Muscle group is inferred from the active chip filter when it
+  // maps cleanly; otherwise defaults to 'Full Body'.
+  const handleCreateCustomAndAdd = async () => {
+    const name = addCustomName.trim();
+    if (!name || !user?.id || !profile?.gym_id) return;
+    setAddCustomSaving(true);
+    try {
+      const CHIP_TO_MUSCLE = {
+        chest: 'Chest',
+        back:  'Back',
+        legs:  'Legs',
+        core:  'Core',
+        arms:  'Biceps',
+        push:  'Chest',
+        pull:  'Back',
+      };
+      const VALID_MUSCLES = new Set(['Chest','Back','Shoulders','Biceps','Triceps','Legs','Glutes','Core','Calves','Forearms','Traps','Full Body','Warm-Up']);
+      const fromChip = CHIP_TO_MUSCLE[addExerciseChip];
+      const muscle_group = (fromChip && VALID_MUSCLES.has(fromChip))
+        ? fromChip
+        : (selectedMuscle && VALID_MUSCLES.has(selectedMuscle) ? selectedMuscle : 'Full Body');
+      const equipment = selectedEquipment || 'Bodyweight';
+      const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const { error } = await supabase.from('exercises').insert({
+        id,
+        gym_id: profile.gym_id,
+        created_by: user.id,
+        name,
+        muscle_group,
+        equipment,
+        category: 'Strength',
+        default_sets: 3,
+        default_reps: 10,
+        rest_seconds: 90,
+        is_active: true,
+      });
+      if (error) {
+        console.warn('handleCreateCustomAndAdd insert failed:', error);
+        return;
+      }
+      // Cache locally so future searches / suggestions / swaps pick it up
+      // without waiting for a refetch.
+      setDbExerciseMap((prev) => ({
+        ...prev,
+        [id]: {
+          id,
+          name,
+          name_es: null,
+          muscle_group,
+          equipment,
+          default_sets: 3,
+          default_reps: 10,
+          rest_seconds: 90,
+          instructions: null,
+          instructions_es: null,
+          video_url: null,
+          primary_regions: [],
+          secondary_regions: [],
+        },
+      }));
+      // Library-shaped object for the active-session adder.
+      handleAddExerciseToSession({
+        id,
+        name,
+        name_es: null,
+        muscle: muscle_group,
+        equipment,
+        defaultSets: 3,
+        defaultReps: 10,
+        videoUrl: null,
+        instructions: null,
+        instructions_es: null,
+      });
+      setAddCustomName('');
+    } finally {
+      setAddCustomSaving(false);
     }
   };
 
@@ -2219,6 +2505,18 @@ const ActiveSession = () => {
             is_pr: set.isPR || false,
             rpe: set.rpe ?? null,
             notes: set.notes || null,
+            // Dropsets: array of {weight, reps} performed immediately after
+            // the top set with no rest. The current `complete_workout` RPC
+            // ignores this field — a follow-up migration will surface it on
+            // `session_sets.drops` so it shows in the workout log.
+            drops: Array.isArray(set.drops) && set.drops.length > 0
+              ? set.drops
+                  .map((d) => ({
+                    weight: parseFloat(d.weight) || 0,
+                    reps: parseInt(d.reps, 10) || 0,
+                  }))
+                  .filter((d) => d.reps > 0)
+              : null,
           })),
         })),
         session_prs: sessionPRs.map(pr => ({
@@ -2245,6 +2543,25 @@ const ActiveSession = () => {
         clearCachedState(`${heroKey}-today`);
         clearCachedState(`${heroKey}-week-cardio`);
         clearQueryCache(`dash:${user?.id}`);
+      } catch {}
+
+      // Invalidate every leaderboard query so the just-finished workout's
+      // volume / workouts / streak / improvement / PR / check-in numbers
+      // are reflected the moment the user opens the leaderboard. Realtime
+      // subscriptions on the Leaderboard page handle the equivalent update
+      // for OTHER members in the gym.
+      try {
+        const LEADERBOARD_KEYS = [
+          'leaderboard',
+          'leaderboard-improved',
+          'leaderboard-consistency',
+          'leaderboard-prs',
+          'leaderboard-checkins',
+          'leaderboard-newcomers',
+        ];
+        for (const key of LEADERBOARD_KEYS) {
+          queryClient.invalidateQueries({ queryKey: [key], exact: false });
+        }
       } catch {}
 
       posthog?.capture('workout_completed', {
@@ -2413,6 +2730,27 @@ const ActiveSession = () => {
             style={{ color: 'var(--color-text-muted)' }}
           >
             {t('activeSession.skipWarmUp', 'Skip')}
+          </button>
+          <button
+            onClick={() => {
+              // Bail out: clear any draft we may have already written and
+              // bounce HOME. Mirrors the discard-session cleanup so we
+              // don't leave orphan state behind.
+              posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: 0, from: 'warmup_gate' });
+              sessionEndedRef.current = true;
+              try { localStorage.removeItem(sessionKey); } catch {}
+              if (user?.id) {
+                supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}, () => {});
+              }
+              try { cancelWorkoutNotification(); } catch {}
+              try { endLiveActivity(); } catch {}
+              try { syncWorkoutEnded({ duration: 0, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); } catch {}
+              navigate('/');
+            }}
+            className="w-full py-2 rounded-2xl font-semibold text-[12px] transition-colors"
+            style={{ color: 'var(--color-text-subtle)' }}
+          >
+            {t('activeSession.cancelWorkout', 'Cancel')}
           </button>
         </div>
       </div>
@@ -2597,6 +2935,11 @@ const ActiveSession = () => {
   };
 
   // Reorder: move exercise from `fromIdx` to `toIdx` (used by list manager).
+  // Position is pinned: `currentExerciseIndex` never moves on reorder. The
+  // exercise sitting at that index simply changes, and per-exercise set
+  // progress lives in `loggedSets` keyed by exercise id — so the moved
+  // exercise resumes from wherever the user left it whenever they navigate
+  // back to its new position.
   const handleReorderExercise = (fromIdx, toIdx) => {
     if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return;
     setExercises(prev => {
@@ -2605,15 +2948,6 @@ const ActiveSession = () => {
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
       return next;
-    });
-    // Track where the active exercise ended up after the shuffle.
-    setCurrentExerciseIndex(prevIdx => {
-      if (prevIdx === fromIdx) return toIdx;
-      // moving past the active index from above
-      if (fromIdx < prevIdx && toIdx >= prevIdx) return prevIdx - 1;
-      // moving past the active index from below
-      if (fromIdx > prevIdx && toIdx <= prevIdx) return prevIdx + 1;
-      return prevIdx;
     });
   };
 
@@ -2786,6 +3120,19 @@ const ActiveSession = () => {
         </div>
       )}
 
+      {/* Superset Picker — opened by the quick "Superset" pill in the active
+          set logging panel. Lets the user pair the current exercise with an
+          existing routine exercise or trigger the AddExercise flow with a
+          pending-group flag. */}
+      <SupersetPickerModal
+        open={showSupersetPicker}
+        onClose={() => setShowSupersetPicker(false)}
+        currentExerciseId={exercises[currentExerciseIndex]?.id}
+        exercises={exercises}
+        onPickExisting={handleSupersetPickExisting}
+        onAddNew={handleSupersetAddNew}
+      />
+
       {/* Finish Modal */}
       {showFinishModal && (
         <SessionSummary
@@ -2808,6 +3155,7 @@ const ActiveSession = () => {
         completedSets={completedSets}
         totalSets={totalSets}
         exercises={isInWarmUp ? warmUpExercises : cooldownPhase === 'active' ? selectCoolDownStretches([...new Set(exercises.map(e => e.muscle).filter(Boolean))]) : exercises}
+        loggedSets={loggedSets}
         currentExerciseIndex={isInWarmUp ? warmUpIndex : cooldownPhase === 'active' ? cooldownIndex : currentExerciseIndex}
         showResumedBanner={showResumedBanner}
         savedSession={savedSession}
@@ -3369,25 +3717,18 @@ const ActiveSession = () => {
                   livePRs={livePRs.current}
                   nextInGroup={nextInGroup}
                   groupType={groupType}
+                  groupId={currentExercise.groupId}
+                  canStartSuperset={exercises.length >= 2 || currentExercise.groupId}
+                  onToggleSuperset={handleQuickSupersetToggle}
                   adjustedRestSeconds={adjustedRestSeconds}
                   unit={weightUnit}
                   onToggleUnit={toggleWeightUnit}
                 />
                 </>
               )}
-              {/* Connector line + next-in-group prompt */}
-              {nextInGroup && groupType && !allSetsComplete && (
-                <div className="px-4 pb-2">
-                  <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${
-                    groupType === 'superset' ? 'border-purple-500/20 bg-purple-500/[0.06]' : 'border-blue-500/20 bg-blue-500/[0.06]'
-                  }`}>
-                    <div className={`w-0.5 h-4 rounded-full ${groupType === 'superset' ? 'bg-purple-500/50' : 'bg-blue-500/50'}`} />
-                    <span className={`text-[11px] font-semibold ${groupType === 'superset' ? 'text-purple-400' : 'text-blue-400'}`}>
-                      {t('activeSession.nextInSuperset', { name: exName(nextInGroup) })}
-                    </span>
-                  </div>
-                </div>
-              )}
+              {/* The "Next in superset" callout used to render here too;
+                  ExerciseCard renders the same banner inside the card body,
+                  so this outer copy was a duplicate. */}
             </div>
           );
         })() : null}
@@ -3409,7 +3750,19 @@ const ActiveSession = () => {
             <div className="flex items-center gap-2 px-4 pt-4 pb-3">
               <h3 className="text-[18px] font-bold flex-1" style={{ color: 'var(--color-text-primary)' }}>{t('activeSession.addExercise')}</h3>
               <button
-                onClick={() => { setShowAddExercise(false); setExerciseSearch(''); setSelectedMuscle(''); setShowFilters(false); setShowFavoritesOnly(false); setPreviewExercise(null); }}
+                onClick={() => {
+                  const wasFromListManager = addExerciseOrigin === 'list-manager';
+                  setShowAddExercise(false);
+                  setExerciseSearch('');
+                  setSelectedMuscle('');
+                  setShowFilters(false);
+                  setShowFavoritesOnly(false);
+                  setPreviewExercise(null);
+                  setAddExerciseChip('all');
+                  setAddExerciseOrigin(null);
+                  setAddCustomName('');
+                  if (wasFromListManager) setShowListManager(true);
+                }}
                 className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors"
                 style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' }}
                 aria-label={t('activeSession.close', { defaultValue: 'Close' })}
@@ -3418,7 +3771,8 @@ const ActiveSession = () => {
               </button>
             </div>
 
-            {/* Search bar with filter + star inside */}
+            {/* Search bar — favorites toggle inside, filter button removed
+                (chip pills below cover muscle filtering). */}
             <div className="px-4 pb-3">
               <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default))' }}>
                 <Search size={16} style={{ color: 'var(--color-text-subtle)' }} className="shrink-0" />
@@ -3432,7 +3786,6 @@ const ActiveSession = () => {
                   style={{ color: 'var(--color-text-primary)' }}
                   autoFocus
                 />
-                {/* Star */}
                 <button
                   onClick={() => setShowFavoritesOnly(v => !v)}
                   className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 active:scale-90 transition-transform"
@@ -3441,17 +3794,47 @@ const ActiveSession = () => {
                 >
                   <Star size={16} fill={showFavoritesOnly ? 'var(--color-accent)' : 'none'} style={{ color: showFavoritesOnly ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
                 </button>
-                {/* Filter */}
-                <button
-                  onClick={() => setShowFilters(v => !v)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 active:scale-90 transition-transform"
-                  aria-label={t('activeSession.openFilters', { defaultValue: 'Open exercise filters' })}
-                  aria-expanded={showFilters}
-                >
-                  <SlidersHorizontal size={16} style={{ color: (showFilters || selectedMuscle) ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
-                </button>
               </div>
             </div>
+
+            {/* Chip pills — same vocabulary as the standalone Exercise Library
+                so the mental model is consistent across the two surfaces. */}
+            {(() => {
+              const chipDefs = [
+                { id: 'all',   label: t('exerciseLibrary.filterAll', { defaultValue: 'All' }) },
+                { id: 'push',  label: t('exerciseLibrary.filterPush', { defaultValue: 'Push' }) },
+                { id: 'pull',  label: t('exerciseLibrary.filterPull', { defaultValue: 'Pull' }) },
+                { id: 'chest', label: t('muscleGroups.Chest', 'Chest') },
+                { id: 'back',  label: t('muscleGroups.Back', 'Back') },
+                { id: 'arms',  label: t('exerciseLibrary.filterArms', { defaultValue: 'Arms' }) },
+                { id: 'legs',  label: t('muscleGroups.Legs', 'Legs') },
+                { id: 'core',  label: t('muscleGroups.Core', 'Core') },
+              ];
+              return (
+                <div className="px-4 pb-3 overflow-x-auto no-scrollbar">
+                  <div className="flex gap-1.5 whitespace-nowrap">
+                    {chipDefs.map((c) => {
+                      const active = c.id === addExerciseChip;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setAddExerciseChip(c.id)}
+                          className="text-[12px] font-bold px-3.5 py-1.5 rounded-full transition-all active:scale-95"
+                          style={{
+                            background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
+                            color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                            border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
+                          }}
+                        >
+                          {c.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Active filter badges */}
             {(selectedMuscle || selectedEquipment) && (
@@ -3471,64 +3854,205 @@ const ActiveSession = () => {
               </div>
             )}
 
-            {/* Results */}
-            <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-1.5">
-              {filteredLibraryExercises.map(ex => {
-                const isFav = favoriteExerciseIds.has(ex.id);
-                const isPreview = previewExercise?.id === ex.id;
-                return (
-                  <div key={ex.id} className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      {/* Exercise info — tap to preview */}
+            {/* Inline "Create your own" — same shape as the swap modal's
+                custom creator. Saves to the gym's exercises table so the
+                new exercise is available in future sessions. */}
+            <div className="px-4 pb-3">
+              <div className="flex items-stretch gap-2">
+                <input
+                  type="text"
+                  value={addCustomName}
+                  onChange={(e) => setAddCustomName(e.target.value)}
+                  placeholder={t('activeSession.addCustomPlaceholder', { defaultValue: 'Custom exercise (e.g. Sled Push)' })}
+                  aria-label={t('activeSession.addCustomPlaceholder', { defaultValue: 'Custom exercise name' })}
+                  maxLength={60}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && addCustomName.trim() && !addCustomSaving) handleCreateCustomAndAdd(); }}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-dashed text-[13px] focus:outline-none"
+                  style={{
+                    borderColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                    background: 'transparent',
+                    color: 'var(--color-text-primary)',
+                  }}
+                />
+                <button
+                  onClick={handleCreateCustomAndAdd}
+                  disabled={!addCustomName.trim() || addCustomSaving}
+                  className="px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center gap-1 disabled:opacity-40 active:scale-[0.97] transition-transform"
+                  style={{
+                    background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)',
+                    color: 'var(--color-accent)',
+                  }}
+                >
+                  <Plus size={14} strokeWidth={2.5} />
+                  {addCustomSaving
+                    ? t('activeSession.swapCustomSaving', { defaultValue: 'Saving…' })
+                    : t('activeSession.swapCustomCreate', { defaultValue: 'Create' })}
+                </button>
+              </div>
+              <p className="text-[10px] mt-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('activeSession.addCustomHint', { defaultValue: "We'll save it to your gym's catalogue so it's available next time." })}
+              </p>
+            </div>
+
+            {/* Results — 2-column video-tile grid (matches the Exercise
+                Library's "All Exercises" modal style). Tapping a tile adds
+                the exercise to the active session immediately and closes the
+                modal. */}
+            <div className="flex-1 overflow-y-auto px-4 pb-6">
+              {/* Suggested-for-this-session — surfaces complementary muscle
+                  picks based on what's already in the routine. Hidden when
+                  the user is actively filtering / searching so the explicit
+                  filter wins. */}
+              {suggestedExercises.length > 0 && !exerciseSearch && addExerciseChip === 'all' && !selectedMuscle && !selectedEquipment && !showFavoritesOnly && (
+                <div className="mb-5">
+                  <div className="flex items-baseline justify-between mb-2">
+                    <p className="text-[10px] font-extrabold uppercase tracking-[0.14em]" style={{ color: 'var(--color-accent)' }}>
+                      {t('activeSession.suggestedForWorkout', { defaultValue: 'Suggested for this workout' })}
+                    </p>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
+                      {t('activeSession.suggestedCount', { count: suggestedExercises.length, defaultValue: `${suggestedExercises.length} picks` })}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {suggestedExercises.map((ex) => {
+                      const raw = ex.videoUrl || ex.video_url || ex.video;
+                      const vsrc = raw
+                        ? (/^(https?:|blob:|data:)/.test(raw)
+                            ? raw
+                            : `https://erdhnixjnjullhjzmvpm.supabase.co/storage/v1/object/public/exercise-videos/${raw}`)
+                        : null;
+                      return (
+                        <button
+                          key={`sug-${ex.id}`}
+                          type="button"
+                          onClick={() => handleAddExerciseToSession(ex)}
+                          className="relative aspect-[4/5] rounded-xl overflow-hidden text-left active:scale-[0.98] transition-transform"
+                          style={{
+                            background: 'var(--color-bg-card)',
+                            border: '1px solid color-mix(in srgb, var(--color-accent) 32%, transparent)',
+                            boxShadow: '0 0 0 1px color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                          }}
+                          aria-label={t('activeSession.addExerciseAria', { name: exName(ex) || ex.name, defaultValue: `Add ${exName(ex) || ex.name}` })}
+                        >
+                          {vsrc ? (
+                            <LazyVideoTile
+                              src={vsrc}
+                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }}
+                            />
+                          ) : (
+                            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 16%, transparent), transparent)' }} />
+                          )}
+                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0) 100%)' }} />
+                          <span
+                            className="absolute top-2 left-2 inline-flex items-center justify-center rounded-full"
+                            style={{
+                              width: 26,
+                              height: 26,
+                              background: 'var(--color-accent)',
+                              color: '#0A0D14',
+                            }}
+                          >
+                            <Plus size={14} strokeWidth={2.6} />
+                          </span>
+                          <span
+                            className="absolute top-2 right-2 inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded tabular-nums"
+                            style={{
+                              background: 'var(--color-accent)',
+                              color: '#0A0D14',
+                              letterSpacing: 0.4,
+                            }}
+                            aria-label={t('activeSession.suggestionMatchAria', { pct: Math.round(ex._suggestionMatch || 0), defaultValue: `${Math.round(ex._suggestionMatch || 0)}% match` })}
+                          >
+                            {Math.round(ex._suggestionMatch || 0)}%
+                          </span>
+                          <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff' }}>
+                            <p className="text-[11px] font-extrabold leading-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                              {exName(ex) || ex.name}
+                            </p>
+                            <p className="text-[9px] font-semibold mt-0.5 opacity-85 uppercase tracking-wider" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                              {t(`muscleGroups.${ex.muscle}`, ex.muscle)}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                {t('exerciseLibrary.countExercises', { count: filteredLibraryExercises.length, defaultValue: `${filteredLibraryExercises.length} exercises` })}
+              </p>
+              {filteredLibraryExercises.length === 0 ? (
+                <div
+                  className="rounded-2xl py-12 px-4 text-center"
+                  style={{ background: 'var(--color-surface-hover)', border: '1px dashed var(--color-border-subtle)' }}
+                >
+                  <Dumbbell size={28} style={{ color: 'var(--color-text-subtle)' }} className="mx-auto mb-3" />
+                  <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                    {t('activeSession.noExercisesFound', 'No matching exercises')}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {filteredLibraryExercises.map((ex) => {
+                    const isFav = favoriteExerciseIds.has(ex.id);
+                    const raw = ex.videoUrl || ex.video_url || ex.video;
+                    const vsrc = raw
+                      ? (/^(https?:|blob:|data:)/.test(raw)
+                          ? raw
+                          : `https://erdhnixjnjullhjzmvpm.supabase.co/storage/v1/object/public/exercise-videos/${raw}`)
+                      : null;
+                    return (
                       <button
-                        onClick={() => setPreviewExercise(isPreview ? null : ex)}
-                        className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors active:scale-[0.98]"
-                        style={{
-                          backgroundColor: isPreview ? 'var(--color-accent-soft))' : 'var(--color-bg-card)',
-                          border: isPreview ? '1px solid rgba(212,175,55,0.2)' : '1px solid var(--color-border-default))',
-                        }}
-                      >
-                        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-default)' }}>
-                          {isFav ? <Star size={14} fill="var(--color-accent)" style={{ color: 'var(--color-accent)' }} /> : <Dumbbell size={14} style={{ color: 'var(--color-text-subtle)' }} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(ex) || ex.name}</p>
-                          <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t(`muscleGroups.${ex.muscle}`, ex.muscle)} · {ex.equipment}</p>
-                        </div>
-                      </button>
-                      {/* Add button */}
-                      <button
+                        key={ex.id}
+                        type="button"
                         onClick={() => handleAddExerciseToSession(ex)}
-                        className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 active:scale-90 transition-transform"
-                        style={{ backgroundColor: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.2)' }}
+                        className="relative aspect-[4/5] rounded-xl overflow-hidden text-left active:scale-[0.98] transition-transform"
+                        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
                         aria-label={t('activeSession.addExerciseAria', { name: exName(ex) || ex.name, defaultValue: `Add ${exName(ex) || ex.name}` })}
                       >
-                        <Plus size={18} style={{ color: 'var(--color-accent)' }} />
-                      </button>
-                    </div>
-                    {/* Inline preview — right below the tapped exercise */}
-                    {isPreview && (
-                      <div className="rounded-2xl p-4 ml-2" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid rgba(212,175,55,0.15)' }}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-[11px] px-2 py-0.5 rounded-md" style={{ backgroundColor: 'rgba(212,175,55,0.1)', color: 'var(--color-accent)' }}>{t(`muscleGroups.${ex.muscle}`, ex.muscle)}</span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-md" style={{ backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)' }}>{ex.equipment}</span>
-                          <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-subtle)' }}>{ex.defaultSets} sets × {ex.defaultReps} reps</span>
-                        </div>
-                        {(exInstructions(ex) || ex.instructions) && (
-                          <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
-                            {exInstructions(ex) || ex.instructions}
-                          </p>
+                        {vsrc ? (
+                          <LazyVideoTile
+                            src={vsrc}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }}
+                          />
+                        ) : (
+                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent)' }} />
                         )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {filteredLibraryExercises.length === 0 && (
-                <div className="text-center pt-12">
-                  <Dumbbell size={28} style={{ color: 'var(--color-text-subtle)' }} className="mx-auto mb-3" />
-                  <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('activeSession.noExercisesFound', 'No matching exercises')}</p>
+                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0) 100%)' }} />
+                        {isFav && (
+                          <span
+                            className="absolute top-2 right-2 rounded-full p-1.5"
+                            style={{ background: 'rgba(0,0,0,0.45)' }}
+                            aria-hidden="true"
+                          >
+                            <Star size={12} fill="var(--color-accent)" style={{ color: 'var(--color-accent)' }} />
+                          </span>
+                        )}
+                        <span
+                          className="absolute top-2 left-2 inline-flex items-center justify-center rounded-full"
+                          style={{
+                            width: 26,
+                            height: 26,
+                            background: 'var(--color-accent)',
+                            color: '#0A0D14',
+                          }}
+                        >
+                          <Plus size={14} strokeWidth={2.6} />
+                        </span>
+                        <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff' }}>
+                          <p className="text-[11px] font-extrabold leading-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                            {exName(ex) || ex.name}
+                          </p>
+                          <p className="text-[10px] font-semibold mt-0.5 opacity-85" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                            {t(`muscleGroups.${ex.muscle}`, ex.muscle)}{ex.equipment ? ` · ${ex.equipment}` : ''}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -3649,25 +4173,100 @@ const ActiveSession = () => {
               </button>
             </div>
 
+            {/* Superset / Circuit toolbar — always visible whenever the
+                routine has at least two exercises so the affordance is
+                obvious. Banner mode below 2 selected, action mode at 2+. */}
+            {exercises.length >= 2 && (
+              <div className="mx-4 mb-2 p-3 rounded-2xl flex items-center gap-2"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)',
+                }}
+              >
+                {listGroupSel.size >= 2 ? (
+                  <>
+                    <span className="text-[12px] font-semibold flex-1" style={{ color: 'var(--color-accent)' }}>
+                      {t('activeSession.groupSelectedCount', { count: listGroupSel.size, defaultValue: `${listGroupSel.size} selected — group as:` })}
+                    </span>
+                    <button
+                      onClick={() => handleListGroup('superset')}
+                      className="px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[11px] font-bold active:scale-95 transition-transform"
+                    >
+                      {t('activeSession.superset', 'Superset')}
+                    </button>
+                    <button
+                      onClick={() => handleListGroup('circuit')}
+                      className="px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 text-[11px] font-bold active:scale-95 transition-transform"
+                    >
+                      {t('activeSession.circuit', 'Circuit')}
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-[12px] font-semibold leading-snug" style={{ color: 'var(--color-accent)' }}>
+                    {t('activeSession.supersetHint', {
+                      defaultValue: 'Tap the checkbox on 2+ exercises to group them as a Superset or Circuit.',
+                    })}
+                  </span>
+                )}
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
               {exercises.map((ex, idx) => {
                 const isActive = idx === currentExerciseIndex;
                 const setCount = (loggedSets[ex.id] || []).length;
                 const completedCount = (loggedSets[ex.id] || []).filter(s => s.completed && !s.skipped).length;
+                const isInGroup = !!ex.groupId;
+                const isSelectedForGroup = listGroupSel.has(idx);
+                // Match the SessionHeader rule: tint the row when at least
+                // one logged set on this exercise was completed inside a
+                // superset/circuit, or — when no sets are logged yet — when
+                // the exercise is currently paired.
+                const rowGroupType = (() => {
+                  const sets = loggedSets[ex.id] || [];
+                  for (const s of sets) {
+                    if (s?.completed && !s?.skipped && s.groupType) return s.groupType;
+                  }
+                  return ex.groupType || null;
+                })();
+                const ROW_TONE = { superset: '#8B5CF6', circuit: '#3B82F6' };
+                const tone = ROW_TONE[rowGroupType] || 'var(--color-accent)';
                 return (
                   <div
                     key={ex.id}
                     className="rounded-2xl flex items-center gap-2 px-3 py-3"
                     style={{
-                      background: 'var(--color-bg-card)',
-                      border: isActive ? '1.5px solid color-mix(in srgb, var(--color-accent) 60%, transparent)' : '1px solid var(--color-border-subtle)',
+                      background: rowGroupType
+                        ? `color-mix(in srgb, ${tone} 8%, var(--color-bg-card))`
+                        : 'var(--color-bg-card)',
+                      border: isActive
+                        ? `1.5px solid color-mix(in srgb, ${tone} 60%, transparent)`
+                        : rowGroupType
+                          ? `1px solid color-mix(in srgb, ${tone} 28%, transparent)`
+                          : '1px solid var(--color-border-subtle)',
                     }}
                   >
+                    {/* Grouping checkbox — explicit affordance to multi-select
+                        for superset/circuit creation. */}
+                    <button
+                      type="button"
+                      onClick={() => toggleListGroupSel(idx)}
+                      aria-label={isSelectedForGroup ? t('activeSession.ariaDeselect', 'Deselect') : t('activeSession.ariaSelect', 'Select to group')}
+                      className="w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors"
+                      style={{
+                        background: isSelectedForGroup ? tone : 'transparent',
+                        borderColor: isSelectedForGroup ? tone : 'var(--color-border-strong, rgba(255,255,255,0.25))',
+                        color: '#000',
+                      }}
+                    >
+                      {isSelectedForGroup && <span className="text-[12px] font-bold leading-none">&#10003;</span>}
+                    </button>
+
                     {/* Position badge */}
                     <div
                       className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[12px] font-bold tabular-nums"
                       style={{
-                        background: isActive ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-text-primary) 8%, transparent)',
+                        background: isActive ? tone : 'color-mix(in srgb, var(--color-text-primary) 8%, transparent)',
                         color: isActive ? '#000' : 'var(--color-text-muted)',
                       }}
                     >
@@ -3678,14 +4277,34 @@ const ActiveSession = () => {
                       onClick={() => { setCurrentExerciseIndex(idx); setShowListManager(false); }}
                       className="flex-1 min-w-0 text-left"
                     >
-                      <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {exName(ex)}
-                      </p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                          {exName(ex)}
+                        </p>
+                        {ex.groupType && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                            ex.groupType === 'superset' ? 'bg-purple-500/15 text-purple-400' : 'bg-blue-500/15 text-blue-400'
+                          }`}>
+                            {ex.groupType === 'superset' ? t('activeSession.superset', 'Superset') : t('activeSession.circuit', 'Circuit')}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                        {ex.targetSets} × {ex.targetReps}
-                        {setCount > 0 && ` · ${completedCount}/${setCount}`}
+                        {ex.targetSets} × {ex.targetReps}{setCount > 0 ? ` · ${completedCount}/${setCount}` : ''}
                       </p>
                     </button>
+
+                    {isInGroup && (
+                      <button
+                        type="button"
+                        onClick={() => handleListUngroup(ex.groupId)}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg active:scale-90 transition-transform focus:outline-none hover:text-red-400"
+                        style={{ color: 'var(--color-text-muted)' }}
+                        aria-label={t('activeSession.ungroup', 'Ungroup')}
+                      >
+                        <Unlink size={16} />
+                      </button>
+                    )}
 
                     {/* Up / down */}
                     <button
@@ -3735,7 +4354,7 @@ const ActiveSession = () => {
             {/* Add exercise — reuses the existing add-exercise picker */}
             <div className="flex-shrink-0 px-4 pb-6 pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
               <button
-                onClick={() => { setShowListManager(false); setShowAddExercise(true); }}
+                onClick={() => { setShowListManager(false); setAddExerciseOrigin('list-manager'); setShowAddExercise(true); }}
                 className="w-full py-3.5 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-transform focus:outline-none"
                 style={{
                   background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
@@ -3851,56 +4470,126 @@ const ActiveSession = () => {
               </p>
             </div>
 
-            {/* Results — same-muscle picks first, then "Other muscles" section */}
-            <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-1.5">
+            {/* Results — same-muscle picks first as a 2-col tile grid, then
+                an "Other muscles" grid. Same video-tile style as the Add
+                Exercise modal so the experience stays consistent. */}
+            <div className="flex-1 overflow-y-auto px-4 pb-6">
               {filteredSwapExercises.sameMuscle.length > 0 && swapTargetMuscle && (
-                <div className="text-[10px] font-bold uppercase tracking-[0.14em] pt-1 pb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] pb-2" style={{ color: 'var(--color-text-subtle)' }}>
                   {t('activeSession.swapSameMuscle', { defaultValue: '{{muscle}} alternatives', muscle: t(`muscleGroups.${swapTargetMuscle}`, swapTargetMuscle) })}
+                </p>
+              )}
+              {filteredSwapExercises.sameMuscle.length > 0 && (
+                <div className="grid grid-cols-2 gap-3 mb-5">
+                  {filteredSwapExercises.sameMuscle.map((ex) => {
+                    const raw = ex.videoUrl || ex.video_url || ex.video;
+                    const vsrc = raw
+                      ? (/^(https?:|blob:|data:)/.test(raw)
+                          ? raw
+                          : `https://erdhnixjnjullhjzmvpm.supabase.co/storage/v1/object/public/exercise-videos/${raw}`)
+                      : null;
+                    return (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        onClick={() => handleSwapExercise(ex)}
+                        className="relative aspect-[4/5] rounded-xl overflow-hidden text-left active:scale-[0.98] transition-transform"
+                        style={{
+                          background: 'var(--color-bg-card)',
+                          border: '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)',
+                        }}
+                        aria-label={t('activeSession.swapToAria', { name: exName(ex) || ex.name, defaultValue: `Swap to ${exName(ex) || ex.name}` })}
+                      >
+                        {vsrc ? (
+                          <LazyVideoTile
+                            src={vsrc}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }}
+                          />
+                        ) : (
+                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent)' }} />
+                        )}
+                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0) 100%)' }} />
+                        <span
+                          className="absolute top-2 left-2 inline-flex items-center justify-center rounded-full"
+                          style={{ width: 26, height: 26, background: 'var(--color-accent)', color: '#0A0D14' }}
+                        >
+                          <ArrowLeftRight size={13} strokeWidth={2.6} />
+                        </span>
+                        <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff' }}>
+                          <p className="text-[11px] font-extrabold leading-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                            {exName(ex) || ex.name}
+                          </p>
+                          <p className="text-[10px] font-semibold mt-0.5 opacity-85" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                            {t(`muscleGroups.${ex.muscle}`, ex.muscle)}{ex.equipment ? ` · ${ex.equipment}` : ''}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-              {filteredSwapExercises.sameMuscle.map(ex => (
-                <button
-                  key={ex.id}
-                  onClick={() => handleSwapExercise(ex)}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-white/[0.06] hover:border-[#D4AF37]/30 text-left transition-colors active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                  style={{ background: 'var(--color-bg-card)' }}
-                >
-                  <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
-                    <ArrowLeftRight size={14} className="text-[#D4AF37]" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(ex)}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t(`muscleGroups.${ex.muscle}`, ex.muscle)} · {t(`exerciseLibrary.equipmentNames.${ex.equipment}`, ex.equipment)}</p>
-                  </div>
-                  <span className="text-[12px] font-semibold text-[#D4AF37] shrink-0">{t('activeSession.swapSelect')}</span>
-                </button>
-              ))}
 
               {filteredSwapExercises.otherMuscles.length > 0 && (
-                <div className="text-[10px] font-bold uppercase tracking-[0.14em] pt-4 pb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] pb-2" style={{ color: 'var(--color-text-subtle)' }}>
                   {t('activeSession.swapOtherMuscles', 'Other muscles')}
+                </p>
+              )}
+              {filteredSwapExercises.otherMuscles.length > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                  {filteredSwapExercises.otherMuscles.map((ex) => {
+                    const raw = ex.videoUrl || ex.video_url || ex.video;
+                    const vsrc = raw
+                      ? (/^(https?:|blob:|data:)/.test(raw)
+                          ? raw
+                          : `https://erdhnixjnjullhjzmvpm.supabase.co/storage/v1/object/public/exercise-videos/${raw}`)
+                      : null;
+                    return (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        onClick={() => handleSwapExercise(ex)}
+                        className="relative aspect-[4/5] rounded-xl overflow-hidden text-left active:scale-[0.98] transition-transform"
+                        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+                        aria-label={t('activeSession.swapToAria', { name: exName(ex) || ex.name, defaultValue: `Swap to ${exName(ex) || ex.name}` })}
+                      >
+                        {vsrc ? (
+                          <LazyVideoTile
+                            src={vsrc}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }}
+                          />
+                        ) : (
+                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(255,255,255,0.05), transparent)' }} />
+                        )}
+                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0) 100%)' }} />
+                        <span
+                          className="absolute top-2 left-2 inline-flex items-center justify-center rounded-full"
+                          style={{ width: 26, height: 26, background: 'rgba(0,0,0,0.55)', color: 'var(--color-text-primary)' }}
+                        >
+                          <ArrowLeftRight size={13} strokeWidth={2.6} />
+                        </span>
+                        <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff' }}>
+                          <p className="text-[11px] font-extrabold leading-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                            {exName(ex) || ex.name}
+                          </p>
+                          <p className="text-[10px] font-semibold mt-0.5 opacity-85" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                            {t(`muscleGroups.${ex.muscle}`, ex.muscle)}{ex.equipment ? ` · ${ex.equipment}` : ''}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-              {filteredSwapExercises.otherMuscles.map(ex => (
-                <button
-                  key={ex.id}
-                  onClick={() => handleSwapExercise(ex)}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-white/[0.06] hover:border-[#D4AF37]/30 text-left transition-colors active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                  style={{ background: 'var(--color-bg-card)' }}
-                >
-                  <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
-                    <ArrowLeftRight size={14} style={{ color: 'var(--color-text-muted)' }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(ex)}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t(`muscleGroups.${ex.muscle}`, ex.muscle)} · {t(`exerciseLibrary.equipmentNames.${ex.equipment}`, ex.equipment)}</p>
-                  </div>
-                  <span className="text-[12px] font-semibold shrink-0" style={{ color: 'var(--color-text-muted)' }}>{t('activeSession.swapSelect')}</span>
-                </button>
-              ))}
 
               {filteredSwapExercises.sameMuscle.length === 0 && filteredSwapExercises.otherMuscles.length === 0 && (
-                <p className="text-center text-[13px] pt-8" style={{ color: 'var(--color-text-subtle)' }}>{t('activeSession.swapNoResults')}</p>
+                <div
+                  className="rounded-2xl py-12 px-4 text-center"
+                  style={{ background: 'var(--color-surface-hover)', border: '1px dashed var(--color-border-subtle)' }}
+                >
+                  <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                    {t('activeSession.swapNoResults')}
+                  </p>
+                </div>
               )}
             </div>
           </motion.div>

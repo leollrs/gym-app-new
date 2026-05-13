@@ -43,6 +43,7 @@ const CardioLogModal         = lazy(() => import('../components/CardioLogModal')
 const MyPlanModal            = lazy(() => import('../components/MyPlanModal'));
 const BackdatedWorkoutModal  = lazy(() => import('../components/BackdatedWorkoutModal'));
 const DeletedWorkoutsModal   = lazy(() => import('../components/DeletedWorkoutsModal'));
+const WellnessCheckinModal   = lazy(() => import('../components/WellnessCheckinModal'));
 // AppTour moved to App.jsx to persist across page navigations
 
 // Build a lookup: exercise_id → videoUrl
@@ -301,6 +302,7 @@ const Dashboard = () => {
   const [showPlanInfo, setShowPlanInfo] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showCardioLog, setShowCardioLog] = useState(false);
+  const [showWellnessCheckin, setShowWellnessCheckin] = useState(false);
   const [planWeek, setPlanWeek] = useState(1);
   const [planSelectedDay, setPlanSelectedDay] = useState(null);
   const [fullTemplates, setFullTemplates] = useState(null);
@@ -312,6 +314,53 @@ const Dashboard = () => {
       import('../data/programTemplates').then(m => setFullTemplates(m.programTemplates || m.default?.programTemplates || []));
     }
   }, [showPlanInfo, fullTemplates]);
+
+  // Daily wellness check-in prompt on Dashboard mount. Fires once per session,
+  // and only when (a) no DB row exists for today's date, (b) no localStorage
+  // cache of today's check-in, and (c) the user hasn't already skipped today.
+  // This is the surface the 9 AM local notification taps into — users arrive
+  // on Dashboard and the modal should be waiting for them.
+  const wellnessPromptFiredRef = useRef(false);
+  useEffect(() => {
+    if (!user?.id || wellnessPromptFiredRef.current) return;
+    wellnessPromptFiredRef.current = true;
+    let cancelled = false;
+    const d = new Date();
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    // localStorage short-circuits — either a saved checkin or a "skipped
+    // today" marker means we don't re-prompt.
+    try {
+      const raw = localStorage.getItem('tugympr_wellness_last_checkin');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.date === dateKey && typeof parsed.soreness === 'number') return;
+      }
+      if (localStorage.getItem('tugympr_wellness_skipped_date') === dateKey) return;
+    } catch {}
+    (async () => {
+      const { data } = await supabase
+        .from('wellness_checkins')
+        .select('soreness')
+        .eq('profile_id', user.id)
+        .eq('checkin_date', dateKey)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!data) {
+        // Slight delay so the Dashboard paints first.
+        setTimeout(() => { if (!cancelled) setShowWellnessCheckin(true); }, 800);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  const handleWellnessSkip = useCallback(() => {
+    try {
+      const d = new Date();
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      localStorage.setItem('tugympr_wellness_skipped_date', dateKey);
+    } catch {}
+    setShowWellnessCheckin(false);
+  }, []);
 
   const activeSetsCompleted = activeSession
     ? Object.values(activeSession.loggedSets).flat().filter(s => s.completed).length
@@ -386,6 +435,12 @@ const Dashboard = () => {
   // resolves (tab back fast → 2-3 simultaneous Supabase reads). The ref makes
   // the second invocation no-op until the first completes.
   const fetchingRef = useRef(false);
+  // When a load is skipped due to fetchingRef, mark a rerun as pending so the
+  // in-flight load can retrigger after it finishes. Without this, the
+  // in-flight load may complete under `cancelled=true` (deps changed during
+  // await) and skip its dispatch — leaving state stuck at loading=true until
+  // the user navigates away and back.
+  const rerunPendingRef = useRef(false);
 
   // Load data
   useEffect(() => {
@@ -393,8 +448,12 @@ const Dashboard = () => {
     let cancelled = false;
 
     const load = async () => {
-      if (fetchingRef.current) return;
+      if (fetchingRef.current) {
+        rerunPendingRef.current = true;
+        return;
+      }
       fetchingRef.current = true;
+      rerunPendingRef.current = false;
       try {
       setLoadError('');
       const hasCached = !!getCached(`dash:${user.id}`)?.data;
@@ -680,6 +739,12 @@ const Dashboard = () => {
       setCache(`dash:${user.id}`, payload);
       runNotificationScheduler(user.id, profile.gym_id).catch(() => {});
 
+      // Schedule the daily wellness check-in reminder (9 AM local, 7 days
+      // ahead). Idempotent — re-scheduling cancels and replaces.
+      import('../lib/wellnessReminder')
+        .then((m) => m.scheduleWellnessReminders?.())
+        .catch(() => {});
+
       // Background cardio sync from health store (non-blocking, at most once/hour)
       try {
         const healthSettings = JSON.parse(localStorage.getItem('tugympr_health_settings') || '{}');
@@ -704,6 +769,13 @@ const Dashboard = () => {
       // Class bookings already fetched in parallel with RPC (see Promise.all above)
       } finally {
         fetchingRef.current = false;
+        // If another load was requested while this one was in flight, trigger
+        // it now. Bumping refreshKey re-runs this effect with a fresh
+        // `cancelled=false` closure, so the new load can dispatch.
+        if (rerunPendingRef.current) {
+          rerunPendingRef.current = false;
+          setRefreshKey((k) => k + 1);
+        }
       }
     };
 
@@ -1200,19 +1272,40 @@ const Dashboard = () => {
               {/* ════════════════════════════════════════════════
                   1b. TODAY'S CLASS BANNER
                  ════════════════════════════════════════════════ */}
-              {isToday && todayClassBookings.length > 0 && (
+              {isToday && todayClassBookings.length > 0 && (() => {
+                // A class is "passed" once its end_time (fallback: start_time) is
+                // earlier than now. The banner header switches when every booked
+                // class today has passed — per-row ✓ checked-in still surfaces
+                // attendance independently.
+                const now = Date.now();
+                const allPassed = todayClassBookings.every((b) => {
+                  const sched = b.gym_class_schedules;
+                  const endStr = sched?.end_time || sched?.start_time;
+                  if (!b.booking_date || !endStr) return false;
+                  const endAt = new Date(`${b.booking_date}T${endStr}`).getTime();
+                  return Number.isFinite(endAt) && endAt < now;
+                });
+                const tone = allPassed ? '#9CA3AF' : '#818CF8';
+                return (
                 <section className="mb-3">
                   <Link
                     to="/classes"
-                    className="block w-full rounded-2xl bg-gradient-to-br from-[#818CF8]/10 to-[#818CF8]/[0.02] border border-[#818CF8]/20 p-4 hover:from-[#818CF8]/15 transition-all active:scale-[0.99]"
+                    className="block w-full rounded-2xl bg-gradient-to-br p-4 transition-all active:scale-[0.99]"
+                    style={{
+                      backgroundImage: `linear-gradient(135deg, color-mix(in srgb, ${tone} 10%, transparent), color-mix(in srgb, ${tone} 2%, transparent))`,
+                      border: `1px solid color-mix(in srgb, ${tone} 20%, transparent)`,
+                    }}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-xl bg-[#818CF8]/15 flex items-center justify-center flex-shrink-0">
-                        <CalendarCheck size={20} className="text-[#818CF8]" />
+                      <div
+                        className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ background: `color-mix(in srgb, ${tone} 15%, transparent)` }}
+                      >
+                        <CalendarCheck size={20} style={{ color: tone }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-bold text-[#818CF8]">
-                          {t('dashboard.todayHasClass')}
+                        <p className="text-[13px] font-bold" style={{ color: tone }}>
+                          {t(allPassed ? 'dashboard.classAlreadyPassed' : 'dashboard.todayHasClass')}
                         </p>
                         {todayClassBookings.map(booking => {
                           const sched = booking.gym_class_schedules;
@@ -1231,11 +1324,16 @@ const Dashboard = () => {
                           );
                         })}
                       </div>
-                      <ChevronRight size={16} className="text-[#818CF8]/60 flex-shrink-0" />
+                      <ChevronRight
+                        size={16}
+                        className="flex-shrink-0"
+                        style={{ color: `color-mix(in srgb, ${tone} 60%, transparent)` }}
+                      />
                     </div>
                   </Link>
                 </section>
-              )}
+                );
+              })()}
 
               {/* ════════════════════════════════════════════════
                   2. DATE LABEL + EDIT / SWAP — above hero
@@ -2421,6 +2519,18 @@ const Dashboard = () => {
             open={showDeletedModal}
             onClose={() => setShowDeletedModal(false)}
             onRestored={() => setRefreshKey(k => k + 1)}
+          />
+        </Suspense>
+      )}
+
+      {/* Daily wellness check-in prompt (one-tap soreness slider). Auto-
+          shown on Dashboard mount when no entry exists for today and the
+          user hasn't already skipped today's prompt. */}
+      {showWellnessCheckin && (
+        <Suspense fallback={null}>
+          <WellnessCheckinModal
+            open={showWellnessCheckin}
+            onClose={handleWellnessSkip}
           />
         </Suspense>
       )}

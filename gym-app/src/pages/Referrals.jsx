@@ -7,7 +7,6 @@ import {
   ArrowLeft, Copy, Check, Share2, Gift, Users, Clock,
   CheckCircle, UserPlus, QrCode, Coins, CreditCard,
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 
@@ -59,16 +58,6 @@ async function openExternalUrl(url) {
   }
 }
 
-// ── Body scroll lock helper for modals ──────────────────────────────────────
-function useBodyScrollLock(active) {
-  useEffect(() => {
-    if (!active) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [active]);
-}
-
 export default function Referrals() {
   const navigate = useNavigate();
   const { user, profile, gymName } = useAuth();
@@ -86,7 +75,9 @@ export default function Referrals() {
   const [walletLoading, setWalletLoading] = useState(false);
   const isEs = i18n.language?.startsWith('es');
 
-  useBodyScrollLock(showQRModal);
+  // Body-scroll lock is owned exclusively by QRCodeModal itself — locking
+  // here too caused a save/restore race that left `body.overflow: hidden`
+  // stuck after the modal closed (page unscrollable until full reload).
 
   // ── Load referral data ──────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -629,45 +620,9 @@ export default function Referrals() {
             ))}
           </div>
 
-          {/* ── QR Code display card ─────────────────────────────────────── */}
-          {referralQrPayload && (
-            <div
-              className="rounded-3xl p-5 mb-4 flex flex-col items-center text-center"
-              style={{
-                background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)',
-                border: '1px solid var(--color-border-subtle)',
-                backdropFilter: 'blur(20px)',
-                WebkitBackdropFilter: 'blur(20px)',
-              }}
-            >
-              <div className="flex items-center gap-2 mb-3 self-start">
-                <QrCode size={16} style={{ color: 'var(--color-accent)' }} />
-                <p
-                  className="text-[14px]"
-                  style={{ fontWeight: 800, color: 'var(--color-text-primary)', fontFamily: FONT_DISPLAY, letterSpacing: '-0.2px' }}
-                >
-                  {t('referrals.openQR')}
-                </p>
-              </div>
-              <button
-                onClick={() => { setShowQRModal(true); posthog?.capture('referral_code_shared', { method: 'qr' }); }}
-                aria-label={t('referrals.openQR')}
-                className="bg-white p-4 rounded-2xl transition-all duration-200 active:scale-[0.98]"
-              >
-                <QRCodeSVG
-                  value={referralQrPayload}
-                  size={180}
-                  level="H"
-                  includeMargin={false}
-                  bgColor="#FFFFFF"
-                  fgColor="#000000"
-                />
-              </button>
-              <p className="text-[11px] mt-3" style={{ color: 'var(--color-text-subtle)' }}>
-                {t('referrals.scanOrShare')}
-              </p>
-            </div>
-          )}
+          {/* (Inline QR card removed — the "Mostrar Código QR" button above
+              already opens the full QR modal, so showing the same QR inline
+              below the stats was redundant.) */}
 
           {/* ── Rewards info ─────────────────────────────────────────────── */}
           <div

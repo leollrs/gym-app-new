@@ -18,6 +18,7 @@ import { formatStatNumber } from '../lib/formatStatValue';
 import { supabase } from '../lib/supabase';
 import { sendNotification, NOTIFICATION_TYPES } from '../lib/notifications';
 import { usePostHog } from '@posthog/react';
+import { useQueryClient } from '@tanstack/react-query';
 
 // ── Helpers ─────────────────────────────────────────────────
 const DISPLAY_FONT = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
@@ -505,7 +506,58 @@ const Leaderboard = ({ embedded = false }) => {
   const uid = user?.id;
 
   const posthog = usePostHog();
+  const queryClient = useQueryClient();
   useEffect(() => { document.title = `${t('leaderboard.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
+
+  // Realtime — when anyone in the gym finishes a workout, hits a PR, or
+  // checks in, invalidate every leaderboard cache so the page repaints with
+  // the new standings without the user having to leave & re-enter.
+  // Same channel covers workout_sessions, personal_records, check_ins inserts
+  // so we keep a single Realtime connection open per page mount.
+  useEffect(() => {
+    if (!gymId) return;
+    const invalidateAll = () => {
+      const keys = [
+        'leaderboard',
+        'leaderboard-improved',
+        'leaderboard-consistency',
+        'leaderboard-prs',
+        'leaderboard-checkins',
+        'leaderboard-newcomers',
+      ];
+      for (const key of keys) {
+        queryClient.invalidateQueries({ queryKey: [key], exact: false });
+      }
+    };
+    const channel = supabase
+      .channel(`leaderboard-${gymId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'workout_sessions',
+        filter: `gym_id=eq.${gymId}`,
+      }, invalidateAll)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'personal_records',
+        filter: `gym_id=eq.${gymId}`,
+      }, invalidateAll)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'check_ins',
+        filter: `gym_id=eq.${gymId}`,
+      }, invalidateAll)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'streak_cache',
+        filter: `gym_id=eq.${gymId}`,
+      }, invalidateAll)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [gymId, queryClient]);
 
   const [expanded, setExpanded] = useState(null); // which board is expanded
   const [exTimeRange, setExTimeRange] = useState('weekly');
@@ -680,6 +732,20 @@ const Leaderboard = ({ embedded = false }) => {
               entries: workouts.data,
             },
             {
+              id: 'improved',
+              title: t('leaderboard.categories.improved', 'Most Improved'),
+              subtitle: t('leaderboard.thisWeek', 'This week'),
+              unit: t('leaderboard.units.lbs', 'lbs'),
+              entries: improved.data,
+            },
+            {
+              id: 'consistency',
+              title: t('leaderboard.categories.consistency', 'Consistency'),
+              subtitle: t('leaderboard.thisWeek', 'This week'),
+              unit: '%',
+              entries: consistency.data,
+            },
+            {
               id: 'streak',
               title: t('leaderboard.categories.streak', 'Streak'),
               subtitle: t('leaderboard.allTime', 'All time'),
@@ -692,6 +758,13 @@ const Leaderboard = ({ embedded = false }) => {
               subtitle: t('leaderboard.thisWeek', 'This week'),
               unit: t('leaderboard.units.prs', 'PRs'),
               entries: prs.data,
+            },
+            {
+              id: 'checkins',
+              title: t('leaderboard.categories.checkins', 'Check-ins'),
+              subtitle: t('leaderboard.thisWeek', 'This week'),
+              unit: t('leaderboard.units.days', 'days'),
+              entries: checkins.data,
             },
           ]}
           shadow={CARD_SHADOW}
@@ -825,16 +898,16 @@ const Leaderboard = ({ embedded = false }) => {
 
 // ── PodiumCarousel ────────────────────────────────────────────────────────
 // Swipeable hero showing 1st/2nd/3rd for the active leaderboard metric.
-// Filters out slides that don't have ≥3 entries (rendering an empty podium
-// with placeholders looks broken). Swipe horizontally on mobile or tap the
-// dot indicators below to switch metrics.
+// Renders with ANY number of entries (1, 2, or 3): missing positions show
+// as "—" placeholder pedestals so the visual layout still reads as a
+// podium. Swipe horizontally on mobile or tap the dots to switch metrics.
 const PodiumCarousel = ({ slides, shadow, displayFont, t }) => {
   const [activeIdx, setActiveIdx] = React.useState(0);
   const startRef = React.useRef(null);
 
-  // Drop slides that can't form a podium (cold-start, brand-new gym, etc.)
+  // Only need at least one entry to be worth showing.
   const validSlides = React.useMemo(
-    () => (slides || []).filter(s => Array.isArray(s.entries) && s.entries.length >= 3),
+    () => (slides || []).filter(s => Array.isArray(s.entries) && s.entries.length >= 1),
     [slides]
   );
 
@@ -918,10 +991,49 @@ const PodiumCarousel = ({ slides, shadow, displayFont, t }) => {
         style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 8 }}
       >
         {podiumOrder.map((entry, i) => {
-          if (!entry) return <div key={i} style={{ flex: 1 }} />;
           const rank = RANKS_ORDERED[i];
           const avatarSize = AVATAR_SIZES[i];
           const isFirst = rank === 1;
+          // Placeholder pedestal when this rank isn't filled — preserves
+          // the podium silhouette in small / new gyms.
+          if (!entry) {
+            return (
+              <div
+                key={`${slide.id}-empty-${rank}`}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: 0.45 }}
+              >
+                <div style={{
+                  width: avatarSize, height: avatarSize, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, marginBottom: 6,
+                  background: 'transparent',
+                  border: '2px dashed var(--color-border-strong, rgba(120,120,120,0.5))',
+                  color: 'var(--color-text-muted)',
+                  fontSize: 18, fontWeight: 800,
+                }}>—</div>
+                <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--color-text-muted)' }}>
+                  {t('leaderboard.emptySlot', { defaultValue: '—' })}
+                </p>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                  &nbsp;
+                </p>
+                <div style={{
+                  width: '100%', height: PODIUM_HEIGHTS[i], marginTop: 8,
+                  background: PODIUM_BG[i],
+                  borderRadius: '8px 8px 0 0',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  opacity: 0.55,
+                }}>
+                  <span style={{
+                    fontFamily: displayFont,
+                    fontSize: 22, fontWeight: 800,
+                    color: isFirst ? '#000' : 'var(--color-text-primary)',
+                    opacity: 0.5,
+                  }}>{rank}</span>
+                </div>
+              </div>
+            );
+          }
           return (
             <div
               key={`${slide.id}-${entry.id}`}

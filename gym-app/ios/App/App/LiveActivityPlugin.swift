@@ -103,23 +103,57 @@ private class LiveActivityManager {
 
         // During active rest, don't cancel/reschedule the timer — just update the content
         if state.isResting && isRestActive {
-            // Reuse the cached restEndDate so the countdown doesn't drift
             var stableState = state
-            stableState.restEndDate = cachedRestEndDate
-            let content = ActivityContent(state: stableState, staleDate: cachedRestEndDate)
+            // If the incoming restEndDate differs from the cached one by more
+            // than ~2s, the user explicitly adjusted the rest (+15/-15) and
+            // we should accept the new target + reschedule the background
+            // "rest done" timer. Smaller diffs are routine per-second JS
+            // ticks; keep the cache so the countdown doesn't drift.
+            if let newEnd = state.restEndDate,
+               let cached = cachedRestEndDate,
+               abs(newEnd.timeIntervalSince(cached)) > 2 {
+                cachedRestEndDate = newEnd
+                stableState.restEndDate = newEnd
+
+                restEndTimer?.cancel()
+                restEndTimer = nil
+                let delay = newEnd.timeIntervalSinceNow
+                if delay > 0 {
+                    let workItem = DispatchWorkItem {
+                        Task { await LiveActivityManager.onRestDone() }
+                    }
+                    restEndTimer = workItem
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+                } else {
+                    // User shortened rest below the elapsed time — fire immediately
+                    Task { await LiveActivityManager.onRestDone() }
+                }
+            } else {
+                stableState.restEndDate = cachedRestEndDate
+            }
+            let content = ActivityContent(state: stableState, staleDate: stableState.restEndDate)
             await pushUpdate(content)
             return
         }
 
-        // If Swift knows rest is still active but JS says not resting (race condition),
-        // keep showing the rest countdown instead of briefly flashing workout timer
+        // JS says not resting but Swift still thinks rest is active. Two cases:
+        //  1. User explicitly skipped — cachedEnd is meaningfully in the future
+        //     (more than ~2s away). Honor the skip: fall through to the normal
+        //     update path so the rest UI disappears immediately.
+        //  2. Natural completion race — cachedEnd is ~now and Swift's own
+        //     `restEndTimer` is about to fire `onRestDone`. Keep showing rest
+        //     for that brief window so the widget doesn't flash workout-mode
+        //     before the "LOG NEXT SET" prompt appears.
         if !state.isResting && isRestActive, let cachedEnd = cachedRestEndDate, cachedEnd > Date() {
-            var restState = state
-            restState.isResting = true
-            restState.restEndDate = cachedEnd
-            let content = ActivityContent(state: restState, staleDate: cachedEnd)
-            await pushUpdate(content)
-            return
+            if cachedEnd.timeIntervalSinceNow <= 2 {
+                var restState = state
+                restState.isResting = true
+                restState.restEndDate = cachedEnd
+                let content = ActivityContent(state: restState, staleDate: cachedEnd)
+                await pushUpdate(content)
+                return
+            }
+            // Otherwise fall through — this is a user-initiated skip.
         }
 
         restEndTimer?.cancel()
@@ -151,6 +185,7 @@ private class LiveActivityManager {
 
         if !state.isResting {
             isRestActive = false
+            cachedRestEndDate = nil
         }
     }
 

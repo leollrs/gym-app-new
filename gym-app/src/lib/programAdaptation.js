@@ -10,13 +10,33 @@ import { supabase } from './supabase';
  */
 export async function analyzeAndAdapt(userId, gymId) {
   // 1. Fetch last 14 days of completed sessions with sets
+  // Real schema: workout_sessions → session_exercises → session_sets. We
+  // flatten into `workout_sets` so the analysis below can stay set-flat.
   const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString();
-  const { data: sessions } = await supabase
+  const { data: rawSessions } = await supabase
     .from('workout_sessions')
-    .select('id, routine_id, completed_at, duration_seconds, total_volume_lbs, workout_sets(exercise_id, weight_lbs, reps, completed)')
+    .select(`
+      id, routine_id, completed_at, duration_seconds, total_volume_lbs,
+      session_exercises(
+        exercise_id,
+        session_sets(weight_lbs, reps, is_completed)
+      )
+    `)
     .eq('profile_id', userId)
     .gte('completed_at', twoWeeksAgo)
     .order('completed_at', { ascending: false });
+
+  const sessions = (rawSessions ?? []).map((s) => ({
+    ...s,
+    workout_sets: (s.session_exercises ?? []).flatMap((se) =>
+      (se.session_sets ?? []).map((set) => ({
+        exercise_id: se.exercise_id,
+        weight_lbs: set.weight_lbs,
+        reps: set.reps,
+        completed: set.is_completed,
+      }))
+    ),
+  }));
 
   if (!sessions || sessions.length < 3) return null; // Not enough data
 

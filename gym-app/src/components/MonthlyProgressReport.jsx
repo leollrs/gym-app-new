@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
 import { epley1RM } from '../lib/overloadEngine';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
+import { exName } from '../lib/exerciseName';
 
 import Skeleton from './Skeleton';
 import FadeIn from './FadeIn';
@@ -273,15 +274,22 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
           .lte('workout_sessions.completed_at', monthEnd),
       ]);
 
-      // ── Exercise names lookup for PRs ──────────────────────────────────────
-      const prExerciseIds = [...new Set((prHistory ?? []).map(p => p.exercise_id))];
+      // ── Exercise names lookup (localized) ─────────────────────────────────
+      // Used for BOTH PR list and top-volume list. Snapshot names on
+      // session_exercises are frozen English at workout time; pulling the
+      // current row gives us the up-to-date localized name.
+      const prExerciseIds = (prHistory ?? []).map(p => p.exercise_id);
+      const sessionExerciseIds = (sessionExercises ?? []).map(se => se.exercise_id).filter(Boolean);
+      const allExerciseIds = [...new Set([...prExerciseIds, ...sessionExerciseIds])];
       let exerciseNames = {};
-      if (prExerciseIds.length > 0) {
+      if (allExerciseIds.length > 0) {
         const { data: exData } = await supabase
           .from('exercises')
-          .select('id, name')
-          .in('id', prExerciseIds);
-        (exData ?? []).forEach(e => { exerciseNames[e.id] = e.name; });
+          .select('id, name, name_es')
+          .in('id', allExerciseIds);
+        (exData ?? []).forEach(e => {
+          exerciseNames[e.id] = exName(e) || e.name;
+        });
       }
 
       // ── Signed URLs for progress photos ────────────────────────────────────
@@ -358,10 +366,13 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
         e1rm: parseFloat(p.estimated_1rm) || epley1RM(parseFloat(p.weight_lbs), p.reps),
       }));
 
-      // Top 3 exercises by volume
+      // Top 3 exercises by volume. Prefer the localized name from the
+      // exercises table; fall back to the snapshot (English, frozen at
+      // workout time) only if the row no longer exists.
       const volumeByExercise = {};
       (sessionExercises ?? []).forEach(se => {
-        const name = se.snapshot_name || se.exercise_id;
+        const localized = se.exercise_id ? exerciseNames[se.exercise_id] : null;
+        const name = localized || se.snapshot_name || se.exercise_id;
         const vol = (se.session_sets ?? [])
           .filter(s => s.is_completed)
           .reduce((sum, s) => sum + (parseFloat(s.weight_lbs) || 0) * (s.reps || 0), 0);

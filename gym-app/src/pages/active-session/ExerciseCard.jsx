@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, memo } from 'react';
 import {
   Check, Trophy, Plus, Minus, Clock, Play, X, MessageSquare,
-  ArrowLeftRight, SkipForward, TrendingUp, Pencil,
+  ArrowLeftRight, SkipForward, TrendingUp, Pencil, ChevronDown,
 } from 'lucide-react';
 import { exercises as exerciseLibrary } from '../../data/exercises';
 import { supabase } from '../../lib/supabase';
@@ -27,11 +27,15 @@ for (const ex of exerciseLibrary) {
 }
 
 /* ── RPE color helpers ─────────────────────────────────────── */
+// Inline hex values for the selected pill: index.css remaps `text-white` to
+// the theme's primary text color for many backgrounds, which was painting the
+// selected RPE number invisible (white on white) on certain buttons. Hard-
+// coding `color` on the inline style guarantees a readable contrast.
 const rpeColor = (v) => {
-  if (v <= 3) return { bg: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-500/30', bgFaint: 'bg-emerald-500/10' };
-  if (v <= 6) return { bg: 'bg-yellow-500', text: 'text-yellow-400', border: 'border-yellow-500/30', bgFaint: 'bg-yellow-500/10' };
-  if (v <= 8) return { bg: 'bg-orange-500', text: 'text-orange-400', border: 'border-orange-500/30', bgFaint: 'bg-orange-500/10' };
-  return { bg: 'bg-red-500', text: 'text-red-400', border: 'border-red-500/30', bgFaint: 'bg-red-500/10' };
+  if (v <= 3) return { solid: '#10B981', solidText: '#FFFFFF', text: 'text-emerald-400', border: 'border-emerald-500/30', bgFaint: 'bg-emerald-500/10' };
+  if (v <= 6) return { solid: '#EAB308', solidText: '#0F172A', text: 'text-yellow-400', border: 'border-yellow-500/30', bgFaint: 'bg-yellow-500/10' };
+  if (v <= 8) return { solid: '#F97316', solidText: '#FFFFFF', text: 'text-orange-400', border: 'border-orange-500/30', bgFaint: 'bg-orange-500/10' };
+  return { solid: '#EF4444', solidText: '#FFFFFF', text: 'text-red-400', border: 'border-red-500/30', bgFaint: 'bg-red-500/10' };
 };
 
 /* ── RPE Selector (horizontal 0–5 circles) ────────────────── */
@@ -56,13 +60,17 @@ const RpeSelector = React.memo(({ value, onChange, t }) => (
             type="button"
             onClick={() => onChange(selected ? null : n)}
             className={`flex-1 h-[44px] rounded-xl text-[13px] font-bold transition-all duration-150 flex items-center justify-center ${
-              selected ? `${c.bg} text-white scale-105 shadow-lg` : ''
+              selected ? 'scale-105 shadow-lg' : ''
             }`}
-            style={!selected ? {
+            style={selected ? {
+              backgroundColor: c.solid,
+              color: c.solidText,
+              border: 'none',
+            } : {
               backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.04))',
               border: '1px solid var(--color-border-subtle)',
               color: 'var(--color-text-subtle)',
-            } : undefined}
+            }}
             aria-label={`RPE ${n}`}
           >
             {n}
@@ -369,7 +377,21 @@ const ExerciseHeaderCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, on
 };
 
 /* ── Set Tracker — horizontal cards ────────────────────────── */
-const SetTracker = ({ currentSets, activeSetIndex, targetReps, t }) => {
+// Per-group accent override. Active-session set pills normally pull
+// `--color-accent` (gym gold). When the current exercise is inside a
+// superset/circuit we tint the pills with the group's identity color so the
+// top progress chip matches the badge on the exercise header.
+// Clearer purple (was #6D5FDB which read as blue against a violet gym accent).
+const GROUP_TONE = {
+  superset: '#8B5CF6',
+  circuit: '#3B82F6',
+};
+
+const SetTracker = ({ currentSets, activeSetIndex, targetReps, t, groupType }) => {
+  // Tone for the "current" pill — reflects the exercise's CURRENT group
+  // state since the active set hasn't been completed yet.
+  const currentTone = GROUP_TONE[groupType] || 'var(--color-accent)';
+
   return (
     <div className="flex gap-2">
       {currentSets.map((s, i) => {
@@ -412,7 +434,7 @@ const SetTracker = ({ currentSets, activeSetIndex, targetReps, t }) => {
               {targetReps && (
                 <div
                   className="mt-1 text-[11px] font-semibold"
-                  style={{ color: 'var(--color-accent)' }}
+                  style={{ color: currentTone }}
                 >
                   {t?.('activeSession.targetReps', 'target')} {targetReps}
                 </div>
@@ -422,6 +444,9 @@ const SetTracker = ({ currentSets, activeSetIndex, targetReps, t }) => {
         }
 
         if (isDone) {
+          // Per-set tone — sets logged outside a superset stay gold, those
+          // logged while supersetted keep their snapshotted group color.
+          const setTone = GROUP_TONE[s.groupType] || 'var(--color-accent)';
           return (
             <div
               key={i}
@@ -430,11 +455,11 @@ const SetTracker = ({ currentSets, activeSetIndex, targetReps, t }) => {
                 flex,
                 minWidth: 0,
                 padding: '14px 12px',
-                backgroundColor: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                backgroundColor: `color-mix(in srgb, ${setTone} 18%, transparent)`,
                 border: 'none',
               }}
             >
-              <div className="text-[10px] font-bold uppercase" style={{ color: 'color-mix(in srgb, var(--color-accent) 85%, #000)', letterSpacing: 1 }}>
+              <div className="text-[10px] font-bold uppercase" style={{ color: `color-mix(in srgb, ${setTone} 85%, #000)`, letterSpacing: 1 }}>
                 {t?.('activeSession.set', 'Set')} {i + 1}
               </div>
               <div
@@ -442,7 +467,7 @@ const SetTracker = ({ currentSets, activeSetIndex, targetReps, t }) => {
                   fontFamily: DISPLAY_FONT,
                   fontSize: 18,
                   fontWeight: 700,
-                  color: 'color-mix(in srgb, var(--color-accent) 95%, #000)',
+                  color: `color-mix(in srgb, ${setTone} 95%, #000)`,
                   letterSpacing: -0.4,
                   marginTop: 4,
                   lineHeight: 1,
@@ -451,7 +476,7 @@ const SetTracker = ({ currentSets, activeSetIndex, targetReps, t }) => {
                 {s.weight || 0}
                 <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 3 }}>{t?.('activeSession.lbShort', 'lb')}</span>
               </div>
-              <div className="text-[11px] mt-0.5" style={{ color: 'color-mix(in srgb, var(--color-accent) 90%, #000)' }}>
+              <div className="text-[11px] mt-0.5" style={{ color: `color-mix(in srgb, ${setTone} 90%, #000)` }}>
                 {s.reps || 0} {t?.('activeSession.repsSuffix', 'reps')}
               </div>
               <div
@@ -461,13 +486,13 @@ const SetTracker = ({ currentSets, activeSetIndex, targetReps, t }) => {
                   right: 12,
                   width: 16,
                   height: 16,
-                  backgroundColor: 'color-mix(in srgb, var(--color-accent) 95%, #000)',
+                  backgroundColor: `color-mix(in srgb, ${setTone} 95%, #000)`,
                 }}
               >
                 <Check size={10} color="#fff" strokeWidth={3} />
               </div>
               {s.isPR && (
-                <Trophy size={10} className="absolute bottom-2 right-2" style={{ color: 'var(--color-accent)' }} />
+                <Trophy size={10} className="absolute bottom-2 right-2" style={{ color: setTone }} />
               )}
             </div>
           );
@@ -565,6 +590,9 @@ const ExerciseCard = ({
   showProgressChart, onShowProgressChart, isPRCheck, livePRs, touchStartXRef,
   // Superset/circuit context
   nextInGroup, groupType,
+  groupId,
+  canStartSuperset = false,
+  onToggleSuperset,
   adjustedRestSeconds,
 }) => {
   const { t } = useTranslation('pages');
@@ -575,6 +603,13 @@ const ExerciseCard = ({
   const prevCompletedRef = useRef(new Set());
   const [openNoteIndex, setOpenNoteIndex] = useState(null);
   const [showRpeForSet, setShowRpeForSet] = useState(null);
+  // Active-set drop list collapse — keeps the input panel compact when the
+  // user is just logging the top set. Auto-expanded the moment they add a
+  // drop, so the new row is visible.
+  const [showActiveDrops, setShowActiveDrops] = useState(false);
+  // Map of completed setIndex → bool (whether its drop rows are expanded).
+  // Defaults to false (collapsed) for every completed set.
+  const [expandedCompletedDrops, setExpandedCompletedDrops] = useState({});
   const [userBodyWeight, setUserBodyWeight] = useState(null);
   // Inline edit-past-set affordance — fix #F. Tapping the pencil opens a small
   // weight/reps editor on the row; saving writes back through onUpdateSet.
@@ -686,6 +721,7 @@ const ExerciseCard = ({
           activeSetIndex={activeSetIndex}
           targetReps={exercise.targetReps}
           t={t}
+          groupType={groupType}
         />
 
         {/* ── Input panel ── */}
@@ -697,53 +733,205 @@ const ExerciseCard = ({
               border: '1px solid var(--color-border-subtle)',
             }}
           >
-            {/* Last time row */}
-            {(historyForActiveSet || suggestedWeight) && (
-              <div
-                className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl"
-                style={{ backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.04))' }}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Clock size={12} style={{ color: 'var(--color-text-muted)' }} strokeWidth={2} />
-                  <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-                    {historyForActiveSet
-                      ? (t?.('activeSession.lastTime', 'Last time') || 'Last time')
-                      : (t?.('activeSession.suggested', 'Suggested') || 'Suggested')}
-                  </span>
-                  <span
-                    className="text-[12px] font-bold tabular-nums"
-                    style={{ color: 'var(--color-text-primary)', fontFamily: DISPLAY_FONT }}
-                  >
-                    {historyForActiveSet
-                      ? `${historyForActiveSet.weight} × ${historyForActiveSet.reps}`
-                      : `${suggestedWeight}${suggestedReps ? ` × ${suggestedReps}` : ''}`}
-                  </span>
-                </div>
-                {weightDelta != null && weightDelta !== 0 && (
-                  <CoachMark
-                    id="active-session-suggestion"
-                    title={t('activeSession.smartSuggestions')}
-                    description={suggestion?.note === 'first_time_estimated'
-                      ? t('activeSession.suggestionFirstTime')
-                      : suggestion?.note === 'intra_session_bump'
-                        ? t('activeSession.suggestionBump')
-                        : t('activeSession.suggestionOverload')}
-                    position="bottom"
-                    dismissLabel={t('activeSession.gotIt')}
-                  >
-                    <div className="flex items-center gap-1">
-                      <TrendingUp size={12} style={{ color: weightDelta > 0 ? 'var(--color-accent)' : 'var(--color-text-muted)' }} strokeWidth={2.4} />
-                      <span
-                        className="text-[11px] font-bold"
-                        style={{ color: weightDelta > 0 ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
+            {/* Last time / Suggested row — also hosts the Drop + Superset
+                quick pills (and the +Δ overload chip) on the right, so a
+                glance at this single row shows: previous performance, the
+                suggested change, and the per-set actions. */}
+            {(() => {
+              const activeDrops = Array.isArray(activeSet?.drops) ? activeSet.drops : [];
+              const setDrops = (next) => onUpdateSet(exercise.id, activeSetIndex, 'drops', next.length > 0 ? next : null);
+              const showSuggested = historyForActiveSet || suggestedWeight;
+              const histDisplayWeight = historyForActiveSet
+                ? (unit === 'kg' ? roundKgDisplay(historyForActiveSet.weight) : historyForActiveSet.weight)
+                : null;
+              const sugDisplayWeight = suggestedWeight != null
+                ? (unit === 'kg' ? roundKgDisplay(suggestedWeight) : suggestedWeight)
+                : null;
+              if (!showSuggested) return null;
+              return (
+                <div
+                  className="flex flex-wrap items-center gap-2 mb-3 px-3 py-2 rounded-xl"
+                  style={{ backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.04))' }}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <Clock size={12} style={{ color: 'var(--color-text-muted)' }} strokeWidth={2} />
+                    <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                      {historyForActiveSet
+                        ? (t?.('activeSession.lastTime', 'Last time') || 'Last time')
+                        : (t?.('activeSession.suggested', 'Suggested') || 'Suggested')}
+                    </span>
+                    <span
+                      className="text-[12px] font-bold tabular-nums"
+                      style={{ color: 'var(--color-text-primary)', fontFamily: DISPLAY_FONT }}
+                    >
+                      {historyForActiveSet
+                        ? `${histDisplayWeight} ${unit} × ${historyForActiveSet.reps}`
+                        : `${sugDisplayWeight} ${unit}${suggestedReps ? ` × ${suggestedReps}` : ''}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const topW = parseFloat(activeSet?.weight) || 0;
+                        const dropW = topW > 0 ? String(Math.round(topW * 0.7)) : '';
+                        setDrops([...activeDrops, { weight: dropW, reps: '' }]);
+                        setShowActiveDrops(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold"
+                      style={{
+                        backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                        color: 'var(--color-accent)',
+                        border: '1px solid color-mix(in srgb, var(--color-accent) 22%, transparent)',
+                        letterSpacing: 0.3,
+                        textTransform: 'uppercase',
+                      }}
+                      aria-label={t('activeSession.addDrop', { defaultValue: 'Add drop' })}
+                    >
+                      <Plus size={11} strokeWidth={2.6} />
+                      {t('activeSession.drop', { defaultValue: 'Drop' })}
+                    </button>
+                    {canStartSuperset && onToggleSuperset && (
+                      <button
+                        type="button"
+                        onClick={onToggleSuperset}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold"
+                        style={{
+                          backgroundColor: groupId
+                            ? 'rgba(109, 95, 219, 0.18)'
+                            : 'rgba(109, 95, 219, 0.10)',
+                          color: '#A99CFF',
+                          border: '1px solid rgba(109, 95, 219, 0.32)',
+                          letterSpacing: 0.3,
+                          textTransform: 'uppercase',
+                        }}
+                        aria-label={groupId
+                          ? t('activeSession.ungroup', { defaultValue: 'Ungroup' })
+                          : t('activeSession.supersetPickerTitle', { defaultValue: 'Pair with…' })}
                       >
-                        {weightDelta > 0 ? '+' : ''}{unit === 'kg' ? roundKgDisplay(weightDelta) : weightDelta} {unit}
+                        {groupId ? <X size={11} strokeWidth={2.6} /> : <Plus size={11} strokeWidth={2.6} />}
+                        {groupId
+                          ? t('activeSession.ungroup', { defaultValue: 'Ungroup' })
+                          : t('activeSession.superset', { defaultValue: 'Superset' })}
+                      </button>
+                    )}
+                    {weightDelta != null && weightDelta !== 0 && (
+                      <CoachMark
+                        id="active-session-suggestion"
+                        title={t('activeSession.smartSuggestions')}
+                        description={suggestion?.note === 'first_time_estimated'
+                          ? t('activeSession.suggestionFirstTime')
+                          : suggestion?.note === 'intra_session_bump'
+                            ? t('activeSession.suggestionBump')
+                            : t('activeSession.suggestionOverload')}
+                        position="bottom"
+                        dismissLabel={t('activeSession.gotIt')}
+                      >
+                        <div className="flex items-center gap-1">
+                          <TrendingUp size={12} style={{ color: weightDelta > 0 ? 'var(--color-accent)' : 'var(--color-text-muted)' }} strokeWidth={2.4} />
+                          <span
+                            className="text-[11px] font-bold"
+                            style={{ color: weightDelta > 0 ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
+                          >
+                            {weightDelta > 0 ? '+' : ''}{unit === 'kg' ? roundKgDisplay(weightDelta) : weightDelta} {unit}
+                          </span>
+                        </div>
+                      </CoachMark>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Drop rows + collapse toggle — only renders when the user has
+                actually added drops; collapsed by default to keep the panel
+                clean while logging the top set. */}
+            {(() => {
+              const activeDrops = Array.isArray(activeSet?.drops) ? activeSet.drops : [];
+              const setDrops = (next) => onUpdateSet(exercise.id, activeSetIndex, 'drops', next.length > 0 ? next : null);
+              const dropCount = activeDrops.length;
+              if (dropCount === 0) return null;
+              const isExpanded = showActiveDrops;
+              return (
+                <div className="mb-3 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowActiveDrops((v) => !v)}
+                    className="self-start inline-flex items-center gap-1 text-[10px] font-bold uppercase"
+                    style={{ letterSpacing: 1.2, color: 'var(--color-text-muted)' }}
+                    aria-expanded={isExpanded}
+                  >
+                    {t('activeSession.dropsCount', { count: dropCount, defaultValue: `${dropCount} drop${dropCount === 1 ? '' : 's'}` })}
+                    <ChevronDown
+                      size={12}
+                      style={{
+                        transition: 'transform 180ms',
+                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
+                      }}
+                    />
+                  </button>
+                  {isExpanded && activeDrops.map((d, di) => (
+                    <div
+                      key={di}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                      style={{
+                        backgroundColor: 'color-mix(in srgb, var(--color-accent) 6%, transparent)',
+                        border: '1px dashed color-mix(in srgb, var(--color-accent) 22%, transparent)',
+                      }}
+                    >
+                      <span
+                        className="text-[10px] font-extrabold uppercase tracking-wider shrink-0"
+                        style={{ color: 'var(--color-text-subtle)', letterSpacing: 1 }}
+                      >
+                        ↓ {t('activeSession.drop', { defaultValue: 'Drop' })} {di + 1}
                       </span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={d.weight}
+                        placeholder={t('activeSession.weight', 'WEIGHT')}
+                        onChange={(e) => setDrops(activeDrops.map((x, j) => j === di ? { ...x, weight: e.target.value } : x))}
+                        className="flex-1 min-w-0 text-[13px] font-bold tabular-nums rounded-md px-2 py-1.5 focus:outline-none"
+                        style={{
+                          backgroundColor: 'var(--color-bg-card)',
+                          border: '1px solid var(--color-border-subtle)',
+                          color: 'var(--color-text-primary)',
+                        }}
+                        aria-label={t('activeSession.dropWeight', { n: di + 1, defaultValue: `Drop ${di + 1} weight` })}
+                      />
+                      <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>×</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={d.reps}
+                        placeholder={t('activeSession.reps', 'REPS')}
+                        onChange={(e) => setDrops(activeDrops.map((x, j) => j === di ? { ...x, reps: e.target.value } : x))}
+                        className="flex-1 min-w-0 text-[13px] font-bold tabular-nums rounded-md px-2 py-1.5 focus:outline-none"
+                        style={{
+                          backgroundColor: 'var(--color-bg-card)',
+                          border: '1px solid var(--color-border-subtle)',
+                          color: 'var(--color-text-primary)',
+                        }}
+                        aria-label={t('activeSession.dropReps', { n: di + 1, defaultValue: `Drop ${di + 1} reps` })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setDrops(activeDrops.filter((_, j) => j !== di))}
+                        className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                        style={{
+                          backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.04))',
+                          color: 'var(--color-text-subtle)',
+                          border: '1px solid var(--color-border-subtle)',
+                        }}
+                        aria-label={t('activeSession.removeDrop', { defaultValue: 'Remove drop' })}
+                      >
+                        <X size={12} />
+                      </button>
                     </div>
-                  </CoachMark>
-                )}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Weight */}
             <div>
@@ -901,6 +1089,7 @@ const ExerciseCard = ({
                 })}
               </div>
             </div>
+
           </div>
         )}
 
@@ -933,24 +1122,58 @@ const ExerciseCard = ({
                 );
               }
               const c = set.rpe ? rpeColor(set.rpe) : null;
+              const completedDrops = Array.isArray(set.drops) ? set.drops.filter(d => (parseInt(d.reps, 10) || 0) > 0) : [];
+              const dropsExpanded = !!expandedCompletedDrops[i];
+              // Per-set tone: only sets logged while the exercise was inside
+              // a superset/circuit get the group color. Sets logged when the
+              // exercise wasn't grouped stay on the normal accent — even if
+              // the exercise gets grouped later.
+              const setTone = GROUP_TONE[set.groupType] || 'var(--color-accent)';
               return (
                 <div key={i} className="space-y-0">
                   <div
                     className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl${justCompleted.has(i) ? ' animate-set-complete' : ''}`}
                     style={{
-                      backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
-                      border: '1px solid color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                      backgroundColor: `color-mix(in srgb, ${setTone} 10%, transparent)`,
+                      border: `1px solid color-mix(in srgb, ${setTone} 18%, transparent)`,
                     }}
                   >
                     <div
                       className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 85%, #000)' }}
+                      style={{ backgroundColor: `color-mix(in srgb, ${setTone} 85%, #000)` }}
                     >
                       <Check size={12} color="#fff" strokeWidth={3} />
                     </div>
-                    <span className="text-[13px] font-semibold flex-1 truncate" style={{ color: 'var(--color-text-primary)' }}>
-                      {t('activeSession.set', 'Set')} {i + 1}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <span className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {t('activeSession.set', 'Set')} {i + 1}
+                      </span>
+                      {/* Drop count + collapse toggle — sits inline with the
+                          "Set N" label so the whole header stays one row. */}
+                      {completedDrops.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedCompletedDrops((prev) => ({ ...prev, [i]: !prev[i] }))}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase shrink-0"
+                          style={{
+                            letterSpacing: 0.8,
+                            color: 'var(--color-text-muted)',
+                            backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.04))',
+                            border: '1px solid var(--color-border-subtle)',
+                          }}
+                          aria-expanded={dropsExpanded}
+                        >
+                          {t('activeSession.dropsCount', { count: completedDrops.length, defaultValue: `${completedDrops.length} drop${completedDrops.length === 1 ? '' : 's'}` })}
+                          <ChevronDown
+                            size={11}
+                            style={{
+                              transition: 'transform 180ms',
+                              transform: dropsExpanded ? 'rotate(180deg)' : 'rotate(0)',
+                            }}
+                          />
+                        </button>
+                      )}
+                    </div>
                     <span className="text-[13px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
                       {unit === 'kg' ? roundKgDisplay(Number(set.weight) || 0) : set.weight} {unit} × {set.reps}
                     </span>
@@ -969,16 +1192,16 @@ const ExerciseCard = ({
                     >
                       {set.rpe ? `RPE ${set.rpe}` : 'RPE'}
                     </button>
-                    {set.isPR && <Trophy size={12} className="shrink-0" style={{ color: 'var(--color-accent)' }} />}
+                    {set.isPR && <Trophy size={12} className="shrink-0" style={{ color: setTone }} />}
                     <button
                       type="button"
                       onClick={() => setOpenNoteIndex(openNoteIndex === i ? null : i)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0"
                       style={{
                         backgroundColor: set.notes
-                          ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)'
+                          ? `color-mix(in srgb, ${setTone} 12%, transparent)`
                           : 'var(--color-surface-hover, rgba(255,255,255,0.04))',
-                        color: set.notes ? 'var(--color-accent)' : 'var(--color-text-subtle)',
+                        color: set.notes ? setTone : 'var(--color-text-subtle)',
                       }}
                       aria-label={t('activeSession.addNote') ?? 'Add note'}
                     >
@@ -993,15 +1216,44 @@ const ExerciseCard = ({
                       className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0"
                       style={{
                         backgroundColor: editingSet?.index === i
-                          ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)'
+                          ? `color-mix(in srgb, ${setTone} 12%, transparent)`
                           : 'var(--color-surface-hover, rgba(255,255,255,0.04))',
-                        color: editingSet?.index === i ? 'var(--color-accent)' : 'var(--color-text-subtle)',
+                        color: editingSet?.index === i ? setTone : 'var(--color-text-subtle)',
                       }}
                       aria-label={t('activeSession.editSet', 'Edit set')}
                     >
                       <Pencil size={12} />
                     </button>
                   </div>
+
+                  {/* Drop rows — render directly under the set header (above
+                      RPE/edit panels) so the set's full effort sequence reads
+                      together. */}
+                  {completedDrops.length > 0 && dropsExpanded && (
+                    <div className="mt-1 ml-9 flex flex-col gap-1">
+                      {completedDrops.map((d, di) => (
+                        <div
+                          key={di}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                          style={{
+                            backgroundColor: `color-mix(in srgb, ${setTone} 6%, transparent)`,
+                            border: `1px dashed color-mix(in srgb, ${setTone} 22%, transparent)`,
+                          }}
+                        >
+                          <span
+                            className="text-[10px] font-extrabold uppercase tracking-wider shrink-0"
+                            style={{ color: 'var(--color-text-subtle)', letterSpacing: 1 }}
+                            aria-hidden="true"
+                          >
+                            ↓ {t('activeSession.drop', { defaultValue: 'Drop' })} {di + 1}
+                          </span>
+                          <span className="text-[12px] tabular-nums flex-1" style={{ color: 'var(--color-text-muted)' }}>
+                            {d.weight || 0} {unit} × {d.reps}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Inline edit editor for past completed sets (fix #F) */}
                   {editingSet?.index === i && (
@@ -1121,31 +1373,9 @@ const ExerciseCard = ({
           </button>
         )}
 
-        {/* ── Next-in-group indicator ── */}
-        {nextInGroup && groupType && !allComplete && (
-          <div
-            className="flex items-center gap-2 px-3 py-2 rounded-xl"
-            style={{
-              backgroundColor: groupType === 'superset'
-                ? 'rgba(109, 95, 219, 0.08)'
-                : 'rgba(59, 130, 246, 0.08)',
-              border: `1px solid ${groupType === 'superset' ? 'rgba(109, 95, 219, 0.25)' : 'rgba(59, 130, 246, 0.25)'}`,
-            }}
-          >
-            <div
-              className="w-0.5 h-4 rounded-full"
-              style={{
-                backgroundColor: groupType === 'superset' ? 'rgba(109, 95, 219, 0.5)' : 'rgba(59, 130, 246, 0.5)',
-              }}
-            />
-            <span
-              className="text-[11px] font-semibold"
-              style={{ color: groupType === 'superset' ? '#6D5FDB' : '#60A5FA' }}
-            >
-              {t('activeSession.nextInSuperset', { name: exName(nextInGroup) })}
-            </span>
-          </div>
-        )}
+        {/* The "Next: <exercise>" callout used to live here. Removed because
+            the superset header at the top of ActiveSession already names the
+            partner exercise — rendering it again here just crowded the page. */}
       </div>
 
       {/* The fixed-bottom Complete Bar that used to live here was duplicating

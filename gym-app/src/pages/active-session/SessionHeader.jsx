@@ -11,6 +11,7 @@ const SessionHeader = ({
   completedSets,
   totalSets,
   exercises,
+  loggedSets,
   currentExerciseIndex,
   showResumedBanner,
   onNavigateBack,
@@ -29,16 +30,35 @@ const SessionHeader = ({
   const exerciseCount = exercises.length;
   const { t } = useTranslation('pages');
 
-  // Compute per-exercise completion for segmented progress bar
-  // For the active exercise, compute partial fill based on completed sets
+  // Per-pill tint follows the SAME per-set snapshot rule as the in-card
+  // chips: if at least one logged set on this exercise was completed while
+  // the exercise was inside a superset/circuit, the pill takes the group
+  // tone. Pills for exercises without any supersetted set fall back to the
+  // gym brand accent. Falls back to the exercise's *current* groupType when
+  // no sets have been logged yet so a freshly-paired exercise still shows
+  // the group color on its NOW pill.
   const segmentStates = exercises.map((ex, i) => {
-    if (i < currentExerciseIndex) return { done: true, pct: 1 };
-    if (i === currentExerciseIndex) {
-      // Try to read completed sets on current exercise
-      return { active: true, pct: 0.4 };
+    let pillGroupType = null;
+    const sets = (loggedSets && ex?.id) ? loggedSets[ex.id] || [] : [];
+    for (const s of sets) {
+      if (s?.completed && !s?.skipped && s.groupType) {
+        pillGroupType = s.groupType;
+        break;
+      }
     }
-    return { done: false, pct: 0 };
+    if (!pillGroupType && ex?.groupType) pillGroupType = ex.groupType;
+    const base = { groupType: pillGroupType };
+    if (i < currentExerciseIndex) return { ...base, done: true, pct: 1 };
+    if (i === currentExerciseIndex) return { ...base, active: true, pct: 0.4 };
+    return { ...base, done: false, pct: 0 };
   });
+
+  // Clearly distinct from the blue circuit tone — old #6D5FDB read as blue
+  // on some panels, especially when the gym brand accent skews violet.
+  const SEGMENT_TONE = {
+    superset: '#8B5CF6',
+    circuit: '#3B82F6',
+  };
 
   return (
     <>
@@ -192,32 +212,35 @@ const SessionHeader = ({
             </button>
 
             <div className="flex items-center gap-1.5 flex-1">
-              {segmentStates.map((s, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => onSetCurrentExerciseIndex(i)}
-                  className="flex-1 h-2.5 rounded-full relative overflow-hidden active:scale-y-90 transition-transform focus:outline-none"
-                  style={{
-                    backgroundColor: s.done
-                      ? 'var(--color-accent)'
-                      : s.active
-                        ? 'color-mix(in srgb, var(--color-accent) 100%, transparent)'
-                        : 'var(--color-surface-hover, rgba(255,255,255,0.12))',
-                  }}
-                  aria-label={t('activeSession.goToExerciseAria', { defaultValue: 'Go to exercise {{n}}', n: i + 1 })}
-                >
-                  {s.active && (
-                    <span
-                      className="absolute inset-y-0 left-0 block rounded-full"
-                      style={{
-                        width: `${Math.max(20, s.pct * 100)}%`,
-                        backgroundColor: 'color-mix(in srgb, var(--color-accent) 65%, #000 35%)',
-                      }}
-                    />
-                  )}
-                </button>
-              ))}
+              {segmentStates.map((s, i) => {
+                const tone = SEGMENT_TONE[s.groupType] || 'var(--color-accent)';
+                const baseBg = s.done
+                  ? tone
+                  : s.active
+                    ? `color-mix(in srgb, ${tone} 100%, transparent)`
+                    : 'var(--color-surface-hover, rgba(255,255,255,0.12))';
+                const activeFill = `color-mix(in srgb, ${tone} 65%, #000 35%)`;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => onSetCurrentExerciseIndex(i)}
+                    className="flex-1 h-2.5 rounded-full relative overflow-hidden active:scale-y-90 transition-transform focus:outline-none"
+                    style={{ backgroundColor: baseBg }}
+                    aria-label={t('activeSession.goToExerciseAria', { defaultValue: 'Go to exercise {{n}}', n: i + 1 })}
+                  >
+                    {s.active && (
+                      <span
+                        className="absolute inset-y-0 left-0 block rounded-full"
+                        style={{
+                          width: `${Math.max(20, s.pct * 100)}%`,
+                          backgroundColor: activeFill,
+                        }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Next exercise */}

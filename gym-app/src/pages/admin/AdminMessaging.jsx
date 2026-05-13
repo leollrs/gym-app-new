@@ -229,7 +229,6 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const threadEndRef = useRef(null);
-  const [kbHeight, setKbHeight] = useState(0);
   const inputRef = useRef(null);
   const convoIdsRef = useRef([]);
   const seedMapRef = useRef({});
@@ -498,17 +497,14 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [activeConvoId]);
 
-  // Native keyboard awareness — lift the compose bar above the on-screen
-  // keyboard so the input isn't hidden underneath. Same shape as member Messages.jsx.
+  // WebView resizes natively when the keyboard opens (capacitor.config
+  // Keyboard.resize="native"); we only listen so we can snap the thread to the
+  // newest message once the viewport settles.
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || !Keyboard) return;
     const listeners = [];
-    Keyboard.addListener('keyboardWillShow', (info) => {
-      setKbHeight(info.keyboardHeight);
+    Keyboard.addListener('keyboardWillShow', () => {
       setTimeout(() => threadEndRef.current?.scrollIntoView({ behavior: 'auto' }), 50);
-    }).then((h) => listeners.push(h));
-    Keyboard.addListener('keyboardWillHide', () => {
-      setKbHeight(0);
     }).then((h) => listeners.push(h));
     return () => { listeners.forEach((h) => h.remove()); };
   }, []);
@@ -1008,11 +1004,10 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                   <div ref={threadEndRef} />
                 </div>
 
-                {/* Compose bar — `transform` lifts it above the on-screen keyboard on
-                    native iOS/Android (kbHeight comes from @capacitor/keyboard). */}
+                {/* Compose bar — native WebView shrinks above the keyboard,
+                    so the bar lands above it without manual offsets. */}
                 <div
-                  className="px-4 py-3 border-t border-white/6 flex-shrink-0 transition-transform duration-150"
-                  style={{ transform: kbHeight > 0 ? `translateY(-${kbHeight}px)` : undefined }}
+                  className="px-4 py-3 border-t border-white/6 flex-shrink-0"
                 >
                   <div className="flex gap-2">
                     <input ref={inputRef} type="text" aria-label={t('admin.messaging.typeMessage')} value={compose} onChange={e => setCompose(e.target.value)}

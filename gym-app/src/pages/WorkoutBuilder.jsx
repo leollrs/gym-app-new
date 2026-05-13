@@ -9,6 +9,7 @@ import ExerciseLibrary from './ExerciseLibrary';
 import { getExerciseById } from '../data/exercises';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { goalAdjustedDefaults } from '../lib/goalAdjustedDefaults';
 import { useToast } from '../contexts/ToastContext';
 import { clearCache } from '../lib/queryCache';
 import { exName } from '../lib/exerciseName';
@@ -339,9 +340,14 @@ const WorkoutBuilder = () => {
       setShowLibrary(false);
       return;
     }
+    // Adopt the user's goal-tailored defaults when adding an exercise so
+    // the routine reflects what they're actually training for. Strength
+    // user gets ~5 sets × 3-5 reps; hypertrophy user gets ~4 sets × 8-10.
+    const goal = profile?.primary_goal || 'general_fitness';
+    const adj = goalAdjustedDefaults(exercise, goal);
     setRoutineExercises(prev => [
       ...prev,
-      { id: exercise.id, sets: exercise.defaultSets, reps: exercise.defaultReps, restSeconds: 90, groupId: null, groupType: null }
+      { id: exercise.id, sets: adj.sets, reps: adj.reps, restSeconds: adj.rest, groupId: null, groupType: null }
     ]);
     setShowLibrary(false);
   };
@@ -674,23 +680,38 @@ const WorkoutBuilder = () => {
           </div>
         </div>
 
-        {/* Grouping toolbar */}
-        {selectedIndices.size >= 2 && (
+        {/* Grouping toolbar — always visible when there are 2+ exercises so
+            the Superset / Circuit affordance is discoverable without first
+            knowing about the row checkboxes. Shows a hint when <2 selected
+            and becomes actionable once the user picks at least two. */}
+        {routineExercises.length >= 2 && (
           <div className="flex items-center gap-2 mb-4 p-3 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/25">
             <Link2 size={14} className="text-[#D4AF37] shrink-0" />
-            <span className="text-[12px] text-[#D4AF37] font-semibold flex-1">{selectedIndices.size} {t('workoutBuilder.selectToGroup')}</span>
-            <button
-              onClick={() => handleGroup('superset')}
-              className="px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[11px] font-bold active:scale-95 transition-transform"
-            >
-              {t('workoutBuilder.groupAsSuperset')}
-            </button>
-            <button
-              onClick={() => handleGroup('circuit')}
-              className="px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 text-[11px] font-bold active:scale-95 transition-transform"
-            >
-              {t('workoutBuilder.groupAsCircuit')}
-            </button>
+            {selectedIndices.size >= 2 ? (
+              <>
+                <span className="text-[12px] text-[#D4AF37] font-semibold flex-1">
+                  {selectedIndices.size} {t('workoutBuilder.selectToGroup', 'selected — group as:')}
+                </span>
+                <button
+                  onClick={() => handleGroup('superset')}
+                  className="px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[11px] font-bold active:scale-95 transition-transform"
+                >
+                  {t('workoutBuilder.groupAsSuperset', 'Superset')}
+                </button>
+                <button
+                  onClick={() => handleGroup('circuit')}
+                  className="px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 text-[11px] font-bold active:scale-95 transition-transform"
+                >
+                  {t('workoutBuilder.groupAsCircuit', 'Circuit')}
+                </button>
+              </>
+            ) : (
+              <span className="text-[12px] text-[#D4AF37]/90 font-semibold flex-1 leading-snug">
+                {t('workoutBuilder.supersetHint', {
+                  defaultValue: 'Tap the checkbox on 2+ exercises to group them as a Superset or Circuit.',
+                })}
+              </span>
+            )}
           </div>
         )}
 

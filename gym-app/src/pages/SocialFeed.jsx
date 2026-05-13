@@ -1350,18 +1350,28 @@ const SocialFeed = ({ embedded = false }) => {
 
   useEffect(() => {
     if (!user || !profile) return;
+    let cancelled = false;
     const init = async () => {
       setLoading(true);
-      const { data: fships } = await supabase
-        .from('friendships')
-        .select('id, requester_id, addressee_id, status')
-        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-        .limit(500);
-      const resolved = fships ?? [];
-      setFriendships(resolved);
-      await loadFeed(resolved);
+      try {
+        const { data: fships } = await supabase
+          .from('friendships')
+          .select('id, requester_id, addressee_id, status')
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+          .limit(500);
+        if (cancelled) return;
+        const resolved = fships ?? [];
+        setFriendships(resolved);
+        await loadFeed(resolved);
+      } finally {
+        // loadFeed sets loading=false on success paths, but if either await
+        // above throws we still need to clear the skeleton — otherwise the
+        // feed shows the skeleton forever.
+        if (!cancelled) setLoading(false);
+      }
     };
     init();
+    return () => { cancelled = true; };
   }, [user, profile]);
 
   // When friendships change (accept/add), reload feed

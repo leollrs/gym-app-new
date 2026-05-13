@@ -22,7 +22,10 @@
   },
   "plugins": {
     "CapacitorUpdater": {
-      "autoUpdate": true
+      "autoUpdate": false,
+      "autoDeleteFailed": true,
+      "autoDeletePrevious": true,
+      "resetWhenUpdate": true
     },
     "SplashScreen": {
       "launchShowDuration": 800,
@@ -40,7 +43,7 @@
       "overlaysWebView": true
     },
     "Keyboard": {
-      "resize": "body",
+      "resize": "native",
       "resizeOnFullScreen": true
     },
     "LocalNotifications": {

@@ -9,6 +9,7 @@ import { useToast } from '../contexts/ToastContext';
 import { sendNotification } from '../lib/notifications';
 import { awardAchievements } from '../lib/achievements';
 import AchievementToast from '../components/AchievementToast';
+import WellnessCheckinModal from '../components/WellnessCheckinModal';
 import ShareSheet from '../components/share/ShareSheet';
 import { sanitize } from '../lib/sanitize';
 import { localizeRoutineName } from '../lib/exerciseName';
@@ -197,6 +198,41 @@ const SessionSummary = () => {
     const tm = setTimeout(() => setVisible(true), 60);
     return () => clearTimeout(tm);
   }, []);
+
+  // Daily wellness check-in: prompt once the session lands on this screen,
+  // unless the user already logged today's soreness. Slight delay so the
+  // confetti / PR celebration plays first.
+  const [showWellnessCheckin, setShowWellnessCheckin] = useState(false);
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const dateKey = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    // Local cache short-circuit: if we already have a check-in for today
+    // recorded locally (e.g. offline save), don't re-prompt.
+    try {
+      const raw = localStorage.getItem('tugympr_wellness_last_checkin');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.date === dateKey && typeof parsed.soreness === 'number') return;
+      }
+    } catch {}
+    (async () => {
+      const { data } = await supabase
+        .from('wellness_checkins')
+        .select('soreness')
+        .eq('profile_id', user.id)
+        .eq('checkin_date', dateKey)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!data) {
+        setTimeout(() => { if (!cancelled) setShowWellnessCheckin(true); }, 2200);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   // Sync completed workout to Apple Health / Health Connect if enabled
   useEffect(() => {
@@ -943,6 +979,10 @@ const SessionSummary = () => {
           })),
           exercises: [],
         }}
+      />
+      <WellnessCheckinModal
+        open={showWellnessCheckin}
+        onClose={() => setShowWellnessCheckin(false)}
       />
     </div>
   );
