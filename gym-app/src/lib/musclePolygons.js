@@ -1,21 +1,25 @@
 // musclePolygons.js
 //
-// Loads the user-traced muscle polygons from src/data/muscleRegions.json
-// and groups them into the 14 visual "buckets" the Recovery modal uses.
-// Each bucket maps to a region set in readinessEngine.js; the bucket id is
-// what onSelect(...) receives when the user taps a polygon.
+// Loads the user-traced muscle polygons and groups them into the 14 visual
+// "buckets" the Recovery modal uses. Each bucket maps to a region set in
+// readinessEngine.js; the bucket id is what onSelect(...) receives when the
+// user taps a polygon.
 //
-// Image dimensions (native, polygon coords are in this space):
-//   FRONT 626 × 832
-//   BACK  634 × 832
+// Sex-aware: there are two traced sets, one per trainer photo. The polygon
+// IDs + bucket maps are shared (same naming scheme) — only the coordinates,
+// the image native dimensions, and the photo paths differ. Use
+// getMuscleAssets(sex) to get the matching bundle. The bare FRONT_POLYGONS /
+// FRONT_DIM / … exports stay pointed at the MALE set for back-compat.
+//
+// Native image dimensions (polygon coords live in this space):
+//   MALE   front 626×832   back 634×832
+//   FEMALE front 629×832   back 628×832
 //
 // Polygons can be filtered (hidden:true) but in practice we honour the
 // hidden flag at render time, not here.
 
-import RAW from '../data/muscleRegions.json';
-
-export const FRONT_DIM = { w: 626, h: 832 };
-export const BACK_DIM = { w: 634, h: 832 };
+import RAW_MALE from '../data/muscleRegions.json';
+import RAW_FEMALE from '../data/muscleRegionsFemale.json';
 
 // FRONT view: each polygon → its granular bucket. Splits per user spec.
 const FRONT_POLY_BUCKET = {
@@ -109,5 +113,34 @@ function buildPolygons(rawList, bucketMap) {
     .filter((p) => p.bucketId);
 }
 
-export const FRONT_POLYGONS = buildPolygons(RAW.front, FRONT_POLY_BUCKET);
-export const BACK_POLYGONS = buildPolygons(RAW.back, BACK_POLY_BUCKET);
+// Per-sex asset bundles. Polygons + native dims + trainer photo paths are
+// all coupled to the same traced image, so they travel together.
+const MALE = {
+  FRONT_POLYGONS: buildPolygons(RAW_MALE.front, FRONT_POLY_BUCKET),
+  BACK_POLYGONS:  buildPolygons(RAW_MALE.back,  BACK_POLY_BUCKET),
+  FRONT_DIM: { w: 626, h: 832 },
+  BACK_DIM:  { w: 634, h: 832 },
+  FRONT_PHOTO: '/readiness/male_trainer_front.jpeg',
+  BACK_PHOTO:  '/readiness/male_trainer_back.jpeg',
+};
+const FEMALE = {
+  FRONT_POLYGONS: buildPolygons(RAW_FEMALE.front, FRONT_POLY_BUCKET),
+  BACK_POLYGONS:  buildPolygons(RAW_FEMALE.back,  BACK_POLY_BUCKET),
+  FRONT_DIM: { w: 629, h: 832 },
+  BACK_DIM:  { w: 628, h: 832 },
+  FRONT_PHOTO: '/readiness/female_trainer_front.jpeg',
+  BACK_PHOTO:  '/readiness/female_trainer_back.jpeg',
+};
+
+// Sex-aware accessor. Pass profile.sex — anything other than 'female'
+// (null, 'male', 'other', undefined) returns the male set.
+export function getMuscleAssets(sex) {
+  return (sex || '').toLowerCase() === 'female' ? FEMALE : MALE;
+}
+
+// Back-compat bare exports — default to the male set. Existing importers
+// that don't (yet) pass sex keep working unchanged.
+export const FRONT_POLYGONS = MALE.FRONT_POLYGONS;
+export const BACK_POLYGONS = MALE.BACK_POLYGONS;
+export const FRONT_DIM = MALE.FRONT_DIM;
+export const BACK_DIM = MALE.BACK_DIM;

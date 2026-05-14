@@ -10,10 +10,10 @@
 // Filter chips (sore / recovering / fresh) are clickable: tapping one filters
 // the markers on the figure to that state. Tap again or tap "All" to reset.
 //
-// Photos: /readiness/male_trainer_front.jpeg (823×1024 native, 578×720 served)
-//         /readiness/male_trainer_back.jpeg  (791×992  native, 574×720 served)
-// SVG viewBox uses native pixel coords; preserveAspectRatio="xMidYMid meet"
-// keeps markers locked to body parts at any modal size.
+// Trainer photo + traced polygons are sex-aware via getMuscleAssets(sex) —
+// male/female JPEGs live in /readiness/, polygon coords + native dims per
+// set. SVG viewBox uses those native pixel coords; preserveAspectRatio=
+// "xMidYMid meet" keeps markers locked to body parts at any modal size.
 // -----------------------------------------------------------------------------
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -25,7 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useRecentSessionsWithSets } from '../hooks/useSupabaseQuery';
 import { supabase } from '../lib/supabase';
 import WellnessCheckinModal from './WellnessCheckinModal';
-import { FRONT_POLYGONS, BACK_POLYGONS, FRONT_DIM, BACK_DIM } from '../lib/musclePolygons';
+import { getMuscleAssets } from '../lib/musclePolygons';
 import {
   computeReadiness,
   overallReadiness,
@@ -48,10 +48,6 @@ import AppendToRoutineModal from './AppendToRoutineModal';
 const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
 const FONT_BODY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
 
-const FRONT_PHOTO = '/readiness/male_trainer_front.jpeg';
-const BACK_PHOTO = '/readiness/male_trainer_back.jpeg';
-const FRONT_VB = `0 0 ${FRONT_DIM.w} ${FRONT_DIM.h}`;
-const BACK_VB = `0 0 ${BACK_DIM.w} ${BACK_DIM.h}`;
 
 // State colors — softer than the prototype's neon, tuned for warm-paper bg.
 const STATE_HEX = {
@@ -396,12 +392,15 @@ function FilterChip({ icon: Icon, count, label, color, active, onClick }) {
   );
 }
 
-function Figure({ view, setView, selected, onSelect, readiness, filterState, t }) {
+function Figure({ view, setView, selected, onSelect, readiness, filterState, t, sex }) {
   const isFront = view === 'front';
-  const photo = isFront ? FRONT_PHOTO : BACK_PHOTO;
-  const polygons = isFront ? FRONT_POLYGONS : BACK_POLYGONS;
-  const vb = isFront ? FRONT_VB : BACK_VB;
-  const aspect = isFront ? `${FRONT_DIM.w} / ${FRONT_DIM.h}` : `${BACK_DIM.w} / ${BACK_DIM.h}`;
+  // Sex-aware trainer photo + traced polygons + native dims (male fallback).
+  const assets = getMuscleAssets(sex);
+  const photo = isFront ? assets.FRONT_PHOTO : assets.BACK_PHOTO;
+  const polygons = isFront ? assets.FRONT_POLYGONS : assets.BACK_POLYGONS;
+  const dim = isFront ? assets.FRONT_DIM : assets.BACK_DIM;
+  const vb = `0 0 ${dim.w} ${dim.h}`;
+  const aspect = `${dim.w} / ${dim.h}`;
 
   // Track flip direction so we can run a directional slide animation.
   const [flipDir, setFlipDir] = useState(null); // 'left' | 'right' | null
@@ -1893,6 +1892,7 @@ export default function ReadinessModal({ open, onClose }) {
               readiness={readiness}
               filterState={filterState}
               t={t}
+              sex={profile?.sex}
             />
           </div>
 

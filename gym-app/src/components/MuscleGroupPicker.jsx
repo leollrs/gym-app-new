@@ -22,10 +22,8 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FRONT_POLYGONS, BACK_POLYGONS, FRONT_DIM, BACK_DIM } from '../lib/musclePolygons';
-
-const FRONT_PHOTO = '/readiness/male_trainer_front.jpeg';
-const BACK_PHOTO  = '/readiness/male_trainer_back.jpeg';
+import { getMuscleAssets } from '../lib/musclePolygons';
+import { useAuth } from '../contexts/AuthContext';
 
 const PRIMARY_FILL   = '#DC2626';   // red-600
 const SECONDARY_FILL = '#FCA5A5';   // red-300
@@ -40,13 +38,16 @@ export default function MuscleGroupPicker({
   maxWidth = 320,
 }) {
   const { t } = useTranslation('pages');
+  const { profile } = useAuth();
+  // Sex-aware trainer photo + traced polygons (falls back to male).
+  const assets = useMemo(() => getMuscleAssets(profile?.sex), [profile?.sex]);
   const [view, setView] = useState('front');
   const [mode, setMode] = useState('primary'); // 'primary' | 'secondary'
 
   const isFront = view === 'front';
-  const polygons = isFront ? FRONT_POLYGONS : BACK_POLYGONS;
-  const dim = isFront ? FRONT_DIM : BACK_DIM;
-  const photo = isFront ? FRONT_PHOTO : BACK_PHOTO;
+  const polygons = isFront ? assets.FRONT_POLYGONS : assets.BACK_POLYGONS;
+  const dim = isFront ? assets.FRONT_DIM : assets.BACK_DIM;
+  const photo = isFront ? assets.FRONT_PHOTO : assets.BACK_PHOTO;
   const vb = `0 0 ${dim.w} ${dim.h}`;
   const aspect = `${dim.w} / ${dim.h}`;
 

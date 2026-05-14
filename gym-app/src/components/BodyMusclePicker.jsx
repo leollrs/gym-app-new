@@ -16,11 +16,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FRONT_POLYGONS, BACK_POLYGONS, FRONT_DIM, BACK_DIM } from '../lib/musclePolygons';
+import { getMuscleAssets } from '../lib/musclePolygons';
 import { MUSCLE_BUCKET_BY_ID } from '../lib/muscleBuckets';
-
-const FRONT_PHOTO = '/readiness/male_trainer_front.jpeg';
-const BACK_PHOTO = '/readiness/male_trainer_back.jpeg';
+import { useAuth } from '../contexts/AuthContext';
 const SELECT_COLOR = '#3B82F6';
 const HIGHLIGHT_COLOR = '#DC2626';
 const FILL = 'rgba(212,175,55,0.08)';
@@ -57,6 +55,9 @@ export default function BodyMusclePicker({
   highlightedRegions = null, // array of region IDs (e.g. ['front_delts','triceps']) painted red
 }) {
   const { t } = useTranslation('pages');
+  const { profile } = useAuth();
+  // Sex-aware trainer photo + traced polygons (falls back to male).
+  const assets = useMemo(() => getMuscleAssets(profile?.sex), [profile?.sex]);
   // Resolve `highlightedRegions` once per change: a polygon is highlighted
   // if any of its bucket's regionIds appears in the highlight set.
   const highlightSet = useMemo(() => {
@@ -71,9 +72,9 @@ export default function BodyMusclePicker({
   };
 
   const isFront = view === 'front';
-  const polygons = isFront ? FRONT_POLYGONS : BACK_POLYGONS;
-  const dim = isFront ? FRONT_DIM : BACK_DIM;
-  const photo = isFront ? FRONT_PHOTO : BACK_PHOTO;
+  const polygons = isFront ? assets.FRONT_POLYGONS : assets.BACK_POLYGONS;
+  const dim = isFront ? assets.FRONT_DIM : assets.BACK_DIM;
+  const photo = isFront ? assets.FRONT_PHOTO : assets.BACK_PHOTO;
   const vb = `0 0 ${dim.w} ${dim.h}`;
   const aspect = `${dim.w} / ${dim.h}`;
 

@@ -7,25 +7,16 @@
 // render a lighter red — instantly readable.
 //
 // Sex-aware: reads `useAuth().profile.sex` to pick the male or female
-// trainer images. Falls back to male if the female assets aren't deployed
-// yet (the female trainer ships in a follow-up).
+// trainer image + matching traced polygons via getMuscleAssets().
 
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FRONT_POLYGONS, BACK_POLYGONS, FRONT_DIM, BACK_DIM } from '../lib/musclePolygons';
+import { getMuscleAssets } from '../lib/musclePolygons';
 import { MUSCLE_BUCKET_BY_ID } from '../lib/muscleBuckets';
 import { useAuth } from '../contexts/AuthContext';
 
 const PRIMARY_FILL = '#DC2626';   // red-600
 const SECONDARY_FILL = '#FCA5A5'; // red-300
-
-// Future-proof: when the female trainer assets ship, drop them at the
-// paths below. Until then we just fall back to the male set.
-const TRAINER_IMAGES = {
-  male:   { front: '/readiness/male_trainer_front.jpeg',   back: '/readiness/male_trainer_back.jpeg' },
-  female: { front: '/readiness/female_trainer_front.jpeg', back: '/readiness/female_trainer_back.jpeg' },
-};
-const FEMALE_AVAILABLE = false; // flip once the female JPEGs are committed
 
 export default function ExerciseMuscleHighlight({
   primaryRegions = [],
@@ -52,22 +43,17 @@ export default function ExerciseMuscleHighlight({
   const primaryLabels = useMemo(() => dedupeLabels(primaryRegions), [primaryRegions]);
   const secondaryLabels = useMemo(() => dedupeLabels(secondaryRegions.filter((r) => !primaryRegions.includes(r))), [primaryRegions, secondaryRegions]);
 
-  // Pick image set based on user profile sex. Fall back to male while the
-  // female trainer assets aren't shipped yet.
-  const setKey = useMemo(() => {
-    const raw = (profile?.sex || '').toLowerCase();
-    if (raw === 'female' && FEMALE_AVAILABLE) return 'female';
-    return 'male';
-  }, [profile?.sex]);
-  const images = TRAINER_IMAGES[setKey];
+  // Sex-aware asset bundle — polygons, native dims, and trainer photo all
+  // matched to the user's sex (falls back to male for null/'male'/'other').
+  const assets = useMemo(() => getMuscleAssets(profile?.sex), [profile?.sex]);
 
   const primarySet = useMemo(() => new Set(primaryRegions), [primaryRegions]);
   const secondarySet = useMemo(() => new Set(secondaryRegions), [secondaryRegions]);
 
   const isFront = view === 'front';
-  const polygons = isFront ? FRONT_POLYGONS : BACK_POLYGONS;
-  const dim = isFront ? FRONT_DIM : BACK_DIM;
-  const photo = isFront ? images.front : images.back;
+  const polygons = isFront ? assets.FRONT_POLYGONS : assets.BACK_POLYGONS;
+  const dim = isFront ? assets.FRONT_DIM : assets.BACK_DIM;
+  const photo = isFront ? assets.FRONT_PHOTO : assets.BACK_PHOTO;
   const vb = `0 0 ${dim.w} ${dim.h}`;
   const aspect = `${dim.w} / ${dim.h}`;
 
