@@ -36,7 +36,17 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      selfDestroying: false,
+      // On Capacitor the web assets are already on-device (bundled natively
+      // / managed by Capgo) — a service worker only adds a redundant runtime
+      // cache layer AND a real footgun: a stale SW survives `devicectl
+      // install` (the data container isn't wiped on reinstall) and can keep
+      // serving old chunks, leaving the app stuck on a blank screen.
+      // `selfDestroying` on Capacitor builds ships a SW that unregisters
+      // itself and clears its caches on next launch — which also cleans up
+      // any stale SW already sitting on field devices. Web/PWA keeps the
+      // real SW. React Query's localStorage persistence + the offline queue
+      // already cover offline on native, so nothing is lost.
+      selfDestroying: isCapacitor,
       registerType: 'autoUpdate',
       includeAssets: isCapacitor ? [] : ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: isCapacitor ? false : {

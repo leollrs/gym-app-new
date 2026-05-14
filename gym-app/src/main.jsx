@@ -13,6 +13,7 @@ import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import Toast from './components/Toast.jsx';
+import StuckLoadingRecovery from './components/StuckLoadingRecovery.jsx';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { initWatchListeners, onWatchMessage, syncRoutinesToWatch, syncUserContextToWatch, syncQRToWatch } from './lib/watchBridge';
 import { getCached } from './lib/queryCache';
@@ -690,7 +691,27 @@ function LazyPostHogProvider({ apiKey, options, children }) {
   return children;
 }
 
+// Stuck-loading recovery watcher. Mounted on its own React root, OUTSIDE
+// the main provider tree — so if AuthProvider / QueryClient / Router throw
+// and the app below never renders, the watcher still runs its timer and
+// can auto-recover (cache wipe + reload) or surface the manual banner.
+const mountRecoveryRoot = () => {
+  try {
+    let host = document.getElementById('recovery-root');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'recovery-root';
+      document.body.appendChild(host);
+    }
+    ReactDOM.createRoot(host).render(<StuckLoadingRecovery />);
+  } catch { /* if even this fails, nothing more we can do */ }
+};
+
 const renderApp = () => {
+  // Mount recovery FIRST so its 10s timer is already running regardless of
+  // whether the main render below throws synchronously.
+  mountRecoveryRoot();
+
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
       <LazyPostHogProvider apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN} options={posthogOptions}>
