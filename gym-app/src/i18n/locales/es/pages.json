@@ -126,6 +126,7 @@
     "ariaCompleted": "{{name}} completado",
     "sets": "series",
     "reps": "reps",
+    "thenMore_0": "último ejercicio — dale con todo",
     "thenMore": "luego {{count}} ejercicio más",
     "thenMore_plural": "luego {{count}} ejercicios más",
     "upNext": "Siguiente",

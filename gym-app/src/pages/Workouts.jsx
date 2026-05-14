@@ -493,9 +493,19 @@ const Workouts = () => {
   useEffect(() => {
     if (selectedMyProgram) {
       document.body.style.overflow = 'hidden';
+      // Personal/auto programs are week-navigable in the modal — open on the
+      // program's CURRENT week so the user lands where they actually are.
+      // Template programs keep week 1 (myProgWeek indexes template_weeks there).
+      const active = selectedMyProgram.id === generatedProgram?.id
+        && new Date(selectedMyProgram.expires_at) > new Date();
+      if (active && !selectedMyProgram.template_weeks) {
+        setMyProgWeek(String(getCurrentWeekClamped(selectedMyProgram)));
+      } else {
+        setMyProgWeek('1');
+      }
       return () => { document.body.style.overflow = ''; };
     }
-  }, [selectedMyProgram]);
+  }, [selectedMyProgram]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (selectedTemplate) {
       document.body.style.overflow = 'hidden';
@@ -2256,11 +2266,23 @@ const Workouts = () => {
       const currentWeekDays = tmplWeeks ? (tmplWeeks[myProgWeek] || []) : [];
       const canPrev = weekIdx > 0;
       const canNext = weekIdx < weekKeys.length - 1;
+      // Personal/auto programs (no template_weeks) are week-navigable in this
+      // modal. myProgWeek holds the selected week as a numeric string; clamp
+      // it to the program's range. Template programs aren't navigated here —
+      // they use the template_weeks breakdown section below.
+      const isPersonalProgram = !prog.template_weeks;
+      const selectedWeek = Math.min(Math.max(parseInt(myProgWeek, 10) || 1, 1), progTotalWeeks);
+      const weekCanPrev = selectedWeek > 1;
+      const weekCanNext = selectedWeek < progTotalWeeks;
       // For A/B variant programs we have 8 Auto: routines but only 4 should
-      // appear this week. getRoutinesForWeek returns the correct variant for
-      // the current week parity; for legacy programs it falls back to the
-      // workout_schedule mapping.
-      const programRoutines = isActive ? getRoutinesForWeek(weekNum) : [];
+      // appear in a given week. getRoutinesForWeek returns the correct variant
+      // for that week's parity; for legacy programs it falls back to the
+      // workout_schedule mapping. Personal programs show the *selected* week;
+      // template programs show the current week (their own section handles
+      // week-by-week browsing).
+      const programRoutines = isActive
+        ? getRoutinesForWeek(isPersonalProgram ? selectedWeek : weekNum)
+        : [];
       const localProgName = gpName(prog);
 
       return (
@@ -2296,8 +2318,59 @@ const Workouts = () => {
                 </div>
               </div>
 
-              {/* This week's routines (if active) */}
-              {isActive && programRoutines.length > 0 && (
+              {/* Week-navigable routines — active personal/auto programs.
+                  Lets the user step through every week of the program; the
+                  empty-state still renders so a rest week doesn't strand the
+                  navigator. */}
+              {isActive && isPersonalProgram && (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <button
+                      onClick={() => weekCanPrev && setMyProgWeek(String(selectedWeek - 1))}
+                      disabled={!weekCanPrev}
+                      className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      style={weekCanPrev ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }}
+                      aria-label={t('workouts.ariaPreviousWeek', 'Previous week')}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-[12px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-subtle)' }}>
+                      {t('workouts.weekXOfY', { current: selectedWeek, total: progTotalWeeks })}
+                    </span>
+                    <button
+                      onClick={() => weekCanNext && setMyProgWeek(String(selectedWeek + 1))}
+                      disabled={!weekCanNext}
+                      className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      style={weekCanNext ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }}
+                      aria-label={t('workouts.ariaNextWeek', 'Next week')}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                  {programRoutines.length > 0 ? (
+                    <div className="space-y-2">
+                      {programRoutines.map(r => (
+                        <Link key={r.id} to={`/session/${r.id}`} onClick={() => setSelectedMyProgram(null)} className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors group" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}><Dumbbell size={14} style={{ color: 'var(--color-text-muted)' }} /></div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(r.name)}</p>
+                            <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{r.exerciseCount} {t('workouts.exercises')}</p>
+                          </div>
+                          <ChevronRight size={14} className="transition-colors" style={{ color: 'var(--color-text-subtle)' }} />
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl py-6 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                      <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.restWeek')}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* This week's routines — active template programs (their own
+                  week-by-week breakdown below handles week browsing). */}
+              {isActive && !isPersonalProgram && programRoutines.length > 0 && (
                 <div className="mb-6">
                   <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.thisWeeksRoutines')}</p>
                   <div className="space-y-2">
