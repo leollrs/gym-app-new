@@ -235,10 +235,13 @@ export default function PersonalInfo() {
       const profileRes = await supabase.from('profiles').update(profilePatch).eq('id', user.id);
       if (profileRes.error) throw profileRes.error;
 
-      // 2) Body identity to member_onboarding (upsert in case row missing)
+      // 2) Body identity to member_onboarding (upsert in case row missing).
+      // gym_id is NOT NULL — must be sent or the insert path 23502-errors
+      // for users whose onboarding row was never created.
       const ageN = parseInt(age, 10);
       const obRes = await supabase.from('member_onboarding').upsert({
         profile_id: user.id,
+        gym_id: profile?.gym_id || null,
         sex: sex || null,
         age: Number.isFinite(ageN) ? ageN : null,
         height_inches: heightInches > 0 ? heightInches : null,
