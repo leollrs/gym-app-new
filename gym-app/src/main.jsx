@@ -14,6 +14,7 @@ import { ThemeProvider } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import Toast from './components/Toast.jsx';
 import StuckLoadingRecovery from './components/StuckLoadingRecovery.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { initWatchListeners, onWatchMessage, syncRoutinesToWatch, syncUserContextToWatch, syncQRToWatch } from './lib/watchBridge';
 import { getCached } from './lib/queryCache';
@@ -714,20 +715,28 @@ const renderApp = () => {
 
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
-      <LazyPostHogProvider apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN} options={posthogOptions}>
-        <QueryClientProvider client={queryClient}>
-          <Router>
-            <ThemeProvider>
-              <ToastProvider>
-                <AuthProvider>
-                  <App />
-                </AuthProvider>
-                <Toast />
-              </ToastProvider>
-            </ThemeProvider>
-          </Router>
-        </QueryClientProvider>
-      </LazyPostHogProvider>
+      {/* Top-level ErrorBoundary — catches a synchronous throw from ANY
+          provider (AuthProvider, ThemeProvider, Router) or from <App />
+          itself. Without it, such a throw leaves #root empty → black
+          screen with no recovery. The per-route ErrorBoundaries inside
+          App only catch throws below <Routes>. The StuckLoadingRecovery
+          watcher on its own root is the last-resort net beneath this. */}
+      <ErrorBoundary>
+        <LazyPostHogProvider apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN} options={posthogOptions}>
+          <QueryClientProvider client={queryClient}>
+            <Router>
+              <ThemeProvider>
+                <ToastProvider>
+                  <AuthProvider>
+                    <App />
+                  </AuthProvider>
+                  <Toast />
+                </ToastProvider>
+              </ThemeProvider>
+            </Router>
+          </QueryClientProvider>
+        </LazyPostHogProvider>
+      </ErrorBoundary>
     </React.StrictMode>,
   );
   // Hide the launch splash explicitly on the next paint frame. Combined with

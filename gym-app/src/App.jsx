@@ -195,7 +195,20 @@ function ScrollToTop() {
 }
 
 // ── LOADING SCREEN (animated runner) ─────────────────────────
-const LoadingScreen = () => (
+const LoadingScreen = () => {
+  const { t } = useTranslation('common');
+  // After a few seconds still loading, surface a gentle "slow connection"
+  // hint so a stalled boot on bad wifi reads as "still working" instead of
+  // an unexplained indefinite spinner. AuthContext's 6s loading-gate
+  // timeout means this is rarely on screen long — it just covers the
+  // window before the gate drops and the app renders cached state.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setSlow(true), 4000);
+    return () => clearTimeout(id);
+  }, []);
+
+  return (
   <div className="min-h-screen bg-[#05070B] flex items-center justify-center">
     <div className="flex flex-col items-center gap-6">
       {/* Animated running figure */}
@@ -270,9 +283,16 @@ const LoadingScreen = () => (
         <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/60 animate-bounce" style={{ animationDelay: '150ms' }} />
         <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/60 animate-bounce" style={{ animationDelay: '300ms' }} />
       </div>
+
+      {slow && (
+        <p className="text-[12px] text-[#9CA3AF] text-center max-w-[240px] leading-relaxed px-6">
+          {t('slowConnectionHint', { defaultValue: 'Taking longer than usual — check your connection.' })}
+        </p>
+      )}
     </div>
   </div>
-);
+  );
+};
 
 // ── GYM DEACTIVATED SCREEN ────────────────────────────────
 const GymDeactivatedScreen = () => {

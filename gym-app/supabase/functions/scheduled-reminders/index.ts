@@ -236,12 +236,22 @@ async function sendPush(
 }
 
 // ── Insert notification with dedup ──────────────────────────
+// Returns TRUE only when a NEW row was actually inserted. A duplicate
+// dedup_key (23505) returns FALSE — callers MUST gate sendPush() on this.
+// Previously this returned true for "inserted OR already exists", and every
+// caller pushed unconditionally — so a check that re-ran each hourly tick
+// within its time window (streak warning, nutrition reminder) dedup'd the
+// in-app row but still fired a fresh push every hour. Real failures also
+// return false (no row → no push).
 async function insertNotif(supabase: ReturnType<typeof createClient>, profileId: string, gymId: string, type: string, title: string, body: string, dedupKey: string) {
   const { error } = await supabase.from('notifications').insert({
     profile_id: profileId, gym_id: gymId, type, title, body, dedup_key: dedupKey,
   });
-  if (error && error.code !== '23505') console.warn('Notification insert failed:', profileId, error.message);
-  return !error || error.code === '23505'; // true if inserted or already exists
+  if (error) {
+    if (error.code !== '23505') console.warn('Notification insert failed:', profileId, error.message);
+    return false; // 23505 duplicate OR a real error → no fresh row → no push
+  }
+  return true;
 }
 
 // ── Language helper ─────────────────────────────────────────
@@ -337,8 +347,10 @@ async function checkWorkoutReminder(supabase: ReturnType<typeof createClient>, m
   }
 
   const suffix = (count ?? 0) === 0 ? '' : '_2';
-  await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey + suffix);
-  await sendPush(supabase, member.id, title, body, { route: '/workouts', type: 'workout_reminder' }, isQuietHours(member.timezone));
+  const inserted = await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey + suffix);
+  if (inserted) {
+    await sendPush(supabase, member.id, title, body, { route: '/workouts', type: 'workout_reminder' }, isQuietHours(member.timezone));
+  }
 }
 
 async function checkStreakAtRisk(supabase: ReturnType<typeof createClient>, member: Member, today: string) {
@@ -371,8 +383,10 @@ async function checkStreakAtRisk(supabase: ReturnType<typeof createClient>, memb
     `Tu racha de ${streak} días termina a medianoche. 30 minutos hoy y la salvas.`
   );
 
-  await insertNotif(supabase, member.id, member.gym_id, 'streak_warning', title, body, dedupKey);
-  await sendPush(supabase, member.id, title, body, { route: '/', type: 'streak_warning' }, isQuietHours(member.timezone));
+  const inserted = await insertNotif(supabase, member.id, member.gym_id, 'streak_warning', title, body, dedupKey);
+  if (inserted) {
+    await sendPush(supabase, member.id, title, body, { route: '/', type: 'streak_warning' }, isQuietHours(member.timezone));
+  }
 }
 
 async function checkReengagement(supabase: ReturnType<typeof createClient>, member: Member, today: string, nowMs: number) {
@@ -436,9 +450,10 @@ async function checkReengagement(supabase: ReturnType<typeof createClient>, memb
   // DEFAULT FALSE so new accounts must opt in explicitly). The in-app
   // notification row is always written regardless, since other lifecycle
   // automation (admin dashboards, in-app surfacing) still depends on it.
-  await insertNotif(supabase, member.id, member.gym_id, 'churn_followup', title, body, dedupKey);
+  const inserted = await insertNotif(supabase, member.id, member.gym_id, 'churn_followup', title, body, dedupKey);
   const reengagementOptedIn = member.notif_reengagement !== false; // null/true → allow
-  const skipPush = !reengagementOptedIn || isQuietHours(member.timezone);
+  // !inserted → the row already existed (dedup hit), so don't re-push.
+  const skipPush = !inserted || !reengagementOptedIn || isQuietHours(member.timezone);
   await sendPush(supabase, member.id, title, body, { route: '/', type: 'churn_followup' }, skipPush);
 }
 
@@ -467,8 +482,10 @@ async function checkNutritionReminder(supabase: ReturnType<typeof createClient>,
     'Aún no has registrado nada. Una estimación rápida te mantiene en tus números.',
   );
 
-  await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey);
-  await sendPush(supabase, member.id, title, body, { route: '/nutrition', type: 'workout_reminder' }, isQuietHours(member.timezone));
+  const inserted = await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey);
+  if (inserted) {
+    await sendPush(supabase, member.id, title, body, { route: '/nutrition', type: 'workout_reminder' }, isQuietHours(member.timezone));
+  }
 }
 
 async function checkRestDay(supabase: ReturnType<typeof createClient>, member: Member, today: string, dayOfWeek: number) {
@@ -533,8 +550,10 @@ async function checkRestDay(supabase: ReturnType<typeof createClient>, member: M
     );
   }
 
-  await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey);
-  await sendPush(supabase, member.id, title, body, { route: '/', type: 'rest_day' }, isQuietHours(member.timezone));
+  const inserted = await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey);
+  if (inserted) {
+    await sendPush(supabase, member.id, title, body, { route: '/', type: 'rest_day' }, isQuietHours(member.timezone));
+  }
 }
 
 async function checkWeightLogReminder(supabase: ReturnType<typeof createClient>, member: Member, today: string, nowMs: number) {
@@ -567,8 +586,10 @@ async function checkWeightLogReminder(supabase: ReturnType<typeof createClient>,
     `${daysSinceLog} días desde tu último registro. Regístralo ya.`,
   );
 
-  await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey);
-  await sendPush(supabase, member.id, title, body, { route: '/progress', type: 'workout_reminder' }, isQuietHours(member.timezone));
+  const inserted = await insertNotif(supabase, member.id, member.gym_id, 'workout_reminder', title, body, dedupKey);
+  if (inserted) {
+    await sendPush(supabase, member.id, title, body, { route: '/progress', type: 'workout_reminder' }, isQuietHours(member.timezone));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════

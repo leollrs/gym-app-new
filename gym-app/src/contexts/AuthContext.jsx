@@ -571,6 +571,18 @@ export const AuthProvider = ({ children }) => {
     };
     try { window.addEventListener('unhandledrejection', onUnhandledRejection); } catch {}
 
+    // Hard cap on the initial loading gate. On bad/no wifi both
+    // supabase.auth.getSession() (it may trigger a token refresh) and
+    // fetchProfile()'s get_auth_context RPC can hang indefinitely — which
+    // left `loading` stuck true forever and the app on a black screen with
+    // no recovery. After this window we drop the gate regardless: the app
+    // renders with whatever's cached (offline-first if there's a cached
+    // profile, otherwise the login screen), and the background retries
+    // (onAuthStateChange + the online/retry effects) refresh once the
+    // network is back. setLoading(false) when already false is a no-op,
+    // so this is safe even on a fast connection.
+    const initLoadTimeout = setTimeout(() => setLoading(false), 6000);
+
     // Check for an existing session on mount. If offline/unreachable, the
     // hydrated user/profile from localStorage stays in place — we don't
     // overwrite to null just because getSession returned no live session.
@@ -668,6 +680,7 @@ export const AuthProvider = ({ children }) => {
     return () => {
       subscription.unsubscribe();
       try { window.removeEventListener('unhandledrejection', onUnhandledRejection); } catch {}
+      clearTimeout(initLoadTimeout);
       // Clean up any pending Watch sync timeout
       if (watchSyncTimeoutRef.current) {
         clearTimeout(watchSyncTimeoutRef.current);

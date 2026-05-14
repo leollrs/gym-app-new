@@ -13,7 +13,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { runNotificationScheduler } from '../lib/notificationScheduler';
 import { getCached, setCache } from '../lib/queryCache';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { computeStreakFromSessions } from '../lib/achievements';
@@ -775,7 +774,13 @@ const Dashboard = () => {
         dispatch({ type: 'SET_ALL', payload });
       }
       setCache(`dash:${user.id}`, payload);
-      runNotificationScheduler(user.id, profile.gym_id).catch(() => {});
+      // Notification generation is owned entirely by the server-side
+      // `scheduled-reminders` cron now. The old client-side
+      // runNotificationScheduler call here duplicated it — inserting rows
+      // on app-open that either skipped the push (quiet hours) or got
+      // suppressed (app foregrounded), so the user saw in-app notifications
+      // they never received as a banner. It also used different dedup-key
+      // formats than the server, so the two didn't dedup against each other.
 
       // Schedule the daily wellness check-in reminder (9 AM local, 7 days
       // ahead). Idempotent — re-scheduling cancels and replaces.

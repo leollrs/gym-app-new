@@ -15,6 +15,7 @@
   "delete": "Eliminar",
   "confirm": "Confirmar",
   "loading": "Cargando…",
+  "slowConnectionHint": "Está tardando más de lo normal — revisa tu conexión.",
   "error": "Error",
   "success": "Éxito",
   "yes": "Sí",
