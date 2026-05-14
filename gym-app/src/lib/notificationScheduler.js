@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import logger from './logger';
 import i18n from 'i18next';
+import { localizeRoutineName } from './exerciseName';
 import {
   NOTIFICATION_TYPES,
   sendStreakWarning,
@@ -175,8 +176,9 @@ async function checkWorkoutReminder(userId, gymId, profile) {
     // Rotate routines across training days
     const routine = routines[dayIndex % routines.length];
     if (routine?.name) {
-      title = i18n.t('notifications.todayIsRoutineDay', { ns: 'common', name: firstName, routine: routine.name, defaultValue: firstName ? `${firstName}, it's ${routine.name} day` : `It's ${routine.name} day` });
-      body = i18n.t('notifications.dontForgetRoutine', { ns: 'common', name: firstName, routine: routine.name, defaultValue: `Your ${routine.name} session is waiting. Hit it before the day gets away from you.` });
+      const displayRoutine = localizeRoutineName(routine.name);
+      title = i18n.t('notifications.todayIsRoutineDay', { ns: 'common', name: firstName, routine: displayRoutine, defaultValue: firstName ? `${firstName}, it's ${displayRoutine} day` : `It's ${displayRoutine} day` });
+      body = i18n.t('notifications.dontForgetRoutine', { ns: 'common', name: firstName, routine: displayRoutine, defaultValue: `Your ${displayRoutine} session is waiting. Hit it before the day gets away from you.` });
     }
   }
 

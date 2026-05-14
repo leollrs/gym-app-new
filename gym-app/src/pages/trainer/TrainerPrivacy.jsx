@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft, Eye, Lock, Download, Star, MessageSquare,
-  Loader2, Check, AlertTriangle,
+  Loader2, Check, AlertTriangle, Users,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -63,10 +63,13 @@ function PrivacyToggleRow({ Icon, title, desc, value, onChange, disabled, isFirs
 export default function TrainerPrivacy() {
   const { t } = useTranslation(['pages', 'common']);
   const navigate = useNavigate();
-  const { profile, patchProfile, refreshProfile } = useAuth();
+  const { profile, patchProfile } = useAuth();
   const { showToast } = useToast();
 
   const [publicProfile, setPublicProfile] = useState(profile?.privacy_public ?? false);
+  // Default TRUE so existing trainers without the column (pre-migration) still
+  // show up in the directory. Matches the DB default.
+  const [directoryVisible, setDirectoryVisible] = useState(profile?.trainer_directory_visible ?? true);
   const [verified] = useState(profile?.trainer_verified ?? false);
   const [savingKey, setSavingKey] = useState(null);
   const [exporting, setExporting] = useState(false);
@@ -75,6 +78,43 @@ export default function TrainerPrivacy() {
     setPublicProfile(profile?.privacy_public ?? false);
   }, [profile?.privacy_public]);
 
+  useEffect(() => {
+    setDirectoryVisible(profile?.trainer_directory_visible ?? true);
+  }, [profile?.trainer_directory_visible]);
+
+  // The shared `get_auth_context` RPC doesn't return privacy_public or
+  // trainer_directory_visible, so `profile.*` from useAuth() is undefined
+  // on cold load and the toggles would always paint with the fallback
+  // value (false/true) instead of the saved DB state. Pull them directly
+  // on mount and patch them into AuthContext so the rest of the app
+  // (MyGym filter, PublicTrainerProfile gate) reads the right value too.
+  useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('privacy_public, trainer_directory_visible')
+        .eq('id', profile.id)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      if (typeof data.privacy_public === 'boolean') {
+        setPublicProfile(data.privacy_public);
+        if (data.privacy_public !== profile.privacy_public) {
+          patchProfile({ privacy_public: data.privacy_public });
+        }
+      }
+      if (typeof data.trainer_directory_visible === 'boolean') {
+        setDirectoryVisible(data.trainer_directory_visible);
+        if (data.trainer_directory_visible !== profile.trainer_directory_visible) {
+          patchProfile({ trainer_directory_visible: data.trainer_directory_visible });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id]);
+
   const updateField = async (column, nextValue) => {
     setSavingKey(column);
     const prev = profile?.[column];
@@ -82,11 +122,17 @@ export default function TrainerPrivacy() {
     try {
       const { error } = await supabase.from('profiles').update({ [column]: nextValue }).eq('id', profile.id);
       if (error) throw error;
-      await refreshProfile();
+      // Don't call refreshProfile() here. The shared `get_auth_context` RPC
+      // it relies on doesn't return privacy_public or trainer_directory_visible,
+      // so refreshing wipes those fields off the in-memory profile and the
+      // useEffect below snaps the toggle back to its fallback default. The
+      // patchProfile() call above already reflects the new value locally and
+      // the DB write succeeded — that's sufficient.
     } catch (err) {
       // Roll back optimistic update on failure
       patchProfile({ [column]: prev });
       if (column === 'privacy_public') setPublicProfile(prev);
+      if (column === 'trainer_directory_visible') setDirectoryVisible(prev);
       showToast(err.message || t('pages:trainerPrivacy.saveFailed', 'Failed to save'), 'error');
     } finally {
       setSavingKey(null);
@@ -181,6 +227,14 @@ export default function TrainerPrivacy() {
         <TCard padded={0}>
           <PrivacyToggleRow
             isFirst
+            Icon={Users}
+            title={t('pages:trainerPrivacy.directoryListing', 'Show in gym trainer directory')}
+            desc={t('pages:trainerPrivacy.directoryListingDesc', 'Appear in the "Trainers" list on your gym page so any member can find you. When off, only your active clients can reach your profile.')}
+            value={directoryVisible}
+            disabled={savingKey === 'trainer_directory_visible'}
+            onChange={(v) => { setDirectoryVisible(v); updateField('trainer_directory_visible', v); }}
+          />
+          <PrivacyToggleRow
             Icon={Eye}
             title={t('pages:trainerPrivacy.publicProfile', 'Public profile')}
             desc={t('pages:trainerPrivacy.publicProfileDesc', 'Allow anyone in your gym to view your trainer profile, services, and reviews.')}

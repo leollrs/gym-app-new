@@ -101,11 +101,16 @@ export async function analyzeAndAdapt(userId, gymId) {
     }
   }
 
-  // 6. If attendance is low, suggest reducing days
-  if (attendanceRate < 0.6 && scheduledDays > 2) {
-    suggestions.suggestReduceDays = true;
-    suggestions.suggestedDays = Math.max(2, scheduledDays - 1);
-  }
+  // 6. "Reduce training days" suggestion DISABLED — the banner had no apply
+  // handler, so dismissing it left the user's program out of sync with
+  // anything that read `suggestedDays`, breaking the current-program view
+  // (orphan workout_schedule rows + stacked Mondays). Re-enable once the
+  // suggestion actually has a closed-loop apply flow that updates
+  // profiles.preferred_training_days + cleans workout_schedule.
+  // if (attendanceRate < 0.6 && scheduledDays > 2) {
+  //   suggestions.suggestReduceDays = true;
+  //   suggestions.suggestedDays = Math.max(2, scheduledDays - 1);
+  // }
 
   return suggestions;
 }

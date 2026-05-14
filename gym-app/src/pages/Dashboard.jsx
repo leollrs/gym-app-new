@@ -22,6 +22,7 @@ import { getRewardTier } from '../lib/rewardsEngine';
 import { getLevel } from '../components/LevelBadge';
 import { exercises as exerciseLibrary } from '../data/exercises';
 import { localizeRoutineName } from '../lib/exerciseName';
+import { translateCreativeName } from '../lib/programNaming';
 import { getCurrentWeekClamped, getTotalProgramWeeks, getProgramWeekNum } from '../lib/programWeek';
 import { AppleHealthSourceBadge } from '../components/AppleHealthBadge';
 import { tg } from '../lib/genderText';
@@ -428,6 +429,20 @@ const Dashboard = () => {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
+  // Refresh when another page signals that the user's programs changed
+  // (regenerate, reactivate, switch). Dashboard is a keep-alive route so it
+  // stays mounted across navigation — without this listener, the home page
+  // can keep rendering the previous program until the user manually pulls
+  // to refresh or backgrounds + foregrounds the app.
+  useEffect(() => {
+    const onProgramsChanged = () => {
+      autoTodayRoutineIdRef.current = null;
+      setRefreshKey(k => k + 1);
+    };
+    window.addEventListener('tugympr:programs-changed', onProgramsChanged);
+    return () => window.removeEventListener('tugympr:programs-changed', onProgramsChanged);
+  }, []);
+
   // Hydrate from cache — fires when user.id becomes available (reducer init may
   // have run before auth resolved). If we already have state from the reducer's
   // lazy init, this is a no-op update; React Query persist cache will keep it
@@ -650,12 +665,28 @@ const Dashboard = () => {
       // If the user already completed a workout today, prefer that routine so
       // the hero card reflects the completed state instead of suggesting a
       // different one. Pick the most-recently-completed session of the day.
+      //
+      // Caveat: if there's an active program AND the completed routine is an
+      // OLD program routine (Auto: + created before this program_start), skip
+      // it. After regenerate, the old routine still exists in the DB (it's
+      // still claimed by the previous, now-expired program's schedule_map),
+      // so the find() succeeds and the hero would stick on the old routine.
+      // Falling through to the scheduleMap branch surfaces the new program's
+      // routine for today, which is what the user expects to see.
       if (!pickedRoutine && todaySessionsFiltered.length > 0) {
         const sortedToday = [...todaySessionsFiltered]
           .filter(s => s.routine_id)
           .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
-        if (sortedToday.length > 0) {
-          pickedRoutine = fetchedRoutines.find(r => r.id === sortedToday[0].routine_id) || null;
+        for (const s of sortedToday) {
+          const candidate = fetchedRoutines.find(r => r.id === s.routine_id);
+          if (!candidate) continue;
+          if (fetchedProgram
+              && candidate.name?.startsWith('Auto:')
+              && new Date(candidate.created_at || 0) < programStart) {
+            continue;
+          }
+          pickedRoutine = candidate;
+          break;
         }
       }
       if (!pickedRoutine && scheduleMap[todayDow]) {
@@ -1472,15 +1503,43 @@ const Dashboard = () => {
                 ) : isToday && liveCardioSession ? (
                   /* ── Live cardio in progress — green hero card ── */
                   <LiveCardioHeroCard liveCardioSession={liveCardioSession} t={t} />
-                ) : isToday && todaysSessions.length > 0 && !(activeSession && selectedRoutine && activeSession.routineId === selectedRoutine.id) ? (
+                ) : isToday && (() => {
+                  // Filter today's sessions: drop any whose routine is an
+                  // Auto: routine created BEFORE the active program started.
+                  // Without this, regenerating mid-day pins the hero to the
+                  // morning workout from the now-expired program, so the
+                  // home page keeps reading as the OLD program instead of
+                  // the freshly-regenerated one. The session itself is kept
+                  // in `todaysSessions` for streak/points/log purposes.
+                  const programStart = activeProgram?.program_start
+                    ? new Date(activeProgram.program_start)
+                    : null;
+                  const relevantSessions = todaysSessions.filter(s => {
+                    if (!s.routine_id) return true;
+                    if (!programStart) return true;
+                    const routine = allRoutines.find(r => r.id === s.routine_id);
+                    if (!routine) return true;
+                    if (!routine.name?.startsWith('Auto:')) return true;
+                    return new Date(routine.created_at || 0) >= programStart;
+                  });
+                  return relevantSessions.length > 0 && !(activeSession && selectedRoutine && activeSession.routineId === selectedRoutine.id);
+                })() ? (
                   (() => {
-                    // The most-recently-completed session is the primary one we
-                    // celebrate in the hero. We don't require the routine_id to
-                    // match selectedRoutine — the user trained, period. Gym
-                    // programs and auto-generated routines have routine_ids
-                    // that aren't in fetchedRoutines, so the old strict-match
-                    // gate hid completion for those flows.
-                    const primarySession = todaysSessions[0];
+                    const programStart = activeProgram?.program_start
+                      ? new Date(activeProgram.program_start)
+                      : null;
+                    const relevantSessions = todaysSessions.filter(s => {
+                      if (!s.routine_id) return true;
+                      if (!programStart) return true;
+                      const routine = allRoutines.find(r => r.id === s.routine_id);
+                      if (!routine) return true;
+                      if (!routine.name?.startsWith('Auto:')) return true;
+                      return new Date(routine.created_at || 0) >= programStart;
+                    });
+                    // The most-recently-completed RELEVANT session drives the
+                    // hero. Sessions from a now-expired program are filtered
+                    // out above so the hero doesn't pin to the old routine.
+                    const primarySession = relevantSessions[0];
                     const primaryName = primarySession?.name || workoutType;
                     return (
                   <div className="flex flex-col gap-3">
@@ -2209,17 +2268,21 @@ const Dashboard = () => {
         const templateId = prog?.split_type ? `tmpl_${prog.split_type}` : null;
         const nameEntry = templateId ? programTemplateNames[templateId] : null;
         const fullTemplate = templateId && fullTemplates ? fullTemplates.find(t => t.id === templateId) : null;
-        const programName = nameEntry
-          ? (i18n.language === 'es' && nameEntry.name_es ? nameEntry.name_es : nameEntry.name)
-          : prog?.split_type
-            ? prog.split_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-            : null;
+        // Use schedule_map from the program (authoritative DOW→routine index mapping)
+        const sMap = prog?.schedule_map || null;
+        // Prefer the creative `display_name` from schedule_map for personal
+        // programs ("Apex Build") over the generic split label ("Upper / Lower")
+        // so the My Plan header matches what the user sees on the Workouts page.
+        const programName = sMap?.display_name
+          ? translateCreativeName(sMap.display_name)
+          : nameEntry
+            ? (i18n.language === 'es' && nameEntry.name_es ? nameEntry.name_es : nameEntry.name)
+            : prog?.split_type
+              ? prog.split_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              : null;
         const templateWeeks = fullTemplate?.weeks || {};
         const weekKeys = Object.keys(templateWeeks).map(Number).sort((a, b) => a - b);
         const hasTemplateData = weekKeys.length > 0;
-
-        // Use schedule_map from the program (authoritative DOW→routine index mapping)
-        const sMap = prog?.schedule_map || null;
         const hasWrapped = (sMap?.wrapped_dows?.length ?? 0) > 0;
 
         // Build DOW→routine_index maps for each week type
@@ -2252,6 +2315,20 @@ const Dashboard = () => {
           ? Math.min(planWeek - 1, weekKeys.length)
           : Math.min(planWeek, weekKeys.length);
         const currentWeekDays = templateWeeks[String(effectiveTemplateWeek)] || templateWeeks['1'] || [];
+
+        // Variant-aware lookup of the user's actual routines. Personal programs
+        // persist routine_ids_a + routine_ids_b in schedule_map (odd weeks → A,
+        // even weeks → B). When present, prefer these over the generic split
+        // template so the modal shows the same creative routine names and
+        // exercise mix the user actually trains. Falls back to the template
+        // for legacy programs / gym-assigned templates.
+        const variantIdsA = sMap?.routine_ids_a;
+        const variantIdsB = sMap?.routine_ids_b;
+        const hasUserVariants = Array.isArray(variantIdsA) && variantIdsA.length > 0
+          && Array.isArray(variantIdsB) && variantIdsB.length > 0;
+        const variantIdsForWeek = hasUserVariants
+          ? (planWeek % 2 === 1 ? variantIdsA : variantIdsB)
+          : null;
 
         const canPrev = planWeek > 1;
         const canNext = planWeek < totalWeeks;
@@ -2294,6 +2371,26 @@ const Dashboard = () => {
 
           // Look up routine index for this DOW using the active week's map
           const routineIdx = activeDowMap[dow];
+
+          // Personal A/B variant program: pull the user's actual routine for
+          // this slot so the modal shows e.g. "Apex Build · 6 exercises" with
+          // the actual exercise picks, not the generic split template.
+          if (routineIdx !== undefined && variantIdsForWeek) {
+            const rid = variantIdsForWeek[routineIdx];
+            const routine = rid ? allRoutines.find(r => r.id === rid) : null;
+            if (routine) {
+              const routineName = localizeRoutineName(routine.name).replace(/ [AB]$/, '');
+              const exercises = (routine.routine_exercises || [])
+                .slice()
+                .sort((a, b) => (a.position || 0) - (b.position || 0))
+                .map(re => ({
+                  id: re.exercise_id,
+                  sets: re.target_sets,
+                }));
+              return { label, name: routineName, exercises, isRest: false, isClosed: false, completed };
+            }
+          }
+
           if (routineIdx !== undefined && currentWeekDays[routineIdx]) {
             const workoutDay = currentWeekDays[routineIdx];
             return { label, name: (i18n.language === 'es' && workoutDay.name_es ? workoutDay.name_es : workoutDay.name), exercises: workoutDay.exercises || [], isRest: false, isClosed: false, completed };

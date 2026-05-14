@@ -116,15 +116,20 @@ export default function MyGym() {
         .order('sort_order');
       setOffers(offersRes.data || []);
 
-      // Fetch active trainers at this gym
-      const trainersRes = await supabase
-        .from('profiles')
-        .select('id, full_name, username, avatar_url, avatar_type, avatar_value, trainer_tagline, trainer_years_exp')
-        .eq('gym_id', profile.gym_id)
-        .eq('role', 'trainer')
-        .order('full_name', { ascending: true })
-        .limit(20);
-      setTrainers(trainersRes.data || []);
+      // Fetch the gym's trainer directory via the get_gym_trainers RPC.
+      // Querying `profiles` directly from the client fails three ways:
+      // RLS hides other people's profile rows, PostgREST's `.contains()`
+      // rejects the `additional_roles` enum array, and the visibility
+      // column may be missing. The SECURITY DEFINER RPC does the role +
+      // gym + visibility filtering server-side and returns only the
+      // safe public columns. See migration 0391.
+      const { data: trainersData, error: trainersErr } = await supabase.rpc('get_gym_trainers');
+      if (trainersErr) {
+        console.warn('[MyGym] get_gym_trainers RPC failed:', trainersErr.message);
+        setTrainers([]);
+      } else {
+        setTrainers(trainersData || []);
+      }
 
       setLoading(false);
     };
@@ -166,6 +171,36 @@ export default function MyGym() {
       </div>
 
       <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-5 space-y-5">
+
+        {/* Recent News — surfaced first so members see fresh announcements
+            before scrolling through hours, classes, and trainers. */}
+        <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
+          <div className="flex items-center gap-2 mb-4">
+            <Megaphone size={16} style={{ color: 'var(--color-accent)' }} />
+            <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('myGym.recentNews')}</h2>
+          </div>
+          {announcements.length === 0 ? (
+            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('myGym.noRecentAnnouncements')}</p>
+          ) : (
+            <div className="space-y-3">
+              {announcements.map(ann => (
+                <div
+                  key={ann.id}
+                  className="rounded-xl p-4 border-l-[3px]"
+                  style={{ backgroundColor: 'var(--color-bg-secondary)', borderLeftColor: ANN_COLOR[ann.type] ?? 'var(--color-blue)' }}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-[13px] font-semibold min-w-0 flex-1 truncate" style={{ color: 'var(--color-text-primary)' }}>{sanitize(ann.title)}</p>
+                    <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--color-text-faint)' }}>
+                      {formatDistanceToNow(new Date(ann.published_at), { addSuffix: true, ...(dateFnsLocale || {}) })}
+                    </span>
+                  </div>
+                  <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{sanitize(ann.message)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* Hours Card — per-day */}
         <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
@@ -327,15 +362,21 @@ export default function MyGym() {
           </div>
         </section>
 
-        {/* Trainers at your gym */}
-        {trainers.length > 0 && (
-          <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Users size={16} style={{ color: 'var(--color-accent)' }} />
-              <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>
-                {t('publicTrainerProfile.trainersAtGym', { defaultValue: 'Trainers at your gym' })}
-              </h2>
-            </div>
+        {/* Trainers at your gym — always rendered, mirrors the Holidays
+            section so members get a clear "no trainers listed yet" state
+            instead of the whole card silently vanishing. */}
+        <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
+          <div className="flex items-center gap-2 mb-4">
+            <Users size={16} style={{ color: 'var(--color-accent)' }} />
+            <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>
+              {t('publicTrainerProfile.trainersAtGym', { defaultValue: 'Trainers at your gym' })}
+            </h2>
+          </div>
+          {trainers.length === 0 ? (
+            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+              {t('publicTrainerProfile.noTrainersListed', { defaultValue: 'No trainers listed yet.' })}
+            </p>
+          ) : (
             <div className="space-y-2">
               {trainers.map((tr) => (
                 <button
@@ -364,37 +405,9 @@ export default function MyGym() {
                 </button>
               ))}
             </div>
-          </section>
-        )}
-
-        {/* Recent News */}
-        <section className="rounded-[22px] p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
-          <div className="flex items-center gap-2 mb-4">
-            <Megaphone size={16} style={{ color: 'var(--color-accent)' }} />
-            <h2 className="text-[17px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('myGym.recentNews')}</h2>
-          </div>
-          {announcements.length === 0 ? (
-            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('myGym.noRecentAnnouncements')}</p>
-          ) : (
-            <div className="space-y-3">
-              {announcements.map(ann => (
-                <div
-                  key={ann.id}
-                  className="rounded-xl p-4 border-l-[3px]"
-                  style={{ backgroundColor: 'var(--color-bg-secondary)', borderLeftColor: ANN_COLOR[ann.type] ?? 'var(--color-blue)' }}
-                >
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <p className="text-[13px] font-semibold min-w-0 flex-1 truncate" style={{ color: 'var(--color-text-primary)' }}>{sanitize(ann.title)}</p>
-                    <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--color-text-faint)' }}>
-                      {formatDistanceToNow(new Date(ann.published_at), { addSuffix: true, ...(dateFnsLocale || {}) })}
-                    </span>
-                  </div>
-                  <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{sanitize(ann.message)}</p>
-                </div>
-              ))}
-            </div>
           )}
         </section>
+
 
         {/* Offers */}
         {offers.length > 0 && (

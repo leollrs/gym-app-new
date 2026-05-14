@@ -1,4 +1,5 @@
 import i18n from 'i18next';
+import { translateCreativeName } from './programNaming';
 
 /**
  * Returns the localized exercise name.
@@ -84,6 +85,12 @@ export const localizeRoutineName = (name) => {
   if (!name) return '';
   // Strip Auto: prefix
   let display = name.replace(/^Auto:\s*/, '');
+  // Creative names (Apex Build, Forge Day, …) translate as a whole phrase
+  // via the programNaming pool. Falls through to word-by-word translation
+  // for legacy names like "Upper A" / "Lower B" that aren't in the pool.
+  const translated = translateCreativeName(display);
+  if (translated !== display) return translated;
+
   if (i18n.language !== 'es') return display;
 
   // Replace known terms (longest-first to avoid partial matches)

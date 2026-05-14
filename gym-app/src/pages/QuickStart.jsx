@@ -405,7 +405,7 @@ const QuickStart = () => {
             </div>
             <p className="font-bold text-[18px]" style={{ color: 'var(--color-text-primary)' }}>{t('quickStart.workoutAlreadyCompleted', 'Workout Already Completed')}</p>
             <p className="text-[13px] mt-1.5 mb-5" style={{ color: 'var(--color-text-subtle)' }}>
-              {t('quickStart.greatJobPrefix', 'Great job today! Your')} <span className="text-[#10B981] font-semibold">{todayRoutine.name?.replace('Auto: ', '').replace(/ [AB]$/, '')}</span> {t('quickStart.greatJobSuffix', 'session is done.')}
+              {t('quickStart.greatJobPrefix', 'Great job today! Your')} <span className="text-[#10B981] font-semibold">{localizeRoutineName(todayRoutine.name || '').replace(/ [AB]$/, '')}</span> {t('quickStart.greatJobSuffix', 'session is done.')}
             </p>
 
             {/* Link to session summary */}
@@ -498,7 +498,7 @@ const QuickStart = () => {
               </p>
               <h2 className="text-[18px] font-black tracking-tight leading-tight truncate"
                 ref={el => { if (el) el.style.setProperty('color', '#ffffff', 'important'); }}>
-                {todayRoutine.name?.replace('Auto: ', '').replace(/ [AB]$/, '')}
+                {localizeRoutineName(todayRoutine.name || '').replace(/ [AB]$/, '')}
               </h2>
 
               {/* Current exercise info */}

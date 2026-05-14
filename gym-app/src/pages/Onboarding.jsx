@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Capacitor } from '@capacitor/core';
 import { isAvailable as healthAvailable, requestPermissions as healthRequest, readLatestWeight, readHeight } from '../lib/healthSync';
 import { generateProgram } from '../lib/workoutGenerator';
+import { generateProgramName, generateRoutineName } from '../lib/programNaming';
 import { calculateMacros } from '../lib/macroCalculator';
 import { generateWeekPlan } from '../lib/mealPlanner';
 // MEALS (~280 KB raw across 6 meal-category files) is lazy-loaded on first
@@ -1233,34 +1234,49 @@ const Onboarding = () => {
     const startDate = new Date();
     startDate.setSeconds(startDate.getSeconds() - 5);
 
-    const createdRoutineIds = [];
-    for (const routine of result.routinesA) {
-      const { data: saved, error: rErr } = await supabase
-        .from('routines')
-        .insert({
-          name: `Auto: ${routine.name}`,
-          gym_id: gymId,
-          created_by: user.id,
-        })
-        .select('id')
-        .single();
-      if (rErr) throw rErr;
+    const nameSeed = result.seed || Math.floor(Math.random() * 100000);
+    // Persist BOTH variant A and variant B routines so the program view can
+    // alternate them weekly (odd weeks → A, even weeks → B). Different
+    // exercises + different names per variant — the user runs a real
+    // rotation rather than the same 4 routines every week.
+    const insertVariant = async (variantRoutines, variantOffsetForName) => {
+      const ids = [];
+      for (const routine of variantRoutines) {
+        const creativeName = generateRoutineName(
+          routine.slotsKey,
+          routine.variantIndex + variantOffsetForName,
+          nameSeed
+        );
+        const { data: saved, error: rErr } = await supabase
+          .from('routines')
+          .insert({
+            name: `Auto: ${creativeName}`,
+            gym_id: gymId,
+            created_by: user.id,
+          })
+          .select('id')
+          .single();
+        if (rErr) throw rErr;
+        ids.push(saved.id);
 
-      createdRoutineIds.push(saved.id);
-
-      if (routine.exercises.length > 0) {
-        const rows = routine.exercises.map((ex, i) => ({
-          routine_id: saved.id,
-          exercise_id: ex.exerciseId,
-          position: i + 1,
-          target_sets: ex.sets,
-          target_reps: ex.reps,
-          rest_seconds: ex.restSeconds,
-        }));
-        const { error: exErr } = await supabase.from('routine_exercises').insert(rows);
-        if (exErr) throw exErr;
+        if (routine.exercises.length > 0) {
+          const rows = routine.exercises.map((ex, i) => ({
+            routine_id: saved.id,
+            exercise_id: ex.exerciseId,
+            position: i + 1,
+            target_sets: ex.sets,
+            target_reps: ex.reps,
+            rest_seconds: ex.restSeconds,
+          }));
+          const { error: exErr } = await supabase.from('routine_exercises').insert(rows);
+          if (exErr) throw exErr;
+        }
       }
-    }
+      return ids;
+    };
+    const createdRoutineIdsA = await insertVariant(result.routinesA, 0);
+    const createdRoutineIdsB = await insertVariant(result.routinesB, 5);
+    const createdRoutineIds = [...createdRoutineIdsA, ...createdRoutineIdsB];
 
     const DAY_TO_DOW = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
     const fallbackByN = { 1: [1], 2: [1, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6] };
@@ -1275,7 +1291,9 @@ const Onboarding = () => {
       .map(d => DAY_TO_DOW[d])
       .filter(n => typeof n === 'number' && !closedDays.has(n))
       .sort((a, b) => a - b);
-    const N = createdRoutineIds.length;
+    // N is the per-variant slot count, not the combined A+B total. Each DOW
+    // has one A routine and one B routine that alternate by week parity.
+    const N = createdRoutineIdsA.length;
     let pickedDows = userDows.length >= N ? userDows.slice(0, N) : (fallbackByN[N] || [1, 3, 5]).filter(d => !closedDays.has(d)).slice(0, N);
 
     if (pickedDows.length < N) {
@@ -1328,7 +1346,30 @@ const Onboarding = () => {
       expiresAt.setDate(expiresAt.getDate() + daysToEnd + 1);
     }
 
+    // Dedup the display name against any past programs this user already has
+    // (e.g. they redid onboarding) so the same creative name never appears
+    // twice in My Programs.
+    const { data: priorPrograms } = await supabase
+      .from('generated_programs')
+      .select('schedule_map')
+      .eq('profile_id', user.id);
+    const usedProgramNames = (priorPrograms || [])
+      .map((p) => p.schedule_map?.display_name)
+      .filter(Boolean);
+    const displayName = generateProgramName(
+      result.split,
+      snapshot.primary_goal || 'general_fitness',
+      usedProgramNames,
+    );
+
     const scheduleMapData = {
+      display_name:    displayName,
+      // Combined list — used by orphan cleanup + Reactivate.
+      routine_ids:     createdRoutineIds,
+      // Variant-specific lists — getRoutinesForWeek alternates them by week
+      // parity so the user runs a different rotation on odd vs. even weeks.
+      routine_ids_a:   createdRoutineIdsA,
+      routine_ids_b:   createdRoutineIdsB,
       routine_day_map: pickedDows.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
       week1_map:       week1Map,
       last_week_map:   lastWeekMap,
@@ -1351,12 +1392,16 @@ const Onboarding = () => {
     });
     if (progErr) console.warn('generated_programs insert failed:', progErr.message);
 
-    for (let i = 0; i < createdRoutineIds.length; i++) {
+    // Seed workout_schedule with variant A only. The Workouts page resolves
+    // the actual per-week variant from schedule_map.routine_ids_a/_b; other
+    // surfaces (dashboard, notifications) read workout_schedule and will
+    // show variant A for that DOW, which is still a valid program routine.
+    for (let i = 0; i < createdRoutineIdsA.length; i++) {
       await supabase.from('workout_schedule').upsert({
         profile_id:  user.id,
         gym_id:      gymId,
         day_of_week: pickedDows[i],
-        routine_id:  createdRoutineIds[i],
+        routine_id:  createdRoutineIdsA[i],
         updated_at:  new Date().toISOString(),
       }, { onConflict: 'profile_id,day_of_week' });
     }
@@ -1365,15 +1410,19 @@ const Onboarding = () => {
       split: result.splitLabel,
       goal: snapshot.primary_goal,
       days: snapshot.training_days_per_week,
-      routines_count: result.routinesA.length,
+      routines_count: createdRoutineIds.length,
+      variants: 2,
       duration_weeks: DURATION_WEEKS,
       preloaded: snapshot._preloaded === true,
     });
 
     return {
-      routines: result.routinesA.map(r => ({
-        name: r.name,
-        exercises: r.exercises.map(ex => {
+      routines: result.routinesA.map((r) => ({
+        // Use the creative name we wrote to the DB so the onboarding preview
+        // matches what the user will see once they hit the app (e.g. "Apex
+        // Build" instead of "Upper A").
+        name: generateRoutineName(r.slotsKey, r.variantIndex, nameSeed),
+        exercises: r.exercises.map((ex) => {
           const info = getExerciseById(ex.exerciseId);
           return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '' };
         }),

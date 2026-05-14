@@ -480,7 +480,10 @@ function getSplitType(days) {
 // ── Pick one exercise from pool ─────────────────────────────────────────────
 // usageMap tracks how many times we've drawn from each muscle:tier bucket.
 // variantOffset shifts which exercise is selected (0 = A, 1 = B).
-function pickExercise(pool, muscle, tier, variantOffset, usageMap) {
+// seed shifts the whole pick window per generation — same inputs but a fresh
+// seed pick a different starting exercise, so consecutive regenerates don't
+// produce identical routines.
+function pickExercise(pool, muscle, tier, variantOffset, usageMap, seed = 0) {
   const key = `${muscle}:${tier}`;
   const candidates = pool.filter(ex => ex.muscle === muscle && (META[ex.id]?.tier || 'isolation') === tier);
 
@@ -491,16 +494,16 @@ function pickExercise(pool, muscle, tier, variantOffset, usageMap) {
     const fbKey = `${muscle}:any`;
     const used = usageMap.get(fbKey) || 0;
     usageMap.set(fbKey, used + 1);
-    return fallback[(used + variantOffset) % fallback.length] ?? fallback[0];
+    return fallback[(used + variantOffset + seed) % fallback.length] ?? fallback[0];
   }
 
   const used = usageMap.get(key) || 0;
   usageMap.set(key, used + 1);
-  return candidates[(used + variantOffset) % candidates.length] ?? candidates[0];
+  return candidates[(used + variantOffset + seed) % candidates.length] ?? candidates[0];
 }
 
 // ── Build a single routine from slots ──────────────────────────────────────
-function buildRoutine(template, pool, variantOffset, variant, level, gender, priority, goalConfig, recoveryMod, goalExerciseIds = new Set(), shortWorkout = false, maxExercises = 99) {
+function buildRoutine(template, pool, variantOffset, variant, level, gender, priority, goalConfig, recoveryMod, goalExerciseIds = new Set(), shortWorkout = false, maxExercises = 99, seed = 0) {
   const buildSlots = SLOTS_BUILDERS[template.slotsKey];
   const slots = buildSlots(level, gender, priority, shortWorkout).slice(0, maxExercises);
 
@@ -525,7 +528,7 @@ function buildRoutine(template, pool, variantOffset, variant, level, gender, pri
       );
     }
     if (!ex) {
-      ex = pickExercise(pool, slot.muscle, slot.tier, effectiveOffset, usageMap);
+      ex = pickExercise(pool, slot.muscle, slot.tier, effectiveOffset, usageMap, seed);
     }
     if (!ex) continue;
 
@@ -559,8 +562,10 @@ function buildRoutine(template, pool, variantOffset, variant, level, gender, pri
 
   return {
     name,
-    label:     template.label,
-    muscles:   template.muscles,
+    label:        template.label,
+    slotsKey:     template.slotsKey,
+    variantIndex: template.variantIndex || 0,
+    muscles:      template.muscles,
     exercises,
   };
 }
@@ -711,13 +716,17 @@ export function generateProgram(onboarding, goals = []) {
   const templateFn = SPLIT_TEMPLATES[splitType];
   const dayTemplates = templateFn(training_days_per_week, fitness_level, gender, priority_muscles);
 
-  // 7. Generate A and B routine sets
+  // 7. Generate A and B routine sets. Seed shifts the exercise picker per
+  // generation so regenerating the same program twice produces different
+  // exercises rather than an identical copy. A and B share the seed so
+  // their pairing stays coherent within one program.
+  const seed = Math.floor(Math.random() * 100000);
   const maxEx = durConfig.maxExercises;
   const routinesA = dayTemplates.map(t =>
-    buildRoutine(t, pool, 0, 'A', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout, maxEx)
+    buildRoutine(t, pool, 0, 'A', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout, maxEx, seed)
   );
   const routinesB = dayTemplates.map(t =>
-    buildRoutine(t, pool, 1, 'B', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout, maxEx)
+    buildRoutine(t, pool, 1, 'B', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout, maxEx, seed)
   );
 
   // 8. Cardio
@@ -742,5 +751,6 @@ export function generateProgram(onboarding, goals = []) {
     cardio,
     dayTemplates,
     goalConfig,
+    seed,
   };
 }

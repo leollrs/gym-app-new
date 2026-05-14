@@ -18,8 +18,10 @@ import { timeAgo } from '../lib/dateUtils';
 import { exercises as exerciseLibrary } from '../data/exercises';
 import { useTranslation } from 'react-i18next';
 import { exName, localizeRoutineName } from '../lib/exerciseName';
+import { translateCreativeName } from '../lib/programNaming';
 import { getCurrentWeekClamped, getTotalProgramWeeks } from '../lib/programWeek';
-import { regenerateMemberProgram } from '../lib/personalProgramService';
+import { regenerateMemberProgram, reactivatePersonalProgram } from '../lib/personalProgramService';
+import { clearCache } from '../lib/queryCache';
 import { loadAdaptationSuggestions, dismissAdaptationSuggestions } from '../lib/programAdaptation';
 import { usePostHog } from '@posthog/react';
 import { programImageUrl } from '../lib/imageUrl';
@@ -343,6 +345,11 @@ const Workouts = () => {
       const tmpl = programTemplates.find(t => t.id === prog.template_id);
       if (tmpl) return progName(tmpl);
     }
+    // Personal programs persist a creative EN name in schedule_map.display_name
+    // (e.g. "Apex Build"). `translateCreativeName` swaps to the locale-active
+    // version at render time so the user sees Spanish in Spanish, English in
+    // English without rewriting DB rows on locale switch.
+    if (prog.schedule_map?.display_name) return translateCreativeName(prog.schedule_map.display_name);
     return prog.split_type ? prog.split_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Custom';
   };
 
@@ -401,6 +408,10 @@ const Workouts = () => {
   const [leaveProgramConfirm, setLeaveProgramConfirm] = useState(null); // { id, name, source } or null
   const [regenerateConfirm, setRegenerateConfirm] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [reactivateConfirm, setReactivateConfirm] = useState(null); // program object or null
+  const [reactivating, setReactivating] = useState(false);
+  const [deleteRoutineConfirm, setDeleteRoutineConfirm] = useState(null); // { id, name } or null
+  const [deleteBlockedInfo, setDeleteBlockedInfo] = useState(null); // { reason } or null — alert() doesn't render in Capacitor WebView
   const [deletingId, setDeletingId]           = useState(null);
   const [showGenerator, setShowGenerator]     = useState(false);
   const [programCategoryFilter, setProgramCategoryFilter] = useState('All');
@@ -755,24 +766,32 @@ const Workouts = () => {
     dows.forEach((d, i) => { normalDowToIdx[d] = i; });
   }
 
-  // Reverse map: DOW → routine_id (using workoutScheduleMap which is routine_id→dow)
+  // Reverse map: DOW → routine_id (using workoutScheduleMap which is routine_id→dow).
+  // If multiple routine_ids share the same DOW (orphan rows from a prior
+  // program), prefer the routine that's actually still in `routines` (i.e.
+  // not orphaned) so the rendered list reflects the live program.
   const routineIdByNormalDow = {};
+  const liveRoutineIds = new Set(routines.map((r) => r.id));
   for (const [rid, dow] of Object.entries(workoutScheduleMap)) {
-    routineIdByNormalDow[String(dow)] = rid; // ensure string key for consistent lookup
+    const key = String(dow);
+    const existing = routineIdByNormalDow[key];
+    if (existing && liveRoutineIds.has(existing) && !liveRoutineIds.has(rid)) continue;
+    routineIdByNormalDow[key] = rid;
   }
 
-  // Get routines for a specific week, with correct DOW labels per week
+  // Get routines for a specific week, with correct DOW labels per week.
+  //
+  // Variant alternation: each program persists TWO routine sets in
+  // schedule_map (routine_ids_a + routine_ids_b) with different exercises and
+  // different names. Odd weeks (1, 3, 5…) run variant A; even weeks (2, 4, 6…)
+  // run variant B. This gives the user a real rotation instead of the same
+  // 4 routines repeated week after week.
+  //
+  // Backwards compat: older programs without routine_ids_a/_b fall back to
+  // the workout_schedule mapping (single variant for every week).
   const getRoutinesForWeek = (weekNum) => {
     if (!programActive) return [];
-    const weekVariant = weekNum % 2 === 1;
-    // Check if this program uses A/B alternation at all
-    const hasAB = routines.some(r => r.name.startsWith('Auto:') && r.name.endsWith(' B'));
-    const autoRoutines = routines.filter(r => {
-      if (!r.name.startsWith('Auto:')) return false;
-      if (!hasAB) return true; // no A/B variants — include all Auto: routines
-      if (weekVariant) return r.name.endsWith(' A');
-      return r.name.endsWith(' B');
-    });
+    const autoRoutines = routines.filter(r => r.name.startsWith('Auto:'));
 
     // Determine which DOW map to use for this week
     // Week 1 ALWAYS uses week1 map (handles "Start Today" on non-standard days)
@@ -785,27 +804,48 @@ const Workouts = () => {
       dowMap = normalDowToIdx; // full weeks (week 2 through N)
     }
 
-    // Build the list: for each DOW in this week's map, find the matching routine
+    // Pick the variant for this week. variantIds is the per-week mapping
+    // from routine_index → routine_id. Falls back to the combined
+    // routine_ids array if the program predates A/B splits.
+    const variantIdsA = schedMap?.routine_ids_a;
+    const variantIdsB = schedMap?.routine_ids_b;
+    const hasVariants = Array.isArray(variantIdsA) && variantIdsA.length > 0
+      && Array.isArray(variantIdsB) && variantIdsB.length > 0;
+    const variantIds = hasVariants
+      ? (weekNum % 2 === 1 ? variantIdsA : variantIdsB)
+      : null;
+
+    // Build the list: for each DOW in this week's map, find the matching routine.
+    // Defensive deduping below — orphan rows in `workout_schedule` from prior
+    // program adjustments can leave the same routine.id mapped to multiple
+    // DOWs (or multiple routine_ids on the same DOW). Without this guard the
+    // user sees stacked "Mondays" pile up across navigation. We dedupe on
+    // both axes: each DOW appears once, and each routine.id appears once.
     const result = [];
+    const seenDow = new Set();
+    const seenRoutineId = new Set();
     const dowEntries = Object.entries(dowMap).map(([d, idx]) => [Number(d), idx]).sort((a, b) => a[0] - b[0]);
     for (const [dow, routineIdx] of dowEntries) {
+      if (seenDow.has(dow)) continue;
       let routine;
-      if (weekNum === 1 || (hasWrappedDays && weekNum === totalProgramWeeks)) {
-        // Week 1 and last week: look up routine by its index → normal DOW → routine ID
-        // This handles "Start Today" on closed days where the DOW isn't in workout_schedule
+      if (variantIds) {
+        // A/B variant-aware lookup: routine_index → variantIds[index] → routine.
+        const rid = variantIds[routineIdx];
+        routine = rid ? autoRoutines.find(r => r.id === rid) : null;
+      } else if (weekNum === 1 || (hasWrappedDays && weekNum === totalProgramWeeks)) {
         const normalDow = schedMap?.normal_dows?.[routineIdx];
         const rid = normalDow !== undefined ? routineIdByNormalDow[String(normalDow)] : null;
         routine = rid ? autoRoutines.find(r => r.id === rid) : null;
-        // Fallback: try matching by position in autoRoutines array
         if (!routine && routineIdx < autoRoutines.length) {
           routine = autoRoutines[routineIdx];
         }
       } else {
-        // Normal weeks: direct DOW lookup from workout_schedule
         const rid = routineIdByNormalDow[String(dow)];
         routine = rid ? autoRoutines.find(r => r.id === rid) : null;
       }
-      if (routine) {
+      if (routine && !seenRoutineId.has(routine.id)) {
+        seenDow.add(dow);
+        seenRoutineId.add(routine.id);
         result.push({ ...routine, _displayDow: dow });
       }
     }
@@ -853,6 +893,11 @@ const Workouts = () => {
     setRegenerating(true);
     try {
       await regenerateMemberProgram({ supabase, user, posthog });
+      // Invalidate cached dashboard + routines payloads so the Home tab
+      // hydrates with the new program (otherwise the home page sticks on the
+      // stale cache snapshot until the next visibility-change refresh lands).
+      try { clearCache(`dash:${user.id}`); } catch {}
+      try { clearCache(`routines:${user.id}`); } catch {}
       // Refetch programs + routines so the UI reflects the new program.
       const { data: allGp } = await supabase.from('generated_programs')
         .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
@@ -860,13 +905,75 @@ const Workouts = () => {
       const programs = allGp || [];
       setAllPrograms(programs);
       setGeneratedProgram(programs[0] || null);
+      // workoutScheduleMap is only loaded once on mount — refetch so the new
+      // routine→DOW mapping populates immediately. Otherwise the routineId
+      // lookup in `getRoutinesForWeek` resolves to deleted orphan ids and
+      // weeks 2+ render empty until the user refreshes the app.
+      const { data: schedRows } = await supabase
+        .from('workout_schedule')
+        .select('routine_id, day_of_week')
+        .eq('profile_id', user.id);
+      const schedMap = {};
+      (schedRows || []).forEach((s) => { schedMap[s.routine_id] = s.day_of_week; });
+      setWorkoutScheduleMap(schedMap);
       await refetch?.();
+      // Dashboard is a keep-alive route — it stays mounted while the user is
+      // on Workouts, so clearing the cache alone won't force it to refetch.
+      // Broadcast a programs-changed event; Dashboard listens for it and
+      // bumps its refreshKey so the next render shows the new program even
+      // if the user navigates back fast (before/while regenerate finishes).
+      try { window.dispatchEvent(new CustomEvent('tugympr:programs-changed')); } catch {}
       setRegenerateConfirm(false);
     } catch (err) {
       console.error('[regenerate program] failed:', err);
       alert(t('workouts.regenerateFailed', { defaultValue: 'Could not regenerate program: {{msg}}', msg: err.message || 'unknown' }));
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  // Reactivate a past program — copies its routines + schedule into a NEW
+  // generated_program with program_start backdated so the user resumes at
+  // the calendar week they paused on. Falls back with an alert if the
+  // source routines no longer exist.
+  const handleReactivateProgram = async (sourceProgram) => {
+    if (!sourceProgram) return;
+    setReactivating(true);
+    try {
+      const result = await reactivatePersonalProgram({ supabase, user, sourceProgram, posthog });
+      if (result?.error === 'no_routines_linked' || result?.error === 'routines_deleted') {
+        alert(t('workouts.reactivateUnavailable', { defaultValue: 'Routines for this program are no longer available. Generate a new program instead.' }));
+        setReactivateConfirm(null);
+        return;
+      }
+      const { data: allGp } = await supabase.from('generated_programs')
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+        .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+      const programs = allGp || [];
+      setAllPrograms(programs);
+      setGeneratedProgram(programs[0] || null);
+      // workoutScheduleMap is only loaded once on mount — refetch so the new
+      // routine→DOW mapping populates immediately. Otherwise the routineId
+      // lookup in `getRoutinesForWeek` resolves to deleted orphan ids and
+      // weeks 2+ render empty until the user refreshes the app.
+      const { data: schedRows } = await supabase
+        .from('workout_schedule')
+        .select('routine_id, day_of_week')
+        .eq('profile_id', user.id);
+      const schedMap = {};
+      (schedRows || []).forEach((s) => { schedMap[s.routine_id] = s.day_of_week; });
+      setWorkoutScheduleMap(schedMap);
+      await refetch?.();
+      try { clearCache(`dash:${user.id}`); } catch {}
+      try { clearCache(`routines:${user.id}`); } catch {}
+      try { window.dispatchEvent(new CustomEvent('tugympr:programs-changed')); } catch {}
+      setSelectedMyProgram(null);
+      setReactivateConfirm(null);
+    } catch (err) {
+      console.error('[reactivate program] failed:', err);
+      alert(t('workouts.reactivateFailed', { defaultValue: 'Could not reactivate program: {{msg}}', msg: err.message || 'unknown' }));
+    } finally {
+      setReactivating(false);
     }
   };
 
@@ -905,18 +1012,32 @@ const Workouts = () => {
       navigate(`/workouts/${routine.id}/edit`);
     }
   };
-  const handleDelete = async (e, id) => {
+  const handleDelete = (e, id) => {
     e.preventDefault(); e.stopPropagation();
     // Prevent deleting routines that belong to the active program
     const routine = routines.find(r => r.id === id);
     if (programActive && routine?.name?.startsWith('Auto:')) {
-      alert(t('workouts.deleteRoutineActiveProgram'));
+      // alert() is silently dropped in Capacitor iOS WebView, which made the
+      // delete button feel broken. Show an in-app info modal instead.
+      setDeleteBlockedInfo({ reason: 'active_program' });
       return;
     }
-    if (!confirm(t('workouts.deleteRoutineConfirm'))) return;
+    setDeleteRoutineConfirm({ id, name: routine?.name || '' });
+  };
+
+  const handleConfirmDeleteRoutine = async () => {
+    if (!deleteRoutineConfirm) return;
+    const { id } = deleteRoutineConfirm;
     setDeletingId(id);
-    try { await deleteRoutine(id); } catch (err) { logger.error(err); }
-    finally { setDeletingId(null); }
+    try {
+      await deleteRoutine(id);
+    } catch (err) {
+      logger.error(err);
+      alert(t('workouts.deleteRoutineFailed', { defaultValue: 'Could not delete routine: {{msg}}', msg: err?.message || 'unknown' }));
+    } finally {
+      setDeletingId(null);
+      setDeleteRoutineConfirm(null);
+    }
   };
 
   // ── Template program enrollment ──
@@ -1311,8 +1432,6 @@ const Workouts = () => {
                 <p className="text-[13px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
                   {adaptationSuggestions.shouldDeload
                     ? t('workouts.adaptDeloadTitle', 'Consider a deload week')
-                    : adaptationSuggestions.suggestReduceDays
-                    ? t('workouts.adaptReduceDaysTitle', 'Adjust your training days')
                     : adaptationSuggestions.shouldIncrease
                     ? t('workouts.adaptIncreaseTitle', 'You\'re progressing well!')
                     : t('workouts.adaptInsightTitle', 'Program insight')}
@@ -1320,8 +1439,6 @@ const Workouts = () => {
                 <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-subtle)' }}>
                   {adaptationSuggestions.shouldDeload
                     ? t('workouts.adaptDeloadBody', 'Your volume has dropped recently. A lighter week may help you recover and come back stronger.')
-                    : adaptationSuggestions.suggestReduceDays
-                    ? t('workouts.adaptReduceDaysBody', { days: adaptationSuggestions.suggestedDays, defaultValue: `Based on your attendance, we suggest reducing to ${adaptationSuggestions.suggestedDays} days/week for better consistency.` })
                     : adaptationSuggestions.shouldIncrease
                     ? t('workouts.adaptIncreaseBody', 'Your volume is trending up. Keep pushing and trust the process.')
                     : adaptationSuggestions.underperformingExercises?.length > 0
@@ -1375,19 +1492,39 @@ const Workouts = () => {
               {/* Progress bar + stats */}
               {(() => {
                 const schedPerWeek = generatedProgram?.schedule_map?.routine_day_map?.length || generatedProgram?.routines_a_count || 3;
+                // Sessions THIS week — partial weeks (Wed start → 2 sessions
+                // instead of 4) need the actual count from week1_map/
+                // last_week_map, not the full-week target, so the pill reads
+                // "0/2" instead of a confusing "0/4".
+                let weekSessions = schedPerWeek;
+                if (viewWeek === 1 && schedMap?.week1_map?.length > 0) {
+                  weekSessions = schedMap.week1_map.length;
+                } else if (schedMap?.wrapped_dows?.length > 0 && viewWeek === totalProgramWeeks) {
+                  weekSessions = schedMap.last_week_map?.length ?? schedPerWeek;
+                }
                 const totalExpected = schedPerWeek * totalProgramWeeks;
                 const pct = totalExpected > 0 ? Math.min(Math.round((programCompletedDays / totalExpected) * 100), 100) : 0;
                 return (
                   <div className="my-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                        {t('workouts.weekXOfY', { current: Math.min(viewWeek, totalProgramWeeks), total: totalProgramWeeks })}
-                      </span>
-                      <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-                        {isViewingCurrentWeek
-                          ? t('workouts.sessionsThisWeekCount', { count: programCompletedDays, total: schedPerWeek, defaultValue: '{{count}}/{{total}} sessions this week' })
-                          : `${programCompletedDays} / ${schedPerWeek} ${t('workouts.sessionsLogged', 'sessions logged')}`}
-                      </span>
+                    <div className="flex items-end justify-between mb-2">
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-semibold leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                          {t('workouts.weekXOfY', { current: Math.min(viewWeek, totalProgramWeeks), total: totalProgramWeeks })}
+                        </p>
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                          {isViewingCurrentWeek
+                            ? t('workouts.sessionsThisWeekCount', { count: programCompletedDays, total: weekSessions, defaultValue: '{{count}}/{{total}} sessions this week' })
+                            : `${programCompletedDays} / ${weekSessions} ${t('workouts.sessionsLogged', 'sessions logged')}`}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0 ml-3">
+                        <span className="text-[24px] font-extrabold leading-none tabular-nums" style={{ color: TU_ACCENT, letterSpacing: '-0.02em' }}>
+                          {pct}%
+                        </span>
+                        <p className="text-[9px] font-bold uppercase mt-0.5" style={{ color: 'var(--color-text-subtle)', letterSpacing: '0.12em' }}>
+                          {t('workouts.pctComplete', 'complete')}
+                        </p>
+                      </div>
                     </div>
                     <div className="w-full h-[5px] rounded-full" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
                       <div
@@ -1760,7 +1897,12 @@ const Workouts = () => {
         ) : (
           <div className="space-y-2">
             {(showAllMyPrograms ? allPrograms : allPrograms.slice(0, 3)).map(prog => {
-              const isActive = new Date(prog.expires_at) > new Date();
+              // Only the page-canonical current program (newest with future
+              // expires_at, mirrored in `generatedProgram`) is rendered as
+              // "Activo". Older rows whose DB-level expires_at didn't get
+              // pushed back during regenerate stay labeled "completed/
+              // unfinished" so the list can't show two active programs.
+              const isActive = prog.id === generatedProgram?.id && new Date(prog.expires_at) > new Date();
               const progTotalWeeks = getTotalProgramWeeks(prog) || 6;
               const weekNum = isActive ? getCurrentWeekClamped(prog) : progTotalWeeks;
               const totalDays = progTotalWeeks * 7;
@@ -1786,8 +1928,8 @@ const Workouts = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-3 text-[11px] mb-3" style={{ color: 'var(--color-text-subtle)' }}>
-                      <span className="flex items-center gap-1"><Calendar size={10} /> {t('workouts.sixWeeks')}</span>
-                      <span>{isActive ? t('workouts.weekXOfY', { current: weekNum, total: 6 }) : t('workouts.finished')}</span>
+                      <span className="flex items-center gap-1"><Calendar size={10} /> {t('workouts.weekProgram', { count: progTotalWeeks })}</span>
+                      <span>{isActive ? t('workouts.weekXOfY', { current: weekNum, total: progTotalWeeks }) : t('workouts.finished')}</span>
                       {prog.routines_a_count > 0 && <span>{t('workouts.routinesCount', { count: prog.routines_a_count })}</span>}
                     </div>
                     <div className="w-full h-1 rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }}>
@@ -1797,6 +1939,23 @@ const Workouts = () => {
                       />
                     </div>
                   </button>
+                  {/* Reactivate (resume) past program — pick up at the
+                       calendar week the user was on when it expired.
+                       Hidden for the canonical active program and for
+                       legacy rows without persisted routine_ids. */}
+                  {!isActive && (prog.schedule_map?.routine_ids?.length > 0) && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setReactivateConfirm(prog);
+                      }}
+                      className="absolute top-3 right-12 min-w-[44px] min-h-[44px] w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[#10B981]/10 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      style={{ backgroundColor: 'var(--color-surface-hover)', color: '#10B981' }}
+                      aria-label={t('workouts.ariaReactivateProgram', 'Resume program')}
+                    >
+                      <RotateCcw size={13} />
+                    </button>
+                  )}
                   {/* Delete program */}
                   <button
                     onClick={(e) => {
@@ -2084,7 +2243,7 @@ const Workouts = () => {
     {/* ── My Program Detail Modal ───────────────────────── */}
     {selectedMyProgram && (() => {
       const prog = selectedMyProgram;
-      const isActive = new Date(prog.expires_at) > new Date();
+      const isActive = prog.id === generatedProgram?.id && new Date(prog.expires_at) > new Date();
       const progTotalWeeks = getTotalProgramWeeks(prog) || 6;
       const weekNum = isActive ? getCurrentWeekClamped(prog) : progTotalWeeks;
       const totalDays = progTotalWeeks * 7;
@@ -2097,7 +2256,11 @@ const Workouts = () => {
       const currentWeekDays = tmplWeeks ? (tmplWeeks[myProgWeek] || []) : [];
       const canPrev = weekIdx > 0;
       const canNext = weekIdx < weekKeys.length - 1;
-      const programRoutines = isActive ? routines.filter(r => r.name.startsWith('Auto:')) : [];
+      // For A/B variant programs we have 8 Auto: routines but only 4 should
+      // appear this week. getRoutinesForWeek returns the correct variant for
+      // the current week parity; for legacy programs it falls back to the
+      // workout_schedule mapping.
+      const programRoutines = isActive ? getRoutinesForWeek(weekNum) : [];
       const localProgName = gpName(prog);
 
       return (
@@ -2125,7 +2288,7 @@ const Workouts = () => {
               {/* Progress */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{isActive ? t('workouts.weekXOfY', { current: weekNum, total: 6 }) : t('workouts.programFinished')}</span>
+                  <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{isActive ? t('workouts.weekXOfY', { current: weekNum, total: progTotalWeeks }) : t('workouts.programFinished')}</span>
                   <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)', fontVariantNumeric: 'tabular-nums' }}>{progress}%</span>
                 </div>
                 <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }}>
@@ -2233,9 +2396,21 @@ const Workouts = () => {
                   {t('workouts.removeProgram')}
                 </button>
               ) : (
-                <button onClick={() => { setSelectedMyProgram(null); const el = document.getElementById('discover-programs'); el?.scrollIntoView({ behavior: 'smooth' }); }} className="w-full py-4 rounded-2xl font-bold text-[15px] transition-colors" style={{ color: 'var(--color-text-primary)', backgroundColor: 'var(--color-surface-hover)' }}>
-                  {t('workouts.browseNewPrograms')}
-                </button>
+                <div className="space-y-2">
+                  {prog.schedule_map?.routine_ids?.length > 0 && (
+                    <button
+                      onClick={() => setReactivateConfirm(prog)}
+                      className="w-full py-4 rounded-2xl font-bold text-[15px] transition-colors flex items-center justify-center gap-2 text-white"
+                      style={{ backgroundColor: '#10B981' }}
+                    >
+                      <RotateCcw size={15} strokeWidth={2.4} />
+                      {t('workouts.resumeProgram', 'Resume Program')}
+                    </button>
+                  )}
+                  <button onClick={() => { setSelectedMyProgram(null); const el = document.getElementById('discover-programs'); el?.scrollIntoView({ behavior: 'smooth' }); }} className="w-full py-4 rounded-2xl font-bold text-[15px] transition-colors" style={{ color: 'var(--color-text-primary)', backgroundColor: 'var(--color-surface-hover)' }}>
+                    {t('workouts.browseNewPrograms')}
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -2631,37 +2806,46 @@ const Workouts = () => {
         </div>
       </div>
     )}
-    {/* ── "Are you sure?" Leave Program Modal ─────────────────── */}
-    {leaveProgramConfirm && (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => setLeaveProgramConfirm(null)}>
-        <div className="w-full max-w-sm rounded-[20px] p-6" style={{ backgroundColor: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
-          <div className="w-14 h-14 rounded-2xl bg-red-500/15 flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle size={28} className="text-red-400" />
-          </div>
-          <h3 className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
-            {t('workouts.leaveProgramTitle', 'Leave this program?')}
-          </h3>
-          <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-muted)' }}>
-            {t('workouts.leaveProgramDesc', 'Consistency is key to results. If you leave now, your progress in this program will end. You can always start a new one later.')}
-          </p>
-          <div className="space-y-2.5">
-            <button
-              onClick={() => setLeaveProgramConfirm(null)}
-              className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors"
-              style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
-            >
-              {t('workouts.keepTraining', 'Keep Training')}
-            </button>
-            <button
-              onClick={handleConfirmLeaveProgram}
-              className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors"
-            >
-              {t('workouts.confirmLeave', 'Yes, leave program')}
-            </button>
+    {/* ── Leave / Delete Program confirm ──────────────────────── */}
+    {leaveProgramConfirm && (() => {
+      // Active program → "Leave" copy (warns about losing progress).
+      // Past/expired program → "Delete" copy (just remove from history).
+      const isLeaving = !!leaveProgramConfirm.isActive;
+      const titleKey  = isLeaving ? 'workouts.leaveProgramTitle' : 'workouts.deleteProgramTitle';
+      const descKey   = isLeaving ? 'workouts.leaveProgramDesc'  : 'workouts.deleteProgramDesc';
+      const cancelKey = isLeaving ? 'workouts.keepTraining'      : 'workouts.keepIt';
+      const confirmKey = isLeaving ? 'workouts.confirmLeave'     : 'workouts.confirmDeleteProgram';
+      return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => setLeaveProgramConfirm(null)}>
+          <div className="w-full max-w-sm rounded-[20px] p-6" style={{ backgroundColor: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
+            <div className="w-14 h-14 rounded-2xl bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle size={28} className="text-red-400" />
+            </div>
+            <h3 className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+              {t(titleKey)}
+            </h3>
+            <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-muted)' }}>
+              {t(descKey)}
+            </p>
+            <div className="space-y-2.5">
+              <button
+                onClick={() => setLeaveProgramConfirm(null)}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+              >
+                {t(cancelKey)}
+              </button>
+              <button
+                onClick={handleConfirmLeaveProgram}
+                className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors"
+              >
+                {t(confirmKey)}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      );
+    })()}
     {/* ── Regenerate Program confirm ──────────────────────────────── */}
     {regenerateConfirm && (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => !regenerating && setRegenerateConfirm(false)}>
@@ -2693,6 +2877,118 @@ const Workouts = () => {
               style={{ color: 'var(--color-text-muted)' }}
             >
               {t('common:cancel', 'Cancelar')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {/* ── Reactivate (resume) Program confirm ─────────────────── */}
+    {reactivateConfirm && (() => {
+      const src = reactivateConfirm;
+      const totalWk = getTotalProgramWeeks(src) || (src.duration_weeks || 12);
+      const startSunday = (() => {
+        const s = new Date(src.program_start);
+        s.setHours(0, 0, 0, 0);
+        s.setDate(s.getDate() - s.getDay());
+        return s;
+      })();
+      const pauseDate = new Date(src.expires_at);
+      const pausedDays = Math.floor((pauseDate - startSunday) / 86400000);
+      const pausedAtWeek = Math.min(
+        Math.max(Math.floor(pausedDays / 7) + 1, 1),
+        Math.max(totalWk - 1, 1)
+      );
+      const sourceName = gpName(src);
+      return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => !reactivating && setReactivateConfirm(null)}>
+          <div className="w-full max-w-sm rounded-[20px] p-6" style={{ backgroundColor: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-[#10B981]/15">
+              <RotateCcw size={26} className="text-[#10B981]" />
+            </div>
+            <h3 className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+              {t('workouts.reactivateTitle', 'Resume {{name}}?', { name: sourceName })}
+            </h3>
+            <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-muted)' }}>
+              {t('workouts.reactivateDesc', "You'll pick up at Week {{week}} of {{total}}. Your current program will be expired and history kept.", { week: pausedAtWeek, total: totalWk })}
+            </p>
+            <div className="space-y-2.5">
+              <button
+                onClick={() => handleReactivateProgram(src)}
+                disabled={reactivating}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors disabled:opacity-60 text-white"
+                style={{ backgroundColor: '#10B981' }}
+              >
+                {reactivating
+                  ? t('workouts.reactivating', 'Resuming…')
+                  : t('workouts.reactivateConfirm', 'Yes, resume')}
+              </button>
+              <button
+                onClick={() => setReactivateConfirm(null)}
+                disabled={reactivating}
+                className="w-full py-3 rounded-2xl font-medium text-[13px] disabled:opacity-50"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {t('common:cancel', 'Cancelar')}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+    {/* ── Delete Blocked info (active program routine) ───────── */}
+    {deleteBlockedInfo && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => setDeleteBlockedInfo(null)}>
+        <div className="w-full max-w-sm rounded-[20px] p-6" style={{ backgroundColor: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/15 flex items-center justify-center mx-auto mb-4">
+            <Trash2 size={26} className="text-amber-400" />
+          </div>
+          <h3 className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+            {t('workouts.deleteBlockedTitle', "Can't delete this routine")}
+          </h3>
+          <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-muted)' }}>
+            {t('workouts.deleteRoutineActiveProgram')}
+          </p>
+          <button
+            onClick={() => setDeleteBlockedInfo(null)}
+            className="w-full py-3.5 rounded-2xl font-bold text-[14px]"
+            style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+          >
+            {t('workouts.gotIt', 'Got it')}
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* ── Delete Routine confirm ──────────────────────────────── */}
+    {deleteRoutineConfirm && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => deletingId !== deleteRoutineConfirm.id && setDeleteRoutineConfirm(null)}>
+        <div className="w-full max-w-sm rounded-[20px] p-6" style={{ backgroundColor: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
+          <div className="w-14 h-14 rounded-2xl bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+            <Trash2 size={26} className="text-red-400" />
+          </div>
+          <h3 className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+            {t('workouts.deleteRoutineTitle', 'Delete this routine?')}
+          </h3>
+          <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-muted)' }}>
+            {t('workouts.deleteRoutineDesc', 'This will remove the routine from your library. Logged sessions stay in your history.')}
+          </p>
+          <div className="space-y-2.5">
+            <button
+              onClick={() => setDeleteRoutineConfirm(null)}
+              disabled={deletingId === deleteRoutineConfirm.id}
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors disabled:opacity-50"
+              style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+            >
+              {t('workouts.keepIt', 'Keep it')}
+            </button>
+            <button
+              onClick={handleConfirmDeleteRoutine}
+              disabled={deletingId === deleteRoutineConfirm.id}
+              className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors disabled:opacity-50"
+            >
+              {deletingId === deleteRoutineConfirm.id
+                ? t('workouts.deleting', 'Deleting…')
+                : t('workouts.confirmDeleteRoutine', 'Yes, delete')}
             </button>
           </div>
         </div>

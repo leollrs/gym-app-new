@@ -14,11 +14,6 @@ import { TT, TFont, avatarIdx } from './trainer/components/designTokens';
 import { TCard, TAvatar } from './trainer/components/designPrimitives';
 
 // ────────────────────────────────────────────────────────────────────
-// Feature flags
-// ────────────────────────────────────────────────────────────────────
-const TRAINER_CALLING_FEATURE = false;
-
-// ────────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────────
 const FAV_KEY = 'trainer_favorites';
@@ -307,18 +302,16 @@ export default function PublicTrainerProfile() {
     if (!trainerId || !profile?.id) return;
     setLoading(true);
 
-    // 1) Trainer profile
+    // 1) Trainer profile — via the get_trainer_public_profile RPC.
+    // Reading `profiles` directly from the client fails the same way the
+    // MyGym list did: RLS hides other people's profile rows, and
+    // `.eq('role','trainer')` misses multi-role users (member primary +
+    // 'trainer' in additional_roles). The SECURITY DEFINER RPC does the
+    // role check server-side and enforces "same gym as caller" — it
+    // returns null for a cross-gym id, a non-trainer, or a bad id.
+    // See migration 0391.
     const { data: tdata, error: terr } = await supabase
-      .from('profiles')
-      .select(`
-        id, full_name, username, avatar_url, avatar_type, avatar_value, bio,
-        trainer_tagline, trainer_cover_url, trainer_years_exp, trainer_location,
-        trainer_pronouns, trainer_specialties, trainer_credentials, trainer_services,
-        trainer_availability, trainer_verified, gym_id, role
-      `)
-      .eq('id', trainerId)
-      .eq('role', 'trainer')
-      .maybeSingle();
+      .rpc('get_trainer_public_profile', { p_trainer_id: trainerId });
 
     if (terr || !tdata || tdata.gym_id !== profile.gym_id) {
       setNotFound(true);
@@ -388,6 +381,17 @@ export default function PublicTrainerProfile() {
     setHasEverBeenClient(!!anyRelRes.data);
     setNextSessionAt(nextSessionRes.data?.scheduled_at || null);
 
+    // Directory opt-out: if the trainer has flipped the visibility toggle
+    // off, hide the profile unless the viewer has a client relationship
+    // (active or historical) or is the trainer themselves. This matches
+    // the MyGym directory filter so a hidden trainer can't be reached
+    // even by guessing the URL.
+    const viewerIsTrainer = tdata.id === profile.id;
+    const viewerIsClient = !!relRes.data || !!anyRelRes.data;
+    if (tdata.trainer_directory_visible === false && !viewerIsTrainer && !viewerIsClient) {
+      setNotFound(true);
+    }
+
     setLoading(false);
   }, [trainerId, profile]);
 
@@ -433,10 +437,17 @@ export default function PublicTrainerProfile() {
     navigate(`/messages/${convId}`);
   }, [user, trainer, navigate, showToast, t]);
 
-  // ── Phone "coming soon" ────────────────────────────────
+  // ── Tap-to-call when the trainer has shared their phone ──
+  // Falls back to a "coming soon" toast if no number is on file so the
+  // button stays useful when calling isn't wired up yet.
   const handleCallTap = useCallback(() => {
-    showToast(t('publicTrainerProfile.callComingSoon', 'Calling coming soon'), 'info');
-  }, [showToast, t]);
+    const phone = trainer?.phone_number;
+    if (!phone) {
+      showToast(t('publicTrainerProfile.callComingSoon', 'Calling coming soon'), 'info');
+      return;
+    }
+    window.location.href = `tel:${phone.replace(/[^+\d]/g, '')}`;
+  }, [trainer?.phone_number, showToast, t]);
 
   // ── Submit review ──────────────────────────────────────
   const handleSubmitReview = useCallback(async ({ rating, body }) => {
@@ -721,16 +732,19 @@ export default function PublicTrainerProfile() {
             <MessageSquare size={14} strokeWidth={2.2} />
             {t('publicTrainerProfile.message', 'Message')}
           </button>
-          {TRAINER_CALLING_FEATURE && (
+          {/* Show Call when the trainer has published a phone number. The
+              `tel:` link triggers the native dialer; on desktop it opens
+              FaceTime / a default handler if one is registered. */}
+          {trainer?.phone_number && (
             <button
               type="button"
               onClick={handleCallTap}
               style={{
                 flex: 1, padding: '10px', borderRadius: 12,
                 border: `1px solid ${TT.borderSolid}`, background: TT.surface,
-                fontSize: 12.5, fontWeight: 700, color: TT.textSub,
+                fontSize: 12.5, fontWeight: 700, color: TT.text,
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                cursor: 'pointer', minHeight: 44, opacity: 0.85,
+                cursor: 'pointer', minHeight: 44,
               }}
             >
               <Phone size={14} strokeWidth={2.2} />
