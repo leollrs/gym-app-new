@@ -2197,7 +2197,10 @@ const Workouts = () => {
       const routine = routines.find(r => r.id === expandedRoutineId);
       if (!routine) return null;
       return (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        // z-[80] so it stacks ABOVE the My Programs modal (z-[70]) when a
+        // routine is tapped from inside a program — close it and you're back
+        // in the program modal, not dumped to the Workouts page.
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-md"
             role="button"
@@ -2350,14 +2353,20 @@ const Workouts = () => {
                   {programRoutines.length > 0 ? (
                     <div className="space-y-2">
                       {programRoutines.map(r => (
-                        <Link key={r.id} to={`/session/${r.id}`} onClick={() => setSelectedMyProgram(null)} className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors group" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => setExpandedRoutineId(r.id)}
+                          className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl transition-colors group"
+                          style={{ backgroundColor: 'var(--color-surface-hover)', border: 'none', cursor: 'pointer' }}
+                        >
                           <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}><Dumbbell size={14} style={{ color: 'var(--color-text-muted)' }} /></div>
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(r.name)}</p>
                             <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{r.exerciseCount} {t('workouts.exercises')}</p>
                           </div>
                           <ChevronRight size={14} className="transition-colors" style={{ color: 'var(--color-text-subtle)' }} />
-                        </Link>
+                        </button>
                       ))}
                     </div>
                   ) : (
@@ -2375,14 +2384,20 @@ const Workouts = () => {
                   <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.thisWeeksRoutines')}</p>
                   <div className="space-y-2">
                     {programRoutines.map(r => (
-                      <Link key={r.id} to={`/session/${r.id}`} onClick={() => setSelectedMyProgram(null)} className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors group" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setExpandedRoutineId(r.id)}
+                        className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl transition-colors group"
+                        style={{ backgroundColor: 'var(--color-surface-hover)', border: 'none', cursor: 'pointer' }}
+                      >
                         <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}><Dumbbell size={14} style={{ color: 'var(--color-text-muted)' }} /></div>
                         <div className="flex-1 min-w-0">
                           <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(r.name)}</p>
                           <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{r.exerciseCount} {t('workouts.exercises')}</p>
                         </div>
                         <ChevronRight size={14} className="transition-colors" style={{ color: 'var(--color-text-subtle)' }} />
-                      </Link>
+                      </button>
                     ))}
                   </div>
                 </div>
