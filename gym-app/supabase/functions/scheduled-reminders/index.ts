@@ -150,25 +150,71 @@ async function sendPush(
   const iosTokens = tokens.filter(t => t.platform === 'ios').map(t => t.token);
   const androidTokens = tokens.filter(t => t.platform === 'android').map(t => t.token);
 
-  // iOS
+  // iOS — try the configured APNs host first; on an environment-mismatch
+  // error (BadDeviceToken / BadEnvironmentKeyInToken) retry the OTHER host.
+  // Dev/Xcode builds register *sandbox* tokens, TestFlight/App Store builds
+  // register *production* tokens. APNs is the source of truth for which is
+  // which, so we let it tell us instead of guessing per build channel —
+  // one function serves dev testers and TestFlight users alike.
   if (iosTokens.length > 0 && APNS_KEY_ID && APNS_TEAM_ID && APNS_PRIVATE_KEY) {
-    const jwt = await getAPNsJWT();
+    let jwt: string;
+    try {
+      jwt = await getAPNsJWT();
+    } catch (e) {
+      // Don't swallow this — a signing failure means ZERO iOS pushes go out.
+      console.error('sendPush: getAPNsJWT failed:', e instanceof Error ? e.message : String(e));
+      return;
+    }
+    const otherHost = APNS_HOST === 'api.sandbox.push.apple.com'
+      ? 'api.push.apple.com'
+      : 'api.sandbox.push.apple.com';
+    const hostsToTry = [APNS_HOST, otherHost];
     const payload = JSON.stringify({ aps: { alert: { title, body }, sound: 'default', badge: 1, 'mutable-content': 1 }, ...data });
     for (const token of iosTokens) {
-      try {
-        const res = await fetch(`https://${APNS_HOST}/3/device/${token}`, {
-          method: 'POST',
-          headers: { 'authorization': `bearer ${jwt}`, 'apns-topic': APNS_BUNDLE_ID, 'apns-push-type': 'alert', 'apns-priority': '10', 'content-type': 'application/json' },
-          body: payload,
-        });
-        if (res.status === 410 || res.status === 400) await supabase.from('push_tokens').delete().eq('token', token);
-      } catch {}
+      let lastStatus = 0;
+      let lastReason = '';
+      for (let i = 0; i < hostsToTry.length; i++) {
+        try {
+          const res = await fetch(`https://${hostsToTry[i]}/3/device/${token}`, {
+            method: 'POST',
+            headers: { 'authorization': `bearer ${jwt}`, 'apns-topic': APNS_BUNDLE_ID, 'apns-push-type': 'alert', 'apns-priority': '10', 'content-type': 'application/json' },
+            body: payload,
+          });
+          lastStatus = res.status;
+          if (res.status === 200) break; // delivered — done with this token
+          const respBody = await res.text();
+          try { lastReason = JSON.parse(respBody)?.reason || ''; } catch { lastReason = respBody; }
+          // An environment mismatch is the only thing worth retrying on the
+          // other host — and only if another host is left to try.
+          const envMismatch = lastReason === 'BadDeviceToken' || lastReason === 'BadEnvironmentKeyInToken';
+          if (envMismatch && i < hostsToTry.length - 1) continue;
+          // Non-env error, or env error after all hosts exhausted → stop.
+          break;
+        } catch (e) {
+          console.error('sendPush: APNs fetch threw:', e instanceof Error ? e.message : String(e));
+          lastStatus = -1;
+          break; // network error — don't hammer the other host
+        }
+      }
+      // Prune genuinely dead tokens. 410 = the app was uninstalled
+      // (environment-agnostic). A BadDeviceToken that failed on BOTH hosts
+      // is invalid everywhere. Transient errors (429/500/network) are left
+      // alone so we don't drop a token over a blip.
+      if (lastStatus === 410 || (lastStatus === 400 && lastReason === 'BadDeviceToken')) {
+        await supabase.from('push_tokens').delete().eq('token', token);
+      }
     }
   }
 
-  // Android
+  // Android (FCM) — no sandbox/production split, single endpoint.
   if (androidTokens.length > 0 && FCM_PROJECT_ID && FCM_CLIENT_EMAIL && FCM_PRIVATE_KEY) {
-    const accessToken = await getFCMAccessToken();
+    let accessToken: string;
+    try {
+      accessToken = await getFCMAccessToken();
+    } catch (e) {
+      console.error('sendPush: getFCMAccessToken failed:', e instanceof Error ? e.message : String(e));
+      return;
+    }
     for (const token of androidTokens) {
       try {
         const res = await fetch(`https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`, {
@@ -176,8 +222,15 @@ async function sendPush(
           headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: { token, notification: { title, body }, data, android: { priority: 'high' } } }),
         });
-        if (res.status === 404 || res.status === 400) await supabase.from('push_tokens').delete().eq('token', token);
-      } catch {}
+        // 404 = token no longer registered, 400 = invalid — prune either.
+        if (res.status === 404 || res.status === 400) {
+          await supabase.from('push_tokens').delete().eq('token', token);
+        } else if (res.status !== 200) {
+          console.warn(`sendPush: FCM ${res.status} for token ${token.slice(0, 10)}…`);
+        }
+      } catch (e) {
+        console.error('sendPush: FCM fetch threw:', e instanceof Error ? e.message : String(e));
+      }
     }
   }
 }
@@ -574,7 +627,7 @@ Deno.serve(async (req) => {
       // entire edge function to silently skip every gym.
       const { data: rawMembers, error: profErr } = await supabase
         .from('profiles')
-        .select('id, gym_id, full_name, language, preferred_training_days, last_active_at, created_at, notif_workout_reminders, notif_streak_alerts, notif_friend_activity, notif_push_enabled')
+        .select('id, gym_id, full_name, preferred_language, preferred_training_days, last_active_at, created_at, notif_workout_reminders, notif_streak_alerts, notif_friend_activity, notif_push_enabled')
         .eq('gym_id', gym.id)
         .eq('role', 'member')
         .eq('membership_status', 'active');
@@ -591,7 +644,9 @@ Deno.serve(async (req) => {
           id: m.id,
           gym_id: m.gym_id,
           full_name: m.full_name,
-          language: m.language,
+          // DB column is `preferred_language`; the Member interface + all
+          // check functions use `language`, so alias it here once.
+          language: m.preferred_language,
           preferred_training_days: m.preferred_training_days,
           last_active_at: m.last_active_at,
           created_at: m.created_at,
