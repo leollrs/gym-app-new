@@ -156,7 +156,7 @@ export const AuthProvider = ({ children }) => {
       const [{ data: fallback }, { data: onboarding }] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, gym_id, full_name, username, role, additional_roles, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience, date_of_birth, age_verified_at, created_at, health_sync_enabled')
+          .select('id, gym_id, full_name, username, role, additional_roles, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience, date_of_birth, age_verified_at, created_at, health_sync_enabled, metric_units')
           .eq('id', userId)
           .maybeSingle(),
         supabase
@@ -899,7 +899,7 @@ export const AuthProvider = ({ children }) => {
 
   // Optimistic patch — merges safelisted fields into the local profile
   // immediately without a DB round-trip.  Follow up with refreshProfile() to confirm.
-  const PATCHABLE_FIELDS = ['avatar_url', 'avatar_type', 'avatar_value', 'full_name', 'username', 'bio', 'privacy_public', 'leaderboard_visible', 'accent_color', 'trainer_icon', 'phone_number', 'specialties', 'years_of_experience', 'date_of_birth', 'age_verified_at'];
+  const PATCHABLE_FIELDS = ['avatar_url', 'avatar_type', 'avatar_value', 'full_name', 'username', 'bio', 'privacy_public', 'leaderboard_visible', 'accent_color', 'trainer_icon', 'phone_number', 'specialties', 'years_of_experience', 'date_of_birth', 'age_verified_at', 'metric_units'];
   const patchProfile = useCallback((fields) => {
     const safe = Object.fromEntries(
       Object.entries(fields).filter(([k]) => PATCHABLE_FIELDS.includes(k))

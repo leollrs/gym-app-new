@@ -631,7 +631,7 @@ const ExerciseCard = ({
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('body_metrics')
+    supabase.from('body_weight_logs')
       .select('weight_lbs')
       .eq('profile_id', user.id)
       .order('logged_at', { ascending: false })

@@ -6,8 +6,8 @@
 //   • profiles.metric_units (units toggle)
 //   • member_onboarding.sex / age / height_inches  (single source of truth
 //     used by macro calculator + program generator + 1RM tier display)
-//   • body_metrics  (new weight log entry, only on weight change — keeps the
-//     historical chart in BodyMetrics intact)
+//   • body_weight_logs  (one row per day — upserted on weight change, keeps
+//     the historical chart in ProgressBody intact)
 // -----------------------------------------------------------------------------
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -103,7 +103,9 @@ export default function PersonalInfo() {
   const { user, profile, refreshProfile } = useAuth();
   const { showToast } = useToast();
 
-  const initialMetric = profile?.metric_units !== false;
+  // Default to imperial when metric_units is undefined — matches the
+  // fallback used in ActiveSession / CardioLogModal / LiveCardio.
+  const initialMetric = profile?.metric_units === true;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -129,7 +131,7 @@ export default function PersonalInfo() {
     setDob(profile?.date_of_birth || '');
   }, [profile?.date_of_birth]);
 
-  // Hydrate from member_onboarding + latest body_metrics weight
+  // Hydrate from member_onboarding + latest body_weight_logs weight
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
@@ -142,7 +144,7 @@ export default function PersonalInfo() {
             .eq('profile_id', user.id)
             .maybeSingle(),
           supabase
-            .from('body_metrics')
+            .from('body_weight_logs')
             .select('weight_lbs, logged_at')
             .eq('profile_id', user.id)
             .order('logged_at', { ascending: false })
@@ -230,27 +232,32 @@ export default function PersonalInfo() {
       if (dob && dob !== profile?.date_of_birth) {
         profilePatch.date_of_birth = dob;
       }
-      await supabase.from('profiles').update(profilePatch).eq('id', user.id);
+      const profileRes = await supabase.from('profiles').update(profilePatch).eq('id', user.id);
+      if (profileRes.error) throw profileRes.error;
 
       // 2) Body identity to member_onboarding (upsert in case row missing)
       const ageN = parseInt(age, 10);
-      await supabase.from('member_onboarding').upsert({
+      const obRes = await supabase.from('member_onboarding').upsert({
         profile_id: user.id,
         sex: sex || null,
         age: Number.isFinite(ageN) ? ageN : null,
         height_inches: heightInches > 0 ? heightInches : null,
       }, { onConflict: 'profile_id' });
+      if (obRes.error) throw obRes.error;
 
-      // 3) New weight log entry, ONLY when value changed (don't spam history)
+      // 3) Weight log entry, ONLY when value changed (don't spam history).
+      // body_weight_logs is one-row-per-day (UNIQUE profile_id, logged_at) —
+      // upsert so re-saving the same day overwrites instead of 23505-erroring.
       const lbsN = parseFloat(weightLbs);
       if (Number.isFinite(lbsN) && lbsN > 0 && lbsN !== originalWeightLbs && profile?.gym_id) {
         const today = new Date().toISOString().slice(0, 10);
-        await supabase.from('body_metrics').insert({
+        const weightRes = await supabase.from('body_weight_logs').upsert({
           profile_id: user.id,
           gym_id: profile.gym_id,
           weight_lbs: lbsN,
           logged_at: today,
-        });
+        }, { onConflict: 'profile_id,logged_at' });
+        if (weightRes.error) throw weightRes.error;
         setOriginalWeightLbs(lbsN);
       }
 
