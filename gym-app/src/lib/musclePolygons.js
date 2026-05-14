@@ -5,11 +5,13 @@
 // readinessEngine.js; the bucket id is what onSelect(...) receives when the
 // user taps a polygon.
 //
-// Sex-aware: there are two traced sets, one per trainer photo. The polygon
-// IDs + bucket maps are shared (same naming scheme) — only the coordinates,
-// the image native dimensions, and the photo paths differ. Use
-// getMuscleAssets(sex) to get the matching bundle. The bare FRONT_POLYGONS /
-// FRONT_DIM / … exports stay pointed at the MALE set for back-compat.
+// Sex-aware: there are two traced sets, one per trainer photo. They share
+// most of the naming scheme, but the female trace diverges in a few places
+// (delt labelling convention, a couple of extra polygons, alternate names),
+// so there's a base bucket map plus a `*_FEMALE` override map. Coordinates,
+// native image dimensions and photo paths also differ. Use getMuscleAssets(
+// sex) to get the matching bundle. The bare FRONT_POLYGONS / FRONT_DIM / …
+// exports stay pointed at the MALE set for back-compat.
 //
 // Native image dimensions (polygon coords live in this space):
 //   MALE   front 626×832   back 634×832
@@ -22,23 +24,19 @@ import RAW_MALE from '../data/muscleRegions.json';
 import RAW_FEMALE from '../data/muscleRegionsFemale.json';
 
 // FRONT view: each polygon → its granular bucket. Splits per user spec.
+// This is the MALE trace's mapping; the female trace diverges — see
+// FRONT_POLY_BUCKET_FEMALE below.
 const FRONT_POLY_BUCKET = {
   // Chest — 3 separate buckets per anatomical region
   'pec-upper-l': 'chest-upper', 'pec-upper-r': 'chest-upper',
   'pec-mid-l': 'chest-mid', 'pec-mid-r': 'chest-mid',
   'pec-lower-l': 'chest-lower', 'pec-lower-r': 'chest-lower',
-  // Serratus stands alone. The female trace adds an upper-serratus strip
-  // (`serratus-upper-*`) on top of the main `serratus-*` polygon — both feed
-  // the same bucket. Male has only `serratus-*`.
+  // Serratus stands alone
   'serratus-l': 'serratus', 'serratus-r': 'serratus',
-  'serratus-upper-l': 'serratus', 'serratus-upper-r': 'serratus',
   // Shoulders — polygon IDs were reversed during tracing: the polygon tagged
   // `delt-front-*` actually sits on the OUTER edge of the shoulder (the side
   // / lateral deltoid), and `delt-side-*` sits inward toward the chest (the
   // front / anterior deltoid). Swap the bucket assignment to match anatomy.
-  // The female trace was originally the other way round (delt-front on the
-  // inner head); it's relabelled to this same reversed convention at the
-  // muscleRegionsFemale.json sync step so this one map serves both sexes.
   'delt-front-l': 'side-delts', 'delt-front-r': 'side-delts',
   'delt-side-l': 'front-delts', 'delt-side-r': 'front-delts',
   // Trap caps visible from front
@@ -48,10 +46,7 @@ const FRONT_POLY_BUCKET = {
   // brachialis-specific exercises don't really exist in the catalogue
   // we route those taps to the triceps bucket so the sheet actually has
   // exercises.
-  // Male trace uses `biceps-*`; the female trace uses singular `bicep-*` —
-  // map both so the biceps light up regardless of sex.
   'biceps-l': 'biceps', 'biceps-r': 'biceps',
-  'bicep-l': 'biceps', 'bicep-r': 'biceps',
   'brachialis-l': 'triceps', 'brachialis-r': 'triceps',
   'forearm-flex-l': 'forearm-flex', 'forearm-flex-r': 'forearm-flex',
   'forearm-ext-l': 'forearm-ext', 'forearm-ext-r': 'forearm-ext',
@@ -63,9 +58,6 @@ const FRONT_POLY_BUCKET = {
   'abs-bottom-l':'lower-abs', 'abs-bottom-r':'lower-abs',
   'oblique-upper-l': 'obliques', 'oblique-upper-r': 'obliques',
   'oblique-lower-l': 'obliques', 'oblique-lower-r': 'obliques',
-  // Female-only `hip-*` strip sits just below the lower abs / obliques over
-  // the iliac crest — routed to the obliques bucket. Male has no equivalent.
-  'hip-l': 'obliques', 'hip-r': 'obliques',
   // Legs (front)
   'quad-l': 'quads', 'quad-r': 'quads',
   'adductor-l': 'adductors', 'adductor-r': 'adductors',
@@ -76,7 +68,26 @@ const FRONT_POLY_BUCKET = {
   'peroneal-l': 'tibialis', 'peroneal-r': 'tibialis',
 };
 
-// BACK view: granular per-muscle buckets.
+// FRONT view, FEMALE trace. Identical to the male map except:
+//  • Delts — the female image was traced anatomically honestly: `delt-front-*`
+//    sits on the anterior (inner) head, `delt-side-*` on the lateral (outer)
+//    head — so it does NOT need the male reversal swap.
+//  • `bicep-*` — the female trace uses the singular spelling.
+//  • `serratus-upper-*` — the female trace adds an extra upper-serratus strip
+//    above the main `serratus-*` polygon; both feed the serratus bucket.
+//  • `hip-*` — female-only strip over the iliac crest, just below the lower
+//    abs / obliques; routed to the obliques bucket. Male has no equivalent.
+const FRONT_POLY_BUCKET_FEMALE = {
+  ...FRONT_POLY_BUCKET,
+  'delt-front-l': 'front-delts', 'delt-front-r': 'front-delts',
+  'delt-side-l': 'side-delts', 'delt-side-r': 'side-delts',
+  'bicep-l': 'biceps', 'bicep-r': 'biceps',
+  'serratus-upper-l': 'serratus', 'serratus-upper-r': 'serratus',
+  'hip-l': 'obliques', 'hip-r': 'obliques',
+};
+
+// BACK view: granular per-muscle buckets. Male trace; the female trace
+// diverges — see BACK_POLY_BUCKET_FEMALE below.
 const BACK_POLY_BUCKET = {
   // Traps cap
   'trap-upper-l': 'traps', 'trap-upper-r': 'traps',
@@ -98,9 +109,7 @@ const BACK_POLY_BUCKET = {
   // waist" so it shows correctly.
   'glute-side-l': 'side-waist', 'glute-side-r': 'side-waist',
   // Hamstrings — split into main (semitendinosus/membranosus) and outer
-  // (biceps femoris, which the user labels "Abductors"). The female trace
-  // shipped the outer strip mislabelled `hamstring-inner-*`; it's renamed to
-  // `hamstring-outer-*` at the muscleRegionsFemale.json sync step.
+  // (biceps femoris, which the user labels "Abductors").
   'hamstring-l': 'hamstrings', 'hamstring-r': 'hamstrings',
   'hamstring-outer-l': 'abductors', 'hamstring-outer-r': 'abductors',
   // Calves (back)
@@ -108,11 +117,23 @@ const BACK_POLY_BUCKET = {
   // Back-view forearms split into two buckets so it mirrors the front-view
   // flex/ext split. The wider polygons are the main extensor compartment;
   // the narrow lateral-edge polygons are the flexor-side edge visible from
-  // behind. Male uses `forearm-back-*` / `forearm-back-*-edge`; the female
-  // trace names them `forearm-ext-*` / `forearm-flex-*` instead. Both forearm
-  // buckets resolve to the same 'forearms' region, so mapping by name is fine.
+  // behind.
   'forearm-back-l': 'forearm-back-ext', 'forearm-back-r': 'forearm-back-ext',
   'forearm-back-l-edge': 'forearm-back-flex', 'forearm-back-r-edge': 'forearm-back-flex',
+};
+
+// BACK view, FEMALE trace. Identical to the male map except:
+//  • `hamstring-inner-*` — despite the name, these polygons are the narrow
+//    lateral strips on the OUTSIDE edge of each hamstring (biceps femoris —
+//    the "Abductors" bucket), confirmed by their coordinates (~16px wide,
+//    furthest from the body centre line). The `hamstring-outer-*` keys carry
+//    over from the base map in case the trace's label is corrected later.
+//  • Forearms — the female trace names the two back-forearm polygons
+//    `forearm-ext-*` / `forearm-flex-*` instead of male's `forearm-back-*`.
+//    Both back-forearm buckets resolve to the same 'forearms' region.
+const BACK_POLY_BUCKET_FEMALE = {
+  ...BACK_POLY_BUCKET,
+  'hamstring-inner-l': 'abductors', 'hamstring-inner-r': 'abductors',
   'forearm-ext-l': 'forearm-back-ext', 'forearm-ext-r': 'forearm-back-ext',
   'forearm-flex-l': 'forearm-back-flex', 'forearm-flex-r': 'forearm-back-flex',
 };
@@ -142,8 +163,8 @@ const MALE = {
   BACK_PHOTO:  '/readiness/male_trainer_back.jpeg',
 };
 const FEMALE = {
-  FRONT_POLYGONS: buildPolygons(RAW_FEMALE.front, FRONT_POLY_BUCKET),
-  BACK_POLYGONS:  buildPolygons(RAW_FEMALE.back,  BACK_POLY_BUCKET),
+  FRONT_POLYGONS: buildPolygons(RAW_FEMALE.front, FRONT_POLY_BUCKET_FEMALE),
+  BACK_POLYGONS:  buildPolygons(RAW_FEMALE.back,  BACK_POLY_BUCKET_FEMALE),
   FRONT_DIM: { w: 629, h: 832 },
   BACK_DIM:  { w: 628, h: 832 },
   FRONT_PHOTO: '/readiness/female_trainer_front.jpeg',

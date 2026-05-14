@@ -377,7 +377,7 @@
       "hidden": false
     },
     {
-      "id": "delt-side-l",
+      "id": "delt-front-l",
       "pts": [
         {
           "x": 263.45963262436715,
@@ -463,7 +463,7 @@
       "hidden": false
     },
     {
-      "id": "delt-front-l",
+      "id": "delt-side-l",
       "pts": [
         {
           "x": 224.66307846775436,
@@ -757,7 +757,7 @@
       "hidden": false
     },
     {
-      "id": "delt-side-r",
+      "id": "delt-front-r",
       "pts": [
         {
           "x": 375.6709952632336,
@@ -1744,7 +1744,7 @@
       "hidden": false
     },
     {
-      "id": "delt-front-r",
+      "id": "delt-side-r",
       "pts": [
         {
           "x": 420.25348432918673,
@@ -2668,7 +2668,7 @@
       "hidden": false
     },
     {
-      "id": "hamstring-outer-l",
+      "id": "hamstring-inner-l",
       "pts": [
         {
           "x": 249.45466335284218,
@@ -2719,7 +2719,7 @@
       "hidden": false
     },
     {
-      "id": "hamstring-outer-r",
+      "id": "hamstring-inner-r",
       "pts": [
         {
           "x": 407.1692364309078,
