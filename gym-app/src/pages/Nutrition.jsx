@@ -6205,6 +6205,7 @@ export default function Nutrition({ embedded = false }) {
               cursor: 'pointer',
             }}
             aria-label={t('nutrition.scanFood', 'Scan food')}
+            data-tour="tour-nutrition-scan"
           >
             <ScanLine size={24} style={{ color: '#001512' }} strokeWidth={2.2} />
           </button>,

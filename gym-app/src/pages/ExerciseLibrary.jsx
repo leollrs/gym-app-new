@@ -2980,7 +2980,7 @@ export const ExerciseLibraryPage = () => {
   }, [activeList, debouncedQuery, filterEquipment]);
 
   return (
-    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 md:px-8 pt-5 md:pt-10 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 md:px-8 pt-5 md:pt-10 pb-28 md:pb-12 animate-fade-in" data-tour="tour-exercise-library">
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <header className="mb-3.5">

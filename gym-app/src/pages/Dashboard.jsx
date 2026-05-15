@@ -223,6 +223,18 @@ const Dashboard = () => {
   // (next to Edit / Swap). Independent from the hero-card pill so both
   // surfaces can drive the same modal without lifting state from the card.
   const [readinessOpen, setReadinessOpen] = useState(false);
+  // True while AppTour is running. We use it to force-render the Recovery
+  // pill so the "tour-recovery-pill" stop always has its anchor on screen,
+  // even on a training day where the normal gate would hide the pill until
+  // after the workout. Driven by the `app-tour-active` window event.
+  const [appTourActive, setAppTourActive] = useState(() => {
+    try { return !!window.__appTourActive; } catch { return false; }
+  });
+  useEffect(() => {
+    const onTour = (e) => setAppTourActive(!!e?.detail);
+    window.addEventListener('app-tour-active', onTour);
+    return () => window.removeEventListener('app-tour-active', onTour);
+  }, []);
   // Refresh active drafts when page becomes visible (user returns from a workout)
   useEffect(() => {
     const handleVisibility = () => {
@@ -1462,11 +1474,12 @@ const Dashboard = () => {
                         rest days (no routine for the day), and on gym-closed
                         days. Edit/Swap's own gate up top is the inverse, so
                         the two never overlap. */}
-                    {isToday && (hasTrainedToday || isGymClosedToday || !selectedRoutine) && (
+                    {isToday && (hasTrainedToday || isGymClosedToday || !selectedRoutine || appTourActive) && (
                       <button
                         type="button"
                         onClick={() => setReadinessOpen(true)}
                         aria-label={t('workoutHeroCard.openReadiness', 'View recovery map')}
+                        data-tour="tour-recovery-pill"
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold tracking-[0.04em] active:scale-[0.95] transition-all"
                         style={{
                           background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',

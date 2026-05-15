@@ -5,13 +5,23 @@ import { ChevronRight, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 
+// Step order is the user-visible tour sequence. titleKey/textKey reference the
+// pre-existing numbered i18n entries — the new feature stops (Recovery, Exercise
+// Library, Food Scan) use keys 11/12/13 so we don't have to renumber the
+// existing 10 entries on disk.
 const TOUR_STEP_KEYS = [
   { route: '/', target: 'tour-my-plan', titleKey: 'appTour.step1Title', textKey: 'appTour.step1Text', position: 'below' },
   { route: '/', target: 'tour-quick-buttons', titleKey: 'appTour.step2Title', textKey: 'appTour.step2Text', position: 'below' },
   { route: '/', target: 'tour-hero-card', titleKey: 'appTour.step3Title', textKey: 'appTour.step3Text', position: 'above' },
+  // NEW: Recovery pill — forced on by Dashboard while the tour is active
+  { route: '/', target: 'tour-recovery-pill', titleKey: 'appTour.step11Title', textKey: 'appTour.step11Text', position: 'below' },
   { route: '/', target: 'tour-level', titleKey: 'appTour.step4Title', textKey: 'appTour.step4Text', position: 'above' },
   { route: '/workouts', target: 'tour-workouts-page', titleKey: 'appTour.step5Title', textKey: 'appTour.step5Text', position: 'below' },
+  // NEW: Exercise library + body diagram
+  { route: '/exercises', target: 'tour-exercise-library', titleKey: 'appTour.step12Title', textKey: 'appTour.step12Text', position: 'below' },
   { route: '/record', target: 'tour-quickstart-page', titleKey: 'appTour.step6Title', textKey: 'appTour.step6Text', position: 'below' },
+  // NEW: AI food scan FAB on Nutrition
+  { route: '/nutrition', target: 'tour-nutrition-scan', titleKey: 'appTour.step13Title', textKey: 'appTour.step13Text', position: 'above' },
   { route: '/progress', target: 'tour-progress-page', titleKey: 'appTour.step7Title', textKey: 'appTour.step7Text', position: 'below' },
   { route: '/community', target: 'tour-community-page', titleKey: 'appTour.step8Title', textKey: 'appTour.step8Text', position: 'below' },
   { route: '/profile', target: 'tour-profile-page', titleKey: 'appTour.step9Title', textKey: 'appTour.step9Text', position: 'below' },
@@ -33,19 +43,33 @@ function getTargetRect(key) {
 }
 
 // Preload a route's chunk by triggering the lazy import directly so the
-// chunk is warm in the cache before the user navigates.
+// chunk is warm in the cache before the user navigates. Used at tour start
+// to fire every visited route in parallel — by the time the user advances
+// past Dashboard, every other page is already in memory and transitions
+// are instant. (Previously the /record case mis-imported Workouts.jsx and
+// nothing warmed /exercises or /nutrition — the new tour stops would have
+// hit a cold lazy() chunk and made the user wait.)
 const preloadedRoutes = new Set();
 async function preloadRoute(route) {
   if (preloadedRoutes.has(route)) return;
   preloadedRoutes.add(route);
   try {
-    if (route.includes('/workouts')) await import('../pages/Workouts.jsx');
-    else if (route.includes('/record')) await import('../pages/Workouts.jsx');
-    else if (route.includes('/progress')) await import('../pages/Progress.jsx');
-    else if (route.includes('/community')) await import('../pages/Community.jsx');
-    else if (route.includes('/profile')) await import('../pages/Profile.jsx');
-    else if (route === '/' || route.includes('/dashboard')) await import('../pages/Dashboard.jsx');
+    if (route.startsWith('/workouts')) await import('../pages/Workouts.jsx');
+    else if (route.startsWith('/exercises')) await import('../pages/ExerciseLibrary.jsx');
+    else if (route.startsWith('/record')) await import('../pages/QuickStart.jsx');
+    else if (route.startsWith('/nutrition')) await import('../pages/Nutrition.jsx');
+    else if (route.startsWith('/progress')) await import('../pages/Progress.jsx');
+    else if (route.startsWith('/community')) await import('../pages/Community.jsx');
+    else if (route.startsWith('/profile')) await import('../pages/Profile.jsx');
+    else if (route === '/' || route.startsWith('/dashboard')) await import('../pages/Dashboard.jsx');
   } catch { /* ignore preload failures */ }
+}
+
+// Kick off every route in the tour in parallel. Called once when the tour
+// becomes active so subsequent step navigations are instant.
+function preloadAllTourRoutes() {
+  const unique = new Set(TOUR_STEP_KEYS.map(s => s.route));
+  for (const r of unique) preloadRoute(r);
 }
 
 export default function AppTour({ userId }) {
@@ -77,7 +101,29 @@ export default function AppTour({ userId }) {
   const setShow = useCallback((v) => {
     setShowRaw(v);
     try { sessionStorage.setItem(ACTIVE_KEY, String(v)); } catch {}
+    // Broadcast active-state. Dashboard listens so the Recovery pill renders
+    // during the tour even on training days when its normal gate would hide
+    // it (the pill is the anchor for the Recovery step).
+    try {
+      window.__appTourActive = !!v;
+      window.dispatchEvent(new CustomEvent('app-tour-active', { detail: !!v }));
+    } catch {}
+    // First time the tour activates, warm every route's chunk in parallel so
+    // step transitions don't pay a cold lazy-import latency penalty.
+    if (v) preloadAllTourRoutes();
   }, []);
+
+  // Restored-from-session sync: setShow() only runs on transitions, so an
+  // already-active tour from a page reload would skip its broadcast +
+  // preload. Replay both here on mount.
+  useEffect(() => {
+    if (!show) return;
+    try {
+      window.__appTourActive = true;
+      window.dispatchEvent(new CustomEvent('app-tour-active', { detail: true }));
+    } catch {}
+    preloadAllTourRoutes();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Show tour on first visit — check localStorage then DB
   useEffect(() => {
@@ -134,7 +180,9 @@ export default function AppTour({ userId }) {
           const updated = getTargetRect(current.target);
           setRect(updated || r);
         }, 250);
-      } else if (attempts < 20) {
+      } else if (attempts < 40) {
+        // ~6 s budget (was 3 s) — covers slower lazy chunks + first-paint
+        // skeletons on the new Recovery / ExerciseLibrary / Nutrition stops.
         attempts++;
         findRef.current = setTimeout(tryFind, 150);
       } else {
