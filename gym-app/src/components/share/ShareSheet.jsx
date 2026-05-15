@@ -837,31 +837,63 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
 
           {/* Photo picker (only when photo template selected) */}
           {template === 'photo' && (
-            <div style={{ marginTop: 10 }}>
-              <button
-                type="button"
-                onClick={pickBackgroundPhoto}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 12,
-                  border: '1.5px dashed var(--color-border, rgba(255,255,255,0.18))',
-                  background: 'var(--color-bg-primary)',
-                  color: 'var(--color-text-primary)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  cursor: 'pointer',
-                }}
-              >
-                <ImageIcon size={14} />
-                {backgroundSrc
-                  ? t('sessionSummary.share.changePhoto', 'Change background photo')
-                  : t('sessionSummary.share.pickPhoto', 'Pick background photo')}
-              </button>
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => { setSticker(false); pickBackgroundPhoto(); }}
+                  style={{
+                    flex: 1,
+                    padding: '10px 12px',
+                    borderRadius: 12,
+                    border: `1.5px ${backgroundSrc ? 'solid var(--color-accent)' : 'dashed var(--color-border, rgba(255,255,255,0.18))'}`,
+                    background: 'var(--color-bg-primary)',
+                    color: 'var(--color-text-primary)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ImageIcon size={14} />
+                  {backgroundSrc
+                    ? t('sessionSummary.share.changePhoto', 'Change photo')
+                    : t('sessionSummary.share.pickPhoto', 'Pick photo')}
+                </button>
+                {/* Clear-background toggle. Tapping clears any picked photo
+                    AND turns Sticker mode on so the Photo template renders
+                    on a transparent canvas (Strava Stats Sticker behavior).
+                    The previous global Sticker toggle still works, but most
+                    users went straight to Photo expecting a clear-bg option
+                    here next to the picker. */}
+                <button
+                  type="button"
+                  onClick={() => { setBackgroundSrc(null); setSticker(!sticker || !!backgroundSrc); }}
+                  aria-pressed={sticker && !backgroundSrc}
+                  style={{
+                    flex: 1,
+                    padding: '10px 12px',
+                    borderRadius: 12,
+                    border: `1.5px solid ${sticker && !backgroundSrc ? 'var(--color-accent)' : 'var(--color-border, rgba(255,255,255,0.18))'}`,
+                    background: sticker && !backgroundSrc
+                      ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
+                      : 'var(--color-bg-primary)',
+                    color: sticker && !backgroundSrc ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {t('sessionSummary.share.clearBackground', 'Clear background')}
+                </button>
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"

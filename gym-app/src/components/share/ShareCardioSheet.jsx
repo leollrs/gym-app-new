@@ -165,6 +165,11 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [backgroundSrc, setBackgroundSrc] = useState(null);
+  // Clear-background (Strava Stats Sticker) toggle for the Photo variant.
+  // When on AND no photo picked, ShareTplCardio renders the photo variant
+  // with a transparent canvas so the exported PNG carries alpha and the
+  // user can layer it on whatever they compose in IG Stories.
+  const [clearBackground, setClearBackground] = useState(false);
   // Bumping mapVersion forces StaticRouteMapImage to re-mount so its useEffect
   // re-runs the renderRouteMap chain. Used by the "Regenerate" button after we
   // clear the IndexedDB cache for the current session.
@@ -257,13 +262,13 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       }),
     );
     try {
-      return await rasterizeNode(cardRef.current, exportSize.w, exportSize.h);
+      return await rasterizeNode(cardRef.current, exportSize.w, exportSize.h, { transparent: photoTransparent });
     } catch (err) {
       console.warn('[ShareCardioSheet] rasterize attempt 1 failed, retrying:', err?.message);
       await new Promise((r) => setTimeout(r, 120));
-      return await rasterizeNode(cardRef.current, exportSize.w, exportSize.h);
+      return await rasterizeNode(cardRef.current, exportSize.w, exportSize.h, { transparent: photoTransparent });
     }
-  }, [exportSize]);
+  }, [exportSize, photoTransparent]);
 
   const handleDest = useCallback(async (dest) => {
     if (busy) return;
@@ -405,10 +410,15 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   const maxH = Math.min(vh - 360, 620);
   const scale = Math.min(maxW / w, maxH / h);
 
+  // Photo variant + no picked photo + clearBackground toggle = sticker mode.
+  // The exported PNG carries alpha so the user can drop it on their own IG
+  // Story photo (Strava's Stats Sticker UX).
+  const photoTransparent = variant === 'photo' && clearBackground && !backgroundSrc;
   const tplProps = {
     variant, data, accent,
     showGym,
     backgroundSrc: variant === 'photo' ? backgroundSrc : undefined,
+    transparent: photoTransparent,
     mapVersion,
   };
 
@@ -546,24 +556,48 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           </div>
 
           {variant === 'photo' && (
-            <div style={{ marginTop: 10 }}>
-              <button
-                type="button" onClick={pickBackgroundPhoto}
-                style={{
-                  width: '100%', padding: '10px 12px', borderRadius: 12,
-                  border: '1.5px dashed var(--color-border, rgba(255,255,255,0.18))',
-                  background: 'var(--color-bg-primary)',
-                  color: 'var(--color-text-primary)',
-                  fontSize: 12, fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 8, cursor: 'pointer',
-                }}
-              >
-                <ImageIcon size={14} />
-                {backgroundSrc
-                  ? t('cardio.share.changePhoto', 'Change background photo')
-                  : t('cardio.share.pickPhoto', 'Pick background photo')}
-              </button>
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => { setClearBackground(false); pickBackgroundPhoto(); }}
+                  style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 12,
+                    border: `1.5px ${backgroundSrc ? 'solid var(--color-accent)' : 'dashed var(--color-border, rgba(255,255,255,0.18))'}`,
+                    background: 'var(--color-bg-primary)',
+                    color: 'var(--color-text-primary)',
+                    fontSize: 12, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 8, cursor: 'pointer',
+                  }}
+                >
+                  <ImageIcon size={14} />
+                  {backgroundSrc
+                    ? t('cardio.share.changePhoto', 'Change photo')
+                    : t('cardio.share.pickPhoto', 'Pick photo')}
+                </button>
+                {/* Clear-background toggle. Tapping clears the picked photo
+                    AND turns on transparent export so the card lands on
+                    alpha — Strava Stats Sticker UX for cardio runs. */}
+                <button
+                  type="button"
+                  onClick={() => { setBackgroundSrc(null); setClearBackground(!clearBackground || !!backgroundSrc); }}
+                  aria-pressed={photoTransparent}
+                  style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 12,
+                    border: `1.5px solid ${photoTransparent ? 'var(--color-accent)' : 'var(--color-border, rgba(255,255,255,0.18))'}`,
+                    background: photoTransparent
+                      ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
+                      : 'var(--color-bg-primary)',
+                    color: photoTransparent ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                    fontSize: 12, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 8, cursor: 'pointer',
+                  }}
+                >
+                  {t('cardio.share.clearBackground', 'Clear background')}
+                </button>
+              </div>
               <input
                 ref={fileInputRef} type="file" accept="image/*"
                 onChange={onFileChange} style={{ display: 'none' }}

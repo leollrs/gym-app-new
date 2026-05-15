@@ -74,6 +74,11 @@ export default function ShareTplCardio({
   accent = '#2EC4C4',
   showGym = true,
   backgroundSrc,
+  // Photo variant only: when true AND no user-supplied photo, the card
+  // renders on a transparent canvas (Strava Stats Sticker pattern). The
+  // exported PNG carries alpha so the user can drop it on whatever IG
+  // Story photo they compose us over.
+  transparent = false,
   mapVersion = 0,
 }) {
   // Same scaling convention as the workout share templates — every literal
@@ -366,14 +371,20 @@ export default function ShareTplCardio({
 
   // ───────────────────────── Photo (bg photo + route) ─────
   if (variant === 'photo') {
+    // Sticker mode for the photo variant: no user photo + transparent flag on.
+    // Drop the bg + dark legibility overlay so the rasterized PNG carries
+    // alpha. With a user photo OR opaque mode, behave as before.
+    const photoSticker = transparent && !backgroundSrc;
     return (
       <div
         style={{
           width: w, height: h, position: 'relative',
           overflow: 'hidden',
-          background: backgroundSrc
-            ? `linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.9) 100%), url(${backgroundSrc}) center/cover`
-            : `linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.9) 100%), linear-gradient(135deg, #3d2a1a 0%, #14080a 100%)`,
+          background: photoSticker
+            ? 'transparent'
+            : backgroundSrc
+              ? `linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.9) 100%), url(${backgroundSrc}) center/cover`
+              : `linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.9) 100%), linear-gradient(135deg, #3d2a1a 0%, #14080a 100%)`,
           padding: 64, boxSizing: 'border-box',
           display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
           fontFamily: FONT_BODY, color: '#fff',
