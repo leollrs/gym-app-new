@@ -311,7 +311,7 @@ const ExerciseHeaderCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, on
             )}
           </div>
           <div
-            className="truncate"
+            className="flex items-center gap-2"
             style={{
               fontFamily: DISPLAY_FONT,
               fontSize: 20,
@@ -319,9 +319,27 @@ const ExerciseHeaderCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, on
               color: 'var(--color-text-primary)',
               letterSpacing: -0.4,
               lineHeight: 1.1,
+              minWidth: 0,
             }}
           >
-            {exName(exercise)}
+            <span className="truncate" style={{ minWidth: 0 }}>{exName(exercise)}</span>
+            {/* Bodyweight badge — was floating above the card; now sits inline
+                with the title so the user pairs the label with the lift it
+                refers to instead of treating it as a screen-level chip. */}
+            {exercise?.equipment === 'Bodyweight' && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0"
+                style={{
+                  backgroundColor: 'rgba(96,165,250,0.14)',
+                  color: '#60A5FA',
+                  border: '1px solid rgba(96,165,250,0.28)',
+                  letterSpacing: 0.2,
+                }}
+                aria-label={t?.('activeSession.bodyweightLabel', 'Bodyweight')}
+              >
+                {t?.('activeSession.bodyweightLabel', 'Bodyweight')}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>

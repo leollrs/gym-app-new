@@ -3728,22 +3728,9 @@ const ActiveSession = () => {
                 />
               ) : (
                 <>
-                {/* Bodyweight badge — surfaced near the weight input area inside the card */}
-                {isBodyweightExercise(currentExercise) && (
-                  <div className="px-4 pt-2">
-                    <span
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold"
-                      style={{
-                        backgroundColor: 'rgba(96,165,250,0.12)',
-                        color: '#60A5FA',
-                        border: '1px solid rgba(96,165,250,0.25)',
-                      }}
-                      aria-label={t('activeSession.bodyweightLabel', 'Bodyweight')}
-                    >
-                      {t('activeSession.bodyweightLabel', 'Bodyweight')}
-                    </span>
-                  </div>
-                )}
+                {/* Bodyweight badge moved into ExerciseCard, next to the
+                    exercise name, so it pairs with the lift it labels
+                    instead of floating above the card. */}
                 <ExerciseCard
                   exercise={currentExercise}
                   currentSets={currentSets}

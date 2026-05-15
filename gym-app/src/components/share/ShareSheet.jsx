@@ -476,13 +476,19 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
 
   const renderedAccent = template === 'poster' ? '#FF5A2E' : accent;
 
+  // Transparency is requested either by the user-facing "Sticker" toggle OR by
+  // picking the dedicated Sticker template (its canvas is already transparent;
+  // the export must carry alpha for the IG Stories sticker pasteboard slot to
+  // accept it). Computed once so buildCard + the IG handler stay in sync.
+  const isTransparentExport = sticker || template === 'sticker';
+
   const buildCard = useCallback(async () => {
     if (!cardRef.current) return null;
     const exp = ShareExportSizes[format];
-    // Sticker template needs alpha so it can overlay on the user's IG photo;
-    // rasterizeNode skips the opaque black fillRect when transparent=true.
-    return await rasterizeNode(cardRef.current, exp.w, exp.h, { transparent: sticker });
-  }, [format, sticker]);
+    // rasterizeNode skips the opaque black fillRect when transparent=true so
+    // the rasterized PNG keeps its alpha channel.
+    return await rasterizeNode(cardRef.current, exp.w, exp.h, { transparent: isTransparentExport });
+  }, [format, isTransparentExport]);
 
   const handleDest = useCallback(async (dest) => {
     if (busy) return;
