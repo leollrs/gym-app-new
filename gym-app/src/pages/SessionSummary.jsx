@@ -11,6 +11,7 @@ import { awardAchievements } from '../lib/achievements';
 import AchievementToast from '../components/AchievementToast';
 import WellnessCheckinModal from '../components/WellnessCheckinModal';
 import ShareSheet from '../components/share/ShareSheet';
+import { SharePRSheet } from '../components/share/QuickShareSheets';
 import { sanitize } from '../lib/sanitize';
 import { localizeRoutineName } from '../lib/exerciseName';
 import { formatStatNumber } from '../lib/formatStatValue';
@@ -78,6 +79,12 @@ const SessionSummary = () => {
   const [newAchievements, setNewAchievements] = useState([]);
   const [healthSynced, setHealthSynced] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  // Per-PR share: holds the pr object for the currently-shareable PR.
+  // Tapping the small share-circle on a PR card opens SharePRSheet for
+  // just that single PR — separate from the whole-session ShareSheet so
+  // users can broadcast just the headline lift instead of the full
+  // workout breakdown.
+  const [prShareTarget, setPrShareTarget] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -670,6 +677,32 @@ const SessionSummary = () => {
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>× {reps} {t('sessionSummary.reps', { defaultValue: 'reps' })}</div>
                   </div>
+                  {/* Per-PR share. Opens SharePRSheet so the user can post
+                      just this one PR — the headline moment most people
+                      actually want to broadcast — instead of the entire
+                      session breakdown. */}
+                  <button
+                    type="button"
+                    onClick={() => setPrShareTarget({
+                      id: pr.id || `pr-${i}`,
+                      value: w,
+                      unit: 'lbs',
+                      exerciseName: name,
+                      previousBest: prevW,
+                    })}
+                    aria-label={t('sessionSummary.sharePR', { defaultValue: 'Share PR' })}
+                    style={{
+                      marginLeft: 8, flexShrink: 0,
+                      width: 36, height: 36, borderRadius: 999,
+                      background: 'var(--color-surface-hover, rgba(255,255,255,0.08))',
+                      border: '1px solid var(--color-border-subtle, rgba(0,0,0,0.06))',
+                      color: 'var(--color-text-primary)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Share2 size={14} />
+                  </button>
                 </div>
               );
             })}
@@ -983,6 +1016,14 @@ const SessionSummary = () => {
       <WellnessCheckinModal
         open={showWellnessCheckin}
         onClose={() => setShowWellnessCheckin(false)}
+      />
+      <SharePRSheet
+        open={!!prShareTarget}
+        onClose={() => setPrShareTarget(null)}
+        pr={prShareTarget}
+        user={profile}
+        gym={gymName}
+        gymLogo={gymLogoUrl}
       />
     </div>
   );

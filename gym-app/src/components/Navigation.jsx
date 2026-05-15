@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight, QrCode, Gift, Apple, Settings, User, BookOpen, LogOut, Shield, Calendar as CalendarIcon } from 'lucide-react';
+import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight, QrCode, Gift, Apple, Settings, User, BookOpen, LogOut, Shield, Calendar as CalendarIcon, Share2 as ShareIcon } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import UserAvatar from './UserAvatar';
 import { useCachedState } from '../hooks/useCachedState';
+import { ShareStreakSheet } from './share/QuickShareSheets';
 
 // ── Prefetch map for lazy-loaded route chunks ────────────────────────────────
 const PREFETCH_MAP = {
@@ -93,6 +94,7 @@ const Navigation = () => {
   const streak = streakDerived !== null ? streakDerived : streakRaw;
   const setStreak = setStreakRaw; // so existing setters still feed the raw value
   const [showStreakModal, setShowStreakModal] = useState(false);
+  const [shareStreakOpen, setShareStreakOpen] = useState(false);
   const streakOpenedAtRef = useRef(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   // Scroll locking for streak modal
@@ -942,6 +944,33 @@ const Navigation = () => {
             </div>
           </div>
 
+          {/* ── Share streak ─────────────────────────────────────────────── */}
+          {/* Streak shares are the highest-retention social hook in fitness apps
+              (Strava's milestone celebrations, Duolingo's 100-day flexes). Only
+              surface when the streak crosses 3 days — sharing a 1-day streak
+              reads as desperate and depresses click-through. */}
+          {streak >= 3 && (
+            <div className="px-4 pt-3">
+              <button
+                type="button"
+                onClick={() => setShareStreakOpen(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl"
+                style={{
+                  background: 'var(--color-accent)',
+                  color: 'var(--color-bg-secondary, #0A0D10)',
+                  fontWeight: 800,
+                  fontSize: 13,
+                  letterSpacing: 0.2,
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <ShareIcon size={14} />
+                {t('navigation.streaks.share', { ns: 'pages', defaultValue: 'Share streak' })}
+              </button>
+            </div>
+          )}
+
           {/* ── Calendar card ──────────────────────────────────────────────── */}
           <div className="px-4 pt-3 pb-4">
             <div className="rounded-[20px] p-4"
@@ -1062,6 +1091,16 @@ const Navigation = () => {
     </div>,
     document.body
   )}
+  {/* Streak share sheet. Mounted at the Navigation level so it overlays
+      everything (including the streak modal it was triggered from). */}
+  <ShareStreakSheet
+    open={shareStreakOpen}
+    onClose={() => setShareStreakOpen(false)}
+    streakDays={streak}
+    user={profile}
+    gym={gymName}
+    gymLogo={gymLogoUrl}
+  />
   </>
   );
 };

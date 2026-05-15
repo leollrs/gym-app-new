@@ -214,6 +214,78 @@ function TemplateChip({ active, onClick, label, preview }) {
         </div>
       </div>
     ),
+    st: (
+      // Sticker preview: transparent backdrop (checkerboard hint) with a
+      // small frosted-glass pill — mirrors how the export will overlay on
+      // the user's IG Story photo.
+      <div
+        style={{
+          position: 'absolute',
+          inset: 3,
+          borderRadius: 6,
+          overflow: 'hidden',
+          backgroundImage:
+            'linear-gradient(45deg, rgba(255,255,255,0.06) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.06) 75%), linear-gradient(45deg, rgba(255,255,255,0.06) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.06) 75%)',
+          backgroundSize: '6px 6px',
+          backgroundPosition: '0 0, 3px 3px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: '78%',
+            padding: '4px 5px',
+            borderRadius: 4,
+            background: 'rgba(10,13,16,0.85)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
+          <div style={{ height: 2, width: '40%', background: '#2EC4C4', borderRadius: 1 }} />
+          <div style={{ height: 6, width: '90%', background: '#fff', borderRadius: 1 }} />
+          <div style={{ display: 'flex', gap: 2, marginTop: 1 }}>
+            <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.5)', borderRadius: 1 }} />
+            <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.5)', borderRadius: 1 }} />
+            <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.5)', borderRadius: 1 }} />
+          </div>
+        </div>
+      </div>
+    ),
+    // Sticker preview — checkerboard hint at transparency, frosted card on top.
+    st: (
+      <div
+        style={{
+          position: 'absolute',
+          inset: 3,
+          borderRadius: 6,
+          overflow: 'hidden',
+          backgroundColor: '#1a1d22',
+          backgroundImage:
+            'linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.05) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.05) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.05) 75%)',
+          backgroundSize: '6px 6px',
+          backgroundPosition: '0 0, 0 3px, 3px -3px, -3px 0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: '75%',
+            padding: 3,
+            borderRadius: 4,
+            background: 'rgba(10,13,16,0.78)',
+            border: '1px solid rgba(255,255,255,0.18)',
+          }}
+        >
+          <div style={{ height: 2, width: '60%', background: '#2EC4C4', borderRadius: 1 }} />
+          <div style={{ height: 6, width: '80%', background: '#fff', borderRadius: 1, marginTop: 2 }} />
+        </div>
+      </div>
+    ),
   };
   return (
     <button
@@ -303,20 +375,31 @@ export async function rasterizeNode(node, targetW, targetH, { transparent = fals
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) {
+// `kind` controls what the card describes. Defaults to 'workout' for back-compat.
+//   - 'workout' → full session summary (volume / sets / PRs)
+//   - 'pr'      → single PR card (data.prExercise, data.prValue, data.prPrevious)
+//   - 'streak'  → streak milestone (data.streakDays, data.streakSubtitle)
+//   - 'monthly' → monthly recap (data.workoutsCount, data.prCount, data.monthLabel)
+//   - 'body'    → body progress (data.beforeUrl, data.afterUrl, data.weeks)
+// The sticker template reads `kind` directly. For the 4 full-bleed templates
+// only 'workout' is supported today; the other kinds default to sticker.
+export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', kind = 'workout' }) {
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
-  const [template, setTemplate] = useState('editorial');
+  // Default to 'sticker' for non-workout kinds (PR / streak / monthly / body)
+  // — those are conceptually small achievement cards designed to overlay on
+  // a user photo, not full-bleed posters. Workout summaries keep 'editorial'
+  // as the default for back-compat with every existing call site.
+  const [template, setTemplate] = useState(kind === 'workout' ? 'editorial' : 'sticker');
   const [format, setFormat] = useState('story');
   const [showGym, setShowGym] = useState(true);
   const [showExactWeights, setShowExactWeights] = useState(true);
   const [showMuscles, setShowMuscles] = useState(true);
   const [showPRs, setShowPRs] = useState(true);
-  // Sticker mode: render the card with a transparent background so the user
-  // can layer it over their own photo in Instagram Stories (Strava's "Stats
-  // Sticker" pattern). The IG Story destination automatically picks the
-  // sticker pasteboard slot instead of the background slot when this is on.
-  const [sticker, setSticker] = useState(false);
+  // Sticker mode is now derived from the active template — picking the
+  // 'sticker' chip in the Style row IS the toggle. Renamed back to a derived
+  // value to avoid the state-vs-string desync that bit us earlier.
+  const sticker = template === 'sticker';
   const [caption, setCaption] = useState('');
   const [activeDest, setActiveDest] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -396,6 +479,8 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
   const buildCard = useCallback(async () => {
     if (!cardRef.current) return null;
     const exp = ShareExportSizes[format];
+    // Sticker template needs alpha so it can overlay on the user's IG photo;
+    // rasterizeNode skips the opaque black fillRect when transparent=true.
     return await rasterizeNode(cardRef.current, exp.w, exp.h, { transparent: sticker });
   }, [format, sticker]);
 
@@ -453,12 +538,15 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
         }
       } else if (dest === 'ig-story') {
         // Direct deep link into the IG Stories composer — skips the native
-        // share sheet middle step. Falls back to the generic share sheet if
-        // IG isn't installed, we're not on iOS, or the plugin call fails.
+        // share sheet middle step. The IG pasteboard has two slots: a
+        // background image (fills the Story) and a sticker image
+        // (transparent overlay the user can move around on their own
+        // photo). We pick the slot based on whether the export is
+        // transparent: alpha PNG → sticker, opaque → background.
         let landedInIG = false;
         if (blob && await isInstagramStoriesAvailable()) {
           const ig = await shareToInstagramStory(
-            sticker
+            isTransparentExport
               ? { stickerBlob: blob, contentURL: link }
               : { backgroundBlob: blob, contentURL: link }
           );
@@ -491,7 +579,7 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
       setBusy(false);
       onClose?.();
     }
-  }, [buildCard, caption, data, profile, user, onClose, busy, sticker]);
+  }, [buildCard, caption, data, profile, user, onClose, busy, isTransparentExport]);
 
   const handleCta = () => {
     if (!activeDest) return;
@@ -506,12 +594,21 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
     showGym, showExactWeights, showMuscles, showPRs,
     accent: renderedAccent,
     backgroundSrc: template === 'photo' ? backgroundSrc : undefined,
-    // Templates respect `transparent` by skipping their bg fill — the rasterized
-    // PNG then carries alpha and can be layered as a sticker on the user's own
-    // Instagram Story photo. Forced off for the photo template (which IS a
-    // photo) and the poster template (the slanted bar is the visual anchor).
-    transparent: sticker && template !== 'photo' && template !== 'poster',
+    // Sticker template handles its own transparent bg internally; the four
+    // full-bleed templates ignore this prop. Kept here so a future template
+    // refit can opt in without touching the renderer.
+    transparent: false,
+    // Sticker template switches its headline by `kind` ('workout' | 'pr' |
+    // 'streak' | 'monthly' | 'body'). Accept either the top-level prop on
+    // the sheet (preferred) or a `data.kind` field (legacy callsites).
+    kind: kind || data?.kind || 'workout',
   };
+
+  // Full-bleed templates only support the workout kind today; non-workout
+  // kinds (PR / streak / monthly / body) always render through the sticker
+  // template regardless of the user's template pick. effectiveTemplate is
+  // what we actually render.
+  const effectiveTemplate = (kind && kind !== 'workout') ? 'sticker' : template;
 
   // Full-res offscreen render (used for rasterization).
   const exportSize = ShareExportSizes[format];
@@ -590,7 +687,7 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
           }}
         >
           <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h }}>
-            {renderTemplate(template, templateProps)}
+            {renderTemplate(effectiveTemplate, templateProps)}
           </div>
         </div>
       </div>
@@ -608,7 +705,7 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
         }}
       >
         <div ref={cardRef} style={{ width: exportSize.w, height: exportSize.h }}>
-          {renderTemplate(template, { ...templateProps, w: exportSize.w, h: exportSize.h })}
+          {renderTemplate(effectiveTemplate, { ...templateProps, w: exportSize.w, h: exportSize.h })}
         </div>
       </div>
 
@@ -639,12 +736,16 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
         {/* Templates */}
         <div style={{ padding: '4px 16px 0' }}>
           <PanelLabel>{t('sessionSummary.share.style', 'Style')}</PanelLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 6 }}>
+          {/* 5-up grid. 'Sticker' is the Strava Stats Sticker analogue —
+              transparent canvas with a centered card so the user can drop
+              it over their own IG Story photo. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginTop: 6 }}>
             {[
               { id: 'editorial', label: t('sessionSummary.share.editorial', 'Editorial'), preview: 'ed' },
               { id: 'bold', label: t('sessionSummary.share.bold', 'Bold'), preview: 'bd' },
               { id: 'poster', label: t('sessionSummary.share.poster', 'Poster'), preview: 'ps' },
               { id: 'photo', label: t('sessionSummary.share.photo', 'Photo'), preview: 'ph' },
+              { id: 'sticker', label: t('sessionSummary.share.sticker', 'Sticker'), preview: 'st' },
             ].map((o) => (
               <TemplateChip
                 key={o.id}
@@ -755,9 +856,6 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
             </Toggle>
             <Toggle on={showExactWeights} onClick={() => setShowExactWeights(!showExactWeights)}>
               {t('sessionSummary.share.exactWeights', 'Exact weights')}
-            </Toggle>
-            <Toggle on={sticker} onClick={() => setSticker(!sticker)}>
-              {t('sessionSummary.share.sticker', 'Sticker (transparent)')}
             </Toggle>
           </div>
         </div>
