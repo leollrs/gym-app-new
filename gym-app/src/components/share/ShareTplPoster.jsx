@@ -72,11 +72,15 @@ export default function ShareTplPoster({
         }}
       />
 
-      {/* Top label */}
+      {/* Top label. IG Stories' close-button + sticker-tool chrome covers
+          the first ~7% of the canvas; positioning at plain `pad` (~5.5%)
+          tucks the "Vol. 01" line and date underneath IG's own UI. Push
+          down into the safe zone — `pad * 2.5` lands around 13% which
+          clears IG's overlay on every device. */}
       <div
         style={{
           position: 'absolute',
-          top: pad,
+          top: pad * 2.5,
           left: pad,
           right: pad,
           display: 'flex',
@@ -104,11 +108,12 @@ export default function ShareTplPoster({
         </div>
       </div>
 
-      {/* Giant headline */}
+      {/* Giant headline — pushed down to keep the spacing below the
+          new (safer) top-label position. */}
       <div
         style={{
           position: 'absolute',
-          top: pad * 2.4,
+          top: pad * 4,
           left: pad,
           right: pad,
           zIndex: 3,
