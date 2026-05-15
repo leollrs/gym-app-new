@@ -299,7 +299,13 @@ const Navigation = () => {
           status = 'missed';
         }
 
-        monthDays.push({ date: d, key, dow, status, isToday });
+        // Persist `dayNum` (1-31) directly. The `date: d` Date object survives
+        // the first render fine, but useCachedState round-trips through JSON,
+        // so on a re-mount/cold-boot `day.date` comes back as an ISO string —
+        // and `day.date.getDate()` crashes with "getDate is undefined". The
+        // `date` field is kept in the payload for any consumer that still
+        // expects it; the cell renderer below reads `dayNum` instead.
+        monthDays.push({ date: d, dayNum: day, key, dow, status, isToday });
       }
 
       const label = cursor.toLocaleDateString(i18n.language === 'es' ? 'es-ES' : 'en-US', { month: 'long', year: 'numeric' });
@@ -1008,7 +1014,12 @@ const Navigation = () => {
                     <div className="grid grid-cols-7 gap-1">
                       {Array.from({ length: padCount }, (_, i) => <div key={`pad-${i}`} />)}
                       {monthData.days.map(day => {
-                        const dayNum = day.date.getDate();
+                        // Prefer the persisted dayNum. Fall back to the
+                        // YYYY-MM-DD key for legacy cache entries written
+                        // before we started storing dayNum (those still have
+                        // a stringified `date` and would crash on .getDate()).
+                        const dayNum = day.dayNum
+                          ?? (typeof day.key === 'string' ? parseInt(day.key.slice(-2), 10) : NaN);
                         let bg = 'var(--color-bg-card)';
                         let fg = 'var(--color-text-muted)';
                         let border = 'none';

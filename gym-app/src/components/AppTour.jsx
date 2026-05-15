@@ -176,15 +176,18 @@ export default function AppTour({ userId }) {
       const r = getTargetRect(current.target);
       if (r) {
         r.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Re-measure after the scroll, then show. Trimmed from 250 → 120 ms
+        // so the tooltip lands closer to the moment the target appears.
         findRef.current = setTimeout(() => {
           const updated = getTargetRect(current.target);
           setRect(updated || r);
-        }, 250);
-      } else if (attempts < 40) {
-        // ~6 s budget (was 3 s) — covers slower lazy chunks + first-paint
-        // skeletons on the new Recovery / ExerciseLibrary / Nutrition stops.
+        }, 120);
+      } else if (attempts < 60) {
+        // ~4.8 s budget at 80 ms — tighter retry interval keeps the demo
+        // "snapping in" the instant the data-tour element mounts, instead
+        // of feeling like it's slowly catching up to the page render.
         attempts++;
-        findRef.current = setTimeout(tryFind, 150);
+        findRef.current = setTimeout(tryFind, 80);
       } else {
         // Target not found — skip to next
         if (step < TOUR_STEP_KEYS.length - 1) {
@@ -206,7 +209,10 @@ export default function AppTour({ userId }) {
     const normalizedPath = location.pathname.replace(/\/$/, '') || '/';
     const normalizedRoute = (current?.route || '/').replace(/\/$/, '') || '/';
     if (normalizedPath === normalizedRoute) {
-      const timer = setTimeout(() => setNavigating(false), 300);
+      // Trimmed 300 → 100 ms. The lazy chunk is already warmed by
+      // preloadAllTourRoutes() so the page mount happens fast — no need to
+      // wait a full third of a second before firing the next findTarget.
+      const timer = setTimeout(() => setNavigating(false), 100);
       return () => clearTimeout(timer);
     }
     const safety = setTimeout(() => setNavigating(false), 2000);

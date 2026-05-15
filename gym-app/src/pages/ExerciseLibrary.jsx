@@ -2980,10 +2980,14 @@ export const ExerciseLibraryPage = () => {
   }, [activeList, debouncedQuery, filterEquipment]);
 
   return (
-    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 md:px-8 pt-5 md:pt-10 pb-28 md:pb-12 animate-fade-in" data-tour="tour-exercise-library">
+    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 md:px-8 pt-5 md:pt-10 pb-28 md:pb-12 animate-fade-in">
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <header className="mb-3.5">
+      {/* Tour anchor sits on the header (not the page wrapper) so the
+          spotlight rect is a small, top-of-page region instead of the entire
+          viewport — that was making the tooltip fall back to an off-screen
+          position above the header. */}
+      <header className="mb-3.5" data-tour="tour-exercise-library">
         <div className="text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-accent)' }}>
           {t('exerciseLibrary.yourArsenal', 'YOUR ARSENAL')} · {totalCount} {t('exerciseLibrary.moves', 'MOVES')}
         </div>
