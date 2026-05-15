@@ -79,9 +79,19 @@ export default function PlatformLayout({ children }) {
     };
   }, []);
 
-  const handleSessionExpiredLogout = async () => {
-    await signOut();
-    navigate('/login');
+  const handleSessionExpiredLogout = () => {
+    // Navigate IMMEDIATELY so the modal disappears the instant the user taps
+    // Sign In. The previous flow awaited signOut() before navigating, which
+    // meant any slow step inside (removePushTokens on bad wifi, supabase
+    // auth.signOut() round-trip) left the user staring at the modal with no
+    // feedback — looked like the button was broken. signOut still runs, just
+    // in the background; the SIGNED_OUT auth event finishes clearing local
+    // state once the network round-trip lands.
+    setSessionExpired(false);
+    navigate('/login', { replace: true });
+    Promise.resolve()
+      .then(() => signOut())
+      .catch((err) => console.warn('[platform] background signOut failed', err));
   };
 
   useEffect(() => {
