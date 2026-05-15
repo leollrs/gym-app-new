@@ -494,6 +494,16 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
             width: w * scale, height: h * scale,
             position: 'relative', borderRadius: 24, overflow: 'hidden',
             boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
+            // Preview-only checkerboard when the export is going to be
+            // transparent — visual confirmation that "Clear background"
+            // is active. Without this the dark backdrop bleeds through
+            // and reads the same as the opaque path.
+            backgroundColor: photoTransparent ? '#FFFFFF' : 'transparent',
+            backgroundImage: photoTransparent
+              ? 'linear-gradient(45deg, #d6d6d6 25%, transparent 25%), linear-gradient(-45deg, #d6d6d6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d6d6d6 75%), linear-gradient(-45deg, transparent 75%, #d6d6d6 75%)'
+              : 'none',
+            backgroundSize: photoTransparent ? '20px 20px' : 'auto',
+            backgroundPosition: photoTransparent ? '0 0, 0 10px, 10px -10px, -10px 0px' : 'auto',
           }}
         >
           <div

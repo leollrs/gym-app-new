@@ -404,10 +404,15 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
   const [showExactWeights, setShowExactWeights] = useState(true);
   const [showMuscles, setShowMuscles] = useState(true);
   const [showPRs, setShowPRs] = useState(true);
-  // Sticker mode is now derived from the active template — picking the
-  // 'sticker' chip in the Style row IS the toggle. Renamed back to a derived
-  // value to avoid the state-vs-string desync that bit us earlier.
+  // Sticker mode is derived from the active template — picking the 'sticker'
+  // chip in the Style row IS the toggle. For the Photo template we also want
+  // a "clear background" affordance the user can flip without leaving the
+  // Photo style (Strava's Stats Sticker UX). Tracking that intent in its
+  // own state so the button next to the photo picker has something to bind
+  // to — previous version called `setSticker(...)` which doesn't exist now
+  // that sticker is derived, so the button silently no-op'd on tap.
   const sticker = template === 'sticker';
+  const [clearBackground, setClearBackground] = useState(false);
   const [caption, setCaption] = useState('');
   const [activeDest, setActiveDest] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -737,6 +742,19 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
             borderRadius: 24,
             overflow: 'hidden',
             boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
+            // Checkerboard behind the template when the export is going to
+            // be transparent. Without this the dark modal backdrop bleeds
+            // through the transparent template and reads identically to
+            // the opaque dark-gradient fallback — the user couldn't tell
+            // that "Clear background" had actually taken effect. The
+            // pattern is preview-only; rasterizeNode exports the template
+            // on its own alpha-bearing canvas regardless.
+            backgroundColor: isTransparentExport ? '#FFFFFF' : 'transparent',
+            backgroundImage: isTransparentExport
+              ? 'linear-gradient(45deg, #d6d6d6 25%, transparent 25%), linear-gradient(-45deg, #d6d6d6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d6d6d6 75%), linear-gradient(-45deg, transparent 75%, #d6d6d6 75%)'
+              : 'none',
+            backgroundSize: isTransparentExport ? '20px 20px' : 'auto',
+            backgroundPosition: isTransparentExport ? '0 0, 0 10px, 10px -10px, -10px 0px' : 'auto',
           }}
         >
           <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h }}>
