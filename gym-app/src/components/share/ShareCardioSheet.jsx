@@ -363,13 +363,29 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           await shareBlob(blob, 'tugympr-run.png', full);
         }
       } else if (dest === 'ig-feed') {
+        // IG Feed/Reels don't support alpha — IG composites transparent
+        // pixels to black. If the user picked Photo + Clear background,
+        // the export carries alpha and IG would flatten to black. Re-
+        // rasterize opaquely for the Feed path so the Photo template's
+        // solid fallback bg renders instead. Transparent export still
+        // wins for IG Story.
+        let feedBlob = blob;
+        if (photoTransparent && cardRef.current) {
+          try {
+            feedBlob = await rasterizeNode(
+              cardRef.current, exportSize.w, exportSize.h, { transparent: false },
+            );
+          } catch (e) {
+            console.warn('[ShareCardioSheet] opaque re-rasterize for ig-feed failed', e);
+          }
+        }
         let landed = false;
-        if (blob && await isInstagramInstalled()) {
-          const res = await shareToInstagramFeed({ blob });
+        if (feedBlob && await isInstagramInstalled()) {
+          const res = await shareToInstagramFeed({ blob: feedBlob });
           landed = res.ok;
         }
-        if (!landed && blob) {
-          await shareBlob(blob, 'tugympr-run.png', full);
+        if (!landed && feedBlob) {
+          await shareBlob(feedBlob, 'tugympr-run.png', full);
         }
       } else if (blob) {
         await shareBlob(blob, 'tugympr-run.png', full);

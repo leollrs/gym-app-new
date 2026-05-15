@@ -624,13 +624,31 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         // Save to Photos + open IG's library picker with our image
         // pre-selected. IG doesn't expose a direct Feed-composer scheme,
         // so this is as close as native gets to one-tap Feed sharing.
+        //
+        // IG Feed doesn't support transparent backgrounds — Reels/Posts
+        // composite alpha to black. If the user requested transparency
+        // (Sticker template OR Photo + Clear background), re-rasterize
+        // with transparent=false so the template's solid fallback bg
+        // renders cleanly instead of getting black-flattened by IG. The
+        // user's transparency choice is still respected for IG Story.
+        let feedBlob = blob;
+        if (isTransparentExport && cardRef.current) {
+          try {
+            const exp = ShareExportSizes[format];
+            feedBlob = await rasterizeNode(
+              cardRef.current, exp.w, exp.h, { transparent: false },
+            );
+          } catch (e) {
+            console.warn('[ShareSheet] opaque re-rasterize for ig-feed failed', e);
+          }
+        }
         let landed = false;
-        if (blob && await isInstagramInstalled()) {
-          const res = await shareToInstagramFeed({ blob });
+        if (feedBlob && await isInstagramInstalled()) {
+          const res = await shareToInstagramFeed({ blob: feedBlob });
           landed = res.ok;
         }
-        if (!landed && blob) {
-          await shareBlob(blob, 'tugympr-workout.png', full);
+        if (!landed && feedBlob) {
+          await shareBlob(feedBlob, 'tugympr-workout.png', full);
         }
       }
     } catch (err) {
