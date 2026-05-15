@@ -341,11 +341,23 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         }
       } else if (dest === 'ig-story') {
         // Direct deep link into the IG Stories composer — same flow as the
-        // workout share sheet. Sticker template renders transparent so the
-        // export carries alpha; everything else fills the background slot.
+        // workout share sheet. Photo template with Clear background renders
+        // transparent so it lands in IG as a sticker; everything else fills
+        // the background slot. In sticker mode IG fills the page with a
+        // gradient (top→bottom colors), so we pass the gym accent so the
+        // Story isn't framed in default black.
         let landedInIG = false;
         if (blob && await isInstagramStoriesAvailable()) {
-          const ig = await shareToInstagramStory({ backgroundBlob: blob, contentURL: link });
+          const ig = await shareToInstagramStory(
+            photoTransparent
+              ? {
+                  stickerBlob: blob,
+                  contentURL: link,
+                  backgroundTopColor: accent,
+                  backgroundBottomColor: '#0A0D10',
+                }
+              : { backgroundBlob: blob, contentURL: link }
+          );
           landedInIG = ig.ok;
         }
         if (!landedInIG && blob) {

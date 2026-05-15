@@ -590,9 +590,19 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         if (!storyBlob) storyBlob = blob; // defensive fallback to format export
         let landedInIG = false;
         if (storyBlob && await isInstagramStoriesAvailable()) {
+          // Sticker mode → IG fills the page with the gradient between
+          // backgroundTopColor and backgroundBottomColor. Without these the
+          // native plugin defaults to near-black and the Story looks like
+          // a black-background sticker. Send the gym accent on top and a
+          // deep neutral bottom so the brand color frames the sticker.
           const ig = await shareToInstagramStory(
             isTransparentExport
-              ? { stickerBlob: storyBlob, contentURL: link }
+              ? {
+                  stickerBlob: storyBlob,
+                  contentURL: link,
+                  backgroundTopColor: renderedAccent,
+                  backgroundBottomColor: '#0A0D10',
+                }
               : { backgroundBlob: storyBlob, contentURL: link }
           );
           landedInIG = ig.ok;
