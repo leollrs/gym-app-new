@@ -27,7 +27,19 @@ import UIKit
 // 3. backgroundImage + sticker     → IG places sticker on top of background.
 
 @objc(InstagramSharePlugin)
-public class InstagramSharePlugin: CAPPlugin {
+public class InstagramSharePlugin: CAPPlugin, CAPBridgedPlugin {
+    // Capacitor v6+ requires the bridged-plugin protocol with explicit
+    // identifier/jsName/pluginMethods so the JS side can locate the plugin
+    // via `registerPlugin('InstagramShare')`. Without these the plugin
+    // registers fine on the native side but every JS call rejects, which
+    // dropped us back to the native share sheet — the multi-tap detour
+    // we were trying to skip.
+    public let identifier = "InstagramSharePlugin"
+    public let jsName = "InstagramShare"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "isInstagramInstalled", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "shareToStory", returnType: CAPPluginReturnPromise),
+    ]
 
     private let pasteboardKeyBg     = "com.instagram.sharedSticker.backgroundImage"
     private let pasteboardKeySticker = "com.instagram.sharedSticker.stickerImage"

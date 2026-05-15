@@ -12,7 +12,12 @@
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
-const InstagramSharePlugin = registerPlugin('InstagramSharePlugin');
+// `jsName` on the native side is "InstagramShare" (see
+// ios/App/App/InstagramSharePlugin.swift) — Capacitor v6 looks up the
+// plugin by that string, NOT by the Swift class name. Mismatched names
+// here would silently route every call to the rejection branch and
+// drop us back to the native share sheet.
+const InstagramSharePlugin = registerPlugin('InstagramShare');
 
 // Convert a Blob to a base64 data URL — the format the native plugin expects
 // (it strips the optional `data:image/png;base64,` prefix on its end).

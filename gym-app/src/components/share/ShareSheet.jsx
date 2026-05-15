@@ -407,6 +407,11 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
   const [visible, setVisible] = useState(false);
   const [backgroundSrc, setBackgroundSrc] = useState(null);
   const cardRef = useRef(null);
+  // Second offscreen card kept permanently at IG Stories' 1080×1920. The
+  // user-picked format drives Save / Copy / IG Feed sizing, but IG Stories
+  // expects a 9:16 background image — anything else lands letterboxed in
+  // the middle of the canvas and the user sees a postage-stamp card.
+  const igStoryCardRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // Photo picker: prefer Capacitor Camera, fall back to hidden file input.
@@ -544,22 +549,32 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         }
       } else if (dest === 'ig-story') {
         // Direct deep link into the IG Stories composer — skips the native
-        // share sheet middle step. The IG pasteboard has two slots: a
-        // background image (fills the Story) and a sticker image
-        // (transparent overlay the user can move around on their own
-        // photo). We pick the slot based on whether the export is
-        // transparent: alpha PNG → sticker, opaque → background.
+        // share sheet middle step. Always rasterize from the dedicated
+        // 9:16 offscreen card (igStoryCardRef): IG's backgroundImage slot
+        // fills the 1080×1920 canvas, so any other aspect ratio would
+        // letterbox the card into a tiny rectangle in the middle. The
+        // user-picked format still drives Save / Copy / IG Feed exports
+        // via the format-specific cardRef above.
+        let storyBlob = null;
+        const igStory = ShareExportSizes.story;
+        if (igStoryCardRef.current) {
+          storyBlob = await rasterizeNode(
+            igStoryCardRef.current, igStory.w, igStory.h,
+            { transparent: isTransparentExport },
+          );
+        }
+        if (!storyBlob) storyBlob = blob; // defensive fallback to format export
         let landedInIG = false;
-        if (blob && await isInstagramStoriesAvailable()) {
+        if (storyBlob && await isInstagramStoriesAvailable()) {
           const ig = await shareToInstagramStory(
             isTransparentExport
-              ? { stickerBlob: blob, contentURL: link }
-              : { backgroundBlob: blob, contentURL: link }
+              ? { stickerBlob: storyBlob, contentURL: link }
+              : { backgroundBlob: storyBlob, contentURL: link }
           );
           landedInIG = ig.ok;
         }
-        if (!landedInIG && blob) {
-          await shareBlob(blob, 'tugympr-workout.png', full);
+        if (!landedInIG && storyBlob) {
+          await shareBlob(storyBlob, 'tugympr-workout.png', full);
         }
       } else if (dest === 'wa' || dest === 'im' || dest === 'ig-feed') {
         // IG Feed has no published deep-link scheme for pre-loading an image
@@ -698,7 +713,8 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         </div>
       </div>
 
-      {/* Offscreen full-resolution card (used for export). */}
+      {/* Offscreen full-resolution card at the user's chosen format
+          (drives Save / Copy / IG Feed exports). */}
       <div
         aria-hidden="true"
         style={{
@@ -712,6 +728,30 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
       >
         <div ref={cardRef} style={{ width: exportSize.w, height: exportSize.h }}>
           {renderTemplate(effectiveTemplate, { ...templateProps, w: exportSize.w, h: exportSize.h })}
+        </div>
+      </div>
+
+      {/* Permanent 9:16 IG Stories card — always rendered alongside the
+          format-specific one above so the IG Story dest can rasterize at the
+          right aspect ratio without re-rendering on demand. Same template +
+          props otherwise; only the dimensions differ. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          left: -99999,
+          top: 0,
+          pointerEvents: 'none',
+          width: ShareExportSizes.story.w,
+          height: ShareExportSizes.story.h,
+        }}
+      >
+        <div ref={igStoryCardRef} style={{ width: ShareExportSizes.story.w, height: ShareExportSizes.story.h }}>
+          {renderTemplate(effectiveTemplate, {
+            ...templateProps,
+            w: ShareExportSizes.story.w,
+            h: ShareExportSizes.story.h,
+          })}
         </div>
       </div>
 
