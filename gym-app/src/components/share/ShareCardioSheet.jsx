@@ -234,6 +234,14 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   // the moment the sheet first opens.
   const exportSize = ShareExportSizes[format];
 
+  // Photo variant + no picked photo + clearBackground toggle = sticker mode.
+  // The exported PNG carries alpha so the user can drop it on their own IG
+  // Story photo (Strava's Stats Sticker UX). Declared HERE — above the
+  // buildCard useCallback that captures it — to avoid the "Cannot access
+  // 'photoTransparent' before initialization" TDZ error when buildCard fires
+  // (the deps array evaluates eagerly on every render).
+  const photoTransparent = variant === 'photo' && clearBackground && !backgroundSrc;
+
   const buildCard = useCallback(async () => {
     // The offscreen template may not be in the DOM yet on the very first
     // click after open — wait up to ~600ms for cardRef to populate.
@@ -410,10 +418,6 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   const maxH = Math.min(vh - 360, 620);
   const scale = Math.min(maxW / w, maxH / h);
 
-  // Photo variant + no picked photo + clearBackground toggle = sticker mode.
-  // The exported PNG carries alpha so the user can drop it on their own IG
-  // Story photo (Strava's Stats Sticker UX).
-  const photoTransparent = variant === 'photo' && clearBackground && !backgroundSrc;
   const tplProps = {
     variant, data, accent,
     showGym,
