@@ -46,6 +46,7 @@
 		BF5F63E0BAA9E50896377EFD /* WatchSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81B0988A94CC5E9A5B4FE3F9 /* WatchSessionManager.swift */; };
 		D246FF9902F6DA6E668F2FA2 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C742B0DF62AA337106B6FF3 /* LiveActivityPlugin.swift */; };
 		BL01AA11BB22CC33DD44EE55 /* BackgroundLocationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BL99FF88EE77DD66CC55BB44 /* BackgroundLocationPlugin.swift */; };
+		IG01AA22BB33CC44DD55EE66 /* InstagramSharePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = IG99FF88EE77DD66CC55BB44 /* InstagramSharePlugin.swift */; };
 		FF0AB5165FA433283A04AD40 /* TuGymPRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F9CC45A5BEBAE50BBE3A446 /* TuGymPRApp.swift */; };
 /* End PBXBuildFile section */
 
@@ -112,6 +113,7 @@
 		371B6B3F284B551A1CE290C5 /* DesignSystem.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		4C742B0DF62AA337106B6FF3 /* LiveActivityPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveActivityPlugin.swift; sourceTree = "<group>"; };
 		BL99FF88EE77DD66CC55BB44 /* BackgroundLocationPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundLocationPlugin.swift; sourceTree = "<group>"; };
+		IG99FF88EE77DD66CC55BB44 /* InstagramSharePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InstagramSharePlugin.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -271,6 +273,7 @@
 				C35734DAAEB75D4D53037E9A /* WorkoutActivityAttributes.swift */,
 				4C742B0DF62AA337106B6FF3 /* LiveActivityPlugin.swift */,
 				BL99FF88EE77DD66CC55BB44 /* BackgroundLocationPlugin.swift */,
+				IG99FF88EE77DD66CC55BB44 /* InstagramSharePlugin.swift */,
 				97FBEB6DFF1040000E3D9DA3 /* MainViewController.swift */,
 			);
 			path = App;
@@ -561,6 +564,7 @@
 				038152308505B8804D3CB7DB /* WorkoutActivityAttributes.swift in Sources */,
 				D246FF9902F6DA6E668F2FA2 /* LiveActivityPlugin.swift in Sources */,
 				BL01AA11BB22CC33DD44EE55 /* BackgroundLocationPlugin.swift in Sources */,
+				IG01AA22BB33CC44DD55EE66 /* InstagramSharePlugin.swift in Sources */,
 				8074F99A4A4C49BDC775A110 /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

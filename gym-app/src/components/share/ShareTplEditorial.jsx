@@ -30,6 +30,7 @@ export default function ShareTplEditorial({
   showMuscles = true,
   showPRs = true,
   accent = '#2EC4C4',
+  transparent = false,
 }) {
   const pad = Math.round(w * 0.06);
   const big = w > 320 ? 1 : 0.88;
@@ -41,7 +42,10 @@ export default function ShareTplEditorial({
         height: h,
         position: 'relative',
         overflow: 'hidden',
-        background: '#FAFAF7',
+        // Drop the surface fill when in sticker mode so the rasterized PNG
+        // carries alpha — lets the user layer the card over their own IG
+        // Story photo. The inner highlight cards keep their fills.
+        background: transparent ? 'transparent' : '#FAFAF7',
         fontFamily: TuFont.body,
         display: 'flex',
         flexDirection: 'column',

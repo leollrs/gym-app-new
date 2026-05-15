@@ -33,6 +33,7 @@ export default function ShareTplBoldSport({
   showMuscles = true, // eslint-disable-line no-unused-vars
   showPRs = true,
   accent = '#2EC4C4',
+  transparent = false,
 }) {
   const pad = Math.round(w * 0.055);
   return (
@@ -42,11 +43,15 @@ export default function ShareTplBoldSport({
         height: h,
         position: 'relative',
         overflow: 'hidden',
-        background: '#0A0D10',
+        // Sticker mode: drop the dark surface so the PNG carries alpha. The
+        // big background number, accent washes, and content stack still
+        // render — they read just fine against a user-supplied IG photo.
+        background: transparent ? 'transparent' : '#0A0D10',
         fontFamily: TuFont.body,
       }}
     >
-      {/* gym-color wash */}
+      {/* gym-color wash — kept even in sticker mode; the radial highlight
+          adds depth on top of the user's photo. */}
       <div
         style={{
           position: 'absolute',

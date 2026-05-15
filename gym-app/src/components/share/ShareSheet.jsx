@@ -1,16 +1,18 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { X, Image as ImageIcon } from 'lucide-react';
+import { X, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
+import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
 import ShareTplEditorial from './ShareTplEditorial';
 import ShareTplBoldSport from './ShareTplBoldSport';
 import ShareTplPoster from './ShareTplPoster';
 import ShareTplPhoto from './ShareTplPhoto';
+import ShareTplSticker from './ShareTplSticker';
 import { ShareFormats, ShareExportSizes, TuFont } from './ShareFormats';
 
 // Destination icons (ported from reference)
@@ -249,7 +251,11 @@ function TemplateChip({ active, onClick, label, preview }) {
 }
 
 // ── Template resolver ──────────────────────────────────────────────────────
+// `template === 'sticker'` is the transparent-background variant — overlays
+// the user's IG Story photo (Strava Stats Sticker pattern). All other ids
+// resolve to the existing full-bleed designs.
 function renderTemplate(template, props) {
+  if (template === 'sticker') return <ShareTplSticker {...props} />;
   if (template === 'editorial') return <ShareTplEditorial {...props} />;
   if (template === 'bold') return <ShareTplBoldSport {...props} />;
   if (template === 'photo') return <ShareTplPhoto {...props} />;
@@ -257,7 +263,10 @@ function renderTemplate(template, props) {
 }
 
 // ── DOM → PNG blob via SVG foreignObject rasterization ─────────────────────
-export async function rasterizeNode(node, targetW, targetH) {
+// `transparent: true` skips the black background fill so the exported PNG
+// carries alpha — needed for the IG Stories sticker / Strava-style overlay
+// flow where the user composes our card on top of their own photo.
+export async function rasterizeNode(node, targetW, targetH, { transparent = false } = {}) {
   const rect = node.getBoundingClientRect();
   const srcW = Math.max(1, Math.round(rect.width));
   const srcH = Math.max(1, Math.round(rect.height));
@@ -285,8 +294,10 @@ export async function rasterizeNode(node, targetW, targetH) {
   canvas.width = Math.round(srcW * scale);
   canvas.height = Math.round(srcH * scale);
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!transparent) {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   return await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 0.95));
 }
@@ -301,6 +312,11 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
   const [showExactWeights, setShowExactWeights] = useState(true);
   const [showMuscles, setShowMuscles] = useState(true);
   const [showPRs, setShowPRs] = useState(true);
+  // Sticker mode: render the card with a transparent background so the user
+  // can layer it over their own photo in Instagram Stories (Strava's "Stats
+  // Sticker" pattern). The IG Story destination automatically picks the
+  // sticker pasteboard slot instead of the background slot when this is on.
+  const [sticker, setSticker] = useState(false);
   const [caption, setCaption] = useState('');
   const [activeDest, setActiveDest] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -380,8 +396,8 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
   const buildCard = useCallback(async () => {
     if (!cardRef.current) return null;
     const exp = ShareExportSizes[format];
-    return await rasterizeNode(cardRef.current, exp.w, exp.h);
-  }, [format]);
+    return await rasterizeNode(cardRef.current, exp.w, exp.h, { transparent: sticker });
+  }, [format, sticker]);
 
   const handleDest = useCallback(async (dest) => {
     if (busy) return;
@@ -435,8 +451,27 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
           });
           if (postErr) console.error('[ShareSheet] post failed', postErr);
         }
-      } else if (dest === 'wa' || dest === 'im' || dest === 'ig-story' || dest === 'ig-feed') {
-        // Native share — Capacitor will surface iOS/Android share sheet.
+      } else if (dest === 'ig-story') {
+        // Direct deep link into the IG Stories composer — skips the native
+        // share sheet middle step. Falls back to the generic share sheet if
+        // IG isn't installed, we're not on iOS, or the plugin call fails.
+        let landedInIG = false;
+        if (blob && await isInstagramStoriesAvailable()) {
+          const ig = await shareToInstagramStory(
+            sticker
+              ? { stickerBlob: blob, contentURL: link }
+              : { backgroundBlob: blob, contentURL: link }
+          );
+          landedInIG = ig.ok;
+        }
+        if (!landedInIG && blob) {
+          await shareBlob(blob, 'tugympr-workout.png', full);
+        }
+      } else if (dest === 'wa' || dest === 'im' || dest === 'ig-feed') {
+        // IG Feed has no published deep-link scheme for pre-loading an image
+        // (Stories is the only one Instagram exposes), so all of these route
+        // through the native share sheet. iOS surfaces IG/WhatsApp/Messages
+        // tiles inline and the user picks the destination.
         if (blob) {
           await shareBlob(blob, 'tugympr-workout.png', full);
         } else {
@@ -456,7 +491,7 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
       setBusy(false);
       onClose?.();
     }
-  }, [buildCard, caption, data, profile, user, onClose, busy]);
+  }, [buildCard, caption, data, profile, user, onClose, busy, sticker]);
 
   const handleCta = () => {
     if (!activeDest) return;
@@ -471,6 +506,11 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
     showGym, showExactWeights, showMuscles, showPRs,
     accent: renderedAccent,
     backgroundSrc: template === 'photo' ? backgroundSrc : undefined,
+    // Templates respect `transparent` by skipping their bg fill — the rasterized
+    // PNG then carries alpha and can be layered as a sticker on the user's own
+    // Instagram Story photo. Forced off for the photo template (which IS a
+    // photo) and the poster template (the slanted bar is the visual anchor).
+    transparent: sticker && template !== 'photo' && template !== 'poster',
   };
 
   // Full-res offscreen render (used for rasterization).
@@ -715,6 +755,9 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4' }) 
             </Toggle>
             <Toggle on={showExactWeights} onClick={() => setShowExactWeights(!showExactWeights)}>
               {t('sessionSummary.share.exactWeights', 'Exact weights')}
+            </Toggle>
+            <Toggle on={sticker} onClick={() => setSticker(!sticker)}>
+              {t('sessionSummary.share.sticker', 'Sticker (transparent)')}
             </Toggle>
           </div>
         </div>

@@ -6,6 +6,7 @@ class MainViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(LiveActivityPlugin())
         bridge?.registerPluginInstance(WalletPassPlugin())
         bridge?.registerPluginInstance(BackgroundLocationPlugin())
+        bridge?.registerPluginInstance(InstagramSharePlugin())
     }
 
     override func viewDidLoad() {
