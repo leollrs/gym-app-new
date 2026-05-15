@@ -1457,10 +1457,12 @@ const Dashboard = () => {
                         </button>
                       </>
                     )}
-                    {/* Post-completion access to the Recovery / Readiness map,
-                        with the current readiness score baked into the pill
-                        so the user gets the headline number at a glance. */}
-                    {isToday && hasTrainedToday && (
+                    {/* Recovery / Readiness map access. Shown whenever Edit +
+                        Swap aren't competing for the row: post-workout, on
+                        rest days (no routine for the day), and on gym-closed
+                        days. Edit/Swap's own gate up top is the inverse, so
+                        the two never overlap. */}
+                    {isToday && (hasTrainedToday || isGymClosedToday || !selectedRoutine) && (
                       <button
                         type="button"
                         onClick={() => setReadinessOpen(true)}

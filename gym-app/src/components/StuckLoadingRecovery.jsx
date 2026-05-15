@@ -41,6 +41,15 @@ const AUTO_RECOVERY_COOLDOWN_MS = 120_000;
 function rootIsEmpty() {
   const root = document.getElementById('root');
   if (!root) return true;
+  // The intentional auth splash is the LoadingScreen in App.jsx — its outer
+  // div carries `data-loading-screen`. While that's mounted the root is
+  // "empty" of meaningful text (animated SVG + dots), but the app is
+  // deliberately gating on the auth context, NOT actually stuck. If the
+  // auth gate gets stuck, AuthContext's own 6 s timeout drops it; only
+  // when neither LoadingScreen nor real content is on screen do we want
+  // to claim stuck. Without this check the SIGNED_IN-driven splash bounce
+  // on slow boots tripped a spurious auto-cache-wipe + reload.
+  if (root.querySelector('[data-loading-screen]')) return false;
   // Use innerText so hidden / collapsed nodes don't count.
   const text = (root.innerText || root.textContent || '').trim();
   if (text.length < MIN_MEANINGFUL_TEXT) return true;

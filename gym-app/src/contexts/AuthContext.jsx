@@ -116,6 +116,13 @@ export const AuthProvider = ({ children }) => {
   const [lifetimePoints, setLifetimePoints] = useState(null); // null = not loaded yet, 0+ = loaded
   const [mfaRequired, setMfaRequired] = useState(false);
   const watchSyncTimeoutRef = useRef(null);
+  // Tracks the user id whose profile we've already loaded (initially seeded
+  // from the offline cache). Used in the SIGNED_IN handler to skip the
+  // loading-screen flash on session restoration / silent token refresh —
+  // supabase emits SIGNED_IN for those too, and re-raising loading=true
+  // every time made the splash bounce in/out and tripped StuckLoadingRecovery
+  // on slow boots.
+  const loadedProfileIdRef = useRef(cachedProfile?.id || null);
 
   // ── Multi-role view switching ─────────────────────────────
   // activeView tracks which "experience" the user is currently in:
@@ -183,6 +190,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     setProfile(data ?? null);
+    if (data?.id) loadedProfileIdRef.current = data.id;
 
     // Update last_active_at for all roles (client-side, throttled once/hour)
     if (data?.id) {
@@ -642,6 +650,7 @@ export const AuthProvider = ({ children }) => {
         setUnreadNotifications(0);
         setMfaRequired(false);
         setLoading(false);
+        loadedProfileIdRef.current = null;
         resetToDefault();
         try { clearSessionCreatedAt(); } catch {}
         try { posthog.reset(); } catch {}
@@ -660,8 +669,16 @@ export const AuthProvider = ({ children }) => {
         try {
           if (!getSessionCreatedAt()) setSessionCreatedAt(Date.now());
         } catch {}
-        // Full profile fetch with loading screen for new sign-ins
-        setLoading(true);
+        // SIGNED_IN also fires for session restoration on cold start and
+        // after some token refreshes — for those the cached profile is
+        // still valid and we should NOT flash the loading screen (doing so
+        // makes the splash bounce in/out and, on slow connections, can
+        // trip StuckLoadingRecovery into an unnecessary cache wipe).
+        // Only re-raise the gate for a genuine new sign-in: the user id
+        // is different from the one we already have loaded.
+        if (loadedProfileIdRef.current !== session.user.id) {
+          setLoading(true);
+        }
         fetchProfile(session.user.id);
         return;
       }

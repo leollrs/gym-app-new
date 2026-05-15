@@ -209,7 +209,10 @@ const LoadingScreen = () => {
   }, []);
 
   return (
-  <div className="min-h-screen bg-[#05070B] flex items-center justify-center">
+  <div
+    className="min-h-screen bg-[#05070B] flex items-center justify-center"
+    data-loading-screen="1"
+  >
     <div className="flex flex-col items-center gap-6">
       {/* Animated running figure */}
       <div className="relative w-20 h-20">
