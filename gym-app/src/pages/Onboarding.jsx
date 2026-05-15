@@ -297,17 +297,26 @@ const OBInput = ({ placeholder, value, onChange, icon, right, monospace, type = 
 );
 
 // Bottom CTA bar. Renders OUTSIDE the scroll body (as a flex sibling of the
-// scroller in the page chrome), so it's auto-pinned to the bottom of the
-// keyboard-aware viewport. No `position: sticky` needed — the scroll body
-// owns the overflow and this row sits below it natively.
+// scroller in the page chrome) so it's auto-pinned to the bottom of the
+// keyboard-aware viewport.
+//
+// When the iOS keyboard opens (body.keyboard-open is set by Capacitor's
+// keyboardWillShow listener in main.jsx), the WebView shrinks under native
+// resize, which would otherwise pin this CTA right above the keyboard and
+// cover the inputs the user is trying to type into. Hide the bar while the
+// keyboard is up — the user types, dismisses the keyboard, then sees the
+// CTA again. Implemented via plain CSS so there's no React re-render cost.
 const OBBottomBar = ({ children }) => (
-  <div style={{
-    flexShrink: 0,
-    padding: '14px 0 8px',
-    marginTop: 8,
-    background: OB.bg,
-    display: 'flex', alignItems: 'center', gap: 12,
-  }}>
+  <div
+    className="ob-bottom-bar"
+    style={{
+      flexShrink: 0,
+      padding: '14px 0 8px',
+      marginTop: 8,
+      background: OB.bg,
+      display: 'flex', alignItems: 'center', gap: 12,
+    }}
+  >
     {children}
   </div>
 );

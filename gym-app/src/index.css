@@ -1304,6 +1304,13 @@ body.keyboard-open {
   --safe-bottom: 0px;
 }
 
+/* Hide the onboarding CTA bar while the iOS keyboard is open. Under
+   Capacitor's native keyboard-resize mode the WebView shrinks to sit
+   above the keyboard, which would otherwise pin the CTA right on top
+   of the input the user is trying to type into. The bar reappears the
+   moment focus is dismissed (`keyboardWillHide` removes the class). */
+body.keyboard-open .ob-bottom-bar { display: none !important; }
+
 /* ── Offline indicator ───────────────────────────────────────────── */
 body.offline::after {
   content: 'No Connection';
