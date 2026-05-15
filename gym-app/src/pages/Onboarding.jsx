@@ -296,15 +296,17 @@ const OBInput = ({ placeholder, value, onChange, icon, right, monospace, type = 
   </div>
 );
 
-// Fixed bottom CTA bar (sticky in mobile viewport)
+// Bottom CTA bar. Renders OUTSIDE the scroll body (as a flex sibling of the
+// scroller in the page chrome), so it's auto-pinned to the bottom of the
+// keyboard-aware viewport. No `position: sticky` needed — the scroll body
+// owns the overflow and this row sits below it natively.
 const OBBottomBar = ({ children }) => (
   <div style={{
-    position: 'sticky', bottom: 0, left: 0, right: 0,
-    padding: '14px 0 24px',
-    marginTop: 24,
-    background: `linear-gradient(to top, ${OB.bg} 70%, rgba(240,238,233,0))`,
+    flexShrink: 0,
+    padding: '14px 0 8px',
+    marginTop: 8,
+    background: OB.bg,
     display: 'flex', alignItems: 'center', gap: 12,
-    zIndex: 5,
   }}>
     {children}
   </div>
@@ -597,6 +599,11 @@ const Onboarding = () => {
     workout_buddy_username:     '',
     health_linked:              false,
     known_maxes:                { ex_bp: '', ex_sq: '', ex_dl: '', ex_ohp: '' },
+    // false = English (lb, ft/in), true = International (kg, cm). Drives the
+    // display of the body-stats inputs and is persisted to `profiles.metric_units`
+    // at finish so the whole app respects the user's preference. Switchable
+    // later from Personal Info.
+    metric_units:               false,
   };
 
   const [data, setData] = useState(savedDraft?.data ? { ...defaultData, ...savedDraft.data } : defaultData);
@@ -682,8 +689,15 @@ const Onboarding = () => {
   // Plan + meal plan state
   const [showGeneratePlan, setShowGeneratePlan] = useState(false);
   const [generateError, setGenerateError] = useState('');
+  // Variant-A routines (the default rotation). The preview also shows
+  // variant B by toggling `previewWeekIdx` — both arrays are stored on the
+  // plan cache so the preview can flip without re-generating.
   const [generatedRoutines, setGeneratedRoutines] = useState([]);
+  const [generatedRoutinesB, setGeneratedRoutinesB] = useState([]);
   const [previewRoutineIdx, setPreviewRoutineIdx] = useState(0);
+  // 0 = Week A, 1 = Week B. The actual program alternates A/B on a 2-week
+  // cycle (schedule_map), so two "weeks" is the full preview surface.
+  const [previewWeekIdx, setPreviewWeekIdx] = useState(0);
 
   const [showMealPlan, setShowMealPlan] = useState(false);
   const [mealPlanError, setMealPlanError] = useState('');
@@ -819,8 +833,11 @@ const Onboarding = () => {
     if (step !== 10 || showGeneratePlan) return;
     if (planCacheRef.current.result) {
       // Instant path: apply and show 'done' immediately
-      setGeneratedRoutines(planCacheRef.current.result.routines);
+      const r = planCacheRef.current.result;
+      setGeneratedRoutines(r.routinesA);
+      setGeneratedRoutinesB(r.routinesB);
       setPreviewRoutineIdx(0);
+      setPreviewWeekIdx(0);
       setShowGeneratePlan('done');
     } else if (planCacheRef.current.promise) {
       // Pending path: await in handler (shows subtle shimmer for max ~2s)
@@ -1147,6 +1164,7 @@ const Onboarding = () => {
         workout_buddy_username:   data.workout_buddy_username?.trim() || null,
         preferred_language:       data.language,
         phone_number:             normalizedPhone,
+        metric_units:             !!data.metric_units,
       };
 
       const { error: profileErr } = await supabase
@@ -1416,17 +1434,20 @@ const Onboarding = () => {
       preloaded: snapshot._preloaded === true,
     });
 
+    // Return BOTH variant rotations so the preview can let the user flip
+    // between Week A and Week B (alternated by the schedule_map on a 2-week
+    // cycle). Naming + exercise enrichment is identical for both — wrapped
+    // in a helper so the two arrays stay in sync.
+    const enrich = (variant) => variant.map((r) => ({
+      name: generateRoutineName(r.slotsKey, r.variantIndex, nameSeed),
+      exercises: r.exercises.map((ex) => {
+        const info = getExerciseById(ex.exerciseId);
+        return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '' };
+      }),
+    }));
     return {
-      routines: result.routinesA.map((r) => ({
-        // Use the creative name we wrote to the DB so the onboarding preview
-        // matches what the user will see once they hit the app (e.g. "Apex
-        // Build" instead of "Upper A").
-        name: generateRoutineName(r.slotsKey, r.variantIndex, nameSeed),
-        exercises: r.exercises.map((ex) => {
-          const info = getExerciseById(ex.exerciseId);
-          return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '' };
-        }),
-      })),
+      routinesA: enrich(result.routinesA),
+      routinesB: enrich(result.routinesB),
     };
   };
 
@@ -1439,8 +1460,10 @@ const Onboarding = () => {
       if (planCacheRef.current.result) {
         // Already resolved — instant!
         const cached = planCacheRef.current.result;
-        setGeneratedRoutines(cached.routines);
+        setGeneratedRoutines(cached.routinesA);
+        setGeneratedRoutinesB(cached.routinesB);
         setPreviewRoutineIdx(0);
+        setPreviewWeekIdx(0);
         setShowGeneratePlan('done');
         return;
       }
@@ -1452,8 +1475,10 @@ const Onboarding = () => {
       }
       const result = await promise;
       planCacheRef.current.result = result;
-      setGeneratedRoutines(result.routines);
+      setGeneratedRoutines(result.routinesA);
+      setGeneratedRoutinesB(result.routinesB);
       setPreviewRoutineIdx(0);
+      setPreviewWeekIdx(0);
       setShowGeneratePlan('done');
     } catch (err) {
       planCacheRef.current = { key: null, promise: null, result: null, error: err };
@@ -1503,13 +1528,22 @@ const Onboarding = () => {
     'soy_sauce', 'olive_oil',
   ];
 
+  // MEALS is lazy-loaded into the local state below — it starts as an empty
+  // array on first paint and gets populated by `loadMeals()` shortly after.
+  // The previous deps array left MEALS out, so this memo froze at 0 until
+  // the user clicked a restriction/allergy chip (which changed the deps and
+  // forced a re-run). To the user that read as "if I don't click anything
+  // it doesn't suggest anything; selecting options RAISES the count" —
+  // exactly the opposite of the intended "empty selection = full pool,
+  // selections rip away options" behavior. Adding MEALS to the deps lets
+  // the recompute fire as soon as the lazy load resolves.
   const availableMealCount = useMemo(() => {
     return MEALS.filter(m =>
       isMealAllergenSafe(m, foodAllergies) &&
       isMealDietaryCompliant(m, dietaryRestrictions) &&
       !(m.ingredients || []).some(i => dislikedIngredients.includes(i))
     ).length;
-  }, [foodAllergies, dietaryRestrictions, dislikedIngredients]);
+  }, [MEALS, foodAllergies, dietaryRestrictions, dislikedIngredients]);
 
   const filteredCommonIngredients = useMemo(() => {
     if (!ingredientSearch.trim()) return COMMON_INGREDIENTS;
@@ -1703,21 +1737,32 @@ const Onboarding = () => {
   return (
     <main
       style={{
-        minHeight: '100vh',
+        // Lock the page to the visible viewport (minus the keyboard, if open)
+        // so the header + footer stay pinned and only the body scrolls. The
+        // `--keyboard-height` var is set by Capacitor's keyboard listeners in
+        // main.jsx — when iOS pops the keyboard for an input, main shrinks
+        // and the footer rides up above the keyboard instead of getting
+        // covered. 100dvh handles the iOS Safari address-bar collapse case.
+        height: 'calc(100dvh - var(--keyboard-height, 0px))',
         background: OB.bg,
         color: OB.ink,
         fontFamily: OB_FONT.body,
         WebkitFontSmoothing: 'antialiased',
         paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       <div
         style={{
+          width: '100%',
           maxWidth: 480,
           margin: '0 auto',
           padding: '0 20px',
-          minHeight: '100vh',
+          flex: 1,
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -1761,8 +1806,15 @@ const Onboarding = () => {
           t={t}
         />
 
-        {/* Scroll body */}
-        <div style={{ flex: 1, paddingTop: 8 }}>
+        {/* Scroll body — only this element scrolls. Header + footer above/below
+            stay pinned to the (keyboard-aware) viewport. */}
+        <div style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          paddingTop: 8,
+        }}>
 
         {/* ══════════════════════════════════════════════════════
             STEP 0 · INVITE CODE
@@ -2673,6 +2725,40 @@ const Onboarding = () => {
             ══════════════════════════════════════════════════════ */}
         {step === 8 && (
           <div className="animate-fade-in">
+            {/* Unit system. Setting it here pre-fills KG/LB across the app —
+                changeable later from Personal Info. The body-stats inputs
+                below display + accept values in the chosen system; internally
+                we always normalize to lbs + ft/in so the rest of the
+                save/sync code is unchanged. */}
+            <OBLabel>{t('bodyStats.unitsLabel', 'Units')}</OBLabel>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18 }}>
+              {[
+                { value: false, label: t('bodyStats.unitsImperial', 'English · lb, ft') },
+                { value: true,  label: t('bodyStats.unitsMetric', 'International · kg, cm') },
+              ].map(opt => {
+                const sel = !!data.metric_units === opt.value;
+                return (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => set('metric_units', opt.value)}
+                    aria-pressed={sel}
+                    style={{
+                      height: 44, borderRadius: 14,
+                      background: sel ? '#fff' : OB.surface,
+                      border: `1.5px solid ${sel ? OB.teal : OB.line}`,
+                      boxShadow: sel ? '0 0 0 4px rgba(46,196,196,0.12)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 12.5,
+                      color: sel ? OB.tealDeep : OB.ink,
+                      cursor: 'pointer', transition: 'all 150ms ease',
+                      letterSpacing: -0.1,
+                    }}
+                  >{opt.label}</button>
+                );
+              })}
+            </div>
+
             {/* Biological sex */}
             <OBLabel>
               {t('bodyStats.sex')}{' '}
@@ -2680,11 +2766,10 @@ const Onboarding = () => {
                 — {t('bodyStats.sexHint')}
               </span>
             </OBLabel>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {[
                 { value: 'male',   label: t('bodyStats.male') },
                 { value: 'female', label: t('bodyStats.female') },
-                { value: 'other',  label: t('bodyStats.other', 'Other') },
               ].map(opt => {
                 const sel = data.sex === opt.value;
                 return (
@@ -2763,11 +2848,27 @@ const Onboarding = () => {
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
                   <input
-                    type="number" inputMode="decimal" step="0.1" min="50" max="700"
-                    placeholder={t('bodyStats.weightPlaceholder', '178')}
+                    type="number" inputMode="decimal" step="0.1"
+                    min={data.metric_units ? 23 : 50}
+                    max={data.metric_units ? 320 : 700}
+                    placeholder={data.metric_units ? '80' : t('bodyStats.weightPlaceholder', '178')}
                     aria-label={t('bodyStats.weight')}
-                    value={data.initial_weight_lbs}
-                    onChange={e => set('initial_weight_lbs', e.target.value)}
+                    value={
+                      data.metric_units
+                        ? (data.initial_weight_lbs
+                            ? (parseFloat(data.initial_weight_lbs) * 0.453592).toFixed(1)
+                            : '')
+                        : data.initial_weight_lbs
+                    }
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (data.metric_units) {
+                        // Convert kg → lb on the fly; keep the canonical store in lb
+                        set('initial_weight_lbs', v ? (parseFloat(v) * 2.20462).toFixed(1) : '');
+                      } else {
+                        set('initial_weight_lbs', v);
+                      }
+                    }}
                     style={{
                       flex: 1, minWidth: 0, width: '100%',
                       background: 'transparent', border: 'none', outline: 'none',
@@ -2775,7 +2876,9 @@ const Onboarding = () => {
                       color: OB.ink, letterSpacing: -0.5,
                     }}
                   />
-                  <div style={{ fontSize: 11, color: OB.mute, fontWeight: 700 }}>lb</div>
+                  <div style={{ fontSize: 11, color: OB.mute, fontWeight: 700 }}>
+                    {data.metric_units ? 'kg' : 'lb'}
+                  </div>
                 </div>
               </div>
             </div>
@@ -2789,33 +2892,73 @@ const Onboarding = () => {
               >
                 {t('bodyStats.height')}
               </OBLabel>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {[
-                  { val: data.height_feet,   onChange: v => set('height_feet', v),   label: 'ft', min: 3, max: 8,  ph: '5' },
-                  { val: data.height_inches, onChange: v => set('height_inches', v), label: 'in', min: 0, max: 11, ph: '10' },
-                ].map((f, i) => (
-                  <div key={i} style={{
-                    height: 54, borderRadius: 14, background: OB.surface,
-                    border: `1.5px solid ${OB.line}`, padding: '0 16px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  }}>
-                    <input
-                      type="number" inputMode="numeric" min={f.min} max={f.max}
-                      placeholder={f.ph}
-                      aria-label={`${t('bodyStats.height')} (${f.label})`}
-                      value={f.val}
-                      onChange={e => f.onChange(e.target.value)}
-                      style={{
-                        flex: 1, minWidth: 0, width: '100%',
-                        background: 'transparent', border: 'none', outline: 'none',
-                        fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 22,
-                        color: OB.ink, letterSpacing: -0.5,
-                      }}
-                    />
-                    <div style={{ fontSize: 11, color: OB.mute, fontWeight: 700 }}>{f.label}</div>
-                  </div>
-                ))}
-              </div>
+              {data.metric_units ? (
+                // One cm input. Convert to ft + in for storage so the rest of
+                // the save path stays unchanged.
+                <div style={{
+                  height: 54, borderRadius: 14, background: OB.surface,
+                  border: `1.5px solid ${OB.line}`, padding: '0 16px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <input
+                    type="number" inputMode="numeric" min={91} max={244}
+                    placeholder="175"
+                    aria-label={`${t('bodyStats.height')} (cm)`}
+                    value={(() => {
+                      const ft = parseInt(data.height_feet) || 0;
+                      const inches = parseInt(data.height_inches) || 0;
+                      const total = ft * 12 + inches;
+                      return total > 0 ? String(Math.round(total * 2.54)) : '';
+                    })()}
+                    onChange={e => {
+                      const cm = parseFloat(e.target.value) || 0;
+                      const totalInches = cm * 0.393701;
+                      const ft = Math.floor(totalInches / 12);
+                      const inches = Math.round(totalInches - ft * 12);
+                      setData(d => ({
+                        ...d,
+                        height_feet: cm ? String(ft) : '',
+                        height_inches: cm ? String(inches) : '',
+                      }));
+                    }}
+                    style={{
+                      flex: 1, minWidth: 0, width: '100%',
+                      background: 'transparent', border: 'none', outline: 'none',
+                      fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 22,
+                      color: OB.ink, letterSpacing: -0.5,
+                    }}
+                  />
+                  <div style={{ fontSize: 11, color: OB.mute, fontWeight: 700 }}>cm</div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {[
+                    { val: data.height_feet,   onChange: v => set('height_feet', v),   label: 'ft', min: 3, max: 8,  ph: '5' },
+                    { val: data.height_inches, onChange: v => set('height_inches', v), label: 'in', min: 0, max: 11, ph: '10' },
+                  ].map((f, i) => (
+                    <div key={i} style={{
+                      height: 54, borderRadius: 14, background: OB.surface,
+                      border: `1.5px solid ${OB.line}`, padding: '0 16px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    }}>
+                      <input
+                        type="number" inputMode="numeric" min={f.min} max={f.max}
+                        placeholder={f.ph}
+                        aria-label={`${t('bodyStats.height')} (${f.label})`}
+                        value={f.val}
+                        onChange={e => f.onChange(e.target.value)}
+                        style={{
+                          flex: 1, minWidth: 0, width: '100%',
+                          background: 'transparent', border: 'none', outline: 'none',
+                          fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 22,
+                          color: OB.ink, letterSpacing: -0.5,
+                        }}
+                      />
+                      <div style={{ fontSize: 11, color: OB.mute, fontWeight: 700 }}>{f.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Injuries */}
@@ -3157,7 +3300,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {step === 11 && showGeneratePlan === 'done' && (
+        {step === 11 && showGeneratePlan === 'done' && (() => {
+          return (
           <div className="animate-fade-in">
             {/* GENERATED pill */}
             <div style={{
@@ -3191,8 +3335,53 @@ const Onboarding = () => {
               })}
             </div>
 
-            {/* Day tabs with arrows */}
-            {generatedRoutines.length > 0 && (
+            {/* Week A / Week B selector — the program alternates between two
+                rotations on a 2-week cycle. Shown only when variant B has
+                been generated (which it always is for fresh runs; older
+                cache entries without B fall through to a single-week view). */}
+            {generatedRoutinesB.length > 0 && (
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
+                marginTop: 16,
+              }}>
+                {[
+                  { idx: 0, label: t('generatePlan.weekA', 'Week A') },
+                  { idx: 1, label: t('generatePlan.weekB', 'Week B') },
+                ].map(w => {
+                  const sel = previewWeekIdx === w.idx;
+                  return (
+                    <button
+                      key={w.idx}
+                      type="button"
+                      onClick={() => { setPreviewWeekIdx(w.idx); setPreviewRoutineIdx(0); }}
+                      aria-pressed={sel}
+                      style={{
+                        height: 40, borderRadius: 12,
+                        background: sel ? OB.ink : OB.surface,
+                        border: `1.5px solid ${sel ? OB.ink : OB.line}`,
+                        color: sel ? '#fff' : OB.ink,
+                        fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 13,
+                        letterSpacing: -0.1, cursor: 'pointer',
+                        transition: 'all 150ms ease',
+                      }}
+                    >{w.label}</button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Day tabs + exercise list. Source array swaps between Week A
+                and Week B based on the selector above. */}
+            {(() => {
+              const activeRoutines =
+                previewWeekIdx === 1 && generatedRoutinesB.length > 0
+                  ? generatedRoutinesB
+                  : generatedRoutines;
+              if (activeRoutines.length === 0) return null;
+              const clampedIdx = Math.min(previewRoutineIdx, activeRoutines.length - 1);
+              const activeRoutine = activeRoutines[clampedIdx];
+              return (
+              <div>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 marginTop: 20, marginBottom: 14,
@@ -3201,14 +3390,14 @@ const Onboarding = () => {
               }}>
                 <button
                   type="button"
-                  onClick={() => setPreviewRoutineIdx(i => Math.max(0, i - 1))}
-                  disabled={previewRoutineIdx === 0}
+                  onClick={() => setPreviewRoutineIdx(i => Math.max(0, Math.min(i, activeRoutines.length - 1) - 1))}
+                  disabled={clampedIdx === 0}
                   style={{
                     width: 32, height: 32, borderRadius: 999, border: 'none',
                     background: OB.surface2, color: OB.mute,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: previewRoutineIdx === 0 ? 'default' : 'pointer',
-                    opacity: previewRoutineIdx === 0 ? 0.4 : 1,
+                    cursor: clampedIdx === 0 ? 'default' : 'pointer',
+                    opacity: clampedIdx === 0 ? 0.4 : 1,
                   }}
                 >
                   <ChevronLeft size={16} />
@@ -3218,35 +3407,33 @@ const Onboarding = () => {
                     fontFamily: OB_FONT.display, fontWeight: 900, fontSize: 18,
                     color: OB.ink, letterSpacing: -0.4,
                   }}>
-                    {generatedRoutines[previewRoutineIdx]?.name?.replace('Auto: ', '') || t('generatePlan.dayFallback', { defaultValue: 'Day {{n}}', n: previewRoutineIdx + 1 })}
+                    {activeRoutine?.name?.replace('Auto: ', '') || t('generatePlan.dayFallback', { defaultValue: 'Day {{n}}', n: clampedIdx + 1 })}
                   </div>
                   <div style={{
                     fontSize: 11, color: OB.sub, fontFamily: OB_FONT.mono, marginTop: 1,
                   }}>
-                    {t('generatePlan.dayCounter', { defaultValue: 'DAY {{current}} / {{total}}', current: previewRoutineIdx + 1, total: generatedRoutines.length })}
+                    {t('generatePlan.dayCounter', { defaultValue: 'DAY {{current}} / {{total}}', current: clampedIdx + 1, total: activeRoutines.length })}
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setPreviewRoutineIdx(i => Math.min(generatedRoutines.length - 1, i + 1))}
-                  disabled={previewRoutineIdx === generatedRoutines.length - 1}
+                  onClick={() => setPreviewRoutineIdx(i => Math.min(activeRoutines.length - 1, Math.min(i, activeRoutines.length - 1) + 1))}
+                  disabled={clampedIdx === activeRoutines.length - 1}
                   style={{
                     width: 32, height: 32, borderRadius: 999, border: 'none',
                     background: OB.ink, color: '#fff',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: previewRoutineIdx === generatedRoutines.length - 1 ? 'default' : 'pointer',
-                    opacity: previewRoutineIdx === generatedRoutines.length - 1 ? 0.4 : 1,
+                    cursor: clampedIdx === activeRoutines.length - 1 ? 'default' : 'pointer',
+                    opacity: clampedIdx === activeRoutines.length - 1 ? 0.4 : 1,
                   }}
                 >
                   <ChevronLeft size={16} style={{ transform: 'rotate(180deg)' }} />
                 </button>
               </div>
-            )}
 
-            {/* Exercise list */}
-            {generatedRoutines[previewRoutineIdx] && (
+              {activeRoutine && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto' }}>
-                {generatedRoutines[previewRoutineIdx].exercises.map((ex, i) => {
+                {activeRoutine.exercises.map((ex, i) => {
                   const palette = [
                     { fg: OB.orange, bg: OB.orangeSoft },
                     { fg: OB.purple, bg: OB.purpleSoft },
@@ -3294,26 +3481,28 @@ const Onboarding = () => {
                   );
                 })}
               </div>
-            )}
+              )}
 
-            {/* Dots */}
-            {generatedRoutines.length > 1 && (
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 14 }}>
-                {generatedRoutines.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setPreviewRoutineIdx(i)}
-                    style={{
-                      width: i === previewRoutineIdx ? 22 : 6, height: 6, borderRadius: 3,
-                      background: i === previewRoutineIdx ? OB.teal : OB.lineStrong,
-                      border: 'none', cursor: 'pointer',
-                      transition: 'width 200ms ease',
-                    }}
-                  />
-                ))}
+              {activeRoutines.length > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 14 }}>
+                  {activeRoutines.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setPreviewRoutineIdx(i)}
+                      style={{
+                        width: i === clampedIdx ? 22 : 6, height: 6, borderRadius: 3,
+                        background: i === clampedIdx ? OB.teal : OB.lineStrong,
+                        border: 'none', cursor: 'pointer',
+                        transition: 'width 200ms ease',
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
               </div>
-            )}
+              );
+            })()}
 
             <div style={{ marginTop: 20 }}>
               <OBButton full tone="teal" icon={<ArrowRight size={16}/>} onClick={handlePlanDone}>
@@ -3321,7 +3510,8 @@ const Onboarding = () => {
               </OBButton>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ══════════════════════════════════════════════════════
             STEP 12 · NUTRITION / MEAL PLAN
