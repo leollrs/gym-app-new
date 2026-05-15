@@ -51,7 +51,13 @@ export default function ShareTplPhoto({
   showPRs = true,
   accent = '#2EC4C4', // eslint-disable-line no-unused-vars
   backgroundSrc,
+  transparent = false,
 }) {
+  // Sticker mode without a user-supplied photo: render bare stats over a
+  // transparent canvas (Strava's "no background" Stats Sticker). When the
+  // user DOES pick a photo, keep it even in sticker mode — their photo IS
+  // the design.
+  const sticker = transparent && !backgroundSrc;
   const pad = Math.round(w * 0.06);
   // Scale typography based on the shorter dimension to keep things sensible
   // across 9:16 / 1:1 / 4:5.
@@ -77,11 +83,16 @@ export default function ShareTplPhoto({
         height: h,
         position: 'relative',
         overflow: 'hidden',
-        background: '#0A0D10',
+        // Sticker (no user photo): drop the surface so the exported PNG carries
+        // alpha and the text/stats float on whatever IG Story photo the user
+        // composes us over. With a user photo OR in opaque mode, fall back to
+        // the dark surface as before.
+        background: sticker ? 'transparent' : '#0A0D10',
         fontFamily: TuFont.body,
       }}
     >
-      {/* Background: photo or fallback gradient + barbell */}
+      {/* Background: photo (if picked), or fallback gradient + barbell when
+          opaque, or NOTHING when sticker mode + no photo. */}
       {backgroundSrc ? (
         <img
           src={backgroundSrc}
@@ -96,7 +107,7 @@ export default function ShareTplPhoto({
             display: 'block',
           }}
         />
-      ) : (
+      ) : !sticker ? (
         <>
           <div
             style={{
@@ -127,16 +138,20 @@ export default function ShareTplPhoto({
             <circle cx="308" cy="120" r="20" fill="#2a2a2a" />
           </svg>
         </>
-      )}
+      ) : null}
 
-      {/* Dark gradient overlay */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.85) 100%)',
-        }}
-      />
+      {/* Dark gradient overlay — purely for legibility on top of the bg/photo.
+          Skipped in sticker mode so the stats sit on raw alpha (the IG photo
+          the user will compose us over does the contrast job itself). */}
+      {!sticker && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.85) 100%)',
+          }}
+        />
+      )}
 
       {/* Top-left: eyebrow + workout name */}
       <div

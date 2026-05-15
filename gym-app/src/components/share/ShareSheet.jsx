@@ -643,10 +643,14 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
     showGym, showExactWeights, showMuscles, showPRs,
     accent: renderedAccent,
     backgroundSrc: template === 'photo' ? backgroundSrc : undefined,
-    // Sticker template handles its own transparent bg internally; the four
-    // full-bleed templates ignore this prop. Kept here so a future template
-    // refit can opt in without touching the renderer.
-    transparent: false,
+    // When the Sticker toggle is on, render every template with a
+    // transparent canvas so the exported PNG carries alpha and the user
+    // can drop it over their own IG Story photo (Strava's Stats Sticker
+    // pattern). Editorial/Bold drop their fill; Photo template drops
+    // bg+overlay only when no user photo is picked (with a photo the
+    // photo IS the design anchor, so we keep it). Poster keeps its
+    // surface because the slanted accent bar IS the template.
+    transparent: isTransparentExport && template !== 'poster',
     // Sticker template switches its headline by `kind` ('workout' | 'pr' |
     // 'streak' | 'monthly' | 'body'). Accept either the top-level prop on
     // the sheet (preferred) or a `data.kind` field (legacy callsites).
