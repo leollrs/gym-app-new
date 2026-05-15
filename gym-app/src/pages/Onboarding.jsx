@@ -441,7 +441,7 @@ const STEP_NAMES  = ['invite', 'language', 'fitness_level', 'goal', 'equipment',
 
 // ── MAIN COMPONENT ─────────────────────────────────────────
 const Onboarding = () => {
-  const { user, refreshProfile, profile } = useAuth();
+  const { user, refreshProfile, markOnboarded, profile } = useAuth();
   const navigate = useNavigate();
   const { t, i18n, ready: i18nReady } = useTranslation(['onboarding', 'common']);
   const posthog = usePostHog();
@@ -1574,20 +1574,19 @@ const Onboarding = () => {
     ing.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   const handleSkipMealPlan = async () => {
-    // Write is_onboarded BEFORE anything else so PublicRoute/ProtectedRoute
-    // never bounce back to /onboarding. Await refreshProfile so the AuthContext
-    // reflects the flip before we navigate — otherwise there's a render frame
-    // where profile.is_onboarded is still false and ProtectedRoute redirects
-    // to /onboarding, re-mounting this page at step 0 (the step-1 flash).
+    // See handleMealPlanDone — same ordering: DB write → optimistic local
+    // flip via markOnboarded() (synchronous) → navigate → background
+    // refreshProfile. Awaiting refreshProfile inline used to race the
+    // navigate on slow networks and bounce the user back to step 0.
     await supabase.from('profiles').update({ is_onboarded: true }).eq('id', user.id);
     posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
-    // Mark done so the draft-persist effect stops writing back step 11
     setOnboardingDone(true);
-    try { await refreshProfile(); } catch {}
+    markOnboarded();
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
     try { localStorage.removeItem('referrer_buddy'); } catch {}
     navigate('/', { replace: true });
+    refreshProfile?.()?.catch(() => {});
   };
 
   const handleMealPlanPrefs = () => setShowMealPlan('prefs');
@@ -1708,18 +1707,23 @@ const Onboarding = () => {
   };
 
   const handleMealPlanDone = async () => {
-    // Same ordering contract as handleSkipMealPlan: persist, refresh context,
-    // clear drafts, THEN navigate. Prevents the step-1 flash caused by
-    // ProtectedRoute redirecting to /onboarding while the profile context is
-    // still stale.
+    // Order matters: DB write → optimistic local flip → navigate → background
+    // refresh. Awaiting refreshProfile before the navigate used to race
+    // against the get_auth_context RPC on slow networks (the navigate would
+    // beat the RPC, ProtectedRoute would read a stale profile, and bounce
+    // the user back to /onboarding step 0). markOnboarded() updates the
+    // in-memory profile AND offline_profile cache synchronously, so the
+    // next render of ProtectedRoute always sees is_onboarded=true. The
+    // background refreshProfile then reconciles with the server.
     await supabase.from('profiles').update({ is_onboarded: true }).eq('id', user.id);
     posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
     setOnboardingDone(true);
-    try { await refreshProfile(); } catch {}
+    markOnboarded();
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
     try { localStorage.removeItem('referrer_buddy'); } catch {}
     navigate('/', { replace: true });
+    refreshProfile?.()?.catch(() => {});
   };
 
   const dayShort = (index) => t(`common:days.${SHORT_DAY_KEYS[index]}`);

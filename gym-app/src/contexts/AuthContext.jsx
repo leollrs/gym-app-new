@@ -907,6 +907,28 @@ export const AuthProvider = ({ children }) => {
     if (user) return fetchProfile(user.id);
   }, [user]);
 
+  // Synchronous local override for the onboarding-complete path. The race
+  // is: handleMealPlanDone writes is_onboarded=true to the DB, then awaits
+  // refreshProfile, then navigates to /. refreshProfile waits on the
+  // get_auth_context RPC — on slow networks that round-trip can outlast
+  // the navigate(), so ProtectedRoute reads a stale `profile.is_onboarded
+  // = false` and bounces the user back to /onboarding. Onboarding now
+  // calls markOnboarded() first, which flips the in-memory profile +
+  // offline_profile cache synchronously so the next render of
+  // ProtectedRoute always sees is_onboarded=true.
+  const markOnboarded = useCallback(() => {
+    setProfile((prev) => (prev ? { ...prev, is_onboarded: true } : prev));
+    try {
+      const raw = localStorage.getItem('offline_profile');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        parsed.is_onboarded = true;
+        parsed.cached_at = Date.now();
+        localStorage.setItem('offline_profile', JSON.stringify(parsed));
+      }
+    } catch { /* cache wipe is fine — refreshProfile will repopulate */ }
+  }, []);
+
   // ── ROLE DEMOTION DETECTOR ─────────────────────────────────
   // If a trainer/admin is demoted while logged in, the cached profile.role
   // would otherwise stay until next login. On window focus / visibility,
@@ -1040,6 +1062,7 @@ export const AuthProvider = ({ children }) => {
     signOut,
     deleteAccount,
     refreshProfile,
+    markOnboarded,
     patchProfile,
     unreadNotifications,
     refreshNotifications,
@@ -1068,6 +1091,7 @@ export const AuthProvider = ({ children }) => {
     signOut,
     deleteAccount,
     refreshProfile,
+    markOnboarded,
     patchProfile,
     unreadNotifications,
     refreshNotifications,

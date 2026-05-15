@@ -366,7 +366,19 @@ const Dashboard = () => {
       if (cancelled) return;
       if (!data) {
         // Slight delay so the Dashboard paints first.
-        setTimeout(() => { if (!cancelled) setShowWellnessCheckin(true); }, 800);
+        setTimeout(() => {
+          if (cancelled) return;
+          // Don't pop the wellness modal over the first-launch demo. AppTour
+          // sets window.__appTourActive while running and writes
+          // `app_tour_completed_<userId>` to localStorage on dismiss/finish —
+          // wait for both signals before prompting so a brand-new user
+          // sees the tour first, then can do wellness check-ins later.
+          if (window.__appTourActive) return;
+          try {
+            if (localStorage.getItem(`app_tour_completed_${user.id}`) !== 'true') return;
+          } catch {}
+          setShowWellnessCheckin(true);
+        }, 800);
       }
     })();
     return () => { cancelled = true; };
