@@ -299,13 +299,13 @@ const Navigation = () => {
           status = 'missed';
         }
 
-        // Persist `dayNum` (1-31) directly. The `date: d` Date object survives
-        // the first render fine, but useCachedState round-trips through JSON,
-        // so on a re-mount/cold-boot `day.date` comes back as an ISO string —
-        // and `day.date.getDate()` crashes with "getDate is undefined". The
-        // `date` field is kept in the payload for any consumer that still
-        // expects it; the cell renderer below reads `dayNum` instead.
-        monthDays.push({ date: d, dayNum: day, key, dow, status, isToday });
+        // Persist `dayNum` (1-31) only. useCachedState round-trips this
+        // payload through JSON, which would silently downgrade a Date
+        // object to an ISO string and crash any consumer that called
+        // `day.date.getDate()`. We dropped the `date` field entirely — if
+        // a future consumer needs the full Date, derive it from
+        // `new Date(day.key + 'T00:00:00')` at the call site.
+        monthDays.push({ dayNum: day, key, dow, status, isToday });
       }
 
       const label = cursor.toLocaleDateString(i18n.language === 'es' ? 'es-ES' : 'en-US', { month: 'long', year: 'numeric' });

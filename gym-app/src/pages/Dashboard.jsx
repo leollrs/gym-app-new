@@ -235,6 +235,11 @@ const Dashboard = () => {
     window.addEventListener('app-tour-active', onTour);
     return () => window.removeEventListener('app-tour-active', onTour);
   }, []);
+  // Bumped whenever a wellness check-in is saved. Wired into the readiness
+  // memo's deps so the score on the Recovery pill refreshes immediately
+  // instead of waiting for the user to open + close the Readiness modal
+  // (which previously was the only thing that re-keyed the memo).
+  const [wellnessRefreshKey, setWellnessRefreshKey] = useState(0);
   // Refresh active drafts when page becomes visible (user returns from a workout)
   useEffect(() => {
     const handleVisibility = () => {
@@ -1079,10 +1084,19 @@ const Dashboard = () => {
   })();
   const estimatedCal = Math.round(estimatedMin * 5.2);
 
-  // Derive today's and selected-day cardio from week-wide fetch
-  const todayCardioSessions = weekCardioSessions.filter(cs => isSameDay(new Date(cs.started_at), new Date()));
-  const selectedDayCardioSessions = weekCardioSessions.filter(cs =>
-    new Date(cs.started_at).toLocaleDateString() === selectedDate.toLocaleDateString()
+  // Derive today's and selected-day cardio from week-wide fetch. Memoize so
+  // downstream effects/memos that take these arrays as deps don't churn on
+  // every Dashboard re-render (each call produced a fresh array reference
+  // before, defeating reference-equality checks elsewhere).
+  const todayCardioSessions = useMemo(
+    () => weekCardioSessions.filter(cs => isSameDay(new Date(cs.started_at), new Date())),
+    [weekCardioSessions],
+  );
+  const selectedDayCardioSessions = useMemo(
+    () => weekCardioSessions.filter(cs =>
+      new Date(cs.started_at).toLocaleDateString() === selectedDate.toLocaleDateString()
+    ),
+    [weekCardioSessions, selectedDate],
   );
 
   const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -1122,7 +1136,7 @@ const Dashboard = () => {
       recoveryMetrics: cachedMetrics,
       soreness: todaySoreness,
     });
-  }, [recoveryRecentSessions, readinessOpen]);
+  }, [recoveryRecentSessions, readinessOpen, wellnessRefreshKey]);
 
   // Gym is only "closed" if gym_hours says closed AND there's no program workout scheduled
   // (user who chose "Start Today" on a closed day overrides the gym schedule)
@@ -2719,6 +2733,7 @@ const Dashboard = () => {
           <WellnessCheckinModal
             open={showWellnessCheckin}
             onClose={handleWellnessSkip}
+            onSaved={() => setWellnessRefreshKey(k => k + 1)}
           />
         </Suspense>
       )}

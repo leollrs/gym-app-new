@@ -34,6 +34,16 @@ class ErrorBoundary extends Component {
     trackError('react_crash', error, { componentStack: errorInfo.componentStack });
   }
 
+  // Auto-clear the boundary when the parent bumps `resetKey` (typically the
+  // current pathname — see App.jsx). Without this, a crash on one page kept
+  // showing the fallback even after the user navigated away, because the
+  // class state only cleared via the manual "Try Again" button.
+  componentDidUpdate(prevProps) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
+
   handleRetry = () => {
     this.setState({ hasError: false, error: null });
   };

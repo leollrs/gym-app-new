@@ -167,9 +167,36 @@ export default function BodyMetrics() {
   const [showMeasurements,   setShowMeasurements]   = useState(false);
   const [primaryGoal, setPrimaryGoal] = useState('general_fitness');
 
-  // Progress photos state (with signed URL cache to avoid re-signing on period change)
+  // Progress photos state. Cache holds METADATA only (id, storage_path,
+  // view_angle, taken_at, is_private) — never the signed URL itself, which
+  // expires after 1 h and rendered as a broken <img> on the next cold boot.
+  // Fresh signed URLs are derived from photoMeta in the effect below, with
+  // a small in-memory LRU so navigating between period filters doesn't
+  // re-sign the same paths every time.
   const signedUrlCache = useRef({}); // { storage_path: { url, expiresAt } }
-  const [photos,          setPhotos]          = useCachedState(`${bmCacheKey}-photos`, []);
+  const [photoMeta, setPhotoMeta] = useCachedState(`${bmCacheKey}-photos`, []);
+  const [photos, setPhotos] = useState([]);
+  useEffect(() => {
+    if (!photoMeta?.length) { setPhotos([]); return; }
+    let cancelled = false;
+    (async () => {
+      const now = Date.now();
+      const withUrls = await Promise.all(photoMeta.map(async (p) => {
+        const cached = signedUrlCache.current[p.storage_path];
+        if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
+          return { ...p, url: cached.url };
+        }
+        const { data } = await supabase.storage
+          .from('progress-photos')
+          .createSignedUrl(p.storage_path, 3600);
+        const url = data?.signedUrl ?? '';
+        if (url) signedUrlCache.current[p.storage_path] = { url, expiresAt: now + 3600 * 1000 };
+        return { ...p, url };
+      }));
+      if (!cancelled) setPhotos(withUrls.filter(p => p.url));
+    })();
+    return () => { cancelled = true; };
+  }, [photoMeta]);
   const [showPhotoUpload, setShowPhotoUpload] = useState(false);
   const [uploadAngle,     setUploadAngle]     = useState('front');
   const [uploadFile,      setUploadFile]      = useState(null);
@@ -232,23 +259,8 @@ export default function BodyMetrics() {
       weight: parseFloat(l.weight_lbs),
     })));
     setLatestMeasurements(meas ?? null);
-    const now = Date.now();
-    const photosWithUrls = await Promise.all(
-      (photoData ?? []).map(async (p) => {
-        // Reuse cached signed URL if it hasn't expired (with 5-min buffer)
-        const cached = signedUrlCache.current[p.storage_path];
-        if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
-          return { ...p, url: cached.url };
-        }
-        const { data } = await supabase.storage
-          .from('progress-photos')
-          .createSignedUrl(p.storage_path, 3600); // 1-hour expiry
-        const url = data?.signedUrl ?? '';
-        if (url) signedUrlCache.current[p.storage_path] = { url, expiresAt: now + 3600 * 1000 };
-        return { ...p, url };
-      })
-    );
-    setPhotos(photosWithUrls);
+    // Just persist the meta — URL signing happens in the effect above.
+    setPhotoMeta(photoData ?? []);
     setLoading(false);
   }, [user, period]);
 

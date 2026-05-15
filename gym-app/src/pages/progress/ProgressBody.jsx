@@ -973,7 +973,27 @@ export default function ProgressBody() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [progressPhotos, setProgressPhotos] = useCachedState(`${bodyCacheKey}-photos`, []);
+  // Cache the photo METADATA only (id, storage_path, taken_at, ...). Supabase
+  // signed URLs expire after 1 h, so caching them caused broken <img>s
+  // whenever the user opened the Body tab >1 h after their last visit. The
+  // signed URLs are re-derived in the effect below from the cached metadata
+  // on every mount — instant paint stays, but URLs are always fresh.
+  const [photoMeta, setPhotoMeta] = useCachedState(`${bodyCacheKey}-photos`, []);
+  const [progressPhotos, setProgressPhotos] = useState([]);
+  useEffect(() => {
+    if (!photoMeta?.length) { setProgressPhotos([]); return; }
+    let cancelled = false;
+    (async () => {
+      const withUrls = await Promise.all(photoMeta.map(async (p) => {
+        const { data } = await supabase.storage
+          .from('progress-photos')
+          .createSignedUrl(p.storage_path, 3600);
+        return { ...p, url: data?.signedUrl || null };
+      }));
+      if (!cancelled) setProgressPhotos(withUrls.filter(p => p.url));
+    })();
+    return () => { cancelled = true; };
+  }, [photoMeta]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [primaryGoal, setPrimaryGoal] = useState('general_fitness');
   // Photo zoom modal — { url, taken_at, ... }
@@ -1035,18 +1055,9 @@ export default function ProgressBody() {
     const allLogs = logs ?? [];
     const allMeas = measHistory ?? [];
 
-    // Resolve photo URLs
-    if (photos?.length) {
-      const withUrls = await Promise.all(photos.map(async (p) => {
-        const { data: urlData } = await supabase.storage
-          .from('progress-photos')
-          .createSignedUrl(p.storage_path, 3600); // 1 hour expiry
-        return { ...p, url: urlData?.signedUrl || null };
-      }));
-      setProgressPhotos(withUrls.filter(p => p.url));
-    } else {
-      setProgressPhotos([]);
-    }
+    // Store the photo metadata — URL signing happens in the effect above.
+    // Never cache the signed URL itself (1 h expiry).
+    setPhotoMeta(photos ?? []);
     const newWeightLogs = [...allLogs].reverse();
     const newChartData = allLogs.map(l => ({
       date: format(parseISO(l.logged_at), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined }),
@@ -1091,8 +1102,9 @@ export default function ProgressBody() {
       await supabase.storage.from('progress-photos').remove([photo.storage_path]);
       // Delete from database
       await supabase.from('progress_photos').delete().eq('id', photo.id);
-      // Update local state
-      setProgressPhotos(prev => prev.filter(p => p.id !== photo.id));
+      // Update local state — strip the deleted photo from the cached META;
+      // the URL-bearing `progressPhotos` derives from it via the effect above.
+      setPhotoMeta(prev => prev.filter(p => p.id !== photo.id));
     } catch (err) {
       // silent — UI state unchanged on failure
     }

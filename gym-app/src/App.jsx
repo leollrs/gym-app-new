@@ -1592,7 +1592,10 @@ function App() {
               <Navigation />
               <AppTour userId={user?.id} />
               <div id="main-content" role="main">
-              <ErrorBoundary>
+              {/* resetKey=pathname lets the boundary auto-clear when the user
+                  navigates away from the crashed page, so they don't have to
+                  manually tap "Try Again" to recover. */}
+              <ErrorBoundary resetKey={location.pathname}>
               <Suspense fallback={<Skeleton variant="page" />}>
                 <MemberRoutes />
               </Suspense>

@@ -45,9 +45,17 @@ export default function ViewSwitcherModal({ open, onClose }) {
     return null;
   }
 
-  const handleSwitch = (role) => {
+  const handleSwitch = async (role) => {
     if (role === activeView) { onClose(); return; }
-    const ok = switchView(role);
+    // CRITICAL: switchView is async (it runs get_effective_roles server-side
+    // before flipping setActiveView). Previously we assigned the unresolved
+    // Promise to `ok` — always truthy — and navigated immediately. On slow
+    // networks ProtectedRoute / AdminRoute / TrainerRoute then read the OLD
+    // activeView and bounced the user back to their previous experience.
+    // Awaiting the boolean result fixes the race and also lets us honor a
+    // server-side rejection (get_effective_roles returning false) by simply
+    // closing without navigation.
+    const ok = await switchView(role);
     if (!ok) { onClose(); return; }
     onClose();
     const landing = ROLE_META[role]?.landing || '/';
