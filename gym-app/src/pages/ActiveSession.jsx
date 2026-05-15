@@ -2048,9 +2048,17 @@ const ActiveSession = () => {
         set.isPR = prDetected;
 
         if (prDetected) {
+          // Capture the previous best BEFORE we overwrite it — SharePRSheet
+          // renders the delta ("up from X lbs") when this is available.
+          const previousBest = livePRs.current?.[exerciseId] || null;
           const newPR = { weight: parseFloat(set.weight), reps: parseInt(set.reps, 10) };
           livePRs.current = { ...livePRs.current, [exerciseId]: newPR };
-          const prEntry = { exerciseId, exercise: exerciseName, ...newPR };
+          const prEntry = {
+            exerciseId,
+            exercise: exerciseName,
+            ...newPR,
+            previousWeight: previousBest?.weight ?? null,
+          };
           setSessionPRs(s => [...s.filter(p => p.exerciseId !== exerciseId), prEntry]);
           setActivePRBanner(prEntry);
           setShowConfetti(true);
