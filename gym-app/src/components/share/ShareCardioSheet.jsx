@@ -175,6 +175,13 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   // clear the IndexedDB cache for the current session.
   const [mapVersion, setMapVersion] = useState(0);
   const cardRef = useRef(null);
+  // Second offscreen card always rendered with transparent=false. IG Feed /
+  // Reels flatten alpha to black, so when the user has clearBackground on we
+  // need an opaque copy to ship for those destinations. Re-rasterizing the
+  // transparent cardRef with `transparent: false` doesn't help — the DOM
+  // itself was painted transparent, so the rasterizer ends up painting black
+  // BEHIND a transparent DOM (visible result = black).
+  const cardOpaqueRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const pickBackgroundPhoto = useCallback(async () => {
@@ -363,20 +370,17 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           await shareBlob(blob, 'tugympr-run.png', full);
         }
       } else if (dest === 'ig-feed') {
-        // IG Feed/Reels don't support alpha — IG composites transparent
-        // pixels to black. If the user picked Photo + Clear background,
-        // the export carries alpha and IG would flatten to black. Re-
-        // rasterize opaquely for the Feed path so the Photo template's
-        // solid fallback bg renders instead. Transparent export still
-        // wins for IG Story.
+        // IG Feed/Reels flatten alpha to black. Use the opaque sibling
+        // (always rendered with transparent=false) when the user picked
+        // Clear background; otherwise the regular blob is already opaque.
         let feedBlob = blob;
-        if (photoTransparent && cardRef.current) {
+        if (photoTransparent && cardOpaqueRef.current) {
           try {
             feedBlob = await rasterizeNode(
-              cardRef.current, exportSize.w, exportSize.h, { transparent: false },
+              cardOpaqueRef.current, exportSize.w, exportSize.h, { transparent: false },
             );
           } catch (e) {
-            console.warn('[ShareCardioSheet] opaque re-rasterize for ig-feed failed', e);
+            console.warn('[ShareCardioSheet] opaque rasterize for ig-feed failed', e);
           }
         }
         let landed = false;
@@ -548,6 +552,25 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       >
         <div ref={cardRef} style={{ width: exportSize.w, height: exportSize.h }}>
           <ShareTplCardio w={exportSize.w} h={exportSize.h} {...tplProps} />
+        </div>
+      </div>
+
+      {/* Second offscreen, always opaque. IG Feed/Reels flatten alpha to
+          black, so even when the user picked Clear background we need a
+          properly rendered opaque image for those destinations — re-
+          rasterizing the transparent cardRef can't help (the DOM itself
+          painted transparent). This sibling always renders with
+          transparent=false; the Feed handler rasterizes it. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed', left: -99999, top: 0,
+          pointerEvents: 'none',
+          width: exportSize.w, height: exportSize.h,
+        }}
+      >
+        <div ref={cardOpaqueRef} style={{ width: exportSize.w, height: exportSize.h }}>
+          <ShareTplCardio w={exportSize.w} h={exportSize.h} {...tplProps} transparent={false} />
         </div>
       </div>
 

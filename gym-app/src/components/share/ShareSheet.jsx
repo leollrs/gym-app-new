@@ -425,6 +425,11 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
   // expects a 9:16 background image — anything else lands letterboxed in
   // the middle of the canvas and the user sees a postage-stamp card.
   const igStoryCardRef = useRef(null);
+  // Third offscreen card always rendered with transparent=false. IG Feed /
+  // Reels flatten alpha to black, so re-rasterizing the user's transparent
+  // cardRef can't help (the DOM is transparent — painting black behind it
+  // is still black). This sibling holds an always-opaque copy.
+  const cardOpaqueRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // Photo picker: prefer Capacitor Camera, fall back to hidden file input.
@@ -622,24 +627,21 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         }
       } else if (dest === 'ig-feed') {
         // Save to Photos + open IG's library picker with our image
-        // pre-selected. IG doesn't expose a direct Feed-composer scheme,
-        // so this is as close as native gets to one-tap Feed sharing.
-        //
-        // IG Feed doesn't support transparent backgrounds — Reels/Posts
-        // composite alpha to black. If the user requested transparency
-        // (Sticker template OR Photo + Clear background), re-rasterize
-        // with transparent=false so the template's solid fallback bg
-        // renders cleanly instead of getting black-flattened by IG. The
-        // user's transparency choice is still respected for IG Story.
+        // pre-selected. IG Feed/Reels flatten alpha to black, so when
+        // the user picked transparency we ship the always-opaque sibling
+        // copy (cardOpaqueRef) instead. Re-rasterizing cardRef with
+        // transparent=false doesn't work — the DOM itself was painted
+        // transparent, so the result is still black where the template
+        // was meant to be empty.
         let feedBlob = blob;
-        if (isTransparentExport && cardRef.current) {
+        if (isTransparentExport && cardOpaqueRef.current) {
           try {
             const exp = ShareExportSizes[format];
             feedBlob = await rasterizeNode(
-              cardRef.current, exp.w, exp.h, { transparent: false },
+              cardOpaqueRef.current, exp.w, exp.h, { transparent: false },
             );
           } catch (e) {
-            console.warn('[ShareSheet] opaque re-rasterize for ig-feed failed', e);
+            console.warn('[ShareSheet] opaque rasterize for ig-feed failed', e);
           }
         }
         let landed = false;
@@ -826,6 +828,25 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
             w: ShareExportSizes.story.w,
             h: ShareExportSizes.story.h,
           })}
+        </div>
+      </div>
+
+      {/* Always-opaque offscreen card at the user's chosen format. IG Feed /
+          Reels flatten alpha to black, so when the user has Clear background
+          on we need a proper opaque render to ship for those destinations. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          left: -99999,
+          top: 0,
+          pointerEvents: 'none',
+          width: exportSize.w,
+          height: exportSize.h,
+        }}
+      >
+        <div ref={cardOpaqueRef} style={{ width: exportSize.w, height: exportSize.h }}>
+          {renderTemplate(effectiveTemplate, { ...templateProps, transparent: false, w: exportSize.w, h: exportSize.h })}
         </div>
       </div>
 

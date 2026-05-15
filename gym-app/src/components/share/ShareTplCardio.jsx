@@ -131,7 +131,7 @@ export default function ShareTplCardio({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
           <div
             style={{
-              fontSize: 18, fontWeight: 800, letterSpacing: 2.5,
+              fontSize: 28, fontWeight: 800, letterSpacing: 2,
               textTransform: 'uppercase', color: accent,
             }}
           >
@@ -207,8 +207,8 @@ export default function ShareTplCardio({
 
         <div
           style={{
-            fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.45)',
-            letterSpacing: 1.5, marginTop: 20, textTransform: 'uppercase',
+            fontSize: 22, fontWeight: 700, color: 'rgba(255,255,255,0.55)',
+            letterSpacing: 2, marginTop: 24, textTransform: 'uppercase',
           }}
         >
           TuGymPR
@@ -234,7 +234,7 @@ export default function ShareTplCardio({
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2.5, textTransform: 'uppercase', color: accent }}>
+          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: accent }}>
             {cardioType.replace(/_/g, ' ')}
           </div>
           {showGym && <GymLockup s={s} gymName={gymName} light />}
@@ -283,8 +283,8 @@ export default function ShareTplCardio({
 
         <div
           style={{
-            fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.4)',
-            letterSpacing: 1, marginTop: 24, textTransform: 'uppercase',
+            fontSize: 22, fontWeight: 700, color: 'rgba(255,255,255,0.5)',
+            letterSpacing: 2, marginTop: 28, textTransform: 'uppercase',
           }}
         >
           TuGymPR
@@ -314,7 +314,7 @@ export default function ShareTplCardio({
         />
         <div style={{ position: 'relative', padding: 64 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 3, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 2.5, textTransform: 'uppercase' }}>
               {cardioType.replace(/_/g, ' ')}
             </div>
             {showGym && <GymLockup s={s} gymName={gymName} />}
@@ -358,7 +358,7 @@ export default function ShareTplCardio({
           <div
             style={{
               position: 'absolute', left: 64, bottom: 64,
-              fontSize: 14, fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase',
+              fontSize: 22, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase',
               color: 'rgba(10,13,16,0.55)',
             }}
           >
@@ -415,7 +415,7 @@ export default function ShareTplCardio({
         )}
 
         <div style={{ position: 'relative', zIndex: 2 }}>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2.5, textTransform: 'uppercase', color: accent }}>
+          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: accent }}>
             {cardioType.replace(/_/g, ' ')}
           </div>
           <div
@@ -439,7 +439,7 @@ export default function ShareTplCardio({
           </div>
           <div style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {showGym ? <GymLockup s={s} gymName={gymName} light /> : <span />}
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 1 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: 'rgba(255,255,255,0.55)', letterSpacing: 2 }}>
               TuGymPR
             </div>
           </div>
@@ -452,23 +452,26 @@ export default function ShareTplCardio({
 }
 
 // Strava-style compact stat: small uppercase label on top, big value below.
+// Bumped fontSize/letterSpacing for IG readability — labels were 12 px on a
+// 1080-wide canvas and looked like spaced-out specks once IG re-scaled. Same
+// uppercase-track design, just at a size that survives the post.
 function StatCompact({ label, value, accent }) {
   return (
     <div>
       <div
         style={{
-          fontSize: 12, fontWeight: 800, letterSpacing: 2,
+          fontSize: 22, fontWeight: 800, letterSpacing: 1.8,
           textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.5)',
-          marginBottom: 6,
+          color: 'rgba(255,255,255,0.6)',
+          marginBottom: 8,
         }}
       >
         {label}
       </div>
       <div
         style={{
-          fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 44,
-          letterSpacing: -1, lineHeight: 1, color: '#fff',
+          fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 60,
+          letterSpacing: -1.2, lineHeight: 1, color: '#fff',
         }}
       >
         {value}
