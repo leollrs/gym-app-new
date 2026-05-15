@@ -206,7 +206,7 @@ export default function ShareTplPoster({
         }}
       >
         {showGym && data.gym ? (
-          <GymLockup gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="light" />
+          <GymLockup s={s} gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="light" />
         ) : (
           <div style={{ fontSize: 10 * s, fontWeight: 700, color: '#fff' }}>@{data.userHandle || data.user}</div>
         )}

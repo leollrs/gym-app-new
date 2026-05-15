@@ -229,7 +229,7 @@ export default function ShareTplBoldSport({
           }}
         >
           {showGym && data.gym ? (
-            <GymLockup gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="light" />
+            <GymLockup s={s} gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="light" />
           ) : (
             <div />
           )}

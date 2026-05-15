@@ -20,6 +20,15 @@ import ShareTplCardio from './ShareTplCardio';
 import { ShareFormats, ShareExportSizes, TuFont } from './ShareFormats';
 import { rasterizeNode } from './ShareSheet';
 import { clearCachedMapImage } from '../../lib/mapImageCache';
+import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
+import {
+  shareToMessages,
+  shareToWhatsApp,
+  shareToInstagramFeed,
+  canShareViaMessages,
+  isWhatsAppInstalled,
+  isInstagramInstalled,
+} from '../../lib/socialShare';
 
 const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
 
@@ -309,6 +318,45 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
             },
           });
           if (postErr) console.error('[ShareCardioSheet] post failed', postErr);
+        }
+      } else if (dest === 'ig-story') {
+        // Direct deep link into the IG Stories composer — same flow as the
+        // workout share sheet. Sticker template renders transparent so the
+        // export carries alpha; everything else fills the background slot.
+        let landedInIG = false;
+        if (blob && await isInstagramStoriesAvailable()) {
+          const ig = await shareToInstagramStory({ backgroundBlob: blob, contentURL: link });
+          landedInIG = ig.ok;
+        }
+        if (!landedInIG && blob) {
+          await shareBlob(blob, 'tugympr-run.png', full);
+        }
+      } else if (dest === 'im') {
+        let landed = false;
+        if (blob && await canShareViaMessages()) {
+          const res = await shareToMessages({ blob, text: full });
+          landed = res.ok;
+        }
+        if (!landed && blob) {
+          await shareBlob(blob, 'tugympr-run.png', full);
+        }
+      } else if (dest === 'wa') {
+        let landed = false;
+        if (blob && await isWhatsAppInstalled()) {
+          const res = await shareToWhatsApp({ blob, text: full });
+          landed = res.ok;
+        }
+        if (!landed && blob) {
+          await shareBlob(blob, 'tugympr-run.png', full);
+        }
+      } else if (dest === 'ig-feed') {
+        let landed = false;
+        if (blob && await isInstagramInstalled()) {
+          const res = await shareToInstagramFeed({ blob });
+          landed = res.ok;
+        }
+        if (!landed && blob) {
+          await shareBlob(blob, 'tugympr-run.png', full);
         }
       } else if (blob) {
         await shareBlob(blob, 'tugympr-run.png', full);

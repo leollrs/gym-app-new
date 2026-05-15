@@ -209,7 +209,7 @@ export default function ShareTplPhoto({
         {/* Gym lockup */}
         {showGym && data.gym && (
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <GymLockup gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="light" />
+            <GymLockup s={w / 270} gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="light" />
           </div>
         )}
       </div>

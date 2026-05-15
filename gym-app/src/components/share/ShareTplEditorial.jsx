@@ -159,7 +159,7 @@ export default function ShareTplEditorial({
         }}
       >
         {showGym && data.gym ? (
-          <GymLockup gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="dark" />
+          <GymLockup s={s} gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="dark" />
         ) : (
           <div style={{ fontSize: 10 * s, fontWeight: 700, color: '#96A0AA', letterSpacing: 0.8 * s, textTransform: 'uppercase' }}>
             TuGymPR

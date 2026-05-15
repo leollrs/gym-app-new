@@ -40,13 +40,17 @@ function paceDisplay(secPerKm, unit) {
   return formatPace(v);
 }
 
-function GymLockup({ gymName, light }) {
+// `s` is the canvas-to-preview scale. Cardio share default canvas is
+// 1080×1920 (so s ≈ 4) — without scaling, the 11 px gym name was lost
+// on the export. Default 1 keeps the in-app preview behaviour for any
+// caller that doesn't pass `s` yet.
+function GymLockup({ gymName, light, s = 1 }) {
   if (!gymName) return null;
   return (
     <div
       style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        fontSize: 11, fontWeight: 800, letterSpacing: 1.5,
+        display: 'flex', alignItems: 'center', gap: 6 * s,
+        fontSize: 11 * s, fontWeight: 800, letterSpacing: 1.5 * s,
         textTransform: 'uppercase',
         color: light ? 'rgba(255,255,255,0.88)' : 'rgba(10,13,16,0.6)',
         fontFamily: FONT_BODY,
@@ -54,7 +58,7 @@ function GymLockup({ gymName, light }) {
     >
       <div
         style={{
-          width: 14, height: 14, borderRadius: 4,
+          width: 14 * s, height: 14 * s, borderRadius: 4 * s,
           background: light ? 'rgba(255,255,255,0.9)' : '#0A0D10',
         }}
       />
@@ -72,6 +76,12 @@ export default function ShareTplCardio({
   backgroundSrc,
   mapVersion = 0,
 }) {
+  // Same scaling convention as the workout share templates — every literal
+  // pixel value is multiplied by `s` so the card reads at full Story
+  // scale when exported, regardless of which canvas width it was
+  // designed at (270 preview / 1080 export). Defaults imply s≈4 for
+  // the export pipeline.
+  const s = w / 270;
   const safeData = data || {};
   // Tolerant mapping — accept both camelCase (in-memory) and snake_case
   // (Supabase row) shapes. All numeric fields default to safe values so the
@@ -122,7 +132,7 @@ export default function ShareTplCardio({
           >
             {cardioType.replace(/_/g, ' ')}
           </div>
-          {showGym && <GymLockup gymName={gymName} light />}
+          {showGym && <GymLockup s={s} gymName={gymName} light />}
         </div>
 
         {/* Map hero — real OSM tiles + route polyline */}
@@ -222,7 +232,7 @@ export default function ShareTplCardio({
           <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2.5, textTransform: 'uppercase', color: accent }}>
             {cardioType.replace(/_/g, ' ')}
           </div>
-          {showGym && <GymLockup gymName={gymName} light />}
+          {showGym && <GymLockup s={s} gymName={gymName} light />}
         </div>
 
         <div style={{ marginTop: 80, marginBottom: 20 }}>
@@ -302,7 +312,7 @@ export default function ShareTplCardio({
             <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 3, textTransform: 'uppercase' }}>
               {cardioType.replace(/_/g, ' ')}
             </div>
-            {showGym && <GymLockup gymName={gymName} />}
+            {showGym && <GymLockup s={s} gymName={gymName} />}
           </div>
 
           <div
@@ -417,7 +427,7 @@ export default function ShareTplCardio({
             <Stat dark label="CAL" value={`${calories}`} accent={accent} />
           </div>
           <div style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            {showGym ? <GymLockup gymName={gymName} light /> : <span />}
+            {showGym ? <GymLockup s={s} gymName={gymName} light /> : <span />}
             <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 1 }}>
               TuGymPR
             </div>
