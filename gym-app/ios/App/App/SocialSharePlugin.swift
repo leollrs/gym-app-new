@@ -145,85 +145,95 @@ public class SocialSharePlugin: CAPPlugin, CAPBridgedPlugin {
         let text = call.getString("text") ?? ""
 
         DispatchQueue.main.async {
-            // WhatsApp's iOS Share Extension reads attachments via
-            // UIDocumentInteractionController + `net.whatsapp.image` UTI on
-            // a file with the `.wai` extension. Two gotchas that bit us the
-            // first time:
-            //   1. The file MUST live in our app's Documents directory.
-            //      iOS 14+ blocks share-extension access to files in
-            //      NSTemporaryDirectory (which is what we used initially)
-            //      so `presentOpenInMenu` either returned false or showed
-            //      an empty menu.
-            //   2. `presentOpenInMenu(from: .zero, ...)` works on iPhone
-            //      but fails on iPad because the popover has no anchor.
-            //      Use a centered non-zero source rect to be safe.
-            let docsDir: URL
-            do {
-                docsDir = try FileManager.default.url(
-                    for: .documentDirectory, in: .userDomainMask,
-                    appropriateFor: nil, create: true
-                )
-            } catch {
-                call.reject("Could not locate Documents directory: \(error.localizedDescription)")
-                return
+            // WhatsApp's published .wai + net.whatsapp.image UTI flow stopped
+            // working reliably on recent iOS versions — UIDocumentInteractionController
+            // either fails to present or shows an empty menu. The pattern
+            // that actually lands the user inside WhatsApp every time is:
+            //   1. Put the image bytes on UIPasteboard (WhatsApp's compose
+            //      view long-press → paste accepts image pasteboard items).
+            //   2. Open `whatsapp://send?text=<caption>` — WhatsApp launches
+            //      at its contact picker; after the user picks a contact,
+            //      they tap the attachment button → paste → the image is
+            //      attached with our caption already in the text box.
+            //
+            // Two taps inside WhatsApp instead of one, but reliable across
+            // iOS 14-26 and every published WhatsApp version. If the URL
+            // scheme also fails (no WhatsApp installed), we still stage the
+            // image in Documents and fall back to UIDocumentInteractionController
+            // so the user lands on the iOS share sheet rather than nowhere.
+            if let image = UIImage(data: imageData) {
+                UIPasteboard.general.image = image
             }
-            let fileUrl = docsDir.appendingPathComponent("tugympr-share.wai")
-            do {
-                // overwrite any previous staged file so the OS picks up the new bytes
-                if FileManager.default.fileExists(atPath: fileUrl.path) {
-                    try FileManager.default.removeItem(at: fileUrl)
+
+            var schemeUrl: URL? = nil
+            if let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                schemeUrl = URL(string: "whatsapp://send?text=\(encoded)")
+            }
+            if schemeUrl == nil { schemeUrl = URL(string: "whatsapp://send") }
+
+            if let url = schemeUrl, UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url, options: [:]) { success in
+                    if success {
+                        call.resolve()
+                    } else {
+                        self.presentWhatsAppDocFallback(imageData: imageData, text: text, call: call)
+                    }
                 }
-                try imageData.write(to: fileUrl, options: .atomic)
-            } catch {
-                call.reject("Failed to stage image: \(error.localizedDescription)")
                 return
             }
 
-            // Caption: UIDocumentIC can't carry text into WhatsApp, so we
-            // copy it to the clipboard. WhatsApp's compose view long-press
-            // → paste lands the caption next to the image.
-            if !text.isEmpty {
-                UIPasteboard.general.string = text
-            }
+            self.presentWhatsAppDocFallback(imageData: imageData, text: text, call: call)
+        }
+    }
 
-            let controller = UIDocumentInteractionController(url: fileUrl)
-            controller.uti = "net.whatsapp.image"
-            controller.name = "TuGymPR"
-            self.docController = controller
+    // UIDocumentInteractionController fallback: stages the image as a
+    // `.wai` file in Documents and presents the "Open in" menu. Only used
+    // when the `whatsapp://` URL scheme fails (WhatsApp not installed,
+    // canOpenURL false, etc).
+    private func presentWhatsAppDocFallback(imageData: Data, text: String, call: CAPPluginCall) {
+        let docsDir: URL
+        do {
+            docsDir = try FileManager.default.url(
+                for: .documentDirectory, in: .userDomainMask,
+                appropriateFor: nil, create: true
+            )
+        } catch {
+            call.reject("WhatsApp share failed: \(error.localizedDescription)")
+            return
+        }
+        let fileUrl = docsDir.appendingPathComponent("tugympr-share.wai")
+        do {
+            if FileManager.default.fileExists(atPath: fileUrl.path) {
+                try FileManager.default.removeItem(at: fileUrl)
+            }
+            try imageData.write(to: fileUrl, options: .atomic)
+        } catch {
+            call.reject("Failed to stage image: \(error.localizedDescription)")
+            return
+        }
+        if !text.isEmpty { UIPasteboard.general.string = text }
 
-            guard let presenter = self.rootViewController else {
-                call.reject("No root view controller to present from")
-                return
-            }
-            var top = presenter
-            while let presented = top.presentedViewController { top = presented }
-            let view = top.view ?? UIView()
-            // Anchor the menu at the centre of the visible area so iPad
-            // doesn't reject the presentation for a missing popover source.
-            let sourceRect = CGRect(
-                x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1
-            )
-            // Try the one-row "Open in WhatsApp" menu first (filtered to
-            // apps that handle net.whatsapp.image). If iOS reports it
-            // couldn't present (no app registered for the UTI on this
-            // device, edge cases), fall back to the broader options menu
-            // which presents the regular iOS share sheet — still better
-            // than silently failing back to the JS share-blob path.
-            let presented = controller.presentOpenInMenu(
-                from: sourceRect, in: view, animated: true
-            )
-            if presented {
-                call.resolve()
-                return
-            }
-            let fallback = controller.presentOptionsMenu(
-                from: sourceRect, in: view, animated: true
-            )
-            if fallback {
-                call.resolve(["fallback": true])
-            } else {
-                call.reject("WhatsApp share menu could not be presented")
-            }
+        let controller = UIDocumentInteractionController(url: fileUrl)
+        controller.uti = "net.whatsapp.image"
+        controller.name = "TuGymPR"
+        self.docController = controller
+
+        guard let presenter = self.rootViewController else {
+            call.reject("No root view controller to present from")
+            return
+        }
+        var top = presenter
+        while let presented = top.presentedViewController { top = presented }
+        let view = top.view ?? UIView()
+        let sourceRect = CGRect(
+            x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1
+        )
+        let presented = controller.presentOpenInMenu(from: sourceRect, in: view, animated: true)
+            || controller.presentOptionsMenu(from: sourceRect, in: view, animated: true)
+        if presented {
+            call.resolve(["fallback": true])
+        } else {
+            call.reject("WhatsApp share menu could not be presented")
         }
     }
 

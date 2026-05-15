@@ -2,19 +2,22 @@ import React from 'react';
 import GymLockup from './GymLockup';
 import { TuFont } from './ShareFormats';
 
-function BoldStat({ label, value, mid }) {
+// `s` is the canvas-to-preview scale (w / 270). Every literal pixel value
+// here is multiplied by `s` so typography stays proportional whether the
+// card renders at 270×480 (preview) or 1080×1920 (IG Story export).
+function BoldStat({ label, value, mid, s }) {
   return (
     <div
       style={{
-        padding: '0 10px',
+        padding: `0 ${10 * s}px`,
         borderLeft: mid ? '1px solid rgba(255,255,255,0.12)' : 'none',
         borderRight: mid ? '1px solid rgba(255,255,255,0.12)' : 'none',
       }}
     >
-      <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: 1.4, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 8.5 * s, fontWeight: 800, letterSpacing: 1.4 * s, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontFamily: TuFont.display, fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: -0.6, marginTop: 2, lineHeight: 1 }}>
+      <div style={{ fontFamily: TuFont.display, fontSize: 22 * s, fontWeight: 800, color: '#fff', letterSpacing: -0.6 * s, marginTop: 2 * s, lineHeight: 1 }}>
         {value}
       </div>
     </div>
@@ -36,6 +39,9 @@ export default function ShareTplBoldSport({
   transparent = false,
 }) {
   const pad = Math.round(w * 0.055);
+  // Scale every literal pixel value by `s` so typography stays
+  // proportional from preview (270 wide) to export (1080 wide).
+  const s = w / 270;
   return (
     <div
       style={{
@@ -96,26 +102,26 @@ export default function ShareTplBoldSport({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
-                fontSize: 9,
+                gap: 6 * s,
+                fontSize: 9 * s,
                 fontWeight: 800,
-                letterSpacing: 1.6,
+                letterSpacing: 1.6 * s,
                 color: accent,
                 textTransform: 'uppercase',
               }}
             >
-              <div style={{ width: 6, height: 6, borderRadius: 3, background: accent }} />
+              <div style={{ width: 6 * s, height: 6 * s, borderRadius: 3 * s, background: accent }} />
               Session complete
             </div>
             <div
               style={{
                 fontFamily: TuFont.display,
-                fontSize: 30,
+                fontSize: 30 * s,
                 fontWeight: 800,
                 color: '#fff',
-                letterSpacing: -1.2,
+                letterSpacing: -1.2 * s,
                 lineHeight: 0.95,
-                marginTop: 8,
+                marginTop: 8 * s,
                 maxWidth: w * 0.72,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -123,7 +129,7 @@ export default function ShareTplBoldSport({
             >
               {(data.name || '').toUpperCase()}
             </div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 600, marginTop: 6, letterSpacing: 0.4 }}>
+            <div style={{ fontSize: 10 * s, color: 'rgba(255,255,255,0.55)', fontWeight: 600, marginTop: 6 * s, letterSpacing: 0.4 * s }}>
               {data.date} · {data.user}
             </div>
           </div>
@@ -133,23 +139,23 @@ export default function ShareTplBoldSport({
 
         {/* Headline stat */}
         <div style={{ marginBottom: pad * 0.8 }}>
-          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1.6, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 9 * s, fontWeight: 800, letterSpacing: 1.6 * s, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
             Total volume
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 * s, marginTop: 2 * s }}>
             <span
               style={{
                 fontFamily: TuFont.display,
-                fontSize: 64,
+                fontSize: 64 * s,
                 fontWeight: 800,
                 color: '#fff',
-                letterSpacing: -3,
+                letterSpacing: -3 * s,
                 lineHeight: 0.9,
               }}
             >
               {showExactWeights ? (data.volume || 0).toLocaleString() : `${Math.round((data.volume || 0) / 1000)}k+`}
             </span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: accent }}>lbs</span>
+            <span style={{ fontSize: 14 * s, fontWeight: 700, color: accent }}>lbs</span>
           </div>
         </div>
 
@@ -159,30 +165,30 @@ export default function ShareTplBoldSport({
             display: 'grid',
             gridTemplateColumns: '1fr 1fr 1fr',
             gap: 1,
-            padding: '10px 0',
+            padding: `${10 * s}px 0`,
             borderTop: '1px solid rgba(255,255,255,0.12)',
             borderBottom: '1px solid rgba(255,255,255,0.12)',
             marginBottom: pad * 0.7,
           }}
         >
-          <BoldStat label="TIME" value={`${data.duration}m`} />
-          <BoldStat label="SETS" value={data.sets} mid />
-          <BoldStat label="KCAL" value={data.kcal} />
+          <BoldStat s={s} label="TIME" value={`${data.duration}m`} />
+          <BoldStat s={s} label="SETS" value={data.sets} mid />
+          <BoldStat s={s} label="KCAL" value={data.kcal} />
         </div>
 
         {/* PR row */}
         {showPRs && data.prs?.[0] && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: pad * 0.7 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 * s, marginBottom: pad * 0.7 }}>
             <div
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
+                width: 36 * s,
+                height: 36 * s,
+                borderRadius: 18 * s,
                 background: accent,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 17,
+                fontSize: 17 * s,
                 color: '#001512',
                 flexShrink: 0,
               }}
@@ -190,16 +196,16 @@ export default function ShareTplBoldSport({
               🏆
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1.4, color: accent, textTransform: 'uppercase' }}>New PR</div>
+              <div style={{ fontSize: 9 * s, fontWeight: 800, letterSpacing: 1.4 * s, color: accent, textTransform: 'uppercase' }}>New PR</div>
               <div
                 style={{
                   fontFamily: TuFont.display,
-                  fontSize: 14,
+                  fontSize: 14 * s,
                   fontWeight: 800,
                   color: '#fff',
-                  letterSpacing: -0.3,
+                  letterSpacing: -0.3 * s,
                   lineHeight: 1.1,
-                  marginTop: 2,
+                  marginTop: 2 * s,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -227,7 +233,7 @@ export default function ShareTplBoldSport({
           ) : (
             <div />
           )}
-          <div style={{ fontFamily: TuFont.display, fontSize: 11, fontWeight: 800, color: '#fff', letterSpacing: -0.3 }}>
+          <div style={{ fontFamily: TuFont.display, fontSize: 11 * s, fontWeight: 800, color: '#fff', letterSpacing: -0.3 * s }}>
             TuGym<span style={{ color: accent }}>PR</span>
           </div>
         </div>

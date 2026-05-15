@@ -3,17 +3,22 @@ import GymLockup from './GymLockup';
 import MuscleMap from './MuscleMap';
 import { TuFont } from './ShareFormats';
 
-function EditStat({ label, value, unit, big }) {
+// `s` is the canvas-to-preview scale (w / 270). Multiplying every literal
+// pixel by `s` keeps typography proportional whether we render at 270×480
+// (in-app preview) or 1080×1920 (IG Story export). Without this the same
+// 28 px hero stat looked chunky in the preview but lost on the full Story
+// canvas — the entire reason the export felt small and spaced out.
+function EditStat({ label, value, unit, s }) {
   return (
     <div>
-      <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: 1.4, color: '#96A0AA', textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 8.5 * s, fontWeight: 800, letterSpacing: 1.4 * s, color: '#96A0AA', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 3 }}>
-        <span style={{ fontFamily: TuFont.display, fontSize: 28 * big, fontWeight: 800, color: '#0A0D10', letterSpacing: -1, lineHeight: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 * s, marginTop: 3 * s }}>
+        <span style={{ fontFamily: TuFont.display, fontSize: 28 * s, fontWeight: 800, color: '#0A0D10', letterSpacing: -1 * s, lineHeight: 1 }}>
           {value}
         </span>
-        <span style={{ fontSize: 10, color: '#5A6570', fontWeight: 600 }}>{unit}</span>
+        <span style={{ fontSize: 10 * s, color: '#5A6570', fontWeight: 600 }}>{unit}</span>
       </div>
     </div>
   );
@@ -33,7 +38,10 @@ export default function ShareTplEditorial({
   transparent = false,
 }) {
   const pad = Math.round(w * 0.06);
-  const big = w > 320 ? 1 : 0.88;
+  // Single scale factor — see EditStat. 270 is the in-app preview width;
+  // every literal pixel value multiplied by `s` stays proportional across
+  // all export sizes (1080×1920 Story, 1080×1080 square, 1080×1350 portrait).
+  const s = w / 270;
 
   return (
     <div
@@ -54,18 +62,18 @@ export default function ShareTplEditorial({
       {/* Top strip */}
       <div style={{ padding: `${pad}px ${pad}px 0`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1.4, color: accent, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 9 * s, fontWeight: 800, letterSpacing: 1.4 * s, color: accent, textTransform: 'uppercase' }}>
             Workout · {data.date}
           </div>
           <div
             style={{
               fontFamily: TuFont.display,
-              fontSize: 22 * big,
+              fontSize: 22 * s,
               fontWeight: 800,
               color: '#0A0D10',
-              letterSpacing: -0.8,
+              letterSpacing: -0.8 * s,
               lineHeight: 1.05,
-              marginTop: 4,
+              marginTop: 4 * s,
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -75,7 +83,7 @@ export default function ShareTplEditorial({
             {data.name}
           </div>
         </div>
-        <div style={{ fontSize: 10, fontWeight: 700, color: '#5A6570', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <div style={{ fontSize: 10 * s, fontWeight: 700, color: '#5A6570', display: 'flex', alignItems: 'center', gap: 4 * s, flexShrink: 0 }}>
           <span>{data.user}</span>
         </div>
       </div>
@@ -83,30 +91,30 @@ export default function ShareTplEditorial({
       {/* Hero stats grid */}
       <div style={{ padding: `${pad * 0.6}px ${pad}px`, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: pad * 0.8 }}>
-          <EditStat big={big} label="DURATION" value={data.duration} unit="min" />
+          <EditStat s={s} label="DURATION" value={data.duration} unit="min" />
           <EditStat
-            big={big}
+            s={s}
             label="VOLUME"
             value={showExactWeights ? data.volume : `${Math.round((data.volume || 0) / 100) * 100}+`}
             unit="lbs"
           />
-          <EditStat big={big} label="SETS" value={data.sets} unit={`× ${data.reps} reps`} />
-          <EditStat big={big} label="CALORIES" value={data.kcal} unit="kcal" />
+          <EditStat s={s} label="SETS" value={data.sets} unit={`× ${data.reps} reps`} />
+          <EditStat s={s} label="CALORIES" value={data.kcal} unit="kcal" />
         </div>
 
         {showPRs && data.prs?.length > 0 && (
-          <div style={{ marginTop: pad * 0.8, padding: pad * 0.7, borderRadius: 14, background: '#0A0D10', color: '#fff' }}>
-            <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: 1.4, color: accent, textTransform: 'uppercase', marginBottom: 6 }}>
+          <div style={{ marginTop: pad * 0.8, padding: pad * 0.7, borderRadius: 14 * s, background: '#0A0D10', color: '#fff' }}>
+            <div style={{ fontSize: 8.5 * s, fontWeight: 800, letterSpacing: 1.4 * s, color: accent, textTransform: 'uppercase', marginBottom: 6 * s }}>
               🏆 New PRs
             </div>
             {data.prs.slice(0, 2).map((pr, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: i === 0 ? 0 : 4, gap: 8 }}>
-                <span style={{ fontSize: 12 * big, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: i === 0 ? 0 : 4 * s, gap: 8 * s }}>
+                <span style={{ fontSize: 12 * s, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {pr.lift}
                 </span>
-                <span style={{ fontFamily: TuFont.display, fontSize: 14 * big, fontWeight: 800, letterSpacing: -0.3, flexShrink: 0 }}>
+                <span style={{ fontFamily: TuFont.display, fontSize: 14 * s, fontWeight: 800, letterSpacing: -0.3 * s, flexShrink: 0 }}>
                   {showExactWeights ? pr.weight : '—'}
-                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', fontWeight: 600, marginLeft: 2 }}>lbs</span>
+                  <span style={{ fontSize: 9 * s, color: 'rgba(255,255,255,0.6)', fontWeight: 600, marginLeft: 2 * s }}>lbs</span>
                 </span>
               </div>
             ))}
@@ -115,19 +123,19 @@ export default function ShareTplEditorial({
 
         {showMuscles && (
           <div style={{ marginTop: pad * 0.7, display: 'flex', alignItems: 'center', gap: pad * 0.6 }}>
-            <MuscleMap muscles={data.muscles || {}} size={58} color={accent} dim="#D8D8D2" />
+            <MuscleMap muscles={data.muscles || {}} size={58 * s} color={accent} dim="#D8D8D2" />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: 1.4, color: '#96A0AA', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 8.5 * s, fontWeight: 800, letterSpacing: 1.4 * s, color: '#96A0AA', textTransform: 'uppercase' }}>
                 Muscles hit
               </div>
               <div
                 style={{
                   fontFamily: TuFont.display,
-                  fontSize: 13 * big,
+                  fontSize: 13 * s,
                   fontWeight: 800,
                   color: '#0A0D10',
-                  letterSpacing: -0.3,
-                  marginTop: 2,
+                  letterSpacing: -0.3 * s,
+                  marginTop: 2 * s,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -153,19 +161,19 @@ export default function ShareTplEditorial({
         {showGym && data.gym ? (
           <GymLockup gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="dark" />
         ) : (
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#96A0AA', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 10 * s, fontWeight: 700, color: '#96A0AA', letterSpacing: 0.8 * s, textTransform: 'uppercase' }}>
             TuGymPR
           </div>
         )}
         <div
           style={{
-            padding: '5px 9px',
+            padding: `${5 * s}px ${9 * s}px`,
             borderRadius: 999,
             background: accent,
             color: '#001512',
-            fontSize: 8.5,
+            fontSize: 8.5 * s,
             fontWeight: 800,
-            letterSpacing: 0.8,
+            letterSpacing: 0.8 * s,
             textTransform: 'uppercase',
           }}
         >
