@@ -8,6 +8,14 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
+import {
+  shareToMessages,
+  shareToWhatsApp,
+  shareToInstagramFeed,
+  canShareViaMessages,
+  isWhatsAppInstalled,
+  isInstagramInstalled,
+} from '../../lib/socialShare';
 import ShareTplEditorial from './ShareTplEditorial';
 import ShareTplBoldSport from './ShareTplBoldSport';
 import ShareTplPoster from './ShareTplPoster';
@@ -576,22 +584,42 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         if (!landedInIG && storyBlob) {
           await shareBlob(storyBlob, 'tugympr-workout.png', full);
         }
-      } else if (dest === 'wa' || dest === 'im' || dest === 'ig-feed') {
-        // IG Feed has no published deep-link scheme for pre-loading an image
-        // (Stories is the only one Instagram exposes), so all of these route
-        // through the native share sheet. iOS surfaces IG/WhatsApp/Messages
-        // tiles inline and the user picks the destination.
-        if (blob) {
+      } else if (dest === 'im') {
+        // iMessage composer in-app: image attached + body pre-filled, the
+        // user just picks a recipient and sends. Falls through to the
+        // generic share sheet if the device can't send Messages (no SIM,
+        // iCloud-only iPad, web, etc).
+        let landed = false;
+        if (blob && await canShareViaMessages()) {
+          const res = await shareToMessages({ blob, text: full });
+          landed = res.ok;
+        }
+        if (!landed && blob) {
           await shareBlob(blob, 'tugympr-workout.png', full);
-        } else {
-          try {
-            await Share.share({
-              title: 'TuGymPR',
-              text: full,
-              url: link,
-              dialogTitle: dest === 'wa' ? 'WhatsApp' : dest === 'im' ? 'Messages' : 'Share',
-            });
-          } catch {}
+        }
+      } else if (dest === 'wa') {
+        // WhatsApp's "Open in WhatsApp" menu — one tap → WhatsApp opens at
+        // the contact picker with the image attached. Fallback to the
+        // generic sheet if WhatsApp isn't installed.
+        let landed = false;
+        if (blob && await isWhatsAppInstalled()) {
+          const res = await shareToWhatsApp({ blob, text: full });
+          landed = res.ok;
+        }
+        if (!landed && blob) {
+          await shareBlob(blob, 'tugympr-workout.png', full);
+        }
+      } else if (dest === 'ig-feed') {
+        // Save to Photos + open IG's library picker with our image
+        // pre-selected. IG doesn't expose a direct Feed-composer scheme,
+        // so this is as close as native gets to one-tap Feed sharing.
+        let landed = false;
+        if (blob && await isInstagramInstalled()) {
+          const res = await shareToInstagramFeed({ blob });
+          landed = res.ok;
+        }
+        if (!landed && blob) {
+          await shareBlob(blob, 'tugympr-workout.png', full);
         }
       }
     } catch (err) {
