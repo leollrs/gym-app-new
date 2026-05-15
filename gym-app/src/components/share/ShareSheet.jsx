@@ -498,7 +498,13 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
   // picking the dedicated Sticker template (its canvas is already transparent;
   // the export must carry alpha for the IG Stories sticker pasteboard slot to
   // accept it). Computed once so buildCard + the IG handler stay in sync.
-  const isTransparentExport = sticker || template === 'sticker';
+  // Transparency request: dedicated Sticker template, OR the Photo template
+  // with the user's "Clear background" toggle on and no photo picked. The
+  // raster + IG pasteboard slot both follow this flag.
+  const isTransparentExport =
+    sticker
+    || template === 'sticker'
+    || (template === 'photo' && clearBackground && !backgroundSrc);
 
   const buildCard = useCallback(async () => {
     if (!cardRef.current) return null;
@@ -859,7 +865,7 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   type="button"
-                  onClick={() => { setSticker(false); pickBackgroundPhoto(); }}
+                  onClick={() => { setClearBackground(false); pickBackgroundPhoto(); }}
                   style={{
                     flex: 1,
                     padding: '10px 12px',
@@ -882,24 +888,25 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
                     : t('sessionSummary.share.pickPhoto', 'Pick photo')}
                 </button>
                 {/* Clear-background toggle. Tapping clears any picked photo
-                    AND turns Sticker mode on so the Photo template renders
-                    on a transparent canvas (Strava Stats Sticker behavior).
-                    The previous global Sticker toggle still works, but most
-                    users went straight to Photo expecting a clear-bg option
-                    here next to the picker. */}
+                    AND flips clearBackground on, which feeds through
+                    isTransparentExport → the Photo template renders on a
+                    transparent canvas (Strava Stats Sticker behavior). */}
                 <button
                   type="button"
-                  onClick={() => { setBackgroundSrc(null); setSticker(!sticker || !!backgroundSrc); }}
-                  aria-pressed={sticker && !backgroundSrc}
+                  onClick={() => {
+                    setBackgroundSrc(null);
+                    setClearBackground((prev) => (backgroundSrc ? true : !prev));
+                  }}
+                  aria-pressed={clearBackground && !backgroundSrc}
                   style={{
                     flex: 1,
                     padding: '10px 12px',
                     borderRadius: 12,
-                    border: `1.5px solid ${sticker && !backgroundSrc ? 'var(--color-accent)' : 'var(--color-border, rgba(255,255,255,0.18))'}`,
-                    background: sticker && !backgroundSrc
+                    border: `1.5px solid ${clearBackground && !backgroundSrc ? 'var(--color-accent)' : 'var(--color-border, rgba(255,255,255,0.18))'}`,
+                    background: clearBackground && !backgroundSrc
                       ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
                       : 'var(--color-bg-primary)',
-                    color: sticker && !backgroundSrc ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                    color: clearBackground && !backgroundSrc ? 'var(--color-accent)' : 'var(--color-text-primary)',
                     fontSize: 12,
                     fontWeight: 700,
                     display: 'flex',
