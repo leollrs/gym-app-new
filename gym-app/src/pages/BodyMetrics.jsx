@@ -15,6 +15,7 @@ import { format, parseISO, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
+import { ShareBodyCompSheet } from '../components/share/QuickShareSheets';
 import ChartTooltip from '../components/ChartTooltip';
 import { usePostHog } from '@posthog/react';
 
@@ -205,6 +206,10 @@ export default function BodyMetrics() {
   const [viewingPhoto,    setViewingPhoto]    = useState(null); // { url, angle, taken_at, id }
   const [deletingId,      setDeletingId]      = useState(null);
   const [expandedDate,    setExpandedDate]    = useState(null);
+  // Before/after share — derives the oldest + newest photos with a matching
+  // angle, plus the weight delta in that window. Hidden until both ends of
+  // the comparison exist, so we never render an empty card.
+  const [bodyCompShareOpen, setBodyCompShareOpen] = useState(false);
   // Personal info
   const [personalInfo, setPersonalInfo] = useCachedState(`${bmCacheKey}-personal`, { sex: '', age: '', height_inches: '' });
   const [editingPersonal, setEditingPersonal] = useState(false);
@@ -814,16 +819,38 @@ export default function BodyMetrics() {
             className="rounded-2xl p-5 mt-8 overflow-hidden"
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 gap-2">
               <p className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>{t('bodyMetrics.progressPhotos', 'Progress Photos')}</p>
-              <button
-                onClick={() => { setShowPhotoUpload(v => !v); setPhotoError(''); setUploadFile(null); }}
-                className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
-                style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
-              >
-                <Camera size={13} strokeWidth={2.5} />
-                {t('bodyMetrics.addPhoto', 'Add Photo')}
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Share progress — only enabled once we have at least 2 photos
+                    sharing the same view angle to anchor the before/after. */}
+                {(() => {
+                  const byAngle = photos.reduce((acc, p) => {
+                    (acc[p.view_angle] = acc[p.view_angle] || []).push(p);
+                    return acc;
+                  }, {});
+                  const canCompare = Object.values(byAngle).some(arr => arr.length >= 2);
+                  if (!canCompare) return null;
+                  return (
+                    <button
+                      onClick={() => setBodyCompShareOpen(true)}
+                      className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
+                      style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))' }}
+                      aria-label={t('bodyMetrics.shareProgress', { defaultValue: 'Share progress' })}
+                    >
+                      {t('bodyMetrics.shareProgress', 'Share progress')}
+                    </button>
+                  );
+                })()}
+                <button
+                  onClick={() => { setShowPhotoUpload(v => !v); setPhotoError(''); setUploadFile(null); }}
+                  className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
+                  style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+                >
+                  <Camera size={13} strokeWidth={2.5} />
+                  {t('bodyMetrics.addPhoto', 'Add Photo')}
+                </button>
+              </div>
             </div>
 
             {/* Upload panel */}
@@ -1010,6 +1037,62 @@ export default function BodyMetrics() {
           showToast={showToast}
         />
       )}
+
+      {/* Body-composition before/after share. Pick the angle with the largest
+          time span (most dramatic comparison) and the corresponding weight
+          delta from the existing weightLogs in scope. */}
+      {bodyCompShareOpen && (() => {
+        const byAngle = photos.reduce((acc, p) => {
+          (acc[p.view_angle] = acc[p.view_angle] || []).push(p);
+          return acc;
+        }, {});
+        // Prefer 'front', then 'side', then 'back' for the most legible card.
+        const angle = ['front', 'side', 'back'].find(a => (byAngle[a] || []).length >= 2);
+        if (!angle) return null;
+        const sorted = [...byAngle[angle]].sort((a, b) => a.taken_at.localeCompare(b.taken_at));
+        const before = sorted[0];
+        const after = sorted[sorted.length - 1];
+        const daysApart = Math.max(
+          1,
+          Math.round((new Date(after.taken_at) - new Date(before.taken_at)) / 86_400_000),
+        );
+        // Weight delta from the weight log: pick the entry closest to each
+        // photo's date (within a 7-day window). Falls back to null if
+        // there's no weight nearby, in which case the card hides the delta.
+        const findWeightNear = (iso) => {
+          const target = new Date(iso).getTime();
+          let best = null;
+          let bestDiff = 7 * 86_400_000;
+          for (const w of weightLogs) {
+            const diff = Math.abs(new Date(w.logged_at).getTime() - target);
+            if (diff <= bestDiff) { best = w; bestDiff = diff; }
+          }
+          return best ? parseFloat(best.weight_lbs) : null;
+        };
+        const beforeW = findWeightNear(before.taken_at);
+        const afterW = findWeightNear(after.taken_at);
+        const deltaLbs = (beforeW != null && afterW != null) ? +(afterW - beforeW).toFixed(1) : null;
+        const deltaPct = (beforeW && afterW) ? +(((afterW - beforeW) / beforeW) * 100).toFixed(1) : null;
+        return (
+          <ShareBodyCompSheet
+            open={bodyCompShareOpen}
+            onClose={() => setBodyCompShareOpen(false)}
+            comp={{
+              beforeUrl: before.url,
+              afterUrl: after.url,
+              beforeLabel: format(parseISO(before.taken_at), 'MMM d, yyyy'),
+              afterLabel: format(parseISO(after.taken_at), 'MMM d, yyyy'),
+              deltaLbs,
+              deltaPct,
+              daysApart,
+              beforeBfPct: latestMeasurements?.body_fat_pct ?? null,
+              afterBfPct: latestMeasurements?.body_fat_pct ?? null,
+            }}
+            user={profile}
+            gym={profile?.gym_name}
+          />
+        );
+      })()}
 
     </div>
   );

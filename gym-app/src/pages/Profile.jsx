@@ -22,6 +22,7 @@ import logger from '../lib/logger';
 import AvatarPicker from '../components/AvatarPicker';
 import UserAvatar from '../components/UserAvatar';
 import ShareAchievementSheet from '../components/share/ShareAchievementSheet';
+import { ShareMonthlySheet } from '../components/share/QuickShareSheets';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { ACHIEVEMENT_DEFS, ACHIEVEMENT_CATEGORIES, fetchAchievementData, awardAchievements } from '../lib/achievements';
@@ -186,6 +187,11 @@ const Profile = () => {
   const [savingGoals, setSavingGoals]   = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [shareAchievement, setShareAchievement]   = useState(null);
+  // Monthly recap share — drives the "Share month" pill under the lifetime
+  // stats strip. We assemble the data inline from the same `sessions` /
+  // `prs` arrays that feed the strip above, so the share matches what the
+  // user sees on screen.
+  const [monthlyShareOpen, setMonthlyShareOpen] = useState(false);
   const [monthlyCheckIns, setMonthlyCheckIns]     = useCachedState(`${cacheKey}-checkins`, 0);
   const [showGymInfo, setShowGymInfo] = useState(false);
   const [deleteInput, setDeleteInput] = useState('');
@@ -786,6 +792,27 @@ const Profile = () => {
         <HeroStat label={t('profile.volume')} value={loading ? '—' : volumeStr} sub={t('common:lbs')} color="var(--color-accent)" />
         <HeroStat label={t('profile.records')} value={loading ? '—' : prs.length} color="#FF5A2E" />
       </div>
+
+      {/* Share-month pill — produces a recap card with the current month's
+          workouts / volume / PRs / streak. Hidden while loading so the
+          captured numbers always match what the stats strip just rendered. */}
+      {!loading && sessions.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setMonthlyShareOpen(true)}
+          className="w-full flex items-center justify-center gap-2 mb-4 py-2.5 rounded-[14px] active:scale-[0.98] transition-transform"
+          style={{
+            background: 'var(--color-bg-card)',
+            border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))',
+            color: 'var(--color-text-primary)',
+            fontWeight: 700,
+            fontSize: 13,
+          }}
+        >
+          <Share2 size={14} />
+          {t('profile.shareMonth', { defaultValue: 'Share this month' })}
+        </button>
+      )}
 
       {/* ── Referral banner (Profile A gradient pill) ────────────────────── */}
       <button
@@ -1580,6 +1607,41 @@ const Profile = () => {
           achievement={shareAchievement}
         />
       )}
+
+      {/* Monthly recap share — assembled inline from the same sessions/PRs
+          arrays that power the lifetime stats strip above, so the share
+          always matches what the user sees on screen. */}
+      {monthlyShareOpen && (() => {
+        const now = new Date();
+        const mStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const inMonth = (iso) => {
+          if (!iso) return false;
+          const d = new Date(iso);
+          return d >= mStart && d <= now;
+        };
+        const monthSessions = sessions.filter(s => inMonth(s.completed_at || s.started_at));
+        const monthVolume = monthSessions.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
+        const monthPRs = prs.filter(p => inMonth(p.achieved_at || p.created_at)).length;
+        const monthLabel = now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }).toUpperCase();
+        return (
+          <ShareMonthlySheet
+            open={monthlyShareOpen}
+            onClose={() => setMonthlyShareOpen(false)}
+            recap={{
+              monthLabel,
+              workouts: monthSessions.length,
+              totalVolumeLbs: Math.round(monthVolume),
+              prCount: monthPRs,
+              streakDays: profile?.current_streak_days || 0,
+              headline: monthPRs > 0
+                ? `${monthPRs} new ${monthPRs === 1 ? 'PR' : 'PRs'} this month`
+                : `${monthSessions.length} workouts logged`,
+            }}
+            user={profile}
+            gym={profile?.gym_name}
+          />
+        );
+      })()}
 
       <ViewSwitcherModal open={showViewSwitcher} onClose={() => setShowViewSwitcher(false)} />
     </div>

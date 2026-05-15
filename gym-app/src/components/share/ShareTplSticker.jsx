@@ -68,6 +68,31 @@ export default function ShareTplSticker({
       { label: 'PRs', value: data.prCount || 0, unit: '' },
       { label: 'STREAK', value: data.streakDays || 0, unit: 'd' },
     ];
+  } else if (kind === 'body') {
+    // Body progress is stats-only by design — actual progress photos go on
+    // the user's own IG Story background; the sticker shows the delta.
+    label = 'PROGRESS';
+    const weeks = Number(data.weeksBetween) || 0;
+    bigValue = String(weeks);
+    bigUnit = weeks === 1 ? 'week' : 'weeks';
+    subValue = 'Body composition update';
+    stats = [];
+    if (data.deltaLbs != null) {
+      const v = Number(data.deltaLbs);
+      stats.push({
+        label: v < 0 ? 'LOST' : 'GAINED',
+        value: Math.abs(v).toFixed(1),
+        unit: 'lbs',
+      });
+    }
+    if (data.deltaBodyFat != null) {
+      const v = Number(data.deltaBodyFat);
+      stats.push({
+        label: 'BODY FAT',
+        value: `${v > 0 ? '+' : ''}${v.toFixed(1)}`,
+        unit: '%',
+      });
+    }
   }
 
   return (

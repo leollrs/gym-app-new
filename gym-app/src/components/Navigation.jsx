@@ -804,6 +804,30 @@ const Navigation = () => {
         }}
         onClick={e => e.stopPropagation()}
       >
+        {/* Share button — surfaces the streak-kind ShareSheet so the user
+            can post their day-count to IG / WA / Messages. Placed next to
+            close so it's discoverable but doesn't compete with the hero. */}
+        <button
+          onClick={() => setShareStreakOpen(true)}
+          aria-label={t('share.share', { ns: 'pages', defaultValue: 'Share' })}
+          className="absolute top-3 right-14 w-9 h-9 rounded-full flex items-center justify-center z-10 focus:outline-none focus:ring-2"
+          style={{
+            background: 'rgba(255,255,255,0.18)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.25)',
+            color: '#fff',
+            '--tw-ring-color': 'rgba(255,255,255,0.6)',
+          }}
+        >
+          {/* Inline arrow icon (the Share2 from lucide isn't imported here) */}
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+            <polyline points="16 6 12 2 8 6" />
+            <line x1="12" y1="2" x2="12" y2="15" />
+          </svg>
+        </button>
+
         {/* Close button (floats above the hero) */}
         <button
           onClick={() => setShowStreakModal(false)}

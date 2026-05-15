@@ -23,6 +23,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT } from '../data/exercises';
 import Confetti from '../components/Confetti';
+import { SharePRSheet } from '../components/share/QuickShareSheets';
 
 import SessionHeader from './active-session/SessionHeader';
 import ExerciseCard from './active-session/ExerciseCard';
@@ -355,15 +356,24 @@ const isPR = (exerciseId, weight, reps, knownPRs) => {
 };
 
 // ── PR Celebration Banner ─────────────────────────────────────────────────────
-const PRBanner = ({ exercise, weight, reps, onDismiss, t }) => (
+const PRBanner = ({ exercise, weight, reps, onDismiss, onShare, t }) => (
   <div className="fixed top-0 left-0 right-0 z-[200] animate-scale-pop" style={{ paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
-    <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-orange-500 px-5 py-5 shadow-2xl flex items-center gap-4 w-full" style={{ boxShadow: '0 8px 32px rgba(212, 175, 55, 0.4)' }}>
+    <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-orange-500 px-5 py-5 shadow-2xl flex items-center gap-3 w-full" style={{ boxShadow: '0 8px 32px rgba(212, 175, 55, 0.4)' }}>
       <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white/20 flex-shrink-0"><Trophy size={28} className="text-white drop-shadow-lg" /></div>
       <div className="flex-1 min-w-0">
         <p className="font-extrabold text-[17px] leading-tight text-white tracking-wide uppercase drop-shadow-sm">{t('activeSession.newPersonalRecord')}</p>
         <p className="text-[14px] text-white/90 mt-1 font-semibold truncate">{t('activeSession.prSubtitle', { exercise, weight, reps })}</p>
       </div>
-      <button onClick={onDismiss} aria-label={t('activeSession.dismiss', { defaultValue: 'Dismiss' })} className="w-11 h-11 flex items-center justify-center text-white/70 hover:text-white text-[20px] leading-none ml-1 transition-colors duration-200 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-full">×</button>
+      {/* "Share" surfaces the PR-kind ShareSheet immediately. Biggest moment
+          in a workout → biggest social-share opportunity. */}
+      <button
+        onClick={onShare}
+        aria-label={t('share.shareThisPR', { defaultValue: 'Share this PR' })}
+        className="px-3 py-2 rounded-full bg-white/90 text-amber-700 font-bold text-[12px] tracking-wide uppercase flex-shrink-0 focus:ring-2 focus:ring-white focus:outline-none"
+      >
+        {t('share.share', { defaultValue: 'Share' })}
+      </button>
+      <button onClick={onDismiss} aria-label={t('activeSession.dismiss', { defaultValue: 'Dismiss' })} className="w-9 h-9 flex items-center justify-center text-white/70 hover:text-white text-[20px] leading-none transition-colors duration-200 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-full">×</button>
     </div>
   </div>
 );
@@ -373,7 +383,7 @@ const ActiveSession = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, profile } = useAuth();
+  const { user, profile, gymName } = useAuth();
   const { t, i18n } = useTranslation('pages');
   const posthog = usePostHog();
   const queryClient = useQueryClient();
@@ -705,6 +715,9 @@ const ActiveSession = () => {
   const [showDeleteSessionConfirm, setShowDeleteSessionConfirm] = useState(false);
 
   const [activePRBanner, setActivePRBanner] = useState(null);
+  // PR share payload — set by the "Share" button on the PR celebration banner;
+  // ShareSheet (kind='pr') reads it via buildPRShareData() below.
+  const [sharePRPayload, setSharePRPayload] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [sessionPRs, setSessionPRs]         = useState(savedSession?.sessionPRs ?? []);
   const livePRs = useRef({});
@@ -3082,9 +3095,25 @@ const ActiveSession = () => {
           weight={activePRBanner.weight}
           reps={activePRBanner.reps}
           onDismiss={() => setActivePRBanner(null)}
+          onShare={() => setSharePRPayload(activePRBanner)}
           t={t}
         />
       )}
+      {/* PR Share sheet — opens immediately when the user taps "Share" on
+          the celebration banner. Biggest moment in a workout → biggest
+          social-share opportunity. */}
+      <SharePRSheet
+        open={!!sharePRPayload}
+        onClose={() => setSharePRPayload(null)}
+        pr={sharePRPayload && {
+          exerciseName: sharePRPayload.exercise,
+          value: sharePRPayload.weight,
+          previousBest: sharePRPayload.previousWeight,
+          unit: 'lbs',
+        }}
+        user={profile}
+        gym={gymName}
+      />
       <Confetti active={showConfetti} onComplete={() => setShowConfetti(false)} />
 
       {/* Save Warning Toast */}
