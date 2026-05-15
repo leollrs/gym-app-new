@@ -695,8 +695,12 @@ const Onboarding = () => {
   const [generatedRoutines, setGeneratedRoutines] = useState([]);
   const [generatedRoutinesB, setGeneratedRoutinesB] = useState([]);
   const [previewRoutineIdx, setPreviewRoutineIdx] = useState(0);
-  // 0 = Week A, 1 = Week B. The actual program alternates A/B on a 2-week
-  // cycle (schedule_map), so two "weeks" is the full preview surface.
+  // 0-indexed week number across the full 12-week program (so 0..11).
+  // The program itself is a 2-variant rotation (A/B) so the displayed
+  // routines come from `generatedRoutines` (Variant A) on even indices and
+  // `generatedRoutinesB` on odd ones — but exposing all 12 weeks lets the
+  // user see the program they were promised in the meta line, not just
+  // "Week A / Week B".
   const [previewWeekIdx, setPreviewWeekIdx] = useState(0);
 
   const [showMealPlan, setShowMealPlan] = useState(false);
@@ -1737,13 +1741,13 @@ const Onboarding = () => {
   return (
     <main
       style={{
-        // Lock the page to the visible viewport (minus the keyboard, if open)
-        // so the header + footer stay pinned and only the body scrolls. The
-        // `--keyboard-height` var is set by Capacitor's keyboard listeners in
-        // main.jsx — when iOS pops the keyboard for an input, main shrinks
-        // and the footer rides up above the keyboard instead of getting
-        // covered. 100dvh handles the iOS Safari address-bar collapse case.
-        height: 'calc(100dvh - var(--keyboard-height, 0px))',
+        // capacitor.config.json has Keyboard.resize: "native", so iOS already
+        // shrinks the WebView when the keyboard opens — 100dvh inside is
+        // automatically the area ABOVE the keyboard. The previous
+        // calc(100dvh - --keyboard-height) was double-subtracting and
+        // collapsed the page to a blank sliver the instant a text field
+        // received focus. Plain 100dvh is the correct anchor here.
+        height: '100dvh',
         background: OB.bg,
         color: OB.ink,
         fontFamily: OB_FONT.body,
@@ -3335,46 +3339,69 @@ const Onboarding = () => {
               })}
             </div>
 
-            {/* Week A / Week B selector — the program alternates between two
-                rotations on a 2-week cycle. Shown only when variant B has
-                been generated (which it always is for fresh runs; older
-                cache entries without B fall through to a single-week view). */}
-            {generatedRoutinesB.length > 0 && (
-              <div style={{
-                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
-                marginTop: 16,
-              }}>
-                {[
-                  { idx: 0, label: t('generatePlan.weekA', 'Week A') },
-                  { idx: 1, label: t('generatePlan.weekB', 'Week B') },
-                ].map(w => {
-                  const sel = previewWeekIdx === w.idx;
-                  return (
-                    <button
-                      key={w.idx}
-                      type="button"
-                      onClick={() => { setPreviewWeekIdx(w.idx); setPreviewRoutineIdx(0); }}
-                      aria-pressed={sel}
-                      style={{
-                        height: 40, borderRadius: 12,
-                        background: sel ? OB.ink : OB.surface,
-                        border: `1.5px solid ${sel ? OB.ink : OB.line}`,
-                        color: sel ? '#fff' : OB.ink,
-                        fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 13,
-                        letterSpacing: -0.1, cursor: 'pointer',
-                        transition: 'all 150ms ease',
-                      }}
-                    >{w.label}</button>
-                  );
-                })}
-              </div>
-            )}
+            {/* 12-week strip. The underlying program is a 2-variant rotation
+                (Week A / Week B) that alternates across 12 calendar weeks —
+                odd weeks run Variant A, even weeks run Variant B. We surface
+                all 12 weeks here so the user actually sees a 12-week program
+                instead of just "A vs B". Tapping any week reveals its
+                routines; a small Variant-A/B chip on the selected pill
+                clarifies what's repeating underneath. */}
+            {generatedRoutinesB.length > 0 && (() => {
+              const TOTAL_WEEKS = 12;
+              return (
+                <div style={{
+                  display: 'flex', gap: 6, marginTop: 16,
+                  overflowX: 'auto', scrollbarWidth: 'none',
+                  WebkitOverflowScrolling: 'touch',
+                  paddingBottom: 4,
+                }}>
+                  {Array.from({ length: TOTAL_WEEKS }, (_, i) => {
+                    const sel = previewWeekIdx === i;
+                    const variant = i % 2 === 0 ? 'A' : 'B';
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => { setPreviewWeekIdx(i); setPreviewRoutineIdx(0); }}
+                        aria-pressed={sel}
+                        style={{
+                          flex: '0 0 auto',
+                          minWidth: 70,
+                          height: 48, borderRadius: 12,
+                          background: sel ? OB.ink : OB.surface,
+                          border: `1.5px solid ${sel ? OB.ink : OB.line}`,
+                          color: sel ? '#fff' : OB.ink,
+                          fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 13,
+                          letterSpacing: -0.1, cursor: 'pointer',
+                          transition: 'all 150ms ease',
+                          display: 'flex', flexDirection: 'column',
+                          alignItems: 'center', justifyContent: 'center',
+                          padding: '0 12px',
+                        }}
+                      >
+                        <span style={{ lineHeight: 1 }}>
+                          {t('generatePlan.weekN', { defaultValue: 'Week {{n}}', n: i + 1 })}
+                        </span>
+                        <span style={{
+                          marginTop: 3,
+                          fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
+                          opacity: sel ? 0.8 : 0.5,
+                        }}>
+                          {variant}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* Day tabs + exercise list. Source array swaps between Week A
                 and Week B based on the selector above. */}
             {(() => {
+              // Odd-index week (= even calendar week, 2/4/6/...) runs Variant B.
               const activeRoutines =
-                previewWeekIdx === 1 && generatedRoutinesB.length > 0
+                previewWeekIdx % 2 === 1 && generatedRoutinesB.length > 0
                   ? generatedRoutinesB
                   : generatedRoutines;
               if (activeRoutines.length === 0) return null;
