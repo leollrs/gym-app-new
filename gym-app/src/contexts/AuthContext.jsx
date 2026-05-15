@@ -123,6 +123,14 @@ export const AuthProvider = ({ children }) => {
   // every time made the splash bounce in/out and tripped StuckLoadingRecovery
   // on slow boots.
   const loadedProfileIdRef = useRef(cachedProfile?.id || null);
+  // Handle for the init-loading watchdog (defined inside the auth useEffect
+  // below) so fetchProfile can cancel it the moment a real fetch is in
+  // flight. Without this, a slow network would let the 6s timeout drop
+  // `loading` to false mid-fetch, the page would render its empty state,
+  // and then the eventual SIGNED_IN re-emission would flip `loading` back
+  // to true — that's the visible "shows → resets → shows again → black"
+  // flicker we're fixing.
+  const initLoadTimeoutRef = useRef(null);
 
   // ── Multi-role view switching ─────────────────────────────
   // activeView tracks which "experience" the user is currently in:
@@ -153,6 +161,24 @@ export const AuthProvider = ({ children }) => {
 
   // Fetch the profile row for a given user id, then apply gym branding
   const fetchProfile = async (userId) => {
+    // Mark this user as in-flight BEFORE awaiting anything. If supabase
+    // re-emits SIGNED_IN for the same user while the RPC is still running
+    // (happens on slow networks / gotrue lock contention), the handler's
+    // ref check will match and skip a second setLoading(true). And cancel
+    // the init-loading watchdog so it can't yank `loading` to false
+    // mid-fetch — the try/finally below owns the gate from here.
+    loadedProfileIdRef.current = userId;
+    if (initLoadTimeoutRef.current) {
+      clearTimeout(initLoadTimeoutRef.current);
+      initLoadTimeoutRef.current = null;
+    }
+    // Belt-and-suspenders: if get_auth_context hangs indefinitely (slow wifi,
+    // gotrue contention, paused RPC) the try/finally below never runs and
+    // `loading` is stuck true — at 10s StuckLoadingRecovery would then wipe
+    // the cache and reload. Drop the gate at 8s so the app renders cached
+    // state instead. The in-flight fetch keeps running and `setLoading(false)`
+    // in the finally is a no-op once already false.
+    const fetchWatchdog = setTimeout(() => setLoading(false), 8000);
     try {
     // Single RPC call replaces profile + branding + gym + points + notifications queries
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_auth_context');
@@ -544,6 +570,7 @@ export const AuthProvider = ({ children }) => {
       }, 0);
     }
     } finally {
+      clearTimeout(fetchWatchdog);
       setLoading(false);
     }
   };
@@ -589,7 +616,10 @@ export const AuthProvider = ({ children }) => {
     // (onAuthStateChange + the online/retry effects) refresh once the
     // network is back. setLoading(false) when already false is a no-op,
     // so this is safe even on a fast connection.
-    const initLoadTimeout = setTimeout(() => setLoading(false), 6000);
+    initLoadTimeoutRef.current = setTimeout(() => {
+      initLoadTimeoutRef.current = null;
+      setLoading(false);
+    }, 6000);
 
     // Check for an existing session on mount. If offline/unreachable, the
     // hydrated user/profile from localStorage stays in place — we don't
@@ -697,7 +727,10 @@ export const AuthProvider = ({ children }) => {
     return () => {
       subscription.unsubscribe();
       try { window.removeEventListener('unhandledrejection', onUnhandledRejection); } catch {}
-      clearTimeout(initLoadTimeout);
+      if (initLoadTimeoutRef.current) {
+        clearTimeout(initLoadTimeoutRef.current);
+        initLoadTimeoutRef.current = null;
+      }
       // Clean up any pending Watch sync timeout
       if (watchSyncTimeoutRef.current) {
         clearTimeout(watchSyncTimeoutRef.current);
