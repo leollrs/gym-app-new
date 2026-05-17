@@ -31,6 +31,8 @@ import {
   Moon,
   Sun,
   Save,
+  Smartphone,
+  AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
@@ -481,6 +483,7 @@ export default function PlatformSettings() {
   const [infoOpen, setInfoOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(true);
   const [flagsOpen, setFlagsOpen] = useState(true);
+  const [versionOpen, setVersionOpen] = useState(true);
   const [defaultsOpen, setDefaultsOpen] = useState(true);
   const [healthOpen, setHealthOpen] = useState(true);
 
@@ -518,6 +521,18 @@ export default function PlatformSettings() {
     activeUsers: null,
     loadingHealth: false,
   });
+
+  /* ── app version gate (persisted to app_config) ── */
+  const [appVersion, setAppVersion] = useState({
+    min_required_version: '',
+    latest_version:       '',
+    ios_store_url:        '',
+    android_store_url:    '',
+  });
+  const [appVersionLoaded, setAppVersionLoaded] = useState(false);
+  const [appVersionSaving, setAppVersionSaving] = useState(false);
+  const [appVersionSaved, setAppVersionSaved] = useState(false);
+  const [appVersionError, setAppVersionError] = useState(null);
 
   /* ── loading flags ── */
   const [loadingExercises, setLoadingExercises] = useState(false);
@@ -684,6 +699,55 @@ export default function PlatformSettings() {
     setTimeout(() => setDefaultsSaved(false), 2000);
   };
 
+  /* ────────────────── app version gate persistence ────────────────── */
+
+  // Fetch via the same RPC the client uses so what the admin sees is what
+  // every user is currently being gated against — no risk of staring at a
+  // stale local copy.
+  const fetchAppVersion = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_app_version');
+      if (!error && data) {
+        setAppVersion({
+          min_required_version: data.min_required_version || '',
+          latest_version:       data.latest_version || '',
+          ios_store_url:        data.ios_store_url || '',
+          android_store_url:    data.android_store_url || '',
+        });
+      }
+    } catch { /* silent — defaults stay blank */ }
+    setAppVersionLoaded(true);
+  }, []);
+
+  const saveAppVersion = async () => {
+    setAppVersionSaving(true);
+    setAppVersionError(null);
+    try {
+      const payload = {
+        min_required_version: appVersion.min_required_version.trim(),
+        latest_version:       appVersion.latest_version.trim(),
+        ios_store_url:        appVersion.ios_store_url.trim() || null,
+        android_store_url:    appVersion.android_store_url.trim() || null,
+      };
+      if (!payload.min_required_version || !payload.latest_version) {
+        throw new Error('Both version fields are required.');
+      }
+      const { error } = await supabase
+        .from('app_config')
+        .update(payload)
+        .eq('id', 1);
+      if (error) throw error;
+      // Audit row is appended server-side by the app_config_audit trigger
+      // (see migration 0393). No client-side logAdminAction call needed.
+      setAppVersionSaved(true);
+      setTimeout(() => setAppVersionSaved(false), 2000);
+    } catch (err) {
+      setAppVersionError(err?.message || 'Save failed');
+    } finally {
+      setAppVersionSaving(false);
+    }
+  };
+
   useEffect(() => {
     fetchExercises();
     fetchAchievements();
@@ -691,6 +755,7 @@ export default function PlatformSettings() {
     fetchStats();
     fetchHealth();
     fetchPlatformConfig();
+    fetchAppVersion();
   }, []);
 
   /* ────────────────── delete handler ────────────────── */
@@ -1014,6 +1079,82 @@ export default function PlatformSettings() {
 
       {/* ── System tab ── */}
       {settingsTab === 'system' && (<>
+
+      {/* ──────── App Version Gate ──────── */}
+      <CollapsibleSection
+        title={tp('appVersionTitle')}
+        icon={<Smartphone className="w-4 h-4 text-[#D4AF37]" />}
+        open={versionOpen}
+        toggle={() => setVersionOpen(!versionOpen)}
+      >
+        <div className="flex items-start gap-2 text-[11px] text-amber-300 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-[1px]" />
+          <span>{tp('appVersionWarning')}</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <Field label={tp('appVersionMinRequired')}>
+            <input
+              className={inputCls}
+              type="text"
+              placeholder="1.0.0"
+              value={appVersion.min_required_version}
+              onChange={(e) => setAppVersion(prev => ({ ...prev, min_required_version: e.target.value }))}
+              disabled={!appVersionLoaded}
+            />
+          </Field>
+          <Field label={tp('appVersionLatest')}>
+            <input
+              className={inputCls}
+              type="text"
+              placeholder="1.0.0"
+              value={appVersion.latest_version}
+              onChange={(e) => setAppVersion(prev => ({ ...prev, latest_version: e.target.value }))}
+              disabled={!appVersionLoaded}
+            />
+          </Field>
+          <Field label={tp('appVersionIosUrl')}>
+            <input
+              className={inputCls}
+              type="url"
+              placeholder="https://apps.apple.com/app/id…"
+              value={appVersion.ios_store_url}
+              onChange={(e) => setAppVersion(prev => ({ ...prev, ios_store_url: e.target.value }))}
+              disabled={!appVersionLoaded}
+            />
+          </Field>
+          <Field label={tp('appVersionAndroidUrl')}>
+            <input
+              className={inputCls}
+              type="url"
+              placeholder="https://play.google.com/store/apps/details?id=…"
+              value={appVersion.android_store_url}
+              onChange={(e) => setAppVersion(prev => ({ ...prev, android_store_url: e.target.value }))}
+              disabled={!appVersionLoaded}
+            />
+          </Field>
+        </div>
+
+        {appVersionError && (
+          <p className="text-[11px] text-red-400 mb-2">{appVersionError}</p>
+        )}
+
+        <div className="flex items-center justify-end gap-3">
+          {appVersionSaved && (
+            <span className="text-[11px] text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" /> {tp('saved')}
+            </span>
+          )}
+          <button
+            onClick={saveAppVersion}
+            disabled={appVersionSaving || !appVersionLoaded}
+            className="bg-[#D4AF37] text-black hover:bg-[#E6C766] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+          >
+            {appVersionSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {tp('appVersionSave')}
+          </button>
+        </div>
+      </CollapsibleSection>
 
       {/* ──────── 7. Feature Flags ──────── */}
       <CollapsibleSection

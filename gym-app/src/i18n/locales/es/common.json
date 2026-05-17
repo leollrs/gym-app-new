@@ -425,5 +425,12 @@
   "cm": "cm",
   "cal": "cal",
   "closeDialog": "Cerrar diálogo",
-  "sending": "Enviando…"
+  "sending": "Enviando…",
+  "updateRequired": {
+    "title": "Actualización requerida",
+    "body": "Hay una nueva versión de la app y es necesaria para continuar. Actualiza para seguir usando TuGymPR.",
+    "update": "Actualizar ahora",
+    "reload": "Recargar ahora",
+    "versionLabel": "Versión {{client}} → {{required}}"
+  }
 }

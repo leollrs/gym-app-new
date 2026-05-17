@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { usePostHog } from '@posthog/react';
 import { useQueryClient } from '@tanstack/react-query';
 import QRCodeModal from './components/QRCodeModal';
+import UpdateRequiredModal from './components/UpdateRequiredModal';
+import { startVersionCheck } from './lib/appVersionCheck';
 import './App.css';
 
 import { useAuth } from './contexts/AuthContext';
@@ -924,6 +926,15 @@ function App() {
     return () => setNavigateFn(null);
   }, [navigate]);
 
+  // ── App-version gate ────────────────────────────────────────
+  // Fires the first RPC immediately on mount and then polls every 15 min.
+  // The UpdateRequiredModal subscribes independently and paints a hard
+  // gate over the app the moment the server reports our bundled version
+  // is below `min_required_version`.
+  useEffect(() => {
+    startVersionCheck();
+  }, []);
+
   // ── Online / Offline awareness ──────────────────────────────
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   useEffect(() => {
@@ -1403,6 +1414,10 @@ function App() {
 
   return (
     <Suspense fallback={<LoadingScreen />}>
+    {/* App-version hard gate — overlays the entire app (including auth
+        screens) the moment the API reports we're below min_required_version.
+        Renders nothing while the client is up to date. */}
+    <UpdateRequiredModal />
     {!isOnline && !offlineDismissed && (
       <div className="fixed top-0 left-0 right-0 z-[999] flex items-center justify-center gap-2 py-2 px-4 animate-slide-down"
         style={{ background: 'var(--color-warning, #F59E0B)', color: '#000' }}>

@@ -3,8 +3,16 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 const isCapacitor = process.env.CAPACITOR_BUILD === 'true';
+
+// Pulled from package.json so a single source of truth (the package version)
+// is what every API call compares against. Bumping package.json on release
+// is enough to roll the gate forward.
+const pkgUrl = new URL('./package.json', import.meta.url);
+const appVersion = JSON.parse(readFileSync(fileURLToPath(pkgUrl), 'utf8')).version || '0.0.0';
 
 // Build identifier — every build gets a fresh value so the React Query
 // persisted cache buster (in main.jsx) auto-invalidates on every deploy.
@@ -31,6 +39,11 @@ export default defineConfig({
     // Available at runtime as `__BUILD_ID__` (string literal). Used as the
     // React Query persist buster + as a debug label in stuck-loading recovery.
     __BUILD_ID__: JSON.stringify(buildId),
+    // Bundled app version (from package.json). The app-version check (see
+    // lib/appVersionCheck.js) compares this against `min_required_version`
+    // returned by the `get_app_version` RPC to decide whether to hard-gate
+    // the user behind the update modal.
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
     react(),
