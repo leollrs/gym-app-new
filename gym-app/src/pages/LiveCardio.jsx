@@ -132,7 +132,7 @@ const MemoRouteMap = memo(
 
 export default function LiveCardio() {
   const { t } = useTranslation('pages');
-  const { user, profile } = useAuth();
+  const { user, profile, gymLogoUrl } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1231,6 +1231,7 @@ export default function LiveCardio() {
           route: savedSession.route || [],
           unit,
           gymName: profile?.gym_name,
+          gymLogoUrl,
         } : (phase === 'done' ? {
           sessionId: null,
           cardioType,
@@ -1242,6 +1243,7 @@ export default function LiveCardio() {
           route: gpsState?.route || [],
           unit,
           gymName: profile?.gym_name,
+          gymLogoUrl,
         } : null)}
       />
     </div>

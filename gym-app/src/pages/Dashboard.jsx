@@ -1948,7 +1948,11 @@ const Dashboard = () => {
                       const typeName = t(`cardio.types.${cs.cardio_type}`, cs.cardio_type);
                       return (
                         <div key={cs.id} className="relative mb-1.5">
-                          <div className="flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-[var(--color-surface-hover)] text-left">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/cardio/${cs.id}`)}
+                            className="w-full flex items-center gap-3 px-4 pr-11 py-3 rounded-xl bg-[var(--color-surface-hover)] hover:bg-[var(--color-bg-deep)] transition-colors text-left"
+                          >
                             <div className="w-9 h-9 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
                               <Activity size={13} className="text-[#10B981]" />
                             </div>
@@ -1964,7 +1968,8 @@ const Dashboard = () => {
                                 )}
                               </div>
                             </div>
-                          </div>
+                            <span className="text-[10px] font-medium text-[var(--color-accent,#2EC4C4)]">{t('dashboard.viewSummary')}</span>
+                          </button>
                           <button onClick={() => setDeleteConfirm({ type: 'cardio', id: cs.id, name: typeName })}
                             className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
                             style={{ color: '#EF4444' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>

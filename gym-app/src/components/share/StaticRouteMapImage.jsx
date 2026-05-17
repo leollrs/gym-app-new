@@ -19,6 +19,7 @@ export default function StaticRouteMapImage({
   borderRadius = 0,
   fallback = null,
   sessionId = null,
+  light = false,
   onReady,
 }) {
   const { t } = useTranslation('pages');
@@ -29,20 +30,21 @@ export default function StaticRouteMapImage({
   useEffect(() => {
     let alive = true;
     if (!Array.isArray(route) || route.length < 2) { setSrc(null); return; }
-    renderRouteMap({ route, width, height, accent, sessionId })
+    renderRouteMap({ route, width, height, accent, sessionId, light })
       .then((result) => { if (alive) setSrc(result?.src || null); })
       .catch(() => { if (alive) setSrc(null); });
     return () => { alive = false; };
-  }, [route, width, height, accent, sessionId]);
+  }, [route, width, height, accent, sessionId, light]);
 
   if (!src) {
     return fallback ?? (
       <div
         style={{
           width, height, borderRadius,
-          background: '#1A1F25',
+          background: light ? '#E8E6DF' : '#1A1F25',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'rgba(255,255,255,0.45)', fontSize: 14, fontWeight: 700,
+          color: light ? 'rgba(10,13,16,0.45)' : 'rgba(255,255,255,0.45)',
+          fontSize: 14, fontWeight: 700,
         }}
       >
         {t('share.loadingMap', { defaultValue: 'Loading map…' })}

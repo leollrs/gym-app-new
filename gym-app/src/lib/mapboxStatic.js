@@ -97,7 +97,9 @@ export function mapboxStaticUrlForRoute(route, opts = {}) {
   // Resolve CSS vars and validate — Mapbox URLs MUST be a literal 6-char hex.
   // Passing "var(--color-accent, #FC5200)" raw breaks the URL and Mapbox 422s.
   const accent = resolveHexColor(opts.accent);
-  const style = opts.style || DEFAULT_STYLE;
+  // `light: true` swaps to Mapbox's "light-v11" basemap so the route image
+  // matches a light-themed card. Explicit `style` override still wins.
+  const style = opts.style || (opts.light ? 'light-v11' : DEFAULT_STYLE);
   const strokeWidth = opts.strokeWidth ?? 5;
 
   // Decimate very dense routes to fit Mapbox's 8192-char URL limit. Sample

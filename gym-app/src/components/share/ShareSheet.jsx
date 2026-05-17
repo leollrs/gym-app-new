@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { X, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { X, Image as ImageIcon, Sparkles, Layers as LayersIcon } from 'lucide-react';
+import StickerComposer from './StickerComposer';
+import PreviewOverlay from './PreviewOverlay';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from '../../lib/supabase';
@@ -346,6 +348,15 @@ function renderTemplate(template, props) {
 // `transparent: true` skips the black background fill so the exported PNG
 // carries alpha — needed for the IG Stories sticker / Strava-style overlay
 // flow where the user composes our card on top of their own photo.
+async function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
 export async function rasterizeNode(node, targetW, targetH, { transparent = false } = {}) {
   const rect = node.getBoundingClientRect();
   const srcW = Math.max(1, Math.round(rect.width));
@@ -414,6 +425,17 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
   const sticker = template === 'sticker';
   const [clearBackground, setClearBackground] = useState(false);
   const [caption, setCaption] = useState('');
+  const [customAccent, setCustomAccent] = useState(null);
+  const [customTitle, setCustomTitle] = useState('');
+  const [themeMode, setThemeMode] = useState('dark'); // 'dark' | 'light'
+  const [previewFull, setPreviewFull] = useState(false);
+  // Sticker composer state: when the user composes the sticker onto a photo
+  // in-app, the resulting blob overrides buildCard so every destination
+  // (IG Story / Save / Copy) ships the already-flattened image instead of
+  // the transparent sticker.
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerStickerSrc, setComposerStickerSrc] = useState(null);
+  const [composedBlob, setComposedBlob] = useState(null);
   const [activeDest, setActiveDest] = useState(null);
   const [busy, setBusy] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -493,11 +515,19 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { w, h } = ShareFormats[format];
-  const maxW = 300;
-  const maxH = 440;
+  // Preview shares the viewport with a 60vh controls sheet + ~70px top bar;
+  // 28vh keeps the card inside the visible flex slot without bleeding into
+  // the top bar or pushing under the controls sheet.
+  const vw = (typeof window !== 'undefined' && window.innerWidth) || 390;
+  const vh = (typeof window !== 'undefined' && window.innerHeight) || 800;
+  const maxW = Math.min(320, vw - 48);
+  const maxH = Math.min(vh * 0.28, 380);
   const scale = Math.min(maxW / w, maxH / h, 1);
 
-  const renderedAccent = template === 'poster' ? '#FF5A2E' : accent;
+  // The user's accent override (from the customize picker) wins over the
+  // gym accent. Poster historically forces orange, but a user-picked accent
+  // should win there too so the picker isn't a no-op on that template.
+  const renderedAccent = customAccent || (template === 'poster' ? '#FF5A2E' : accent);
 
   // Transparency is requested either by the user-facing "Sticker" toggle OR by
   // picking the dedicated Sticker template (its canvas is already transparent;
@@ -512,12 +542,41 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
     || (template === 'photo' && clearBackground && !backgroundSrc);
 
   const buildCard = useCallback(async () => {
+    // When the user has composed the sticker onto a photo in-app, that
+    // single composite is the source of truth — every destination should
+    // ship the already-flattened image instead of going back to the raw
+    // transparent card.
+    if (composedBlob) return composedBlob;
     if (!cardRef.current) return null;
     const exp = ShareExportSizes[format];
     // rasterizeNode skips the opaque black fillRect when transparent=true so
     // the rasterized PNG keeps its alpha channel.
     return await rasterizeNode(cardRef.current, exp.w, exp.h, { transparent: isTransparentExport });
-  }, [format, isTransparentExport]);
+  }, [format, isTransparentExport, composedBlob]);
+
+  // Drop the composed blob whenever anything visual changes — the card it
+  // was built from is stale and shipping it would mislead the user.
+  useEffect(() => {
+    setComposedBlob(null);
+  }, [template, format, customAccent, customTitle, themeMode, showGym, showExactWeights, showMuscles, showPRs]);
+
+  // Open the composer: rasterize the current card with alpha so the
+  // composer has a transparent PNG to drop onto a photo.
+  const openComposer = useCallback(async () => {
+    if (!cardRef.current) return;
+    try {
+      const blob = await rasterizeNode(cardRef.current, ShareExportSizes.story.w, ShareExportSizes.story.h, { transparent: true });
+      if (!blob) return;
+      const dataUrl = await blobToDataUrl(blob);
+      setComposerStickerSrc(dataUrl);
+      setComposerOpen(true);
+      // Force story format so the composite (1080×1920) lines up with the
+      // destination dimensions when the user shares.
+      setFormat('story');
+    } catch (err) {
+      console.warn('[ShareSheet] composer open failed:', err?.message);
+    }
+  }, []);
 
   const handleDest = useCallback(async (dest) => {
     if (busy) return;
@@ -678,11 +737,21 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
 
   if (!mounted) return null;
 
+  // When the user provides a custom title, override data.name so all
+  // templates (which read data.name for the headline) pick it up without
+  // each having to know about the customize section.
+  const trimmedTitle = customTitle?.trim();
+  const renderedData = trimmedTitle
+    ? { ...(data || {}), name: trimmedTitle.slice(0, 32) }
+    : (data || {});
+
   const templateProps = {
     w, h,
-    data: data || {},
+    data: renderedData,
     showGym, showExactWeights, showMuscles, showPRs,
     accent: renderedAccent,
+    customTitle: trimmedTitle || undefined,
+    themeMode,
     backgroundSrc: template === 'photo' ? backgroundSrc : undefined,
     // When the Sticker toggle is on, render every template with a
     // transparent canvas so the exported PNG carries alpha and the user
@@ -756,35 +825,36 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         <div style={{ fontFamily: TuFont.display, fontSize: 17, fontWeight: 800, letterSpacing: -0.3, color: '#fff' }}>
           {t('sessionSummary.share.shareWorkout', 'Share workout')}
         </div>
-        <div style={{ width: 36 }} />
+        <button
+          type="button"
+          onClick={() => setPreviewFull(true)}
+          aria-label={t('share.preview', { defaultValue: 'Preview' })}
+          style={{
+            height: 36, padding: '0 14px', borderRadius: 18, border: 'none',
+            cursor: 'pointer', background: 'rgba(255,255,255,0.14)',
+            color: '#fff', fontSize: 13, fontWeight: 800,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 6, letterSpacing: -0.1,
+          }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 900 }}>⤢</span>
+          {t('share.preview', { defaultValue: 'Preview' })}
+        </button>
       </div>
 
-      {/* Preview */}
+      {/* Preview — overflow hidden so a too-tall card never bleeds into
+          the top bar or the controls sheet. */}
       <div
         style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '8px 20px',
-          minHeight: 0,
+          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '8px 20px', minHeight: 0, overflow: 'hidden',
         }}
       >
         <div
           style={{
-            width: w * scale,
-            height: h * scale,
-            position: 'relative',
-            borderRadius: 24,
-            overflow: 'hidden',
+            width: w * scale, height: h * scale,
+            position: 'relative', borderRadius: 24, overflow: 'hidden',
             boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
-            // Checkerboard behind the template when the export is going to
-            // be transparent. Without this the dark modal backdrop bleeds
-            // through the transparent template and reads identically to
-            // the opaque dark-gradient fallback — the user couldn't tell
-            // that "Clear background" had actually taken effect. The
-            // pattern is preview-only; rasterizeNode exports the template
-            // on its own alpha-bearing canvas regardless.
             backgroundColor: isTransparentExport ? '#FFFFFF' : 'transparent',
             backgroundImage: isTransparentExport
               ? 'linear-gradient(45deg, #d6d6d6 25%, transparent 25%), linear-gradient(-45deg, #d6d6d6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d6d6d6 75%), linear-gradient(-45deg, transparent 75%, #d6d6d6 75%)'
@@ -798,6 +868,11 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
           </div>
         </div>
       </div>
+
+      {/* Fullscreen preview — drag to move, pinch to zoom */}
+      <PreviewOverlay open={previewFull} onClose={() => setPreviewFull(false)} w={w} h={h}>
+        {renderTemplate(effectiveTemplate, templateProps)}
+      </PreviewOverlay>
 
       {/* Offscreen full-resolution card at the user's chosen format
           (drives Save / Copy / IG Feed exports). */}
@@ -860,7 +935,8 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         </div>
       </div>
 
-      {/* Controls panel */}
+      {/* Controls panel — capped + internally scrollable so the preview above
+          stays visible regardless of how many sections are expanded. */}
       <div
         style={{
           background: 'var(--color-bg-card)',
@@ -871,6 +947,10 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
           boxShadow: '0 -8px 30px rgba(0,0,0,0.25)',
           transform: visible ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 320ms cubic-bezier(0.2,0.9,0.3,1)',
+          maxHeight: '60vh',
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
         }}
       >
         {/* grip */}
@@ -977,6 +1057,34 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
               />
             </div>
           )}
+
+          {/* Compose-with-photo button — for sticker template (and photo +
+              transparent mode), opens a fullscreen editor where the user
+              places + resizes the sticker over a photo and exports a single
+              composite image. Skips IG's double-sticker workflow. */}
+          {(template === 'sticker' || (template === 'photo' && clearBackground && !backgroundSrc)) && (
+            <button
+              type="button"
+              onClick={openComposer}
+              style={{
+                marginTop: 10, width: '100%',
+                padding: '12px', borderRadius: 12,
+                border: composedBlob ? '1.5px solid var(--color-accent)' : '1.5px dashed var(--color-border, rgba(255,255,255,0.18))',
+                background: composedBlob
+                  ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
+                  : 'var(--color-bg-primary)',
+                color: composedBlob ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                fontSize: 13, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                cursor: 'pointer',
+              }}
+            >
+              <LayersIcon size={14} />
+              {composedBlob
+                ? t('sessionSummary.share.recompose', 'Re-compose with photo')
+                : t('sessionSummary.share.compose', 'Compose with photo')}
+            </button>
+          )}
         </div>
 
         {/* Format */}
@@ -1044,12 +1152,17 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
           </div>
         </div>
 
-        {/* Caption */}
+        {/* Customize — title override, accent picker, theme.
+            Caption removed: IG won't accept a pre-filled caption from a
+            share intent, so it was misleading. Caption is still auto-built
+            from the workout name internally for activity-feed posts. */}
         <div style={{ padding: '14px 16px 0' }}>
-          <PanelLabel>{t('sessionSummary.share.caption', 'Caption')}</PanelLabel>
+          <PanelLabel>{t('sessionSummary.share.customize', 'Customize')}</PanelLabel>
           <input
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
+            value={customTitle}
+            onChange={(e) => setCustomTitle(e.target.value)}
+            placeholder={t('sessionSummary.share.titlePlaceholder', 'Custom title (optional)')}
+            maxLength={32}
             style={{
               width: '100%',
               marginTop: 6,
@@ -1064,6 +1177,66 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
               boxSizing: 'border-box',
             }}
           />
+          {/* Accent color swatches — each fills 1/7 of the row width so the
+              picker reads as a deliberate full-bleed bar, not a scatter
+              of dots. */}
+          <div style={{ display: 'flex', gap: 4, marginTop: 10, alignItems: 'stretch' }}>
+            {['#2EC4C4', '#FF5A2E', '#3B82F6', '#10B981', '#EC4899', '#8B5CF6', '#F59E0B'].map((c) => {
+              const active = (renderedAccent || '').toUpperCase() === c.toUpperCase();
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCustomAccent(c)}
+                  aria-label={c}
+                  style={{
+                    flex: 1, height: 32, borderRadius: 8,
+                    background: c,
+                    border: active ? '2px solid var(--color-text-primary)' : '2px solid transparent',
+                    boxShadow: active ? 'inset 0 0 0 2px var(--color-bg-card)' : 'none',
+                    cursor: 'pointer', padding: 0, minWidth: 0,
+                  }}
+                />
+              );
+            })}
+          </div>
+          {customAccent && (
+            <button
+              type="button"
+              onClick={() => setCustomAccent(null)}
+              style={{
+                marginTop: 6, fontSize: 11, fontWeight: 700,
+                color: 'var(--color-text-subtle)',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                textDecoration: 'underline', padding: 0,
+              }}
+            >
+              {t('sessionSummary.share.resetAccent', 'Reset')}
+            </button>
+          )}
+          {/* Light/Dark — relevant for templates whose backdrops respect it.
+              Poster + Sticker stay on their own canvases regardless. */}
+          {(template === 'editorial' || template === 'bold') && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 10, background: 'var(--color-bg-primary)', padding: 3, borderRadius: 12 }}>
+              {[
+                { id: 'dark', label: t('sessionSummary.share.themeDark', 'Dark') },
+                { id: 'light', label: t('sessionSummary.share.themeLight', 'Light') },
+              ].map(m => (
+                <button
+                  key={m.id} type="button" onClick={() => setThemeMode(m.id)}
+                  style={{
+                    flex: 1, padding: '8px 4px', borderRadius: 9,
+                    border: 'none', cursor: 'pointer',
+                    background: themeMode === m.id ? 'var(--color-bg-card)' : 'transparent',
+                    color: themeMode === m.id ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
+                    fontSize: 12, fontWeight: 700,
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Destinations */}
@@ -1133,6 +1306,17 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
           </button>
         </div>
       </div>
+
+      {/* Sticker composer — fullscreen editor (renders into its own portal) */}
+      <StickerComposer
+        open={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        stickerSrc={composerStickerSrc}
+        onDone={(blob) => {
+          setComposedBlob(blob);
+          setComposerOpen(false);
+        }}
+      />
     </div>,
     document.body
   );

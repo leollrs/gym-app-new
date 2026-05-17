@@ -26,11 +26,15 @@ export async function renderRouteMap({
   // When true, skip the cache lookup (used by the pre-render-at-Finish flow
   // that intentionally forces a fresh render).
   skipCache = false,
+  // Light/dark theme. When `light` is true the Mapbox style flips to a
+  // light basemap and the route-only fallback uses a cream backdrop.
+  light = false,
 } = {}) {
   if (!Array.isArray(route) || route.length < 2) return null;
 
-  // Layer 1 — pre-rendered cache
-  if (sessionId && !skipCache) {
+  // Layer 1 — pre-rendered cache. Skip when we want a theme-specific render
+  // so a stale dark cache doesn't override a fresh light request.
+  if (sessionId && !skipCache && !light) {
     try {
       const cached = await getCachedMapImageDataUrl(sessionId);
       if (cached) {
@@ -43,9 +47,9 @@ export async function renderRouteMap({
   // Layer 2 — Mapbox (only if a token is configured)
   if (isMapboxConfigured()) {
     try {
-      const url = await fetchMapboxStaticDataUrl(route, { width, height, accent });
+      const url = await fetchMapboxStaticDataUrl(route, { width, height, accent, light });
       if (url) {
-        console.log('[renderRouteMap] source: mapbox', { width, height });
+        console.log('[renderRouteMap] source: mapbox', { width, height, light });
         return { src: url, source: 'mapbox' };
       }
       console.warn('[renderRouteMap] mapbox configured but returned null — falling back');
@@ -56,7 +60,7 @@ export async function renderRouteMap({
     console.log('[renderRouteMap] mapbox not configured — skipping');
   }
 
-  // Layer 3 — client-side CartoDB tile stitcher
+  // Layer 3 — client-side CartoDB tile stitcher (Voyager is light by default)
   try {
     const url = await generateStaticRouteMap(route, width, height, { accent });
     if (url) {
@@ -67,7 +71,7 @@ export async function renderRouteMap({
 
   // Layer 4 — route-only fallback (offline, no map, but still polished)
   try {
-    const url = generateRouteOnlyImage(route, width, height, { accent });
+    const url = generateRouteOnlyImage(route, width, height, { accent, light });
     if (url) {
       console.log('[renderRouteMap] source: route-only fallback');
       return { src: url, source: 'route-only' };

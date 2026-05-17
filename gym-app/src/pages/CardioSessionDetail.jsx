@@ -79,7 +79,7 @@ export default function CardioSessionDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
-  const { profile, user } = useAuth();
+  const { profile, user, gymLogoUrl } = useAuth();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -338,6 +338,7 @@ export default function CardioSessionDetail() {
           route,
           unit,
           gymName: profile?.gym_name,
+          gymLogoUrl,
         }}
       />
     </div>

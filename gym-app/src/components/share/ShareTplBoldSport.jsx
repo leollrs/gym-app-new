@@ -37,11 +37,14 @@ export default function ShareTplBoldSport({
   showPRs = true,
   accent = '#2EC4C4',
   transparent = false,
+  themeMode = 'dark',
 }) {
   const pad = Math.round(w * 0.055);
   // Scale every literal pixel value by `s` so typography stays
   // proportional from preview (270 wide) to export (1080 wide).
   const s = w / 270;
+  const light = themeMode === 'light';
+  const surface = light ? '#EEEBE3' : '#0A0D10';
   return (
     <div
       style={{
@@ -49,11 +52,12 @@ export default function ShareTplBoldSport({
         height: h,
         position: 'relative',
         overflow: 'hidden',
-        // Sticker mode: drop the dark surface so the PNG carries alpha. The
+        // Sticker mode: drop the surface so the PNG carries alpha. The
         // big background number, accent washes, and content stack still
         // render — they read just fine against a user-supplied IG photo.
-        background: transparent ? 'transparent' : '#0A0D10',
+        background: transparent ? 'transparent' : surface,
         fontFamily: TuFont.body,
+        color: light ? '#0A0D10' : '#fff',
       }}
     >
       {/* gym-color wash — kept even in sticker mode; the radial highlight

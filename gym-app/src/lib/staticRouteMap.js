@@ -160,21 +160,29 @@ export function generateRouteOnlyImage(route, w, h, opts = {}) {
   if (!Array.isArray(route) || route.length < 2) return null;
   const accent = opts.accent || '#FC5200';
   const padding = opts.padding ?? 36;
+  const light = !!opts.light;
 
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
 
-  // Dark gradient backdrop
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, '#1A1F25');
-  grad.addColorStop(1, '#0A0D10');
-  ctx.fillStyle = grad;
+  // Backdrop — cream paper for light theme, charcoal gradient for dark
+  if (light) {
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#F2EFE7');
+    grad.addColorStop(1, '#E2DED3');
+    ctx.fillStyle = grad;
+  } else {
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#1A1F25');
+    grad.addColorStop(1, '#0A0D10');
+    ctx.fillStyle = grad;
+  }
   ctx.fillRect(0, 0, w, h);
 
   // Subtle topographic-style horizontal noise lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+  ctx.strokeStyle = light ? 'rgba(10,13,16,0.04)' : 'rgba(255,255,255,0.025)';
   ctx.lineWidth = 1;
   for (let y = 0; y < h; y += 14) {
     ctx.beginPath();
@@ -199,10 +207,11 @@ export function generateRouteOnlyImage(route, w, h, opts = {}) {
     y: h - (offsetY + (p.lat - b.minLat) * scale),
   }));
 
-  // White halo + accent stroke (same look as the real-map version)
+  // Halo + accent stroke. Halo flips with theme so it stays visible on
+  // either backdrop (subtle dark on cream paper, subtle white on charcoal).
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.strokeStyle = light ? 'rgba(10,13,16,0.15)' : 'rgba(255,255,255,0.15)';
   ctx.lineWidth = 12;
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);

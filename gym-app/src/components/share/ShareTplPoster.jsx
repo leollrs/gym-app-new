@@ -29,11 +29,19 @@ export default function ShareTplPoster({
   showPRs = true,
   accent = '#FF5A2E',
 }) {
-  const pad = Math.round(w * 0.055);
+  // Aspect-aware layout tweaks — square/portrait need a smaller headline
+  // and tighter stat-card placement so the bottom-right card doesn't
+  // collide with the centred giant title.
+  const aspect = h / w;
+  const mode = aspect >= 1.4 ? 'tall' : aspect >= 1.05 ? 'portrait' : 'square';
+  const pad = Math.round(w * (mode === 'square' ? 0.05 : 0.055));
   // Single scale factor — see PosterStat. Keeps every literal pixel value
   // proportional across preview (270 wide) and export (1080 wide).
   const s = w / 270;
   const nameWords = (data.name || '').split(' ').slice(0, 2);
+  const headlineFs = w * (mode === 'tall' ? 0.22 : mode === 'portrait' ? 0.18 : 0.14);
+  const statCardBottom = pad * (mode === 'square' ? 2.6 : 3.8);
+  const accentSplashTop = `${mode === 'tall' ? 32 : mode === 'portrait' ? 38 : 44}%`;
 
   return (
     <div
@@ -62,10 +70,10 @@ export default function ShareTplPoster({
       <div
         style={{
           position: 'absolute',
-          top: h * 0.32,
+          top: accentSplashTop,
           left: -w * 0.15,
           width: w * 1.3,
-          height: w * 0.7,
+          height: w * (mode === 'square' ? 0.5 : 0.7),
           borderRadius: '50%',
           background: accent,
           transform: 'rotate(-8deg)',
@@ -118,7 +126,7 @@ export default function ShareTplPoster({
           right: pad,
           zIndex: 3,
           fontFamily: '"Archivo Black", "Archivo", sans-serif',
-          fontSize: w * 0.22,
+          fontSize: headlineFs,
           fontWeight: 900,
           color: '#0A0D10',
           letterSpacing: -2 * s,
@@ -146,7 +154,7 @@ export default function ShareTplPoster({
       <div
         style={{
           position: 'absolute',
-          bottom: pad * 3.8,
+          bottom: statCardBottom,
           right: pad,
           zIndex: 4,
           background: '#0A0D10',

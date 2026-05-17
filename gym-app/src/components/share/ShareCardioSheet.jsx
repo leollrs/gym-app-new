@@ -10,16 +10,16 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { X, Image as ImageIcon } from 'lucide-react';
+import { X, Image as ImageIcon, Camera as CameraIcon } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
 import ShareTplCardio from './ShareTplCardio';
+import PreviewOverlay from './PreviewOverlay';
 import { ShareFormats, ShareExportSizes, TuFont } from './ShareFormats';
 import { rasterizeNode } from './ShareSheet';
-import { clearCachedMapImage } from '../../lib/mapImageCache';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
 import {
   shareToMessages,
@@ -149,6 +149,7 @@ function normalizeCardioData(raw) {
     route: Array.isArray(raw.route) ? raw.route : [],
     unit: raw.unit || 'km',
     gymName: raw.gymName ?? raw.gym_name ?? null,
+    gymLogoUrl: raw.gymLogoUrl ?? raw.gym_logo_url ?? null,
   };
 }
 
@@ -159,6 +160,11 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   const [variant, setVariant] = useState('editorial');
   const [format, setFormat] = useState('story');
   const [showGym, setShowGym] = useState(true);
+  const [showMap, setShowMap] = useState(true);
+  const [customAccent, setCustomAccent] = useState(null);
+  const [previewFull, setPreviewFull] = useState(false);
+  const [customTitle, setCustomTitle] = useState('');
+  const [themeMode, setThemeMode] = useState('dark'); // 'dark' | 'light' — editorial/bold only
   const [caption, setCaption] = useState('');
   const [activeDest, setActiveDest] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -196,6 +202,21 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       if (photo?.dataUrl) { setBackgroundSrc(photo.dataUrl); return; }
     } catch {}
     fileInputRef.current?.click();
+  }, []);
+
+  const takeBackgroundPhoto = useCallback(async () => {
+    try {
+      const mod = await import('@capacitor/camera');
+      const { Camera, CameraSource, CameraResultType } = mod;
+      const photo = await Camera.getPhoto({
+        source: CameraSource.Camera,
+        resultType: CameraResultType.DataUrl,
+        quality: 85,
+      });
+      if (photo?.dataUrl) setBackgroundSrc(photo.dataUrl);
+    } catch {
+      // user cancelled or no camera available — silent
+    }
   }, []);
 
   const onFileChange = useCallback((e) => {
@@ -441,18 +462,22 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   if (!mounted || !data) return null;
 
   const { w, h } = ShareFormats[format];
-  // Bigger preview — let the card actually fill the viewport so the user can
-  // see the design and read the stats. Cap to viewport size so it never
-  // overflows on smaller phones.
-  const vw = (typeof window !== 'undefined' && window.innerWidth) || 390;
+  // Preview must fit the viewport space NOT occupied by the controls sheet
+  // (capped at 60vh) and the top bar (~70px). Otherwise the card overflows
+  // the centred flex slot — half hangs above, half below, and the top
+  // bleeds into the chrome. 28vh leaves clearance for the top bar.
   const vh = (typeof window !== 'undefined' && window.innerHeight) || 800;
-  const maxW = Math.min(vw - 48, 380);
-  const maxH = Math.min(vh - 360, 620);
-  const scale = Math.min(maxW / w, maxH / h);
+  const maxW = Math.min(320, ((typeof window !== 'undefined' && window.innerWidth) || 390) - 48);
+  const maxH = Math.min(vh * 0.28, 380);
+  const scale = Math.min(maxW / w, maxH / h, 1);
 
   const tplProps = {
-    variant, data, accent,
+    variant, data,
+    accent: customAccent || accent,
+    customTitle: customTitle?.trim() || undefined,
+    themeMode,
     showGym,
+    showMap,
     backgroundSrc: variant === 'photo' ? backgroundSrc : undefined,
     transparent: photoTransparent,
     mapVersion,
@@ -500,29 +525,27 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         </div>
         <button
           type="button"
-          onClick={async () => {
-            const sid = data?.sessionId;
-            if (sid) await clearCachedMapImage(sid);
-            setMapVersion((v) => v + 1);
-          }}
-          aria-label={t('share.regenerateMap', { defaultValue: 'Regenerate map' })}
-          title={t('share.regenerateMap', { defaultValue: 'Regenerate map' })}
+          onClick={() => setPreviewFull(true)}
+          aria-label={t('share.preview', { defaultValue: 'Preview' })}
           style={{
-            width: 36, height: 36, borderRadius: 18, border: 'none',
+            height: 36, padding: '0 14px', borderRadius: 18, border: 'none',
             cursor: 'pointer', background: 'rgba(255,255,255,0.14)',
-            color: '#fff', fontSize: 18, fontWeight: 700,
+            color: '#fff', fontSize: 13, fontWeight: 800,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 6, letterSpacing: -0.1,
           }}
         >
-          ↻
+          <span style={{ fontSize: 14, fontWeight: 900 }}>⤢</span>
+          {t('share.preview', { defaultValue: 'Preview' })}
         </button>
       </div>
 
-      {/* Preview */}
+      {/* Preview — overflow hidden so a too-tall card never bleeds into
+          the top bar or the controls sheet. */}
       <div
         style={{
           flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '8px 20px', minHeight: 0,
+          padding: '8px 20px', minHeight: 0, overflow: 'hidden',
         }}
       >
         <div
@@ -530,10 +553,6 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
             width: w * scale, height: h * scale,
             position: 'relative', borderRadius: 24, overflow: 'hidden',
             boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
-            // Preview-only checkerboard when the export is going to be
-            // transparent — visual confirmation that "Clear background"
-            // is active. Without this the dark backdrop bleeds through
-            // and reads the same as the opaque path.
             backgroundColor: photoTransparent ? '#FFFFFF' : 'transparent',
             backgroundImage: photoTransparent
               ? 'linear-gradient(45deg, #d6d6d6 25%, transparent 25%), linear-gradient(-45deg, #d6d6d6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d6d6d6 75%), linear-gradient(-45deg, transparent 75%, #d6d6d6 75%)'
@@ -552,6 +571,11 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           </div>
         </div>
       </div>
+
+      {/* Fullscreen preview — drag to move, pinch to zoom */}
+      <PreviewOverlay open={previewFull} onClose={() => setPreviewFull(false)} w={w} h={h}>
+        <ShareTplCardio w={w} h={h} {...tplProps} />
+      </PreviewOverlay>
 
       {/* Offscreen full-res */}
       <div
@@ -586,7 +610,9 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         </div>
       </div>
 
-      {/* Controls */}
+      {/* Controls — capped to ~60% viewport with internal scrolling so the
+          preview above stays visible even when the customize/photo sections
+          expand. WebKit momentum scrolling kept on for iOS. */}
       <div
         style={{
           background: 'var(--color-bg-card)',
@@ -596,6 +622,10 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           boxShadow: '0 -8px 30px rgba(0,0,0,0.25)',
           transform: visible ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 320ms cubic-bezier(0.2,0.9,0.3,1)',
+          maxHeight: '60vh',
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
         }}
       >
         <div
@@ -625,6 +655,22 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   type="button"
+                  onClick={() => { setClearBackground(false); takeBackgroundPhoto(); }}
+                  style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 12,
+                    border: `1.5px ${backgroundSrc ? 'solid var(--color-accent)' : 'dashed var(--color-border, rgba(255,255,255,0.18))'}`,
+                    background: 'var(--color-bg-primary)',
+                    color: 'var(--color-text-primary)',
+                    fontSize: 12, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 8, cursor: 'pointer',
+                  }}
+                >
+                  <CameraIcon size={14} />
+                  {t('cardio.share.takePhoto', 'Take photo')}
+                </button>
+                <button
+                  type="button"
                   onClick={() => { setClearBackground(false); pickBackgroundPhoto(); }}
                   style={{
                     flex: 1, padding: '10px 12px', borderRadius: 12,
@@ -641,28 +687,28 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
                     ? t('cardio.share.changePhoto', 'Change photo')
                     : t('cardio.share.pickPhoto', 'Pick photo')}
                 </button>
-                {/* Clear-background toggle. Tapping clears the picked photo
-                    AND turns on transparent export so the card lands on
-                    alpha — Strava Stats Sticker UX for cardio runs. */}
-                <button
-                  type="button"
-                  onClick={() => { setBackgroundSrc(null); setClearBackground(!clearBackground || !!backgroundSrc); }}
-                  aria-pressed={photoTransparent}
-                  style={{
-                    flex: 1, padding: '10px 12px', borderRadius: 12,
-                    border: `1.5px solid ${photoTransparent ? 'var(--color-accent)' : 'var(--color-border, rgba(255,255,255,0.18))'}`,
-                    background: photoTransparent
-                      ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
-                      : 'var(--color-bg-primary)',
-                    color: photoTransparent ? 'var(--color-accent)' : 'var(--color-text-primary)',
-                    fontSize: 12, fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: 8, cursor: 'pointer',
-                  }}
-                >
-                  {t('cardio.share.clearBackground', 'Clear background')}
-                </button>
               </div>
+              {/* Clear-background toggle. Tapping clears the picked photo
+                  AND turns on transparent export so the card lands on
+                  alpha — Strava Stats Sticker UX for cardio runs. */}
+              <button
+                type="button"
+                onClick={() => { setBackgroundSrc(null); setClearBackground(!clearBackground || !!backgroundSrc); }}
+                aria-pressed={photoTransparent}
+                style={{
+                  padding: '10px 12px', borderRadius: 12,
+                  border: `1.5px solid ${photoTransparent ? 'var(--color-accent)' : 'var(--color-border, rgba(255,255,255,0.18))'}`,
+                  background: photoTransparent
+                    ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
+                    : 'var(--color-bg-primary)',
+                  color: photoTransparent ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                  fontSize: 12, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 8, cursor: 'pointer',
+                }}
+              >
+                {t('cardio.share.clearBackground', 'Clear background')}
+              </button>
               <input
                 ref={fileInputRef} type="file" accept="image/*"
                 onChange={onFileChange} style={{ display: 'none' }}
@@ -701,7 +747,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           </div>
         </div>
 
-        {/* Gym toggle + caption */}
+        {/* Gym toggle + map toggle + caption */}
         <div style={{ padding: '12px 16px 0', display: 'flex', gap: 8 }}>
           <button
             type="button"
@@ -716,14 +762,33 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           >
             {t('cardio.share.showGym', 'Show gym')}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowMap(s => !s)}
+            style={{
+              padding: '7px 12px', borderRadius: 999,
+              border: `1.5px solid ${showMap ? accent : 'var(--color-border, rgba(255,255,255,0.14))'}`,
+              background: showMap ? `color-mix(in srgb, ${accent} 14%, transparent)` : 'transparent',
+              color: showMap ? accent : 'var(--color-text-subtle)',
+              fontSize: 11, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            {t('cardio.share.showMap', 'Show map')}
+          </button>
         </div>
 
-        {/* Caption */}
+        {/* Customize section — title override, accent color, theme.
+            Caption was removed: IG won't accept a pre-filled caption from
+            a share intent (only the media), so the input was misleading
+            users. Caption is still auto-built internally from the cardio
+            type for activity-feed posts / native shares. */}
         <div style={{ padding: '12px 16px 0' }}>
-          <PanelLabel>{t('cardio.share.caption', 'Caption')}</PanelLabel>
+          <PanelLabel>{t('cardio.share.customize', 'Customize')}</PanelLabel>
           <input
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
+            value={customTitle}
+            onChange={(e) => setCustomTitle(e.target.value)}
+            placeholder={t('cardio.share.titlePlaceholder', 'Custom title (optional)')}
+            maxLength={32}
             style={{
               width: '100%', marginTop: 6, padding: '10px 12px',
               borderRadius: 12,
@@ -734,6 +799,65 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
               boxSizing: 'border-box',
             }}
           />
+          {/* Accent color swatches — each fills 1/7 of the row width so the
+              picker feels deliberate (full-bleed bar) instead of a sparse
+              dot row. Tap a swatch to set; tap the reset row below. */}
+          <div style={{ display: 'flex', gap: 4, marginTop: 10, alignItems: 'stretch' }}>
+            {['#2EC4C4', '#FF5A2E', '#3B82F6', '#10B981', '#EC4899', '#8B5CF6', '#F59E0B'].map((c) => {
+              const active = (customAccent || accent).toUpperCase() === c.toUpperCase();
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCustomAccent(c)}
+                  aria-label={t('cardio.share.accentColor', { defaultValue: 'Accent {{c}}', c })}
+                  style={{
+                    flex: 1, height: 32, borderRadius: 8,
+                    background: c,
+                    border: active ? '2px solid var(--color-text-primary)' : '2px solid transparent',
+                    boxShadow: active ? `inset 0 0 0 2px var(--color-bg-card)` : 'none',
+                    cursor: 'pointer', padding: 0, minWidth: 0,
+                  }}
+                />
+              );
+            })}
+          </div>
+          {customAccent && (
+            <button
+              type="button"
+              onClick={() => setCustomAccent(null)}
+              style={{
+                marginTop: 6, fontSize: 11, fontWeight: 700,
+                color: 'var(--color-text-subtle)',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                textDecoration: 'underline', padding: 0,
+              }}
+            >
+              {t('cardio.share.resetAccent', 'Reset')}
+            </button>
+          )}
+          {/* Light/Dark theme toggle — only relevant for editorial + bold */}
+          {(variant === 'editorial' || variant === 'bold') && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 10, background: 'var(--color-bg-primary)', padding: 3, borderRadius: 12 }}>
+              {[
+                { id: 'dark', label: t('cardio.share.themeDark', 'Dark') },
+                { id: 'light', label: t('cardio.share.themeLight', 'Light') },
+              ].map(m => (
+                <button
+                  key={m.id} type="button" onClick={() => setThemeMode(m.id)}
+                  style={{
+                    flex: 1, padding: '8px 4px', borderRadius: 9,
+                    border: 'none', cursor: 'pointer',
+                    background: themeMode === m.id ? 'var(--color-bg-card)' : 'transparent',
+                    color: themeMode === m.id ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
+                    fontSize: 12, fontWeight: 700,
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Destinations */}
