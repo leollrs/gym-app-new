@@ -1357,6 +1357,9 @@
     "memberDeactivatedBody": "Tu cuenta ha sido desactivada por un administrador.",
     "memberBannedDetail": "Ya no puedes acceder a esta plataforma. Si crees que es un error, comunícate con la administración de tu gym.",
     "memberDeactivatedDetail": "Tu acceso ha sido suspendido temporalmente. Comunícate con la administración de tu gym para más información.",
+    "memberFrozenTitle": "Cuenta en pausa",
+    "memberFrozenBody": "Tu membresía en {{gymName}} está actualmente en pausa.",
+    "memberFrozenDetail": "Visita la recepción o comunícate con tu gym para reactivar tu cuenta. Tendrás acceso completo de nuevo en cuanto te descongelen.",
     "profileUnavailableTitle": "No pudimos cargar tu cuenta",
     "profileUnavailableBody": "Esto usualmente ocurre porque tu perfil aún no cargó o la solicitud de red falló.",
     "signOut": "Cerrar Sesión",
@@ -2710,6 +2713,11 @@
     "cardio": "Cardio"
   },
   "admin": {
+    "common": {
+      "showingCount": "Mostrando {{shown}} de {{total}}",
+      "loadMore": "Cargar {{count}} más",
+      "collapse": "Contraer"
+    },
     "overview": {
       "title": "Resumen",
       "accessDenied": "Acceso denegado. No tienes autorización para ver esta página.",
@@ -4686,7 +4694,25 @@
       "resetDone": "Restaurado al predeterminado",
       "resetFailed": "No se pudo restaurar"
     },
+    "upcomingCards": {
+      "title": "Próximas tarjetas",
+      "subtitle": "Tarjetas que el cron diario pondrá en cola pronto — imprime y firma con anticipación",
+      "countBadge": "{{count}} en camino",
+      "countBadge_plural": "{{count}} en camino",
+      "empty": "Sin hitos ni cumpleaños en los próximos 7 días.",
+      "unknownMember": "Miembro desconocido",
+      "inWorkouts": "en {{count}} entreno",
+      "inWorkouts_plural": "en {{count}} entrenos",
+      "inDays": "en {{count}} día",
+      "inDays_plural": "en {{count}} días",
+      "today": "hoy",
+      "tomorrow": "mañana",
+      "currentWorkouts": "Actualmente {{count}} entreno",
+      "currentWorkouts_plural": "Actualmente {{count}} entrenos"
+    },
     "printCards": {
+      "pageTitle": "Tarjetas Impresas",
+      "pageSubtitle": "Tarjetas escritas a mano generadas diariamente para bienvenidas, hitos y miembros que regresan. Imprime en Avery 8371, firma y entrégalas en persona.",
       "tabPending": "Por imprimir",
       "tabPrinted": "Por entregar",
       "selectAll": "Seleccionar todo",
@@ -4735,6 +4761,9 @@
       "snooze24h": "Posponer 24h",
       "dismiss": "Descartar",
       "viewRetention": "Abrir panel de retención completo",
+      "showingCount": "Mostrando {{shown}} de {{total}}",
+      "loadMore": "Cargar {{count}} más",
+      "collapse": "Contraer",
       "resolveTitle": "Marcar resuelto",
       "resolveBtn": "Marcar resuelto",
       "suggestedActionWas": "La acción sugerida era",
@@ -6157,6 +6186,7 @@
       "tabOverview": "Resumen",
       "tabGrowth": "Crecimiento",
       "tabEngagement": "Interacción",
+      "tabRetention": "Retención",
       "tabDeepDives": "Análisis Profundo",
       "period7d": "7d",
       "period30d": "30d",
@@ -6168,6 +6198,8 @@
       "sectionCohortRetention": "Retención por Cohorte",
       "sectionTrainerPerformance": "Rendimiento de Entrenadores",
       "sectionMonthlySummary": "Resumen Mensual",
+      "sectionWhyLeft": "Por qué se van los miembros",
+      "sectionEffectiveness": "Efectividad de la máquina de retención",
       "onTarget": "En objetivo",
       "above": "por encima",
       "below": "por debajo",

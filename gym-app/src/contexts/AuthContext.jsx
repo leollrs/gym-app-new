@@ -238,9 +238,12 @@ export const AuthProvider = ({ children }) => {
         .then(({ data: pts }) => setLifetimePoints(pts?.lifetime_points ?? 0));
     }
 
-    // Check if the individual member is blocked (deactivated or banned)
+    // Check if the individual member is blocked. `frozen` is included so the
+    // admin can pause an account (member shows up locked out with a "visit
+    // the front desk" message) without permanently deactivating it. Unfreeze
+    // by setting membership_status back to 'active' from the admin panel.
     const blockedStatus = data?.membership_status;
-    if (blockedStatus === 'deactivated' || blockedStatus === 'banned') {
+    if (blockedStatus === 'deactivated' || blockedStatus === 'banned' || blockedStatus === 'frozen') {
       setMemberBlocked(blockedStatus);
     } else {
       setMemberBlocked(null);

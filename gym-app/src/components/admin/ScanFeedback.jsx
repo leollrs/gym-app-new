@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ScanLine, CheckCircle, XCircle, LogIn, ShoppingBag, Gift, Users, Ticket, X } from 'lucide-react';
+import { ScanLine, CheckCircle, XCircle, LogIn, ShoppingBag, Gift, Users, Ticket, X, Mail } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
@@ -9,6 +9,7 @@ import { handleScannedValue } from '../../lib/scanRouter';
 import { dispatchScanAction } from '../../lib/scanActionHandlers';
 import { dispatchToIntegration } from '../../lib/integrationBridge';
 import { adminKeys } from '../../lib/adminQueryKeys';
+import { logAdminAction } from '../../lib/adminAudit';
 import { useScanClaimContext } from '../../contexts/ScanClaimContext';
 
 // ── Sound feedback ───────────────────────────────────────
@@ -86,10 +87,41 @@ export default function ScanFeedback() {
   const [pending, setPending] = useState(null);   // { parsed, member } — waiting for approval
   const [processing, setProcessing] = useState(false);
   const [toast, setToast] = useState(null);        // result toast
+  const [deliveringId, setDeliveringId] = useState(null); // card id currently being flipped to delivered
   const dismissTimer = useRef(null);
 
   const gymId = profile?.gym_id;
   const adminId = profile?.id;
+
+  // Flip a queued card from 'printed' to 'delivered' the moment the front
+  // desk hands it over. Mutates the toast state in place so the row
+  // disappears immediately — feels instant, no spinner waiting for re-fetch.
+  const markCardDelivered = useCallback(async (cardId) => {
+    if (!cardId || !gymId) return;
+    setDeliveringId(cardId);
+    const { error } = await supabase
+      .from('print_cards')
+      .update({ status: 'delivered', delivered_at: new Date().toISOString(), delivered_by: adminId ?? null })
+      .eq('id', cardId)
+      .eq('gym_id', gymId);
+    setDeliveringId(null);
+    if (error) {
+      // Don't yank the row on failure — let the admin retry or dismiss
+      return;
+    }
+    logAdminAction('print_cards_delivered_at_checkin', 'print_card', cardId);
+    queryClient.invalidateQueries({ queryKey: adminKeys.printCards(gymId) });
+    setToast((prev) => {
+      if (!prev) return prev;
+      const nextCards = (prev.data?.cardsToDeliver || []).filter((c) => c.id !== cardId);
+      // If that was the last card, auto-dismiss; otherwise keep the toast
+      // open so the admin can deliver the rest before scanning next person.
+      if (nextCards.length === 0 && (prev.data?.cardsToDeliver?.length ?? 0) > 0) {
+        return null;
+      }
+      return { ...prev, data: { ...prev.data, cardsToDeliver: nextCards } };
+    });
+  }, [gymId, adminId, queryClient]);
 
   // ── Handle incoming scan ──────────────────────────────
   const handleScan = useCallback(async (rawText) => {
@@ -195,9 +227,14 @@ export default function ScanFeedback() {
     enabled: !!gymId && !!adminId,
   });
 
-  // Auto-dismiss result toast after 5s
+  // Auto-dismiss result toast after 5s — UNLESS cards are queued for delivery.
+  // The whole point of the check-in prompt is for the front desk to actually
+  // hand the card over; an auto-dismiss would yank it before they finish.
+  // Admin closes manually (X tap) or marks all cards delivered.
   useEffect(() => {
     if (!toast) return;
+    const hasCards = (toast.data?.cardsToDeliver?.length ?? 0) > 0;
+    if (hasCards) return undefined;
     clearTimeout(dismissTimer.current);
     dismissTimer.current = setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(dismissTimer.current);
@@ -311,7 +348,10 @@ export default function ScanFeedback() {
                 ? `color-mix(in srgb, ${toastCfg?.color || 'var(--color-success)'} 25%, transparent)`
                 : 'color-mix(in srgb, var(--color-danger) 25%, transparent)'}`,
             }}
-            onClick={() => setToast(null)}
+            // Only the top header dismisses on click; if cards are queued for
+            // delivery the admin needs the toast to stay put while they hand
+            // them out — the inner cards section catches clicks separately.
+            onClick={(toast.data?.cardsToDeliver?.length ?? 0) > 0 ? undefined : () => setToast(null)}
           >
             <div className="h-1" style={{ background: toast.success ? (toastCfg?.color || 'var(--color-success)') : 'var(--color-danger)' }} />
 
@@ -393,6 +433,71 @@ export default function ScanFeedback() {
                     : <XCircle size={20} style={{ color: 'var(--color-danger)' }} />}
                 </div>
               </div>
+
+              {/* Cards-to-deliver — the moment the whole print-card system
+                  exists for. Front desk sees what's waiting in inventory
+                  for this member and hands it over in the same breath as
+                  the check-in. One tap marks delivered + drops the row. */}
+              {(toast.data?.cardsToDeliver?.length ?? 0) > 0 && (
+                <div
+                  className="mt-3 pt-3"
+                  style={{ borderTop: '1px solid var(--color-border-subtle)' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Mail size={12} style={{ color: 'var(--color-accent)' }} />
+                    <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
+                      {t('admin.scan.cardsToDeliverTitle', { count: toast.data.cardsToDeliver.length, defaultValue: 'Entregar tarjeta' })}
+                    </p>
+                  </div>
+                  <ul className="space-y-2">
+                    {toast.data.cardsToDeliver.map((card) => {
+                      const isDelivering = deliveringId === card.id;
+                      return (
+                        <li
+                          key={card.id}
+                          className="flex items-start gap-2.5 rounded-xl px-3 py-2.5"
+                          style={{
+                            background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)',
+                            border: '1px solid color-mix(in srgb, var(--color-accent) 14%, transparent)',
+                          }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
+                              {t(`admin.printCards.occasions.${card.occasion}`, card.occasion)}
+                            </p>
+                            <p className="text-[13px] font-semibold leading-snug mt-0.5" style={{ color: 'var(--color-text-primary)' }}>
+                              "{card.headline}"
+                            </p>
+                            {card.reward_label && (
+                              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+                                + {card.reward_label}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => markCardDelivered(card.id)}
+                            disabled={isDelivering}
+                            className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95 disabled:opacity-50"
+                            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
+                          >
+                            {isDelivering
+                              ? t('admin.scan.cardDelivering', { defaultValue: '...' })
+                              : t('admin.scan.cardDeliver', { defaultValue: 'Entregada' })}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <button
+                    onClick={() => setToast(null)}
+                    className="mt-2 w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition-colors"
+                    style={{ color: 'var(--color-text-subtle)' }}
+                  >
+                    {t('admin.scan.cardDismissLater', { defaultValue: 'Cerrar (entregar después)' })}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

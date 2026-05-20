@@ -50,7 +50,7 @@ function AvatarInitial({ name }) {
 export default function AdminReferrals() {
   const { t, i18n } = useTranslation('pages');
   const { profile } = useAuth();
-  const { toast } = useToast();
+  const { showToast } = useToast();
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
 
@@ -109,9 +109,9 @@ export default function AdminReferrals() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId] });
-      toast(t('admin.referrals.approvedToast', 'Referral approved'), 'success');
+      showToast(t('admin.referrals.approvedToast', 'Referral approved'), 'success');
     },
-    onError: () => toast(t('admin.referrals.approveFailedToast', 'Failed to approve referral'), 'error'),
+    onError: () => showToast(t('admin.referrals.approveFailedToast', 'Failed to approve referral'), 'error'),
   });
 
   // Reject mutation — record expired_at so historical audit can answer "when was this rejected?".
@@ -125,9 +125,9 @@ export default function AdminReferrals() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId] });
-      toast(t('admin.referrals.rejectedToast', 'Referral rejected'), 'success');
+      showToast(t('admin.referrals.rejectedToast', 'Referral rejected'), 'success');
     },
-    onError: () => toast(t('admin.referrals.rejectFailedToast', 'Failed to reject referral'), 'error'),
+    onError: () => showToast(t('admin.referrals.rejectFailedToast', 'Failed to reject referral'), 'error'),
   });
 
   // Self-referral filter applied to ALL metrics + lists (not just leaderboard).

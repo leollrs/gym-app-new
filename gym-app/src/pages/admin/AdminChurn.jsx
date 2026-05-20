@@ -34,9 +34,6 @@ import ContactPanel from './components/ContactPanel';
 import CreateCampaignModal from './components/CreateCampaignModal';
 import BulkMessageModal from './components/BulkMessageModal';
 import MemberDetailPanel from './components/MemberDetailPanel';
-import WhyLeftPanel from './components/WhyLeftPanel';
-import CardsToPrintPanel from './components/CardsToPrintPanel';
-import RetentionEffectivenessPanel from './components/RetentionEffectivenessPanel';
 import { outcomeConfig, METHOD_I18N } from './components/churnDisplay';
 
 // ── Data fetcher ──────────────────────────────────────────
@@ -528,19 +525,20 @@ export default function AdminChurn() {
   const SECONDARY_TABS = [
     { key: 'churned', label: t('admin.churn.tabChurned', 'Churned'), count: churnedMembers.length },
     { key: 'win-back', label: t('admin.churn.tabWinBack', 'Win-Back'), count: winBackAttempts.length },
-    { key: 'why-left', label: t('admin.churn.tabWhyLeft', 'Why they left') },
-    { key: 'cards', label: t('admin.churn.tabCards', 'Cards') },
-    { key: 'effectiveness', label: t('admin.churn.tabEffectiveness', 'Effectiveness') },
     { key: 'campaigns', label: t('admin.churn.tabCampaigns', 'Campaigns'), count: campaigns.length },
   ];
   const TABS = [...PRIMARY_TABS, ...SECONDARY_TABS];
 
+  // Filter chips for the Retention tab. `tone` drives the colored pill style
+  // (matches the admin-pill--{tone} variants in admin.css). Selected filter
+  // gets a ring outline; non-selected stays colored at base intensity so the
+  // bar reads as a quick visual breakdown of where members sit.
   const QUEUE_FILTERS = [
-    { key: 'needs-action', label: t('admin.churn.filterNeedsAction', 'Needs Action'), count: needsActionMembers.length },
-    { key: 'critical', label: t('admin.churn.filterCritical', 'Critical'), count: criticalCount },
-    { key: 'high', label: t('admin.churn.filterHigh', 'High'), count: highRiskCount },
-    { key: 'contacted', label: t('admin.churn.filterContacted', 'Recently Contacted'), count: recentlyContactedMembers.length },
-    { key: 'returned', label: t('admin.churn.filterReturned', 'Returned'), count: returnedMembers.length },
+    { key: 'needs-action', label: t('admin.churn.filterNeedsAction', 'Needs Action'), count: needsActionMembers.length, tone: 'accent' },
+    { key: 'critical',     label: t('admin.churn.filterCritical', 'Critical'),         count: criticalCount,                  tone: 'hot' },
+    { key: 'high',         label: t('admin.churn.filterHigh', 'High'),                 count: highRiskCount,                  tone: 'warn' },
+    { key: 'contacted',    label: t('admin.churn.filterContacted', 'Recently Contacted'), count: recentlyContactedMembers.length, tone: 'info' },
+    { key: 'returned',     label: t('admin.churn.filterReturned', 'Returned'),         count: returnedMembers.length,         tone: 'good' },
   ];
 
   // Helper: get top N signals for a member as { name, label } pairs
@@ -723,28 +721,6 @@ export default function AdminChurn() {
         </div>
       )}
 
-      {/* Summary pill strip — compact, inline, single row */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {[
-          { label: t('admin.churn.critical', 'Critical'), value: loading ? '—' : criticalCount, tone: 'hot', filterKey: 'critical' },
-          { label: t('admin.churn.highRisk', 'High Risk'), value: loading ? '—' : highRiskCount, tone: 'warn', filterKey: 'high' },
-          { label: t('admin.churn.filterContacted', 'Contacted'), value: loading ? '—' : contactedCount, tone: 'info', filterKey: 'contacted' },
-          { label: t('admin.churn.filterReturned', 'Returned'), value: loading ? '—' : returnedCount, tone: 'good', filterKey: 'returned' },
-        ].map(card => {
-          const isActive = tab === 'task-board' && riskFilter === card.filterKey;
-          return (
-            <button
-              key={card.label}
-              onClick={() => { setTab('task-board'); setRiskFilter(card.filterKey); }}
-              className={`admin-pill admin-pill--${card.tone}`}
-              style={isActive ? { boxShadow: '0 0 0 1px var(--color-admin-text)' } : undefined}
-            >
-              {card.label}: {card.value}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Tab Bar */}
       <AdminTabs tabs={TABS} active={tab} onChange={setTab} className="mb-4" />
 
@@ -754,13 +730,25 @@ export default function AdminChurn() {
         <div>
           {/* Queue Filters — single horizontal scrollable row */}
           <div className="flex flex-col gap-3 mb-4">
-            <div className="flex overflow-x-auto scrollbar-hide gap-1.5 -mx-1 px-1 pb-1">
-              {QUEUE_FILTERS.map(f => (
-                <button key={f.key} onClick={() => setRiskFilter(f.key)}
-                  className={`admin-pill flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${riskFilter === f.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}>
-                  {f.label} · {f.count}
-                </button>
-              ))}
+            {/* px-3/py-1.5 give the active filter's ring (boxShadow below)
+                breathing room. No negative margin: pushing past the parent
+                gets clipped by AdminPageShell's overflow-x:hidden, which
+                covered the left edge of the first pill. Living inside the
+                parent's padding box keeps every pill fully visible. */}
+            <div className="flex overflow-x-auto scrollbar-hide gap-1.5 px-3 py-1.5">
+              {QUEUE_FILTERS.map(f => {
+                const active = riskFilter === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => setRiskFilter(f.key)}
+                    className={`admin-pill admin-pill--${f.tone} flex items-center gap-1.5 whitespace-nowrap flex-shrink-0`}
+                    style={active ? { boxShadow: '0 0 0 1.5px var(--color-admin-text)' } : undefined}
+                  >
+                    {f.label} · {f.count}
+                  </button>
+                );
+              })}
             </div>
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
@@ -1127,15 +1115,6 @@ export default function AdminChurn() {
             );
           })()}
         </div>
-          );
-          if (tabKey === 'why-left') return (
-            <WhyLeftPanel gymId={gymId} />
-          );
-          if (tabKey === 'cards') return (
-            <CardsToPrintPanel gymId={gymId} />
-          );
-          if (tabKey === 'effectiveness') return (
-            <RetentionEffectivenessPanel gymId={gymId} />
           );
           if (tabKey === 'campaigns') return (
         <div className="space-y-4">

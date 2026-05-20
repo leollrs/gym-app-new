@@ -9,6 +9,21 @@ import { addPoints, calculatePointsForAction } from './rewardsEngine';
 import logger from './logger';
 import { logAdminAction } from './adminAudit';
 
+// Look up cards waiting to be handed to this member. Used by the check-in
+// flow so the front desk sees "give them this card" the moment a member
+// scans in — the actual moment the whole print-card system exists for.
+// Status='printed' means physically printed + signed, sitting in inventory.
+async function fetchPrintedCardsForMember(supabase, gymId, memberId) {
+  const { data } = await supabase
+    .from('print_cards')
+    .select('id, occasion, headline, subline, reward_label')
+    .eq('gym_id', gymId)
+    .eq('profile_id', memberId)
+    .eq('status', 'printed')
+    .order('created_at', { ascending: true });
+  return data || [];
+}
+
 // ── Check-in ─────────────────────────────────────────────
 export async function handleCheckinScan(parsed, ctx) {
   const { gymId, supabase, t } = ctx;
@@ -36,13 +51,17 @@ export async function handleCheckinScan(parsed, ctx) {
     .limit(1);
 
   if (recent?.length > 0) {
+    // Cards still need delivering even on duplicate check-in — the member
+    // might be back at the desk for another reason and we shouldn't lose
+    // the chance to hand off what's in inventory.
+    const cardsToDeliver = await fetchPrintedCardsForMember(supabase, gymId, member.id);
     return {
       success: true,
       message: t('admin.scan.alreadyCheckedIn', '{{name}} already checked in today', { name: member.full_name }),
       memberName: member.full_name,
       memberId: member.id,
       avatarUrl: member.avatar_url,
-      data: { duplicate: true },
+      data: { duplicate: true, cardsToDeliver },
     };
   }
 
@@ -56,25 +75,46 @@ export async function handleCheckinScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.checkinFailed', 'Check-in failed') };
   }
 
-  // Award points (24hr limit enforced server-side via add_reward_points_checked)
+  // Award points (24hr limit enforced server-side via add_reward_points_checked).
+  // supabase.rpc returns { data, error } — it does NOT throw on RPC error, so
+  // we must check `error` explicitly. Previously we only destructured `data`
+  // and silently lied to the admin ("+20pts") when the RPC actually failed.
   const pts = calculatePointsForAction('check_in');
   let pointsAwarded = pts;
   try {
-    const { data: ptsResult } = await supabase.rpc('add_reward_points_checked', {
+    const { data: ptsResult, error: ptsErr } = await supabase.rpc('add_reward_points_checked', {
       p_user_id: member.id,
       p_gym_id: gymId,
       p_action: 'check_in',
       p_points: pts,
       p_description: 'QR check-in',
     });
-    // Returns 0 if points were already awarded in last 24h
-    if (ptsResult === 0) pointsAwarded = 0;
-  } catch {
-    // Fallback to regular addPoints if the new RPC doesn't exist yet
-    await addPoints(member.id, gymId, 'check_in', pts, 'QR check-in');
+    if (ptsErr) {
+      logger.warn('add_reward_points_checked RPC error, falling back to addPoints:', ptsErr.message);
+      const fallbackPts = await addPoints(member.id, gymId, 'check_in', pts, 'QR check-in');
+      if (fallbackPts == null) pointsAwarded = 0;
+    } else if (ptsResult === 0) {
+      // RPC succeeded but 24h dedup kicked in
+      pointsAwarded = 0;
+    }
+  } catch (err) {
+    // Network/throw fallback
+    logger.warn('add_reward_points_checked threw, falling back to addPoints:', err?.message);
+    try {
+      const fallbackPts = await addPoints(member.id, gymId, 'check_in', pts, 'QR check-in');
+      if (fallbackPts == null) pointsAwarded = 0;
+    } catch (fbErr) {
+      logger.error('Both points paths failed:', fbErr);
+      pointsAwarded = 0;
+    }
   }
 
   logAdminAction('checkin_scan', 'member', member.id);
+
+  // Fetch printed-but-not-delivered cards so the toast can surface them.
+  // Awaited AFTER points so the check-in feels fast — adds ~1 round trip
+  // but only on success path.
+  const cardsToDeliver = await fetchPrintedCardsForMember(supabase, gymId, member.id);
 
   const msg = pointsAwarded > 0
     ? t('admin.scan.checkinSuccess', '{{name}} checked in! +{{pts}}pts', { name: member.full_name, pts: pointsAwarded })
@@ -86,7 +126,7 @@ export async function handleCheckinScan(parsed, ctx) {
     memberName: member.full_name,
     memberId: member.id,
     avatarUrl: member.avatar_url,
-    data: { pointsEarned: pointsAwarded },
+    data: { pointsEarned: pointsAwarded, cardsToDeliver },
     externalPayload: { action: 'checkin', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { pointsEarned: pointsAwarded } },
   };
 }
@@ -221,7 +261,15 @@ export async function handleRewardRedemptionScan(parsed, ctx) {
       return { success: false, message: t('admin.scan.redemptionNotFound', 'Redemption not found') };
     }
     logger.error('Redemption claim failed:', claimErr);
-    return { success: false, message: t('admin.scan.claimFailed', 'Failed to claim reward') };
+    // Include the real message so admins can see WHY claim failed
+    // (RLS denial, insufficient permission, malformed payload, etc.)
+    const detail = claimErr.message || claimErr.details || claimErr.hint || '';
+    return {
+      success: false,
+      message: detail
+        ? t('admin.scan.claimFailedWithReason', { reason: detail, defaultValue: 'Failed to claim reward: {{reason}}' })
+        : t('admin.scan.claimFailed', 'Failed to claim reward'),
+    };
   }
 
   logAdminAction('claim_reward', 'member', parsed.memberId, { reward: claimResult?.reward_name });

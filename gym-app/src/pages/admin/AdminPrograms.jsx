@@ -25,6 +25,8 @@ import {
 import TemplatesModal from './components/TemplatesModal';
 import ProgramBuilderModal from './components/ProgramBuilderModal';
 import ProgramSuggestionCard from './components/ProgramSuggestionCard';
+import usePagedVisible from '../../hooks/usePagedVisible';
+import PaginationFooter from '../../components/admin/PaginationFooter';
 
 
 // ── Main ──────────────────────────────────────────────────
@@ -232,6 +234,8 @@ export default function AdminPrograms() {
 
   // ── Filtered programs ────────────────────────────────────
 
+  const programPager = usePagedVisible({ initial: 10, step: 10 });
+
   const filteredPrograms = useMemo(() => {
     let result = programs;
     // Status tab — published vs draft. `is_published` lives on gym_programs.
@@ -401,7 +405,7 @@ export default function AdminPrograms() {
             </div>
           ) : (
           <AdminCard padding="p-0" clipContent={false}>
-            {filteredPrograms.map((p, idx) => {
+            {filteredPrograms.slice(0, programPager.visibleCount).map((p, idx) => {
               const wks = normalizeWeeks(p.weeks);
               const allDays = Object.values(wks).flat();
               const totalDays = allDays.length;
@@ -609,6 +613,7 @@ export default function AdminPrograms() {
             })}
           </AdminCard>
           )}
+          <PaginationFooter pager={programPager} total={filteredPrograms.length} />
         </FadeIn>
       )}
 

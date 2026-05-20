@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, Search, FlaskConical, Award, Wrench, UserCog, Bell, Send,
+  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, FlaskConical, Award, Wrench, UserCog, Bell, Send, Printer,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,7 +15,6 @@ import UserAvatar from '../components/UserAvatar';
 const AdminOnboardingWizard = lazy(() => import('../components/admin/AdminOnboardingWizard'));
 const ScanFeedback = lazy(() => import('../components/admin/ScanFeedback'));
 const GlobalSearch = lazy(() => import('../components/admin/GlobalSearch'));
-import { GlobalSearchTrigger } from '../components/admin/GlobalSearch';
 
 // IA: 6 top-level sections aligned to admin jobs-to-be-done.
 // Pages are regrouped here — every existing route stays alive.
@@ -33,6 +32,7 @@ const NAV_SECTIONS = [
       { to: '/admin/members',  labelKey: 'adminNav.members',     icon: Users },
       { to: '/admin/segments', labelKey: 'adminNav.segments',    icon: Filter },
       { to: '/admin/churn',    labelKey: 'adminNav.churnIntel',  icon: AlertTriangle },
+      { to: '/admin/print-cards', labelKey: 'adminNav.printCards', icon: Printer },
       { to: '/admin/trainers', labelKey: 'adminNav.trainers',    icon: UserCheck },
     ],
   },
@@ -352,9 +352,6 @@ export default function AdminLayout({ children }) {
             </div>
           </div>
           <div className="mt-4" style={{ height: '1px', background: 'var(--color-border-subtle)' }} />
-          <div className="mt-4">
-            <GlobalSearchTrigger onOpen={() => setGlobalSearchOpen(true)} />
-          </div>
         </div>
 
         {/* Nav sections */}
@@ -523,16 +520,8 @@ export default function AdminLayout({ children }) {
             <p className="text-[16px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{gymName || 'Dashboard'}</p>
           </div>
 
-          {/* Right: search + notifications + alert badge + admin avatar */}
+          {/* Right: notifications + alert badge + admin avatar */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => setGlobalSearchOpen(true)}
-              aria-label={t('admin.search.open', 'Search')}
-              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: 'var(--color-bg-hover)' }}
-            >
-              <Search size={16} style={{ color: 'var(--color-text-primary)' }} />
-            </button>
             <button
               onClick={() => navigate('/admin/notifications')}
               aria-label={t('adminNav.notifications', 'Notifications')}

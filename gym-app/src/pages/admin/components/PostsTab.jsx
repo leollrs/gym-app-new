@@ -9,6 +9,8 @@ import { logAdminAction } from '../../../lib/adminAudit';
 import { AdminCard, FilterBar, Skeleton, ErrorCard, Avatar } from '../../../components/admin';
 import { postTypeBadge, relativeTime, dataPreview } from './moderationHelpers';
 import { fetchPosts } from '../../../lib/admin/moderationQueries';
+import usePagedVisible from '../../../hooks/usePagedVisible';
+import PaginationFooter from '../../../components/admin/PaginationFooter';
 
 /**
  * "Posts" tab on AdminModeration — last 50 activity-feed items for the
@@ -26,6 +28,7 @@ export default function PostsTab({ gymId }) {
   const [filter, setFilter] = useState('all');
   const [acting, setActing] = useState(null);
   const [expandedRow, setExpandedRow] = useState(null);
+  const pager = usePagedVisible({ initial: 10, step: 10 });
 
   const { data: posts = [], isLoading, error, refetch } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'posts'],
@@ -81,7 +84,7 @@ export default function PostsTab({ gymId }) {
           </div>
         ) : (
           <div className="divide-y divide-white/4">
-            {filtered.map(row => {
+            {filtered.slice(0, pager.visibleCount).map(row => {
               const profile = row.profiles;
               const badge = postTypeBadge(row.type, t);
               const preview = dataPreview(row.type, row.data, t);
@@ -137,6 +140,7 @@ export default function PostsTab({ gymId }) {
                 </div>
               );
             })}
+            <PaginationFooter pager={pager} total={filtered.length} className="px-5 pb-3" />
           </div>
         )}
       </AdminCard>

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Target, Check, X, Pencil, TrendingUp, TrendingDown, Minus, LayoutDashboard, Sprout, Zap, Microscope } from 'lucide-react';
+import { Target, Check, X, Pencil, TrendingUp, TrendingDown, Minus, LayoutDashboard, Sprout, Zap, Microscope, HeartHandshake } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -23,6 +23,8 @@ import LifecycleStages from './components/analytics/LifecycleStages';
 import TrainerPerformance from './components/analytics/TrainerPerformance';
 import MonthlySummary from './components/analytics/MonthlySummary';
 import LTVCard from './components/analytics/LTVCard';
+import WhyLeftPanel from './components/WhyLeftPanel';
+import RetentionEffectivenessPanel from './components/RetentionEffectivenessPanel';
 
 const KPI_METRICS = [
   { key: 'retention_rate', labelKey: 'admin.analytics.retentionRate', unit: '%', icon: '📊' },
@@ -287,6 +289,7 @@ const ANALYTICS_TAB_KEYS = [
   { key: 'overview', labelKey: 'admin.analytics.tabThisMonth', fallback: 'This Month', icon: LayoutDashboard },
   { key: 'growth', labelKey: 'admin.analytics.tabGrowth', fallback: 'Growth', icon: Sprout },
   { key: 'engagement', labelKey: 'admin.analytics.tabEngagement', fallback: 'Engagement', icon: Zap },
+  { key: 'retention',  labelKey: 'admin.analytics.tabRetention',  fallback: 'Retention',  icon: HeartHandshake },
   { key: 'deep-dives', labelKey: 'admin.analytics.tabDeepDives', fallback: 'Deep Dives', icon: Microscope },
 ];
 
@@ -402,6 +405,26 @@ export default function AdminAnalytics() {
                   <FadeIn delay={70}>
                     <div className="mb-8">
                       <ActivityChart gymId={gymId} period={period} periodDays={periodDays} />
+                    </div>
+                  </FadeIn>
+                </>
+              );
+              if (tabKey === 'retention') return (
+                <>
+                  <FadeIn delay={30}>
+                    <SectionDivider label={t('admin.analytics.sectionWhyLeft', 'Why members leave')} />
+                  </FadeIn>
+                  <FadeIn delay={40}>
+                    <div className="mb-8">
+                      <WhyLeftPanel gymId={gymId} />
+                    </div>
+                  </FadeIn>
+                  <FadeIn delay={60}>
+                    <SectionDivider label={t('admin.analytics.sectionEffectiveness', 'Retention machine effectiveness')} />
+                  </FadeIn>
+                  <FadeIn delay={70}>
+                    <div className="mb-8">
+                      <RetentionEffectivenessPanel gymId={gymId} />
                     </div>
                   </FadeIn>
                 </>

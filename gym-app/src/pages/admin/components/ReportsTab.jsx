@@ -12,6 +12,8 @@ import {
 } from './moderationHelpers';
 import ReportDetailModal from './ReportDetailModal';
 import { fetchReports } from '../../../lib/admin/moderationQueries';
+import usePagedVisible from '../../../hooks/usePagedVisible';
+import PaginationFooter from '../../../components/admin/PaginationFooter';
 
 /**
  * "Reports" tab on AdminModeration — last 50 `content_reports` rows with
@@ -35,6 +37,7 @@ export default function ReportsTab({ gymId }) {
   const [filter, setFilter] = useState('all');
   const [acting, setActing] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
+  const pager = usePagedVisible({ initial: 10, step: 10 });
 
   const { data: reports = [], isLoading, error, refetch } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'reports'],
@@ -262,7 +265,7 @@ export default function ReportsTab({ gymId }) {
       <div className="hidden md:block">
         <AdminTable
           columns={columns}
-          data={filtered}
+          data={filtered.slice(0, pager.visibleCount)}
           loading={false}
           onRowClick={(row) => setSelectedReport(row)}
           emptyState={
@@ -283,7 +286,7 @@ export default function ReportsTab({ gymId }) {
               <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noReports', { defaultValue: 'No reports match this filter' })}</p>
             </div>
           </AdminCard>
-        ) : filtered.map(row => {
+        ) : filtered.slice(0, pager.visibleCount).map(row => {
           const reporter = row.profiles;
           const ct = row.content_type || 'activity';
           const typeChip = getContentTypeChip(ct, t);
@@ -349,6 +352,7 @@ export default function ReportsTab({ gymId }) {
           );
         })}
       </div>
+      <PaginationFooter pager={pager} total={filtered.length} />
 
       <ReportDetailModal
         report={selectedReport}

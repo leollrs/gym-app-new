@@ -1357,6 +1357,9 @@
     "memberDeactivatedBody": "Your account has been deactivated by an administrator.",
     "memberBannedDetail": "You are no longer able to access this platform. If you believe this is a mistake, please contact your gym administration.",
     "memberDeactivatedDetail": "Your access has been temporarily suspended. Please contact your gym administration for more information.",
+    "memberFrozenTitle": "Account on hold",
+    "memberFrozenBody": "Your membership at {{gymName}} is currently on hold.",
+    "memberFrozenDetail": "Visit the front desk or contact your gym to reactivate your account. You'll have full access again as soon as they unfreeze it.",
     "profileUnavailableTitle": "We could not load your account",
     "profileUnavailableBody": "This usually means your profile has not loaded yet or the network request failed.",
     "signOut": "Sign Out",
@@ -2710,6 +2713,11 @@
     "cardio": "Cardio"
   },
   "admin": {
+    "common": {
+      "showingCount": "Showing {{shown}} of {{total}}",
+      "loadMore": "Load {{count}} more",
+      "collapse": "Collapse"
+    },
     "overview": {
       "title": "Overview",
       "accessDenied": "Access denied. You are not authorized to view this page.",
@@ -4686,7 +4694,25 @@
       "resetDone": "Reverted to default",
       "resetFailed": "Failed to reset"
     },
+    "upcomingCards": {
+      "title": "Coming up next",
+      "subtitle": "Cards the daily cron will queue soon — pre-print and pre-sign to stay ahead",
+      "countBadge": "{{count}} coming",
+      "countBadge_plural": "{{count}} coming",
+      "empty": "No milestones or birthdays in the next 7 days.",
+      "unknownMember": "Unknown member",
+      "inWorkouts": "in {{count}} workout",
+      "inWorkouts_plural": "in {{count}} workouts",
+      "inDays": "in {{count}} day",
+      "inDays_plural": "in {{count}} days",
+      "today": "today",
+      "tomorrow": "tomorrow",
+      "currentWorkouts": "Currently {{count}} workout",
+      "currentWorkouts_plural": "Currently {{count}} workouts"
+    },
     "printCards": {
+      "pageTitle": "Print Cards",
+      "pageSubtitle": "Hand-written cards generated daily for welcomes, milestones, and returning members. Print on Avery 8371, sign, and hand them over in person.",
       "tabPending": "To print",
       "tabPrinted": "To deliver",
       "selectAll": "Select all",
@@ -4735,6 +4761,9 @@
       "snooze24h": "Snooze 24h",
       "dismiss": "Dismiss",
       "viewRetention": "Open full retention board",
+      "showingCount": "Showing {{shown}} of {{total}}",
+      "loadMore": "Load {{count}} more",
+      "collapse": "Collapse",
       "resolveTitle": "Mark resolved",
       "resolveBtn": "Mark resolved",
       "suggestedActionWas": "Suggested action was",
@@ -6157,6 +6186,7 @@
       "tabOverview": "Overview",
       "tabGrowth": "Growth",
       "tabEngagement": "Engagement",
+      "tabRetention": "Retention",
       "tabDeepDives": "Deep Dives",
       "period7d": "7d",
       "period30d": "30d",
@@ -6168,6 +6198,8 @@
       "sectionCohortRetention": "Cohort Retention",
       "sectionTrainerPerformance": "Trainer Performance",
       "sectionMonthlySummary": "Monthly Summary",
+      "sectionWhyLeft": "Why members leave",
+      "sectionEffectiveness": "Retention machine effectiveness",
       "onTarget": "On target",
       "above": "above",
       "below": "below",

@@ -38,16 +38,23 @@ export async function handleScannedValue(rawText, setError) {
     if (parsed) return parsed;
   }
 
-  // Reward/purchase QRs MUST be signed — reject unsigned legacy payloads
-  if (
-    (trimmed.startsWith('gym-reward:') || trimmed.startsWith('gym-purchase:')) &&
-    !trimmed.includes('|')
-  ) {
+  // Reward QRs delivered via email are signed by the reward-qr edge function;
+  // an unsigned `gym-reward:` payload almost always means signQRPayload failed
+  // mid-render. Keep the strict rejection so we don't claim against a forged ID.
+  if (trimmed.startsWith('gym-reward:') && !trimmed.includes('|')) {
     setError?.('Invalid QR — please refresh in the app');
     return null;
   }
 
-  // Unsigned / legacy fallback — try parsing directly (other QR types only)
+  // Wallet passes (Apple Wallet / Google Wallet) bake an UNSIGNED `gym-purchase:`
+  // barcode at install time and can't re-sign — the pass is static. Previously
+  // we rejected unsigned `gym-purchase:` payloads for safety, but that broke
+  // every wallet-pass punch scan in production. Forging is bounded: the
+  // `record_gym_purchase` RPC requires admin auth, so an attacker would
+  // already need to be an admin (who could just add a punch directly).
+  // → Allow unsigned `gym-purchase:` and let the handler validate.
+
+  // Unsigned / legacy fallback — try parsing directly (covers gym-purchase: too)
   const parsed = parseQRContent(trimmed);
   if (parsed) return parsed;
 

@@ -84,7 +84,7 @@ export default function WhyLeftPanel({ gymId }) {
               {t('admin.whyLeft.breakdownTitle', 'Cancellation reasons')}
             </p>
             <p className="text-[11px] text-[#6B7280] mt-0.5">
-              {t('admin.whyLeft.totalCancellations', { count: total, defaultValue: '{{count}} cancellations' })}
+              {t(total === 1 ? 'admin.whyLeft.totalCancellations' : 'admin.whyLeft.totalCancellations_plural', { count: total, defaultValue: total === 1 ? '{{count}} cancellation' : '{{count}} cancellations' })}
             </p>
           </div>
         </div>

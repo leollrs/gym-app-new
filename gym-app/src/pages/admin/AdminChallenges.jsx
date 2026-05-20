@@ -14,6 +14,8 @@ import { PageHeader, AdminCard, FadeIn, CardSkeleton, SectionLabel, AdminTabs, A
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import ChallengeModal from './components/ChallengeModal';
 import ChallengeSuggestionCard from './components/ChallengeSuggestionCard';
+import usePagedVisible from '../../hooks/usePagedVisible';
+import PaginationFooter from '../../components/admin/PaginationFooter';
 
 // ── Participant list panel ─────────────────────────────────
 const ParticipantList = ({ challengeId, gymId }) => {
@@ -235,6 +237,11 @@ export default function AdminChallenges() {
   const [expanded, setExpanded]     = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [tab, setTab] = useState('active');
+  // Single pager shared across tabs — SwipeableTabContent only renders one
+  // tab at a time, and we reset to the initial view on tab change so the
+  // count starts fresh after a switch.
+  const challengePager = usePagedVisible({ initial: 10, step: 10 });
+  useEffect(() => { challengePager.reset(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [awardingId, setAwardingId] = useState(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState({});
   const [showTemplates, setShowTemplates] = useState(false);
@@ -458,7 +465,7 @@ export default function AdminChallenges() {
           );
           return (
             <div className="space-y-3">
-              {filtered.map((c, idx) => {
+              {filtered.slice(0, challengePager.visibleCount).map((c, idx) => {
                 const badge = statusBadge(c);
                 const isOpen = expanded === c.id;
                 const isEnded = isPast(new Date(c.end_date));
@@ -652,6 +659,7 @@ export default function AdminChallenges() {
                   </FadeIn>
                 );
               })}
+              <PaginationFooter pager={challengePager} total={filtered.length} />
             </div>
           );
         };

@@ -80,8 +80,8 @@ export function ActivityItem({ item, dateFnsLocale, t, onClick }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[12.5px] truncate" style={{ color: 'var(--color-admin-text)' }}>
-          <span className="font-medium">{displayName}</span>
-          <span className="ml-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{meta.label}</span>
+          <span className="font-medium">{displayName}</span>{' '}
+          <span style={{ color: 'var(--color-admin-text-sub)' }}>{meta.label}</span>
         </p>
       </div>
       <span className="admin-mono text-[10px] flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity duration-150"

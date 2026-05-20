@@ -28,10 +28,9 @@ import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { usePostHog } from '@posthog/react';
-
-const WalletPass = registerPlugin('WalletPass');
+import { WalletPass } from '../lib/walletPass';
 
 // ── Font stacks (Rewards A uses Familjen Grotesk + Archivo) ──────────────────
 const FONT_DISPLAY = "'Familjen Grotesk', 'Archivo', system-ui, sans-serif";
@@ -265,15 +264,25 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
   const { t } = useTranslation('pages');
   const payload = `gym-reward:${gymId}:${userId}:${redemptionId}`;
   const [signedPayload, setSignedPayload] = useState(null);
+  const [signError, setSignError] = useState(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
-    // Unhandled rejections from signQRPayload (network/edge-function/auth)
-    // crash the Capacitor WebView. Swallow them — the QR still renders with
-    // the unsigned payload via `signedPayload || payload`.
+    // Signed payload is REQUIRED — the admin scanner rejects unsigned
+    // `gym-reward:` QRs with "Invalid QR — please refresh in the app".
+    // If signing fails, surface the error so the member knows to retry
+    // instead of handing the admin a QR that can never validate.
+    let cancelled = false;
+    setSignedPayload(null);
+    setSignError(null);
     signQRPayload(payload)
-      .then(setSignedPayload)
-      .catch((err) => logger.warn('signQRPayload failed (redemption)', err));
-  }, [payload]);
+      .then((signed) => { if (!cancelled) setSignedPayload(signed); })
+      .catch((err) => {
+        logger.warn('signQRPayload failed (redemption)', err);
+        if (!cancelled) setSignError(err?.message || 'Could not sign QR. Tap to retry.');
+      });
+    return () => { cancelled = true; };
+  }, [payload, retryNonce]);
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -327,14 +336,43 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
         </div>
 
         <div className="bg-white flex flex-col items-center px-8 py-6" role="img" aria-label={t('rewards.redemptionQRCode', 'Redemption QR code')}>
-          <QRCodeSVG
-            value={signedPayload || payload}
-            size={220}
-            level="H"
-            includeMargin={false}
-            bgColor="#FFFFFF"
-            fgColor="#000000"
-          />
+          {signedPayload ? (
+            <QRCodeSVG
+              value={signedPayload}
+              size={220}
+              level="H"
+              includeMargin={false}
+              bgColor="#FFFFFF"
+              fgColor="#000000"
+            />
+          ) : signError ? (
+            <button
+              onClick={() => setRetryNonce(n => n + 1)}
+              className="flex flex-col items-center justify-center gap-2 px-4 py-12"
+              style={{ minHeight: 220 }}
+            >
+              <div style={{ fontSize: 32 }}>⚠️</div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#B91C1C', textAlign: 'center' }}>
+                {t('rewards.qrSignFailed', "Couldn't generate QR")}
+              </p>
+              <p style={{ fontSize: 11, color: '#6B7280', textAlign: 'center', maxWidth: 200 }}>
+                {signError}
+              </p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#2563EB', marginTop: 8 }}>
+                {t('rewards.tapToRetry', 'Tap to retry')}
+              </p>
+            </button>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: 220 }}>
+              <div
+                className="w-8 h-8 rounded-full animate-spin"
+                style={{ border: '3px solid #E5E7EB', borderTopColor: '#10B981' }}
+              />
+              <p style={{ fontSize: 12, color: '#6B7280' }}>
+                {t('rewards.signingQR', 'Signing QR…')}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="bg-[var(--color-bg-card)] border-t border-[var(--color-border-subtle)] py-4 px-5">
@@ -1347,7 +1385,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
     if (!heroCard || !profile?.id || !profile?.gym_id) return;
     const productId = heroCard.gym_products?.id || heroCard.product_id;
     if (!productId) return;
-    const raw = `gym-punch:${profile.gym_id}:${profile.id}:${productId}`;
+    const raw = `gym-purchase:${profile.gym_id}:${profile.id}:${productId}`;
     if (signedPayloads[heroCard.id]) return;
     let cancelled = false;
     signQRPayload(raw).then((signed) => {
@@ -1481,7 +1519,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
               {heroCard && (() => {
                 const productId = heroCard.gym_products?.id || heroCard.product_id;
                 const rawPayload = productId && profile?.gym_id && profile?.id
-                  ? `gym-punch:${profile.gym_id}:${profile.id}:${productId}`
+                  ? `gym-purchase:${profile.gym_id}:${profile.id}:${productId}`
                   : '';
                 return (
                   <PunchPassHero

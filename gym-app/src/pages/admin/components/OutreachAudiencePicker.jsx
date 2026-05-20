@@ -113,7 +113,7 @@ export default function OutreachAudiencePicker({ gymId, value, onChange, t }) {
                 </p>
                 {opt.count !== null && (
                   <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                    {opt.count} {t('admin.outreach.members', { count: opt.count, defaultValue: 'members' })}
+                    {opt.count} {t(opt.count === 1 ? 'admin.outreach.members' : 'admin.outreach.members_plural', { count: opt.count, defaultValue: opt.count === 1 ? 'member' : 'members' })}
                   </p>
                 )}
               </div>
@@ -162,7 +162,11 @@ export default function OutreachAudiencePicker({ gymId, value, onChange, t }) {
           style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
           <User size={14} style={{ color: 'var(--color-accent)' }} />
           <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
-            {t('admin.outreach.specificMembersCount', { count: value.ids?.length || 0, defaultValue: '{{count}} specific member(s) selected' })}
+            {(() => {
+              const n = value.ids?.length || 0;
+              const key = n === 1 ? 'admin.outreach.specificMembersCount' : 'admin.outreach.specificMembersCount_plural';
+              return t(key, { count: n, defaultValue: n === 1 ? '{{count}} specific member selected' : '{{count}} specific members selected' });
+            })()}
           </p>
         </div>
       )}

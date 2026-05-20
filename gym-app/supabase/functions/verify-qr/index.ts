@@ -19,6 +19,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const QR_SIGNING_SECRET    = Deno.env.get('QR_SIGNING_SECRET');
 const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ALLOWED_ORIGIN       = Deno.env.get('ALLOWED_ORIGIN');
 const IP_HASH_SALT         = Deno.env.get('IP_HASH_SALT') || Deno.env.get('DENO_DEPLOYMENT_ID') || '';
 
@@ -133,8 +134,13 @@ serve(async (req) => {
     if (authErr || !user) return jsonResp({ error: 'Unauthorized' }, 401);
 
     // ── Database-based rate limiting (60 requests per user per hour) ──
+    // Use service-role client so RLS on ai_rate_limits can't block the
+    // count query and turn the whole verify into a 500. Rate-limit
+    // enforcement is purely a server-side concern; the value is keyed
+    // on the authenticated user.id resolved above.
+    const rlClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count, error: rlError } = await authClient
+    const { count, error: rlError } = await rlClient
       .from('ai_rate_limits')
       .select('*', { count: 'exact', head: true })
       .eq('profile_id', user.id)
@@ -142,15 +148,16 @@ serve(async (req) => {
       .gte('requested_at', oneHourAgo);
 
     if (rlError) {
-      console.error('Rate limit check failed:', rlError);
-      return jsonResp({ error: 'Internal server error' }, 500);
-    }
-
-    if ((count ?? 0) >= 60) {
+      // Don't fail closed on rate-limit DB errors — log + proceed so
+      // verify-qr stays usable even if the rate-limit table is degraded.
+      console.warn('Rate limit check failed (proceeding):', rlError.message);
+    } else if ((count ?? 0) >= 60) {
       return jsonResp({ error: 'Rate limit exceeded — max 60 requests per hour' }, 429);
     }
 
-    await authClient.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'verify-qr' });
+    // Best-effort insert; ignore failure
+    rlClient.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'verify-qr' })
+      .then(({ error: insErr }) => { if (insErr) console.warn('Rate limit insert failed:', insErr.message); });
 
     // ── Verify signature ─────────────────────────────────────────
     const { payload, signature } = await req.json();

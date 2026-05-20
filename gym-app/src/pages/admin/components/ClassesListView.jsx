@@ -3,6 +3,8 @@ import { CalendarDays, Clock, Calendar, Users, Search, Edit3, Trash2, UserCheck 
 import { AdminCard, FadeIn, StatCard, Toggle } from '../../../components/admin';
 import { classImageUrl } from '../../../lib/classImageUrl';
 import CoverPreview from './CoverPreview';
+import usePagedVisible from '../../../hooks/usePagedVisible';
+import PaginationFooter from '../../../components/admin/PaginationFooter';
 
 /**
  * Build a compact one-line schedule summary like "Mon, Wed, Fri 09:00-10:00"
@@ -57,6 +59,7 @@ function buildScheduleSummary(classItem, dayLabel, t, lang) {
  */
 export default function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDetail, dayLabel, todaysClasses, upcomingBookings, t, tc, lang }) {
   const [search, setSearch] = useState('');
+  const pager = usePagedVisible({ initial: 10, step: 10 });
 
   const filtered = useMemo(() => {
     if (!search) return classes;
@@ -113,7 +116,7 @@ export default function ClassesListView({ classes, onEdit, onDelete, onToggleAct
 
       {/* Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
-        {filtered.map((cls, idx) => {
+        {filtered.slice(0, pager.visibleCount).map((cls, idx) => {
           const scheduleSummary = buildScheduleSummary(cls, dayLabel, t, lang);
           return (
             <FadeIn key={cls.id} delay={idx * 40}>
@@ -184,6 +187,7 @@ export default function ClassesListView({ classes, onEdit, onDelete, onToggleAct
           );
         })}
       </div>
+      <PaginationFooter pager={pager} total={filtered.length} />
     </div>
   );
 }

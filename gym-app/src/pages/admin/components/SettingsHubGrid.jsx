@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
-  Palette, Clock, Shield, Bell, Mail, Building2, ChevronRight,
+  Palette, Clock, Shield, Mail, Building2, ChevronRight,
 } from 'lucide-react';
 import { FadeIn } from '../../../components/admin';
 
@@ -42,12 +42,6 @@ export default function SettingsHubGrid() {
       label: t('admin.settingsHub.registration', 'Registration & classes'),
       desc: t('admin.settingsHub.registrationDesc', 'How members join, class booking, birthdays'),
       onClick: () => navigate('/admin/settings/registration'),
-    },
-    {
-      icon: Bell,
-      label: t('admin.settingsHub.notifications', 'Notification preferences'),
-      desc: t('admin.settingsHub.notificationsDesc', 'What members get pinged about'),
-      onClick: () => navigate('/admin/notifications?tab=preferences&from=settings'),
     },
     {
       icon: Mail,

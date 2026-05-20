@@ -17,6 +17,8 @@ import { PageHeader, AdminCard, StatCard, Avatar, SectionLabel, ErrorCard, Skele
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import AddTrainerModal from './components/AddTrainerModal';
 import ConfirmDemoteModal from './components/ConfirmDemoteModal';
+import usePagedVisible from '../../hooks/usePagedVisible';
+import PaginationFooter from '../../components/admin/PaginationFooter';
 
 // ── Fetch function ────────────────────────────────────────────────────────
 
@@ -124,6 +126,9 @@ export default function AdminTrainers() {
 
   const [trainersTab, setTrainersTab]   = useState('roster');
   const [expanded, setExpanded]         = useState(null);
+  // Cap rendered trainer cards at 10 + load-more so large gyms don't paint
+  // hundreds of expandable cards on first render.
+  const trainerPager = usePagedVisible({ initial: 10, step: 10 });
   const [showAssign, setShowAssign]     = useState(null);
   const [search, setSearch]             = useState('');
   const [assigning, setAssigning]       = useState(false);
@@ -392,7 +397,7 @@ export default function AdminTrainers() {
       ) : (
         <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-              {trainers.map(tr => {
+              {trainers.slice(0, trainerPager.visibleCount).map(tr => {
                 const isExpanded = expanded === tr.id;
                 const clients = clientMap[tr.id] || [];
                 const atRiskCount = clients.filter(c => c.churnTier === 'critical' || c.churnTier === 'high').length;
@@ -626,6 +631,8 @@ export default function AdminTrainers() {
                 );
               })}
             </div>
+
+            <PaginationFooter pager={trainerPager} total={trainers.length} />
         </>
       )}
 

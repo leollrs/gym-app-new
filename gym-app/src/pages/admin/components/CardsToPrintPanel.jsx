@@ -1,29 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import {
-  Printer, Check, X, Loader2, Sparkles, PartyPopper, ArrowLeftRight, Award, Gift, Cake,
+  Printer, Check, X, Loader2, Sparkles, PartyPopper, ArrowLeftRight, Award, Gift, Cake, Calendar,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
-import logger from '../../../lib/logger';
 import { AdminCard, Avatar } from '../../../components/admin';
 
 // Occasion → icon. Keep this small; the headline already says what it is.
+// Legacy occasions (milestone_25, first_pr) stay mapped so pre-v2 cards still
+// render with an icon during the cutover, but the v2 cron won't generate them.
 const OCCASION_ICON = {
   welcome:       PartyPopper,
-  milestone_25:  Award,
+  habit_9in6:    Sparkles,
+  tenure_30:     Calendar,
+  tenure_90:     Calendar,
+  tenure_365:    Calendar,
   milestone_100: Award,
+  milestone_250: Award,
   milestone_500: Award,
-  first_pr:      Sparkles,
   returning:     ArrowLeftRight,
   birthday:      Cake,
   custom:        Gift,
+  milestone_25:  Award,
+  first_pr:      Sparkles,
 };
 
 export default function CardsToPrintPanel({ gymId }) {
@@ -34,7 +40,11 @@ export default function CardsToPrintPanel({ gymId }) {
   const isEs = i18n.language?.startsWith('es');
   const dateLocale = isEs ? { locale: esLocale } : undefined;
 
-  // 'pending' | 'printed'  (printed-but-not-delivered = the "to hand over" bucket)
+  // 'pending'   = needs printing
+  // 'printed'   = printed + signed, waiting at front desk to hand over
+  // 'delivered' = handed to member; archive of what the gym has actually
+  //               given out — used downstream as retention signal (cards
+  //               received per member feed analytics, churn weighting).
   const [tab, setTab] = useState('pending');
 
   const { data: cards = [], isLoading } = useQuery({
@@ -132,15 +142,39 @@ export default function CardsToPrintPanel({ gymId }) {
     const ids = [...selected];
     if (ids.length === 0) return;
     const params = new URLSearchParams({ ids: ids.join(',') });
-    window.open(`/admin/print-cards/preview?${params.toString()}`, '_blank', 'noopener');
+    // No features string — passing one (even just 'noopener') makes Chrome
+    // open a sized popup window instead of a normal tab. We strip the
+    // opener reference via win.opener=null after the fact.
+    const win = window.open(`/admin/print-cards/preview?${params.toString()}`, '_blank');
+    if (win) win.opener = null;
   };
 
   // ── Render helpers ──
+  // Pick the most relevant timestamp + label for each lifecycle stage.
+  // Delivered uses delivered_at because that's the moment that matters
+  // for retention metrics (the card actually changed hands).
   const renderCard = (card) => {
     const member = card.profiles || {};
     const Icon = OCCASION_ICON[card.occasion] || Gift;
     const isPending = card.status === 'pending';
     const isPrinted = card.status === 'printed';
+    const isDelivered = card.status === 'delivered';
+
+    let timestampLine;
+    if (isDelivered && card.delivered_at) {
+      timestampLine = t('admin.printCards.deliveredTimeAgo', {
+        when: formatDistanceToNow(new Date(card.delivered_at), { addSuffix: true, ...dateLocale }),
+        defaultValue: 'Delivered {{when}}',
+      });
+    } else if (isPrinted && card.printed_at) {
+      timestampLine = t('admin.printCards.printedTimeAgo', {
+        when: formatDistanceToNow(new Date(card.printed_at), { addSuffix: true, ...dateLocale }),
+        defaultValue: 'Printed {{when}}',
+      });
+    } else {
+      timestampLine = formatDistanceToNow(new Date(card.created_at), { addSuffix: true, ...dateLocale });
+    }
+
     return (
       <li key={card.id} className="py-3 first:pt-0 last:pb-0">
         <div className="flex items-start gap-3">
@@ -168,14 +202,7 @@ export default function CardsToPrintPanel({ gymId }) {
             {card.subline && (
               <p className="text-[11px] text-[#9CA3AF] mt-0.5">{card.subline}</p>
             )}
-            <p className="text-[10px] text-[#6B7280] mt-1">
-              {isPrinted && card.printed_at
-                ? t('admin.printCards.printedTimeAgo', {
-                    when: formatDistanceToNow(new Date(card.printed_at), { addSuffix: true, ...dateLocale }),
-                    defaultValue: 'Printed {{when}}',
-                  })
-                : formatDistanceToNow(new Date(card.created_at), { addSuffix: true, ...dateLocale })}
-            </p>
+            <p className="text-[10px] text-[#6B7280] mt-1">{timestampLine}</p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             {isPrinted && (
@@ -196,6 +223,14 @@ export default function CardsToPrintPanel({ gymId }) {
                 <X size={14} />
               </button>
             )}
+            {isDelivered && (
+              <span
+                title={t('admin.printCards.deliveredBadge', 'Delivered')}
+                className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#10B981]/10 text-[#10B981]"
+              >
+                <Check size={14} />
+              </span>
+            )}
           </div>
         </div>
       </li>
@@ -205,7 +240,7 @@ export default function CardsToPrintPanel({ gymId }) {
   return (
     <div className="space-y-4">
       {/* Tab pills */}
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 flex-wrap">
         <button
           onClick={() => setTab('pending')}
           className={`admin-pill ${tab === 'pending' ? 'admin-pill--dark' : 'admin-pill--outline'}`}
@@ -217,6 +252,12 @@ export default function CardsToPrintPanel({ gymId }) {
           className={`admin-pill ${tab === 'printed' ? 'admin-pill--dark' : 'admin-pill--outline'}`}
         >
           {t('admin.printCards.tabPrinted', 'To deliver')}
+        </button>
+        <button
+          onClick={() => setTab('delivered')}
+          className={`admin-pill ${tab === 'delivered' ? 'admin-pill--dark' : 'admin-pill--outline'}`}
+        >
+          {t('admin.printCards.tabDelivered', 'Delivered')}
         </button>
       </div>
 
@@ -266,10 +307,14 @@ export default function CardsToPrintPanel({ gymId }) {
             <p className="text-[13px] text-[#9CA3AF]">
               {tab === 'pending'
                 ? t('admin.printCards.emptyPending', 'No cards waiting to print.')
-                : t('admin.printCards.emptyPrinted', 'No printed cards waiting for delivery.')}
+                : tab === 'printed'
+                  ? t('admin.printCards.emptyPrinted', 'No printed cards waiting for delivery.')
+                  : t('admin.printCards.emptyDelivered', 'No cards have been delivered yet.')}
             </p>
             <p className="text-[11px] text-[#6B7280] mt-1">
-              {t('admin.printCards.emptyHint', 'The daily cron generates cards for milestones and returning members.')}
+              {tab === 'delivered'
+                ? t('admin.printCards.emptyDeliveredHint', 'Cards you hand to members show up here as a retention archive.')
+                : t('admin.printCards.emptyHint', 'The daily cron generates cards for milestones and returning members.')}
             </p>
           </div>
         ) : (

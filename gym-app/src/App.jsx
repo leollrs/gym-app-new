@@ -153,6 +153,7 @@ const AdminABTesting     = lazy(() => import('./pages/admin/AdminABTesting'));
 const AdminEmailTemplates = lazy(() => import('./pages/admin/AdminEmailTemplates'));
 const AdminMessageTemplates = lazy(() => import('./pages/admin/AdminMessageTemplates'));
 const PrintCardsView      = lazy(() => import('./pages/admin/PrintCardsView'));
+const AdminPrintCards    = lazy(() => import('./pages/admin/AdminPrintCards'));
 const AdminRewards       = lazy(() => import('./pages/admin/AdminRewards'));
 const AdminProfile       = lazy(() => import('./pages/admin/AdminProfile'));
 const AdminNotifications = lazy(() => import('./pages/admin/AdminNotifications'));
@@ -340,33 +341,42 @@ const GymDeactivatedScreen = () => {
 
 // ── MEMBER BLOCKED SCREEN (individual deactivation/ban) ───
 const MemberBlockedScreen = () => {
-  const { signOut, memberBlocked } = useAuth();
+  const { signOut, memberBlocked, gymName } = useAuth();
   const { t } = useTranslation('pages');
-  const isBanned = memberBlocked === 'banned';
+  // 3 variants: banned (permanent), deactivated (revoked), frozen (paused).
+  // Each gets its own copy + tone so the member knows whether this is
+  // permanent (banned/deactivated) or a hold they can resolve in person (frozen).
+  const variant = memberBlocked === 'banned'
+    ? { titleKey: 'memberBannedTitle',     bodyKey: 'memberBannedBody',     detailKey: 'memberBannedDetail',     accent: 'red',    icon: 'block' }
+    : memberBlocked === 'frozen'
+    ? { titleKey: 'memberFrozenTitle',     bodyKey: 'memberFrozenBody',     detailKey: 'memberFrozenDetail',     accent: 'blue',   icon: 'snow' }
+    : { titleKey: 'memberDeactivatedTitle', bodyKey: 'memberDeactivatedBody', detailKey: 'memberDeactivatedDetail', accent: 'orange', icon: 'block' };
+
+  const ringBg = { red: 'bg-red-500/10 border border-red-500/20', blue: 'bg-blue-500/10 border border-blue-500/20', orange: 'bg-orange-500/10 border border-orange-500/20' }[variant.accent];
+  const iconColor = { red: 'text-red-400', blue: 'text-blue-400', orange: 'text-orange-400' }[variant.accent];
+
   return (
     <div className="min-h-screen bg-[#05070B] flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center">
-        <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${
-          isBanned
-            ? 'bg-red-500/10 border border-red-500/20'
-            : 'bg-orange-500/10 border border-orange-500/20'
-        }`}>
-          <svg className={`w-8 h-8 ${isBanned ? 'text-red-400' : 'text-orange-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${ringBg}`}>
+          <svg className={`w-8 h-8 ${iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            {variant.icon === 'snow' ? (
+              // Snowflake — communicates "frozen / on hold" rather than blocked
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v18M5.636 5.636l12.728 12.728M3 12h18M18.364 5.636L5.636 18.364" />
+            ) : (
+              // Crossed-out circle — blocked / deactivated
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            )}
           </svg>
         </div>
         <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">
-          {isBanned ? t('blocking.memberBannedTitle') : t('blocking.memberDeactivatedTitle')}
+          {t(`blocking.${variant.titleKey}`)}
         </h1>
         <p className="text-[14px] text-[#9CA3AF] mb-2">
-          {isBanned
-            ? t('blocking.memberBannedBody')
-            : t('blocking.memberDeactivatedBody')}
+          {t(`blocking.${variant.bodyKey}`, { gymName: gymName || '' })}
         </p>
         <p className="text-[13px] text-[#6B7280] mb-8">
-          {isBanned
-            ? t('blocking.memberBannedDetail')
-            : t('blocking.memberDeactivatedDetail')}
+          {t(`blocking.${variant.detailKey}`, { gymName: gymName || '' })}
         </p>
         <button
           onClick={signOut}
@@ -1520,6 +1530,23 @@ function App() {
         }
       />
 
+      {/* Print preview — auth-guarded but rendered OUTSIDE AdminLayout
+          so the sidebar / mobile bottom-nav / mobile top-bar don't squeeze
+          the 8.5x11 print sheets and don't leak into the printed output.
+          Sits ABOVE /admin/* so the more-specific path wins in routing. */}
+      <Route
+        path="/admin/print-cards/preview"
+        element={
+          <AdminRoute>
+            <ErrorBoundary>
+              <Suspense fallback={<Skeleton variant="page" />}>
+                <PrintCardsView />
+              </Suspense>
+            </ErrorBoundary>
+          </AdminRoute>
+        }
+      />
+
       {/* Admin dashboard */}
       <Route
         path="/admin/*"
@@ -1554,7 +1581,7 @@ function App() {
                 <Route path="/ab-testing"  element={<AdminABTesting />} />
                 <Route path="/email-templates" element={<AdminEmailTemplates />} />
                 <Route path="/message-templates" element={<AdminMessageTemplates />} />
-                <Route path="/print-cards/preview" element={<PrintCardsView />} />
+                <Route path="/print-cards"         element={<AdminPrintCards />} />
                 <Route path="/rewards"     element={<AdminRewards />} />
                 <Route path="/profile"     element={<AdminProfile />} />
                 <Route path="/notifications" element={<AdminNotifications />} />

@@ -57,13 +57,19 @@ export default function NeedsAttentionCard({
     staleTime: 30_000,
   });
 
+  // i18next v3-compat plural inference (`{ count }` → auto `_plural` lookup)
+  // wasn't reliably selecting the plural form here in production, leaving
+  // strings like "32 miembro en riesgo crítico de baja". We pick the key
+  // explicitly so the right variant always wins regardless of i18next config.
+  const plural = (base, n) => `${base}${n === 1 ? '' : '_plural'}`;
+
   const items = [];
 
   if (pendingResetsCount > 0) {
     items.push({
       icon: KeyRound,
       color: 'var(--color-warning)',
-      text: t('admin.overview.attentionPendingResets', { count: pendingResetsCount, defaultValue: '{{count}} password reset(s) waiting for approval' }),
+      text: t(plural('admin.overview.attentionPendingResets', pendingResetsCount), { count: pendingResetsCount }),
       action: t('admin.overview.review', 'Review'),
       onClick: () => firstPendingResetId ? onResetClick?.(firstPendingResetId) : navigate('/admin/members?tab=resets'),
     });
@@ -73,7 +79,7 @@ export default function NeedsAttentionCard({
     items.push({
       icon: AlertTriangle,
       color: 'var(--color-danger)',
-      text: t('admin.overview.attentionAtRisk', { count: atRiskCount, defaultValue: '{{count}} members hitting critical churn risk' }),
+      text: t(plural('admin.overview.attentionAtRisk', atRiskCount), { count: atRiskCount }),
       action: t('admin.overview.sendOutreach', 'Send win-back'),
       onClick: () => navigate('/admin/outreach?audience=critical'),
     });
@@ -83,7 +89,7 @@ export default function NeedsAttentionCard({
     items.push({
       icon: Flag,
       color: 'var(--color-warning)',
-      text: t('admin.overview.attentionReports', { count: extra.reports, defaultValue: '{{count}} reported post(s) awaiting review' }),
+      text: t(plural('admin.overview.attentionReports', extra.reports), { count: extra.reports }),
       action: t('admin.overview.openModeration', 'Open moderation'),
       onClick: () => navigate('/admin/moderation'),
     });
@@ -93,7 +99,7 @@ export default function NeedsAttentionCard({
     items.push({
       icon: ShieldAlert,
       color: 'var(--color-coach)',
-      text: t('admin.overview.attentionReferrals', { count: extra.referrals, defaultValue: '{{count}} referral(s) pending approval' }),
+      text: t(plural('admin.overview.attentionReferrals', extra.referrals), { count: extra.referrals }),
       action: t('admin.overview.openReferrals', 'Open referrals'),
       onClick: () => navigate('/admin/referrals'),
     });
@@ -103,7 +109,7 @@ export default function NeedsAttentionCard({
     items.push({
       icon: UserPlus,
       color: 'var(--color-danger)',
-      text: t('admin.overview.attentionOnboarding', { count: onboardingCount, defaultValue: "{{count}} new member(s) haven't finished onboarding" }),
+      text: t(plural('admin.overview.attentionOnboarding', onboardingCount), { count: onboardingCount }),
       action: t('admin.overview.sendReminder', 'Send reminder'),
       onClick: () => navigate('/admin/outreach?audience=unonboarded'),
     });

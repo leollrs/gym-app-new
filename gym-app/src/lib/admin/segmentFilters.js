@@ -126,6 +126,20 @@ export async function applySegmentFilters(gymId, filters) {
     }));
   }
 
+  // Streak filter — operates on `_currentStreak` which the workout block
+  // above attaches to every member (from `streak_cache.current_streak_days`).
+  // The editor modal exposes streak_lt/streak_gt inputs and two prebuilt
+  // templates (Power Users, Consistent Trainers) rely on streak_gt, so this
+  // block must stay or those segments silently return the wrong members.
+  if (filters.streak_gt != null || filters.streak_lt != null) {
+    filtered = filtered.filter(m => {
+      const s = m._currentStreak ?? 0;
+      if (filters.streak_gt != null && s <= filters.streak_gt) return false;
+      if (filters.streak_lt != null && s >= filters.streak_lt) return false;
+      return true;
+    });
+  }
+
   // Churn tier filter
   if (filters.churn_tier?.length) {
     const memberIds = filtered.map(m => m.id);

@@ -27,7 +27,7 @@ const TYPE_META = {
   new_member_joined:      { icon: UserPlus,      tone: 'good',     cat: 'members',  labelKey: 'new_member',    label: 'New member' },
   trainer_added:          { icon: UserPlus,      tone: 'good',     cat: 'members',  labelKey: 'trainer',       label: 'Trainer' },
   class_waitlist_full:    { icon: Calendar,      tone: 'warn',     cat: 'classes',  labelKey: 'class',         label: 'Class' },
-  nps_response:           { icon: Star,          tone: 'info',     cat: 'feedback', labelKey: 'nps',           label: 'NPS' },
+  nps_response:           { icon: Star,          tone: 'warn',     cat: 'feedback', labelKey: 'nps',           label: 'NPS' },
   moderation_flagged:     { icon: ShieldAlert,   tone: 'critical', cat: 'risk',     labelKey: 'moderation',    label: 'Moderation' },
   password_reset_request: { icon: Lock,          tone: 'warn',     cat: 'security', labelKey: 'reset_request', label: 'Reset request' },
   referral_redeemed:      { icon: Gift,          tone: 'good',     cat: 'members',  labelKey: 'referral',      label: 'Referral' },

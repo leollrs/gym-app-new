@@ -10,6 +10,8 @@ import { sanitize } from '../../../lib/sanitize';
 import { AdminCard, AdminTable, FilterBar, Skeleton, ErrorCard, Avatar } from '../../../components/admin';
 import { postTypeBadge, relativeTime } from './moderationHelpers';
 import { fetchComments } from '../../../lib/admin/moderationQueries';
+import usePagedVisible from '../../../hooks/usePagedVisible';
+import PaginationFooter from '../../../components/admin/PaginationFooter';
 
 /**
  * "Comments" tab on AdminModeration — comments belonging to this gym's
@@ -25,6 +27,7 @@ export default function CommentsTab({ gymId }) {
   const dateFnsOpts = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const [filter, setFilter] = useState('all');
   const [acting, setActing] = useState(null);
+  const pager = usePagedVisible({ initial: 10, step: 10 });
 
   const { data: comments = [], isLoading, error, refetch } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'comments'],
@@ -165,7 +168,7 @@ export default function CommentsTab({ gymId }) {
       <div className="hidden md:block">
         <AdminTable
           columns={columns}
-          data={filtered}
+          data={filtered.slice(0, pager.visibleCount)}
           loading={false}
           emptyState={
             <div className="text-center py-12">
@@ -185,7 +188,7 @@ export default function CommentsTab({ gymId }) {
               <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noComments', { defaultValue: 'No comments match this filter' })}</p>
             </div>
           </AdminCard>
-        ) : filtered.map(row => {
+        ) : filtered.slice(0, pager.visibleCount).map(row => {
           const profile = row.profiles;
           const feedItem = row.activity_feed_items;
           const badge = postTypeBadge(feedItem?.type, t);
@@ -221,6 +224,7 @@ export default function CommentsTab({ gymId }) {
           );
         })}
       </div>
+      <PaginationFooter pager={pager} total={filtered.length} />
     </div>
   );
 }

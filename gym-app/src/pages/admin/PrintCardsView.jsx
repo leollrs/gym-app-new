@@ -1,18 +1,27 @@
 /**
- * PrintCardsView — print-friendly Avery 8371 layout.
+ * PrintCardsView — v2 print layout for the new card system.
  *
- * Avery 8371 = US Letter sheet, 10 business cards per page:
- *   card size: 3.5" x 2"
- *   margins:   top/bottom 0.5", left/right 0.75"
- *   grid:      2 columns x 5 rows, no gutters
+ * Two paper formats sharing one print job:
  *
- * Owner workflow:
- *   1. Click "Print preview" in CardsToPrintPanel with cards selected
+ *   POSTCARDS (welcome / habit / tenure_30 / tenure_90 / milestone_100 /
+ *              milestone_250 / returning / birthday / custom)
+ *     • Card size: 4" × 6" portrait
+ *     • Sheet:     US Letter portrait, 2-up side by side, centered
+ *     • Owner cuts 1 horizontal slice + 1 vertical slice per sheet
+ *
+ *   FOLDED CARDS (tenure_365 / milestone_500)
+ *     • Spread size: 11" × 4.25" (5.5" × 4.25" closed)
+ *     • Sheet:       US Letter landscape, outside spread on top half,
+ *                    inside spread on bottom half — one card per sheet
+ *     • Owner cuts 1 horizontal slice at the 4.25" mark, then folds
+ *       each spread at its own center crease
+ *
+ * Workflow:
+ *   1. CardsToPrintPanel → "Print preview" with selected card IDs
  *   2. This page opens in a new window
- *   3. Cmd/Ctrl+P → browser print dialog → "More settings" → Margins: None
- *   4. Print on Avery 8371 cardstock
- *   5. Sign + hand off at the gym
- *   6. Back in admin, click "Mark printed" + later "Mark delivered"
+ *   3. Cmd/Ctrl+P → set "More settings → Margins: None" → Print
+ *   4. Owner cuts + folds + signs, then comes back and clicks
+ *      "Mark printed" + later "Mark delivered"
  */
 import { useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -21,6 +30,11 @@ import { useTranslation } from 'react-i18next';
 import { Printer } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { PostcardRenderer, FoldedSpreadRenderer } from '../../components/printCards/CardDispatcher.jsx';
+import { getCardPaperType } from '../../components/printCards/cardPaperType.js';
+
+const FONT_HREF =
+  'https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&family=Caveat:wght@400&display=swap';
 
 export default function PrintCardsView() {
   const [searchParams] = useSearchParams();
@@ -30,16 +44,20 @@ export default function PrintCardsView() {
 
   const ids = useMemo(() => {
     const raw = searchParams.get('ids') || '';
-    return raw.split(',').map(s => s.trim()).filter(Boolean);
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
   }, [searchParams]);
 
+  // Cards joined to member profile. We pull occasion_data so card-specific
+  // bits (HabitCard count, BirthdayCard month/day, etc.) reach the renderer.
   const { data: cards = [], isLoading } = useQuery({
     queryKey: ['print-cards-preview', gymId, ids.join(',')],
     queryFn: async () => {
       if (!gymId || ids.length === 0) return [];
       const { data, error } = await supabase
         .from('print_cards')
-        .select('id, headline, subline, printed_note, occasion, profiles:profile_id(full_name)')
+        .select(
+          'id, headline, subline, printed_note, occasion, occasion_data, reward_qr_code, reward_label, profiles:profile_id(full_name)'
+        )
         .eq('gym_id', gymId)
         .in('id', ids);
       if (error) throw error;
@@ -49,17 +67,78 @@ export default function PrintCardsView() {
     staleTime: 60_000,
   });
 
+  // Gym branding (primary color) + the two v2 fields (cup_noun, founded_year)
+  // used by HabitCard and Tenure365 respectively. Kept as a separate query
+  // because PrintCardsView is the only consumer of cup_noun / founded_year.
+  const { data: gymExtras } = useQuery({
+    queryKey: ['print-cards-gym-extras', gymId],
+    queryFn: async () => {
+      if (!gymId) return null;
+      const [brandingRes, gymRes] = await Promise.all([
+        supabase
+          .from('gym_branding')
+          .select('primary_color, accent_color')
+          .eq('gym_id', gymId)
+          .maybeSingle(),
+        supabase
+          .from('gyms')
+          .select('cup_noun, founded_year')
+          .eq('id', gymId)
+          .maybeSingle(),
+      ]);
+      return {
+        primary: brandingRes.data?.primary_color || brandingRes.data?.accent_color || '#111111',
+        cupNoun: gymRes.data?.cup_noun || null,
+        est: gymRes.data?.founded_year || null,
+      };
+    },
+    enabled: !!gymId,
+    staleTime: 5 * 60_000,
+  });
+
+  const gym = useMemo(
+    () => ({
+      name: gymName || 'TuGymPR',
+      logo: gymLogoUrl || null,
+      primary: gymExtras?.primary || '#111111',
+      cupNoun: gymExtras?.cupNoun,
+      est: gymExtras?.est,
+    }),
+    [gymName, gymLogoUrl, gymExtras]
+  );
+
+  // Set the document title + inject the font stylesheet into the new window's
+  // head. Inline @import would block rendering; a separate <link> is async.
   useEffect(() => {
     const title = t('admin.printCards.previewDocTitle', { defaultValue: 'Print cards' });
     document.title = `${title} | ${gymName || 'TuGymPR'}`;
+
+    const existing = document.querySelector(`link[href="${FONT_HREF}"]`);
+    if (existing) return undefined;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = FONT_HREF;
+    document.head.appendChild(link);
+    return () => {
+      try { document.head.removeChild(link); } catch { /* already removed */ }
+    };
   }, [gymName, t]);
 
-  // Pad cards out to a multiple of 10 so the Avery sheet alignment
-  // stays correct when the owner prints a non-round batch.
-  const paddedCards = useMemo(() => {
-    const padCount = (10 - (cards.length % 10)) % 10;
-    return [...cards, ...Array(padCount).fill(null)];
+  // Partition cards into the two paper layouts, then chunk postcards into
+  // pairs (2 per sheet). Folded cards are 1-per-sheet so no chunking needed.
+  const { postcardSheets, foldedCards } = useMemo(() => {
+    const post = [];
+    const folded = [];
+    for (const c of cards) {
+      if (getCardPaperType(c.occasion) === 'folded') folded.push(c);
+      else post.push(c);
+    }
+    const sheets = [];
+    for (let i = 0; i < post.length; i += 2) sheets.push(post.slice(i, i + 2));
+    return { postcardSheets: sheets, foldedCards: folded };
   }, [cards]);
+
+  const totalCards = postcardSheets.reduce((n, s) => n + s.length, 0) + foldedCards.length;
 
   return (
     <div className="print-cards-root">
@@ -68,8 +147,9 @@ export default function PrintCardsView() {
         <div className="flex items-center gap-2">
           <Printer size={16} className="text-[#D4AF37]" />
           <p className="text-[13px] font-bold text-[#E5E7EB]">
-            {t('admin.printCards.previewToolbarTitle', {
-              defaultValue: 'Print preview — Avery 8371 (10 cards / US Letter sheet)',
+            {t('admin.printCards.previewToolbarTitleV2', {
+              defaultValue:
+                'Print preview — postcards 2-up portrait, folded cards 1-up landscape',
             })}
           </p>
         </div>
@@ -85,135 +165,167 @@ export default function PrintCardsView() {
         <p className="no-print p-8 text-center text-[#9CA3AF]">
           {t('admin.printCards.previewLoading', { defaultValue: 'Loading…' })}
         </p>
-      ) : cards.length === 0 ? (
+      ) : totalCards === 0 ? (
         <p className="no-print p-8 text-center text-[#9CA3AF]">
           {t('admin.printCards.previewBatchEmpty', {
             defaultValue: 'No cards to preview. Go back and select cards to print.',
           })}
         </p>
       ) : (
-        <div className="sheet">
-          {paddedCards.map((c, idx) => (
-            <div key={c?.id || `pad-${idx}`} className={`card ${c ? '' : 'card--blank'}`}>
-              {c && (
-                <>
-                  {gymLogoUrl ? (
-                    <img src={gymLogoUrl} alt={gymName || ''} className="card__logo" />
-                  ) : (
-                    <p className="card__brand">{gymName || 'TuGymPR'}</p>
-                  )}
-                  <p className="card__headline">{c.headline}</p>
-                  {c.subline && <p className="card__subline">{c.subline}</p>}
-                  <p className="card__to">
-                    — {t('admin.printCards.cardForLabel', { defaultValue: 'for' })} {c.profiles?.full_name || ''}
-                  </p>
-                  {c.printed_note && <p className="card__note">{c.printed_note}</p>}
-                  <p className="card__signline">_________________________</p>
-                </>
-              )}
-            </div>
+        <>
+          {/* Postcard sheets — US Letter portrait, 2-up */}
+          {postcardSheets.map((pair, idx) => (
+            <section className="sheet sheet--postcard" key={`pc-${idx}`}>
+              <div className="postcard-pair">
+                <div className="postcard-slot">
+                  <PostcardRenderer card={pair[0]} gym={gym} />
+                </div>
+                {pair[1] ? (
+                  <div className="postcard-slot">
+                    <PostcardRenderer card={pair[1]} gym={gym} />
+                  </div>
+                ) : (
+                  <div className="postcard-slot postcard-slot--blank" />
+                )}
+              </div>
+              {/* Faint cut guides — visible in screen preview only, hidden on paper */}
+              <div className="postcard-cut-guide postcard-cut-guide--horizontal" aria-hidden />
+              <div className="postcard-cut-guide postcard-cut-guide--vertical" aria-hidden />
+            </section>
           ))}
-        </div>
+
+          {/* Folded card sheets — US Letter landscape, outside on top, inside on bottom */}
+          {foldedCards.map((c) => (
+            <section className="sheet sheet--folded" key={`fc-${c.id}`}>
+              <div className="folded-stack">
+                <div className="folded-slot">
+                  <FoldedSpreadRenderer card={c} gym={gym} side="outside" />
+                </div>
+                <div className="folded-slot">
+                  <FoldedSpreadRenderer card={c} gym={gym} side="inside" />
+                </div>
+              </div>
+              <div className="folded-cut-guide" aria-hidden />
+            </section>
+          ))}
+        </>
       )}
 
-      {/* Print-only stylesheet. Lives inline so the new-window route
-          doesn't depend on the app's global print CSS being loaded. */}
+      {/* Print stylesheet — inline because the route opens in a new window
+          and doesn't share the app's global print CSS. */}
       <style>{`
-        @page {
-          size: letter portrait;
-          margin: 0;
-        }
+        /* Default @page used when named pages aren't supported (e.g. Firefox).
+           margin:0 makes sure no extra browser-default 22mm margin appears. */
+        @page              { size: letter; margin: 0; }
+        /* Named pages so postcards print portrait and folded cards print landscape
+           within the same print job. Supported in Chromium (what owners use). */
+        @page postcard-page { size: letter portrait; margin: 0; }
+        @page folded-page   { size: letter landscape; margin: 0; }
+
         .print-cards-root {
-          background: #fff;
+          background: #f3f4f6;
           color: #000;
-          font-family: 'Barlow', system-ui, sans-serif;
+          font-family: 'DM Sans', system-ui, sans-serif;
+          min-height: 100vh;
         }
-        .sheet {
-          /* US Letter = 8.5" x 11". Avery 8371 layout:
-             top margin .5", left margin .75", cards 3.5" x 2", 2 cols x 5 rows. */
+
+        /* ── Postcard sheet (8.5w × 11h, 2-up portrait) ───────────────────── */
+        .sheet--postcard {
+          page: postcard-page;
           width: 8.5in;
           height: 11in;
-          padding: 0.5in 0.75in;
-          box-sizing: border-box;
-          display: grid;
-          grid-template-columns: repeat(2, 3.5in);
-          grid-template-rows: repeat(5, 2in);
-          gap: 0;
-          margin: 0 auto;
+          margin: 12px auto;
           background: #fff;
-        }
-        .card {
-          width: 3.5in;
-          height: 2in;
-          padding: 0.2in 0.25in;
+          position: relative;
           box-sizing: border-box;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
+          padding: 2.5in 0.25in;     /* centers the 4×6 pair vertically */
+        }
+        .postcard-pair {
+          display: grid;
+          grid-template-columns: 4in 4in;
+          gap: 0;
+          width: 8in;
+          margin: 0 auto;
+        }
+        .postcard-slot {
+          width: 4in;
+          height: 6in;
+          overflow: hidden;
           page-break-inside: avoid;
-          color: #111;
         }
-        .card--blank { /* keeps the grid intact for partial batches */ }
-        .card__logo {
-          max-height: 0.35in;
-          max-width: 1.4in;
-          object-fit: contain;
-          margin-bottom: 0.06in;
+        .postcard-slot--blank { background: transparent; }
+        /* The shells render at 384×576 px = 4×6 in @ 96 dpi, so they slot in
+           1:1 without scaling. No transform needed. */
+
+        /* ── Postcard cut guides (faint, paper-friendly) ──────────────────── */
+        .postcard-cut-guide {
+          position: absolute;
+          background: transparent;
+          border: 0;
         }
-        .card__brand {
-          font-family: 'Barlow Condensed', sans-serif;
-          font-weight: 700;
-          font-size: 11pt;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          margin: 0 0 0.06in 0;
-          color: #555;
+        .postcard-cut-guide--horizontal {
+          left: 0.25in; right: 0.25in;
+          top: calc(2.5in + 6in);
+          height: 0;
+          border-top: 0.25pt dashed rgba(0,0,0,0.25);
         }
-        .card__headline {
-          font-family: 'Barlow Condensed', sans-serif;
-          font-weight: 700;
-          font-size: 15pt;
-          line-height: 1.05;
-          margin: 0 0 0.04in 0;
+        .postcard-cut-guide--vertical {
+          top: 2.5in; bottom: 2.5in;
+          left: 50%;
+          width: 0;
+          border-left: 0.25pt dashed rgba(0,0,0,0.25);
         }
-        .card__subline {
-          font-size: 9pt;
-          color: #444;
-          margin: 0 0 0.06in 0;
-          line-height: 1.2;
+
+        /* ── Folded sheet (11w × 8.5h landscape, 1-up) ────────────────────── */
+        .sheet--folded {
+          page: folded-page;
+          width: 11in;
+          height: 8.5in;
+          margin: 12px auto;
+          background: #fff;
+          position: relative;
+          box-sizing: border-box;
+          padding: 0;
         }
-        .card__to {
-          font-size: 8pt;
-          font-style: italic;
-          color: #666;
-          margin: 0 0 0.06in 0;
+        .folded-stack {
+          display: grid;
+          grid-template-rows: 4.25in 4.25in;
+          width: 11in;
+          height: 8.5in;
         }
-        .card__note {
-          font-size: 8pt;
-          color: #333;
-          margin: 0 0 0.08in 0;
-          line-height: 1.25;
+        .folded-slot {
+          width: 11in;
+          height: 4.25in;
+          overflow: hidden;
+          page-break-inside: avoid;
         }
-        .card__signline {
-          margin-top: auto;
-          font-size: 8pt;
-          color: #999;
-          letter-spacing: 1px;
+        /* Folded shells are 1056×408 px = 11×4.25 in @ 96 dpi → 1:1 again. */
+
+        .folded-cut-guide {
+          position: absolute;
+          left: 0; right: 0;
+          top: 4.25in;
+          height: 0;
+          border-top: 0.25pt dashed rgba(0,0,0,0.25);
         }
+
+        /* ── Screen preview affordances ───────────────────────────────────── */
         @media screen {
           .sheet {
-            margin: 12px auto;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+            box-shadow: 0 6px 18px rgba(0,0,0,0.18);
           }
-          .card {
-            outline: 1px dashed #d4af37;
+          .postcard-slot, .folded-slot {
+            outline: 1px dashed rgba(212,175,55,0.45);
             outline-offset: -1px;
           }
         }
+
+        /* ── Print: drop all screen-only chrome ───────────────────────────── */
         @media print {
           .no-print { display: none !important; }
+          .print-cards-root { background: #fff; }
           .sheet { box-shadow: none; margin: 0; }
-          .card { outline: none; }
+          .postcard-slot, .folded-slot { outline: none; }
         }
       `}</style>
     </div>

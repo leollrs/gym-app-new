@@ -3,10 +3,9 @@ import { createPortal } from 'react-dom';
 import { X, Wallet, Share2, Info, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Barcode from 'react-barcode';
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { useTranslation } from 'react-i18next';
-
-const WalletPass = registerPlugin('WalletPass');
+import { WalletPass } from '../lib/walletPass';
 import { supabase } from '../lib/supabase';
 import { signQRPayload } from '../lib/qrSecurity';
 import { useAuth } from '../contexts/AuthContext';
@@ -193,6 +192,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState('');
   const [signedPayload, setSignedPayload] = useState(null);
+  const [signError, setSignError] = useState(null);
 
   // Detect special payload types for display tweaks
   const isReferral = typeof payload === 'string' && payload.startsWith('gym-referral:');
@@ -208,13 +208,22 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
     if (!payload || skipSigning) return;
     let cancelled = false;
     signQRPayload(payload)
-      .then((signed) => { if (!cancelled) setSignedPayload(signed); })
+      .then((signed) => {
+        if (!cancelled) { setSignedPayload(signed); setSignError(null); }
+      })
       .catch((err) => {
         console.warn('[QRCodeModal] signQRPayload failed, falling back to unsigned payload:', err);
-        if (!cancelled) setSignedPayload(payload);
+        if (!cancelled) {
+          setSignedPayload(payload);
+          // Reward QRs MUST be signed (admin scanner rejects unsigned ones), so
+          // surface the failure to the member instead of showing a dead QR.
+          if (isRewardPayload) {
+            setSignError(err?.message || 'Could not sign QR. Tap to retry.');
+          }
+        }
       });
     return () => { cancelled = true; };
-  }, [payload, skipSigning]);
+  }, [payload, skipSigning, isRewardPayload]);
 
   // Max screen brightness while QR is displayed. Wrapped in catches so a plugin-
   // missing or permission-denied response doesn't crash the modal.
@@ -474,6 +483,11 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
                   bgColor="#FFFFFF"
                   fgColor="#000000"
                 />
+              )}
+              {signError && (
+                <div className="mt-2 text-center" style={{ fontSize: 10, color: '#B91C1C', fontWeight: 600 }}>
+                  ⚠️ {signError}
+                </div>
               )}
               {qrCaption && (
                 <>

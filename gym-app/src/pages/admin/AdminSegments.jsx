@@ -549,7 +549,7 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
         const { data: convo } = await supabase.from('conversations').select('encryption_seed').eq('id', convoId).single();
         const seed = convo?.encryption_seed || convoId;
         const encrypted = await encryptMessage(message.trim(), convoId, seed);
-        await supabase.from('direct_messages').insert({ conversation_id: convoId, sender_id: authUser?.id, body: encrypted });
+        await supabase.from('direct_messages').insert({ conversation_id: convoId, sender_id: adminId, body: encrypted });
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
         sent++;
       } catch (err) {

@@ -7,10 +7,9 @@ import {
   ArrowLeft, Copy, Check, Share2, Gift, Users, Clock,
   CheckCircle, UserPlus, QrCode, Coins, CreditCard,
 } from 'lucide-react';
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
-
-const WalletPass = registerPlugin('WalletPass');
+import { WalletPass } from '../lib/walletPass';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';

@@ -261,7 +261,7 @@ export default function SegmentEditorModal({ segment, gymId, adminId, onClose, o
 
           {/* Churn tier */}
           <FilterRow label={t('admin.segments.filterChurnTier', 'Churn risk tier')}>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {['low', 'medium', 'high', 'critical'].map(tier => {
                 const active = (filters.churn_tier || []).includes(tier);
                 const tierColors = { low: 'var(--color-success)', medium: 'var(--color-warning)', high: 'var(--color-danger)', critical: 'var(--color-danger)' };
@@ -274,10 +274,14 @@ export default function SegmentEditorModal({ segment, gymId, adminId, onClose, o
                     }}
                     className={`px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all ${
                       active
-                        ? 'border-white/10 text-[#E5E7EB]'
+                        ? 'text-[#E5E7EB]'
                         : 'border-white/6 text-[#6B7280] hover:text-[#9CA3AF] hover:border-white/8'
                     }`}
-                    style={active ? { background: `${tierColors[tier]}20`, borderColor: `${tierColors[tier]}40` } : {}}
+                    style={active ? {
+                      background: `color-mix(in srgb, ${tierColors[tier]} 22%, transparent)`,
+                      borderColor: tierColors[tier],
+                      boxShadow: `0 0 0 2px var(--color-bg-card), 0 0 0 4px color-mix(in srgb, ${tierColors[tier]} 55%, transparent)`,
+                    } : {}}
                   >
                     {t(`admin.riskLabels.${tier}`, tier)}
                   </button>
@@ -288,7 +292,7 @@ export default function SegmentEditorModal({ segment, gymId, adminId, onClose, o
 
           {/* Fitness level */}
           <FilterRow label={t('admin.segments.filterFitnessLevel', 'Fitness level')}>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {['beginner', 'intermediate', 'advanced'].map(level => {
                 const active = (filters.fitness_level || []).includes(level);
                 return (
@@ -300,9 +304,14 @@ export default function SegmentEditorModal({ segment, gymId, adminId, onClose, o
                     }}
                     className={`px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all ${
                       active
-                        ? 'bg-[#D4AF37]/15 border-[#D4AF37]/30 text-[#E5E7EB]'
+                        ? 'text-[#E5E7EB]'
                         : 'border-white/6 text-[#6B7280] hover:text-[#9CA3AF] hover:border-white/8'
                     }`}
+                    style={active ? {
+                      background: 'color-mix(in srgb, var(--color-accent) 22%, transparent)',
+                      borderColor: 'var(--color-accent)',
+                      boxShadow: '0 0 0 2px var(--color-bg-card), 0 0 0 4px color-mix(in srgb, var(--color-accent) 55%, transparent)',
+                    } : {}}
                   >
                     {t(`admin.segments.fitnessLevels.${level}`, level)}
                   </button>
@@ -324,9 +333,14 @@ export default function SegmentEditorModal({ segment, gymId, adminId, onClose, o
                   onClick={() => updateFilter('has_referral', opt.value)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all ${
                     filters.has_referral === opt.value
-                      ? 'bg-[#D4AF37]/15 border-[#D4AF37]/30 text-[#E5E7EB]'
+                      ? 'text-[#E5E7EB]'
                       : 'border-white/6 text-[#6B7280] hover:text-[#9CA3AF] hover:border-white/8'
                   }`}
+                  style={filters.has_referral === opt.value ? {
+                    background: 'color-mix(in srgb, var(--color-accent) 22%, transparent)',
+                    borderColor: 'var(--color-accent)',
+                    boxShadow: '0 0 0 2px var(--color-bg-card), 0 0 0 4px color-mix(in srgb, var(--color-accent) 55%, transparent)',
+                  } : {}}
                 >
                   {opt.label}
                 </button>

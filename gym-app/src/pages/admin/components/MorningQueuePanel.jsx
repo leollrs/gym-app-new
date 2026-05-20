@@ -31,6 +31,8 @@ const ACTION_ICONS = {
 };
 
 const SNOOZE_HOURS = 24;
+const INITIAL_VISIBLE = 5;
+const LOAD_MORE_STEP = 5;
 
 export default function MorningQueuePanel({ gymId }) {
   const navigate = useNavigate();
@@ -43,6 +45,7 @@ export default function MorningQueuePanel({ gymId }) {
 
   const [resolving, setResolving] = useState(null);   // queue item being resolved
   const [actingId, setActingId]   = useState(null);   // id of item being mutated (for spinner)
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
 
   // ── Fetch pending queue items ──
   const { data: items = [], isLoading } = useQuery({
@@ -243,9 +246,9 @@ export default function MorningQueuePanel({ gymId }) {
           </div>
         )}
 
-        {/* Cards */}
+        {/* Cards (paged — show INITIAL_VISIBLE at a time, "Load more" reveals +LOAD_MORE_STEP) */}
         <ul className="divide-y divide-white/[0.06]">
-          {sortedItems.map(item => {
+          {sortedItems.slice(0, visibleCount).map(item => {
             const ActionIcon = ACTION_ICONS[item.suggested_action] || MessageSquare;
             const isActing = actingId === item.id;
             const profile = item.profiles || {};
@@ -309,6 +312,39 @@ export default function MorningQueuePanel({ gymId }) {
             );
           })}
         </ul>
+
+        {/* Count + Load more — shows "Showing X of Y" with a CTA to reveal more.
+            Reveal step matches INITIAL_VISIBLE so each click adds one "page". */}
+        {sortedItems.length > INITIAL_VISIBLE && (
+          <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-[11px] text-[#6B7280] tabular-nums">
+              {t('admin.morningQueue.showingCount', {
+                shown: Math.min(visibleCount, sortedItems.length),
+                total: sortedItems.length,
+                defaultValue: 'Showing {{shown}} of {{total}}',
+              })}
+            </span>
+            {visibleCount < sortedItems.length && (
+              <button
+                onClick={() => setVisibleCount(n => n + LOAD_MORE_STEP)}
+                className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/18 transition-colors"
+              >
+                {t('admin.morningQueue.loadMore', {
+                  count: Math.min(LOAD_MORE_STEP, sortedItems.length - visibleCount),
+                  defaultValue: 'Load {{count}} more',
+                })}
+              </button>
+            )}
+            {visibleCount >= sortedItems.length && visibleCount > INITIAL_VISIBLE && (
+              <button
+                onClick={() => setVisibleCount(INITIAL_VISIBLE)}
+                className="text-[11px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+              >
+                {t('admin.morningQueue.collapse', 'Collapse')}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Footer: link to full retention page */}
         <button

@@ -275,13 +275,18 @@ Deno.serve(async (req) => {
       }
 
       // Light audit (no member_id since this is a self-test).
+      // Column names must match the non-test path (entity_type/entity_id/details, NOT
+      // target_type/target_id/metadata) and gym_id is NOT NULL on the table.
       await supabase.from('admin_audit_log').insert({
+        gym_id: callerProfile.gym_id,
         actor_id: user.id,
         action: 'send_test_email',
-        target_type: 'template',
-        target_id: null,
-        metadata: { to, subject },
-      }).catch(() => {});
+        entity_type: 'template',
+        entity_id: null,
+        details: { to, subject },
+      }).then(({ error }) => {
+        if (error) console.warn('[send-admin-email] test-mode audit insert failed (non-fatal):', error.message);
+      });
 
       return jsonResp({ ok: true, testMode: true });
     }
@@ -538,6 +543,9 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error('send-admin-email error:', err);
-    return jsonResp({ error: 'Internal error' }, 500);
+    // Surface the actual error message so the admin UI shows something
+    // actionable. Stack traces stay server-side; only the message goes out.
+    const detail = err instanceof Error ? err.message : String(err);
+    return jsonResp({ error: 'Internal error', detail, stamp: DEPLOY_STAMP }, 500);
   }
 });
