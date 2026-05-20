@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useMemo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Coins, ArrowUpDown, ShoppingCart, TrendingUp,
-  Gift, CreditCard, Clock, Package,
+  Gift, CreditCard, Clock, Package, DollarSign, Receipt, Wallet,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -13,12 +14,14 @@ import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useInsightsRange } from '../../contexts/InsightsRangeContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import {
   PageHeader, AdminPageShell, AdminCard, FadeIn, CardSkeleton,
   SectionLabel,
 } from '../../components/admin';
 import StatCard from '../../components/admin/StatCard';
+import useCountUp from '../../hooks/useCountUp';
 
 // ── Constants ──────────────────────────────────────────────
 const PERIOD_OPTIONS = [
@@ -52,6 +55,53 @@ const ChartTooltip = ({ active, payload, label }) => {
   );
 };
 
+// ── Local Stat Card variants ───────────────────────────────
+// StatCard's built-in count-up only handles raw numbers / percentages.
+// Dollar amounts need a "$" prefix and 2-decimal display, plus we want a
+// native title tooltip on a couple of metrics — both of which would otherwise
+// require touching the shared StatCard. Keep the visual signature aligned.
+function DollarStatCard({ label, amount, icon: Icon, borderColor, delay = 0, title, placeholder = false }) {
+  const animated = useCountUp(placeholder ? 0 : amount, 900);
+  const display = placeholder
+    ? '—'
+    : `$${animated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return (
+    <FadeIn delay={delay}>
+      <div
+        title={title}
+        className="admin-stat-card border-l-2 group w-full text-left p-3 md:p-4"
+        style={{ borderLeftColor: borderColor }}
+      >
+        <div className="flex items-start justify-between overflow-hidden">
+          <div className="min-w-0 flex-1">
+            <p className="admin-kpi truncate text-[20px] md:text-[26px]">{display}</p>
+            <p className="font-medium group-hover:text-[color:var(--color-text-secondary)] transition-colors truncate text-[11px] md:text-[12px] mt-1.5 text-[color:var(--color-text-muted)]">
+              {label}
+            </p>
+          </div>
+          {Icon && (
+            <div
+              className="rounded-xl flex items-center justify-center flex-shrink-0 w-9 h-9"
+              style={{ background: 'var(--color-bg-hover)' }}
+            >
+              <Icon size={16} style={{ color: 'var(--color-text-subtle)' }} />
+            </div>
+          )}
+        </div>
+      </div>
+    </FadeIn>
+  );
+}
+
+// Tooltip-aware wrapper around StatCard (StatCard itself doesn't accept `title`).
+function TooltippedStatCard({ title, ...statProps }) {
+  return (
+    <div title={title}>
+      <StatCard {...statProps} />
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────
 export default function AdminRevenue() {
   const { profile } = useAuth();
@@ -62,13 +112,13 @@ export default function AdminRevenue() {
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
 
-  const [period, setPeriod] = useState('30d');
-  const [visibleCanjes, setVisibleCanjes] = useState(10);
+  // Period shared across Insights pages — see InsightsRangeContext.
+  const { periodDays: ctxPeriodDays, setPeriodDays } = useInsightsRange();
+  const matchedPeriod = PERIOD_OPTIONS.find((o) => o.days === ctxPeriodDays) ?? PERIOD_OPTIONS.find((o) => o.key === '30d');
+  const period = matchedPeriod.key;
+  const setPeriod = (key) => setPeriodDays((PERIOD_OPTIONS.find((o) => o.key === key) || {}).days ?? null);
 
   useEffect(() => { document.title = t('admin.revenue.pageTitle', `Admin - Revenue | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
-
-  // Reset canjes pagination when period filter changes
-  useEffect(() => { setVisibleCanjes(10); }, [period]);
 
   const periodDays = PERIOD_OPTIONS.find(p => p.key === period)?.days;
   const cutoffDate = periodDays ? subDays(new Date(), periodDays).toISOString() : null;
@@ -131,14 +181,35 @@ export default function AdminRevenue() {
 
   // ── Computed data ──────────────────────────────────────
   const kpis = useMemo(() => {
-    if (!pointsData) return { issued: 0, redeemed: 0, net: 0, redemptions: 0 };
-    const issued = pointsData.issued.reduce((s, r) => s + r.points, 0);
-    const redeemed = Math.abs(pointsData.spent.reduce((s, r) => s + r.points, 0));
+    const issued = pointsData ? pointsData.issued.reduce((s, r) => s + r.points, 0) : 0;
+    const redeemed = pointsData ? Math.abs(pointsData.spent.reduce((s, r) => s + r.points, 0)) : 0;
+
+    // Dollar-side metrics from member_purchases.
+    // total_price is already populated by the existing query — paid purchases have a price,
+    // free rewards (is_free_reward) are excluded from sales totals.
+    const paid = (purchases || []).filter(p => !p.is_free_reward);
+    const totalSales = paid.reduce((s, p) => s + (parseFloat(p.total_price) || 0), 0);
+    const paidCount = paid.length;
+    const avgTransaction = paidCount > 0 ? totalSales / paidCount : 0;
+
+    // Free-reward cost: sum of catalog price (gym_products.price) for is_free_reward rows.
+    // This is what the gym "paid" by giving the product away for points instead of cash.
+    const freeRewards = (purchases || []).filter(p => p.is_free_reward);
+    const freeRewardCost = freeRewards.reduce(
+      (s, p) => s + (parseFloat(p.gym_products?.price) || 0),
+      0,
+    );
+
     return {
       issued,
       redeemed,
       net: issued - redeemed,
       redemptions: purchases?.length || 0,
+      totalSales,
+      paidCount,
+      avgTransaction,
+      freeRewardCost,
+      freeRewardCount: freeRewards.length,
     };
   }, [pointsData, purchases]);
 
@@ -244,8 +315,8 @@ export default function AdminRevenue() {
       {/* Header */}
       <FadeIn>
         <PageHeader
-          title={t('admin.revenue.title', 'Revenue & Points')}
-          subtitle={t('admin.revenue.subtitle', 'Store revenue, reward economics, and punch card analytics')}
+          title={t('admin.revenue.title', 'Store & Rewards')}
+          subtitle={t('admin.revenue.subtitle', 'Sales, redemptions, and points circulation')}
           className="mb-6"
         />
       </FadeIn>
@@ -266,13 +337,56 @@ export default function AdminRevenue() {
         </div>
       </FadeIn>
 
-      {/* KPI Stats Row */}
+      {/* ── Sales (dollars first) ───────────────────────────── */}
+      <SectionLabel className="mb-3 mt-2">
+        {t('admin.revenue.salesSection', 'Sales')}
+      </SectionLabel>
       {isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6">
-          {[...Array(4)].map((_, i) => <CardSkeleton key={i} className="h-[88px]" />)}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3 mb-6">
+          {[...Array(3)].map((_, i) => <CardSkeleton key={i} className="h-[88px]" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3 mb-6">
+          <DollarStatCard
+            label={t('admin.revenue.totalSales', 'Total Sales')}
+            amount={kpis.totalSales}
+            icon={DollarSign}
+            borderColor="var(--color-success)"
+            delay={60}
+          />
+          <DollarStatCard
+            label={t('admin.revenue.freeRewardCost', 'Free Reward Cost')}
+            amount={kpis.freeRewardCost}
+            placeholder={kpis.freeRewardCount === 0}
+            icon={Gift}
+            borderColor="var(--color-coach)"
+            delay={90}
+            title={t(
+              'admin.revenue.freeRewardCostTooltip',
+              'Catalog value of products given away as point redemptions in this period.',
+            )}
+          />
+          <DollarStatCard
+            label={t('admin.revenue.avgTransaction', 'Avg Transaction')}
+            amount={kpis.avgTransaction}
+            placeholder={kpis.paidCount === 0}
+            icon={Receipt}
+            borderColor="var(--color-info)"
+            delay={120}
+          />
+        </div>
+      )}
+
+      {/* ── Points Economy (secondary) ──────────────────────── */}
+      <SectionLabel className="mb-3 mt-2">
+        {t('admin.revenue.pointsEconomySection', 'Points Economy')}
+      </SectionLabel>
+      {isLoading ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3 mb-6">
+          {[...Array(3)].map((_, i) => <CardSkeleton key={i} className="h-[88px]" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3 mb-6">
           <StatCard
             label={t('admin.revenue.pointsIssued', 'Points Issued')}
             value={kpis.issued}
@@ -287,12 +401,16 @@ export default function AdminRevenue() {
             borderColor="var(--color-coach)"
             delay={90}
           />
-          <StatCard
-            label={t('admin.revenue.netCirculation', 'Net in Circulation')}
+          <TooltippedStatCard
+            label={t('admin.revenue.outstandingLiability', 'Outstanding Points Liability')}
             value={kpis.net}
-            icon={ArrowUpDown}
+            icon={Wallet}
             borderColor="var(--color-info)"
             delay={120}
+            title={t(
+              'admin.revenue.outstandingLiabilityTooltip',
+              'Points members have earned but not yet spent — represents future redemption cost.',
+            )}
           />
           <StatCard
             label={t('admin.revenue.totalRedemptions', 'Total Redemptions')}
@@ -523,17 +641,12 @@ export default function AdminRevenue() {
         </FadeIn>
       </div>
 
-      {/* Recent Redemptions */}
+      {/* Recent Redemptions \u2014 top 5 only; full list lives in Store admin. */}
       <FadeIn delay={420}>
         <div className="flex items-center justify-between mb-3">
           <SectionLabel>
             {t('admin.revenue.recentRedemptions', 'Recent Redemptions')}
           </SectionLabel>
-          {!isLoading && recentRedemptions.length > 0 && (
-            <span className="text-[11px] text-[#6B7280] tabular-nums">
-              {Math.min(visibleCanjes, recentRedemptions.length)} / {recentRedemptions.length}
-            </span>
-          )}
         </div>
         <AdminCard>
           {isLoading ? (
@@ -545,7 +658,7 @@ export default function AdminRevenue() {
           ) : (
             <>
               <div className="space-y-0">
-                {recentRedemptions.slice(0, visibleCanjes).map((r) => (
+                {recentRedemptions.slice(0, 5).map((r) => (
                   <div
                     key={r.id}
                     className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.02] transition-colors border-b border-white/[0.03] last:border-0"
@@ -571,13 +684,13 @@ export default function AdminRevenue() {
                   </div>
                 ))}
               </div>
-              {visibleCanjes < recentRedemptions.length && (
-                <button
-                  onClick={() => setVisibleCanjes(prev => prev + 10)}
-                  className="w-full mt-3 py-2.5 rounded-xl text-[12px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 hover:bg-[#D4AF37]/15 transition-colors"
+              {recentRedemptions.length > 5 && (
+                <Link
+                  to="/admin/store?tab=redemptions"
+                  className="block w-full mt-3 py-2.5 rounded-xl text-[12px] font-semibold text-center text-[#D4AF37] bg-[#D4AF37]/8 hover:bg-[#D4AF37]/15 transition-colors"
                 >
-                  {t('admin.revenue.showMore', 'Show more')}
-                </button>
+                  {t('admin.revenue.viewAllRedemptions', 'View all redemptions')}
+                </Link>
               )}
             </>
           )}

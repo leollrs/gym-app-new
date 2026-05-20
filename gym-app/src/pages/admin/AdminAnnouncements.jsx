@@ -22,13 +22,14 @@ const TITLE_MAX = 100;
 const BODY_MAX = 500;
 
 // Must match the announcement_type enum in the DB schema
-// Pill tones map to admin-* idiom per HTML reference:
-// News = info (blue), Event = accent (gym-branded), Challenge = coach (purple), Maintenance = warn (amber/red)
+// Pill tones map to admin-* idiom per HTML reference. Selected-button styles
+// use theme CSS variables so white-label gyms inherit their accent palette
+// instead of being locked to the legacy gold (#D4AF37) etc.
 const TYPE_OPTS = [
-  { value: 'news',        labelKey: 'news',        pill: 'admin-pill--info',  color: 'text-blue-400 bg-blue-500/10' },
-  { value: 'event',       labelKey: 'event',       pill: '',                  color: 'text-[#D4AF37] bg-[#D4AF37]/10' },
-  { value: 'challenge',   labelKey: 'challenge',   pill: 'admin-pill--coach', color: 'text-emerald-400 bg-emerald-500/10' },
-  { value: 'maintenance', labelKey: 'maintenance', pill: 'admin-pill--hot',   color: 'text-red-400 bg-red-500/10' },
+  { value: 'news',        labelKey: 'news',        pill: 'admin-pill--info',  selectedStyle: { color: 'var(--color-info)',    background: 'color-mix(in srgb, var(--color-info) 12%, transparent)' } },
+  { value: 'event',       labelKey: 'event',       pill: '',                  selectedStyle: { color: 'var(--color-accent)',  background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' } },
+  { value: 'challenge',   labelKey: 'challenge',   pill: 'admin-pill--coach', selectedStyle: { color: 'var(--color-coach)',   background: 'color-mix(in srgb, var(--color-coach) 12%, transparent)' } },
+  { value: 'maintenance', labelKey: 'maintenance', pill: 'admin-pill--hot',   selectedStyle: { color: 'var(--color-warning)', background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)' } },
 ];
 
 const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
@@ -136,8 +137,9 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
             {TYPE_OPTS.map(opt => (
               <button key={opt.value} onClick={() => set('type', opt.value)}
                 className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                  form.type === opt.value ? opt.color : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
-                }`}>
+                  form.type === opt.value ? '' : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
+                }`}
+                style={form.type === opt.value ? opt.selectedStyle : undefined}>
                 {t(`admin.announcementTypes.${opt.labelKey}`)}
               </button>
             ))}
@@ -245,7 +247,17 @@ export default function AdminAnnouncements() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ title: '', message: '', type: 'news', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
+  const [editForm, setEditForm] = useState({ title: '', message: '', type: 'news', scheduled_for: '', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
+  const [editShowAdvanced, setEditShowAdvanced] = useState(false);
+  const EDIT_DAY_LABELS = [
+    t('admin.announcements.daySun', 'Sun'),
+    t('admin.announcements.dayMon', 'Mon'),
+    t('admin.announcements.dayTue', 'Tue'),
+    t('admin.announcements.dayWed', 'Wed'),
+    t('admin.announcements.dayThu', 'Thu'),
+    t('admin.announcements.dayFri', 'Fri'),
+    t('admin.announcements.daySat', 'Sat'),
+  ];
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -293,9 +305,23 @@ export default function AdminAnnouncements() {
       const finalMessage = cleanMessage.length > BODY_MAX
         ? `${cleanMessage.slice(0, BODY_MAX - 1).trimEnd()}…`
         : cleanMessage;
+      const updatePayload = {
+        title: finalTitle,
+        message: finalMessage,
+        type: editForm.type,
+        is_recurring: editForm.is_recurring,
+        recurrence_rule: editForm.is_recurring ? editForm.recurrence_rule : null,
+        recurrence_day: editForm.is_recurring ? editForm.recurrence_day : null,
+        recurrence_end: editForm.is_recurring && editForm.recurrence_end ? editForm.recurrence_end : null,
+      };
+      // Only update published_at when admin explicitly picks a new schedule —
+      // leaving the field blank preserves whatever was there before.
+      if (editForm.scheduled_for) {
+        updatePayload.published_at = new Date(editForm.scheduled_for).toISOString();
+      }
       const { error: err } = await supabase
         .from('announcements')
-        .update({ title: finalTitle, message: finalMessage, type: editForm.type, is_recurring: editForm.is_recurring, recurrence_rule: editForm.is_recurring ? editForm.recurrence_rule : null, recurrence_day: editForm.is_recurring ? editForm.recurrence_day : null, recurrence_end: editForm.is_recurring && editForm.recurrence_end ? editForm.recurrence_end : null })
+        .update(updatePayload)
         .eq('id', editingId)
         .eq('gym_id', gymId);
       if (err) throw err;
@@ -309,12 +335,18 @@ export default function AdminAnnouncements() {
 
   const startEditing = (a) => {
     setEditingId(a.id);
-    setEditForm({ title: a.title, message: a.message, type: a.type, is_recurring: a.is_recurring || false, recurrence_rule: a.recurrence_rule || 'weekly', recurrence_day: a.recurrence_day ?? 1, recurrence_end: a.recurrence_end || '' });
+    // datetime-local needs "YYYY-MM-DDTHH:mm" — slice off seconds + timezone.
+    const scheduledFor = a.published_at && isFuture(new Date(a.published_at))
+      ? format(new Date(a.published_at), "yyyy-MM-dd'T'HH:mm")
+      : '';
+    setEditForm({ title: a.title, message: a.message, type: a.type, scheduled_for: scheduledFor, is_recurring: a.is_recurring || false, recurrence_rule: a.recurrence_rule || 'weekly', recurrence_day: a.recurrence_day ?? 1, recurrence_end: a.recurrence_end || '' });
+    setEditShowAdvanced(Boolean(scheduledFor || a.is_recurring));
   };
 
   const cancelEditing = () => {
     setEditingId(null);
-    setEditForm({ title: '', message: '', type: 'news', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
+    setEditForm({ title: '', message: '', type: 'news', scheduled_for: '', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
+    setEditShowAdvanced(false);
   };
 
   // Compute counts per status for tab badges
@@ -364,7 +396,14 @@ export default function AdminAnnouncements() {
       ) : announcements.length === 0 ? (
         <div className="text-center py-20">
           <Megaphone size={32} className="text-[#6B7280] mx-auto mb-3" />
-          <p className="text-[14px] text-[#6B7280]">{t('admin.announcements.noAnnouncements', 'No announcements yet')}</p>
+          <p className="text-[14px] text-[#6B7280] mb-4">{t('admin.announcements.noAnnouncements', 'No announcements yet')}</p>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold hover:bg-[#C4A030] transition-colors"
+            style={{ backgroundColor: '#D4AF37', color: '#000' }}
+          >
+            <Plus size={14} /> {t('admin.announcements.createFirst', 'Create your first announcement')}
+          </button>
         </div>
       ) : (
         <SwipeableTabContent
@@ -419,12 +458,101 @@ export default function AdminAnnouncements() {
                                 {TYPE_OPTS.map(opt => (
                                   <button key={opt.value} onClick={() => setEditForm(p => ({ ...p, type: opt.value }))}
                                     className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                                      editForm.type === opt.value ? opt.color : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
-                                    }`}>
+                                      editForm.type === opt.value ? '' : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
+                                    }`}
+                                    style={editForm.type === opt.value ? opt.selectedStyle : undefined}>
                                     {t(`admin.announcementTypes.${opt.labelKey}`)}
                                   </button>
                                 ))}
                               </div>
+                            </div>
+                            {/* Advanced — schedule + recurrence (mirrors Create modal). */}
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => setEditShowAdvanced(!editShowAdvanced)}
+                                className="flex items-center gap-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+                              >
+                                <ChevronDown size={14} className={`transition-transform ${editShowAdvanced ? 'rotate-180' : ''}`} />
+                                {t('admin.announcements.advancedOptions', 'Advanced Options')}
+                                {(editForm.scheduled_for || editForm.is_recurring) && (
+                                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-accent)' }} />
+                                )}
+                              </button>
+                              {editShowAdvanced && (
+                                <div className="mt-3 space-y-4">
+                                  <div>
+                                    <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">
+                                      {t('admin.announcements.scheduleLabel', 'Schedule (optional -- leave blank to publish now)')}
+                                    </label>
+                                    <input type="datetime-local" value={editForm.scheduled_for} onChange={e => setEditForm(p => ({ ...p, scheduled_for: e.target.value }))}
+                                      className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none"
+                                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                                    <p className="text-[10px] text-[#6B7280] mt-1">
+                                      {t('admin.announcements.timezoneHint', 'Times are in your device\'s local timezone')}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <label className="text-[12px] font-medium text-[#9CA3AF]">{t('admin.announcements.recurring', 'Recurring')}</label>
+                                      <button
+                                        onClick={() => setEditForm(p => ({ ...p, is_recurring: !p.is_recurring }))}
+                                        className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
+                                        style={{ backgroundColor: editForm.is_recurring ? 'var(--color-accent)' : 'var(--color-admin-text-sub)' }}
+                                      >
+                                        <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                                          style={{ left: editForm.is_recurring ? 'calc(100% - 18px)' : '2px' }} />
+                                      </button>
+                                    </div>
+                                    {editForm.is_recurring && (
+                                      <div className="space-y-3 rounded-xl p-3" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                                        <div>
+                                          <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.frequency', 'Frequency')}</label>
+                                          <div className="flex gap-2">
+                                            {['daily', 'weekly', 'biweekly', 'monthly'].map(r => (
+                                              <button key={r} onClick={() => setEditForm(p => ({ ...p, recurrence_rule: r }))}
+                                                className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold capitalize transition-colors"
+                                                style={editForm.recurrence_rule === r
+                                                  ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }
+                                                  : { background: 'rgba(255,255,255,0.04)', color: '#6B7280', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                                {t(`admin.announcements.recurrence.${r}`, r)}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        {editForm.recurrence_rule === 'weekly' || editForm.recurrence_rule === 'biweekly' ? (
+                                          <div>
+                                            <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.dayOfWeek', 'Day of week')}</label>
+                                            <div className="flex gap-1.5">
+                                              {EDIT_DAY_LABELS.map((d, i) => (
+                                                <button key={d} onClick={() => setEditForm(p => ({ ...p, recurrence_day: i }))}
+                                                  className="flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-colors"
+                                                  style={editForm.recurrence_day === i
+                                                    ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }
+                                                    : { background: 'rgba(255,255,255,0.04)', color: '#6B7280' }}>{d}</button>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ) : editForm.recurrence_rule === 'monthly' ? (
+                                          <div>
+                                            <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.dayOfMonth', 'Day of month')}</label>
+                                            <input type="number" min="1" max="28" value={editForm.recurrence_day || 1}
+                                              onChange={e => setEditForm(p => ({ ...p, recurrence_day: parseInt(e.target.value) || 1 }))}
+                                              className="w-20 rounded-xl px-3 py-2 text-[13px] outline-none"
+                                              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                                          </div>
+                                        ) : null}
+                                        <div>
+                                          <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.endDate', 'End date (optional)')}</label>
+                                          <input type="date" value={editForm.recurrence_end} onChange={e => setEditForm(p => ({ ...p, recurrence_end: e.target.value }))}
+                                            className="w-full rounded-xl px-3 py-2 text-[13px] outline-none"
+                                            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                             <div className="flex gap-2">
                               <button onClick={cancelEditing}

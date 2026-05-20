@@ -19,6 +19,9 @@ export const adminKeys = {
     campaigns: (gymId) => ['admin', 'churn', gymId, 'campaigns'],
   },
 
+  ownerQueue: (gymId) => ['admin', 'owner-queue', gymId],
+  printCards: (gymId) => ['admin', 'print-cards', gymId],
+
   analytics: {
     all: (gymId) => ['admin', 'analytics', gymId],
     growth: (gymId) => ['admin', 'analytics', gymId, 'growth'],
@@ -122,6 +125,7 @@ export const adminKeys = {
   },
 
   emailTemplates: (gymId) => ['admin', 'email-templates', gymId],
+  messageTemplates: (gymId) => ['admin', 'message-templates', gymId],
 
   profile: (gymId, profileId) => ['admin', 'profile', gymId, profileId],
 };

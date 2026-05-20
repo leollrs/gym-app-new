@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useInsightsRange } from '../../contexts/InsightsRangeContext';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { exportCSV } from '../../lib/csvExport';
@@ -26,10 +27,12 @@ import {
 const DAY_KEYS = ['dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 'daySun'];
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 6); // 6am-8pm (15 hours)
 
+// Days are kept as strings so the existing useQuery key + parseInt usage works,
+// but each option carries `days` (number) for sync with InsightsRangeContext.
 const PERIOD_OPTIONS = [
-  { key: '14', label: '14d' },
-  { key: '30', label: '30d' },
-  { key: '90', label: '90d' },
+  { key: '7', label: '7d', days: 7 },
+  { key: '30', label: '30d', days: 30 },
+  { key: '90', label: '90d', days: 90 },
 ];
 
 export default function AdminAttendance() {
@@ -38,7 +41,13 @@ export default function AdminAttendance() {
   const gymId = profile?.gym_id;
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
-  const [period, setPeriod] = useState('30');
+  // Period is shared across Insights pages. Attendance has no "all time"
+  // option, so if context is null (NPS/Analytics picked "all") we fall
+  // back to 30d locally.
+  const { periodDays: ctxPeriodDays, setPeriodDays } = useInsightsRange();
+  const matchedOption = PERIOD_OPTIONS.find((o) => o.days === ctxPeriodDays) ?? PERIOD_OPTIONS.find((o) => o.key === '30');
+  const period = matchedOption.key;
+  const setPeriod = (key) => setPeriodDays((PERIOD_OPTIONS.find((o) => o.key === key) || {}).days ?? 30);
   const DAYS = DAY_KEYS.map(k => t(`admin.attendance.${k}`, k.replace('day', '')));
 
   useEffect(() => {
@@ -156,7 +165,10 @@ export default function AdminAttendance() {
   const formatDelta = (val) => {
     if (val === 0) return null;
     const arrow = val > 0 ? '\u2191' : '\u2193';
-    return `${arrow} ${Math.abs(val)}% ${t('admin.attendance.vsPrev', 'vs prev')}`;
+    // Delta is computed as 2nd half vs 1st half of the current period (data only
+    // covers the current window). Relabel so admins don't read it as "vs the
+    // previous period of the same length".
+    return `${arrow} ${Math.abs(val)}% ${t('admin.attendance.vsPrevHalf', '1st vs 2nd half of period')}`;
   };
 
   const peakLabel = peakSummary
@@ -347,21 +359,37 @@ export default function AdminAttendance() {
           {/* Peak hours heatmap */}
           <FadeIn delay={0.2}>
             <AdminCard hover padding="p-3 sm:p-4 md:p-5" className="overflow-x-auto">
-              <div className="flex items-start justify-between mb-4 gap-3">
+              <div className="flex items-start justify-between mb-3 gap-3">
                 <div>
                   <h3 className="admin-page-title text-[17px] mb-1" style={{ letterSpacing: '-0.01em' }}>
                     {t('admin.attendance.peakHours', 'Peak Hours')}
                   </h3>
                   <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>
-                    {peakLabel || t('admin.attendance.basedOn', 'Based on gym check-ins')}
+                    {t('admin.attendance.basedOn', 'Based on gym check-ins')}
                   </p>
                 </div>
-                {peakLabel && (
-                  <span className="admin-pill admin-pill--coach">
-                    {peakLabel.toUpperCase()}
-                  </span>
-                )}
               </div>
+              {/* Peak summary — elevated above the heatmap, accent-colored */}
+              {peakLabel && (
+                <div
+                  className="mb-4 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl"
+                  style={{
+                    background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)',
+                  }}
+                >
+                  <Flame size={16} style={{ color: 'var(--color-accent)' }} />
+                  <span
+                    className="text-[13px] font-bold tracking-tight"
+                    style={{ color: 'var(--color-accent)', fontFamily: 'Archivo, sans-serif' }}
+                  >
+                    {peakLabel}
+                  </span>
+                  <span className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                    · {peakSummary.count} {t('admin.attendance.checkins', 'check-ins')}
+                  </span>
+                </div>
+              )}
               <div className="min-w-[520px] md:min-w-0">
                 <div
                   className="grid gap-[3px]"

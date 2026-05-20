@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User, Mail, Shield, Camera, Save, Key, Clock, Activity,
-  Calendar, ChevronRight, LogOut, CheckCircle, AlertTriangle, Pencil, X, Repeat, Settings as Cog,
+  Calendar, ChevronRight, LogOut, CheckCircle, AlertTriangle, Pencil, X, Repeat,
 } from 'lucide-react';
 import ViewSwitcherModal from '../../components/ViewSwitcherModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,49 +20,8 @@ import {
 } from '../../components/admin';
 import AvatarPicker from '../../components/AvatarPicker';
 import UserAvatar from '../../components/UserAvatar';
-
-const ROLE_PILL_CLASS = {
-  super_admin: 'admin-pill admin-pill--warn',
-  admin:       'admin-pill admin-pill--info',
-  trainer:     'admin-pill admin-pill--good',
-};
-
-const ACTION_PILL_CLASS = {
-  member_invited:          'admin-pill admin-pill--info',
-  member_deleted:          'admin-pill admin-pill--hot',
-  role_changed:            'admin-pill admin-pill--warn',
-  setting_updated:         'admin-pill admin-pill--warn',
-  challenge_created:       'admin-pill admin-pill--good',
-  announcement_published:  'admin-pill admin-pill--good',
-  class_created:           'admin-pill admin-pill--info',
-  program_created:         'admin-pill admin-pill--good',
-  store_item_created:      'admin-pill admin-pill--coach',
-  trainer_added:           'admin-pill admin-pill--info',
-  trainer_demoted:         'admin-pill admin-pill--hot',
-  moderation_action:       'admin-pill admin-pill--hot',
-};
-
-// ── Compress avatar image ────────────────────────────────────────────────────
-async function compressAvatar(file, maxSize = 256, quality = 0.85) {
-  return new Promise((resolve, reject) => {
-    const img = new window.Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let { width, height } = img;
-      if (width > height) {
-        if (width > maxSize) { height = Math.round((height * maxSize) / width); width = maxSize; }
-      } else if (height > maxSize) {
-        width = Math.round((width * maxSize) / height); height = maxSize;
-      }
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('compress failed')), 'image/jpeg', quality);
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
-  });
-}
+import { compressAvatar, ROLE_PILL_CLASS, ACTION_PILL_CLASS } from '../../lib/admin/profileHelpers';
+import DeleteAccountModal from './components/DeleteAccountModal';
 
 export default function AdminProfile() {
   const navigate = useNavigate();
@@ -81,17 +40,7 @@ export default function AdminProfile() {
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
   const [uploading, setUploading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteInput, setDeleteInput] = useState('');
-  const [deleting, setDeleting] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
-
-  // Lock body scroll while delete-account confirm modal is open
-  useEffect(() => {
-    if (!showDeleteConfirm) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [showDeleteConfirm]);
 
   const currentAvatar = profile?.avatar_url
     ? { type: 'photo', value: profile.avatar_url }
@@ -255,12 +204,6 @@ export default function AdminProfile() {
   const memberSince = createdAt
     ? format(new Date(createdAt), 'MMM d, yyyy', { locale })
     : '—';
-  const daysAsAdmin = createdAt
-    ? Math.max(0, differenceInDays(new Date(), new Date(createdAt)))
-    : null;
-  const lastSignInLabel = user?.last_sign_in_at
-    ? formatDistanceToNow(new Date(user.last_sign_in_at), { addSuffix: true, locale })
-    : '—';
 
   return (
     <AdminPageShell size="narrow">
@@ -284,9 +227,11 @@ export default function AdminProfile() {
                     'radial-gradient(circle at 80% 20%, rgba(255,255,255,0.18), transparent 55%)',
                 }}
               />
-              {/* Cover icon row — Switch view (when multi-role) + Settings */}
-              <div className="absolute top-3 right-4 flex items-center gap-2">
-                {hasMultipleViews && (
+              {/* Cover icon row — Switch view only (when multi-role).
+                  Settings is already accessible from the main nav, so the
+                  cover-level shortcut was pure decoration. */}
+              {hasMultipleViews && (
+                <div className="absolute top-3 right-4 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setShowViewSwitcher(true)}
@@ -302,23 +247,8 @@ export default function AdminProfile() {
                   >
                     <Repeat className="w-4 h-4" strokeWidth={2.2} />
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => navigate('/admin/settings')}
-                  aria-label={t('admin.profile.openSettings', 'Settings')}
-                  title={t('admin.profile.openSettings', 'Settings')}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
-                  style={{
-                    background: 'rgba(255,255,255,0.22)',
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    color: '#fff',
-                  }}
-                >
-                  <Cog className="w-4 h-4" strokeWidth={2.2} />
-                </button>
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Identity row — avatar overlaps cover, name+role+meta to the right */}
@@ -426,15 +356,12 @@ export default function AdminProfile() {
           </AdminCard>
         </FadeIn>
 
-        {/* ── 4-STAT STRIP ─────────────────────────────────────── */}
+        {/* ── 2-STAT STRIP ─────────────────────────────────────────
+            Trimmed from 4 to 2: kept Actions + Members (real activity).
+            Days-as-admin was vanity; Last sign-in already lives in the
+            Security card below — no need to surface it twice. */}
         <FadeIn delay={0.05}>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard
-              label={t('admin.profile.daysAsAdmin', 'Days as admin')}
-              value={daysAsAdmin != null ? daysAsAdmin : '—'}
-              icon={Calendar}
-              borderColor="var(--color-accent)"
-            />
+          <div className="grid grid-cols-2 gap-3">
             <StatCard
               label={t('admin.profile.totalActions', 'Actions')}
               value={stats?.totalActions ?? '—'}
@@ -442,17 +369,11 @@ export default function AdminProfile() {
               borderColor="var(--color-info)"
             />
             <StatCard
-              label={t('admin.profile.lastSignIn', 'Last sign-in')}
-              value={lastSignInLabel}
-              icon={Clock}
-              small
-              borderColor="var(--color-warn, var(--color-warning))"
-            />
-            <StatCard
               label={t('admin.profile.membersManaged', 'Members')}
               value={stats?.memberCount ?? '—'}
               icon={User}
               borderColor="var(--color-success)"
+              onClick={() => navigate('/admin/members')}
             />
           </div>
         </FadeIn>
@@ -700,82 +621,12 @@ export default function AdminProfile() {
       </div>
 
       {/* Delete account confirmation */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowDeleteConfirm(false)}>
-          <div className="w-full max-w-sm rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
-            onClick={e => e.stopPropagation()}>
-            <div className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle size={18} style={{ color: 'var(--color-danger)' }} />
-                <h3 className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.profile.deleteAccount', 'Delete Account')}</h3>
-              </div>
-              <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
-                {t('admin.profile.deleteWarning', 'This action is permanent. All your data will be deleted and cannot be undone.')}
-              </p>
-              <p className="text-[12px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
-                {t('admin.profile.deleteTypeConfirm', {
-                  word: t('admin.profile.deleteTypeConfirmWord', i18n.language === 'es' ? 'ELIMINAR' : 'DELETE'),
-                  defaultValue: 'Type {{word}} to confirm:',
-                })}
-              </p>
-              <input
-                type="text"
-                value={deleteInput}
-                onChange={e => setDeleteInput(e.target.value)}
-                placeholder={t('admin.profile.deleteTypeConfirmWord', i18n.language === 'es' ? 'ELIMINAR' : 'DELETE')}
-                className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none mb-4"
-                style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-              />
-              <div className="flex gap-3">
-                <button onClick={() => { setShowDeleteConfirm(false); setDeleteInput(''); }}
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors"
-                  style={{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
-                  {t('admin.profile.cancel', 'Cancel')}
-                </button>
-                <button
-                  onClick={async () => {
-                    setDeleting(true);
-                    try {
-                      // Guard: prevent last admin from deleting their account.
-                      // Fail CLOSED — if the count query errors or returns null, abort
-                      // rather than risk leaving the gym with zero admins.
-                      const { count, error: countErr } = await supabase
-                        .from('profiles')
-                        .select('id', { count: 'exact', head: true })
-                        .eq('gym_id', profile.gym_id)
-                        .eq('role', 'admin');
-                      if (countErr || count == null) {
-                        logger.error('Last-admin guard failed', countErr);
-                        showToast(tc('error', 'Error'), 'error');
-                        setDeleting(false);
-                        return;
-                      }
-                      if (count <= 1) {
-                        showToast(tc('lastAdminCannotDelete'), 'error');
-                        setDeleting(false);
-                        return;
-                      }
-                      await supabase.rpc('delete_own_account');
-                      await signOut();
-                    } catch (err) {
-                      logger.error('Account deletion failed', err);
-                      showToast(err.message || tc('error', 'Error'), 'error');
-                      setDeleting(false);
-                    }
-                  }}
-                  disabled={(() => {
-                    const v = deleteInput.toLowerCase();
-                    return (v !== 'eliminar' && v !== 'delete') || deleting;
-                  })()}
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
-                  style={{ backgroundColor: 'var(--color-danger)', color: '#fff' }}>
-                  {deleting ? t('admin.profile.deleting', 'Deleting...') : t('admin.profile.deleteConfirmBtn', 'Delete Account')}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteAccountModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        gymId={profile?.gym_id}
+        signOut={signOut}
+      />
 
       {/* Avatar Picker */}
       <AvatarPicker

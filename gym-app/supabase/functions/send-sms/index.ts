@@ -70,20 +70,27 @@ Deno.serve(async (req) => {
 
       const { data: callerProfile } = await supabase
         .from('profiles')
-        .select('role, gym_id')
+        .select('role, gym_id, additional_roles')
         .eq('id', user.id)
         .single();
 
-      if (!callerProfile || !['admin', 'super_admin', 'trainer'].includes(callerProfile.role)) {
+      // Multi-role (mig 0332): admin/trainer authority can come from `role`
+      // OR `additional_roles`. Without this, an admin whose primary role is
+      // 'member' (e.g. they're also a member at their own gym) gets 403.
+      const STAFF_ROLES = ['admin', 'super_admin', 'trainer'];
+      const hasPrimary = !!callerProfile && STAFF_ROLES.includes(callerProfile.role);
+      const additional = Array.isArray(callerProfile?.additional_roles) ? callerProfile.additional_roles : [];
+      const staffFromAdditional = additional.find((r: string) => STAFF_ROLES.includes(r));
+      if (!callerProfile || (!hasPrimary && !staffFromAdditional)) {
         return jsonResp({ error: 'Admin/trainer access required' }, 403);
       }
 
       callerId = user.id;
       callerGymId = callerProfile.gym_id;
-      callerRole = callerProfile.role;
+      callerRole = hasPrimary ? callerProfile.role : staffFromAdditional;
     }
 
-    const { memberId, body, source, gymId: bodyGymId, mediaUrl } = await req.json();
+    const { memberId, body, source, gymId: bodyGymId, mediaUrl, overridePhone } = await req.json();
 
     if (!memberId || !body) {
       return jsonResp({ error: 'memberId and body are required' }, 400);
@@ -140,12 +147,24 @@ Deno.serve(async (req) => {
     }
     // ── END GYM USAGE CAP CHECK ─────────────────────────────────
 
-    // Validate phone number
-    if (!memberProfile.phone_number) {
-      return jsonResp({ error: 'Member has no phone number on file' }, 400);
+    // Determine recipient phone — admin can override (e.g. testing with own
+    // phone, or member doesn't have one on file). Normalize to E.164 first.
+    const normalizePhone = (raw: string): string => {
+      const digits = raw.replace(/[^\d+]/g, '');
+      if (digits.startsWith('+')) return digits;
+      // Assume US/CA 10-digit input → prepend +1
+      if (digits.length === 10) return `+1${digits}`;
+      if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+      return digits; // pass through; validation below will catch
+    };
+    const finalPhone = overridePhone
+      ? normalizePhone(String(overridePhone))
+      : memberProfile.phone_number;
+    if (!finalPhone) {
+      return jsonResp({ error: 'No phone number provided (member has none on file and no override given)' }, 400);
     }
     const phoneRegex = /^\+1\d{10}$/;
-    if (!phoneRegex.test(memberProfile.phone_number)) {
+    if (!phoneRegex.test(finalPhone)) {
       return jsonResp({ error: 'Invalid phone number format (expected +1XXXXXXXXXX)' }, 400);
     }
 
@@ -210,7 +229,7 @@ Deno.serve(async (req) => {
 
     const formData = new URLSearchParams();
     formData.append('From', fromNumber);
-    formData.append('To', memberProfile.phone_number);
+    formData.append('To', finalPhone);
     formData.append('Body', smsBody);
     if (mediaUrl) {
       formData.append('MediaUrl', mediaUrl);

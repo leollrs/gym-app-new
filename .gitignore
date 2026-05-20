@@ -31,3 +31,11 @@ GoogleService-Info.plist
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 .audit-findings.md
+
+# Local test/audit screenshots (root-level only — keep app assets tracked)
+/*.png
+/audit-*.png
+
+# MCP server configs + temp captures (local-only)
+.mcp.json
+.playwright-mcp/

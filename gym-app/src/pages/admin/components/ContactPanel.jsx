@@ -9,12 +9,14 @@ import { useToast } from '../../../contexts/ToastContext';
 import { AdminModal, Avatar, SectionLabel } from '../../../components/admin';
 import { RiskBadge, ScoreBar } from '../../../components/admin/StatusBadge';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { getEmailTemplates, getSmsTemplates } from '../../../lib/adminMessageTemplates';
 
 export default function ContactPanel({
   member, gymId, adminId,
   isContacted, contactedAt,
   onMarkContacted, onUnmarkContacted,
   onClose,
+  defaultChannel = null,
 }) {
   const { t } = useTranslation('pages');
   const { showToast } = useToast();
@@ -24,7 +26,9 @@ export default function ContactPanel({
   const [email, setEmail] = useState(null);
 
   // Single source of truth for which inline channel is open. Mutually exclusive.
-  const [activeChannel, setActiveChannel] = useState(null); // 'message' | 'email' | 'sms' | null
+  // `defaultChannel` lets callers (e.g. the "Message" quick-action) open
+  // directly to a specific channel without an extra click.
+  const [activeChannel, setActiveChannel] = useState(defaultChannel); // 'message' | 'email' | 'sms' | null
   const openChannel = (ch) => setActiveChannel(prev => (prev === ch ? null : ch));
   const messageMode = activeChannel === 'message';
   const emailMode = activeChannel === 'email';
@@ -35,6 +39,9 @@ export default function ContactPanel({
   const [smsSending, setSmsSending] = useState(false);
   const [smsSent, setSmsSent] = useState(false);
   const [smsUsage, setSmsUsage] = useState(null); // { used, limit }
+  // Mutable recipient — defaults to the member's stored phone, but the
+  // admin can override (parity with the email-override path).
+  const [smsTo, setSmsTo] = useState('');
 
   // Email state (must be before useEffect that references setEmailTo)
   const [emailTo, setEmailTo] = useState(email || '');
@@ -44,12 +51,44 @@ export default function ContactPanel({
   const [emailSent, setEmailSent] = useState(false);
   const [rewardType, setRewardType] = useState('none');
 
+  // Pulled from `gym_rewards` so admins only see rewards this gym actually
+  // offers (not a hardcoded global list). Each entry: { id, reward_type, label }
+  // where label is locale-aware (name_es when app is in Spanish, name otherwise).
+  const [gymRewards, setGymRewards] = useState([]);
+
   const memberPhone = member.phone_number || null;
+
+  // Seed the SMS recipient from the member's stored phone whenever the
+  // member changes. The admin can still edit it before sending.
+  useEffect(() => {
+    setSmsTo(memberPhone || '');
+  }, [memberPhone]);
 
   useEffect(() => {
     supabase.rpc('admin_get_member_email', { p_member_id: member.id })
       .then(({ data }) => { if (data) { setEmail(data); setEmailTo(data); } });
   }, [member.id]);
+
+  useEffect(() => {
+    if (!gymId) return;
+    const isSpanish = i18n.language?.startsWith('es');
+    supabase
+      .from('gym_rewards')
+      .select('id, name, name_es, reward_type, emoji_icon, is_active')
+      .eq('gym_id', gymId)
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) { logger.warn('ContactPanel: gym_rewards fetch failed', error); return; }
+        const mapped = (data || []).map(r => ({
+          id: r.id,
+          reward_type: r.reward_type,
+          label: (isSpanish && r.name_es) ? r.name_es : r.name,
+          emoji: r.emoji_icon || '🎁',
+        }));
+        setGymRewards(mapped);
+      });
+  }, [gymId]);
 
   const riskTier = member.churnScore >= 80 ? 'critical' : member.churnScore >= 55 ? 'high' : 'medium';
 
@@ -101,14 +140,26 @@ export default function ContactPanel({
     }
   };
 
+  const isValidPhone = (p) => /^\+?[0-9\s().-]{7,20}$/.test(p);
+
   const handleSendSms = async () => {
     if (!smsBody.trim()) return;
+    if (smsTo && !isValidPhone(smsTo.trim())) {
+      showToast(t('admin.churn.invalidPhone', 'Please enter a valid phone number'), 'error');
+      return;
+    }
     setSmsSending(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('No active session');
+      const smsPayload = { memberId: member.id, body: smsBody.trim(), source: 'manual' };
+      // Only set overridePhone if the admin actually changed it (parity with email override).
+      const norm = (s) => (s || '').replace(/[\s().-]/g, '');
+      if (smsTo && norm(smsTo) !== norm(memberPhone)) {
+        smsPayload.overridePhone = smsTo.trim();
+      }
       const { data, error: fnError } = await supabase.functions.invoke('send-sms', {
-        body: { memberId: member.id, body: smsBody.trim(), source: 'manual' },
+        body: smsPayload,
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (fnError) throw fnError;
@@ -132,13 +183,15 @@ export default function ContactPanel({
 
   const smsSegments = smsBody.length <= 160 ? 1 : 2;
 
+  // "none" stays at the top; the rest come from this gym's gym_rewards
+  // catalog so admins can only attach rewards their gym actually offers.
   const rewardOptions = [
     { value: 'none', label: t('admin.churn.noReward', 'No reward') },
-    { value: 'pt_session', label: t('admin.churn.winBackOffers.pt_session', 'Free PT session') },
-    { value: 'discount', label: t('admin.churn.winBackOffers.discount', '1 month discount') },
-    { value: 'class_pass', label: t('admin.churn.winBackOffers.class_pass', 'Free class pass') },
-    { value: 'bring_partner', label: t('admin.churn.winBackOffers.bring_partner', 'Bring a partner') },
-    { value: 'custom', label: t('admin.churn.winBackOffers.custom', 'Custom\u2026') },
+    ...gymRewards.map(r => ({
+      value: r.id, // pass the gym_rewards.id so the backend can look up the canonical record
+      reward_type: r.reward_type,
+      label: `${r.emoji} ${r.label}`,
+    })),
   ];
 
   const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
@@ -167,7 +220,11 @@ export default function ContactPanel({
       }
       if (rewardType && rewardType !== 'none') {
         const selected = rewardOptions.find(o => o.value === rewardType);
-        reqBody.rewardType = rewardType;
+        // Send the canonical gym_rewards row id + its reward_type bucket.
+        // Backend will look up name/cost from the row, so the email shows
+        // exactly what this gym configured.
+        reqBody.rewardId = rewardType;
+        reqBody.rewardType = selected?.reward_type || 'custom';
         reqBody.rewardLabel = selected?.label || rewardType;
       }
       const { data, error: fnError } = await supabase.functions.invoke('send-admin-email', { body: reqBody });
@@ -244,9 +301,9 @@ export default function ContactPanel({
               </div>
             </button>
 
-            {/* SMS */}
-            <button onClick={() => openChannel('sms')} disabled={!memberPhone}
-              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/6 disabled:hover:bg-[#111827] ${smsMode ? 'border-[#F59E0B]/40 bg-[#F59E0B]/5' : 'border-white/6 hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5'}`}>
+            {/* SMS — always enabled; admin can type any number if none on file */}
+            <button onClick={() => openChannel('sms')}
+              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group ${smsMode ? 'border-[#F59E0B]/40 bg-[#F59E0B]/5' : 'border-white/6 hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5'}`}>
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center group-hover:bg-[#F59E0B]/20 transition-colors">
                 <Smartphone size={18} className="text-[#F59E0B]" />
               </div>
@@ -282,24 +339,8 @@ export default function ContactPanel({
               <div className="mb-3">
                 <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
                 <div className="flex flex-col gap-1.5">
-                  {[
-                    {
-                      label: t('admin.churn.tplMissYou', 'We miss you'),
-                      subject: t('admin.churn.tplMissYouSubject', { name: member.full_name.split(' ')[0], defaultValue: `${member.full_name.split(' ')[0]}, we miss you!` }),
-                      body: t('admin.churn.tplMissYouBody', { name: member.full_name.split(' ')[0], defaultValue: `We noticed you haven't been in for a while and we genuinely miss seeing you.\n\nWhatever got in the way — busy schedule, motivation dip, or just life — we get it. But your progress matters, and we'd love to help you pick up where you left off.\n\nCome back anytime, we're here for you.` }),
-                    },
-                    {
-                      label: t('admin.churn.tplCheckIn', 'Quick check-in'),
-                      subject: t('admin.churn.tplCheckInSubject', { defaultValue: 'How are you doing?' }),
-                      body: t('admin.churn.tplCheckInBody', { name: member.full_name.split(' ')[0], defaultValue: `Just wanted to check in and see how things are going.\n\nIf anything is keeping you away — schedule issues, needing a new program, questions about your goals — let us know. We're happy to adjust things to make it work for you.\n\nHope to see you soon!` }),
-                    },
-                    {
-                      label: t('admin.churn.tplNewClasses', 'New classes/programs'),
-                      subject: t('admin.churn.tplNewClassesSubject', { defaultValue: 'New things happening at the gym' }),
-                      body: t('admin.churn.tplNewClassesBody', { name: member.full_name.split(' ')[0], defaultValue: `We've been adding some exciting new classes and programs that we think you'd enjoy.\n\nWhether you're looking to try something different or get back into a routine, there's something here for you.\n\nCome check it out — your first class back is on us!` }),
-                    },
-                  ].map((tpl, i) => (
-                    <button key={i} onClick={() => { setEmailSubject(tpl.subject); setEmailBody(tpl.body); }}
+                  {getEmailTemplates(t, member.full_name.split(' ')[0]).map((tpl) => (
+                    <button key={tpl.key} onClick={() => { setEmailSubject(tpl.subject); setEmailBody(tpl.body); }}
                       className="flex items-center gap-2 px-3 py-2 bg-[#111827] border border-white/6 rounded-lg text-left hover:border-[#60A5FA]/30 hover:bg-[#60A5FA]/5 transition-all">
                       <Mail size={12} className="text-[#60A5FA] flex-shrink-0" />
                       <span className="text-[12px] font-medium text-[#E5E7EB]">{tpl.label}</span>
@@ -356,12 +397,22 @@ export default function ContactPanel({
         )}
 
         {/* SMS compose */}
-        {smsMode && memberPhone && (
+        {smsMode && (
           <div>
             <SectionLabel icon={Smartphone} className="mb-2">{t('admin.churn.composeSms', 'Send SMS')}</SectionLabel>
             <div className="flex items-center gap-2 mb-2.5">
               <span className="text-[10px] text-[#6B7280] flex-shrink-0">{t('admin.churn.sendingTo', 'To:')}</span>
-              <span className="text-[12px] text-[#E5E7EB] font-mono">{memberPhone}</span>
+              <input
+                type="tel"
+                value={smsTo}
+                onChange={e => setSmsTo(e.target.value)}
+                placeholder="+1234567890"
+                aria-label={t('admin.churn.smsTo', 'SMS recipient')}
+                className={`flex-1 bg-[#111827] border rounded-lg px-2 py-1 text-[12px] text-[#E5E7EB] font-mono outline-none transition-colors ${smsTo && !isValidPhone(smsTo) ? 'border-[#EF4444]/50 focus:border-[#EF4444]/70' : 'border-white/6 focus:border-[#F59E0B]/40'}`}
+              />
+              {smsTo && !isValidPhone(smsTo) && (
+                <span className="text-[10px] text-[#EF4444] flex-shrink-0">{t('admin.churn.invalidPhone', 'Invalid')}</span>
+              )}
             </div>
 
             {/* Quick SMS templates */}
@@ -369,21 +420,8 @@ export default function ContactPanel({
               <div className="mb-3">
                 <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
                 <div className="flex flex-col gap-1.5">
-                  {[
-                    {
-                      label: t('admin.churn.tplMissYou', 'We miss you'),
-                      body: t('admin.churn.smsTplMissYou', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you at the gym! Come in this week, your spot is waiting.` }),
-                    },
-                    {
-                      label: t('admin.churn.tplCheckIn', 'Quick check-in'),
-                      body: t('admin.churn.smsTplCheckIn', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, just checking in. Need a new routine or schedule change? Let us know!` }),
-                    },
-                    {
-                      label: t('admin.churn.tplNewClasses', 'New classes/programs'),
-                      body: t('admin.churn.smsTplNewClasses', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we've added new classes you'd love. Come check them out!` }),
-                    },
-                  ].map((tpl, i) => (
-                    <button key={i} onClick={() => setSmsBody(tpl.body)}
+                  {getSmsTemplates(t, member.full_name.split(' ')[0]).map((tpl) => (
+                    <button key={tpl.key} onClick={() => setSmsBody(tpl.body)}
                       className="flex items-center gap-2 px-3 py-2 bg-[#111827] border border-white/6 rounded-lg text-left hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5 transition-all">
                       <Smartphone size={12} className="text-[#F59E0B] flex-shrink-0" />
                       <span className="text-[12px] font-medium text-[#E5E7EB]">{tpl.label}</span>

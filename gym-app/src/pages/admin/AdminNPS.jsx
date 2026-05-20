@@ -1,63 +1,27 @@
 import { useState, useEffect, useMemo } from 'react';
-import { MessageCircle, TrendingUp, Users, Send, ThumbsUp, Minus, ThumbsDown, BarChart3, Clock, ChevronDown, Power } from 'lucide-react';
+import { MessageCircle, Send, ThumbsUp, Minus, ThumbsDown, BarChart3, Clock } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useInsightsRange } from '../../contexts/InsightsRangeContext';
 import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { broadcastNotification } from '../../lib/notifications';
 import {
   AdminPageShell,
   PageHeader,
-  StatCard,
   AdminCard,
-  AdminModal,
   FadeIn,
   SectionLabel,
   CardSkeleton,
 } from '../../components/admin';
+import { PERIODS, scoreColor, scoreBg, npsColor, npsBarColor, npsGaugePercent } from '../../lib/admin/npsHelpers';
+import { SendSurveyModal, EditSurveyModal } from './components/NpsSurveyModals';
 
 const GOLD = 'var(--color-accent)';
-
-const PERIODS = [
-  { labelKey: '30d', days: 30 },
-  { labelKey: '90d', days: 90 },
-  { labelKey: '180d', days: 180 },
-  { labelKey: 'allTime', days: null },
-];
-
-function scoreColor(score) {
-  if (score <= 2) return 'text-red-400';
-  if (score <= 3) return 'text-amber-400';
-  return 'text-emerald-400';
-}
-
-function scoreBg(score) {
-  if (score <= 2) return 'bg-red-400/20 text-red-400';
-  if (score <= 3) return 'bg-amber-400/20 text-amber-400';
-  return 'bg-emerald-400/20 text-emerald-400';
-}
-
-function npsColor(nps) {
-  if (nps < 0) return 'var(--color-danger)';
-  if (nps < 30) return 'var(--color-danger)';
-  if (nps < 70) return 'var(--color-success)';
-  return 'var(--color-success)';
-}
-
-function npsBarColor(nps) {
-  if (nps < 0) return 'bg-red-400';
-  if (nps < 30) return 'bg-amber-400';
-  if (nps < 70) return 'bg-lime-400';
-  return 'bg-emerald-400';
-}
-
-function npsGaugePercent(nps) {
-  return ((nps + 100) / 200) * 100;
-}
 
 export default function AdminNPS() {
   const { t, i18n } = useTranslation('pages');
@@ -68,7 +32,14 @@ export default function AdminNPS() {
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
 
-  const [days, setDays] = useState(30);
+  // Period shared across Insights pages — see InsightsRangeContext.
+  // NPS uses `days` (number) directly; "all time" is represented as null.
+  // If the context's value isn't one of this page's choices (e.g. 7d from
+  // Analytics), fall back to 30 for display + queries.
+  const { periodDays: ctxPeriodDays, setPeriodDays } = useInsightsRange();
+  const NPS_DAY_VALUES = PERIODS.map((p) => p.days);
+  const days = NPS_DAY_VALUES.includes(ctxPeriodDays) ? ctxPeriodDays : 30;
+  const setDays = (next) => setPeriodDays(next);
   const [showSurveyModal, setShowSurveyModal] = useState(false);
   const [editingSurvey, setEditingSurvey] = useState(null); // active survey row currently being edited
   const [editTitle, setEditTitle] = useState('');
@@ -291,70 +262,38 @@ export default function AdminNPS() {
         }
       />
 
-      {/* Active surveys — admin can see what's currently running and turn them off */}
+      {/* Active surveys — compact one-line banner. Tap to open the edit modal for the most recent one. */}
       {activeSurveys.length > 0 && (
         <FadeIn>
-          <AdminCard className="mt-6 p-3 sm:p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Send size={14} style={{ color: 'var(--color-accent)' }} />
-              <span className="admin-eyebrow">
-                {t('admin.nps.activeSurveys', 'Encuestas activas')}
-                <span className="ml-2 admin-pill admin-pill--outline" style={{ fontSize: 10 }}>
-                  {activeSurveys.length}
-                </span>
-              </span>
-            </div>
-            <div className="space-y-2">
-              {activeSurveys.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => {
-                    setEditingSurvey(s);
-                    setEditTitle(s.title || '');
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl text-left transition-colors hover:brightness-110"
-                  style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>
-                      {s.title || t('admin.nps.npsSurveyLabel', 'NPS Survey')}
-                    </p>
-                    <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>
-                      {t('admin.nps.startedAgo', 'Started')} {formatDistanceToNow(new Date(s.created_at), { addSuffix: true, ...dateFnsLocale })}
-                      <span className="mx-1.5">·</span>
-                      <span style={{ color: 'var(--color-accent)' }}>{t('admin.nps.tapToEdit', 'Tocar para ver / editar')}</span>
-                    </p>
-                  </div>
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deactivateSurvey.mutate(s.id);
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        deactivateSurvey.mutate(s.id);
-                      }
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold transition-all hover:brightness-110 active:scale-[0.98] flex-shrink-0 cursor-pointer"
-                    style={{
-                      background: 'color-mix(in srgb, var(--color-danger) 15%, transparent)',
-                      color: 'var(--color-danger)',
-                      border: '1px solid color-mix(in srgb, var(--color-danger) 35%, transparent)',
-                      opacity: deactivateSurvey.isPending ? 0.5 : 1,
-                      pointerEvents: deactivateSurvey.isPending ? 'none' : 'auto',
-                    }}
-                  >
-                    <Power size={12} />
-                    {t('admin.nps.deactivate', 'Desactivar')}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </AdminCard>
+          <div
+            className="mt-6 flex items-center gap-3 px-3 py-2 rounded-xl"
+            style={{
+              background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+            }}
+          >
+            <Send size={14} style={{ color: 'var(--color-accent)' }} className="flex-shrink-0" />
+            <span className="text-[12.5px] font-semibold flex-1 min-w-0 truncate" style={{ color: 'var(--color-admin-text)' }}>
+              {t('admin.nps.activeSurveysBanner', {
+                count: activeSurveys.length,
+                defaultValue: '{{count}} survey(s) active',
+              })}
+            </span>
+            <button
+              onClick={() => {
+                const s = activeSurveys[0];
+                setEditingSurvey(s);
+                setEditTitle(s.title || '');
+              }}
+              className="text-[11.5px] font-bold px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+              style={{
+                background: 'var(--color-accent)',
+                color: 'var(--color-bg-base)',
+              }}
+            >
+              {t('admin.nps.manage', 'Manage')}
+            </button>
+          </div>
         </FadeIn>
       )}
 
@@ -381,7 +320,7 @@ export default function AdminNPS() {
         <CardSkeleton count={4} />
       ) : (
         <>
-          {/* NPS Hero Score */}
+          {/* NPS Hero Score — now with inline P/Pa/D chips at bottom */}
           <FadeIn delay={0.05}>
             <div className="admin-card p-3 sm:p-4 md:p-[18px] mb-4">
               <div className="flex items-center gap-2 mb-3">
@@ -444,94 +383,83 @@ export default function AdminNPS() {
                   </div>
                 </div>
               </div>
+
+              {/* Inline P/Pa/D chips — embedded so the hero owns the whole breakdown story */}
+              <div className="grid grid-cols-3 gap-2 mt-4 pt-4" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <ThumbsUp size={14} style={{ color: 'var(--color-success)' }} className="flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-bold tabular-nums" style={{ color: 'var(--color-admin-text)' }}>
+                      {promoters} <span className="font-normal" style={{ color: 'var(--color-admin-text-muted)' }}>({promoterPct}%)</span>
+                    </div>
+                    <div className="text-[10px] font-semibold truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
+                      {t('admin.nps.promotersShort', 'Promoters')}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Minus size={14} style={{ color: 'var(--color-warning)' }} className="flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-bold tabular-nums" style={{ color: 'var(--color-admin-text)' }}>
+                      {passives} <span className="font-normal" style={{ color: 'var(--color-admin-text-muted)' }}>({passivePct}%)</span>
+                    </div>
+                    <div className="text-[10px] font-semibold truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
+                      {t('admin.nps.passivesShort', 'Passives')}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <ThumbsDown size={14} style={{ color: 'var(--color-danger)' }} className="flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-bold tabular-nums" style={{ color: 'var(--color-admin-text)' }}>
+                      {detractors} <span className="font-normal" style={{ color: 'var(--color-admin-text-muted)' }}>({detractorPct}%)</span>
+                    </div>
+                    <div className="text-[10px] font-semibold truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
+                      {t('admin.nps.detractorsShort', 'Detractors')}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </FadeIn>
 
-          {/* Promoters / Passives / Detractors breakdown */}
-          <FadeIn delay={0.1}>
-            <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
-              <StatCard
-                label={t('admin.nps.promoters', 'Promoters (4-5)')}
-                value={promoters}
-                sub={t('admin.nps.percentOfRespondents', '{{pct}}% of respondents', { pct: promoterPct })}
-                borderColor="var(--color-success)"
-                icon={ThumbsUp}
-                delay={0}
-              />
-              <StatCard
-                label={t('admin.nps.passives', 'Passives (3)')}
-                value={passives}
-                sub={t('admin.nps.percentOfRespondents', '{{pct}}% of respondents', { pct: passivePct })}
-                borderColor="var(--color-warning)"
-                icon={Minus}
-                delay={50}
-              />
-              <StatCard
-                label={t('admin.nps.detractors', 'Detractors (1-2)')}
-                value={detractors}
-                sub={t('admin.nps.percentOfRespondents', '{{pct}}% of respondents', { pct: detractorPct })}
-                borderColor="var(--color-danger)"
-                icon={ThumbsDown}
-                delay={100}
-              />
-            </div>
-          </FadeIn>
+          {/* Feedback Highlights — moved up: verbatim quotes are the highest action-driving content */}
+          {feedbackResponses.length > 0 && (
+            <FadeIn delay={0.08}>
+              <SectionLabel icon={MessageCircle} className="mb-3">
+                {t('admin.nps.feedbackHighlights', 'Feedback Highlights')}
+              </SectionLabel>
 
-          {/* Stacked breakdown bar */}
-          <FadeIn delay={0.12}>
-            <div className="admin-card p-3 sm:p-4 md:p-[18px] mb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <TrendingUp size={14} style={{ color: 'var(--color-accent)' }} />
-                <span className="admin-eyebrow">{t('admin.nps.breakdownBar', 'Response Breakdown')}</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+                {feedbackResponses.slice(0, 10).map((r) => {
+                  const name = r.profiles?.full_name || t('admin.nps.member', 'Member');
+                  const borderColor = r.score >= 4
+                    ? 'var(--color-success)'
+                    : r.score === 3
+                      ? 'var(--color-warning)'
+                      : 'var(--color-danger)';
+                  return (
+                    <AdminCard key={r.id} borderLeft={borderColor}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${scoreBg(r.score)}`}
+                        >
+                          {r.score}/5
+                        </span>
+                        <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                          {formatDistanceToNow(new Date(r.created_at), { addSuffix: true, ...dateFnsLocale })}
+                        </span>
+                      </div>
+                      <p className="text-sm italic leading-relaxed" style={{ color: 'var(--color-text-primary)' }}>
+                        &ldquo;{r.feedback}&rdquo;
+                      </p>
+                      <p className="text-[10px] mt-2" style={{ color: 'var(--color-text-muted)' }}>&mdash; {name}</p>
+                    </AdminCard>
+                  );
+                })}
               </div>
-              <div
-                className="flex rounded-full overflow-hidden h-[22px] gap-[2px]"
-                style={{ background: 'var(--color-admin-panel)' }}
-              >
-                {promoterPct > 0 && (
-                  <div
-                    className="flex items-center justify-center transition-all duration-500"
-                    style={{ width: `${promoterPct}%`, background: 'var(--color-success)' }}
-                  >
-                    {promoterPct >= 10 && (
-                      <span className="text-[11px] font-bold text-white">{promoterPct}%</span>
-                    )}
-                  </div>
-                )}
-                {passivePct > 0 && (
-                  <div
-                    className="flex items-center justify-center transition-all duration-500"
-                    style={{ width: `${passivePct}%`, background: 'var(--color-warning)' }}
-                  >
-                    {passivePct >= 10 && (
-                      <span className="text-[11px] font-bold text-white">{passivePct}%</span>
-                    )}
-                  </div>
-                )}
-                {detractorPct > 0 && (
-                  <div
-                    className="flex items-center justify-center transition-all duration-500"
-                    style={{ width: `${detractorPct}%`, background: 'var(--color-danger)' }}
-                  >
-                    {detractorPct >= 10 && (
-                      <span className="text-[11px] font-bold text-white">{detractorPct}%</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-3 sm:gap-5 mt-3 text-[11.5px]" style={{ color: 'var(--color-admin-text-sub)' }}>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: 'var(--color-success)' }} /> {t('admin.nps.promotersShort', 'Promoters')}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: 'var(--color-warning)' }} /> {t('admin.nps.passivesShort', 'Passives')}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: 'var(--color-danger)' }} /> {t('admin.nps.detractorsShort', 'Detractors')}
-                </span>
-              </div>
-            </div>
-          </FadeIn>
+            </FadeIn>
+          )}
 
           {/* Score Distribution Chart — 11-col bar chart */}
           <FadeIn delay={0.15}>
@@ -603,9 +531,16 @@ export default function AdminNPS() {
           <AdminCard padding="p-8" className="text-center mb-5">
             <MessageCircle size={28} className="mx-auto mb-2" style={{ color: 'var(--color-text-muted)' }} />
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{t('admin.nps.noResponses', 'No responses yet')}</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-xs mt-1 mb-4" style={{ color: 'var(--color-text-muted)' }}>
               {t('admin.nps.sendToCollect', 'Send a survey to start collecting feedback')}
             </p>
+            <button
+              onClick={() => setShowSurveyModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors hover:brightness-110"
+              style={{ background: GOLD, color: 'var(--color-bg-base)' }}
+            >
+              <Send size={14} /> {t('admin.nps.sendFirstSurvey', 'Send your first survey')}
+            </button>
           </AdminCard>
         ) : (
           <div className="space-y-2 mb-5">
@@ -646,195 +581,25 @@ export default function AdminNPS() {
         )}
       </FadeIn>
 
-      {/* Feedback Highlights */}
-      {feedbackResponses.length > 0 && (
-        <FadeIn delay={0.25}>
-          <SectionLabel icon={MessageCircle} className="mb-3">
-            {t('admin.nps.feedbackHighlights', 'Feedback Highlights')}
-          </SectionLabel>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
-            {feedbackResponses.slice(0, 10).map((r) => {
-              const name = r.profiles?.full_name || t('admin.nps.member', 'Member');
-
-              // 1-5 tiers: promoters 4-5 (success), passive 3 (warning), detractors 1-2 (danger).
-              const borderColor = r.score >= 4
-                ? 'var(--color-success)'
-                : r.score === 3
-                  ? 'var(--color-warning)'
-                  : 'var(--color-danger)';
-              return (
-                <AdminCard key={r.id} borderLeft={borderColor}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${scoreBg(r.score)}`}
-                    >
-                      {r.score}/5
-                    </span>
-                    <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-                      {formatDistanceToNow(new Date(r.created_at), { addSuffix: true, ...dateFnsLocale })}
-                    </span>
-                  </div>
-                  <p className="text-sm italic leading-relaxed" style={{ color: 'var(--color-text-primary)' }}>
-                    &ldquo;{r.feedback}&rdquo;
-                  </p>
-                  <p className="text-[10px] mt-2" style={{ color: 'var(--color-text-muted)' }}>&mdash; {name}</p>
-                </AdminCard>
-              );
-            })}
-          </div>
-        </FadeIn>
-      )}
-
-      {/* Send Survey Modal */}
-      <AdminModal
+      <SendSurveyModal
         isOpen={showSurveyModal}
         onClose={() => setShowSurveyModal(false)}
-        title={t('admin.nps.sendNpsSurvey', 'Send NPS Survey')}
-        titleIcon={Send}
-        footer={
-          <>
-            <button
-              onClick={() => setShowSurveyModal(false)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white/[0.04] hover:bg-white/[0.08] transition-colors"
-              style={{ color: 'var(--color-text-secondary)' }}
-            >
-              {t('admin.nps.cancel', 'Cancel')}
-            </button>
-            <button
-              onClick={() => sendSurvey.mutate()}
-              disabled={sendSurvey.isPending}
-              className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
-              style={{
-                background: GOLD,
-                color: 'var(--color-bg-base)',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-              }}
-            >
-              {sendSurvey.isPending
-                ? t('admin.nps.sending', 'Sending...')
-                : t('admin.nps.sendToAll', 'Send to All Members')}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <AdminCard>
-            <div className="flex items-center gap-3 mb-3">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)' }}
-              >
-                <Send size={18} style={{ color: GOLD }} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                  {t('admin.nps.npsSurveyLabel', 'NPS Survey')}
-                </p>
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  &ldquo;{t('admin.nps.surveyQuestion', 'How likely are you to recommend us?')}&rdquo;
-                </p>
-              </div>
-            </div>
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-              {t(
-                'admin.nps.surveyDesc',
-                'This will send a push notification to all active gym members asking them to rate their experience on a scale of 1 to 5. Members can also leave optional written feedback.',
-              )}
-            </p>
-          </AdminCard>
+        onSend={() => sendSurvey.mutate()}
+        activeSurveys={activeSurveys}
+        isPending={sendSurvey.isPending}
+      />
 
-          <div className="bg-amber-400/10 border border-amber-400/20 rounded-xl p-3">
-            <p className="text-xs text-amber-400">
-              {activeSurveys.length > 0
-                ? t(
-                    'admin.nps.surveyWarningReplace',
-                    'Sending will deactivate the {{count}} active survey(s) currently running. Existing responses are preserved.',
-                    { count: activeSurveys.length },
-                  )
-                : t(
-                    'admin.nps.surveyWarning',
-                    'Members who have already responded to past surveys will not receive a duplicate notification.',
-                  )}
-            </p>
-          </div>
-        </div>
-      </AdminModal>
-
-      {/* Edit Active Survey Modal — view + edit the question, or deactivate. */}
-      <AdminModal
-        isOpen={!!editingSurvey}
+      <EditSurveyModal
+        editingSurvey={editingSurvey}
         onClose={() => setEditingSurvey(null)}
-        title={t('admin.nps.editSurvey', 'Editar encuesta activa')}
-        titleIcon={Send}
-        footer={
-          <>
-            <button
-              onClick={() => {
-                if (editingSurvey) deactivateSurvey.mutate(editingSurvey.id);
-                setEditingSurvey(null);
-              }}
-              disabled={deactivateSurvey.isPending}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 hover:brightness-110"
-              style={{
-                background: 'color-mix(in srgb, var(--color-danger) 15%, transparent)',
-                color: 'var(--color-danger)',
-                border: '1px solid color-mix(in srgb, var(--color-danger) 35%, transparent)',
-              }}
-            >
-              {t('admin.nps.deactivate', 'Desactivar')}
-            </button>
-            <button
-              onClick={() => editingSurvey && updateSurvey.mutate({ id: editingSurvey.id, title: editTitle })}
-              disabled={updateSurvey.isPending || !editTitle.trim()}
-              className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
-              style={{
-                background: GOLD,
-                color: 'var(--color-bg-base)',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-              }}
-            >
-              {updateSurvey.isPending
-                ? t('admin.nps.saving', 'Guardando...')
-                : t('admin.nps.save', 'Guardar')}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <label
-              className="block text-[11px] font-bold uppercase tracking-wider mb-2"
-              style={{ color: 'var(--color-admin-text-muted)', letterSpacing: '0.1em' }}
-            >
-              {t('admin.nps.surveyQuestionLabel', 'Pregunta de la encuesta')}
-            </label>
-            <textarea
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              rows={3}
-              maxLength={200}
-              placeholder={t('admin.nps.surveyQuestion', '¿Qué tan probable es que nos recomiendes?')}
-              className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none resize-none"
-              style={{
-                background: 'var(--color-bg-deep)',
-                border: '1px solid var(--color-border-subtle)',
-                color: 'var(--color-text-primary)',
-              }}
-            />
-            <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.nps.surveyQuestionHint', 'Esta es la pregunta que ven los miembros. Las respuestas se califican del 1 al 5.')}
-            </p>
-          </div>
-
-          {editingSurvey && (
-            <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.nps.startedAgo', 'Started')}{' '}
-              {formatDistanceToNow(new Date(editingSurvey.created_at), { addSuffix: true, ...dateFnsLocale })}
-            </p>
-          )}
-        </div>
-      </AdminModal>
+        editTitle={editTitle}
+        setEditTitle={setEditTitle}
+        onDeactivate={(id) => deactivateSurvey.mutate(id)}
+        onUpdate={(args) => updateSurvey.mutate(args)}
+        deactivatePending={deactivateSurvey.isPending}
+        updatePending={updateSurvey.isPending}
+        dateFnsLocale={dateFnsLocale}
+      />
     </AdminPageShell>
   );
 }

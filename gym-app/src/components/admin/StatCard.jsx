@@ -13,6 +13,7 @@ export default function StatCard({
   icon: Icon,
   delay = 0,
   size = 'default',
+  onClick,
 }) {
   const isPercent = typeof value === 'string' && value.endsWith('%');
   const isDecimal = typeof value === 'string' && !isPercent && /^-?\d+\.\d+$/.test(value);
@@ -31,13 +32,16 @@ export default function StatCard({
       : animated.toLocaleString();
 
   const isHero = size === 'hero';
+  const clickable = typeof onClick === 'function';
+  const Wrapper = clickable ? 'button' : 'div';
 
   return (
     <FadeIn delay={delay} className={isHero ? 'md:col-span-2 xl:col-span-3' : ''}>
-      <div
-        className={`admin-stat-card border-l-2 group ${
+      <Wrapper
+        {...(clickable ? { type: 'button', onClick } : {})}
+        className={`admin-stat-card border-l-2 group w-full text-left ${
           isHero ? 'p-5' : 'p-3 md:p-4'
-        }`}
+        } ${clickable ? 'cursor-pointer transition-all hover:brightness-110 hover:-translate-y-px active:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]' : ''}`}
         style={{ borderLeftColor: borderColor }}
       >
         <div className="flex items-start justify-between overflow-hidden">
@@ -65,7 +69,7 @@ export default function StatCard({
             </div>
           )}
         </div>
-      </div>
+      </Wrapper>
     </FadeIn>
   );
 }

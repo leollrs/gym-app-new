@@ -449,18 +449,25 @@ serve(async (req) => {
     if (!isServiceRole) {
       const { data: callerProfile } = await supabase
         .from('profiles')
-        .select('role, gym_id')
+        .select('role, gym_id, additional_roles')
         .eq('id', user!.id)
         .single();
 
-      if (!callerProfile || !['admin', 'super_admin', 'trainer'].includes(callerProfile.role)) {
+      // Multi-role (mig 0332): accept staff role from `role` OR `additional_roles`.
+      const STAFF_ROLES = ['admin', 'super_admin', 'trainer'];
+      const additional = Array.isArray(callerProfile?.additional_roles) ? callerProfile.additional_roles : [];
+      const hasPrimaryStaff = !!callerProfile && STAFF_ROLES.includes(callerProfile.role);
+      const staffFromAdditional = additional.find((r: string) => STAFF_ROLES.includes(r));
+      if (!callerProfile || (!hasPrimaryStaff && !staffFromAdditional)) {
         return jsonResp({ error: 'Forbidden — admin only' }, 403);
       }
+      const effectiveRole = hasPrimaryStaff ? callerProfile.role : staffFromAdditional;
+      const isSuperAdmin = effectiveRole === 'super_admin' || additional.includes('super_admin');
 
       targetGymId = gym_id || callerProfile.gym_id;
 
       // Gym boundary check — non-super_admin callers can only send pushes to their own gym
-      if (callerProfile.role !== 'super_admin' && targetGymId !== callerProfile.gym_id) {
+      if (!isSuperAdmin && targetGymId !== callerProfile.gym_id) {
         return jsonResp({ error: 'Forbidden — cannot send pushes to another gym' }, 403);
       }
     }

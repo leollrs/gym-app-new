@@ -180,10 +180,13 @@ serve(async (req: Request) => {
           if (user) {
             const { data: profile } = await authClient
               .from('profiles')
-              .select('role')
+              .select('role, additional_roles')
               .eq('id', user.id)
               .single();
-            isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin';
+            // Multi-role (mig 0332): admin authority can come from primary or additional roles.
+            const ADMIN_ROLES = ['admin', 'super_admin'];
+            const additional = Array.isArray(profile?.additional_roles) ? profile.additional_roles : [];
+            isAdmin = ADMIN_ROLES.includes(profile?.role) || additional.some((r: string) => ADMIN_ROLES.includes(r));
           }
         }
 

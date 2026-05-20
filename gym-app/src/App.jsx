@@ -129,7 +129,12 @@ const AdminChallenges    = lazy(() => import('./pages/admin/AdminChallenges'));
 const AdminPrograms      = lazy(() => import('./pages/admin/AdminPrograms'));
 const AdminLeaderboard   = lazy(() => import('./pages/admin/AdminLeaderboard'));
 const AdminAnnouncements = lazy(() => import('./pages/admin/AdminAnnouncements'));
+const AdminOutreach      = lazy(() => import('./pages/admin/AdminOutreach'));
 const AdminSettings      = lazy(() => import('./pages/admin/AdminSettings'));
+const AdminSettingsBranding     = lazy(() => import('./pages/admin/AdminSettingsBranding'));
+const AdminSettingsHours        = lazy(() => import('./pages/admin/AdminSettingsHours'));
+const AdminSettingsRegistration = lazy(() => import('./pages/admin/AdminSettingsRegistration'));
+const AdminSettingsGymInfo      = lazy(() => import('./pages/admin/AdminSettingsGymInfo'));
 const AdminAnalytics     = lazy(() => import('./pages/admin/AdminAnalytics'));
 const AdminModeration    = lazy(() => import('./pages/admin/AdminModeration'));
 const AdminChurn         = lazy(() => import('./pages/admin/AdminChurn'));
@@ -146,6 +151,8 @@ const AdminNPS           = lazy(() => import('./pages/admin/AdminNPS'));
 const AdminDigestConfig  = lazy(() => import('./pages/admin/AdminDigestConfig'));
 const AdminABTesting     = lazy(() => import('./pages/admin/AdminABTesting'));
 const AdminEmailTemplates = lazy(() => import('./pages/admin/AdminEmailTemplates'));
+const AdminMessageTemplates = lazy(() => import('./pages/admin/AdminMessageTemplates'));
+const PrintCardsView      = lazy(() => import('./pages/admin/PrintCardsView'));
 const AdminRewards       = lazy(() => import('./pages/admin/AdminRewards'));
 const AdminProfile       = lazy(() => import('./pages/admin/AdminProfile'));
 const AdminNotifications = lazy(() => import('./pages/admin/AdminNotifications'));
@@ -1532,6 +1539,7 @@ function App() {
                 <Route path="/leaderboard"  element={<AdminLeaderboard />} />
                 <Route path="/announcements" element={<AdminAnnouncements />} />
                 <Route path="/messages"      element={<AdminMessaging />} />
+                <Route path="/outreach"      element={<AdminOutreach />} />
                 <Route path="/store"        element={<AdminStore />} />
                 <Route path="/revenue"     element={<AdminRevenue />} />
                 <Route path="/analytics"    element={<AdminAnalytics />} />
@@ -1545,10 +1553,17 @@ function App() {
                 <Route path="/digest"      element={<AdminDigestConfig />} />
                 <Route path="/ab-testing"  element={<AdminABTesting />} />
                 <Route path="/email-templates" element={<AdminEmailTemplates />} />
+                <Route path="/message-templates" element={<AdminMessageTemplates />} />
+                <Route path="/print-cards/preview" element={<PrintCardsView />} />
                 <Route path="/rewards"     element={<AdminRewards />} />
                 <Route path="/profile"     element={<AdminProfile />} />
                 <Route path="/notifications" element={<AdminNotifications />} />
                 <Route path="/settings"     element={<AdminSettings />} />
+                <Route path="/settings/branding"     element={<AdminSettingsBranding />} />
+                <Route path="/settings/hours"        element={<AdminSettingsHours />} />
+                <Route path="/settings/registration" element={<AdminSettingsRegistration />} />
+                <Route path="/settings/gym-info"     element={<AdminSettingsGymInfo />} />
+                <Route path="/settings/digest"       element={<AdminDigestConfig />} />
                 <Route path="*"            element={<Navigate to="/admin" replace />} />
               </Routes>
               </Suspense>

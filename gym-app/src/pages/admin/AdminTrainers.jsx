@@ -483,15 +483,7 @@ export default function AdminTrainers() {
                         <div className="px-4 pb-4" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
                           <div className="flex items-center justify-between mt-3 mb-2 gap-2 flex-wrap">
                             <SectionLabel>{t('admin.trainers.clientsCount', { count: clients.length })}</SectionLabel>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setConfirmDemote(tr.id); }}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors whitespace-nowrap"
-                                style={{ backgroundColor: 'var(--color-danger-soft)', color: 'var(--color-danger)', border: '1px solid var(--color-danger-soft)' }}
-                              >
-                                <X size={12} />
-                                {t('admin.trainers.removeTrainer')}
-                              </button>
+                            <div className="flex items-center gap-2 flex-wrap flex-1 justify-end">
                               <button
                                 onClick={(e) => { e.stopPropagation(); setShowAssign(showAssign === tr.id ? null : tr.id); setSearch(''); }}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap"
@@ -502,6 +494,20 @@ export default function AdminTrainers() {
                               >
                                 <UserPlus size={12} />
                                 {t('admin.trainers.assignClient')}
+                              </button>
+                              {/* Remove Trainer is a destructive action — push it away from Assign Client
+                                  with ml-auto, give it a stronger danger border, and tighten the danger color. */}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setConfirmDemote(tr.id); }}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors whitespace-nowrap ml-auto"
+                                style={{
+                                  backgroundColor: 'var(--color-danger-soft)',
+                                  color: 'var(--color-danger)',
+                                  border: '1px solid color-mix(in srgb, var(--color-danger) 40%, transparent)',
+                                }}
+                              >
+                                <X size={12} />
+                                {t('admin.trainers.removeTrainer')}
                               </button>
                             </div>
                           </div>

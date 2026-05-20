@@ -62,8 +62,9 @@ export default function useBarcodeScanner({
       return;
     }
 
-    // Only accumulate single printable characters
-    if (e.key.length !== 1) return;
+    // Only accumulate single printable characters. Guard against synthetic
+    // events from browser autofill / IME composition where `e.key` is undefined.
+    if (typeof e.key !== 'string' || e.key.length !== 1) return;
 
     const gap = now - lastCharRef.current;
     lastCharRef.current = now;

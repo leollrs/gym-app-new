@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useAuth } from '../../contexts/AuthContext';
+import { useInsightsRange } from '../../contexts/InsightsRangeContext';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +22,7 @@ import OnboardingFunnel from './components/analytics/OnboardingFunnel';
 import LifecycleStages from './components/analytics/LifecycleStages';
 import TrainerPerformance from './components/analytics/TrainerPerformance';
 import MonthlySummary from './components/analytics/MonthlySummary';
+import LTVCard from './components/analytics/LTVCard';
 
 const KPI_METRICS = [
   { key: 'retention_rate', labelKey: 'admin.analytics.retentionRate', unit: '%', icon: '📊' },
@@ -280,7 +282,9 @@ function PeriodSelector({ value, onChange }) {
 
 // ── Tab definitions ──────────────────────────────────────
 const ANALYTICS_TAB_KEYS = [
-  { key: 'overview', labelKey: 'admin.analytics.tabOverview', fallback: 'Overview', icon: LayoutDashboard },
+  // Tab key stays 'overview' for stable URLs; the user-facing label is now
+  // "This Month" / "Este mes" to disambiguate from the AdminOverview page.
+  { key: 'overview', labelKey: 'admin.analytics.tabThisMonth', fallback: 'This Month', icon: LayoutDashboard },
   { key: 'growth', labelKey: 'admin.analytics.tabGrowth', fallback: 'Growth', icon: Sprout },
   { key: 'engagement', labelKey: 'admin.analytics.tabEngagement', fallback: 'Engagement', icon: Zap },
   { key: 'deep-dives', labelKey: 'admin.analytics.tabDeepDives', fallback: 'Deep Dives', icon: Microscope },
@@ -296,7 +300,14 @@ export default function AdminAnalytics() {
   const setActiveTab = useCallback((tab) => {
     setSearchParams({ tab }, { replace: true });
   }, [setSearchParams]);
-  const [period, setPeriod] = useState('30d');
+  // Period is shared across Insights pages via InsightsRangeContext.
+  // If the context's value isn't one of this page's PERIODS choices
+  // (e.g. NPS set 180d which Analytics doesn't offer), fall back to '30d'
+  // for display + queries without overwriting the shared state.
+  const { periodDays: ctxPeriodDays, setPeriodDays } = useInsightsRange();
+  const matchedPeriod = PERIODS.find((p) => p.days === ctxPeriodDays) ?? PERIODS.find((p) => p.key === '30d');
+  const period = matchedPeriod.key;
+  const setPeriod = (key) => setPeriodDays((PERIODS.find((p) => p.key === key) || {}).days ?? null);
 
   const ANALYTICS_TABS = ANALYTICS_TAB_KEYS.map(tab => ({
     ...tab,
@@ -360,12 +371,19 @@ export default function AdminAnalytics() {
                 </>
               );
               if (tabKey === 'growth') return (
-                <FadeIn delay={30}>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-                    <GrowthChart gymId={gymId} period={period} periodDays={periodDays} />
-                    <RetentionChart gymId={gymId} period={period} periodDays={periodDays} />
-                  </div>
-                </FadeIn>
+                <>
+                  <FadeIn delay={30}>
+                    <div className="mb-5">
+                      <LTVCard gymId={gymId} />
+                    </div>
+                  </FadeIn>
+                  <FadeIn delay={40}>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+                      <GrowthChart gymId={gymId} period={period} periodDays={periodDays} />
+                      <RetentionChart gymId={gymId} period={period} periodDays={periodDays} />
+                    </div>
+                  </FadeIn>
+                </>
               );
               if (tabKey === 'engagement') return (
                 <>

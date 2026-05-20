@@ -446,7 +446,14 @@ export default function AdminChallenges() {
             <div className="text-center py-20">
               <Trophy size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-muted)' }} />
               <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>{emptyMsgMap[tabKey]}</p>
-              <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.challenges.noChallengesHint', 'Create your first challenge to get members competing')}</p>
+              <p className="text-[12px] mt-1 mb-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.challenges.noChallengesHint', 'Create your first challenge to get members competing')}</p>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}
+              >
+                <Plus size={14} /> {t('admin.challenges.createFirst', 'Create your first challenge')}
+              </button>
             </div>
           );
           return (
@@ -454,6 +461,29 @@ export default function AdminChallenges() {
               {filtered.map((c, idx) => {
                 const badge = statusBadge(c);
                 const isOpen = expanded === c.id;
+                const isEnded = isPast(new Date(c.end_date));
+                // Prize status — visible in the card header for Past challenges
+                // so admins don't have to expand to know whether prizes need
+                // attention.
+                const hasRewardConfig = (() => {
+                  if (!c.reward_description) return false;
+                  // reward_description is sometimes a JSON array, sometimes a plain string
+                  try {
+                    const parsed = JSON.parse(c.reward_description);
+                    if (Array.isArray(parsed)) return parsed.length > 0;
+                  } catch {}
+                  return String(c.reward_description).trim().length > 0;
+                })();
+                let prizePill = null;
+                if (isEnded) {
+                  if (c._prizesAwarded) {
+                    prizePill = { tone: 'good', label: t('admin.challenges.pillPrizesAwarded', 'Prizes awarded') };
+                  } else if (hasRewardConfig) {
+                    prizePill = { tone: 'warn', label: t('admin.challenges.pillAwaitingPrize', 'Awaiting prize award') };
+                  } else {
+                    prizePill = { tone: 'outline', label: t('admin.challenges.pillNoPrizes', 'No prizes set') };
+                  }
+                }
                 return (
                   <FadeIn key={c.id} delay={idx * 40}>
                     <AdminCard hover className="overflow-hidden !p-0">
@@ -471,20 +501,30 @@ export default function AdminChallenges() {
                           <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                             {format(new Date(c.start_date), 'MMM d', dateFnsLocale)} – {format(new Date(c.end_date), 'MMM d, yyyy', dateFnsLocale)}
                           </p>
-                          <div className="flex md:hidden items-center gap-2 mt-1.5">
+                          <div className="flex md:hidden items-center gap-2 mt-1.5 flex-wrap">
                             <span className={`admin-pill admin-pill--${badge.tone} flex-shrink-0`}>
                               {t(badge.labelKey)}
                             </span>
                             <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                               <Users size={11} />
-                              {c._participantCount}
+                              {c._participantCount} {t('admin.challenges.participantsShort', 'participants')}
                             </span>
+                            {prizePill && (
+                              <span className={`admin-pill admin-pill--${prizePill.tone} flex-shrink-0`}>
+                                {prizePill.label}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="hidden md:flex items-center gap-1.5 text-[11px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
                           <Users size={11} />
                           <span>{c._participantCount}</span>
                         </div>
+                        {prizePill && (
+                          <span className={`hidden md:inline-flex admin-pill admin-pill--${prizePill.tone} flex-shrink-0`}>
+                            {prizePill.label}
+                          </span>
+                        )}
                         <span className={`hidden md:inline-flex admin-pill admin-pill--${badge.tone} flex-shrink-0`}>
                           {t(badge.labelKey)}
                         </span>
@@ -569,7 +609,7 @@ export default function AdminChallenges() {
                               <div className="mb-4 rounded-xl p-3 border" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
                                 <div className="flex items-center gap-1.5 mb-2">
                                   <Gift size={12} style={{ color: 'var(--color-accent)' }} />
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-accent)' }}>{t('admin.challenges.rewards', 'Rewards')}</p>
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-accent)' }}>{t('admin.challenges.rewards', 'Prizes')}</p>
                                 </div>
                                 <div className="space-y-1.5">
                                   {rewards.map((r, i) => (

@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Bell, AlertTriangle, UserPlus, Calendar, MessageCircle,
   Star, ShieldAlert, TrendingDown, Gift, Lock, Award, Megaphone,
-  Server, CheckCheck, Trash2, X, Filter,
+  Server, CheckCheck, Trash2, X, Filter, Settings as SettingsIcon, Inbox, SlidersHorizontal, ArrowLeft,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,8 +16,9 @@ import logger from '../../lib/logger';
 import { sanitize } from '../../lib/sanitize';
 import {
   AdminPageShell, PageHeader, AdminCard, StatCard,
-  FadeIn, SectionLabel,
+  FadeIn, SectionLabel, AdminTabs,
 } from '../../components/admin';
+import AdminNotificationPrefs from './AdminNotificationPrefs';
 
 // ── Admin-specific type metadata ────────────────────────────────────
 const TYPE_META = {
@@ -80,11 +82,33 @@ export default function AdminNotifications() {
   const { data: queryItems, isLoading } = useNotifications(user?.id, 'admin');
   const { invalidateNotifications } = useInvalidate();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Local tab state — deep-linkable via ?tab=preferences
+  const [tab, setTab] = useState(() => (searchParams.get('tab') === 'preferences' ? 'preferences' : 'inbox'));
+
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('all');
   const [marking, setMarking] = useState(false);
 
-  useEffect(() => { document.title = `${t('adminNotifications.title', 'Notifications & Alerts')} | TuGymPR`; }, [t]);
+  // Keep URL in sync when user changes tab from inside the page.
+  useEffect(() => {
+    const current = searchParams.get('tab');
+    if (tab === 'preferences' && current !== 'preferences') {
+      const next = new URLSearchParams(searchParams);
+      next.set('tab', 'preferences');
+      setSearchParams(next, { replace: true });
+    } else if (tab === 'inbox' && current) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
+    }
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pageTitle = tab === 'preferences'
+    ? t('admin.notifications.preferencesTitle', 'Notification preferences')
+    : t('adminNotifications.title', 'Notifications & Alerts');
+
+  useEffect(() => { document.title = `${pageTitle} | TuGymPR`; }, [pageTitle]);
 
   useEffect(() => { if (queryItems) setItems(queryItems); }, [queryItems]);
 
@@ -218,40 +242,103 @@ export default function AdminNotifications() {
     if (route) navigate(route);
   };
 
+  const TABS = [
+    { key: 'inbox',       label: t('admin.notifications.tabs.inbox', 'Inbox'),             icon: Inbox },
+    { key: 'preferences', label: t('admin.notifications.tabs.preferences', 'Preferences'), icon: SlidersHorizontal },
+  ];
+
+  const subtitle = tab === 'preferences'
+    ? t('admin.notifications.preferencesSubtitle', 'Choose which alerts you want to receive and how.')
+    : t('adminNotifications.subtitle', 'Real-time alerts about your gym, members, classes, and system health.');
+
   return (
     <AdminPageShell>
       <PageHeader
-        title={t('adminNotifications.title', 'Notifications & Alerts')}
-        subtitle={t('adminNotifications.subtitle', 'Real-time alerts about your gym, members, classes, and system health.')}
+        title={pageTitle}
+        subtitle={subtitle}
         actions={
-          <div className="flex items-center gap-2 flex-wrap">
-            {unreadCount > 0 && (
+          tab === 'inbox' ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Back-to-settings appears only when the admin reached this tab
+                  from the Settings hub (deep-link adds ?from=settings). On the
+                  inbox tab the link is hidden — admins on the main alerts page
+                  don't need a Settings escape hatch. */}
+              {searchParams.get('from') === 'settings' && (
+                <Link
+                  to="/admin/settings"
+                  className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap"
+                  style={{ color: 'var(--color-text-muted)', borderColor: 'var(--color-border-subtle)' }}
+                >
+                  <ArrowLeft size={13} />
+                  {t('admin.settings.title', 'Configuración')}
+                </Link>
+              )}
               <button
                 type="button"
-                onClick={markAllRead}
-                disabled={marking}
-                className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap disabled:opacity-50"
-                style={{ color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
-              >
-                <CheckCheck size={13} />
-                {t('notifications.markAllRead', 'Mark all read')}
-              </button>
-            )}
-            {items.length > 0 && (
-              <button
-                type="button"
-                onClick={clearAll}
+                onClick={() => setTab('preferences')}
+                aria-label={t('admin.notifications.openPreferences', 'Notification preferences')}
                 className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap"
-                style={{ color: 'var(--color-danger)', borderColor: 'color-mix(in srgb, var(--color-danger) 25%, transparent)' }}
+                style={{ color: 'var(--color-text-muted)', borderColor: 'var(--color-border-subtle)' }}
               >
-                <Trash2 size={13} />
-                {t('notifications.clearAll', 'Clear all')}
+                <SettingsIcon size={13} />
+                {t('admin.notifications.preferencesShort', 'Preferences')}
               </button>
-            )}
-          </div>
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllRead}
+                  disabled={marking}
+                  className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap disabled:opacity-50"
+                  style={{ color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
+                >
+                  <CheckCheck size={13} />
+                  {t('notifications.markAllRead', 'Mark all read')}
+                </button>
+              )}
+              {items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap"
+                  style={{ color: 'var(--color-danger)', borderColor: 'color-mix(in srgb, var(--color-danger) 25%, transparent)' }}
+                >
+                  <Trash2 size={13} />
+                  {t('notifications.clearAll', 'Clear all')}
+                </button>
+              )}
+            </div>
+          ) : (
+            // Preferences tab — always show a back link to the inbox; if we
+            // arrived from Settings, prefer that as the back target so the
+            // mental model "I came from Settings" is honored.
+            <div className="flex items-center gap-2 flex-wrap">
+              <Link
+                to={searchParams.get('from') === 'settings' ? '/admin/settings' : '/admin/notifications'}
+                onClick={() => searchParams.get('from') !== 'settings' && setTab('inbox')}
+                className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap"
+                style={{ color: 'var(--color-text-muted)', borderColor: 'var(--color-border-subtle)' }}
+              >
+                <ArrowLeft size={13} />
+                {searchParams.get('from') === 'settings'
+                  ? t('admin.settings.title', 'Configuración')
+                  : t('admin.notifications.tabs.inbox', 'Bandeja')}
+              </Link>
+            </div>
+          )
         }
       />
 
+      {/* Tab strip */}
+      <div className="mt-4">
+        <AdminTabs tabs={TABS} active={tab} onChange={setTab} idPrefix="admin-notif-tab" />
+      </div>
+
+      {tab === 'preferences' ? (
+        <FadeIn delay={0.1} className="mt-4">
+          <AdminNotificationPrefs />
+        </FadeIn>
+      ) : (
+        <>
       {/* Stat strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mt-6 mb-6">
         <StatCard
@@ -267,6 +354,7 @@ export default function AdminNotifications() {
           icon={AlertTriangle}
           borderColor="var(--color-danger)"
           delay={0.05}
+          onClick={() => setFilter('risk')}
         />
         <StatCard
           label={t('adminNotifications.stats.today', 'Today')}
@@ -281,6 +369,7 @@ export default function AdminNotifications() {
           icon={Filter}
           borderColor="var(--color-text-subtle)"
           delay={0.15}
+          onClick={() => setFilter('all')}
         />
       </div>
 
@@ -415,6 +504,8 @@ export default function AdminNotifications() {
           </div>
         )}
       </FadeIn>
+        </>
+      )}
     </AdminPageShell>
   );
 }

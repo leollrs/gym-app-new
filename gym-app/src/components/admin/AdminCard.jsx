@@ -11,10 +11,12 @@ export default function AdminCard({
   borderLeft,
   onClick,
   clipContent = true,
+  id,
 }) {
   const overflowClass = clipContent ? 'overflow-hidden' : 'overflow-visible';
   return (
     <div
+      id={id}
       className={`admin-card ${overflowClass} ${padding} ${
         hover ? 'admin-card-hover' : ''
       } ${onClick ? 'cursor-pointer' : ''} ${className}`}

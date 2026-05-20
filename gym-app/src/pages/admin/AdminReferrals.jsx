@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Gift, Users, TrendingUp, CheckCircle, Clock, XCircle, Search, Download, Eye, ChevronDown, Save, Settings2, Milestone, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X } from 'lucide-react';
+import { Gift, Users, TrendingUp, CheckCircle, Clock, XCircle, Search, Download, Eye, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -9,6 +9,8 @@ import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { useTranslation } from 'react-i18next';
 import { PageHeader, AdminCard, FadeIn, CardSkeleton, AdminPageShell, StatCard } from '../../components/admin';
+import ReferralProgramConfig from './components/ReferralProgramConfig';
+import ReferralMilestonesCard from './components/ReferralMilestonesCard';
 
 const PERIODS = [
   { key: '7d', days: 7 },
@@ -44,602 +46,6 @@ function AvatarInitial({ name }) {
   );
 }
 
-// ── Referral Program Config (moved from AdminSettings) ─────
-const DEFAULT_REFERRAL_CONFIG = {
-  enabled: true,
-  approval_required: true,
-  max_per_month: null,
-  referrer_reward: { type: 'points', value: 250 },
-  referred_reward: { type: 'points', value: 100 },
-};
-
-// Tolerate legacy shapes saved by older builds:
-//   { type: 'points', points: 5000, label: '...' }   → { type: 'points', value: 5000 }
-//   { type: 'points', value: 250 }                   → unchanged
-//   { type: 'gym_reward', reward_id: '<uuid>' }      → unchanged
-function normalizeRewardShape(r) {
-  if (!r || typeof r !== 'object') return { type: 'points', value: 0 };
-  if (r.type === 'gym_reward') {
-    return { type: 'gym_reward', reward_id: r.reward_id || '' };
-  }
-  // points (default)
-  const v = r.value ?? r.points ?? 0;
-  return { type: 'points', value: Number(v) || 0 };
-}
-
-// Shared editor: pick "Points" (numeric) or "From inventory" (gym_rewards row).
-// Used by both ReferralProgramConfig (referrer/referred) and ReferralMilestonesCard.
-function RewardEditor({ label, reward, onChange, rewards, rewardLabel, t, compact = false }) {
-  const type = reward?.type === 'gym_reward' ? 'gym_reward' : 'points';
-  const inputBase = {
-    background: 'var(--color-bg-deep)',
-    border: '1px solid var(--color-border-subtle)',
-    color: 'var(--color-text-primary)',
-  };
-  const padCls = compact ? 'px-3 py-2' : 'px-3 py-2.5';
-
-  return (
-    <div>
-      {label && (
-        <label className="block text-[11px] uppercase mb-1.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em', fontWeight: 800 }}>
-          {label}
-        </label>
-      )}
-      <div className="flex flex-col gap-1.5">
-        <select
-          value={type}
-          onChange={(e) => {
-            const nextType = e.target.value;
-            if (nextType === 'gym_reward') {
-              onChange({ type: 'gym_reward', reward_id: reward?.reward_id || '' });
-            } else {
-              onChange({ type: 'points', value: Number(reward?.value) || 0 });
-            }
-          }}
-          className={`w-full rounded-xl ${padCls} text-[13px] outline-none`}
-          style={inputBase}
-        >
-          <option value="points">{t('admin.referral.typePoints', 'Points')}</option>
-          <option value="gym_reward">{t('admin.referral.typeGymReward', 'From inventory')}</option>
-        </select>
-
-        {type === 'points' ? (
-          <input
-            type="number" min="0"
-            value={reward?.value ? String(reward.value) : ''}
-            onChange={(e) => {
-              const raw = e.target.value;
-              if (raw === '') {
-                onChange({ type: 'points', value: 0 });
-                return;
-              }
-              const n = parseInt(raw, 10);
-              onChange({ type: 'points', value: Number.isFinite(n) ? n : 0 });
-            }}
-            placeholder={t('admin.referral.pointsPlaceholder', 'e.g. 250')}
-            className={`w-full rounded-xl ${padCls} text-[13px] outline-none`}
-            style={inputBase}
-          />
-        ) : (
-          <select
-            value={reward?.reward_id || ''}
-            onChange={(e) => onChange({ type: 'gym_reward', reward_id: e.target.value })}
-            className={`w-full rounded-xl ${padCls} text-[13px] outline-none`}
-            style={inputBase}
-          >
-            <option value="">{t('admin.referrals.selectReward', 'Select reward...')}</option>
-            {(rewards || []).map((r) => (
-              <option key={r.id} value={r.id}>{rewardLabel(r)}</option>
-            ))}
-          </select>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ReferralProgramConfig({ gymId, config, t, isEs }) {
-  const { showToast } = useToast();
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState(DEFAULT_REFERRAL_CONFIG);
-  const [saving, setSaving] = useState(false);
-
-  // Active rewards inventory (shared picker for referrer + referred)
-  const { data: rewards = [] } = useQuery({
-    queryKey: ['admin', 'rewards', gymId, 'active'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('gym_rewards')
-        .select('id, name, name_es, emoji_icon, is_active, sort_order')
-        .eq('gym_id', gymId)
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!gymId,
-  });
-
-  useEffect(() => {
-    const incoming = config || {};
-    setDraft({
-      ...DEFAULT_REFERRAL_CONFIG,
-      ...incoming,
-      referrer_reward: normalizeRewardShape(incoming.referrer_reward),
-      referred_reward: normalizeRewardShape(incoming.referred_reward),
-    });
-  }, [config]);
-
-  const setReward = (which, next) => setDraft(prev => ({ ...prev, [which]: next }));
-
-  const set = (path, val) => setDraft(prev => {
-    const next = { ...prev };
-    if (path.includes('.')) {
-      const [a, b] = path.split('.');
-      next[a] = { ...next[a], [b]: val };
-    } else {
-      next[path] = val;
-    }
-    return next;
-  });
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const cleanReward = (r) => {
-        if (r.type === 'gym_reward') {
-          if (!r.reward_id) {
-            throw new Error(t('admin.referral.errorPickReward', 'Pick a reward from inventory'));
-          }
-          return { type: 'gym_reward', reward_id: r.reward_id };
-        }
-        const v = parseInt(r.value, 10);
-        if (!Number.isFinite(v) || v < 0) {
-          throw new Error(t('admin.referral.errorInvalidPoints', 'Invalid point value'));
-        }
-        return { type: 'points', value: v };
-      };
-
-      const payload = {
-        ...draft,
-        max_per_month: draft.max_per_month ? Number(draft.max_per_month) : null,
-        referrer_reward: cleanReward(draft.referrer_reward),
-        referred_reward: cleanReward(draft.referred_reward),
-      };
-      // .select() so an RLS-silent-fail (0 rows updated) surfaces as an error
-      // instead of looking like a successful no-op.
-      const { data, error } = await supabase
-        .from('gyms')
-        .update({ referral_config: payload, updated_at: new Date().toISOString() })
-        .eq('id', gymId)
-        .select('id, referral_config');
-      if (error) throw error;
-      if (!data || data.length === 0) {
-        throw new Error(t('admin.referral.errorRlsBlocked', 'Save was blocked — you may not have admin permission on this gym.'));
-      }
-      // Invalidate BOTH key shapes — fetch uses adminKeys.referrals.config,
-      // older code paths used the legacy 'referral-config' key. Invalidate
-      // the whole referrals namespace too so the milestones list & stats
-      // pick up any cascading changes.
-      queryClient.invalidateQueries({ queryKey: adminKeys.referrals.config(gymId) });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'referral-config', gymId] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'referrals', gymId] });
-      showToast(t('admin.settings.saved', 'Saved!'), 'success');
-    } catch (err) {
-      showToast(err.message || 'Failed to save', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const rewardLabel = (r) => r ? `${r.emoji_icon || '🎁'} ${(isEs && r.name_es) ? r.name_es : r.name}` : '—';
-
-  return (
-    <FadeIn>
-      <AdminCard hover className="mt-6 p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2">
-            <Settings2 size={16} style={{ color: 'var(--color-accent)' }} />
-            <h3 className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-              {t('admin.referral.sectionTitle', 'Referral program')}
-            </h3>
-          </div>
-          <label className="flex items-center gap-2 text-[12px] font-semibold cursor-pointer" style={{ color: draft.enabled ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
-            <input
-              type="checkbox" className="sr-only"
-              checked={!!draft.enabled}
-              onChange={e => set('enabled', e.target.checked)}
-            />
-            <span>{draft.enabled ? t('admin.settings.enabled', 'Enabled') : t('admin.settings.disabled', 'Disabled')}</span>
-          </label>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          <RewardEditor
-            label={t('admin.referral.referrerReward', 'Referrer reward')}
-            reward={draft.referrer_reward}
-            onChange={(r) => setReward('referrer_reward', r)}
-            rewards={rewards}
-            rewardLabel={rewardLabel}
-            t={t}
-          />
-          <RewardEditor
-            label={t('admin.referral.referredReward', 'Referred friend reward')}
-            reward={draft.referred_reward}
-            onChange={(r) => setReward('referred_reward', r)}
-            rewards={rewards}
-            rewardLabel={rewardLabel}
-            t={t}
-          />
-          <div>
-            <label className="block text-[11px] uppercase mb-1.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em', fontWeight: 800 }}>
-              {t('admin.referral.maxPerMonth', 'Max referrals per member per month')}
-            </label>
-            <input
-              type="number" min="0"
-              value={draft.max_per_month ?? ''}
-              onChange={e => set('max_per_month', e.target.value || null)}
-              placeholder={t('admin.referral.unlimited', 'Unlimited')}
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none"
-              style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-            />
-          </div>
-          <div className="flex items-end">
-            <label className="flex items-center gap-2 text-[12px] font-medium cursor-pointer" style={{ color: 'var(--color-text-primary)' }}>
-              <input
-                type="checkbox"
-                checked={!!draft.approval_required}
-                onChange={e => set('approval_required', e.target.checked)}
-                className="w-4 h-4 rounded"
-              />
-              {t('admin.referral.approvalRequired', 'Require admin approval before reward is granted')}
-            </label>
-          </div>
-        </div>
-
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
-          >
-            <Save size={14} />
-            {saving ? t('admin.settings.saving', 'Saving...') : t('admin.settings.save', 'Save')}
-          </button>
-        </div>
-      </AdminCard>
-    </FadeIn>
-  );
-}
-
-// ── Referral Milestones (moved from AdminRewards Performance tab) ──
-function ReferralMilestonesCard({ gymId, t, isEs }) {
-  const { showToast } = useToast();
-  const queryClient = useQueryClient();
-  const milestonesKey = ['admin', 'referrals', gymId, 'milestones'];
-
-  const [count, setCount] = useState('');
-  const [newReward, setNewReward] = useState({ type: 'points', value: 250 });
-  const [editingId, setEditingId] = useState(null);
-  const [editCount, setEditCount] = useState('');
-  const [editReward, setEditReward] = useState({ type: 'points', value: 0 });
-
-  // Active rewards (for the picker)
-  const { data: rewards = [] } = useQuery({
-    queryKey: ['admin', 'rewards', gymId, 'active'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('gym_rewards')
-        .select('id, name, name_es, emoji_icon, is_active')
-        .eq('gym_id', gymId)
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!gymId,
-  });
-
-  // Milestones list
-  const { data: milestones = [], isLoading } = useQuery({
-    queryKey: milestonesKey,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('referral_milestones')
-        .select('*, gym_rewards(name, name_es, emoji_icon)')
-        .eq('gym_id', gymId)
-        .order('referral_count', { ascending: true });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!gymId,
-  });
-
-  const rewardLabel = (r) => r ? `${r.emoji_icon || '🎁'} ${(isEs && r.name_es) ? r.name_es : r.name}` : '—';
-
-  // Build a referral_milestones row from a {type,value|reward_id} reward.
-  // DB CHECK constraint enforces exactly one of (reward_id, points_amount).
-  const milestoneRowFromReward = (r) => {
-    if (r.type === 'gym_reward') {
-      if (!r.reward_id) throw new Error(t('admin.referrals.errorSelectReward', 'Select a reward'));
-      return { reward_id: r.reward_id, points_amount: null };
-    }
-    const v = parseInt(r.value, 10);
-    if (!Number.isFinite(v) || v < 1) {
-      throw new Error(t('admin.referral.errorInvalidPoints', 'Invalid point value'));
-    }
-    return { reward_id: null, points_amount: v };
-  };
-
-  const addMutation = useMutation({
-    mutationFn: async () => {
-      const n = parseInt(count, 10);
-      if (!n || n < 1) throw new Error(t('admin.referrals.errorInvalidCount', 'Invalid referral count'));
-      const row = milestoneRowFromReward(newReward);
-      const { error } = await supabase.from('referral_milestones').insert({
-        gym_id: gymId,
-        referral_count: n,
-        ...row,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: milestonesKey });
-      setCount(''); setNewReward({ type: 'points', value: 250 });
-      showToast(t('admin.referrals.milestoneAdded', 'Milestone added'), 'success');
-    },
-    onError: (err) => showToast(err.message, 'error'),
-  });
-
-  const toggleActiveMutation = useMutation({
-    mutationFn: async ({ id, is_active }) => {
-      const { error } = await supabase
-        .from('referral_milestones')
-        .update({ is_active })
-        .eq('id', id)
-        .eq('gym_id', gymId);
-      if (error) throw error;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: milestonesKey }),
-    onError: (err) => showToast(err.message, 'error'),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async () => {
-      const n = parseInt(editCount, 10);
-      if (!n || n < 1) throw new Error(t('admin.referrals.errorInvalidCount', 'Invalid referral count'));
-      const row = milestoneRowFromReward(editReward);
-      const { error } = await supabase
-        .from('referral_milestones')
-        .update({ referral_count: n, ...row })
-        .eq('id', editingId)
-        .eq('gym_id', gymId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: milestonesKey });
-      setEditingId(null); setEditCount(''); setEditReward({ type: 'points', value: 0 });
-      showToast(t('admin.referrals.milestoneUpdated', 'Milestone updated'), 'success');
-    },
-    onError: (err) => showToast(err.message, 'error'),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id) => {
-      const { error } = await supabase
-        .from('referral_milestones')
-        .delete()
-        .eq('id', id)
-        .eq('gym_id', gymId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: milestonesKey });
-      showToast(t('admin.referrals.milestoneDeleted', 'Milestone deleted'), 'success');
-    },
-    onError: (err) => showToast(err.message, 'error'),
-  });
-
-  const startEdit = (m) => {
-    setEditingId(m.id);
-    setEditCount(String(m.referral_count));
-    if (m.reward_id) {
-      setEditReward({ type: 'gym_reward', reward_id: m.reward_id });
-    } else {
-      setEditReward({ type: 'points', value: m.points_amount ?? 0 });
-    }
-  };
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditCount('');
-    setEditReward({ type: 'points', value: 0 });
-  };
-
-  return (
-    <FadeIn>
-      <AdminCard hover className="mt-6 p-4 sm:p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <Milestone size={16} style={{ color: 'var(--color-accent)' }} />
-          <h3 className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-            {t('admin.referrals.milestonesTitle', 'Referral milestones')}
-          </h3>
-        </div>
-        <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
-          {t('admin.referrals.milestonesDesc', 'Reward members automatically when they hit a referral count.')}
-        </p>
-
-        {/* Add row */}
-        <div className="flex flex-col sm:flex-row sm:items-end gap-2.5 sm:gap-3 pb-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-          <div className="w-full sm:w-28">
-            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.referrals.referralCount', 'Referrals')}
-            </label>
-            <input
-              type="number" min="1"
-              value={count}
-              onChange={e => setCount(e.target.value)}
-              placeholder="3"
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none"
-              style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-            />
-          </div>
-          <div className="flex-1 min-w-0">
-            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.referrals.selectReward', 'Reward')}
-            </label>
-            <RewardEditor
-              reward={newReward}
-              onChange={setNewReward}
-              rewards={rewards}
-              rewardLabel={rewardLabel}
-              t={t}
-            />
-          </div>
-          <button
-            onClick={() => addMutation.mutate()}
-            disabled={
-              addMutation.isPending
-              || !count
-              || (newReward.type === 'gym_reward' ? !newReward.reward_id : !(parseInt(newReward.value, 10) > 0))
-            }
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
-          >
-            <Plus size={14} />
-            {t('admin.referrals.addMilestone', 'Add')}
-          </button>
-        </div>
-
-        {/* List */}
-        {isLoading ? (
-          <div className="py-6 text-center text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('common:loading', 'Loading…')}</div>
-        ) : milestones.length === 0 ? (
-          <div className="py-8 text-center">
-            <Milestone size={28} className="mx-auto mb-2" style={{ color: 'var(--color-text-muted)' }} />
-            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.referrals.noMilestones', 'No referral milestones configured yet.')}
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
-            {milestones.map(m => {
-              const isEditing = editingId === m.id;
-              const rw = m.gym_rewards;
-              return (
-                <div key={m.id} className="py-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-                  {isEditing ? (
-                    <div className="flex flex-col sm:flex-row sm:items-end gap-2">
-                      <input
-                        type="number" min="1"
-                        value={editCount}
-                        onChange={e => setEditCount(e.target.value)}
-                        className="w-full sm:w-28 rounded-xl px-3 py-2 text-[13px] outline-none"
-                        style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <RewardEditor
-                          reward={editReward}
-                          onChange={setEditReward}
-                          rewards={rewards}
-                          rewardLabel={rewardLabel}
-                          t={t}
-                          compact
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => updateMutation.mutate()}
-                          disabled={updateMutation.isPending}
-                          className="px-3 py-2 rounded-xl text-[12px] font-semibold disabled:opacity-50"
-                          style={{ background: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
-                        >
-                          <Save size={12} className="inline mr-1" />
-                          {t('admin.referrals.save', 'Save')}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="px-3 py-2 rounded-xl text-[12px] font-medium"
-                          style={{ background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className={`flex items-center gap-3 ${!m.is_active ? 'opacity-50' : ''}`}>
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <span className="text-[14px] font-bold tabular-nums w-8 text-right" style={{ color: 'var(--color-accent)' }}>
-                          {m.referral_count}
-                        </span>
-                        <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                          {t('admin.referrals.referralsNeeded', 'referrals')}
-                        </span>
-                        <span className="text-[12px] mx-1" style={{ color: 'var(--color-text-muted)' }}>→</span>
-                        {m.points_amount ? (
-                          <>
-                            <span className="text-[15px]">⭐</span>
-                            <span className="text-[13px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
-                              +{m.points_amount} {t('admin.referrals.pointsLabel', 'pts')}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-[15px]">{rw?.emoji_icon || '🎁'}</span>
-                            <span className="text-[13px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
-                              {(isEs && rw?.name_es) ? rw.name_es : (rw?.name || t('admin.referrals.unknownReward', 'Unknown'))}
-                            </span>
-                          </>
-                        )}
-                        {!m.is_active && (
-                          <span className="admin-pill admin-pill--hot" style={{ fontSize: '9.5px' }}>
-                            {t('admin.referrals.inactive', 'Inactive')}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => toggleActiveMutation.mutate({ id: m.id, is_active: !m.is_active })}
-                        className="w-8 h-8 rounded-lg grid place-items-center transition-colors"
-                        style={{ border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}
-                        aria-label={m.is_active ? t('admin.referrals.deactivate', 'Deactivate') : t('admin.referrals.activate', 'Activate')}
-                        title={m.is_active ? t('admin.referrals.deactivate', 'Deactivate') : t('admin.referrals.activate', 'Activate')}
-                      >
-                        {m.is_active
-                          ? <ToggleRight size={14} style={{ color: 'var(--color-success)' }} />
-                          : <ToggleLeft size={14} style={{ color: 'var(--color-text-muted)' }} />}
-                      </button>
-                      <button
-                        onClick={() => startEdit(m)}
-                        className="w-8 h-8 rounded-lg grid place-items-center transition-colors"
-                        style={{ border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}
-                        aria-label={t('admin.referrals.editMilestone', 'Edit milestone')}
-                        title={t('admin.referrals.editMilestone', 'Edit')}
-                      >
-                        <Pencil size={13} style={{ color: 'var(--color-text-muted)' }} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm(t('admin.referrals.deleteConfirm', 'Delete this milestone?'))) {
-                            deleteMutation.mutate(m.id);
-                          }
-                        }}
-                        className="w-8 h-8 rounded-lg grid place-items-center transition-colors"
-                        style={{ border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}
-                        aria-label={t('admin.referrals.deleteMilestone', 'Delete milestone')}
-                      >
-                        <Trash2 size={13} style={{ color: 'var(--color-danger)' }} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </AdminCard>
-    </FadeIn>
-  );
-}
 
 export default function AdminReferrals() {
   const { t, i18n } = useTranslation('pages');
@@ -790,17 +196,62 @@ export default function AdminReferrals() {
 
   const MEDALS = ['🥇', '🥈', '🥉'];
 
+  // One-line program status banner — surfaces the current config so admins
+  // see "what's running" before scrolling through the list. Hidden when
+  // config hasn't loaded yet to avoid a flicker.
+  const referrerReward = config?.referrer_reward ?? config?.points_per_referral ?? null;
+  const approvalMode = config?.require_admin_approval
+    ? t('admin.referrals.approvalManual', 'manual')
+    : t('admin.referrals.approvalAuto', 'auto');
+  const programActive = !!config;
+
   return (
     <AdminPageShell>
       <PageHeader title={t('admin.referrals.title', 'Referrals')} subtitle={t('admin.referrals.subtitle', 'Track and manage member referrals')} />
 
+      {/* Status banner — visible before stats so admins know what's live. */}
+      {programActive && (
+        <div
+          className="flex items-center gap-2 mt-5 px-3.5 py-2 rounded-xl text-[12px] font-semibold flex-wrap"
+          style={{
+            background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+            color: 'var(--color-admin-text-sub)',
+          }}
+        >
+          <Gift size={13} style={{ color: 'var(--color-accent)' }} />
+          <span>
+            {t('admin.referrals.statusReward', 'Reward')}:{' '}
+            <span style={{ color: 'var(--color-admin-text)' }}>
+              {referrerReward != null ? `${referrerReward} ${t('admin.referrals.pts', 'pts')}` : '—'}
+            </span>
+          </span>
+          <span style={{ color: 'var(--color-admin-text-muted)' }}>·</span>
+          <span>
+            {t('admin.referrals.statusApproval', 'Approval')}:{' '}
+            <span style={{ color: 'var(--color-admin-text)' }}>{approvalMode}</span>
+          </span>
+          <span style={{ color: 'var(--color-admin-text-muted)' }}>·</span>
+          <span
+            className="admin-pill admin-pill--good"
+            style={{ padding: '1px 8px', fontSize: 10 }}
+          >
+            {t('admin.referrals.statusActive', 'Active')}
+          </span>
+        </div>
+      )}
+
       {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mt-6 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mt-4 mb-4">
         <StatCard label={t('admin.referrals.totalReferrals', 'Total Referrals')} value={total} icon={Gift} borderColor="var(--color-accent)" delay={0} />
         <StatCard label={t('admin.referrals.completed', 'Completed')} value={completed} icon={CheckCircle} borderColor="var(--color-success)" delay={30} />
         <StatCard label={t('admin.referrals.pending', 'Pending')} value={pending} icon={Clock} borderColor="var(--color-warning)" delay={60} />
         <StatCard label={t('admin.referrals.pointsAwarded', 'Points Awarded')} value={pointsAwarded} icon={TrendingUp} borderColor="var(--color-coach)" delay={90} />
       </div>
+
+      {/* Config + milestones moved up — new gyms can configure before scrolling past empty lists */}
+      <ReferralProgramConfig gymId={gymId} config={config} t={t} isEs={isEs} />
+      <ReferralMilestonesCard gymId={gymId} t={t} isEs={isEs} />
 
       {/* Filters Row */}
       <div className="flex flex-col md:flex-row gap-2.5 mb-4 items-center">
@@ -1006,11 +457,6 @@ export default function AdminReferrals() {
         </div>
       </div>
 
-      {/* Referral program configuration (moved from Settings) */}
-      <ReferralProgramConfig gymId={gymId} config={config} t={t} isEs={isEs} />
-
-      {/* Referral milestones (moved from Rewards Performance tab) */}
-      <ReferralMilestonesCard gymId={gymId} t={t} isEs={isEs} />
     </AdminPageShell>
   );
 }

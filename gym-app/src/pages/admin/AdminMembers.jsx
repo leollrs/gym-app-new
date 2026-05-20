@@ -1,17 +1,15 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, Activity, Snowflake, RefreshCw, MessageSquare, Send, QrCode } from 'lucide-react';
+import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, RefreshCw, MessageSquare, Send, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from 'react-i18next';
-import i18n from 'i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { sendNotification } from '../../lib/notifications';
-import { format, subDays, formatDistanceToNow, differenceInDays } from 'date-fns';
+import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
-import { getRiskTier, fetchMembersWithChurnScores } from '../../lib/churnScore';
 import { exportCSV } from '../../lib/csvExport';
 import { exportGymWorkoutHistory, exportGymPersonalRecords, exportGymBodyMetrics, exportSelectedMembersCSV } from '../../lib/exportData';
 import { logAdminAction } from '../../lib/adminAudit';
@@ -30,126 +28,9 @@ import CreateInviteModal from './components/CreateInviteModal';
 import MemberDetail from './components/MemberDetail';
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
 
-// ── Churn signal translation ─────────────────────────
 import { translateSignal as translateChurnSignal } from '../../lib/churn/signalI18n';
+import { fetchMembers, fetchAllInvites, getInviteStatus, MEMBERS_PAGE_SIZE } from '../../lib/admin/memberQueries';
 export { translateChurnSignal };
-
-// ── Churn risk badge ──────────────────────────────────────
-const ChurnRiskBadge = ({ member, navigate }) => {
-  const score = member.score ?? 0;
-  const tier = getRiskTier(score);
-  if (score < 30) return null;
-  const toneClass = score >= 80 ? 'admin-pill--hot' : score >= 55 ? 'admin-pill--hot' : 'admin-pill--warn';
-  const label = i18n.t(`admin.members.riskTier.${tier.tier}`, { ns: 'pages', defaultValue: tier.label });
-  return (
-    <span onClick={e => { e.stopPropagation(); navigate('/admin/churn'); }}
-      role="link"
-      tabIndex={0}
-      title={i18n.t('admin.members.churnTooltip', { ns: 'pages', defaultValue: '{{label}} — click to view in Churn Intel', label })}
-      className={`admin-pill ${toneClass} flex items-center gap-1 cursor-pointer hover:opacity-80 flex-shrink-0`}>
-      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'currentColor' }} />
-      {label}
-    </span>
-  );
-};
-
-// ── Fallback churn score when DB has no computed row ──────
-function estimateChurnScore(daysInactive, recentWorkouts, neverActive) {
-  let score;
-  if (neverActive || daysInactive > 30) score = 95;
-  else if (daysInactive > 14) score = recentWorkouts === 0 ? 85 : 70;
-  else if (daysInactive > 7) score = recentWorkouts === 0 ? 45 : 30;
-  else score = Math.max(0, 20 - recentWorkouts * 5);
-  score = Math.min(100, Math.max(0, score));
-  // Thresholds aligned with churn engine (lib/churn/riskScoring.js): 80 / 55 / 30
-  const risk_tier = score >= 80 ? 'critical' : score >= 55 ? 'high' : score >= 30 ? 'medium' : 'low';
-  const key_signals = [];
-  if (neverActive) key_signals.push('Never logged a workout');
-  else if (daysInactive > 30) key_signals.push('No activity in 30+ days');
-  else if (daysInactive > 14) key_signals.push('No activity in 14+ days');
-  if (recentWorkouts === 0 && !neverActive) key_signals.push('No workouts in last 14 days');
-  return { score, risk_tier, key_signals };
-}
-
-const MEMBERS_PAGE_SIZE = 200;
-
-// ── Data fetcher ──────────────────────────────────────────
-async function fetchMembers(gymId, page = 0) {
-  const from = page * MEMBERS_PAGE_SIZE;
-  const to = from + MEMBERS_PAGE_SIZE - 1;
-  const [membersRes, followupRes, sessionsRes, scoredAll] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, membership_started_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
-    supabase.from('churn_risk_scores').select('profile_id, followup_sent_at, computed_at').eq('gym_id', gymId).order('computed_at', { ascending: false }),
-    supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()).limit(5000),
-    fetchMembersWithChurnScores(gymId, supabase).catch((err) => {
-      logger.error('AdminMembers: fetchMembersWithChurnScores:', err);
-      return [];
-    }),
-  ]);
-
-  if (membersRes.error) logger.error('AdminMembers: members:', membersRes.error);
-  if (followupRes.error) logger.error('AdminMembers: churn followup:', followupRes.error);
-  if (sessionsRes.error) logger.error('AdminMembers: sessions:', sessionsRes.error);
-
-  const scoredMap = Object.fromEntries((scoredAll || []).map((s) => [s.id, s]));
-  const followupMap = {};
-  (followupRes.data || []).forEach((row) => {
-    const prev = followupMap[row.profile_id];
-    if (!prev || new Date(row.computed_at) > new Date(prev.computed_at)) followupMap[row.profile_id] = row;
-  });
-
-  const sessionsLast14 = {};
-  const lastSessionAt = {};
-  (sessionsRes.data || []).forEach(s => {
-    sessionsLast14[s.profile_id] = (sessionsLast14[s.profile_id] || 0) + 1;
-    if (!lastSessionAt[s.profile_id] || s.started_at > lastSessionAt[s.profile_id]) lastSessionAt[s.profile_id] = s.started_at;
-  });
-
-  const nowMs = Date.now();
-  return (membersRes.data || []).map(m => {
-    const scored = scoredMap[m.id];
-    const effectiveLast = m.last_active_at ?? lastSessionAt[m.id] ?? m.created_at;
-    const recentWorkouts = sessionsLast14[m.id] ?? 0;
-    const daysInactive = Math.floor((nowMs - new Date(effectiveLast)) / 86400000);
-    const neverActive = !m.last_active_at && !lastSessionAt[m.id];
-
-    const fallback = !scored ? estimateChurnScore(daysInactive, recentWorkouts, neverActive) : null;
-    const follow = followupMap[m.id];
-
-    return {
-      ...m,
-      recentWorkouts,
-      lastSessionAt: lastSessionAt[m.id] ?? null,
-      score: scored?.churnScore ?? fallback.score,
-      risk_tier: scored?.riskTier?.tier ?? fallback.risk_tier,
-      key_signals: scored?.keySignals ?? fallback.key_signals,
-      followup_sent_at: follow?.followup_sent_at ?? null,
-      membership_status: m.membership_status ?? 'active',
-      daysInactive,
-      neverActive,
-    };
-  });
-}
-
-// ── All invites fetcher ──────────────────────────────────
-async function fetchAllInvites(gymId) {
-  const { data, error } = await supabase
-    .from('gym_invites')
-    .select('id, member_name, phone, email, invite_code, created_at, expires_at, used_by, used_at')
-    .eq('gym_id', gymId)
-    .order('created_at', { ascending: false });
-
-  if (error) logger.error('AdminMembers: invites:', error);
-  return data || [];
-}
-
-function getInviteStatus(invite) {
-  if (invite.used_by) return 'claimed';
-  const now = new Date();
-  const expiresAt = invite.expires_at ? new Date(invite.expires_at) : null;
-  if (expiresAt && expiresAt < now) return 'expired';
-  return 'pending';
-}
 
 export default function AdminMembers() {
   const { profile } = useAuth();
@@ -177,8 +58,6 @@ export default function AdminMembers() {
   const [selected, setSelected] = useState(null);
   const [showInvite, setShowInvite] = useState(false);
   const [showCreateInvite, setShowCreateInvite] = useState(false);
-  const [bulkConfirm, setBulkConfirm] = useState(false);
-  const [bulkSending, setBulkSending] = useState(false);
   const [resetApprovalId, setResetApprovalId] = useState(null);
   const [inviteFilter, setInviteFilter] = useState('pending');
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -364,14 +243,12 @@ export default function AdminMembers() {
     setSelected(prev => prev?.id === memberId ? { ...prev, membership_status: newStatus } : prev);
   };
 
-  // Thresholds aligned with churn engine (lib/churn/riskScoring.js): 80 / 55 / 30.
-  // Buckets are mutually exclusive — Critical (>=80), At Risk (55-79),
-  // Watch (30-54), Healthy (<30). The four counts sum to total members.
-  const criticalCount = members.filter(m => m.score >= 80).length;
-  const atRiskCount = members.filter(m => m.score >= 55 && m.score < 80).length;
-  const watchCount = members.filter(m => m.score >= 30 && m.score < 55).length;
+  // Lifecycle-only counts. At-risk / critical / watch / healthy churn buckets
+  // live in AdminChurn — this page is a clean directory and intentionally
+  // stays neutral about retention signals.
+  const activeCount = members.filter(m => m.membership_status === 'active').length;
   const frozenCount = members.filter(m => m.membership_status === 'frozen').length;
-  const lowRiskCount = members.filter(m => m.score < 30).length;
+  const unonboardedCount = members.filter(m => m.is_onboarded === false).length;
 
   const filtered = useMemo(() => {
     let list = members;
@@ -379,16 +256,13 @@ export default function AdminMembers() {
       const q = debouncedSearch.toLowerCase();
       list = list.filter(m => (m.full_name || '').toLowerCase().includes(q) || (m.username || '').toLowerCase().includes(q));
     }
-    if (filter === 'critical') list = list.filter(m => m.score >= 80);
-    else if (filter === 'at-risk') list = list.filter(m => m.score >= 55 && m.score < 80);
-    else if (filter === 'watch') list = list.filter(m => m.score >= 30 && m.score < 55);
-    else if (filter === 'healthy') list = list.filter(m => m.score < 30);
-    // When viewing a risk bucket, sort by score DESC so the most-urgent
-    // (and most-inactive) members surface first — otherwise the
-    // last-active-at sort buries never-active members at the bottom.
-    if (filter !== 'all') {
-      list = [...list].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-    }
+    if (filter === 'active') list = list.filter(m => m.membership_status === 'active');
+    else if (filter === 'frozen') list = list.filter(m => m.membership_status === 'frozen');
+    else if (filter === 'unonboarded') list = list.filter(m => m.is_onboarded === false);
+    // Directory sort: alphabetical by name. The previous "sort by score"
+    // tied the directory to churn signals; AdminChurn handles urgency-based
+    // ordering. Here we want a stable, predictable A-Z list.
+    list = [...list].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
     return list;
   }, [members, debouncedSearch, filter]);
 
@@ -399,52 +273,6 @@ export default function AdminMembers() {
   const [visibleCount, setVisibleCount] = useState(10);
   useEffect(() => { setVisibleCount(10); }, [debouncedSearch, filter]);
   const visibleMembers = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-
-  const atRiskFiltered = filtered.filter(m => m.score >= 55);
-
-  const handleBulkFollowup = async () => {
-    if (!gymId) return;
-    setBulkSending(true);
-    const total = atRiskFiltered.length;
-    let successCount = 0;
-    const succeeded = [];
-    for (const m of atRiskFiltered) {
-      try {
-        const first = (m.full_name || 'Member').split(' ')[0];
-        const msg = t('admin.members.followUpBody', `Hey {{first}}, we noticed you haven't been in for a while. We miss you! Come back and let's get back on track together.`, { first });
-        await sendNotification(m.id, gymId, { type: 'churn_followup', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: msg, data: { source: 'admin_bulk_followup' }, dedupKey: `admin_followup_${m.id}_${new Date().toISOString().slice(0, 10)}` });
-        logAdminAction('bulk_followup', 'member', m.id);
-        successCount++;
-        succeeded.push(m);
-      } catch (err) {
-        logger.error('Bulk followup failed for member:', m.id, err);
-      }
-    }
-    if (succeeded.length > 0) {
-      const ts = new Date().toISOString();
-      const rows = succeeded.map((m) => ({
-        profile_id: m.id,
-        gym_id: gymId,
-        score: m.score,
-        risk_tier: m.risk_tier,
-        key_signals: m.key_signals ?? [],
-        computed_at: ts,
-        followup_sent_at: ts,
-      }));
-      const { error: upsertError } = await supabase.from('churn_risk_scores').upsert(rows, { onConflict: 'profile_id,gym_id' });
-      if (upsertError) {
-        logger.error('Bulk followup: churn_risk_scores upsert failed', upsertError);
-        showToast(t('admin.members.bulkScoreUpdateFailed', { defaultValue: 'Follow-ups sent but failed to update risk scores. Please refresh.' }), 'warning');
-      }
-    }
-    if (successCount < total) {
-      showToast(t('admin.members.bulkPartialResult', { success: successCount, total, defaultValue: 'Sent to {{success}} of {{total}} members' }), 'warning');
-    } else if (successCount > 0) {
-      showToast(t('admin.members.bulkFollowupSuccess', { count: successCount, defaultValue: 'Follow-up sent to {{count}} members' }), 'success');
-    }
-    setBulkSending(false);
-    setBulkConfirm(false);
-  };
 
   const handleBulkFreeze = async () => {
     const ids = [...selectedIds];
@@ -554,10 +382,9 @@ export default function AdminMembers() {
 
   const filterOptions = [
     { key: 'all', label: t('admin.members.filterAll', 'All'), count: members.length },
-    { key: 'critical', label: t('admin.members.filterCritical', 'Critical'), count: criticalCount },
-    { key: 'at-risk', label: t('admin.members.filterAtRisk', 'At Risk'), count: atRiskCount },
-    { key: 'watch', label: t('admin.members.filterWatch', 'Watch'), count: watchCount },
-    { key: 'healthy', label: t('admin.members.filterLowRisk', 'Low Risk'), count: lowRiskCount },
+    { key: 'active', label: t('admin.members.filterActive', 'Active'), count: activeCount },
+    { key: 'frozen', label: t('admin.members.filterFrozen', 'Frozen'), count: frozenCount },
+    { key: 'unonboarded', label: t('admin.members.filterUnonboarded', 'Unonboarded'), count: unonboardedCount },
   ];
 
   const tabOptions = [
@@ -614,21 +441,6 @@ export default function AdminMembers() {
       headerClassName: 'text-center',
     },
     {
-      key: 'score',
-      label: t('admin.members.colRisk', 'Risk'),
-      sortable: true,
-      sortValue: (m) => m.score ?? 0,
-      render: (m) => {
-        const toneClass = m.score >= 55 ? 'admin-pill--hot' : m.score >= 30 ? 'admin-pill--warn' : 'admin-pill--good';
-        return (
-          <span className={`admin-pill ${toneClass} admin-mono inline-flex items-center gap-1.5`}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'currentColor' }} />
-            {m.score}%
-          </span>
-        );
-      },
-    },
-    {
       key: 'last_seen',
       label: t('admin.members.colLastActive', 'Last Active'),
       sortable: true,
@@ -674,30 +486,9 @@ export default function AdminMembers() {
     <AdminPageShell>
       <PageHeader
         title={`${t('admin.members.title', 'Members')} (${members.length})`}
-        subtitle={t('admin.members.subtitle', { total: members.length, atRisk: atRiskCount, defaultValue: '{{total}} total \u00b7 {{atRisk}} at risk' })}
+        subtitle={t('admin.members.subtitleDirectory', { total: members.length, defaultValue: '{{total}} total members' })}
         actions={
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap pb-1 md:pb-0">
-            {tab === 'members' && filter === 'at-risk' && atRiskFiltered.length > 0 && (
-              bulkConfirm ? (
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <p className="text-[12px] hidden sm:block" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.members.sendToCount', { count: atRiskFiltered.length })}</p>
-                  <button onClick={handleBulkFollowup} disabled={bulkSending}
-                    className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap disabled:opacity-40"
-                    style={{ color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-                    {bulkSending ? t('admin.members.sending', 'Sending\u2026') : t('admin.members.confirm', 'Confirm')}
-                  </button>
-                  <button onClick={() => setBulkConfirm(false)}
-                    className="admin-pill admin-pill--outline flex-shrink-0 whitespace-nowrap">
-                    {t('admin.members.cancel')}
-                  </button>
-                </div>
-              ) : (
-                <button onClick={() => setBulkConfirm(true)}
-                  className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap">
-                  <Users size={13} /> {t('admin.members.bulkFollowup', 'Bulk Follow-up')}
-                </button>
-              )
-            )}
             {(tab === 'members' || tab === 'invites') && (
               <>
                 <button onClick={() => setShowInvite(true)}
@@ -715,8 +506,10 @@ export default function AdminMembers() {
         }
       />
 
-      {/* Top summary row -- visible on all tabs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 md:gap-3 mt-6 mb-6">
+      {/* Top summary row -- visible on all tabs.
+          Risk-tier cards (Critical, At Risk) moved to AdminChurn — this page
+          is a directory, not a retention dashboard. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mt-6 mb-6">
         <StatCard
           label={t('admin.members.statTotal', 'Total Members')}
           value={members.length}
@@ -725,44 +518,29 @@ export default function AdminMembers() {
           delay={0}
         />
         <StatCard
-          label={t('admin.members.statCritical', 'Critical')}
-          value={criticalCount}
-          borderColor="var(--color-danger)"
-          icon={AlertTriangle}
-          delay={0.025}
-        />
-        <StatCard
-          label={t('admin.members.statAtRisk', 'At Risk')}
-          value={atRiskCount}
-          borderColor="var(--color-warning)"
-          icon={AlertTriangle}
-          delay={0.05}
-        />
-        <StatCard
           label={t('admin.members.statFrozen', 'Frozen')}
           value={frozenCount}
           borderColor="var(--color-info)"
-          icon={Snowflake}
-          delay={0.1}
+          icon={Clock}
+          delay={0.05}
+          onClick={() => { setTab('members'); setFilter('frozen'); }}
         />
-        <button className="text-left w-full" onClick={() => { setTab('invites'); }}>
-          <StatCard
-            label={t('admin.members.statPendingInvites', 'Pending Invites')}
-            value={pendingCount}
-            borderColor="var(--color-accent)"
-            icon={UserPlus}
-            delay={0.15}
-          />
-        </button>
-        <button className="text-left w-full" onClick={() => { setTab('resets'); }}>
-          <StatCard
-            label={t('admin.members.statPendingResets', 'Pending Resets')}
-            value={resetCount}
-            borderColor="var(--color-coach)"
-            icon={KeyRound}
-            delay={0.2}
-          />
-        </button>
+        <StatCard
+          label={t('admin.members.statPendingInvites', 'Pending Invites')}
+          value={pendingCount}
+          borderColor="var(--color-accent)"
+          icon={UserPlus}
+          delay={0.1}
+          onClick={() => { setTab('invites'); }}
+        />
+        <StatCard
+          label={t('admin.members.statPendingResets', 'Pending Resets')}
+          value={resetCount}
+          borderColor="var(--color-coach)"
+          icon={KeyRound}
+          delay={0.15}
+          onClick={() => { setTab('resets'); }}
+        />
       </div>
 
       {/* Tab strip */}
@@ -772,6 +550,24 @@ export default function AdminMembers() {
         {(tabKey) => {
           if (tabKey === 'members') return (
         <>
+          {/* Churn-workflow discovery hint: shown only when an external link
+              still points at the old ?filter=at-risk surface. One-time
+              redirect cue — not a permanent banner. */}
+          {searchParams.get('filter') === 'at-risk' && (
+            <div className="mb-3 px-4 py-2.5 rounded-xl text-[12px] flex items-center gap-2 justify-between"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)', color: 'var(--color-accent)' }}>
+              <span className="flex items-center gap-2 min-w-0">
+                <AlertTriangle size={14} className="flex-shrink-0" />
+                <span className="truncate">{t('admin.members.churnMovedHint', 'At-risk member workflows moved to Churn Intel.')}</span>
+              </span>
+              <button
+                onClick={() => navigate('/admin/churn')}
+                className="admin-pill admin-pill--outline flex-shrink-0 whitespace-nowrap"
+                style={{ color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
+                {t('admin.members.openChurn', 'Open Churn Intel')}
+              </button>
+            </div>
+          )}
           {/* Member limit warning */}
           {!hasMoreMembers && members.length >= MEMBERS_PAGE_SIZE && (
             <div className="mb-3 px-4 py-2.5 rounded-xl text-[12px] flex items-center gap-2"
@@ -878,7 +674,8 @@ export default function AdminMembers() {
                   {t('admin.members.showingCount', { shown: visibleMembers.length, total: filtered.length, defaultValue: 'Showing {{shown}} of {{total}}' })}
                 </p>
               </div>
-              <div className="hidden lg:block">
+              {/* Desktop table */}
+              <div className="hidden md:block">
                 <AdminTable
                   columns={memberTableColumns}
                   data={visibleMembers}
@@ -886,59 +683,52 @@ export default function AdminMembers() {
                   stickyHeader
                 />
               </div>
-              <div className="lg:hidden rounded-[14px] overflow-hidden"
-                style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                <div className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                  {visibleMembers.map(m => {
-                    const tier = getRiskTier(m.score);
-                    return (
-                      <div key={m.id} role="button" tabIndex={0} onClick={() => setSelected(m)}
-                        onKeyDown={e => { if (e.key === 'Enter') setSelected(m); }}
-                        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-all duration-200 text-left group cursor-pointer">
-                        <div onClick={e => { e.stopPropagation(); toggleSelect(m.id); }}
-                          role="button" tabIndex={0} aria-label={selectedIds.has(m.id) ? t('admin.members.deselectMember', 'Deselect member') : t('admin.members.selectMember', 'Select member')}
-                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleSelect(m.id); } }}
-                          className="flex items-center justify-center w-5 h-5 flex-shrink-0 cursor-pointer">
-                          {selectedIds.has(m.id) ? (
-                            <CheckSquare size={16} style={{ color: 'var(--color-accent)' }} />
-                          ) : (
-                            <Square size={16} style={{ color: 'var(--color-text-faint)' }} className="group-hover:opacity-80" />
-                          )}
-                        </div>
-                        <Avatar name={m.full_name} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{m.full_name}</p>
-                            <StatusBadge status={m.membership_status} />
-                            <ChurnRiskBadge member={m} navigate={navigate} />
-                            {m.admin_note && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 60%, transparent)' }} title={t('admin.members.hasNote', 'Has note')} />}
-                          </div>
-                          <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                            {(m.last_active_at || m.lastSessionAt)
-                              ? t('admin.members.activeAgo', { time: formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true, ...dateFnsLocale }), defaultValue: 'Active {{time}}' })
-                              : t('admin.members.neverActive', 'Never active')}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2.5 flex-shrink-0">
-                          <span className={`admin-pill admin-mono flex items-center gap-1.5 ${m.score >= 55 ? 'admin-pill--hot' : m.score >= 30 ? 'admin-pill--warn' : 'admin-pill--good'}`}>
-                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'currentColor' }} />
-                            {m.score}%
-                          </span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setQuickMsgMemberId(m.id); }}
-                            className="p-1.5 rounded-lg transition-colors"
-                            style={{ color: 'var(--color-text-muted)' }}
-                            title={t('admin.members.message', 'Message')}
-                            aria-label={t('admin.members.messageMember', { name: m.full_name, defaultValue: 'Message {{name}}' })}
-                          >
-                            <MessageSquare size={14} />
-                          </button>
-                          <ChevronRight size={14} style={{ color: 'var(--color-text-faint)' }} className="group-hover:translate-x-0.5 transition-transform duration-200" />
-                        </div>
+              {/* Mobile card list */}
+              <div className="md:hidden space-y-2">
+                {visibleMembers.map(m => (
+                  <div key={m.id} role="button" tabIndex={0} onClick={() => setSelected(m)}
+                    onKeyDown={e => { if (e.key === 'Enter') setSelected(m); }}
+                    className="admin-card p-3 flex items-center gap-3 cursor-pointer group">
+                    <div onClick={e => { e.stopPropagation(); toggleSelect(m.id); }}
+                      role="button" tabIndex={0} aria-label={selectedIds.has(m.id) ? t('admin.members.deselectMember', 'Deselect member') : t('admin.members.selectMember', 'Select member')}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleSelect(m.id); } }}
+                      className="flex items-center justify-center w-5 h-5 flex-shrink-0 cursor-pointer">
+                      {selectedIds.has(m.id) ? (
+                        <CheckSquare size={16} style={{ color: 'var(--color-accent)' }} />
+                      ) : (
+                        <Square size={16} style={{ color: 'var(--color-text-faint)' }} className="group-hover:opacity-80" />
+                      )}
+                    </div>
+                    <Avatar name={m.full_name} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{m.full_name}</p>
+                        <StatusBadge status={m.membership_status} />
+                        {m.admin_note && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 60%, transparent)' }} title={t('admin.members.hasNote', 'Has note')} />}
                       </div>
-                    );
-                  })}
-                </div>
+                      {m.username && (
+                        <p className="text-[11px] truncate" style={{ color: 'var(--color-text-faint)' }}>@{m.username}</p>
+                      )}
+                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {(m.last_active_at || m.lastSessionAt)
+                          ? t('admin.members.activeAgo', { time: formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true, ...dateFnsLocale }), defaultValue: 'Active {{time}}' })
+                          : t('admin.members.neverActive', 'Never active')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2.5 flex-shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setQuickMsgMemberId(m.id); }}
+                        className="p-1.5 rounded-lg transition-colors"
+                        style={{ color: 'var(--color-text-muted)' }}
+                        title={t('admin.members.message', 'Message')}
+                        aria-label={t('admin.members.messageMember', { name: m.full_name, defaultValue: 'Message {{name}}' })}
+                      >
+                        <MessageSquare size={14} />
+                      </button>
+                      <ChevronRight size={14} style={{ color: 'var(--color-text-faint)' }} className="group-hover:translate-x-0.5 transition-transform duration-200" />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

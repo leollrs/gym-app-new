@@ -241,11 +241,8 @@ export default function AdminNotificationPrefs() {
 
   return (
     <div className="space-y-4">
-      {/* Reset button — title is already in the parent collapsible header */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="admin-eyebrow truncate">
-          {t('admin.notificationPrefs.title', { defaultValue: 'Notification Preferences' })}
-        </span>
+      {/* Reset button — title now lives in the parent page header (AdminNotifications) */}
+      <div className="flex items-center justify-end gap-2">
         <button
           onClick={() => setShowResetConfirm(true)}
           disabled={resetMutation.isPending}

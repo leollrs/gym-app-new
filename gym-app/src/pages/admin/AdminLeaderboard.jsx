@@ -7,7 +7,7 @@ import { subDays } from 'date-fns';
 import { exportCSV } from '../../lib/csvExport';
 import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, FadeIn, FilterBar, AdminTabs, AdminPageShell, ErrorCard, Avatar } from '../../components/admin';
+import { PageHeader, FadeIn, FilterBar, AdminPageShell, ErrorCard, Avatar } from '../../components/admin';
 
 const METRIC_KEYS = ['volume', 'workouts', 'pr_count', 'checkins', 'improved', 'consistency'];
 const PERIOD_KEYS = ['7', '30', 'all'];
@@ -158,13 +158,35 @@ export default function AdminLeaderboard() {
         className="mb-6"
       />
 
-      {/* Primary selector — metric category */}
-      <AdminTabs
-        tabs={METRIC_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.metrics.${k}`, k) }))}
-        active={metric}
-        onChange={setMetric}
-        className="mb-5"
-      />
+      {/* Primary selector — metric dropdown.
+          With 6 metrics, a tab strip overwhelms the page; gym owners typically
+          care about 1-2 metrics. A labeled dropdown keeps the same options
+          accessible without dominating the visual hierarchy. */}
+      <div className="flex items-center gap-2 mb-5">
+        <label
+          htmlFor="leaderboard-metric"
+          className="admin-eyebrow shrink-0"
+        >
+          {t('admin.leaderboard.rankedBy', 'Ranked by')}
+        </label>
+        <select
+          id="leaderboard-metric"
+          value={metric}
+          onChange={(e) => setMetric(e.target.value)}
+          className="rounded-[10px] px-3 py-2 text-[13px] font-semibold outline-none transition-colors min-w-[180px]"
+          style={{
+            background: 'var(--color-bg-deep, var(--color-bg-card))',
+            border: '1px solid var(--color-admin-border)',
+            color: 'var(--color-admin-text)',
+          }}
+        >
+          {METRIC_KEYS.map(k => (
+            <option key={k} value={k}>
+              {t(`admin.leaderboard.metrics.${k}`, k)}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {/* Secondary filters — period & tier */}
       <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 md:gap-x-6 md:gap-y-3 mb-4">

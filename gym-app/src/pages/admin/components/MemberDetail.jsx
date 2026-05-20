@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle, User, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -14,6 +15,8 @@ import { logAdminAction } from '../../../lib/adminAudit';
 import posthog from 'posthog-js';
 import { Avatar, SectionLabel, AdminModal, PhoneInput } from '../../../components/admin';
 import { StatusBadge } from '../../../components/admin/StatusBadge';
+import CancellationSurveyModal from './CancellationSurveyModal';
+import CancellationSaveStep from './CancellationSaveStep';
 
 const statusActionMap = {
   freeze:     { next: 'frozen',      labelKey: 'freeze',      label: 'Freeze Account',      btnColor: 'text-[#60A5FA]',  btnBg: 'bg-[#60A5FA]/10 border-[#60A5FA]/20' },
@@ -32,9 +35,14 @@ const outcomeConfig = {
 
 function getStatusActions(status) {
   switch (status) {
-    case 'active':      return ['freeze', 'deactivate', 'ban'];
-    case 'frozen':      return ['reactivate', 'deactivate', 'ban'];
-    case 'deactivated': return ['reactivate', 'ban'];
+    // 'cancel' is the path that opens the save-step → exit-survey
+    // flow (CancellationSaveStep + CancellationSurveyModal). Available
+    // from any state that ISN'T already cancelled or banned, so the
+    // owner can capture an exit reason whether the member is paused,
+    // active, or just deactivated.
+    case 'active':      return ['freeze', 'deactivate', 'cancel', 'ban'];
+    case 'frozen':      return ['reactivate', 'deactivate', 'cancel', 'ban'];
+    case 'deactivated': return ['reactivate', 'cancel', 'ban'];
     case 'cancelled':   return ['reactivate', 'ban'];
     case 'banned':      return ['unban'];
     default:            return [];
@@ -57,6 +65,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('info');
   const [showStatusConfirm, setShowStatusConfirm] = useState(false);
+  const [saveStepOpen, setSaveStepOpen] = useState(false);
 
   // Referral state
   const [referralCode, setReferralCode] = useState('');
@@ -72,6 +81,24 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [statusReason, setStatusReason] = useState('');
   const [pendingAction, setPendingAction] = useState(null);
   const [statusSaving, setStatusSaving] = useState(false);
+
+  // Prior cancellations — surfaces "they cancelled before, same reason?"
+  // banner in the exit survey. retry:false so a missing table (pre-migration)
+  // silently degrades to an empty list instead of throwing.
+  const { data: priorCancellations = [] } = useQuery({
+    queryKey: ['member-cancellations', member.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cancellation_reasons')
+        .select('id, category, details_text, would_return_if, tenure_days, recorded_at')
+        .eq('profile_id', member.id)
+        .order('recorded_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: showStatusConfirm && pendingAction === 'cancel' && !!member.id,
+    retry: false,
+  });
 
   // Lock body scroll while member detail modal is mounted
   useEffect(() => {
@@ -157,7 +184,8 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
         // Wrapped in try/catch — followup_* columns require migration 0260; if it
         // hasn't been deployed yet the select 400s and we just skip the followup state.
         try {
-          const { data: churnRow, error: churnErr } = await supabase.from('churn_risk_scores').select('id, followup_sent_at, followup_outcome').eq('profile_id', member.id).eq('gym_id', gymId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+          // churn_risk_scores has `computed_at` (not `created_at`); see migration 0030.
+          const { data: churnRow, error: churnErr } = await supabase.from('churn_risk_scores').select('id, followup_sent_at, followup_outcome').eq('profile_id', member.id).eq('gym_id', gymId).order('computed_at', { ascending: false }).limit(1).maybeSingle();
           if (!churnErr && churnRow) {
             setChurnRowId(churnRow.id);
             setFollowupSentAt(churnRow.followup_sent_at ?? null);
@@ -348,19 +376,33 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     }
   };
 
-  const handleConfirmStatusAction = async () => {
+  const handleConfirmStatusAction = async (maybeSurveyData = null) => {
     if (!pendingAction) return;
+    // Guard against being called as an onClick handler — React passes a
+    // SyntheticEvent we must ignore. Only treat as survey data if it
+    // looks like our payload (has a string `category`).
+    const surveyData = maybeSurveyData && typeof maybeSurveyData.category === 'string'
+      ? maybeSurveyData
+      : null;
     setStatusSaving(true);
     setStatusConflict(false);
     const nextStatus = statusActionMap[pendingAction].next;
     const oldStatus = memberStatus;
     const now = new Date().toISOString();
 
+    // For cancellations, the survey's structured category replaces the
+    // free-text reason. Keep a short summary in membership_status_reason
+    // for the existing status timeline; the full payload lives in
+    // cancellation_reasons (inserted below).
+    const reasonForProfile = surveyData
+      ? surveyData.category
+      : (statusReason || null);
+
     // Optimistic locking: only update if the record hasn't been modified since we loaded it
     let query = supabase.from('profiles').update({
       membership_status: nextStatus,
       membership_status_updated_at: now,
-      membership_status_reason: statusReason || null,
+      membership_status_reason: reasonForProfile,
     }).eq('id', member.id).eq('gym_id', gymId);
 
     if (memberStatusUpdatedAt) {
@@ -378,6 +420,31 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       setStatusConflict(true);
       setStatusSaving(false);
       return;
+    }
+
+    // Cancellation exit survey: write structured reason row.
+    // Failure here is non-fatal — the status change already succeeded.
+    if (surveyData && nextStatus === 'cancelled') {
+      const memberSince = member.membership_started_at || member.created_at;
+      const tenureDays = memberSince
+        ? Math.max(0, Math.floor((Date.now() - new Date(memberSince).getTime()) / 86400000))
+        : 0;
+      try {
+        const { error: surveyError } = await supabase.from('cancellation_reasons').insert({
+          profile_id: member.id,
+          gym_id: gymId,
+          category: surveyData.category,
+          details_text: surveyData.details_text,
+          would_return_if: surveyData.would_return_if,
+          tenure_days: tenureDays,
+          recorded_by: adminId,
+        });
+        if (surveyError) throw surveyError;
+        posthog?.capture('admin_cancellation_logged', { category: surveyData.category });
+      } catch (err) {
+        logger.error('Failed to log cancellation reason:', err);
+        showToast?.(t('admin.cancellationSurvey.logFailed', { defaultValue: 'Cancellation saved, but exit survey failed to record.' }), 'warning');
+      }
     }
 
     logAdminAction('change_status', 'member', member.id, { from: oldStatus, to: nextStatus });
@@ -476,7 +543,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
         {/* Stats row */}
         <div className="grid grid-cols-4 border-b border-white/6 flex-shrink-0">
           {[
-            { label: t('admin.memberDetail.risk', 'Risk'), value: <span className={risk.textClass}>{risk.label}</span>, sub: `${t('admin.memberDetail.score', 'score')} ${member.score}%` },
+            { label: t('admin.memberDetail.risk', 'Risk'), value: <span className={risk.textClass}>{t(`admin.members.riskTier.${risk.tier}`, risk.label)}</span>, sub: `${t('admin.memberDetail.score', 'score')} ${member.score}%` },
             { label: t('admin.memberDetail.inactive', 'Inactive'), value: `${daysInactive}d`, sub: neverActive ? t('admin.memberDetail.neverLogged', 'never logged') : t('admin.memberDetail.days', 'days') },
             { label: t('admin.memberDetail.workouts', 'Workouts'), value: member.recentWorkouts ?? 0, sub: t('admin.memberDetail.last14d', 'last 14d') },
             { label: t('admin.memberDetail.challenges', 'Challenges'), value: challenges, sub: t('admin.memberDetail.joinedChallenges', 'joined') },
@@ -773,7 +840,17 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 {getStatusActions(memberStatus).map(action => {
                   const cfg = statusActionMap[action];
                   return (
-                    <button key={action} onClick={() => { setPendingAction(action); setShowStatusConfirm(true); setStatusConflict(false); }}
+                    <button key={action} onClick={() => {
+                      setPendingAction(action);
+                      setStatusConflict(false);
+                      if (action === 'cancel') {
+                        // Hormozi save step first — captures retention attempts
+                        // before recording the cancellation.
+                        setSaveStepOpen(true);
+                      } else {
+                        setShowStatusConfirm(true);
+                      }
+                    }}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors whitespace-nowrap ${cfg.btnColor} ${cfg.btnBg}`}>
                       {action === 'ban' || action === 'cancel' ? <UserX size={12} /> : action === 'freeze' ? <Ban size={12} /> : <UserCheck size={12} />}
                       {t(`admin.memberDetail.statusActions.${action}`, { defaultValue: cfg.label })}
@@ -941,9 +1018,40 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
         </div>
 
-        {/* Status action confirmation modal */}
+        {/* Save-step modal — opens BEFORE the cancellation survey so the
+            owner has a real save conversation first. */}
+        <CancellationSaveStep
+          isOpen={saveStepOpen}
+          onClose={() => { setSaveStepOpen(false); setPendingAction(null); }}
+          member={member}
+          onProceedToCancel={() => {
+            setSaveStepOpen(false);
+            // Hand off to the existing exit-survey modal.
+            setShowStatusConfirm(true);
+          }}
+          onSaved={() => {
+            setSaveStepOpen(false);
+            setPendingAction(null);
+            showToast(t('admin.cancellationSave.savedToast', { defaultValue: 'Nice save — cancellation skipped.' }), 'success');
+          }}
+        />
+
+        {/* Cancellation exit survey (Hormozi-style) — replaces the generic
+            confirm modal for the 'cancel' action so we capture structured
+            reasons that feed the retention orchestrator. */}
+        <CancellationSurveyModal
+          isOpen={showStatusConfirm && pendingAction === 'cancel'}
+          onClose={() => { setShowStatusConfirm(false); setPendingAction(null); setStatusReason(''); setStatusConflict(false); }}
+          onConfirm={handleConfirmStatusAction}
+          memberName={member.full_name}
+          saving={statusSaving}
+          conflict={statusConflict}
+          priorCancellations={priorCancellations}
+        />
+
+        {/* Status action confirmation modal — freeze / deactivate / ban / reactivate / unban */}
         <AdminModal
-          isOpen={showStatusConfirm && !!pendingAction}
+          isOpen={showStatusConfirm && !!pendingAction && pendingAction !== 'cancel'}
           onClose={() => { setShowStatusConfirm(false); setPendingAction(null); setStatusReason(''); setStatusConflict(false); }}
           title={t('admin.memberDetail.confirmStatusTitle', { defaultValue: 'Confirm Action' })}
           titleIcon={AlertTriangle}

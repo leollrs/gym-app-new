@@ -27,9 +27,16 @@ export {
   getRiskTier,
   calculateChurnScore,
   calculateChurnScoreSimple,
+  estimateChurnScoreFallback,
 } from './riskScoring.js';
 
 // Metric computation helpers
 export {
   calculateVelocity,
 } from './metrics.js';
+
+// Admin-facing churn queries (fallback scoring + auto-return detection)
+export {
+  fetchChurnFallback,
+  autoDetectReturns,
+} from './adminQueries.js';

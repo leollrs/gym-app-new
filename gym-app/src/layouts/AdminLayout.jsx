@@ -3,62 +3,85 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, Target, Search, FlaskConical, Award, Wrench, UserCog, Bell,
+  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, Search, FlaskConical, Award, Wrench, UserCog, Bell, Send,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { ScanClaimProvider } from '../contexts/ScanClaimContext';
+import { InsightsRangeProvider } from '../contexts/InsightsRangeContext';
 import { supabase } from '../lib/supabase';
 import UserAvatar from '../components/UserAvatar';
 
 const AdminOnboardingWizard = lazy(() => import('../components/admin/AdminOnboardingWizard'));
 const ScanFeedback = lazy(() => import('../components/admin/ScanFeedback'));
+const GlobalSearch = lazy(() => import('../components/admin/GlobalSearch'));
+import { GlobalSearchTrigger } from '../components/admin/GlobalSearch';
 
+// IA: 6 top-level sections aligned to admin jobs-to-be-done.
+// Pages are regrouped here — every existing route stays alive.
 const NAV_SECTIONS = [
   {
-    labelKey: 'adminNav.primary',
+    labelKey: 'adminNav.sectionHome',
     items: [
-      { to: '/admin',              labelKey: 'adminNav.overview',       icon: LayoutDashboard, exact: true },
-      { to: '/admin/members',      labelKey: 'adminNav.members',        icon: Users },
-      { to: '/admin/classes',      labelKey: 'adminNav.classes',        icon: CalendarDays, requiresConfig: 'classesEnabled' },
-      { to: '/admin/messages',     labelKey: 'adminNav.messages',       icon: MessageSquare },
-      { to: '/admin/notifications',labelKey: 'adminNav.notifications',  icon: Bell, badge: 'unreadAdminNotifs' },
-      { to: '/admin/announcements',labelKey: 'adminNav.announcements',  icon: Megaphone },
+      { to: '/admin',               labelKey: 'adminNav.overview',       icon: LayoutDashboard, exact: true },
+      { to: '/admin/notifications', labelKey: 'adminNav.alerts',         icon: Bell, badge: 'unreadAdminNotifs' },
     ],
   },
   {
-    labelKey: 'adminNav.coaching',
+    labelKey: 'adminNav.sectionMembers',
     items: [
-      { to: '/admin/churn',        labelKey: 'adminNav.churnIntel',    icon: AlertTriangle },
-      { to: '/admin/attendance',   labelKey: 'adminNav.attendance',     icon: CalendarCheck },
-      { to: '/admin/challenges',   labelKey: 'adminNav.challenges',     icon: Trophy },
-      { to: '/admin/programs',     labelKey: 'adminNav.programs',       icon: Dumbbell },
-      { to: '/admin/trainers',     labelKey: 'adminNav.trainers',       icon: UserCheck },
+      { to: '/admin/members',  labelKey: 'adminNav.members',     icon: Users },
+      { to: '/admin/segments', labelKey: 'adminNav.segments',    icon: Filter },
+      { to: '/admin/churn',    labelKey: 'adminNav.churnIntel',  icon: AlertTriangle },
+      { to: '/admin/trainers', labelKey: 'adminNav.trainers',    icon: UserCheck },
     ],
   },
   {
-    labelKey: 'adminNav.business',
+    labelKey: 'adminNav.sectionOutreach',
     items: [
-      { to: '/admin/analytics',    labelKey: 'adminNav.analytics',      icon: TrendingUp },
-      { to: '/admin/revenue',      labelKey: 'adminNav.revenue',        icon: DollarSign },
-      { to: '/admin/referrals',    labelKey: 'adminNav.referrals',      icon: Gift },
-      { to: '/admin/rewards',      labelKey: 'adminNav.rewards',        icon: Award },
-      { to: '/admin/store',        labelKey: 'adminNav.store',          icon: ShoppingBag },
-      { to: '/admin/nps',          labelKey: 'adminNav.nps',            icon: MessageCircle },
+      { to: '/admin/outreach',        labelKey: 'adminNav.outreach',       icon: Send },
+      { to: '/admin/messages',        labelKey: 'adminNav.messages',       icon: MessageSquare },
+      { to: '/admin/announcements',   labelKey: 'adminNav.announcements',  icon: Megaphone },
+      { to: '/admin/email-templates', labelKey: 'adminNav.emailTemplates', icon: Palette },
+      { to: '/admin/ab-testing',      labelKey: 'adminNav.abTesting',      icon: FlaskConical },
+    ],
+  },
+  {
+    labelKey: 'adminNav.sectionPrograms',
+    items: [
+      { to: '/admin/classes',    labelKey: 'adminNav.classes',    icon: CalendarDays, requiresConfig: 'classesEnabled' },
+      { to: '/admin/programs',   labelKey: 'adminNav.programs',   icon: Dumbbell },
+      { to: '/admin/challenges', labelKey: 'adminNav.challenges', icon: Trophy },
+    ],
+  },
+  {
+    labelKey: 'adminNav.sectionEngagement',
+    items: [
+      { to: '/admin/leaderboard', labelKey: 'adminNav.leaderboard', icon: BarChart3 },
+      { to: '/admin/rewards',     labelKey: 'adminNav.rewards',     icon: Award },
+      { to: '/admin/store',       labelKey: 'adminNav.store',       icon: ShoppingBag },
+      { to: '/admin/referrals',   labelKey: 'adminNav.referrals',   icon: Gift },
+    ],
+  },
+  {
+    labelKey: 'adminNav.sectionInsights',
+    items: [
+      { to: '/admin/analytics',  labelKey: 'adminNav.analytics',  icon: TrendingUp },
+      { to: '/admin/attendance', labelKey: 'adminNav.attendance', icon: CalendarCheck },
+      { to: '/admin/revenue',    labelKey: 'adminNav.revenue',    icon: DollarSign },
+      { to: '/admin/nps',        labelKey: 'adminNav.nps',        icon: MessageCircle },
+      { to: '/admin/reports',    labelKey: 'adminNav.reports',    icon: Download },
     ],
   },
 ];
 
-// Advanced Tools — accessible via sidebar entry + dedicated index, hidden from primary nav
+// Operations — oversight + scheduled-config surfaces. Rarely visited, high-stakes.
+// Collapsed by default at the bottom of the rail; reachable via search.
 const ADVANCED_PAGES = [
-  { to: '/admin/reports',          labelKey: 'adminNav.reports',        icon: Download,      descKey: 'adminNav.advancedDesc.reports' },
-  { to: '/admin/leaderboard',     labelKey: 'adminNav.leaderboard',    icon: BarChart3,     descKey: 'adminNav.advancedDesc.leaderboard' },
-  { to: '/admin/moderation',      labelKey: 'adminNav.moderation',     icon: ShieldAlert,   descKey: 'adminNav.advancedDesc.moderation' },
-  { to: '/admin/audit-log',       labelKey: 'adminNav.auditLog',       icon: ClipboardList, descKey: 'adminNav.advancedDesc.auditLog' },
-  { to: '/admin/segments',        labelKey: 'adminNav.segments',       icon: Filter,        descKey: 'adminNav.advancedDesc.segments' },
-  { to: '/admin/ab-testing',      labelKey: 'adminNav.abTesting',      icon: FlaskConical,  descKey: 'adminNav.advancedDesc.abTesting' },
-  { to: '/admin/digest',          labelKey: 'adminNav.digest',         icon: Mail,          descKey: 'adminNav.advancedDesc.digest' },
-  { to: '/admin/email-templates', labelKey: 'adminNav.emailTemplates', icon: Palette,       descKey: 'adminNav.advancedDesc.emailTemplates' },
+  { to: '/admin/moderation',        labelKey: 'adminNav.moderation',       icon: ShieldAlert,   descKey: 'adminNav.advancedDesc.moderation' },
+  { to: '/admin/audit-log',         labelKey: 'adminNav.auditLog',         icon: ClipboardList, descKey: 'adminNav.advancedDesc.auditLog' },
+  { to: '/admin/digest',            labelKey: 'adminNav.digest',           icon: Mail,          descKey: 'adminNav.advancedDesc.digest' },
+  { to: '/admin/message-templates', labelKey: 'adminNav.messageTemplates', icon: MessageSquare, descKey: 'adminNav.advancedDesc.messageTemplates' },
 ];
 
 // Bottom nav shows 4 most-used items + a "More" button
@@ -106,7 +129,7 @@ export default function AdminLayout({ children }) {
   const moreMenuRef = useRef(null);
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
   const [onlineAdmins, setOnlineAdmins] = useState([]);
-  const [navSearch, setNavSearch] = useState('');
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState({});
 
   // Admin presence heartbeat (multi-admin awareness)
@@ -154,18 +177,47 @@ export default function AdminLayout({ children }) {
 
   // Filter nav items based on gymConfig feature flags
   const { sections: filteredSections, advancedPages, mobileNav: MOBILE_NAV, mobileMoreNav: MOBILE_MORE_NAV } = getFilteredNav(gymConfig);
-  const navQuery = navSearch.trim().toLowerCase();
-  const visibleSections = filteredSections
-    .map((section) => ({
-      ...section,
-      items: navQuery
-        ? section.items.filter((item) => t(item.labelKey).toLowerCase().includes(navQuery))
-        : section.items,
-    }))
-    .filter((section) => section.items.length > 0);
-  const matchedAdvanced = navQuery
-    ? advancedPages.filter((item) => t(item.labelKey).toLowerCase().includes(navQuery))
-    : [];
+  const visibleSections = filteredSections;
+
+  // Page index for the Cmd-K palette — translated labels + section name as
+  // sub-text so admins can match either ("classes" or "programs section").
+  // Built fresh every render off the i18n + gymConfig-filtered nav.
+  const pageIndex = [
+    ...filteredSections.flatMap(section =>
+      section.items.map(item => ({
+        kind: 'page',
+        id: item.to,
+        label: t(item.labelKey),
+        sub: t(section.labelKey),
+        route: item.to,
+        haystack: `${t(item.labelKey)} ${t(section.labelKey)}`.toLowerCase(),
+      })),
+    ),
+    ...advancedPages.map(item => ({
+      kind: 'page',
+      id: item.to,
+      label: t(item.labelKey),
+      sub: t('adminNav.advancedTools'),
+      route: item.to,
+      haystack: `${t(item.labelKey)} ${t('adminNav.advancedTools')}`.toLowerCase(),
+    })),
+    {
+      kind: 'page',
+      id: '/admin/settings',
+      label: t('adminNav.settings'),
+      sub: t('adminNav.settings'),
+      route: '/admin/settings',
+      haystack: t('adminNav.settings').toLowerCase(),
+    },
+    {
+      kind: 'page',
+      id: '/admin/profile',
+      label: t('adminNav.profile'),
+      sub: t('adminNav.profile'),
+      route: '/admin/profile',
+      haystack: t('adminNav.profile').toLowerCase(),
+    },
+  ];
 
   // Lock body scroll when More menu is open
   useEffect(() => {
@@ -255,6 +307,7 @@ export default function AdminLayout({ children }) {
 
   return (
     <ScanClaimProvider>
+    <InsightsRangeProvider>
     <div className="min-h-screen admin-shell flex">
       {/* Admin onboarding wizard for first-time gym setup */}
       {showOnboardingWizard && (
@@ -299,19 +352,8 @@ export default function AdminLayout({ children }) {
             </div>
           </div>
           <div className="mt-4" style={{ height: '1px', background: 'var(--color-border-subtle)' }} />
-          <div className="mt-4 relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-subtle)' }} />
-            <input
-              value={navSearch}
-              onChange={(e) => setNavSearch(e.target.value)}
-              placeholder={t('adminNav.search', { defaultValue: 'Search pages...' })}
-              className="w-full rounded-xl pl-9 pr-3 py-2 text-[13px] outline-none"
-              style={{
-                background: 'var(--color-bg-input)',
-                border: '1px solid var(--color-border-subtle)',
-                color: 'var(--color-text-primary)',
-              }}
-            />
+          <div className="mt-4">
+            <GlobalSearchTrigger onOpen={() => setGlobalSearchOpen(true)} />
           </div>
         </div>
 
@@ -362,58 +404,36 @@ export default function AdminLayout({ children }) {
               )}
             </div>
           ))}
-          {/* Search results from advanced pages */}
-          {matchedAdvanced.length > 0 && (
-            <div className="mt-5">
-              <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]"
-                style={{ color: 'var(--color-text-subtle)' }}>
-                {t('adminNav.advancedTools')}
-              </p>
-              <div className="space-y-0.5">
-                {matchedAdvanced.map(({ to, labelKey, icon: Icon }) => (
+
+          {/* Advanced Tools entry */}
+          <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+            <button
+              onClick={() => setAdvancedToolsOpen(prev => !prev)}
+              className="admin-nav-link w-full"
+            >
+              <Wrench size={16} strokeWidth={1.75} />
+              <span className="flex-1 text-left">{t('adminNav.advancedTools')}</span>
+              <ChevronRight size={12} className={`transition-transform ${advancedToolsOpen ? 'rotate-90' : ''}`} />
+            </button>
+            {advancedToolsOpen && (
+              <div className="mt-1 space-y-0.5">
+                {advancedPages.map(({ to, labelKey, icon: Icon, descKey }) => (
                   <NavLink key={to} to={to} end={false} className={({ isActive }) => linkClass(isActive)}>
                     <Icon size={16} strokeWidth={1.75} />
                     <span className="flex-1">{t(labelKey)}</span>
                   </NavLink>
                 ))}
               </div>
-            </div>
-          )}
-          {visibleSections.length === 0 && matchedAdvanced.length === 0 && (
-            <p className="px-3 py-4 text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('adminNav.noResults', 'No pages match that search.')}</p>
-          )}
+            )}
 
-          {/* Advanced Tools entry */}
-          {!navQuery && (
-            <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-              <button
-                onClick={() => setAdvancedToolsOpen(prev => !prev)}
-                className="admin-nav-link w-full"
-              >
-                <Wrench size={16} strokeWidth={1.75} />
-                <span className="flex-1 text-left">{t('adminNav.advancedTools')}</span>
-                <ChevronRight size={12} className={`transition-transform ${advancedToolsOpen ? 'rotate-90' : ''}`} />
-              </button>
-              {advancedToolsOpen && (
-                <div className="mt-1 space-y-0.5">
-                  {advancedPages.map(({ to, labelKey, icon: Icon, descKey }) => (
-                    <NavLink key={to} to={to} end={false} className={({ isActive }) => linkClass(isActive)}>
-                      <Icon size={16} strokeWidth={1.75} />
-                      <span className="flex-1">{t(labelKey)}</span>
-                    </NavLink>
-                  ))}
-                </div>
-              )}
-
-              {/* Settings — below Advanced Tools */}
-              <div className="mt-3 space-y-0.5">
-                <NavLink to="/admin/settings" end={false} className={({ isActive }) => linkClass(isActive)}>
-                  <Settings size={16} strokeWidth={1.75} />
-                  <span className="flex-1">{t('adminNav.settings')}</span>
-                </NavLink>
-              </div>
+            {/* Settings — below Advanced Tools */}
+            <div className="mt-3 space-y-0.5">
+              <NavLink to="/admin/settings" end={false} className={({ isActive }) => linkClass(isActive)}>
+                <Settings size={16} strokeWidth={1.75} />
+                <span className="flex-1">{t('adminNav.settings')}</span>
+              </NavLink>
             </div>
-          )}
+          </div>
         </nav>
 
         {/* Online admins indicator (multi-admin) */}
@@ -503,8 +523,16 @@ export default function AdminLayout({ children }) {
             <p className="text-[16px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{gymName || 'Dashboard'}</p>
           </div>
 
-          {/* Right: notifications + alert badge + admin avatar */}
+          {/* Right: search + notifications + alert badge + admin avatar */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setGlobalSearchOpen(true)}
+              aria-label={t('admin.search.open', 'Search')}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--color-bg-hover)' }}
+            >
+              <Search size={16} style={{ color: 'var(--color-text-primary)' }} />
+            </button>
             <button
               onClick={() => navigate('/admin/notifications')}
               aria-label={t('adminNav.notifications', 'Notifications')}
@@ -693,7 +721,18 @@ export default function AdminLayout({ children }) {
         </button>
       </nav>
 
+      {/* Cmd-K global search palette (lazy — only the trigger ships eagerly) */}
+      <Suspense fallback={null}>
+        <GlobalSearch
+          open={globalSearchOpen}
+          onClose={() => setGlobalSearchOpen(false)}
+          onToggle={() => setGlobalSearchOpen(o => !o)}
+          pageIndex={pageIndex}
+        />
+      </Suspense>
+
     </div>
+    </InsightsRangeProvider>
     </ScanClaimProvider>
   );
 }

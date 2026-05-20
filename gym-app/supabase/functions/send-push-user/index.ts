@@ -342,11 +342,18 @@ serve(async (req) => {
       const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
       const { data: callerProfile } = await supabaseAdmin
         .from('profiles')
-        .select('role, gym_id')
+        .select('role, gym_id, additional_roles')
         .eq('id', userId)
         .single();
 
-      if (!callerProfile || !['admin', 'super_admin', 'trainer'].includes(callerProfile.role)) {
+      // Multi-role (mig 0332): accept staff role from `role` OR `additional_roles`.
+      const STAFF_ROLES = ['admin', 'super_admin', 'trainer'];
+      const additional = Array.isArray(callerProfile?.additional_roles) ? callerProfile.additional_roles : [];
+      const hasStaff = !!callerProfile && (
+        STAFF_ROLES.includes(callerProfile.role) ||
+        additional.some((r: string) => STAFF_ROLES.includes(r))
+      );
+      if (!callerProfile || !hasStaff) {
         return jsonResp({ error: 'Forbidden — can only push to yourself' }, 403);
       }
 

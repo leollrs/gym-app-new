@@ -18,6 +18,8 @@ import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { checkPermission, ensurePermission } from '../lib/devicePermissions';
 import PermissionExplainerModal from '../components/PermissionExplainerModal';
+import CancellationSaveModal from '../components/profile/CancellationSaveModal';
+import logger from '../lib/logger';
 
 // Inline row used in the Permissions section. Shows current status and
 // triggers the explain → request → fallback-to-settings flow.
@@ -63,6 +65,9 @@ export default function MemberSettings() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteText, setDeleteText] = useState('');
   const [deleting, setDeleting] = useState(false);
+  // Member-facing "Before you go" save attempt modal. Opens BEFORE the
+  // typed-DELETE confirmation so we have a chance to catch the cancel.
+  const [showSaveAttempt, setShowSaveAttempt] = useState(false);
   const [showViewSwitcher, setShowViewSwitcher] = useState(false);
   const hasMultipleViews = Array.isArray(availableRoles) && availableRoles.length > 1;
   const [leaderboardVisible, setLeaderboardVisible] = useState(profile?.leaderboard_visible ?? true);
@@ -623,7 +628,7 @@ export default function MemberSettings() {
           <h3 className="text-[11px] font-semibold uppercase tracking-widest mb-3 px-1" style={{ color: 'var(--color-text-subtle)' }}>{t('settings.dangerZone')}</h3>
           <button
             type="button"
-            onClick={() => setShowDeleteConfirm(true)}
+            onClick={() => setShowSaveAttempt(true)}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl border border-red-500/20 text-red-400 text-[14px] font-semibold hover:bg-red-500/10 transition-colors"
           >
             <Trash2 size={15} /> {t('settings.deleteAccount')}
@@ -700,6 +705,37 @@ export default function MemberSettings() {
           </div>
         </div>
       )}
+
+      {/* Member-facing save attempt — shown BEFORE the typed-DELETE confirm.
+          Pause path flips membership_status to 'frozen' via supabase.
+          Proceed path opens the existing delete confirmation dialog. */}
+      <CancellationSaveModal
+        isOpen={showSaveAttempt}
+        onClose={() => setShowSaveAttempt(false)}
+        onPause={async () => {
+          if (!user?.id) return;
+          const { error } = await supabase
+            .from('profiles')
+            .update({
+              membership_status: 'frozen',
+              membership_status_updated_at: new Date().toISOString(),
+              membership_status_reason: 'member_self_paused',
+            })
+            .eq('id', user.id);
+          if (error) {
+            logger.error('[MemberSettings] freeze failed', error);
+            showToast(t('settingsPrivacy.toggleFailed', { defaultValue: 'Could not save. Try again.' }), 'error');
+            return;
+          }
+          posthog?.capture('membership_paused_by_member');
+          showToast(
+            t('cancellation.saveModal.pausedToast', { defaultValue: 'Membership paused. Come back anytime.' }),
+            'success'
+          );
+          try { await refreshProfile?.(); } catch { /* refresh is best-effort */ }
+        }}
+        onProceed={() => setShowDeleteConfirm(true)}
+      />
 
       <ViewSwitcherModal open={showViewSwitcher} onClose={() => setShowViewSwitcher(false)} />
       <AIConsentDialog

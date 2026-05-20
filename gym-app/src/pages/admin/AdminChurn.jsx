@@ -14,7 +14,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
-import { fetchMembersWithChurnScores } from '../../lib/churnScore';
+import { fetchMembersWithChurnScores, estimateChurnScoreFallback, fetchChurnFallback, autoDetectReturns } from '../../lib/churnScore';
 import { exportCSV } from '../../lib/csvExport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
@@ -29,134 +29,15 @@ import { ScoreBar, RiskBadge } from '../../components/admin/StatusBadge';
 import { translateSignal, translateSignalName } from '../../lib/churn/signalI18n';
 
 // Sub-components
-import SendMessageModal from './components/SendMessageModal';
 import WinBackModal from './components/WinBackModal';
 import ContactPanel from './components/ContactPanel';
 import CreateCampaignModal from './components/CreateCampaignModal';
-
-// ── Fallback scoring when v2 pipeline fails ──────────────
-async function fetchChurnFallback(gymId) {
-  const now = new Date();
-  const MS_PER_DAY = 86400000;
-  const fourteenDaysAgo = subDays(now, 14).toISOString();
-  const thirtyDaysAgo = subDays(now, 30).toISOString();
-
-  const [membersRes, checkInsRes, sessionsRes] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, username, created_at').eq('gym_id', gymId).eq('role', 'member'),
-    supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', thirtyDaysAgo).order('checked_in_at', { ascending: false }),
-    supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', fourteenDaysAgo),
-  ]);
-
-  const memberRows = membersRes.data || [];
-  logger.debug('[ChurnFallback] gymId:', gymId, 'membersRes.error:', membersRes.error, 'memberRows:', memberRows.length);
-  if (!memberRows.length) return [];
-
-  const lastCheckInMap = {};
-  (checkInsRes.data || []).forEach(r => { if (!lastCheckInMap[r.profile_id]) lastCheckInMap[r.profile_id] = r.checked_in_at; });
-  const sessionsLast14 = {};
-  (sessionsRes.data || []).forEach(s => { sessionsLast14[s.profile_id] = (sessionsLast14[s.profile_id] || 0) + 1; });
-
-  const nowMs = Date.now();
-  return memberRows.map(m => {
-    const lastCheckIn = lastCheckInMap[m.id] ?? null;
-    const lastActive = lastCheckIn ?? m.created_at;
-    const daysInactive = Math.floor((nowMs - new Date(lastActive)) / MS_PER_DAY);
-    const recentWorkouts = sessionsLast14[m.id] ?? 0;
-    const neverActive = !lastCheckIn && recentWorkouts === 0;
-    const tenureMonths = (nowMs - new Date(m.created_at)) / (MS_PER_DAY * 30.44);
-    const daysSinceLastCheckIn = lastCheckIn ? (nowMs - new Date(lastCheckIn)) / MS_PER_DAY : null;
-
-    let score;
-    if (neverActive || daysInactive > 30) score = 95;
-    else if (daysInactive > 14) score = recentWorkouts === 0 ? 85 : 70;
-    else if (daysInactive > 7) score = recentWorkouts === 0 ? 45 : 30;
-    else score = Math.max(0, 20 - recentWorkouts * 5);
-    score = Math.min(100, Math.max(0, score));
-
-    const keySignals = [];
-    if (neverActive) keySignals.push('Never logged a workout');
-    else if (daysInactive > 30) keySignals.push('No activity in 30+ days');
-    else if (daysInactive > 14) keySignals.push('No activity in 14+ days');
-    if (recentWorkouts === 0 && !neverActive) keySignals.push('No workouts in last 14 days');
-    if (keySignals.length === 0) keySignals.push('Engagement looks healthy');
-
-    return {
-      ...m,
-      username: m.username || m.full_name,
-      churnScore: score,
-      riskTier: score >= 80 ? 'critical' : score >= 55 ? 'high' : score >= 30 ? 'medium' : 'low',
-      keySignals,
-      keySignal: keySignals[0],
-      daysSinceLastCheckIn,
-      lastCheckInAt: lastCheckIn,
-      tenureMonths,
-      velocityTrend: 'stable',
-      velocityLabel: 'Not enough history',
-    };
-  }).sort((a, b) => b.churnScore - a.churnScore);
-}
-
-// ── Auto-detect returned members in win-back attempts ────
-async function autoDetectReturns(winBackAttempts, gymId) {
-  const pending = winBackAttempts.filter(a => a.outcome === 'pending' || a.outcome === 'no_response');
-  if (!pending.length) return { attempts: winBackAttempts, autoDetected: [] };
-
-  const memberIds = [...new Set(pending.map(a => a.user_id))];
-
-  const [sessionsRes, checkInsRes] = await Promise.all([
-    supabase.from('workout_sessions')
-      .select('profile_id, started_at')
-      .eq('gym_id', gymId).eq('status', 'completed')
-      .in('profile_id', memberIds)
-      .order('started_at', { ascending: true }),
-    supabase.from('check_ins')
-      .select('profile_id, checked_in_at')
-      .eq('gym_id', gymId)
-      .in('profile_id', memberIds)
-      .order('checked_in_at', { ascending: true }),
-  ]);
-
-  const sessions = sessionsRes.data || [];
-  const checkIns = checkInsRes.data || [];
-  const autoDetected = [];
-  const toUpdate = [];
-
-  const updated = winBackAttempts.map(a => {
-    if (a.outcome !== 'pending' && a.outcome !== 'no_response') return a;
-
-    const memberSessions = sessions.filter(s => s.profile_id === a.user_id && new Date(s.started_at) > new Date(a.created_at));
-    const memberCheckIns = checkIns.filter(c => c.profile_id === a.user_id && new Date(c.checked_in_at) > new Date(a.created_at));
-
-    if (memberSessions.length > 0 || memberCheckIns.length > 0) {
-      const earliestReturn = [...memberSessions.map(s => s.started_at), ...memberCheckIns.map(c => c.checked_in_at)]
-        .sort((x, y) => new Date(x) - new Date(y))[0];
-
-      toUpdate.push(a.id);
-      autoDetected.push({ attemptId: a.id, memberId: a.user_id, returnedAt: earliestReturn });
-      return { ...a, outcome: 'returned', _autoDetected: true, _returnedAt: earliestReturn };
-    }
-    return a;
-  });
-
-  if (toUpdate.length > 0) {
-    try {
-      const results = await Promise.allSettled(toUpdate.map(id =>
-        supabase.from('win_back_attempts').update({ outcome: 'returned' }).eq('id', id).eq('gym_id', gymId).then(res => {
-          if (res.error) throw res.error;
-          return res;
-        })
-      ));
-      const failed = results.filter(r => r.status === 'rejected').length;
-      if (failed > 0) {
-        logger.error(`Auto-detect returns: ${failed} of ${toUpdate.length} updates failed`);
-      }
-    } catch (err) {
-      logger.error('Auto-detect returns: batch update failed', err);
-    }
-  }
-
-  return { attempts: updated, autoDetected };
-}
+import BulkMessageModal from './components/BulkMessageModal';
+import MemberDetailPanel from './components/MemberDetailPanel';
+import WhyLeftPanel from './components/WhyLeftPanel';
+import CardsToPrintPanel from './components/CardsToPrintPanel';
+import RetentionEffectivenessPanel from './components/RetentionEffectivenessPanel';
+import { outcomeConfig, METHOD_I18N } from './components/churnDisplay';
 
 // ── Data fetcher ──────────────────────────────────────────
 async function fetchChurnData(gymId) {
@@ -172,7 +53,7 @@ async function fetchChurnData(gymId) {
   if (!scored || scored.length === 0) {
     logger.debug('[Churn] v2 empty, trying fallback...');
     try {
-      scored = await fetchChurnFallback(gymId);
+      scored = await fetchChurnFallback(gymId, supabase);
       logger.debug('[Churn] fallback returned:', scored?.length, 'members');
     } catch (err) {
       logger.error('[Churn] fallback THREW:', err);
@@ -221,7 +102,7 @@ async function fetchChurnData(gymId) {
   let processedWinBacks = winBackRows;
   let autoDetected = [];
   try {
-    const result = await autoDetectReturns(winBackRows, gymId);
+    const result = await autoDetectReturns(winBackRows, gymId, supabase);
     processedWinBacks = result.attempts;
     autoDetected = result.autoDetected;
   } catch (_) {}
@@ -248,336 +129,6 @@ async function fetchChurnData(gymId) {
     campaigns: campaignRows,
     lastComputedAt,
   };
-}
-
-const outcomeConfig = {
-  returned:       { i18nKey: 'admin.churn.outcomeReturned', color: 'var(--color-success, #10B981)', bg: 'color-mix(in srgb, var(--color-success, #10B981) 12%, transparent)' },
-  no_response:    { i18nKey: 'admin.churn.outcomeNoResponse', color: 'var(--color-text-secondary)', bg: 'color-mix(in srgb, var(--color-text-secondary) 8%, transparent)' },
-  still_inactive: { i18nKey: 'admin.churn.outcomeStillInactive', color: 'var(--color-warning)', bg: 'var(--color-warning-soft)' },
-  pending:        { i18nKey: 'admin.churn.outcomePending', color: 'var(--color-text-muted)', bg: 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)' },
-};
-
-const METHOD_I18N = {
-  in_app_message: 'admin.churn.methodMessage',
-  email: 'admin.churn.methodEmail',
-  push: 'admin.churn.methodPush',
-  win_back: 'admin.churn.methodWinBack',
-  manual: 'admin.churn.methodManual',
-};
-
-// ── Bulk Message Modal ────────────────────────────────────
-function BulkMessageModal({ members, gymId, adminId, onClose, onSent }) {
-  const { t } = useTranslation('pages');
-  const { showToast } = useToast();
-  const [msg, setMsg] = useState(t('admin.churn.bulkDefaultMessage'));
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
-
-  const handleSend = async () => {
-    setSending(true);
-    let failures = [];
-    try {
-      const notifications = members.map(m => ({
-        profile_id: m.id, gym_id: gymId, type: 'admin_message',
-        title: t('admin.churn.messageFromGym'), body: msg, data: { source: 'bulk_churn_intel' },
-      }));
-      const { error: notifError } = await supabase.from('notifications').insert(notifications);
-      if (notifError) {
-        failures.push('notifications');
-        logger.error('Bulk message: notifications insert failed', notifError);
-      }
-
-      const winBackLogs = members.map(m => ({
-        user_id: m.id, gym_id: gymId, admin_id: adminId,
-        message: msg, offer: null, outcome: 'pending', created_at: new Date().toISOString(),
-      }));
-      const { error: winBackError } = await supabase.from('win_back_attempts').insert(winBackLogs);
-      if (winBackError) {
-        failures.push('win_back_attempts');
-        logger.error('Bulk message: win_back_attempts insert failed', winBackError);
-      }
-
-      const contactEntries = members.map(m => ({
-        admin_id: adminId, member_id: m.id, gym_id: gymId,
-        method: 'in_app_message', note: 'Bulk message from churn intelligence',
-      }));
-      const { error: contactError } = await supabase.from('admin_contact_log').insert(contactEntries);
-      if (contactError) {
-        failures.push('admin_contact_log');
-        logger.error('Bulk message: admin_contact_log insert failed', contactError);
-      }
-
-      if (failures.length === 0) {
-        posthog?.capture('admin_winback_sent', { method: 'bulk_message', count: members.length });
-        setSent(true);
-        setTimeout(() => { onSent?.(); onClose(); }, 1200);
-      } else if (failures.length < 3) {
-        showToast(t('admin.churn.bulkPartialFailure', { failed: failures.length, total: 3, defaultValue: '{{failed}} of 3 operations failed. Messages may be partially saved.' }), 'warning');
-        setSent(true);
-        setTimeout(() => { onSent?.(); onClose(); }, 1200);
-      } else {
-        showToast(t('admin.churn.bulkAllFailed', { defaultValue: 'All operations failed. Please try again.' }), 'error');
-      }
-    } catch (err) {
-      logger.error('Bulk message failed', err);
-      showToast(t('admin.churn.bulkSendError', { defaultValue: 'Failed to send bulk message' }), 'error');
-    } finally { setSending(false); }
-  };
-
-  return (
-    <AdminModal
-      isOpen={true}
-      onClose={onClose}
-      title={t('admin.churn.bulkMessageTitle')}
-      titleIcon={MessageSquare}
-      size="sm"
-      footer={
-        <>
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-            style={{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
-            {t('admin.churn.bulkCancel')}
-          </button>
-          <button onClick={handleSend} disabled={sending || !msg.trim() || sent}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
-            style={sent
-              ? { backgroundColor: 'color-mix(in srgb, var(--color-success) 15%, transparent)', color: 'var(--color-success)', border: '1px solid color-mix(in srgb, var(--color-success) 25%, transparent)' }
-              : { backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }
-            }>
-            {sent ? <><CheckCircle size={14} /> {t('admin.churn.bulkSent')}</> : sending ? t('admin.churn.bulkSending') : <><Send size={13} /> {t('admin.churn.bulkSendAll', { count: members.length })}</>}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.churn.bulkSendingTo', { count: members.length })}</p>
-        <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={4}
-          className="w-full rounded-xl px-3.5 py-3 text-[13px] outline-none resize-none"
-          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-        <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('admin.churn.bulkHint')}</p>
-      </div>
-    </AdminModal>
-  );
-}
-
-// ── Member Detail Panel (right pane for at-risk tab) ─────
-function MemberDetailPanel({ member, contactLogs, contactedIds, winBackAttempts, onMessage, onContact, onWinBack, t, dateFnsLocaleOpt = {} }) {
-  const [showHealthy, setShowHealthy] = useState(false);
-
-  if (!member) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center p-6">
-        <div className="w-14 h-14 rounded-2xl bg-white/4 flex items-center justify-center mb-4">
-          <Users size={24} className="text-[#4B5563]" />
-        </div>
-        <p className="text-[14px] font-semibold text-[#6B7280] mb-1">{t('admin.churn.detailEmpty', 'Select a member')}</p>
-        <p className="text-[12px] text-[#4B5563]">{t('admin.churn.detailEmptySub', 'Click a row to view details')}</p>
-      </div>
-    );
-  }
-
-  const riskTier = member.churnScore >= 80 ? 'critical' : member.churnScore >= 55 ? 'high' : 'medium';
-  const daysInactive = member.daysSinceLastCheckIn != null ? Math.round(member.daysSinceLastCheckIn) : member.daysSinceLastActivity != null ? Math.round(member.daysSinceLastActivity) : null;
-  const tenureMonths = member.tenureMonths != null ? Math.round(member.tenureMonths) : null;
-  const isContacted = contactedIds.has(member.id);
-
-  const activityStatus = daysInactive === null
-    ? t('admin.churn.neverActive', 'Never active')
-    : daysInactive < 1
-      ? t('admin.churn.activeToday', 'Active today')
-      : daysInactive <= 7
-        ? t('admin.churn.recentlyActive', 'Recently active')
-        : t('admin.churn.inactive', 'Inactive');
-
-  const activityColor = daysInactive === null ? 'var(--color-text-muted)' : daysInactive < 1 ? 'var(--color-success, #10B981)' : daysInactive <= 7 ? 'var(--color-warning)' : 'var(--color-danger, #EF4444)';
-
-  // Contact history for this member
-  const memberContactLogs = contactLogs
-    .filter(l => l.member_id === member.id)
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    .slice(0, 5);
-
-  // Win-back attempts for this member
-  const memberWinBacks = winBackAttempts
-    .filter(a => a.user_id === member.id)
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    .slice(0, 3);
-
-  const signals = member.keySignals || [member.keySignal].filter(Boolean);
-
-  return (
-    <div className="flex flex-col h-full overflow-y-auto">
-      {/* Header: Avatar + Name + Badge + Score */}
-      <div className="px-4 pt-4 pb-3 border-b border-white/6">
-        <div className="flex items-center gap-2.5">
-          <Avatar name={member.full_name} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-[14px] font-bold text-[#E5E7EB] truncate">{member.full_name}</p>
-              <RiskBadge tier={riskTier} />
-            </div>
-            {member.username && member.username !== member.full_name && (
-              <p className="text-[11px] text-[#6B7280] truncate">@{member.username}</p>
-            )}
-          </div>
-        </div>
-        <div className="mt-2.5">
-          <ScoreBar score={member.churnScore} />
-        </div>
-      </div>
-
-      {/* Inline Stats */}
-      <div className="px-4 py-3 border-b border-white/6">
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider">{t('admin.churn.daysInactive', 'Days Inactive')}</p>
-            <p className="text-[15px] font-bold text-[#E5E7EB]">{daysInactive ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider">{t('admin.churn.tenure', 'Tenure (mo)')}</p>
-            <p className="text-[15px] font-bold text-[#E5E7EB]">{tenureMonths ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider">{t('admin.churn.activity', 'Activity')}</p>
-            <p className="text-[12px] font-bold mt-0.5" style={{ color: activityColor }}>{activityStatus}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Signal Breakdown — full detail */}
-      {member.signals && (
-        <div className="px-4 py-2.5 border-b border-white/6">
-          {(() => {
-            const entries = Object.entries(member.signals);
-            const contributing = entries.filter(([, s]) => s.score > 0).sort((a, b) => (b[1].weightedScore ?? b[1].score) - (a[1].weightedScore ?? a[1].score));
-            const healthy = entries.filter(([, s]) => s.score <= 0);
-            return (
-              <>
-                {contributing.length > 0 && (
-                  <>
-                    <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider mb-1.5">{t('admin.churnSignals.contributingFactors', 'Contributing Factors')}</p>
-                    <div className="space-y-1.5">
-                      {contributing.map(([key, s]) => {
-                        const pct = s.maxPts > 0 ? Math.min(100, (s.score / s.maxPts) * 100) : 0;
-                        const barColor = pct >= 70 ? 'var(--color-danger)' : pct >= 40 ? 'var(--color-warning)' : 'var(--color-admin-text-sub)';
-                        return (
-                          <div key={key}>
-                            <div className="flex items-center justify-between mb-0.5">
-                              <span className="text-[10px] font-semibold text-[#E5E7EB]">{translateSignalName(t, key)}</span>
-                              <span className="text-[9px] font-bold tabular-nums" style={{ color: barColor }}>{s.score}/{s.maxPts}</span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
-                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
-                            </div>
-                            <p className="text-[9px] text-[#6B7280] mt-0.5 truncate">{s.label}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-                {healthy.length > 0 && (
-                  <div className="mt-2">
-                    <button onClick={() => setShowHealthy(p => !p)} className="flex items-center gap-1 text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider hover:text-[#9CA3AF] transition-colors">
-                      {t('admin.churnSignals.healthySignals', 'Healthy Signals')} ({healthy.length})
-                      <ChevronDown size={10} className={`transition-transform ${showHealthy ? 'rotate-180' : ''}`} />
-                    </button>
-                    {showHealthy && (
-                      <div className="space-y-1 mt-1.5">
-                        {healthy.map(([key, s]) => (
-                          <div key={key} className="flex items-center justify-between">
-                            <span className="text-[10px] text-[#6B7280]">{translateSignalName(t, key)}</span>
-                            <span className="text-[9px] text-[#10B981] font-medium">{s.label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </div>
-      )}
-      {/* Fallback: key signal pills when detailed signals unavailable */}
-      {!member.signals && signals.length > 0 && (
-        <div className="px-4 py-2.5 border-b border-white/6">
-          <div className="flex flex-wrap gap-1">
-            {signals.map((sig, i) => (
-              <span key={i} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[#9CA3AF] border border-white/8">
-                {translateSignal(t, sig)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Contact History */}
-      <div className="px-4 py-2.5 border-b border-white/6">
-        <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-1.5">{t('admin.churn.contactHistory', 'Contact History')}</p>
-        {memberContactLogs.length === 0 && memberWinBacks.length === 0 ? (
-          <p className="text-[11px] text-[#4B5563] italic">{t('admin.churn.noContactHistory', 'No contact history')}</p>
-        ) : (
-          <div className="space-y-1">
-            {memberContactLogs.map(log => {
-              const parts = log.note?.split('\n---\n');
-              const subject = parts?.[0] || null;
-              const body = parts?.[1] || null;
-              return (
-                <details key={log.id} className="group">
-                  <summary className="flex items-center gap-2 text-[11px] cursor-pointer list-none">
-                    <div className="w-1 h-1 rounded-full bg-[#D4AF37] flex-shrink-0" />
-                    <span className="font-medium text-[#E5E7EB]">{METHOD_I18N[log.method] ? t(METHOD_I18N[log.method]) : log.method}</span>
-                    {subject && <span className="text-[#6B7280] truncate flex-1 min-w-0">— {subject}</span>}
-                    <span className="text-[#4B5563] ml-auto flex-shrink-0">{format(new Date(log.created_at), 'MMM d', dateFnsLocaleOpt)}</span>
-                  </summary>
-                  {body && (
-                    <div className="ml-3 mt-1 mb-1.5 pl-2 border-l border-white/6">
-                      <p className="text-[10px] text-[#6B7280] whitespace-pre-line line-clamp-4">{body}</p>
-                    </div>
-                  )}
-                </details>
-              );
-            })}
-            {memberWinBacks.map(wb => {
-              const outCfg = outcomeConfig[wb.outcome] || outcomeConfig.pending;
-              return (
-                <details key={wb.id} className="group">
-                  <summary className="flex items-center gap-2 text-[11px] cursor-pointer list-none">
-                    <div className="w-1 h-1 rounded-full bg-[#EF4444] flex-shrink-0" />
-                    <span className="font-medium text-[#E5E7EB]">{t('admin.churn.winBackAttempt', 'Win-Back')}</span>
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border" style={{ color: outCfg.color, background: outCfg.bg, borderColor: `${outCfg.color}33` }}>{t(outCfg.i18nKey)}</span>
-                    <span className="text-[#4B5563] ml-auto flex-shrink-0">{format(new Date(wb.created_at), 'MMM d', dateFnsLocaleOpt)}</span>
-                  </summary>
-                  {wb.message && (
-                    <div className="ml-3 mt-1 mb-1.5 pl-2 border-l border-white/6">
-                      <p className="text-[10px] text-[#6B7280] whitespace-pre-line line-clamp-4">{wb.message}</p>
-                      {wb.offer && <p className="text-[10px] text-[#D4AF37] mt-0.5">{wb.offer}</p>}
-                    </div>
-                  )}
-                </details>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Action Buttons — compact row */}
-      <div className="px-4 py-3 mt-auto">
-        <div className="flex gap-2">
-          <button onClick={() => onContact(member)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold border transition-colors ${isContacted ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20' : 'bg-[#D4AF37]/12 text-[#D4AF37] border-[#D4AF37]/25 hover:bg-[#D4AF37]/20'}`}>
-            <Phone size={12} /> {isContacted ? t('admin.churn.contacted', 'Contacted') : t('admin.churn.contact', 'Contact')}
-          </button>
-          {member.churnScore >= 55 && (
-            <button onClick={() => onWinBack(member)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 hover:bg-[#EF4444]/18 transition-colors">
-              <RotateCcw size={12} /> {t('admin.churn.winBack', 'Win Back')}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export default function AdminChurn() {
@@ -969,11 +520,17 @@ export default function AdminChurn() {
   };
 
   const PRIMARY_TABS = [
-    { key: 'task-board', label: t('admin.churn.tabTaskBoard', 'Retention Board'), count: needsActionMembers.length },
+    // Shorter inline default — Spanish "Panel de Retención" was wrapping to 3
+    // lines in the AdminTabs strip at active state. Kept the same i18n key so
+    // ES JSON (owned by the i18n agents) stays in control of the Spanish copy.
+    { key: 'task-board', label: t('admin.churn.tabTaskBoard', 'Retention'), count: needsActionMembers.length },
   ];
   const SECONDARY_TABS = [
     { key: 'churned', label: t('admin.churn.tabChurned', 'Churned'), count: churnedMembers.length },
     { key: 'win-back', label: t('admin.churn.tabWinBack', 'Win-Back'), count: winBackAttempts.length },
+    { key: 'why-left', label: t('admin.churn.tabWhyLeft', 'Why they left') },
+    { key: 'cards', label: t('admin.churn.tabCards', 'Cards') },
+    { key: 'effectiveness', label: t('admin.churn.tabEffectiveness', 'Effectiveness') },
     { key: 'campaigns', label: t('admin.churn.tabCampaigns', 'Campaigns'), count: campaigns.length },
   ];
   const TABS = [...PRIMARY_TABS, ...SECONDARY_TABS];
@@ -1166,22 +723,23 @@ export default function AdminChurn() {
         </div>
       )}
 
-      {/* Summary Strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 my-6">
+      {/* Summary pill strip — compact, inline, single row */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {[
-          { label: t('admin.churn.critical', 'Critical'), value: loading ? '—' : criticalCount, color: 'var(--color-danger)', sub: t('admin.churn.scoreGte80', 'score ≥ 80'), filterKey: 'critical' },
-          { label: t('admin.churn.highRisk', 'High Risk'), value: loading ? '—' : highRiskCount, color: 'var(--color-warning)', sub: t('admin.churn.score5579', 'score 55–79'), filterKey: 'high' },
-          { label: t('admin.churn.filterContacted', 'Contacted'), value: loading ? '—' : contactedCount, color: 'var(--color-coach)', sub: t('admin.churn.contactedSub', 'outreach logged'), filterKey: 'contacted' },
-          { label: t('admin.churn.filterReturned', 'Returned'), value: loading ? '—' : returnedCount, color: 'var(--color-success)', sub: t('admin.churn.returnedSub', 'came back'), filterKey: 'returned' },
+          { label: t('admin.churn.critical', 'Critical'), value: loading ? '—' : criticalCount, tone: 'hot', filterKey: 'critical' },
+          { label: t('admin.churn.highRisk', 'High Risk'), value: loading ? '—' : highRiskCount, tone: 'warn', filterKey: 'high' },
+          { label: t('admin.churn.filterContacted', 'Contacted'), value: loading ? '—' : contactedCount, tone: 'info', filterKey: 'contacted' },
+          { label: t('admin.churn.filterReturned', 'Returned'), value: loading ? '—' : returnedCount, tone: 'good', filterKey: 'returned' },
         ].map(card => {
           const isActive = tab === 'task-board' && riskFilter === card.filterKey;
           return (
-            <button key={card.label} onClick={() => { setTab('task-board'); setRiskFilter(card.filterKey); }}
-              className="admin-stat-card border-l-2 p-4 text-left transition-colors overflow-hidden"
-              style={{ borderLeftColor: card.color, outline: isActive ? `1px solid ${card.color}` : 'none' }}>
-              <p className="admin-kpi text-[24px] leading-none truncate" style={{ color: card.color }}>{card.value}</p>
-              <p className="text-[12px] font-semibold mt-1.5 truncate" style={{ color: 'var(--color-admin-text)' }}>{card.label}</p>
-              <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--color-admin-text-muted)' }}>{card.sub}</p>
+            <button
+              key={card.label}
+              onClick={() => { setTab('task-board'); setRiskFilter(card.filterKey); }}
+              className={`admin-pill admin-pill--${card.tone}`}
+              style={isActive ? { boxShadow: '0 0 0 1px var(--color-admin-text)' } : undefined}
+            >
+              {card.label}: {card.value}
             </button>
           );
         })}
@@ -1224,7 +782,10 @@ export default function AdminChurn() {
                 {t('admin.churn.selectedCount', { count: selectedCount, defaultValue: '{{count}} selected' })}
               </span>
               <div className="h-4 w-px bg-[#D4AF37]/20 flex-shrink-0" />
-              <button onClick={() => setBulkMsgModal(true)}
+              <button onClick={() => {
+                  const ids = selectedMembers.map(m => m.id).join(',');
+                  navigate(`/admin/outreach?audience=member&ids=${ids}`);
+                }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors whitespace-nowrap flex-shrink-0">
                 <MessageSquare size={12} /> {t('admin.churn.messageSelected', 'Message Selected')}
               </button>
@@ -1281,8 +842,8 @@ export default function AdminChurn() {
             </div>
           ) : (
             <div>
-              {/* Desktop two-pane layout */}
-              <div className="hidden lg:flex gap-4 items-start">
+              {/* Desktop table */}
+              <div className="hidden md:flex gap-4 items-start">
                 <div className="w-full lg:w-[60%] lg:flex-shrink-0">
                   <AdminTable columns={atRiskTableColumns} data={atRiskMembers} stickyHeader onRowClick={(m) => setSelectedMember(m)} activeRowId={selectedMember?.id} />
                 </div>
@@ -1303,7 +864,7 @@ export default function AdminChurn() {
                 </div>
               </div>
               {/* Mobile card list */}
-              <div className="lg:hidden bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden divide-y divide-white/4">
+              <div className="md:hidden space-y-2">
                 {atRiskMembers.slice(0, mobileVisibleCount).map(m => {
                   const isContacted = contactedIds.has(m.id);
                   const mContactCount = contactCountMap[m.id] || 0;
@@ -1316,7 +877,7 @@ export default function AdminChurn() {
                     <div key={m.id} onClick={() => { setSelectedMember(m); setMobileDetailOpen(true); }}
                       role="button" tabIndex={0} aria-label={t('admin.churn.viewMemberDetails', { name: m.full_name, defaultValue: 'View details for {{name}}' })}
                       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedMember(m); setMobileDetailOpen(true); } }}
-                      className={`px-4 py-3.5 hover:bg-white/[0.03] transition-all cursor-pointer ${isSelected ? 'bg-[#D4AF37]/[0.04]' : ''}`}>
+                      className={`admin-card p-3 hover:bg-white/[0.03] transition-all cursor-pointer ${isSelected ? 'bg-[#D4AF37]/[0.04]' : ''}`}>
                       <div className="flex items-start gap-3">
                         <button onClick={(e) => { e.stopPropagation(); toggleSelected(m.id); }} aria-label={isSelected ? t('admin.churn.deselectMember', 'Deselect member') : t('admin.churn.selectMember', 'Select member')} className="mt-1 flex-shrink-0 text-[#6B7280] hover:text-[#D4AF37] transition-colors">
                           {isSelected ? <CheckSquare size={16} className="text-[#D4AF37]" /> : <Square size={16} />}
@@ -1326,6 +887,9 @@ export default function AdminChurn() {
                           {/* Row 1: Name + badges */}
                           <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
                             <p className="text-[13px] font-semibold text-[#E5E7EB]">{m.full_name}</p>
+                            {m.username && (
+                              <span className="text-[11px] text-[#6B7280] truncate">@{m.username}</span>
+                            )}
                             <RiskBadge tier={m.churnScore >= 80 ? 'critical' : m.churnScore >= 55 ? 'high' : 'medium'} />
                             {hasReturned && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/20">
@@ -1378,7 +942,7 @@ export default function AdminChurn() {
               </div>
               {atRiskMembers.length > mobileVisibleCount && (
                 <button onClick={() => setMobileVisibleCount(c => c + 10)}
-                  className="lg:hidden w-full mt-3 py-3 rounded-xl text-[13px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 border border-[#D4AF37]/20 hover:bg-[#D4AF37]/15 transition-colors">
+                  className="md:hidden w-full mt-3 py-3 rounded-xl text-[13px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 border border-[#D4AF37]/20 hover:bg-[#D4AF37]/15 transition-colors">
                   {t('admin.churn.loadMore', 'Load more')} ({atRiskMembers.length - mobileVisibleCount} {t('admin.churn.remaining', 'remaining')})
                 </button>
               )}
@@ -1564,6 +1128,15 @@ export default function AdminChurn() {
           })()}
         </div>
           );
+          if (tabKey === 'why-left') return (
+            <WhyLeftPanel gymId={gymId} />
+          );
+          if (tabKey === 'cards') return (
+            <CardsToPrintPanel gymId={gymId} />
+          );
+          if (tabKey === 'effectiveness') return (
+            <RetentionEffectivenessPanel gymId={gymId} />
+          );
           if (tabKey === 'campaigns') return (
         <div className="space-y-4">
           <div className="flex items-center justify-between mb-2">
@@ -1580,7 +1153,14 @@ export default function AdminChurn() {
             <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-12 text-center">
               <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4"><FlaskConical size={22} className="text-[#D4AF37]" /></div>
               <p className="text-[15px] font-semibold text-[#E5E7EB] mb-1">{t('admin.churn.noCampaigns', 'No campaigns yet')}</p>
-              <p className="text-[13px] text-[#6B7280]">{t('admin.churn.createCampaignHint', 'Create an A/B campaign to test different win-back strategies.')}</p>
+              <p className="text-[13px] text-[#6B7280] mb-4">{t('admin.churn.createCampaignHint', 'Create an A/B campaign to test different win-back strategies.')}</p>
+              <button
+                onClick={() => setCreateCampaignModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors hover:brightness-110"
+                style={{ backgroundColor: '#D4AF37', color: '#000' }}
+              >
+                <Plus size={14} /> {t('admin.churn.createFirstCampaign', 'Create your first campaign')}
+              </button>
             </div>
           ) : (
             campaigns.map(campaign => {
@@ -1686,7 +1266,13 @@ export default function AdminChurn() {
       )}
 
       {/* Modals */}
-      {msgModal && <SendMessageModal member={msgModal} gymId={gymId} adminId={adminId} onClose={() => setMsgModal(null)} onSent={() => { setMsgModal(null); handleMarkContacted(msgModal.id, 'in_app_message'); }} />}
+      {msgModal && <ContactPanel member={msgModal} gymId={gymId} adminId={adminId}
+        isContacted={contactedIds.has(msgModal.id)}
+        contactedAt={contactedMap[msgModal.id]?.created_at}
+        onMarkContacted={handleMarkContacted}
+        onUnmarkContacted={handleUnmarkContacted}
+        defaultChannel="message"
+        onClose={() => setMsgModal(null)} />}
       {winBackModal && <WinBackModal member={winBackModal} gymId={gymId} adminId={adminId} activeCampaign={activeCampaign} onClose={() => setWinBackModal(null)}
         onSent={() => { setWinBackModal(null); handleMarkContacted(winBackModal.id, 'win_back'); refetch(); }} />}
       {contactPanel && <ContactPanel member={contactPanel} gymId={gymId} adminId={adminId}

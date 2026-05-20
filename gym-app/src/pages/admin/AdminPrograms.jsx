@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, Dumbbell, ChevronRight, ChevronDown, Trash2, Users, Search, Lightbulb } from 'lucide-react';
+import { Plus, Dumbbell, ChevronRight, ChevronDown, Trash2, Users, Search } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
@@ -14,6 +14,7 @@ import {
   FadeIn,
   CardSkeleton,
   SectionLabel,
+  AdminTabs,
 } from '../../components/admin';
 import {
   normalizeWeeks,
@@ -23,110 +24,8 @@ import {
 } from './components/programHelpers';
 import TemplatesModal from './components/TemplatesModal';
 import ProgramBuilderModal from './components/ProgramBuilderModal';
+import ProgramSuggestionCard from './components/ProgramSuggestionCard';
 
-// ── Program Suggestion Card ───────────────────────────────
-function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram }) {
-  const { data: suggestion } = useQuery({
-    queryKey: ['program-suggestion', gymId],
-    queryFn: async () => {
-      // fitness_level + primary_goal live on member_onboarding (not profiles).
-      const { data: onboardings } = await supabase
-        .from('member_onboarding')
-        .select('fitness_level, primary_goal')
-        .eq('gym_id', gymId);
-
-      if (!onboardings?.length) return null;
-
-      const goalCounts = {};
-      const levelCounts = {};
-      onboardings.forEach(p => {
-        if (p.primary_goal) goalCounts[p.primary_goal] = (goalCounts[p.primary_goal] || 0) + 1;
-        if (p.fitness_level) levelCounts[p.fitness_level] = (levelCounts[p.fitness_level] || 0) + 1;
-      });
-
-      const topGoal = Object.entries(goalCounts).sort((a, b) => b[1] - a[1])[0];
-      const topLevel = Object.entries(levelCounts).sort((a, b) => b[1] - a[1])[0];
-
-      if (!topGoal) return null;
-
-      const SUGGESTIONS = {
-        muscle_gain: { nameKey: 'hypertrophy', descKey: 'hypertrophy', nameDefault: 'Hypertrophy Focus Program', descDefault: 'Build muscle mass with high-volume training', template: 'ppl' },
-        strength: { nameKey: 'strength', descKey: 'strength', nameDefault: 'Strength Builder Program', descDefault: 'Maximize raw strength on key compound lifts', template: 'upper_lower' },
-        fat_loss: { nameKey: 'fatLoss', descKey: 'fatLoss', nameDefault: 'Fat Loss Circuit Program', descDefault: 'Burn fat with circuit-style training', template: 'full_body' },
-        endurance: { nameKey: 'endurance', descKey: 'endurance', nameDefault: 'Endurance Training Program', descDefault: 'Build cardiovascular and muscular endurance', template: 'full_body' },
-        general_fitness: { nameKey: 'general', descKey: 'general', nameDefault: 'General Fitness Program', descDefault: 'Well-rounded program for overall fitness', template: 'full_body' },
-      };
-
-      const s = SUGGESTIONS[topGoal[0]] || SUGGESTIONS.general_fitness;
-      return {
-        ...s,
-        topGoal: topGoal[0],
-        goalCount: topGoal[1],
-        totalMembers: profiles.length,
-        topLevel: topLevel?.[0],
-        pct: Math.round((topGoal[1] / profiles.length) * 100),
-      };
-    },
-    staleTime: 24 * 60 * 60 * 1000,
-    enabled: !!gymId,
-  });
-
-  if (!suggestion) return null;
-
-  const name = t(`admin.programs.suggestion.${suggestion.nameKey}.name`, suggestion.nameDefault);
-  const desc = t(`admin.programs.suggestion.${suggestion.descKey}.desc`, suggestion.descDefault);
-
-  return (
-    <div
-      className="mb-5 rounded-[16px] p-5"
-      style={{
-        background: 'linear-gradient(110deg, var(--color-coach-soft), color-mix(in srgb, var(--color-accent) 18%, transparent))',
-        border: '1px solid var(--color-coach-soft)',
-      }}
-    >
-      <div className="flex items-start gap-3.5">
-        <div
-          className="w-11 h-11 rounded-[12px] flex items-center justify-center flex-shrink-0"
-          style={{ background: 'var(--color-bg-card)' }}
-        >
-          <Lightbulb size={20} style={{ color: 'var(--color-coach)' }} strokeWidth={2} />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="admin-eyebrow" style={{ color: 'var(--color-accent)' }}>
-              {t('admin.programs.suggestion.title', 'Monthly Suggestion')}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <Dumbbell size={16} style={{ color: 'var(--color-admin-text)' }} />
-            <p className="admin-page-title text-[20px] truncate" style={{ letterSpacing: '-0.02em' }}>{name}</p>
-          </div>
-
-          <p className="text-[13px] leading-relaxed mb-2" style={{ color: 'var(--color-admin-text-sub)' }}>{desc}</p>
-
-          <p className="text-[11px] mb-3.5" style={{ color: 'var(--color-admin-text-muted)' }}>
-            {t('admin.programs.suggestion.basedOn', 'Based on {{pct}}% of your members ({{count}}/{{total}})', {
-              pct: suggestion.pct,
-              count: suggestion.goalCount,
-              total: suggestion.totalMembers,
-            })}
-          </p>
-
-          <button
-            type="button"
-            onClick={onCreateProgram}
-            className="px-5 py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97]"
-            style={{ background: 'var(--color-admin-text)', color: '#fff' }}
-          >
-            {t('admin.programs.suggestion.createButton', 'Create This Program')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Main ──────────────────────────────────────────────────
 export default function AdminPrograms() {
@@ -146,6 +45,7 @@ export default function AdminPrograms() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [programSearch, setProgramSearch] = useState('');
   const [durationFilter, setDurationFilter] = useState('all');
+  const [statusTab, setStatusTab] = useState('published');
 
   useEffect(() => { document.title = t('admin.programs.pageTitle', `Admin - Programs | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
 
@@ -334,6 +234,12 @@ export default function AdminPrograms() {
 
   const filteredPrograms = useMemo(() => {
     let result = programs;
+    // Status tab — published vs draft. `is_published` lives on gym_programs.
+    if (statusTab === 'published') {
+      result = result.filter(p => p.is_published === true);
+    } else if (statusTab === 'draft') {
+      result = result.filter(p => p.is_published !== true);
+    }
     if (programSearch.trim()) {
       const q = programSearch.toLowerCase();
       result = result.filter(p =>
@@ -350,7 +256,12 @@ export default function AdminPrograms() {
       }
     }
     return result;
-  }, [programs, programSearch, durationFilter]);
+  }, [programs, programSearch, durationFilter, statusTab]);
+
+  const statusCounts = useMemo(() => ({
+    published: programs.filter(p => p.is_published === true).length,
+    draft: programs.filter(p => p.is_published !== true).length,
+  }), [programs]);
 
   // ── Render ───────────────────────────────────────────────
 
@@ -360,7 +271,7 @@ export default function AdminPrograms() {
     <div className="admin-shell px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title={t('admin.programs.title', 'Programs')}
-        subtitle={t('admin.programs.subtitle', 'Gym-branded workout programs for members')}
+        subtitle={t('admin.programs.subtitle', 'Multi-week training plans members can enroll in')}
         actions={
           <button
             onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}
@@ -384,16 +295,28 @@ export default function AdminPrograms() {
       {/* Program Analytics Summary */}
       {!loading && programs.length > 0 && (
         <FadeIn>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3 mb-5">
             <StatCard label={t('admin.programs.publishedPrograms', 'Published Programs')} value={programStats.totalPrograms} borderColor="var(--color-accent)" delay={0} />
             <StatCard label={t('admin.programs.activeEnrollments', 'Active Enrollments')} value={programStats.activeEnrollments} borderColor="var(--color-info)" delay={50} />
-            <StatCard label={t('admin.programs.completionRate', 'Completion Rate')} value={`${programStats.completionRate}%`} borderColor="var(--color-success)" delay={100} />
             <AdminCard className="admin-stat-card border-l-2" borderLeft="var(--color-coach)">
               <p className="admin-kpi text-[18px] md:text-[20px] truncate">{programStats.topProgram}</p>
               <p className="text-[11px] mt-1.5 truncate" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.mostPopular', 'Most Popular')}</p>
             </AdminCard>
           </div>
         </FadeIn>
+      )}
+
+      {/* Status tabs — separate Published from Draft */}
+      {!loading && programs.length > 0 && (
+        <AdminTabs
+          tabs={[
+            { key: 'published', label: t('admin.programs.published', 'Published'), count: statusCounts.published },
+            { key: 'draft', label: t('admin.programs.draft', 'Draft'), count: statusCounts.draft },
+          ]}
+          active={statusTab}
+          onChange={setStatusTab}
+          className="mb-4"
+        />
       )}
 
       {/* Search and filters */}
@@ -459,7 +382,14 @@ export default function AdminPrograms() {
               <Dumbbell size={24} style={{ color: 'var(--color-admin-text-muted)' }} />
             </div>
             <p className="text-[14px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>{t('admin.programs.noPrograms', 'No programs yet')}</p>
-            <p className="text-[12.5px] mt-1" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.noProgramsHint', 'Create structured programs for your members to follow')}</p>
+            <p className="text-[12.5px] mt-1 mb-4" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.noProgramsHint', 'Create structured programs for your members to follow')}</p>
+            <button
+              onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
+              style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}
+            >
+              <Plus size={14} /> {t('admin.programs.createFirst', 'Create your first program')}
+            </button>
           </div>
         </FadeIn>
       ) : (

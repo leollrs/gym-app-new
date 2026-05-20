@@ -80,6 +80,38 @@ export function getRiskTier(score) {
 }
 
 /**
+ * Lightweight fallback estimator used by admin pages when the v2 pipeline
+ * (`fetchMembersWithChurnScores`) returns no row for a member — e.g. the
+ * pre-compute cron hasn't run yet, or the row was purged. Thresholds match
+ * `getRiskTier` (80 / 55 / 30) so a member's tier stays consistent whether
+ * we read the v2 score or fall back to this estimate.
+ *
+ * Signal strings are returned in raw English so `translateSignal()`
+ * (signalI18n.js) can map them to `admin.churnSignals.*` i18n keys at
+ * render time.
+ *
+ * @param {number} daysInactive - days since last check-in/session
+ * @param {number} recentWorkouts - workouts completed in last 14 days
+ * @param {boolean} neverActive - true if member has no check-in and no session ever
+ * @returns {{ score: number, risk_tier: 'critical'|'high'|'medium'|'low', key_signals: string[] }}
+ */
+export function estimateChurnScoreFallback(daysInactive, recentWorkouts, neverActive) {
+  let score;
+  if (neverActive || daysInactive > 30) score = 95;
+  else if (daysInactive > 14) score = recentWorkouts === 0 ? 85 : 70;
+  else if (daysInactive > 7) score = recentWorkouts === 0 ? 45 : 30;
+  else score = Math.max(0, 20 - recentWorkouts * 5);
+  score = Math.min(100, Math.max(0, score));
+  const risk_tier = score >= 80 ? 'critical' : score >= 55 ? 'high' : score >= 30 ? 'medium' : 'low';
+  const key_signals = [];
+  if (neverActive) key_signals.push('Never logged a workout');
+  else if (daysInactive > 30) key_signals.push('No activity in 30+ days');
+  else if (daysInactive > 14) key_signals.push('No activity in 14+ days');
+  if (recentWorkouts === 0 && !neverActive) key_signals.push('No workouts in last 14 days');
+  return { score, risk_tier, key_signals };
+}
+
+/**
  * @param {Object} m - member metrics (see retention.js)
  * @param {Object} [weights] - per-gym weight multipliers
  */

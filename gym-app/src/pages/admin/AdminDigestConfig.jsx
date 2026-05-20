@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Mail, Clock, Calendar, Bell, Save, Check, Eye,
   BarChart3, Users, UserPlus, Trophy, DollarSign, MessageCircle,
-  Power, PowerOff,
+  Power, PowerOff, ArrowLeft,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -186,13 +187,27 @@ export default function AdminDigestConfig() {
         title={t('admin.digestConfig.title')}
         subtitle={t('admin.digestConfig.subtitle')}
         actions={
-          <button
-            onClick={() => setShowPreview(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold text-[#E5E7EB] bg-white/[0.04] border border-white/6 hover:border-white/10 hover:bg-white/[0.06] transition-colors"
-          >
-            <Eye size={14} />
-            {t('admin.digestConfig.preview', { defaultValue: 'Preview' })}
-          </button>
+          <>
+            <Link
+              to="/admin/settings"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-colors"
+              style={{
+                backgroundColor: 'var(--color-bg-deep)',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-muted)',
+              }}
+            >
+              <ArrowLeft size={14} />
+              {t('admin.settings.title', 'Settings')}
+            </Link>
+            <button
+              onClick={() => setShowPreview(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold text-[#E5E7EB] bg-white/[0.04] border border-white/6 hover:border-white/10 hover:bg-white/[0.06] transition-colors"
+            >
+              <Eye size={14} />
+              {t('admin.digestConfig.preview', { defaultValue: 'Preview' })}
+            </button>
+          </>
         }
       />
 

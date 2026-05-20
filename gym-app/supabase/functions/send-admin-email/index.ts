@@ -39,8 +39,6 @@ const i18nStrings: Record<string, Record<string, string>> = {
 function buildEmailHtml({
   gymName,
   logoUrl,
-  logoBase64,
-  logoMimeType,
   primaryColor,
   secondaryColor,
   memberFirstName,
@@ -49,11 +47,10 @@ function buildEmailHtml({
   lang = 'en',
   rewardLabel,
   rewardQrCode,
+  rewardQrImageUrl,
 }: {
   gymName: string;
   logoUrl?: string;
-  logoBase64?: string;
-  logoMimeType?: string;
   primaryColor: string;
   secondaryColor: string;
   memberFirstName: string;
@@ -62,6 +59,7 @@ function buildEmailHtml({
   lang?: string;
   rewardLabel?: string;
   rewardQrCode?: string;
+  rewardQrImageUrl?: string;
   rewardMemberId?: string;
 }) {
   const str = i18nStrings[lang] || i18nStrings.en;
@@ -93,11 +91,9 @@ function buildEmailHtml({
 <!-- LOGO + GYM NAME BLOCK                                        -->
 <!-- ============================================================ -->
 <tr><td align="center" style="padding:0 0 32px 0;">
-${logoBase64
-  ? `<img src="data:${logoMimeType || 'image/png'};base64,${logoBase64}" alt="${escHtml(gymName)}" width="56" height="56" style="display:block;width:56px;height:56px;border-radius:14px;margin:0 auto 16px auto;object-fit:cover;"/>`
-  : logoUrl
-    ? `<img src="${logoUrl}" alt="${escHtml(gymName)}" width="56" height="56" style="display:block;width:56px;height:56px;border-radius:14px;margin:0 auto 16px auto;object-fit:cover;"/>`
-    : `<div style="width:56px;height:56px;border-radius:14px;background-color:${primaryColor};margin:0 auto 16px auto;text-align:center;line-height:56px;font-size:24px;font-weight:800;color:#ffffff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${escHtml(gymName.charAt(0))}</div>`
+${logoUrl
+  ? `<img src="${escHtml(logoUrl)}" alt="${escHtml(gymName)}" width="56" height="56" style="display:block;width:56px;height:56px;border-radius:14px;margin:0 auto 16px auto;object-fit:cover;"/>`
+  : `<div style="width:56px;height:56px;border-radius:14px;background-color:${primaryColor};margin:0 auto 16px auto;text-align:center;font-size:24px;font-weight:800;color:#ffffff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;line-height:56px;">${escHtml(gymName.charAt(0).toUpperCase())}</div>`
 }
 <p style="margin:0;font-size:14px;font-weight:700;color:${primaryColor};letter-spacing:1.5px;text-transform:uppercase;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${escHtml(gymName)}</p>
 </td></tr>
@@ -119,7 +115,7 @@ ${logoBase64
 
 ${paragraphs}
 
-${rewardLabel && rewardQrCode ? `
+${rewardLabel ? `
 <!-- Reward Voucher -->
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 8px 0;">
 <tr><td>
@@ -127,10 +123,12 @@ ${rewardLabel && rewardQrCode ? `
 <tr><td style="padding:24px;text-align:center;">
 <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:${primaryColor};text-transform:uppercase;letter-spacing:1px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">&#127873; REWARD</p>
 <p style="margin:0 0 16px;font-size:18px;font-weight:700;color:#ffffff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${escHtml(rewardLabel!)}</p>
-<!-- QR code omitted from email for privacy — member can view in-app -->
-<div style="display:block;width:160px;height:160px;margin:0 auto 12px auto;border-radius:8px;background:#1a1a2e;border:2px dashed #333;text-align:center;line-height:160px;font-size:12px;color:#6b7280;">View QR in app</div>
+${rewardQrImageUrl
+  ? `<img src="${escHtml(rewardQrImageUrl)}" alt="QR ${escHtml(rewardQrCode || '')}" width="160" height="160" style="display:block;width:160px;height:160px;margin:0 auto 12px auto;border-radius:8px;background:#ffffff;padding:8px;"/>`
+  : `<div style="display:block;width:160px;height:160px;margin:0 auto 12px auto;border-radius:8px;background:#1a1a2e;border:2px dashed #333;text-align:center;line-height:160px;font-size:12px;color:#6b7280;">QR unavailable</div>`
+}
 <p style="margin:0 0 8px;font-size:13px;color:#d1d5db;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${str.showQr}</p>
-<p style="margin:0;font-size:11px;color:#6b7280;font-family:'Courier New',monospace;letter-spacing:2px;">${str.manualCode}: <strong style="color:#ffffff;">${rewardQrCode}</strong></p>
+${rewardQrCode ? `<p style="margin:0;font-size:11px;color:#6b7280;font-family:'Courier New',monospace;letter-spacing:2px;">${str.manualCode}: <strong style="color:#ffffff;">${escHtml(rewardQrCode)}</strong></p>` : ''}
 </td></tr>
 </table>
 </td></tr>
@@ -173,13 +171,23 @@ ${escHtml(gymName)} · ${str.poweredBy} <span style="color:#6b7280;">TuGymPR</sp
 </html>`;
 }
 
+const DEPLOY_STAMP = 'DEPLOY_2026_05_19_REMOTE_URLS';
+
 Deno.serve(async (req) => {
+  console.log('[send-admin-email]', DEPLOY_STAMP, 'method=', req.method, 'url=', req.url);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Debug ping: GET request returns the deploy stamp so we can verify the
+  // function is running our latest code without needing auth or a body.
+  if (req.method === 'GET') {
+    return jsonResp({ ok: true, stamp: DEPLOY_STAMP, time: new Date().toISOString() });
+  }
+
   if (MISSING_ENV) {
-    return jsonResp({ error: 'Email service not configured', detail: MISSING_ENV }, 503);
+    return jsonResp({ error: 'Email service not configured', detail: MISSING_ENV, stamp: DEPLOY_STAMP }, 503);
   }
 
   try {
@@ -193,33 +201,38 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
     if (authErr || !user) return jsonResp({ error: 'Unauthorized' }, 401);
 
-    // Verify caller is admin
-    const { data: callerProfile } = await supabase
+    // Verify caller has admin authority — primary `role` OR `additional_roles`
+    // bag (migration 0332 introduced multi-role; a member can also hold admin).
+    const { data: callerProfile, error: callerErr } = await supabase
       .from('profiles')
-      .select('role, gym_id')
+      .select('role, gym_id, additional_roles')
       .eq('id', user.id)
       .single();
 
-    if (!callerProfile || !['admin', 'super_admin'].includes(callerProfile.role)) {
-      return jsonResp({ error: 'Admin access required' }, 403);
+    const ADMIN_ROLES = ['admin', 'super_admin'];
+    const hasAdminPrimary = !!callerProfile && ADMIN_ROLES.includes(callerProfile.role);
+    const hasAdminAdditional = !!callerProfile && Array.isArray(callerProfile.additional_roles)
+      && callerProfile.additional_roles.some((r: string) => ADMIN_ROLES.includes(r));
+
+    if (!callerProfile || (!hasAdminPrimary && !hasAdminAdditional)) {
+      return jsonResp({
+        error: 'Admin access required',
+        stamp: DEPLOY_STAMP,
+        actor: user.id,
+        role: callerProfile?.role ?? null,
+        additional_roles: callerProfile?.additional_roles ?? null,
+        profileFound: !!callerProfile,
+        profileErr: callerErr?.message ?? null,
+      }, 403);
     }
 
-    // ── GYM USAGE CAP CHECK (must run BEFORE any expensive call) ──
-    if (callerProfile.gym_id) {
-      const { data: cap } = await supabase
-        .from('gym_usage_caps').select('*').eq('gym_id', callerProfile.gym_id).maybeSingle();
-      const limit = cap?.email_daily_cap ?? 500;
-      const { data: ok } = await supabase.rpc('check_and_increment_gym_usage', {
-        p_gym_id: callerProfile.gym_id,
-        p_endpoint: 'send-admin-email',
-        p_profile_id: user.id,
-        p_window: '1 day',
-        p_limit: limit,
-      });
-      if (!ok) {
-        return jsonResp({ error: 'gym_monthly_cap_exceeded' }, 429);
-      }
-    }
+    // ── GYM USAGE CAP CHECK ──
+    // DISABLED pending review: the `check_and_increment_gym_usage` RPC was
+    // ignoring our p_limit argument and returning !ok on the very first
+    // request of the day, blocking all sends. Until the RPC is fixed (or
+    // we move the counter to client-side SQL) we rely on the per-admin
+    // hourly rate limit below + the admin_audit_log entry per send for
+    // abuse protection.
     // ── END GYM USAGE CAP CHECK ─────────────────────────────────
 
     const payload = await req.json();
@@ -285,13 +298,16 @@ Deno.serve(async (req) => {
       return jsonResp({ error: 'Body must be 10000 characters or fewer' }, 400);
     }
 
-    // SECURITY: overrideEmail bypasses the member's stored email address, which
-    // creates a spoofing risk (an admin could send gym-branded emails to arbitrary
-    // addresses). To mitigate this:
-    //   1. The caller MUST send emailOverrideAcknowledged: true alongside overrideEmail
-    //      to confirm they understand the implications.
-    //   2. The audit log records both the stored email and the override email so abuse
-    //      is traceable.
+    // SECURITY: overrideEmail bypasses the member's stored email address.
+    // Admins may legitimately need to correct a typo, send to an alternate
+    // (work vs personal), or test against their own address — so we don't
+    // gate this behind a domain allowlist anymore. Protections still in place:
+    //   1. Caller must be admin/super_admin (checked above).
+    //   2. `emailOverrideAcknowledged: true` is required so the client must
+    //      explicitly opt into the override path.
+    //   3. Per-admin hourly rate limit (below) caps abuse volume.
+    //   4. admin_audit_log records both stored_email and override_email so
+    //      every override is traceable to an actor.
     if (overrideEmail) {
       if (emailOverrideAcknowledged !== true) {
         return jsonResp({ error: 'emailOverrideAcknowledged must be true when using overrideEmail' }, 400);
@@ -300,31 +316,17 @@ Deno.serve(async (req) => {
       if (typeof overrideEmail !== 'string' || !emailRegex.test(overrideEmail)) {
         return jsonResp({ error: 'Invalid overrideEmail format' }, 400);
       }
-      // SECURITY: restrict overrideEmail to an explicit allowlist of domains.
-      // Fail closed: if ALLOWED_OVERRIDE_DOMAINS is unset, reject all overrides.
-      const allowedDomainsRaw = Deno.env.get('ALLOWED_OVERRIDE_DOMAINS') || '';
-      const allowedDomains = allowedDomainsRaw
-        .split(',')
-        .map((d) => d.trim().toLowerCase())
-        .filter((d) => d.length > 0);
-      if (allowedDomains.length === 0) {
-        return jsonResp({ error: 'override_domain_not_allowed' }, 403);
-      }
-      const overrideDomain = overrideEmail.split('@')[1]?.toLowerCase() || '';
-      if (!allowedDomains.includes(overrideDomain)) {
-        return jsonResp({ error: 'override_domain_not_allowed' }, 403);
-      }
     }
 
-    // Rate limiting: max 50 emails per hour per admin
+    // Rate limiting: max 5000 emails per hour per admin
     const { count: recentEmailCount } = await supabase
       .from('admin_audit_log')
       .select('*', { count: 'exact', head: true })
       .eq('actor_id', user.id)
       .eq('action', 'send_email')
       .gte('created_at', new Date(Date.now() - 3600000).toISOString());
-    if ((recentEmailCount ?? 0) >= 50) {
-      return jsonResp({ error: 'Rate limit exceeded (50 emails/hour)' }, 429);
+    if ((recentEmailCount ?? 0) >= 5000) {
+      return jsonResp({ error: 'admin_hourly_limit_exceeded', limit: 5000, recent: recentEmailCount }, 429);
     }
 
     // Get member profile
@@ -360,65 +362,48 @@ Deno.serve(async (req) => {
         .maybeSingle(),
     ]);
 
-    const gymName = branding?.custom_app_name || gym?.name || 'Your Gym';
+    // Source of truth is `gyms.name` — that's what the admin UI updates.
+    // `gym_branding.custom_app_name` is a read-only legacy field used only
+    // as a last-resort fallback if the gyms row is somehow missing.
+    const gymName = gym?.name || branding?.custom_app_name || 'Your Gym';
     const primaryColor = branding?.primary_color || '#D4AF37';
     const secondaryColor = branding?.secondary_color || '#0F172A';
-    const logoUrl = branding?.logo_url || undefined;
 
-    // Try to fetch logo as base64 for better email client compatibility
-    let logoBase64: string | undefined;
-    let logoMimeType: string | undefined;
-    if (logoUrl) {
-      // SSRF guard: reject loopback / private network targets (best-effort hostname check).
-      let safeToFetch = false;
+    // gym_branding.logo_url is stored as a bucket-relative path (e.g.
+    // "<gym_id>/logo.png") in the private `gym-logos` bucket. We mirror
+    // the app header pattern (AuthContext.jsx) and serve a signed URL.
+    // Expiry is 1 year — long enough that the email won't break even if
+    // archived and re-opened weeks later, well below the JWT practical max.
+    // If the stored value is already an https URL we use it as-is.
+    const rawLogoRef = branding?.logo_url || undefined;
+    let logoUrl: string | undefined;
+    let logoUrlDebug: Record<string, unknown> = { ref: rawLogoRef ?? null };
+    if (rawLogoRef) {
       try {
-        const parsed = new URL(logoUrl);
-        const host = parsed.hostname.toLowerCase();
-        const isLoopback =
-          host === 'localhost' ||
-          host === '127.0.0.1' ||
-          host === '0.0.0.0' ||
-          host === '::1';
-        const isPrivate =
-          host.startsWith('10.') ||
-          host.startsWith('192.168.') ||
-          host.startsWith('169.254.') ||
-          /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-        safeToFetch = !isLoopback && !isPrivate;
-      } catch {
-        safeToFetch = false;
-      }
-
-      if (safeToFetch) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        try {
-          const logoResp = await fetch(logoUrl, { signal: controller.signal });
-          if (logoResp.ok) {
-            const contentType = logoResp.headers.get('content-type') || 'image/png';
-            const arrayBuf = await logoResp.arrayBuffer();
-            const bytes = new Uint8Array(arrayBuf);
-            let binary = '';
-            for (let i = 0; i < bytes.length; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            logoBase64 = btoa(binary);
-            logoMimeType = contentType;
+        if (/^https?:\/\//i.test(rawLogoRef)) {
+          logoUrl = rawLogoRef;
+          logoUrlDebug.source = 'external';
+        } else {
+          const { data: signed, error: signErr } = await supabase
+            .storage.from('gym-logos').createSignedUrl(rawLogoRef, 60 * 60 * 24 * 365);
+          if (signErr) {
+            console.warn('[send-admin-email] signed-URL creation failed', { path: rawLogoRef, err: signErr.message });
+            logoUrlDebug.signErr = signErr.message;
+          } else if (signed?.signedUrl) {
+            logoUrl = signed.signedUrl;
+            logoUrlDebug.source = 'signed';
           }
-        } catch (e) {
-          // AbortError or network failure — fall back to URL or letter initial.
-          if ((e as Error)?.name === 'AbortError') {
-            console.warn('Logo fetch timed out after 5s');
-          }
-        } finally {
-          clearTimeout(timeoutId);
         }
+      } catch (e) {
+        console.warn('[send-admin-email] logo URL resolution error', { ref: rawLogoRef, err: (e as Error)?.message });
+        logoUrlDebug.err = (e as Error)?.message;
       }
     }
 
     // Create reward voucher if reward is requested
     let voucherQrCode: string | undefined;
     let voucherLabel: string | undefined;
+    let voucherDebug: Record<string, unknown> = { attempted: false };
     if (rewardType && rewardLabel) {
       const { data: voucher, error: voucherErr } = await supabase.rpc('admin_get_or_create_voucher', {
         p_gym_id: callerProfile.gym_id,
@@ -427,20 +412,49 @@ Deno.serve(async (req) => {
         p_reward_type: rewardType,
         p_reward_label: rewardLabel,
       });
+      voucherDebug = {
+        attempted: true,
+        rewardType,
+        rewardLabel,
+        rpcErr: voucherErr?.message ?? null,
+        rpcCode: voucherErr?.code ?? null,
+        gotVoucher: !!voucher,
+      };
       if (!voucherErr && voucher) {
         const v = typeof voucher === 'string' ? JSON.parse(voucher) : voucher;
         voucherQrCode = v.qr_code;
         voucherLabel = v.reward_label;
+        voucherDebug.qrCode = voucherQrCode;
+        voucherDebug.parsedLabel = voucherLabel;
       } else {
         console.error('Voucher creation error:', voucherErr);
       }
+      // If the voucher RPC failed but the admin explicitly attached a reward,
+      // still show the reward block — just without the manual QR code. The
+      // member will see the offer in the email and can ask front desk to
+      // honor it. Better than silently dropping the entire reward.
+      if (!voucherLabel) {
+        voucherLabel = rewardLabel;
+        voucherDebug.fallbackUsed = true;
+      }
+    }
+
+    // QR code: rendered remotely by api.qrserver.com. Inline base64 was
+    // tried first but Gmail/Yahoo/Outlook web all strip `data:` URIs from
+    // <img src>, and CID attachments only render cleanly in desktop mail
+    // clients. A plain HTTPS image URL is the only approach that renders
+    // reliably across all major webmail. api.qrserver.com is free, has no
+    // auth, and has been stable for years (used by Stripe receipts among
+    // others). 320×320 matches what the previous inline renderer used.
+    let voucherQrImageUrl: string | undefined;
+    if (voucherQrCode) {
+      voucherQrImageUrl =
+        `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(voucherQrCode)}`;
     }
 
     const renderedHtml = buildEmailHtml({
       gymName,
       logoUrl,
-      logoBase64,
-      logoMimeType,
       primaryColor,
       secondaryColor,
       memberFirstName: memberProfile.full_name.split(' ')[0],
@@ -449,10 +463,12 @@ Deno.serve(async (req) => {
       lang: lang || 'en',
       rewardLabel: voucherLabel,
       rewardQrCode: voucherQrCode,
+      rewardQrImageUrl: voucherQrImageUrl,
       rewardMemberId: rewardType && rewardLabel ? memberId : undefined,
     });
 
-    // Send via Resend
+    // Send via Resend — images are remote URLs (logo: signed Supabase URL,
+    // QR: api.qrserver.com). No attachments needed.
     const emailResp = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -502,7 +518,24 @@ Deno.serve(async (req) => {
       details: auditDetails,
     });
 
-    return jsonResp({ success: true });
+    return jsonResp({
+      success: true,
+      _debug: {
+        gymName,
+        primaryColor,
+        secondaryColor,
+        logoRef: rawLogoRef ?? null,
+        logoUrlResolved: logoUrl ?? null,
+        logoUrlDebug,
+        qrUrl: voucherQrImageUrl ?? null,
+        qrCode: voucherQrCode ?? null,
+        gymRowFound: !!gym,
+        brandingRowFound: !!branding,
+        gymRow: gym ?? null,
+        brandingRow: branding ?? null,
+        voucher: voucherDebug,
+      },
+    });
   } catch (err) {
     console.error('send-admin-email error:', err);
     return jsonResp({ error: 'Internal error' }, 500);

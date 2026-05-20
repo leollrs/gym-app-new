@@ -52,9 +52,21 @@ export default function AdminTabs({ tabs, active, onChange, className = '', idPr
               }`}
             >
               {Icon && <Icon size={14} className="hidden md:block" />}
-              {equalWidth && tab.label.includes(' ') ? (
-                tab.label.split(' ').map((word, wi) => <span key={wi}>{word}</span>)
-              ) : tab.label}
+              {/* Two-word labels stack each word on its own line for the
+                  compact equal-width grid (e.g. "Win-Back" stays single
+                  line, "Retention Board" -> 2 lines). For 3+ words we
+                  fall back to a single truncated row to avoid the
+                  Spanish "Panel de Retención" 3-line wrap. */}
+              {(() => {
+                if (!equalWidth) return <span className="truncate max-w-full">{tab.label}</span>;
+                const words = tab.label.split(' ');
+                if (words.length === 2) {
+                  return words.map((word, wi) => (
+                    <span key={wi} className="truncate max-w-full block">{word}</span>
+                  ));
+                }
+                return <span className="truncate max-w-full block">{tab.label}</span>;
+              })()}
               {tab.count != null && tab.count > 0 && (
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                   isActive ? 'bg-[#D4AF37]/20 text-[#D4AF37]' : 'bg-white/8 text-[#6B7280]'
