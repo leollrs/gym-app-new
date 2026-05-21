@@ -43,12 +43,33 @@ export default function StatCard({
 
   const isHero = size === 'hero';
   const clickable = typeof onClick === 'function';
-  const Wrapper = clickable ? 'button' : 'div';
+  // If a benchmark slot is present, the card needs to contain its own
+  // toggle button — and nesting a <button> inside the outer <button>
+  // wrapper is invalid HTML. In that case render the wrapper as a div
+  // with role/tabindex/keyboard handlers so the card still behaves like
+  // a button (navigate on click/Enter/Space) without breaking nesting.
+  const Wrapper = (clickable && !benchmark) ? 'button' : 'div';
+  const useDivAsButton = clickable && !!benchmark;
+  const wrapperProps = clickable
+    ? (benchmark
+      ? {
+          role: 'button',
+          tabIndex: 0,
+          onClick,
+          onKeyDown: (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onClick(e);
+            }
+          },
+        }
+      : { type: 'button', onClick })
+    : {};
 
   return (
     <FadeIn delay={delay} className={isHero ? 'md:col-span-2 xl:col-span-3' : ''}>
       <Wrapper
-        {...(clickable ? { type: 'button', onClick } : {})}
+        {...wrapperProps}
         className={`admin-stat-card border-l-2 group w-full text-left ${
           isHero ? 'p-5' : 'p-3 md:p-4'
         } ${clickable ? 'cursor-pointer transition-all hover:brightness-110 hover:-translate-y-px active:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]' : ''}`}
