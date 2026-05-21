@@ -77,12 +77,59 @@ export default function TVDisplay() {
   const [slideIdx, setSlideIdx] = useState(0);
   const [clock, setClock] = useState(new Date());
   const [authError, setAuthError] = useState(null);
+  const [resolvedLogoUrl, setResolvedLogoUrl] = useState(null);
 
   // Clock tick
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Resolve the logo storage path → signed URL. The auth RPC returns the
+  // RAW storage path (e.g. "<gym_id>/logo.png") because RPCs can't mint
+  // signed URLs themselves. We sign it client-side with a 24-hour expiry —
+  // way longer than any TV viewing session, and the TV's heartbeat will
+  // re-resolve next time it re-authenticates if it ever lapses.
+  useEffect(() => {
+    if (!credentials?.logo_url) { setResolvedLogoUrl(null); return; }
+    const path = credentials.logo_url;
+    // Already a full URL (signed earlier or admin-uploaded direct link) — pass through.
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      setResolvedLogoUrl(path);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.storage
+          .from('gym-logos')
+          .createSignedUrl(path, 60 * 60 * 24);
+        if (cancelled) return;
+        if (!error && data?.signedUrl) {
+          setResolvedLogoUrl(data.signedUrl);
+        } else {
+          setResolvedLogoUrl(null);
+        }
+      } catch {
+        if (!cancelled) setResolvedLogoUrl(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [credentials?.logo_url]);
+
+  // Format the clock in the gym's timezone (not the TV device's local time).
+  // Falls back to the device's TZ if the gym has no timezone set — safer
+  // than crashing on an Intl error. Memoize the formatters so we're not
+  // rebuilding them every tick.
+  const tz = credentials?.gym_timezone || undefined;
+  const timeFmt = (() => {
+    try { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz }); }
+    catch { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }); }
+  })();
+  const dateFmt = (() => {
+    try { return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: tz }); }
+    catch { return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' }); }
+  })();
 
   // Build the full slide list once credentials + data land. Order:
   //   1. Metric leaderboards (in METRIC_SLIDES order)
@@ -172,54 +219,73 @@ export default function TVDisplay() {
 
   // ── Display screen ────────────────────────────────────────────────────
   const accent = credentials.accent_color || '#10B981';
+  const primary = credentials.primary_color || '#0F172A';
   const slide = slides[slideIdx];
 
   return (
+    // h-screen + overflow-hidden + 100dvh fallback so the layout NEVER
+    // scrolls — every child uses flex-1/flex-basis-0 or fixed flex-shrink-0.
+    // Using primary_color for the page background so the gym's brand tints
+    // the whole stage (subtle, mixed with deep slate so text contrast holds).
     <div
-      className="min-h-screen flex flex-col overflow-hidden select-none"
-      style={{ background: '#05070B', color: '#E5E7EB', fontFamily: 'Barlow, sans-serif' }}
+      className="h-screen flex flex-col overflow-hidden select-none"
+      style={{
+        height: '100dvh',
+        background: `linear-gradient(180deg, ${primary}40 0%, #05070B 60%)`,
+        color: '#E5E7EB',
+        fontFamily: 'Barlow, sans-serif',
+      }}
     >
       {/* ── Header ───────────────────────────────────────────────── */}
       <header
-        className="flex items-center justify-between px-12 py-6 flex-shrink-0"
-        style={{ borderBottom: `2px solid ${accent}22` }}
+        className="flex items-center justify-between px-8 lg:px-12 py-4 lg:py-5 flex-shrink-0"
+        style={{ borderBottom: `2px solid ${accent}33` }}
       >
-        <div className="flex items-center gap-5">
-          {credentials.logo_url && (
-            <img src={credentials.logo_url} alt="Logo" className="h-12 w-12 object-contain rounded-xl" />
+        <div className="flex items-center gap-4 lg:gap-5 min-w-0">
+          {resolvedLogoUrl && (
+            <img
+              src={resolvedLogoUrl}
+              alt={`${credentials.gym_name} logo`}
+              className="h-12 w-12 lg:h-14 lg:w-14 object-contain rounded-xl flex-shrink-0"
+              style={{ background: 'rgba(255,255,255,0.06)' }}
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
           )}
-          <div>
-            <p className="text-[13px] font-bold tracking-[0.3em] uppercase" style={{ color: accent }}>
+          <div className="min-w-0">
+            <p className="text-[12px] lg:text-[13px] font-bold tracking-[0.3em] uppercase" style={{ color: accent }}>
               Live Leaderboard
             </p>
-            <p className="text-[28px] font-black text-white leading-tight">{credentials.gym_name}</p>
+            <p className="text-[24px] lg:text-[28px] font-black text-white leading-tight truncate">{credentials.gym_name}</p>
           </div>
         </div>
 
-        {/* Slide indicator strip */}
-        <div className="flex items-center gap-4 overflow-hidden">
-          {slides.slice(0, 12).map((s, i) => (
-            <div key={s.key} className="flex items-center gap-2" style={{ opacity: i === slideIdx ? 1 : 0.3 }}>
-              <span className="w-2 h-2 rounded-full" style={{ background: accent }} />
-              <span className="text-[12px] font-bold tracking-widest uppercase text-white whitespace-nowrap">
-                {s.kind === 'metric' ? s.label : 'CHALLENGE'}
+        {/* Slide indicator strip — collapses to dots only on tighter widths */}
+        <div className="hidden xl:flex items-center gap-3 overflow-hidden flex-1 justify-center px-6">
+          {slides.slice(0, 10).map((s, i) => (
+            <div key={s.key} className="flex items-center gap-1.5" style={{ opacity: i === slideIdx ? 1 : 0.3 }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: accent }} />
+              <span className="text-[11px] font-bold tracking-widest uppercase text-white whitespace-nowrap">
+                {s.kind === 'metric' ? s.label : 'RETO'}
               </span>
             </div>
           ))}
         </div>
 
-        <div className="text-right">
-          <p className="text-[36px] font-black text-white leading-none tabular-nums">
-            {clock.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+        <div className="text-right flex-shrink-0">
+          <p className="text-[28px] lg:text-[34px] font-black text-white leading-none tabular-nums">
+            {timeFmt.format(clock)}
           </p>
-          <p className="text-[13px] tracking-widest uppercase mt-1" style={{ color: accent }}>
-            {clock.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+          <p className="text-[11px] lg:text-[12px] tracking-widest uppercase mt-1" style={{ color: accent }}>
+            {dateFmt.format(clock)}
           </p>
         </div>
       </header>
 
-      {/* ── Slide body ───────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* ── Slide body ──
+           min-h-0 lets the flex child actually shrink below its content size
+           when the rows overflow — without it, flex-1 + content > viewport
+           expands the parent and we lose the no-scroll guarantee. */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {!slide && (
           <div className="flex-1 flex items-center justify-center">
             <div className="w-12 h-12 border-2 rounded-full animate-spin" style={{ borderColor: `${accent}30`, borderTopColor: accent }} />
@@ -237,17 +303,17 @@ export default function TVDisplay() {
 
       {/* ── Footer ───────────────────────────────────────────────── */}
       <footer
-        className="px-12 py-4 flex items-center justify-between flex-shrink-0"
+        className="px-8 lg:px-12 py-3 flex items-center justify-between flex-shrink-0"
         style={{ borderTop: `1px solid rgba(255,255,255,0.04)` }}
       >
-        <p className="text-[12px] font-bold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.2)' }}>
+        <p className="text-[11px] font-bold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.25)' }}>
           Updates live · rotates every 20s · {slides.length} slides
         </p>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 max-w-[50%] overflow-hidden">
           {slides.map((_, i) => (
             <span
               key={i}
-              className="h-1 rounded-full transition-all duration-500"
+              className="h-1 rounded-full transition-all duration-500 flex-shrink-0"
               style={{ width: i === slideIdx ? '24px' : '6px', background: i === slideIdx ? accent : 'rgba(255,255,255,0.15)' }}
             />
           ))}
@@ -288,7 +354,9 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated }) {
         gym_id: data.gym_id,
         gym_name: data.gym_name,
         gym_slug: data.gym_slug,
+        gym_timezone: data.gym_timezone || null,
         accent_color: data.accent_color,
+        primary_color: data.primary_color,
         logo_url: data.logo_url,
       });
     } catch (err) {
@@ -363,6 +431,10 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated }) {
 }
 
 // ── Metric leaderboard slide ─────────────────────────────────────────────
+// IMPORTANT: this slide is rendered inside a `flex-1 min-h-0` parent. All
+// vertical sizing here uses flex distribution (flex-1, flex-basis-0) instead
+// of fixed pixel heights so that whether the gym has 3 rows or 10 rows, on
+// a 720p TV or 4K screen, everything fits in the viewport with no scroll.
 function MetricSlide({ slide, accent }) {
   const fmt = (score) => {
     if (slide.key === 'improved') return `+${score}%`;
@@ -378,9 +450,9 @@ function MetricSlide({ slide, accent }) {
 
   return (
     <>
-      <div className="px-12 pt-8 pb-4 flex-shrink-0">
+      <div className="px-8 lg:px-12 pt-5 lg:pt-7 pb-3 flex-shrink-0">
         <div className="flex items-baseline gap-4">
-          <h1 className="text-[72px] font-black leading-none tracking-tight" style={{ color: accent }}>
+          <h1 className="text-[48px] lg:text-[64px] xl:text-[72px] font-black leading-none tracking-tight" style={{ color: accent }}>
             {slide.label}
           </h1>
           <p className="text-[22px] font-bold tracking-widest uppercase text-white/70 pb-2">
@@ -389,43 +461,48 @@ function MetricSlide({ slide, accent }) {
         </div>
       </div>
 
-      <div className="flex-1 px-12 pb-8 overflow-hidden">
+      {/* min-h-0 = critical for the flex-1 inside to shrink properly.
+          flex-col + flex-1 children below give each row a proportional
+          share of the available height; no fixed pixel sizes. */}
+      <div className="flex-1 min-h-0 px-8 lg:px-12 pb-5 lg:pb-7 overflow-hidden">
         {slide.entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full">
             <p className="text-[28px] font-bold text-white/60">No activity yet</p>
             <p className="text-[16px] text-white/20 mt-2">Start training to appear on the board</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 h-full">
+          <div className="flex flex-col gap-2 h-full">
             {slide.entries.map((e, i) => {
               const barWidth = Math.round((Number(e.score) / Number(maxScore)) * 100);
               const isTop3 = i < 3;
+              // Top row gets 1.4x the share so the leader stands out;
+              // everyone else gets equal flex distribution.
+              const flexBasis = i === 0 ? '1.4 1 0' : '1 1 0';
               return (
                 <div
                   key={`${e.id || e.profile_id || i}`}
-                  className="relative flex items-center gap-6 rounded-2xl overflow-hidden flex-shrink-0"
+                  className="relative flex items-center gap-4 lg:gap-6 rounded-xl lg:rounded-2xl overflow-hidden min-h-0"
                   style={{
-                    height: i === 0 ? '88px' : '68px',
-                    background: isTop3 ? `${accent}08` : 'rgba(255,255,255,0.02)',
-                    border: isTop3 ? `1px solid ${accent}20` : '1px solid rgba(255,255,255,0.04)',
+                    flex: flexBasis,
+                    background: isTop3 ? `${accent}10` : 'rgba(255,255,255,0.03)',
+                    border: isTop3 ? `1px solid ${accent}33` : '1px solid rgba(255,255,255,0.05)',
                   }}
                 >
                   <div
-                    className="absolute inset-0 opacity-20 rounded-2xl transition-all duration-1000"
-                    style={{ width: `${barWidth}%`, background: `linear-gradient(90deg, ${accent}40, transparent)` }}
+                    className="absolute inset-0 opacity-20 rounded-xl lg:rounded-2xl transition-all duration-1000"
+                    style={{ width: `${barWidth}%`, background: `linear-gradient(90deg, ${accent}55, transparent)` }}
                   />
-                  <div className="flex-shrink-0 w-16 flex items-center justify-center relative z-10">
+                  <div className="flex-shrink-0 w-12 lg:w-16 flex items-center justify-center relative z-10">
                     {i < 3 ? (
-                      <span style={{ fontSize: i === 0 ? '40px' : '32px' }}>{['🥇', '🥈', '🥉'][i]}</span>
+                      <span className={i === 0 ? 'text-[34px] lg:text-[40px]' : 'text-[26px] lg:text-[30px]'}>{['🥇', '🥈', '🥉'][i]}</span>
                     ) : (
-                      <span className="text-[24px] font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{i + 1}</span>
+                      <span className="text-[20px] lg:text-[24px] font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{i + 1}</span>
                     )}
                   </div>
-                  <div className="flex-1 min-w-0 relative z-10 pr-4">
+                  <div className="flex-1 min-w-0 relative z-10 pr-3">
                     <p
-                      className="font-black truncate"
+                      className={`font-black truncate ${i === 0 ? 'text-[26px] lg:text-[32px]' : 'text-[18px] lg:text-[22px]'}`}
                       style={{
-                        fontSize: i === 0 ? '32px' : '24px',
                         color: i === 0 ? accent : 'rgba(255,255,255,0.9)',
                         letterSpacing: '-0.02em',
                       }}
@@ -433,14 +510,14 @@ function MetricSlide({ slide, accent }) {
                       {e.name}
                     </p>
                   </div>
-                  <div className="flex-shrink-0 text-right pr-8 relative z-10">
+                  <div className="flex-shrink-0 text-right pr-4 lg:pr-6 relative z-10">
                     <p
-                      className="font-black tabular-nums"
-                      style={{ fontSize: i === 0 ? '36px' : '26px', color: i === 0 ? accent : 'rgba(255,255,255,0.7)' }}
+                      className={`font-black tabular-nums leading-none ${i === 0 ? 'text-[28px] lg:text-[36px]' : 'text-[20px] lg:text-[26px]'}`}
+                      style={{ color: i === 0 ? accent : 'rgba(255,255,255,0.75)' }}
                     >
                       {fmt(e.score)}
                     </p>
-                    <p className="text-[12px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    <p className="text-[10px] lg:text-[11px] font-bold uppercase tracking-widest mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
                       {slide.unit}
                     </p>
                   </div>
@@ -495,104 +572,112 @@ function ChallengeSlide({ slide, accent, gymSlug }) {
   const topFive = participants.slice(0, 5);
 
   return (
-    <div className="flex-1 grid grid-cols-[1fr_420px] gap-12 px-12 pt-8 pb-8 overflow-hidden">
+    // Same no-scroll discipline as MetricSlide: grid + min-h-0 + flex-1
+    // inside each column lets the rows distribute across whatever height
+    // is left after the header, not push past it.
+    <div className="flex-1 min-h-0 grid grid-cols-[1fr_360px] xl:grid-cols-[1fr_420px] gap-8 lg:gap-12 px-8 lg:px-12 pt-5 lg:pt-7 pb-5 lg:pb-7 overflow-hidden">
       {/* ── Left column: name + leaderboard ─────────────────────── */}
-      <div className="flex flex-col overflow-hidden">
-        <div className="mb-6 flex-shrink-0">
-          <p className="text-[13px] font-bold tracking-[0.3em] uppercase mb-3" style={{ color: accent }}>
+      <div className="flex flex-col min-h-0 overflow-hidden">
+        <div className="mb-4 lg:mb-5 flex-shrink-0">
+          <p className="text-[12px] lg:text-[13px] font-bold tracking-[0.3em] uppercase mb-2" style={{ color: accent }}>
             Active Challenge · {timeLabel}
           </p>
           <h1
-            className="font-black leading-none tracking-tight mb-4"
-            style={{ fontSize: '56px', color: '#FFFFFF', letterSpacing: '-0.02em' }}
+            className="font-black leading-none tracking-tight mb-3 text-[40px] lg:text-[48px] xl:text-[56px]"
+            style={{ color: '#FFFFFF', letterSpacing: '-0.02em' }}
           >
             {c.name}
           </h1>
           {c.description && (
-            <p className="text-[18px] leading-snug max-w-2xl" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            <p className="text-[15px] lg:text-[17px] leading-snug max-w-2xl line-clamp-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
               {c.description}
             </p>
           )}
           {c.reward_description && (
             <div
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full mt-5 text-[14px] font-bold"
-              style={{ background: `${accent}1a`, color: accent, border: `1px solid ${accent}33` }}
+              className="inline-flex items-center gap-2 px-3 lg:px-4 py-1.5 lg:py-2 rounded-full mt-3 lg:mt-4 text-[12px] lg:text-[14px] font-bold"
+              style={{ background: `${accent}22`, color: accent, border: `1px solid ${accent}44` }}
             >
               🏆 {c.reward_description}
             </div>
           )}
         </div>
 
-        {/* Top-5 within this challenge */}
-        <div className="flex-1 overflow-hidden">
+        {/* Top-5 within this challenge — flex distribution, no fixed heights */}
+        <div className="flex-1 min-h-0 overflow-hidden">
           {topFive.length === 0 ? (
             <div className="h-full flex items-center justify-center rounded-2xl border-2 border-dashed" style={{ borderColor: `${accent}30` }}>
               <div className="text-center px-8">
-                <p className="text-[32px] font-black" style={{ color: accent }}>Be the first to join</p>
-                <p className="text-[16px] mt-2" style={{ color: 'rgba(255,255,255,0.4)' }}>Scan the code on the right to enter</p>
+                <p className="text-[26px] lg:text-[32px] font-black" style={{ color: accent }}>Be the first to join</p>
+                <p className="text-[14px] lg:text-[16px] mt-2" style={{ color: 'rgba(255,255,255,0.4)' }}>Scan the code on the right to enter</p>
               </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5">
-              {topFive.map((p, i) => (
-                <div
-                  key={p.profile_id}
-                  className="relative flex items-center gap-5 rounded-xl px-5"
-                  style={{
-                    height: i === 0 ? '74px' : '58px',
-                    background: i < 3 ? `${accent}08` : 'rgba(255,255,255,0.02)',
-                    border: i < 3 ? `1px solid ${accent}20` : '1px solid rgba(255,255,255,0.04)',
-                  }}
-                >
-                  <div className="w-12 flex items-center justify-center flex-shrink-0">
-                    {i < 3 ? (
-                      <span style={{ fontSize: i === 0 ? '32px' : '26px' }}>{['🥇', '🥈', '🥉'][i]}</span>
-                    ) : (
-                      <span className="text-[20px] font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{i + 1}</span>
-                    )}
-                  </div>
-                  <p
-                    className="flex-1 font-black truncate"
+            <div className="flex flex-col gap-2 h-full">
+              {topFive.map((p, i) => {
+                const flexBasis = i === 0 ? '1.35 1 0' : '1 1 0';
+                return (
+                  <div
+                    key={p.profile_id}
+                    className="relative flex items-center gap-3 lg:gap-5 rounded-xl px-3 lg:px-5 min-h-0"
                     style={{
-                      fontSize: i === 0 ? '26px' : '20px',
-                      color: i === 0 ? accent : 'rgba(255,255,255,0.9)',
+                      flex: flexBasis,
+                      background: i < 3 ? `${accent}10` : 'rgba(255,255,255,0.03)',
+                      border: i < 3 ? `1px solid ${accent}33` : '1px solid rgba(255,255,255,0.05)',
                     }}
                   >
-                    {p.name}
-                  </p>
-                  <p
-                    className="font-black tabular-nums flex-shrink-0"
-                    style={{ fontSize: i === 0 ? '28px' : '22px', color: i === 0 ? accent : 'rgba(255,255,255,0.7)' }}
-                  >
-                    {p.score != null ? Number(p.score).toLocaleString() : '—'}
-                  </p>
-                </div>
-              ))}
+                    <div className="w-10 lg:w-12 flex items-center justify-center flex-shrink-0">
+                      {i < 3 ? (
+                        <span className={i === 0 ? 'text-[28px] lg:text-[32px]' : 'text-[22px] lg:text-[26px]'}>{['🥇', '🥈', '🥉'][i]}</span>
+                      ) : (
+                        <span className="text-[18px] lg:text-[20px] font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{i + 1}</span>
+                      )}
+                    </div>
+                    <p
+                      className={`flex-1 font-black truncate ${i === 0 ? 'text-[22px] lg:text-[26px]' : 'text-[16px] lg:text-[20px]'}`}
+                      style={{
+                        color: i === 0 ? accent : 'rgba(255,255,255,0.9)',
+                      }}
+                    >
+                      {p.name}
+                    </p>
+                    <p
+                      className={`font-black tabular-nums flex-shrink-0 ${i === 0 ? 'text-[24px] lg:text-[28px]' : 'text-[18px] lg:text-[22px]'}`}
+                      style={{ color: i === 0 ? accent : 'rgba(255,255,255,0.75)' }}
+                    >
+                      {p.score != null ? Number(p.score).toLocaleString() : '—'}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Right column: QR join code ──────────────────────────── */}
-      <div className="flex flex-col items-center justify-center">
-        <div className="rounded-3xl p-6 mb-6" style={{ background: '#FFFFFF' }}>
+      {/* ── Right column: QR join code ────────────────────────────
+           min-h-0 + overflow-hidden, QR sized at 280-320 instead of 336
+           so 720p TVs don't push the bottom labels off-screen. */}
+      <div className="flex flex-col items-center justify-center min-h-0 overflow-hidden">
+        <div className="rounded-2xl lg:rounded-3xl p-4 lg:p-6 mb-4 lg:mb-5" style={{ background: '#FFFFFF' }}>
           <QRCodeSVG
             value={qrUrl}
-            size={336}
+            size={280}
             level="M"
             bgColor="#FFFFFF"
             fgColor="#000000"
             includeMargin={false}
+            className="block max-w-[40vh] max-h-[40vh] w-auto h-auto"
           />
         </div>
-        <p className="text-[20px] font-black uppercase tracking-widest mb-1" style={{ color: '#FFFFFF' }}>
+        <p className="text-[18px] lg:text-[20px] font-black uppercase tracking-widest mb-1" style={{ color: '#FFFFFF' }}>
           {notStartedYet ? 'Sign up' : 'Join now'}
         </p>
-        <p className="text-[14px] font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>
+        <p className="text-[12px] lg:text-[14px] font-semibold text-center" style={{ color: 'rgba(255,255,255,0.5)' }}>
           Scan with your phone camera
         </p>
         {participants.length > 0 && (
-          <p className="text-[13px] font-bold uppercase tracking-widest mt-6" style={{ color: accent }}>
+          <p className="text-[11px] lg:text-[13px] font-bold uppercase tracking-widest mt-3 lg:mt-4" style={{ color: accent }}>
             {participants.length} member{participants.length === 1 ? '' : 's'} in
           </p>
         )}
