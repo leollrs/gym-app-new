@@ -19,10 +19,11 @@
 import { TVAvatar, TVLogoMark, TVSparkBars } from './TVPrimitives';
 import { alpha, mix, sizeForLabel } from '../../lib/tv/palette';
 import { TV_METRIC_DEFS } from '../../lib/tv/palette';
-import { getTvStrings } from '../../lib/tv/strings';
+import { getTvStrings, getMetricSlides } from '../../lib/tv/strings';
 
 export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey, lang = 'en' }) {
   const t = getTvStrings(lang);
+  const localizedMetrics = getMetricSlides(lang);
   const entries = slide?.entries || [];
   const [first, ...rest] = entries;
   const topPodium = entries.slice(0, 3);
@@ -79,7 +80,7 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
         </div>
 
         <div className="hidden xl:flex items-center gap-3 overflow-hidden flex-1 justify-center px-6">
-          {TV_METRIC_DEFS.map((m) => {
+          {localizedMetrics.map((m) => {
             const isActive = m.key === metricKey;
             return (
               <span key={m.key} className="text-[11px] font-bold tracking-widest uppercase flex items-center gap-1.5" style={{ color: isActive ? palette.text : palette.textFaint, opacity: isActive ? 1 : 0.4 }}>

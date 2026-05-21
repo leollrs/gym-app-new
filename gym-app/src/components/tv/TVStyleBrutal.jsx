@@ -12,10 +12,11 @@
 
 import { TVAvatar, TVLogoMark } from './TVPrimitives';
 import { TV_METRIC_DEFS, alpha, sizeForLabel } from '../../lib/tv/palette';
-import { getTvStrings } from '../../lib/tv/strings';
+import { getTvStrings, getMetricSlides } from '../../lib/tv/strings';
 
 export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey, lang = 'en' }) {
   const t = getTvStrings(lang);
+  const localizedMetrics = getMetricSlides(lang);
   const entries = slide?.entries || [];
   const max = entries[0]?.score || 1;
   const total = entries.reduce((s, e) => s + (Number(e.score) || 0), 0);
@@ -67,7 +68,7 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
       {/* ── Category index row ─────────────────────────── */}
       <div className="absolute left-6 right-6 px-10" style={{ top: '110px' }}>
         <div className="py-3 grid grid-cols-6" style={{ borderTop: `2px solid ${palette.ink}`, borderBottom: `2px solid ${palette.ink}` }}>
-          {TV_METRIC_DEFS.map((m, i) => {
+          {localizedMetrics.map((m, i) => {
             const isActive = m.key === metricKey;
             return (
               <div key={m.key} className="px-4" style={{
@@ -200,8 +201,8 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
         <div className="flex-1 overflow-hidden whitespace-nowrap px-6 font-mono text-[13px] lg:text-[15px] font-semibold tracking-wide">
           <span>EN VIVO · ROTATING EVERY 20S</span>
           <span className="mx-4" style={{ color: alpha(palette.cream, 0.3) }}>////</span>
-          <span style={{ color: palette.hot }}>NEXT ▸ </span>
-          <span>{TV_METRIC_DEFS[(TV_METRIC_DEFS.findIndex(m => m.key === metricKey) + 1) % TV_METRIC_DEFS.length]?.label?.toUpperCase()}</span>
+          <span style={{ color: palette.hot }}>{t.next} ▸ </span>
+          <span>{localizedMetrics[(localizedMetrics.findIndex(m => m.key === metricKey) + 1) % localizedMetrics.length]?.label?.toUpperCase()}</span>
           <span className="mx-4" style={{ color: alpha(palette.cream, 0.3) }}>////</span>
           <span>{entries.length} ON THE BOARD · {fmtTotal(total)} TOTAL</span>
         </div>

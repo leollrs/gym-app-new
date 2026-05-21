@@ -68,6 +68,16 @@ const STRINGS = {
     unit_visits: 'VISITS',
     unit_records: 'RECORDS',
     unit_percent: '%',
+    // Code-entry screen
+    entryHeader: 'TuGymPR Display',
+    entryTitle: 'Enter TV Code',
+    entryHint: 'Find the 6-character code in your admin panel under TV Display.',
+    entryConnect: 'Connect',
+    entryConnecting: 'Connecting…',
+    entryErrInvalid: 'Code not recognized. Check the admin panel for the current code.',
+    entryErrPaused: 'This gym is paused.',
+    entryErrGeneric: 'Could not connect. Try again.',
+    entrySession: 'Session:',
   },
   es: {
     liveLeaderboard: 'Tabla en Vivo',
@@ -115,6 +125,16 @@ const STRINGS = {
     unit_visits: 'VISITAS',
     unit_records: 'RÉCORDS',
     unit_percent: '%',
+    // Code-entry screen
+    entryHeader: 'Pantalla TuGymPR',
+    entryTitle: 'Escribe el código',
+    entryHint: 'Encuentra el código de 6 caracteres en tu panel de admin, sección Pantalla TV.',
+    entryConnect: 'Conectar',
+    entryConnecting: 'Conectando…',
+    entryErrInvalid: 'Código no reconocido. Revisa el panel de admin para ver el código actual.',
+    entryErrPaused: 'Este gym está pausado.',
+    entryErrGeneric: 'No se pudo conectar. Inténtalo de nuevo.',
+    entrySession: 'Sesión:',
   },
 };
 

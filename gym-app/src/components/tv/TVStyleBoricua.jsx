@@ -16,10 +16,11 @@
 
 import { TVAvatar, TVLogoMark } from './TVPrimitives';
 import { adjust, alpha, mix, TV_METRIC_DEFS, sizeForLabel } from '../../lib/tv/palette';
-import { getTvStrings } from '../../lib/tv/strings';
+import { getTvStrings, getMetricSlides } from '../../lib/tv/strings';
 
 export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey, lang = 'en' }) {
   const t = getTvStrings(lang);
+  const localizedMetrics = getMetricSlides(lang);
   const entries = slide?.entries || [];
   const top3 = entries.slice(0, 3);
   const rest = entries.slice(3, 8);
@@ -91,7 +92,7 @@ export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock
 
         <div className="text-center hidden xl:block">
           <div className="flex gap-4 items-center">
-            {TV_METRIC_DEFS.map((m) => {
+            {localizedMetrics.map((m) => {
               const isActive = m.key === metricKey;
               return (
                 <span key={m.key} className="text-[11px] font-bold tracking-widest uppercase" style={{ opacity: isActive ? 1 : 0.45 }}>
@@ -257,7 +258,7 @@ export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock
           <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 blink-dot" style={{ background: '#FFD56B' }} />
           {t.live} · {t.rotatesEvery.toUpperCase()} · {String(slideIdx + 1).padStart(2, '0')} / {String(totalSlides).padStart(2, '0')}
         </span>
-        <span>{t.next} ▸ {TV_METRIC_DEFS[(TV_METRIC_DEFS.findIndex(m => m.key === metricKey) + 1) % TV_METRIC_DEFS.length]?.label?.toUpperCase()}</span>
+        <span>{t.next} ▸ {localizedMetrics[(localizedMetrics.findIndex(m => m.key === metricKey) + 1) % localizedMetrics.length]?.label?.toUpperCase()}</span>
       </div>
 
       <style>{`

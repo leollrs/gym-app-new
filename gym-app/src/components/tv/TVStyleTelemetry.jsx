@@ -16,10 +16,11 @@
 
 import { TVAvatar, TVLogoMark, TVSparkBars } from './TVPrimitives';
 import { TV_METRIC_DEFS, alpha, sizeForLabel } from '../../lib/tv/palette';
-import { getTvStrings } from '../../lib/tv/strings';
+import { getTvStrings, getMetricSlides } from '../../lib/tv/strings';
 
 export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey, lang = 'en' }) {
   const tStr = getTvStrings(lang);
+  const localizedMetrics = getMetricSlides(lang);
   const entries = slide?.entries || [];
   const max = entries[0]?.score || 1;
   const sum = entries.reduce((a, r) => a + (Number(r.score) || 0), 0);
@@ -94,7 +95,7 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
       {/* ── Category strip ─────────────────────────────── */}
       <div className="absolute left-0 right-0 h-11 flex items-center px-10" style={{ top: '64px', background: t.panel2, borderBottom: `1px solid ${t.line2}` }}>
         <span className="text-[11px] tracking-widest mr-4" style={{ color: t.dim }}>METRIC ▸</span>
-        {TV_METRIC_DEFS.map((m, i) => {
+        {localizedMetrics.map((m, i) => {
           const isActive = m.key === metricKey;
           return (
             <span key={m.key} className="text-[12px] px-3 py-1 mr-1.5 font-bold tracking-wider uppercase"
@@ -228,7 +229,7 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
         <div className="px-5 py-2.5 overflow-hidden" style={{ borderRight: `1px solid ${t.line}` }}>
           <div className="text-[11px] tracking-widest mb-2" style={{ color: t.teal }}>SLIDE QUEUE</div>
           <div className="space-y-1">
-            {TV_METRIC_DEFS.map((m, i) => {
+            {localizedMetrics.map((m, i) => {
               const isActive = m.key === metricKey;
               return (
                 <div key={m.key} className="text-[12px] tracking-wide flex items-center gap-2" style={{ color: isActive ? '#FFF' : t.dim }}>
@@ -243,9 +244,9 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
         </div>
         <div className="px-5 py-3 flex flex-col justify-between">
           <div>
-            <div className="text-[11px] tracking-widest mb-2" style={{ color: t.teal }}>NEXT</div>
+            <div className="text-[11px] tracking-widest mb-2" style={{ color: t.teal }}>{tStr.next}</div>
             <div className="flex gap-1">
-              {TV_METRIC_DEFS.map((m, i) => {
+              {localizedMetrics.map((m, i) => {
                 const isActive = m.key === metricKey;
                 return (
                   <div key={m.key} className="flex-1 h-1.5" style={{

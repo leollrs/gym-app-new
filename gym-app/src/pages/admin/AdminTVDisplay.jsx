@@ -336,7 +336,7 @@ export default function AdminTVDisplay() {
                   <div className="p-3">
                     <div className="flex items-center gap-2">
                       <p className="text-[13px] font-bold flex-1" style={{ color: 'var(--color-text-primary)' }}>
-                        {style.label}
+                        {t(`admin.tvDisplay.style_${style.id}_label`, { defaultValue: style.label })}
                       </p>
                       {active && (
                         <span
@@ -346,12 +346,12 @@ export default function AdminTVDisplay() {
                             color: 'var(--color-text-on-accent, #000)',
                           }}
                         >
-                          <Check size={9} /> Active
+                          <Check size={9} /> {t('admin.tvDisplay.active', { defaultValue: 'Active' })}
                         </span>
                       )}
                     </div>
                     <p className="text-[11px] mt-1 leading-snug" style={{ color: 'var(--color-text-muted)' }}>
-                      {style.description}
+                      {t(`admin.tvDisplay.style_${style.id}_description`, { defaultValue: style.description })}
                     </p>
                   </div>
                 </button>
@@ -532,7 +532,7 @@ export default function AdminTVDisplay() {
 }
 
 function SessionRow({ session }) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation('pages');
   const locale = i18n.language === 'es' ? { locale: esLocale } : undefined;
   const browserHint = parseBrowser(session.user_agent);
   return (
@@ -546,7 +546,7 @@ function SessionRow({ session }) {
       />
       <div className="flex-1 min-w-0">
         <p className="text-[12.5px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-          {browserHint || 'Unknown device'}
+          {browserHint || t('admin.tvDisplay.sessionUnknown', { defaultValue: 'Unknown device' })}
         </p>
         <p className="text-[10.5px] font-mono truncate" style={{ color: 'var(--color-text-subtle)' }}>
           {session.session_id.slice(0, 16)}…
@@ -555,7 +555,9 @@ function SessionRow({ session }) {
       <div className="text-right">
         <p className="text-[11px] font-semibold flex items-center gap-1 justify-end" style={{ color: session.is_alive ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
           {session.is_alive ? <Wifi size={11} /> : <WifiOff size={11} />}
-          {session.is_alive ? 'Live' : 'Dropped'}
+          {session.is_alive
+            ? t('admin.tvDisplay.sessionLive', { defaultValue: 'Live' })
+            : t('admin.tvDisplay.sessionDropped', { defaultValue: 'Dropped' })}
         </p>
         <p className="text-[10.5px]" style={{ color: 'var(--color-text-subtle)' }}>
           {formatDistanceToNow(new Date(session.last_heartbeat_at), { addSuffix: true, ...(locale || {}) })}

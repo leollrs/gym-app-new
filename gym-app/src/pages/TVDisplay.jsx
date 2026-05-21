@@ -202,16 +202,17 @@ export default function TVDisplay() {
 
   // Format the clock in the gym's timezone (not the TV device's local time).
   // Falls back to the device's TZ if the gym has no timezone set — safer
-  // than crashing on an Intl error. Memoize the formatters so we're not
-  // rebuilding them every tick.
+  // than crashing on an Intl error. Locale flows from the `lang` URL param
+  // so a Spanish TV shows "JUEVES, MAY 21" instead of "THURSDAY, MAY 21".
   const tz = credentials?.gym_timezone || undefined;
+  const intlLocale = lang === 'es' ? 'es-ES' : 'en-US';
   const timeFmt = (() => {
-    try { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz }); }
-    catch { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }); }
+    try { return new Intl.DateTimeFormat(intlLocale, { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz }); }
+    catch { return new Intl.DateTimeFormat(intlLocale, { hour: 'numeric', minute: '2-digit', hour12: true }); }
   })();
   const dateFmt = (() => {
-    try { return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: tz }); }
-    catch { return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' }); }
+    try { return new Intl.DateTimeFormat(intlLocale, { weekday: 'long', month: 'short', day: 'numeric', timeZone: tz }); }
+    catch { return new Intl.DateTimeFormat(intlLocale, { weekday: 'long', month: 'short', day: 'numeric' }); }
   })();
 
   // Build the full slide list once credentials + data land. Order:
@@ -298,6 +299,7 @@ export default function TVDisplay() {
       <CodeEntryScreen
         sessionId={sessionIdRef.current}
         initialError={authError}
+        lang={lang}
         onAuthenticated={(creds) => {
           storeCredentials(creds);
           setCredentials(creds);
@@ -379,7 +381,8 @@ export default function TVDisplay() {
 }
 
 // ── Code entry screen ────────────────────────────────────────────────────
-function CodeEntryScreen({ sessionId, initialError, onAuthenticated }) {
+function CodeEntryScreen({ sessionId, initialError, onAuthenticated, lang = 'en' }) {
+  const tStr = getTvStrings(lang);
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(initialError || null);
@@ -398,9 +401,9 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated }) {
       if (rpcErr) throw rpcErr;
       if (!data?.success) {
         setError(
-          data?.error === 'invalid_code' ? 'Code not recognized. Check the admin panel for the current code.' :
-          data?.error === 'gym_inactive' ? 'This gym is paused.' :
-          'Could not connect. Try again.'
+          data?.error === 'invalid_code' ? tStr.entryErrInvalid :
+          data?.error === 'gym_inactive' ? tStr.entryErrPaused :
+          tStr.entryErrGeneric
         );
         return;
       }
@@ -416,7 +419,7 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated }) {
         tv_style: data.tv_style || 'stadium',
       });
     } catch (err) {
-      setError(err?.message || 'Connection failed');
+      setError(err?.message || tStr.entryErrGeneric);
     } finally {
       setSubmitting(false);
     }
@@ -429,11 +432,11 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated }) {
     >
       <div className="text-center max-w-xl w-full">
         <p className="text-[12px] font-bold tracking-[0.4em] uppercase mb-3" style={{ color: '#9CA3AF' }}>
-          TuGymPR Display
+          {tStr.entryHeader}
         </p>
-        <h1 className="text-[56px] font-black leading-none mb-2 text-white">Enter TV Code</h1>
+        <h1 className="text-[56px] font-black leading-none mb-2 text-white">{tStr.entryTitle}</h1>
         <p className="text-[15px] mb-10" style={{ color: '#9CA3AF' }}>
-          Find the 6-character code in your admin panel under TV Display.
+          {tStr.entryHint}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -474,12 +477,12 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated }) {
               minWidth: 200,
             }}
           >
-            {submitting ? 'Connecting…' : 'Connect'}
+            {submitting ? tStr.entryConnecting : tStr.entryConnect}
           </button>
         </form>
 
         <p className="text-[11px] mt-12" style={{ color: 'rgba(255,255,255,0.25)' }}>
-          Session: <code className="font-mono">{sessionId.slice(0, 8)}…</code>
+          {tStr.entrySession} <code className="font-mono">{sessionId.slice(0, 8)}…</code>
         </p>
       </div>
     </div>
