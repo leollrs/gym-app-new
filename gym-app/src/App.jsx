@@ -750,6 +750,14 @@ const PlatformRoute = ({ children }) => {
   if (loading) return <LoadingScreen />;
   if (!user)                  return <Navigate to="/login" replace />;
   if (!profile)               return <ProfileUnavailableScreen />;
+  // Defensive (matches ProtectedRoute / AdminRoute pattern): the cached
+  // profile is hydrated without role for security, so `availableRoles`
+  // is briefly empty after `loading` flips to false. Without this gate
+  // the super_admin check returns false during that window, redirects
+  // to "/", and PublicRoute then bounces back to /platform/operations —
+  // dropping any deep-link path the user actually wanted (e.g. cold-
+  // loading /platform/gym/:id/ops would land on operations instead).
+  if (!Array.isArray(availableRoles) || availableRoles.length === 0) return <LoadingScreen />;
   // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
   // Super admin is identity-level, not view-level — anyone holding
   // super_admin gets in regardless of activeView (so they can always
