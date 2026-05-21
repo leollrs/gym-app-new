@@ -60,6 +60,15 @@ struct HookState {
   // keystroke so the scanner's payload doesn't leak through. Reset on
   // terminator or timing gap.
   suppressing: bool,
+  // Shift modifier tracking. rdev's `event.name` is supposed to apply
+  // shift state automatically, but on Windows it can race — when the
+  // hook fires for the press of a shifted key, the OS keyboard-state
+  // hasn't always updated with Shift-down yet, so `event.name` returns
+  // the unshifted char (`;` instead of `:`, `\` instead of `|`). That's
+  // catastrophic for QR scans: stripping every `:` and `|` corrupts the
+  // payload past recognition. We track Shift ourselves and apply it via
+  // our own Key→char mapping, which gives consistent results.
+  shift_held: bool,
 }
 
 impl HookState {
@@ -68,12 +77,14 @@ impl HookState {
       buffer: String::new(),
       last_keystroke: None,
       suppressing: false,
+      shift_held: false,
     }
   }
 
   fn reset(&mut self) {
     self.buffer.clear();
     self.suppressing = false;
+    // Leave shift_held alone — the OS modifier state outlives our burst.
   }
 }
 
@@ -119,13 +130,36 @@ pub fn spawn(app: AppHandle) {
 fn handle_event(app: &AppHandle, event: rdev::Event) -> Option<rdev::Event> {
   use rdev::EventType;
 
-  // We only care about KeyPress. KeyRelease and mouse events pass through
-  // untouched. We also pass through any KeyPress that isn't part of a
-  // scanner burst, so normal typing (and ordinary app shortcuts) work.
+  // We care about both KeyPress and KeyRelease, but only for narrow reasons:
+  // KeyRelease lets us track Shift-up so our shift_held flag stays in sync;
+  // KeyPress drives the scanner-burst detection. Everything else passes
+  // through unmodified.
+  match &event.event_type {
+    EventType::KeyRelease(k) => {
+      if matches!(k, rdev::Key::ShiftLeft | rdev::Key::ShiftRight) {
+        let mut state = STATE.lock().expect("scanner_kbd state mutex poisoned");
+        state.shift_held = false;
+      }
+      return Some(event);
+    }
+    EventType::KeyPress(_) => {}
+    _ => return Some(event),
+  }
   let press = match event.event_type {
     EventType::KeyPress(k) => k,
     _ => return Some(event),
   };
+
+  // Update shift state on Shift-down. We don't use this as a "burst" key
+  // since Shift alone is held for ~ms per shifted char and confuses the
+  // gap detector. Pass through and return early.
+  if matches!(press, rdev::Key::ShiftLeft | rdev::Key::ShiftRight) {
+    let mut state = STATE.lock().expect("scanner_kbd state mutex poisoned");
+    state.shift_held = true;
+    // Returning None here would swallow user Shift presses when no burst
+    // is active — undesirable. Pass through.
+    return Some(event);
+  }
 
   let now = Instant::now();
   let mut state = STATE.lock().expect("scanner_kbd state mutex poisoned");
@@ -158,14 +192,20 @@ fn handle_event(app: &AppHandle, event: rdev::Event) -> Option<rdev::Event> {
     return Some(event);
   }
 
-  // Anything that isn't a single printable char (function keys, arrows,
-  // modifiers, etc.) — pass through untouched, reset burst tracking.
-  let ch = match event.name.as_deref() {
-    Some(s) if s.chars().count() == 1 => s.chars().next().unwrap(),
-    _ => {
-      // Don't reset suppressing here — modifier keys (Shift) within a
-      // scanner burst are normal. But do leave the buffer alone too;
-      // the next printable char will append correctly.
+  // Derive the printable char ourselves rather than trusting `event.name`.
+  // On Windows, rdev's name field can lag the OS keyboard state — Shift-down
+  // and the shifted key arrive close enough together that `name` sometimes
+  // returns the unshifted glyph (`;` instead of `:`, `\` instead of `|`).
+  // For a 200-char signed QR payload, even one missing `:` corrupts the
+  // payload past parser recognition and the scan gets routed to the
+  // check-in catch-all by mistake. Our own mapping uses our shift_held
+  // flag (updated on the Shift-down event we processed above) which is
+  // race-free with respect to the KeyPress events that follow it.
+  let ch = match key_to_char(press, state.shift_held) {
+    Some(c) => c,
+    None => {
+      // Pass through and don't disturb burst tracking — non-printable keys
+      // (function keys, arrows) between scanner bursts are normal.
       return Some(event);
     }
   };
@@ -221,6 +261,100 @@ fn handle_event(app: &AppHandle, event: rdev::Event) -> Option<rdev::Event> {
   }
 
   result
+}
+
+// Map an rdev::Key to its US-keyboard-layout character, respecting shift
+// state. Covers every printable character a typical QR/barcode scanner
+// emits: alphanumerics, common punctuation, separator chars (`:`, `|`,
+// `-`, `=`, `/`, `\`, etc.). Returns None for non-printable keys
+// (modifiers, arrows, function keys) so the caller can pass them through
+// without disturbing burst tracking.
+//
+// We hard-code the US layout because virtually every gym in PR uses
+// US-layout keyboards and the scanner emits the corresponding scancodes.
+// If a gym ever has a Spanish-layout keyboard with a scanner that maps
+// to different physical keys for `:` / `|`, we'd need to teach this
+// function the alternate layout (or read the layout from the OS).
+fn key_to_char(key: rdev::Key, shift: bool) -> Option<char> {
+  use rdev::Key;
+  let c = match key {
+    // Digit row — Shift gives the symbol above each number.
+    Key::Num1 => if shift { '!' } else { '1' },
+    Key::Num2 => if shift { '@' } else { '2' },
+    Key::Num3 => if shift { '#' } else { '3' },
+    Key::Num4 => if shift { '$' } else { '4' },
+    Key::Num5 => if shift { '%' } else { '5' },
+    Key::Num6 => if shift { '^' } else { '6' },
+    Key::Num7 => if shift { '&' } else { '7' },
+    Key::Num8 => if shift { '*' } else { '8' },
+    Key::Num9 => if shift { '(' } else { '9' },
+    Key::Num0 => if shift { ')' } else { '0' },
+
+    // Letters — Shift gives uppercase. We don't factor in Caps Lock
+    // here: QR scanners drive Shift explicitly when they want uppercase,
+    // and downstream parseQRContent is case-insensitive for prefix
+    // detection (the case-flipping fix already shipped). The handful of
+    // gyms whose admin PC has Caps Lock on by accident would get all-
+    // uppercase output, which DB lookups handle fine for UUIDs.
+    Key::KeyA => if shift { 'A' } else { 'a' },
+    Key::KeyB => if shift { 'B' } else { 'b' },
+    Key::KeyC => if shift { 'C' } else { 'c' },
+    Key::KeyD => if shift { 'D' } else { 'd' },
+    Key::KeyE => if shift { 'E' } else { 'e' },
+    Key::KeyF => if shift { 'F' } else { 'f' },
+    Key::KeyG => if shift { 'G' } else { 'g' },
+    Key::KeyH => if shift { 'H' } else { 'h' },
+    Key::KeyI => if shift { 'I' } else { 'i' },
+    Key::KeyJ => if shift { 'J' } else { 'j' },
+    Key::KeyK => if shift { 'K' } else { 'k' },
+    Key::KeyL => if shift { 'L' } else { 'l' },
+    Key::KeyM => if shift { 'M' } else { 'm' },
+    Key::KeyN => if shift { 'N' } else { 'n' },
+    Key::KeyO => if shift { 'O' } else { 'o' },
+    Key::KeyP => if shift { 'P' } else { 'p' },
+    Key::KeyQ => if shift { 'Q' } else { 'q' },
+    Key::KeyR => if shift { 'R' } else { 'r' },
+    Key::KeyS => if shift { 'S' } else { 's' },
+    Key::KeyT => if shift { 'T' } else { 't' },
+    Key::KeyU => if shift { 'U' } else { 'u' },
+    Key::KeyV => if shift { 'V' } else { 'v' },
+    Key::KeyW => if shift { 'W' } else { 'w' },
+    Key::KeyX => if shift { 'X' } else { 'x' },
+    Key::KeyY => if shift { 'Y' } else { 'y' },
+    Key::KeyZ => if shift { 'Z' } else { 'z' },
+
+    // Punctuation row — the critical ones for QR payloads are `:` (Shift+;)
+    // and `|` (Shift+\) since the in-app signed QR uses both.
+    Key::Minus      => if shift { '_' } else { '-' },
+    Key::Equal      => if shift { '+' } else { '=' },
+    Key::LeftBracket  => if shift { '{' } else { '[' },
+    Key::RightBracket => if shift { '}' } else { ']' },
+    Key::BackSlash  => if shift { '|' } else { '\\' },
+    Key::SemiColon  => if shift { ':' } else { ';' },
+    Key::Quote      => if shift { '"' } else { '\'' },
+    Key::Comma      => if shift { '<' } else { ',' },
+    Key::Dot        => if shift { '>' } else { '.' },
+    Key::Slash      => if shift { '?' } else { '/' },
+    Key::BackQuote  => if shift { '~' } else { '`' },
+    Key::Space      => ' ',
+
+    // Numpad — numeric value regardless of NumLock (rdev only emits these
+    // when NumLock is on; otherwise the keys come through as arrows/etc).
+    Key::Kp1 => '1', Key::Kp2 => '2', Key::Kp3 => '3',
+    Key::Kp4 => '4', Key::Kp5 => '5', Key::Kp6 => '6',
+    Key::Kp7 => '7', Key::Kp8 => '8', Key::Kp9 => '9',
+    Key::Kp0 => '0',
+    Key::KpMinus    => '-',
+    Key::KpPlus     => '+',
+    Key::KpDivide   => '/',
+    Key::KpMultiply => '*',
+    Key::KpDelete   => '.',
+
+    // Everything else — modifiers, navigation, function keys — isn't part
+    // of QR/barcode payloads, so signal "skip this" to the caller.
+    _ => return None,
+  };
+  Some(c)
 }
 
 fn emit_scan_and_show_window(app: &AppHandle, scanned: String) {
