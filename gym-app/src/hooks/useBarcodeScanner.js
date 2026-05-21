@@ -1,11 +1,21 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 /**
- * Detects USB HID barcode/QR scanner input.
+ * Detects USB barcode/QR scanner input from TWO sources:
  *
- * USB scanners act as keyboard devices: they type characters at machine speed
- * (2-5ms between chars) and terminate with Enter. This hook distinguishes
- * scanner bursts from human typing using an inter-character time threshold.
+ * 1. **HID keyboard mode (browser/Capacitor)** — scanner acts as a keyboard,
+ *    typing characters at machine speed (2-5ms between chars) terminated by
+ *    Enter. We distinguish from human typing via inter-character timing.
+ *    Requires the window to be focused.
+ *
+ * 2. **USB-serial mode (Tauri desktop only)** — the OBZ scanner is switched
+ *    to virtual COM mode and read directly by the Rust side, which emits
+ *    `scan-received` Tauri events with the scanned text. Works regardless of
+ *    window focus, so a hidden-to-tray app keeps capturing scans.
+ *
+ * Both inputs flow through the same `onScan` callback. The Tauri listener is
+ * a no-op outside Tauri (event API import fails silently), so this hook stays
+ * safe to use in the web/mobile builds where only path 1 applies.
  *
  * @param {Object} opts
  * @param {(rawText: string) => void} opts.onScan  - Called with the scanned text
@@ -103,6 +113,48 @@ export default function useBarcodeScanner({
       suppressingRef.current = false;
     };
   }, [enabled, handleKeyDown]);
+
+  // ── Tauri USB-serial scanner channel ────────────────────────────────────
+  // When running inside the Tauri desktop shell, the Rust side opens the
+  // scanner's virtual COM port and forwards each barcode line via the
+  // `scan-received` event. That path bypasses the focus dependency of the
+  // keyboard channel above, so the scanner keeps working even when the
+  // window is hidden in the system tray.
+  //
+  // Outside Tauri (mobile/web), `@tauri-apps/api/event` resolves but the
+  // event channel is silent — so this listener subscribes but never fires.
+  // The dynamic import keeps the bundle clean for mobile builds.
+  useEffect(() => {
+    if (!enabled) return;
+    let unlistenFn = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const unlisten = await listen('scan-received', (event) => {
+          const text = event?.payload?.text;
+          if (typeof text === 'string' && text.length >= minLength) {
+            setLastScanTime(Date.now());
+            onScanRef.current?.(text);
+          }
+        });
+        if (cancelled) {
+          unlisten();
+        } else {
+          unlistenFn = unlisten;
+        }
+      } catch {
+        // Not running inside Tauri (or @tauri-apps/api not bundled) —
+        // keyboard channel only. Silent failure is correct here.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unlistenFn) unlistenFn();
+    };
+  }, [enabled, minLength]);
 
   return { lastScanTime, isConnected };
 }

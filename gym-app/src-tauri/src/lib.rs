@@ -1,4 +1,4 @@
-// TuGymPR desktop entry. Three behaviors that matter for a gym front-desk PC:
+// TuGymPR desktop entry. Four behaviors that matter for a gym front-desk PC:
 //
 //   1. Autostart on boot — registered via tauri-plugin-autostart. When the
 //      receptionist powers the PC on, the app appears without anyone clicking.
@@ -13,6 +13,14 @@
 //        - Show TuGymPR (also bound to single-click on the icon)
 //        - Quit
 //      Anything more would clutter a launch-and-forget kiosk app.
+//
+//   4. Always-on USB scanner reader — opens the OBZ-class barcode scanner's
+//      virtual COM port and reads scans on a background thread. Scans flow
+//      to JS via Tauri events, completely independent of window focus. This
+//      is what makes (2) above viable — closing the window doesn't stop
+//      check-ins from being captured.
+
+mod scanner;
 
 use tauri::{
   menu::{Menu, MenuItem},
@@ -50,6 +58,13 @@ pub fn run() {
       use tauri_plugin_autostart::ManagerExt;
       let autostart = app.autolaunch();
       let _ = autostart.enable();
+
+      // Start the always-on USB scanner reader. Runs on its own thread and
+      // emits `scan-received` Tauri events whenever the OBZ scanner sends
+      // a barcode line over USB-serial. The JS side already has the scan
+      // handling pipeline; we're just adding a new input channel that
+      // doesn't depend on keyboard focus.
+      scanner::spawn(app.handle().clone());
 
       // ── System tray ────────────────────────────────────────────────
       let show_item = MenuItem::with_id(app, "show", "Show TuGymPR", true, None::<&str>)?;

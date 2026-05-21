@@ -8,6 +8,7 @@ import useBarcodeScanner from '../../hooks/useBarcodeScanner';
 import { handleScannedValue } from '../../lib/scanRouter';
 import { dispatchScanAction } from '../../lib/scanActionHandlers';
 import { dispatchToIntegration } from '../../lib/integrationBridge';
+import { dispatchToLocalBridge } from '../../lib/localBridge';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
 import { useScanClaimContext } from '../../contexts/ScanClaimContext';
@@ -218,7 +219,17 @@ export default function ScanFeedback() {
     });
 
     if (result.success && result.externalPayload) {
+      // Cloud integrations (Mindbody, ClubReady, etc.) via gym_integrations
+      // table — server-to-server webhook from a Supabase edge function.
       dispatchToIntegration(gymId, parsed.type, result.externalPayload);
+      // Local sidecar on the same machine — bridges to whatever legacy
+      // gym software is running alongside TuGymPR. Fire-and-forget,
+      // graceful no-op if the sidecar isn't running.
+      dispatchToLocalBridge({
+        gymId,
+        action: parsed.type,
+        payload: result.externalPayload,
+      });
     }
   }, [gymId, queryClient]);
 
