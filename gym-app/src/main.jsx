@@ -123,6 +123,14 @@ document.addEventListener('visibilitychange', () => {
 // dashboard + notifications fetches immediately — before AuthContext / App.jsx
 // has even hydrated. The moment the UI mounts, the cache either has data or
 // an in-flight query, so no skeleton flashes.
+//
+// Token freshness gate: we read `expires_at` from the persisted session and
+// SKIP the warm-up if the token is already expired (or within 60s of it).
+// Without this gate, an expired cached token would fire two 401s into the
+// error tracker on every cold load — Supabase auth auto-refreshes shortly
+// after, so the component-level queries succeed anyway, but the 401 noise
+// pollutes the console and the error log. Skipping is cheap — the regular
+// React Query mounts on AuthContext-resolved will refetch in <500ms.
 (async () => {
   try {
     const sessionKey = Object.keys(window.localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
@@ -132,6 +140,15 @@ document.addEventListener('visibilitychange', () => {
     const parsed = JSON.parse(raw);
     const userId = parsed?.user?.id || parsed?.currentSession?.user?.id;
     if (!userId) return;
+
+    // expires_at is unix seconds (Supabase auth-js convention). Anything
+    // within 60s of now is effectively expired by the time the request
+    // hits the server.
+    const expiresAt = parsed?.expires_at || parsed?.currentSession?.expires_at;
+    if (expiresAt && Number(expiresAt) * 1000 < Date.now() + 60_000) {
+      return; // stale token — let auth refresh, then normal queries run
+    }
+
     // Fire-and-forget — in-flight queries dedupe automatically
     queryClient.prefetchQuery({
       queryKey: ['dashboard', userId],
