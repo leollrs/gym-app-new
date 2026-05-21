@@ -43,6 +43,15 @@ const MIN_SCAN_LEN: usize = 6;
 // max at ~200 chars; 1024 leaves enormous headroom.
 const MAX_BUFFER_LEN: usize = 1024;
 
+// How many chars in a fast-burst before we engage suppression. Lower = less
+// leakage but more false positives on rapid typing.
+//   - With SUPPRESS_AFTER=3: first 2 chars of every scan leak through
+//   - With SUPPRESS_AFTER=2: first 1 char leaks (we backspace it below)
+//   - SUPPRESS_AFTER=1 would suppress on the first keystroke alone, but we
+//     can't detect "fast" without a previous char to measure against — so
+//     the minimum useful value is 2.
+const SUPPRESS_AFTER: usize = 2;
+
 struct HookState {
   buffer: String,
   last_keystroke: Option<Instant>,
@@ -52,8 +61,6 @@ struct HookState {
   // terminator or timing gap.
   suppressing: bool,
 }
-
-const SUPPRESS_AFTER: usize = 3;
 
 impl HookState {
   const fn new() -> Self {
@@ -164,8 +171,12 @@ fn handle_event(app: &AppHandle, event: rdev::Event) -> Option<rdev::Event> {
   };
 
   // Printable char. Decide: is this part of a scanner burst, or just
-  // human typing?
-  if gap_ms < CHAR_GAP_MS || state.buffer.is_empty() {
+  // human typing? Only push to the burst buffer if the gap is small.
+  // The very first char of any input always passes through — we can't
+  // know it's a scanner until char 2 arrives quickly after it.
+  let was_suppressing_before = state.suppressing;
+
+  if gap_ms < CHAR_GAP_MS {
     state.buffer.push(ch);
     if state.buffer.len() >= SUPPRESS_AFTER {
       state.suppressing = true;
@@ -176,21 +187,40 @@ fn handle_event(app: &AppHandle, event: rdev::Event) -> Option<rdev::Event> {
     }
   } else {
     // Gap too long — this was a human, not a scanner. Reset and start
-    // fresh with the current char.
+    // fresh with the current char as a possible burst-start.
     state.buffer.clear();
     state.buffer.push(ch);
     state.suppressing = false;
   }
 
+  // Detect the transition from "not suppressing" to "suppressing." Exactly
+  // one char already leaked through before we became confident (the very
+  // first char of the burst, which we can't predict). Send a single
+  // backspace to clean it up in whatever window had focus, so the user
+  // never sees scanner gibberish typed anywhere.
+  let just_engaged = !was_suppressing_before && state.suppressing;
+
   // While we're confident this is a scanner burst, swallow the keystroke
   // so it doesn't leak into whatever window has focus. Otherwise pass it
   // through — that lets human typing into other apps work normally even
   // with the hook installed.
-  if state.suppressing {
-    None
-  } else {
-    Some(event)
+  let result = if state.suppressing { None } else { Some(event) };
+
+  // Drop the mutex before doing IO. Backspace injection happens on a
+  // detached thread so the hook returns immediately — `rdev::simulate`
+  // from inside the grab callback would deadlock the OS hook chain.
+  drop(state);
+
+  if just_engaged {
+    std::thread::spawn(|| {
+      use rdev::{simulate, EventType, Key};
+      // KeyPress then KeyRelease — Windows treats these as one tap.
+      let _ = simulate(&EventType::KeyPress(Key::Backspace));
+      let _ = simulate(&EventType::KeyRelease(Key::Backspace));
+    });
   }
+
+  result
 }
 
 fn emit_scan_and_show_window(app: &AppHandle, scanned: String) {

@@ -1711,6 +1711,60 @@ export default function Rewards() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Realtime: when an admin approves a reward at the front desk, the
+  // corresponding row flips from status='pending' to status='claimed'.
+  // Subscribe to those UPDATEs so the member's pending list disappears
+  // immediately — no need to pull-to-refresh. Three tables matter here
+  // (points-funded reward_redemptions, free earned_rewards, and challenge
+  // challenge_prizes); each gets a filter on profile_id so we never see
+  // someone else's claims, and RLS on the underlying tables enforces that
+  // at the publication layer too.
+  //
+  // We do a full `loadData()` on any matching event rather than splicing
+  // the local arrays — the side effects of a claim (points refunded if
+  // applicable, history row appended, hero-card recompute) are easier to
+  // get right via one query batch than incrementally.
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`member-reward-claims-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'reward_redemptions',
+          filter: `profile_id=eq.${user.id}`,
+        },
+        () => loadData(),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'earned_rewards',
+          filter: `profile_id=eq.${user.id}`,
+        },
+        () => loadData(),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'challenge_prizes',
+          filter: `profile_id=eq.${user.id}`,
+        },
+        () => loadData(),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, loadData]);
+
   const [redeemError, setRedeemError] = useState(null);
 
   const handleRedeem = async (reward) => {

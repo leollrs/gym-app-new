@@ -64,13 +64,28 @@ export async function handleScannedValue(rawText, setError) {
 /**
  * Parse a QR/barcode payload into a typed action object.
  * Supports all scan action types.
+ *
+ * Case handling: prefix detection (`gym-purchase:`, `gym-reward:`, etc.) is
+ * case-INsensitive so a front-desk PC with Caps Lock on doesn't silently
+ * turn `gym-purchase:...` into `GYM-PURCHASE:...` and miss every prefix,
+ * which would then fall into the check-in catch-all and mis-route the
+ * scan. UUIDs are case-insensitive per spec, so we lowercase the parts
+ * we extract — that lets Postgres equality lookups match regardless of
+ * the original case the scanner emitted.
+ *
+ * Note: the check-in catch-all preserves the ORIGINAL `text` casing so
+ * profiles.qr_code_payload lookups (which are case-sensitive on the
+ * actual stored value) still work — a signed check-in QR carries its
+ * own HMAC verification that already failed if the case got flipped, so
+ * by the time we reach this function the case is trustworthy.
  */
 export function parseQRContent(text) {
   if (!text || typeof text !== 'string') return null;
+  const lower = text.toLowerCase();
 
   // Purchase: gym-purchase:{gymId}:{memberId}:{productId}
-  if (text.startsWith('gym-purchase:')) {
-    const parts = text.split(':');
+  if (lower.startsWith('gym-purchase:')) {
+    const parts = lower.split(':');
     if (parts.length >= 4 && parts[1] && parts[2] && parts[3]) {
       return { type: 'purchase', gymId: parts[1], memberId: parts[2], productId: parts[3] };
     }
@@ -78,8 +93,8 @@ export function parseQRContent(text) {
   }
 
   // Reward redemption: gym-reward:{gymId}:{memberId}:{redemptionId}
-  if (text.startsWith('gym-reward:')) {
-    const parts = text.split(':');
+  if (lower.startsWith('gym-reward:')) {
+    const parts = lower.split(':');
     if (parts.length >= 4 && parts[1] && parts[2] && parts[3]) {
       return { type: 'reward_redemption', gymId: parts[1], memberId: parts[2], redemptionId: parts[3] };
     }
@@ -87,7 +102,7 @@ export function parseQRContent(text) {
   }
 
   // Earned reward (birthday/milestone/manual): earned-reward:{qrCode}
-  if (text.startsWith('earned-reward:')) {
+  if (lower.startsWith('earned-reward:')) {
     const code = text.substring('earned-reward:'.length);
     if (code && code.length >= 6) {
       return { type: 'earned_reward', qrCode: code };
@@ -96,8 +111,8 @@ export function parseQRContent(text) {
   }
 
   // Referral: gym-referral:{gymId}:{referrerId}:{referralCode}
-  if (text.startsWith('gym-referral:')) {
-    const parts = text.split(':');
+  if (lower.startsWith('gym-referral:')) {
+    const parts = lower.split(':');
     if (parts.length >= 4 && parts[1] && parts[2] && parts[3]) {
       return { type: 'referral', gymId: parts[1], referrerId: parts[2], referralCode: parts[3] };
     }
@@ -105,7 +120,7 @@ export function parseQRContent(text) {
   }
 
   // Win-back voucher: gym-voucher:{code}
-  if (text.startsWith('gym-voucher:')) {
+  if (lower.startsWith('gym-voucher:')) {
     const code = text.substring('gym-voucher:'.length);
     if (code.length >= 6) {
       return { type: 'voucher', voucherCode: code };
@@ -113,7 +128,8 @@ export function parseQRContent(text) {
     return null;
   }
 
-  // Default: check-in (member QR payload — typically 8-char UUID prefix)
+  // Default: check-in (member QR payload — typically 8-char UUID prefix).
+  // Keep the original case here — see the JSDoc above for why.
   if (text.length > 0) {
     return { type: 'checkin', qrPayload: text };
   }
