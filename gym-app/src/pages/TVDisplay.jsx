@@ -85,6 +85,43 @@ export default function TVDisplay() {
     return () => clearInterval(t);
   }, []);
 
+  // Silent re-auth when stored credentials are missing fields the latest
+  // tv_authenticate version returns (gym_timezone, primary_color, real
+  // gym name). This happens after a server-side RPC upgrade — the TV was
+  // authenticated before the new fields existed, so localStorage holds
+  // the old credential shape. Without this, the clock falls back to
+  // device timezone, primary color stays unset, etc.
+  // We use the stored code (which is still valid) to call tv_authenticate
+  // again, get the fresh shape, and replace the stored credentials.
+  useEffect(() => {
+    if (!credentials?.code) return;
+    if (credentials.gym_timezone !== undefined && credentials.primary_color !== undefined) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.rpc('tv_authenticate', {
+          p_code: credentials.code,
+          p_session_id: sessionIdRef.current,
+          p_user_agent: navigator.userAgent || null,
+        });
+        if (cancelled || error || !data?.success) return;
+        const fresh = {
+          code: credentials.code,
+          gym_id: data.gym_id,
+          gym_name: data.gym_name,
+          gym_slug: data.gym_slug,
+          gym_timezone: data.gym_timezone || null,
+          accent_color: data.accent_color,
+          primary_color: data.primary_color,
+          logo_url: data.logo_url,
+        };
+        storeCredentials(fresh);
+        setCredentials(fresh);
+      } catch { /* silent — let regular heartbeat catch issues */ }
+    })();
+    return () => { cancelled = true; };
+  }, [credentials?.code, credentials?.gym_timezone, credentials?.primary_color]);
+
   // Resolve the logo storage path → signed URL. The auth RPC returns the
   // RAW storage path (e.g. "<gym_id>/logo.png") because RPCs can't mint
   // signed URLs themselves. We sign it client-side with a 24-hour expiry —
@@ -243,13 +280,24 @@ export default function TVDisplay() {
       >
         <div className="flex items-center gap-4 lg:gap-5 min-w-0">
           {resolvedLogoUrl && (
-            <img
-              src={resolvedLogoUrl}
-              alt={`${credentials.gym_name} logo`}
-              className="h-12 w-12 lg:h-14 lg:w-14 object-contain rounded-xl flex-shrink-0"
-              style={{ background: 'rgba(255,255,255,0.06)' }}
-              onError={(e) => { e.currentTarget.style.display = 'none'; }}
-            />
+            // White (with slight transparency) backplate so logos with dark
+            // ink survive the dark TV background. p-1.5 keeps a small inner
+            // margin so the image doesn't bleed to the corner. Shadow + ring
+            // make it pop instead of disappearing into the gradient.
+            <div
+              className="h-14 w-14 lg:h-16 lg:w-16 rounded-xl flex-shrink-0 p-1.5 flex items-center justify-center"
+              style={{
+                background: 'rgba(255,255,255,0.96)',
+                boxShadow: `0 4px 16px rgba(0,0,0,0.4), 0 0 0 1px ${accent}33`,
+              }}
+            >
+              <img
+                src={resolvedLogoUrl}
+                alt={`${credentials.gym_name} logo`}
+                className="w-full h-full object-contain"
+                onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
+              />
+            </div>
           )}
           <div className="min-w-0">
             <p className="text-[12px] lg:text-[13px] font-bold tracking-[0.3em] uppercase" style={{ color: accent }}>
