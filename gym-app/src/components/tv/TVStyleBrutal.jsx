@@ -11,10 +11,11 @@
  */
 
 import { TVAvatar, TVLogoMark } from './TVPrimitives';
-import { TV_METRIC_DEFS } from '../../lib/tv/palette';
-import { alpha } from '../../lib/tv/palette';
+import { TV_METRIC_DEFS, alpha, sizeForLabel } from '../../lib/tv/palette';
+import { getTvStrings } from '../../lib/tv/strings';
 
-export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey }) {
+export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey, lang = 'en' }) {
+  const t = getTvStrings(lang);
   const entries = slide?.entries || [];
   const max = entries[0]?.score || 1;
   const total = entries.reduce((s, e) => s + (Number(e.score) || 0), 0);
@@ -45,7 +46,7 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
           <div>
             <div className="text-[12px] font-mono font-bold tracking-[0.22em] uppercase flex items-center gap-2" style={{ color: palette.hot }}>
               <span className="inline-block w-2 h-2 blink-dot" style={{ background: palette.hot, transform: 'rotate(45deg)' }} />
-              Live · {gymName}
+              {t.live} · {gymName}
             </div>
             <div className="text-[28px] lg:text-[30px] font-black leading-none mt-0.5" style={{ letterSpacing: '-1px' }}>
               The Board / Monthly
@@ -87,24 +88,29 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
       </div>
 
       {/* ── Headline + gym total ───────────────────────── */}
-      <div className="absolute left-6 right-6 px-10 pt-6 flex items-end justify-between" style={{ top: '210px' }}>
-        <div>
+      <div className="absolute left-6 right-6 px-10 pt-6 flex items-end justify-between gap-8" style={{ top: '210px' }}>
+        <div className="min-w-0 flex-1">
           <div className="text-[13px] lg:text-[14px] font-mono font-bold tracking-[0.3em] uppercase" style={{ color: palette.hot }}>
-            {slide?.label?.toUpperCase()} · {slide?.period} · all members
+            {slide?.label?.toUpperCase()} · {slide?.period} · {t.onTheBoard.toLowerCase()}
           </div>
-          <div className="font-black uppercase leading-[0.82] mt-1 text-[150px] lg:text-[180px] xl:text-[220px]" style={{ letterSpacing: '-9px' }}>
+          <div className={`font-black uppercase leading-[0.82] mt-1 ${sizeForLabel(slide?.label || '', [
+            { maxLen: 7,  classes: 'text-[150px] lg:text-[180px] xl:text-[220px]' },
+            { maxLen: 10, classes: 'text-[120px] lg:text-[150px] xl:text-[178px]' },
+            { maxLen: 14, classes: 'text-[96px] lg:text-[122px] xl:text-[146px]' },
+            { maxLen: 99, classes: 'text-[76px] lg:text-[98px] xl:text-[118px]' },
+          ])}`} style={{ letterSpacing: '-7px' }}>
             {slide?.label?.toUpperCase() || ''}<span style={{ color: palette.hot }}>.</span>
           </div>
         </div>
-        <div className="text-right pb-6 max-w-md">
+        <div className="text-right pb-6 max-w-md flex-shrink-0">
           <div className="text-[14px] lg:text-[16px] font-bold tracking-widest uppercase" style={{ color: palette.textInkDim }}>
-            Gym total / {slide?.period?.toLowerCase()}
+            {t.gymTotal} / {slide?.period?.toLowerCase()}
           </div>
           <div className="text-[64px] lg:text-[80px] xl:text-[92px] font-black tabular-nums leading-none mt-1" style={{ letterSpacing: '-3px' }}>
             {fmtTotal(total)}
           </div>
           <div className="text-[13px] lg:text-[14px] font-mono font-bold mt-2" style={{ color: palette.hot, letterSpacing: '1.4px' }}>
-            {slide?.unit?.toUpperCase()} · {entries.length} ON THE BOARD
+            {slide?.unit?.toUpperCase()} · {entries.length} {t.onTheBoard}
           </div>
         </div>
       </div>
@@ -122,8 +128,8 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
 
         {entries.length === 0 ? (
           <div className="py-16 text-center">
-            <div className="text-[36px] font-black" style={{ color: palette.textInk }}>No activity yet</div>
-            <div className="text-[16px] mt-2" style={{ color: palette.textInkDim }}>The first member on the board wins this slide.</div>
+            <div className="text-[36px] font-black" style={{ color: palette.textInk }}>{t.noActivity}</div>
+            <div className="text-[16px] mt-2" style={{ color: palette.textInkDim }}>{t.noActivitySub}</div>
           </div>
         ) : (
           entries.slice(0, 8).map((r, i) => {
@@ -148,8 +154,12 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
                 {/* lifter */}
                 <div className="flex items-center gap-3 min-w-0">
                   <TVAvatar name={r.name} size={48} />
-                  <div className="min-w-0">
-                    <div className="text-[24px] lg:text-[26px] font-black uppercase truncate leading-none" style={{ letterSpacing: '-0.6px' }}>
+                  <div className="min-w-0 flex-1">
+                    <div className={`${sizeForLabel(r.name || '', [
+                      { maxLen: 14, classes: 'text-[24px] lg:text-[26px]' },
+                      { maxLen: 22, classes: 'text-[20px] lg:text-[22px]' },
+                      { maxLen: 99, classes: 'text-[16px] lg:text-[18px]' },
+                    ])} font-black uppercase truncate leading-none`} style={{ letterSpacing: '-0.6px' }}>
                       {r.name}
                     </div>
                   </div>
@@ -166,8 +176,12 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
                   #{rank}
                 </div>
 
-                <div className="text-right">
-                  <span className="text-[36px] lg:text-[48px] font-black tabular-nums leading-none" style={{ letterSpacing: '-1.6px' }}>
+                <div className="text-right min-w-0">
+                  <span className={`${sizeForLabel(fmt(r.score), [
+                    { maxLen: 5, classes: 'text-[36px] lg:text-[48px]' },
+                    { maxLen: 8, classes: 'text-[28px] lg:text-[38px]' },
+                    { maxLen: 99, classes: 'text-[22px] lg:text-[30px]' },
+                  ])} font-black tabular-nums leading-none`} style={{ letterSpacing: '-1.6px' }}>
                     {fmt(r.score)}
                   </span>
                 </div>

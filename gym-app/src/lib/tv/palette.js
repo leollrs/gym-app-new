@@ -189,6 +189,29 @@ export function derivePalette({ primary, accent } = {}) {
   };
 }
 
+/**
+ * Adaptive font-size helper. Pick a Tailwind class set based on string
+ * length so long labels ("MOST IMPROVED", "CONSISTENCY") don't overflow
+ * the headline that "VOLUME" fits at full size. Member names with
+ * surprising lengths (5 chars or 25 chars) also need this.
+ *
+ *   sizeForLabel('VOLUME', [
+ *     { maxLen: 7,  classes: 'text-[140px]' },
+ *     { maxLen: 11, classes: 'text-[110px]' },
+ *     { maxLen: 99, classes: 'text-[84px]'  },
+ *   ]) // → 'text-[140px]'
+ *
+ * First matching range wins; the last range acts as fallback for anything
+ * longer than its maxLen.
+ */
+export function sizeForLabel(text, ranges) {
+  const len = (text || '').length;
+  for (const r of ranges) {
+    if (len <= r.maxLen) return r.classes;
+  }
+  return ranges[ranges.length - 1]?.classes || '';
+}
+
 // Style metadata — used by AdminTVDisplay to render the picker.
 export const TV_STYLES = [
   { id: 'stadium',   label: 'Dark Stadium',    description: 'Podium hero · big tabular numerals · ESPN/Crossfit energy' },

@@ -17,10 +17,12 @@
  */
 
 import { TVAvatar, TVLogoMark, TVSparkBars } from './TVPrimitives';
-import { alpha, mix } from '../../lib/tv/palette';
+import { alpha, mix, sizeForLabel } from '../../lib/tv/palette';
 import { TV_METRIC_DEFS } from '../../lib/tv/palette';
+import { getTvStrings } from '../../lib/tv/strings';
 
-export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey }) {
+export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey, lang = 'en' }) {
+  const t = getTvStrings(lang);
   const entries = slide?.entries || [];
   const [first, ...rest] = entries;
   const topPodium = entries.slice(0, 3);
@@ -68,7 +70,7 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
           <div>
             <div className="text-[11px] lg:text-[12px] font-bold tracking-[0.3em] uppercase flex items-center gap-2" style={{ color: palette.hot }}>
               <span className="inline-block w-2 h-2 rounded-full blink-dot" style={{ background: palette.hot }} />
-              Live Leaderboard
+              {t.liveLeaderboard}
             </div>
             <div className="text-[22px] lg:text-[26px] font-black leading-tight" style={{ letterSpacing: '-0.6px' }}>
               {gymName}
@@ -97,11 +99,15 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
       {/* ── Category title strip ───────────────────────── */}
       <div className="absolute left-0 right-0 px-10 lg:px-14" style={{ top: '90px' }}>
         <div className="flex items-end justify-between mt-6 lg:mt-8">
-          <div>
+          <div className="min-w-0 flex-1 pr-6">
             <div className="text-[12px] lg:text-[13px] font-extrabold tracking-[0.4em] uppercase" style={{ color: palette.hot }}>
-              Category {String((TV_METRIC_DEFS.findIndex(m => m.key === metricKey) + 1) || 1).padStart(2, '0')} / 06 · {slide?.period || '30 DAYS'}
+              {t.category} {String((TV_METRIC_DEFS.findIndex(m => m.key === metricKey) + 1) || 1).padStart(2, '0')} / 06 · {slide?.period || '30 DAYS'}
             </div>
-            <div className="font-black uppercase text-[88px] lg:text-[120px] xl:text-[140px] leading-none mt-1" style={{ letterSpacing: '-5px' }}>
+            <div className={`font-black uppercase ${sizeForLabel(slide?.label || '', [
+              { maxLen: 7,  classes: 'text-[88px] lg:text-[120px] xl:text-[140px]' },
+              { maxLen: 11, classes: 'text-[72px] lg:text-[96px] xl:text-[112px]' },
+              { maxLen: 99, classes: 'text-[58px] lg:text-[78px] xl:text-[92px]' },
+            ])} leading-none mt-1`} style={{ letterSpacing: '-4px' }}>
               {slide?.label || ''}
             </div>
           </div>
@@ -119,8 +125,8 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
       {/* ── Body: hero + #2/#3 + ranks 4-8 ─────────────── */}
       {entries.length === 0 ? (
         <div className="absolute inset-x-0 flex flex-col items-center justify-center text-center" style={{ top: '50%', transform: 'translateY(-50%)' }}>
-          <p className="text-[36px] font-bold" style={{ color: palette.textDim }}>No activity yet</p>
-          <p className="text-[18px] mt-2" style={{ color: palette.textFaint }}>The first member on the board wins this slide</p>
+          <p className="text-[36px] font-bold" style={{ color: palette.textDim }}>{t.noActivity}</p>
+          <p className="text-[18px] mt-2" style={{ color: palette.textFaint }}>{t.noActivitySub}</p>
         </div>
       ) : (
         <>
@@ -128,7 +134,7 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
           <div className="absolute left-10 right-10 lg:left-14 lg:right-14 grid grid-cols-[1.35fr_1fr] gap-6" style={{ top: '380px', bottom: restRows.length > 0 ? '195px' : '60px' }}>
             {/* #1 hero */}
             {first && (
-              <HeroCard entry={first} palette={palette} fmt={fmt} unit={slide?.unit} />
+              <HeroCard entry={first} palette={palette} fmt={fmt} unit={slide?.unit} t={t} />
             )}
             {/* #2 / #3 stacked */}
             <div className="grid grid-rows-2 gap-3 min-h-0">
@@ -143,7 +149,7 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
             <div className="absolute left-10 right-10 lg:left-14 lg:right-14 bottom-12 pt-4" style={{ borderTop: `1px solid ${palette.textGhost}` }}>
               <div className="flex justify-between items-center mb-2">
                 <div className="text-[11px] lg:text-[13px] font-black tracking-[0.3em] uppercase" style={{ color: palette.textDim }}>
-                  Ranks 04 – {String(3 + restRows.length).padStart(2, '0')}
+                  {t.rank} 04 – {String(3 + restRows.length).padStart(2, '0')}
                 </div>
                 <div className="text-[11px] font-mono" style={{ color: palette.textFaint }}>
                   scale: 0 → {fmt(maxVal)} {slide?.unit?.toLowerCase() || ''}
@@ -177,9 +183,9 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
       <footer className="absolute bottom-0 left-0 right-0 h-9 flex items-center justify-between px-10 lg:px-14 text-[11px] font-mono" style={{ background: 'rgba(0,0,0,0.5)', color: palette.textFaint, letterSpacing: '1.4px' }}>
         <span>
           <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 blink-dot" style={{ background: palette.good }} />
-          LIVE · rotates every 20s · {String(slideIdx + 1).padStart(2, '0')} / {String(totalSlides).padStart(2, '0')}
+          {t.live} · {t.rotatesEvery} · {String(slideIdx + 1).padStart(2, '0')} / {String(totalSlides).padStart(2, '0')}
         </span>
-        <span style={{ color: palette.textFaint }}>updated live</span>
+        <span style={{ color: palette.textFaint }}>{t.updatedLive}</span>
       </footer>
 
       <style>{`
@@ -191,7 +197,23 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
 }
 
 // ── Hero card for #1 ────────────────────────────────────────────────────
-function HeroCard({ entry, palette, fmt, unit }) {
+function HeroCard({ entry, palette, fmt, unit, t }) {
+  const formattedValue = fmt(entry.score);
+  // Name scales by character count so "Jo" and "Bartholomew Smithington" both
+  // fit the same card width. Value scales by formatted-string length (a
+  // 7-digit number like "1,250,000" needs more room than "100").
+  const nameClasses = sizeForLabel(entry.name || '', [
+    { maxLen: 10, classes: 'text-[56px] lg:text-[72px] xl:text-[78px]' },
+    { maxLen: 16, classes: 'text-[44px] lg:text-[58px] xl:text-[64px]' },
+    { maxLen: 22, classes: 'text-[34px] lg:text-[46px] xl:text-[52px]' },
+    { maxLen: 99, classes: 'text-[28px] lg:text-[36px] xl:text-[40px]' },
+  ]);
+  const valueClasses = sizeForLabel(formattedValue, [
+    { maxLen: 4, classes: 'text-[100px] lg:text-[130px] xl:text-[156px]' },
+    { maxLen: 6, classes: 'text-[84px] lg:text-[108px] xl:text-[128px]' },
+    { maxLen: 9, classes: 'text-[64px] lg:text-[84px] xl:text-[100px]' },
+    { maxLen: 99, classes: 'text-[48px] lg:text-[64px] xl:text-[78px]' },
+  ]);
   return (
     <div
       className="relative rounded-3xl overflow-hidden p-7 lg:p-10"
@@ -211,23 +233,23 @@ function HeroCard({ entry, palette, fmt, unit }) {
           style={{ background: palette.hot, color: palette.onHot }}
         >
           <span className="inline-block w-1.5 h-1.5 rounded-full blink-dot" style={{ background: palette.onHot }} />
-          Top performer
+          {t?.topPerformer || 'Top performer'}
         </span>
       </div>
 
       <div className="relative flex items-center gap-5 mb-6">
         <TVAvatar name={entry.name} size={104} ring ringColor={palette.hot} />
-        <div className="min-w-0">
-          <div className="text-[56px] lg:text-[72px] xl:text-[78px] font-black leading-none truncate" style={{ letterSpacing: '-2.5px' }}>
+        <div className="min-w-0 flex-1">
+          <div className={`${nameClasses} font-black leading-none truncate`} style={{ letterSpacing: '-2px' }}>
             {entry.name}
           </div>
         </div>
       </div>
 
       <div className="relative flex items-end gap-9 justify-between">
-        <div>
-          <div className="font-black tabular-nums text-[100px] lg:text-[130px] xl:text-[156px] leading-none" style={{ letterSpacing: '-5px' }}>
-            {fmt(entry.score)}
+        <div className="min-w-0 flex-1">
+          <div className={`font-black tabular-nums ${valueClasses} leading-none truncate`} style={{ letterSpacing: '-4px' }}>
+            {formattedValue}
           </div>
           <div className="text-[13px] lg:text-[16px] font-extrabold uppercase tracking-widest mt-1" style={{ color: palette.textDim }}>
             {unit}
@@ -241,6 +263,17 @@ function HeroCard({ entry, palette, fmt, unit }) {
 // ── Compact card for #2 / #3 ────────────────────────────────────────────
 function PodiumCard({ entry, rank, palette, fmt, unit }) {
   const accent = rank === 2 ? palette.coach : palette.teal;
+  const formattedValue = fmt(entry.score);
+  const nameClasses = sizeForLabel(entry.name || '', [
+    { maxLen: 14, classes: 'text-[26px] lg:text-[32px]' },
+    { maxLen: 20, classes: 'text-[22px] lg:text-[26px]' },
+    { maxLen: 99, classes: 'text-[18px] lg:text-[22px]' },
+  ]);
+  const valueClasses = sizeForLabel(formattedValue, [
+    { maxLen: 5, classes: 'text-[52px] lg:text-[64px]' },
+    { maxLen: 8, classes: 'text-[40px] lg:text-[52px]' },
+    { maxLen: 99, classes: 'text-[30px] lg:text-[40px]' },
+  ]);
   return (
     <div
       className="relative overflow-hidden rounded-2xl p-5 lg:p-7 flex items-center justify-between gap-5 min-h-0"
@@ -256,14 +289,14 @@ function PodiumCard({ entry, rank, palette, fmt, unit }) {
         </div>
         <TVAvatar name={entry.name} size={64} />
         <div className="min-w-0 flex-1">
-          <div className="text-[26px] lg:text-[32px] font-black truncate" style={{ letterSpacing: '-1px' }}>
+          <div className={`${nameClasses} font-black truncate`} style={{ letterSpacing: '-1px' }}>
             {entry.name}
           </div>
         </div>
       </div>
-      <div className="relative text-right flex-shrink-0">
-        <div className="text-[52px] lg:text-[64px] font-black leading-none tabular-nums" style={{ letterSpacing: '-2px' }}>
-          {fmt(entry.score)}
+      <div className="relative text-right flex-shrink-0 min-w-0">
+        <div className={`${valueClasses} font-black leading-none tabular-nums`} style={{ letterSpacing: '-2px' }}>
+          {formattedValue}
         </div>
         <div className="text-[11px] font-extrabold uppercase tracking-widest mt-1" style={{ color: palette.textDim }}>
           {unit}

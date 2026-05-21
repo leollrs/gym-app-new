@@ -15,9 +15,11 @@
  */
 
 import { TVAvatar, TVLogoMark, TVSparkBars } from './TVPrimitives';
-import { TV_METRIC_DEFS, alpha } from '../../lib/tv/palette';
+import { TV_METRIC_DEFS, alpha, sizeForLabel } from '../../lib/tv/palette';
+import { getTvStrings } from '../../lib/tv/strings';
 
-export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey }) {
+export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey, lang = 'en' }) {
+  const tStr = getTvStrings(lang);
   const entries = slide?.entries || [];
   const max = entries[0]?.score || 1;
   const sum = entries.reduce((a, r) => a + (Number(r.score) || 0), 0);
@@ -81,7 +83,7 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
         <div className="flex items-center gap-6">
           <span className="text-[12px] tracking-wide flex items-center gap-2" style={{ color: '#2FA66B' }}>
             <span className="inline-block w-2 h-2 rounded-full blink-dot" style={{ background: '#2FA66B' }} />
-            STREAMING
+            {tStr.streaming}
           </span>
           <span className="text-[13px] font-bold tabular-nums" style={{ letterSpacing: '1.4px' }}>
             {clock.toISOString().slice(0, 10)} · {timeFmt.format(clock)}
@@ -113,11 +115,16 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
 
       {/* ── Big title + KPIs ───────────────────────────── */}
       <div className="absolute left-10 right-10 grid grid-cols-[1.4fr_1fr] gap-5" style={{ top: '130px' }}>
-        <div className="px-7 pt-5 pb-6 relative" style={{ border: `1px solid ${t.line}` }}>
+        <div className="px-7 pt-5 pb-6 relative min-w-0" style={{ border: `1px solid ${t.line}` }}>
           <div className="text-[11px] tracking-widest mb-1" style={{ color: t.dim }}>
             METRIC ▸ {metricKey?.toUpperCase()} / {slide?.period?.replace(' ', '_')} / RANKED_DESC
           </div>
-          <div className="font-black uppercase leading-[0.88] text-[80px] lg:text-[100px] xl:text-[110px]" style={{ letterSpacing: '-4px' }}>
+          <div className={`font-black uppercase leading-[0.88] ${sizeForLabel(slide?.label || '', [
+            { maxLen: 7,  classes: 'text-[80px] lg:text-[100px] xl:text-[110px]' },
+            { maxLen: 11, classes: 'text-[64px] lg:text-[80px] xl:text-[90px]' },
+            { maxLen: 14, classes: 'text-[52px] lg:text-[66px] xl:text-[74px]' },
+            { maxLen: 99, classes: 'text-[40px] lg:text-[52px] xl:text-[58px]' },
+          ])}`} style={{ letterSpacing: '-3px' }}>
             {slide?.label?.toUpperCase() || ''}<span style={{ color: t.teal }}>_</span>
           </div>
           <div className="text-[12px] mt-2 tracking-wide" style={{ color: t.dim }}>
@@ -196,7 +203,11 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
                     <div className="w-24 h-1.5 relative" style={{ background: 'rgba(255,255,255,0.06)' }}>
                       <div className="absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: rank === 1 ? t.hot : rank <= 3 ? t.teal : '#5A6A7A' }} />
                     </div>
-                    <span className="text-[26px] lg:text-[30px] font-black" style={{ minWidth: '120px', textAlign: 'right', letterSpacing: '-0.8px' }}>
+                    <span className={`${sizeForLabel(fmt(r.score), [
+                      { maxLen: 5, classes: 'text-[26px] lg:text-[30px]' },
+                      { maxLen: 8, classes: 'text-[20px] lg:text-[24px]' },
+                      { maxLen: 99, classes: 'text-[16px] lg:text-[20px]' },
+                    ])} font-black tabular-nums`} style={{ minWidth: '120px', textAlign: 'right', letterSpacing: '-0.8px' }}>
                       {fmt(r.score)}
                     </span>
                   </div>

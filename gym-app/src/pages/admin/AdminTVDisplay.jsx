@@ -402,6 +402,63 @@ export default function AdminTVDisplay() {
         </AdminCard>
       </FadeIn>
 
+      {/* ── Multi-TV URL patterns ────────────────────────────────
+           For gyms with 2+ TVs that want to dedicate one to challenges,
+           run a Spanish + English pair, etc. Each URL bookmarks the
+           TV's preferences (same code, different display config). */}
+      <FadeIn delay={100}>
+        <AdminCard className="mt-5">
+          <p className="text-[13px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+            {t('admin.tvDisplay.multiTvTitle', { defaultValue: 'Running multiple TVs' })}
+          </p>
+          <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
+            {t('admin.tvDisplay.multiTvBody', {
+              defaultValue: 'Each TV can use the same code but a different URL. Bookmark whichever URL fits where the screen lives — lobby, weight room, cardio area, bilingual side-by-side.',
+            })}
+          </p>
+          <div className="space-y-2">
+            {[
+              { suffix: '?track=mixed',         label: t('admin.tvDisplay.urlMixed',         { defaultValue: 'Mixed (default) — leaderboards + challenges interleaved' }) },
+              { suffix: '?track=leaderboards',  label: t('admin.tvDisplay.urlLeaderboards',  { defaultValue: 'Leaderboards only — skip challenge slides' }) },
+              { suffix: '?track=challenges',    label: t('admin.tvDisplay.urlChallenges',    { defaultValue: 'Challenges only — perfect for a second TV next to the leaderboard' }) },
+              { suffix: '?lang=es',             label: t('admin.tvDisplay.urlEs',            { defaultValue: 'Spanish display — overrides auto-detection from gym timezone' }) },
+              { suffix: '?lang=en',             label: t('admin.tvDisplay.urlEn',            { defaultValue: 'English display — for a bilingual gym with one EN + one ES TV' }) },
+              { suffix: '?lang=es&track=challenges', label: t('admin.tvDisplay.urlComboEsChallenges', { defaultValue: 'Spanish challenges-only TV (combined params)' }) },
+            ].map((row) => {
+              const full = `${tvUrl}${row.suffix}`;
+              const copyKey = `multitv-${row.suffix}`;
+              return (
+                <div key={row.suffix} className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border-subtle)' }}>
+                  <div className="flex-1 min-w-0">
+                    <code className="text-[12px] font-mono break-all" style={{ color: 'var(--color-text-primary)' }}>
+                      {full}
+                    </code>
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                      {row.label}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => copy(full, copyKey)}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold flex-shrink-0 mt-0.5"
+                    style={{ color: copiedField === copyKey ? 'var(--color-success)' : 'var(--color-accent)' }}
+                  >
+                    {copiedField === copyKey ? <Check size={12} /> : <Copy size={12} />}
+                    {copiedField === copyKey
+                      ? t('admin.tvDisplay.copied', { defaultValue: 'Copied' })
+                      : t('admin.tvDisplay.copy', { defaultValue: 'Copy' })}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[11px] mt-3" style={{ color: 'var(--color-text-subtle)' }}>
+            {t('admin.tvDisplay.multiTvNote', {
+              defaultValue: 'All TVs share the same 6-character code — rotating disconnects every one of them.',
+            })}
+          </p>
+        </AdminCard>
+      </FadeIn>
+
       {/* ── Connected TVs ───────────────────────────────────────── */}
       <FadeIn delay={120}>
         <AdminCard className="mt-5" padding="p-0">

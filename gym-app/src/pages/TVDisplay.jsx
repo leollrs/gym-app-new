@@ -1,7 +1,8 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
 import { derivePalette, TV_METRIC_DEFS } from '../lib/tv/palette';
+import { getTvStrings, getMetricSlides } from '../lib/tv/strings';
 import TVStyleStadium from '../components/tv/TVStyleStadium';
 import TVStyleBrutal from '../components/tv/TVStyleBrutal';
 import TVStyleBoricua from '../components/tv/TVStyleBoricua';
@@ -14,8 +15,7 @@ import TVStyleTelemetry from '../components/tv/TVStyleTelemetry';
  *   1. Visit /tv-display (no auth required).
  *   2. If no valid code stashed in localStorage → render the code-entry
  *      screen. Owner types the 6-char code from their admin panel.
- *   3. On success: rotate through 6 metric leaderboards (volume, workouts,
- *      PRs, most improved, consistency, check-ins) + one slide per active
+ *   3. On success: rotate through metric leaderboards + one slide per active
  *      challenge with a join-this-challenge QR.
  *   4. Heartbeat every 30s via tv_get_dashboard_data. If the code was
  *      rotated, the RPC returns invalid_code and we bounce back to the
@@ -23,6 +23,17 @@ import TVStyleTelemetry from '../components/tv/TVStyleTelemetry';
  *   5. The visual style (stadium / brutal / boricua / telemetry) is
  *      picked by the admin and returned on every heartbeat, so live TVs
  *      switch within ~30s of the admin changing the choice.
+ *
+ * URL params (per-TV, bookmarked on each device):
+ *   ?lang=en|es          — TV display language (default: gym timezone-based)
+ *   ?track=mixed         — both metric leaderboards AND challenges (default)
+ *   ?track=leaderboards  — only metric leaderboards (no challenge slides)
+ *   ?track=challenges    — only challenge slides (skip metric leaderboards)
+ *
+ * This lets a gym with 2+ TVs dedicate one to leaderboards and one to
+ * challenges, or run an EN TV + ES TV side-by-side. Each TV maintains its
+ * own session_id (per-device localStorage) so they all appear separately in
+ * the admin's connected-sessions list.
  *
  * The page intentionally takes no auth context — it's expected to run on
  * a TV with no Supabase session. All access is gated by the code.
@@ -40,14 +51,21 @@ const STYLE_COMPONENTS = {
   telemetry: TVStyleTelemetry,
 };
 
-const METRIC_SLIDES = [
-  { key: 'volume',      label: 'VOLUME',        unit: 'LBS',      period: 'LAST 30 DAYS' },
-  { key: 'workouts',    label: 'WORKOUTS',      unit: 'SESSIONS', period: 'LAST 30 DAYS' },
-  { key: 'prs',         label: 'TOP PRs',       unit: 'RECORDS',  period: 'ALL TIME' },
-  { key: 'improved',    label: 'MOST IMPROVED', unit: '%',        period: 'THIS MONTH' },
-  { key: 'consistency', label: 'CONSISTENCY',   unit: '%',        period: 'THIS MONTH' },
-  { key: 'checkins',    label: 'CHECK-INS',     unit: 'VISITS',   period: 'LAST 30 DAYS' },
-];
+// Read URL params with safe defaults. Lang falls through to 'en' here and
+// is reconciled later against the gym's timezone (PR gyms default to es).
+function readUrlConfig() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const langRaw = (params.get('lang') || '').toLowerCase();
+    const trackRaw = (params.get('track') || 'mixed').toLowerCase();
+    return {
+      lang: langRaw === 'es' || langRaw === 'en' ? langRaw : null,
+      track: trackRaw === 'leaderboards' || trackRaw === 'challenges' ? trackRaw : 'mixed',
+    };
+  } catch {
+    return { lang: null, track: 'mixed' };
+  }
+}
 
 // Per-session UUID. Persists in localStorage so reconnects after a TV
 // reboot are tracked as the same device in the admin connection list.
@@ -87,12 +105,23 @@ function clearCredentials() {
 
 export default function TVDisplay() {
   const sessionIdRef = useRef(getOrCreateSessionId());
+  const urlConfigRef = useRef(readUrlConfig());
   const [credentials, setCredentials] = useState(readStoredCredentials);
   const [dashboardData, setDashboardData] = useState(null);
   const [slideIdx, setSlideIdx] = useState(0);
   const [clock, setClock] = useState(new Date());
   const [authError, setAuthError] = useState(null);
   const [resolvedLogoUrl, setResolvedLogoUrl] = useState(null);
+
+  // Lang resolution: explicit ?lang= wins; otherwise infer from gym timezone
+  // (Puerto Rico = America/Puerto_Rico → Spanish). Defaults to English.
+  const lang = (() => {
+    if (urlConfigRef.current.lang) return urlConfigRef.current.lang;
+    const tz = credentials?.gym_timezone || '';
+    if (tz.includes('Puerto_Rico') || tz.startsWith('America/Puerto')) return 'es';
+    return 'en';
+  })();
+  const track = urlConfigRef.current.track;
 
   // Clock tick
   useEffect(() => {
@@ -186,13 +215,18 @@ export default function TVDisplay() {
   })();
 
   // Build the full slide list once credentials + data land. Order:
-  //   1. Metric leaderboards (in METRIC_SLIDES order)
+  //   1. Metric leaderboards (localized labels per ?lang=)
   //   2. Active challenges (one slide each, sorted by start_date asc)
   // Empty metric leaderboards still take a slot — they show "no activity
   // yet" which is itself a useful prompt for an empty gym.
-  const slides = (() => {
+  //
+  // Track filter (?track=) lets a gym dedicate a TV to one type:
+  //   - mixed (default): metric + challenge slides interleaved
+  //   - leaderboards: metric slides only
+  //   - challenges: challenge slides only (empty state = no active challenges)
+  const slides = useMemo(() => {
     if (!dashboardData) return [];
-    const metricSlides = METRIC_SLIDES.map((m) => ({
+    const metricSlides = getMetricSlides(lang).map((m) => ({
       kind: 'metric',
       key: m.key,
       label: m.label,
@@ -205,8 +239,10 @@ export default function TVDisplay() {
       key: `challenge-${c.id}`,
       challenge: c,
     }));
+    if (track === 'leaderboards') return metricSlides;
+    if (track === 'challenges') return challengeSlides;
     return [...metricSlides, ...challengeSlides];
-  })();
+  }, [dashboardData, lang, track]);
 
   // Auto-rotate the slide cursor. If the slide count drops between cycles
   // (a challenge ended mid-rotation), clamp back into range.
@@ -284,9 +320,27 @@ export default function TVDisplay() {
   });
   const slide = slides[slideIdx];
 
+  // Empty-track guard: if owner set ?track=challenges and there are no
+  // active challenges, the slide list is empty. Show a hint screen instead
+  // of an infinite spinner so the TV doesn't look broken.
+  const tvStrings = getTvStrings(lang);
+  const isEmptyChallengeTrack = dashboardData && track === 'challenges' && slides.length === 0;
+
   return (
     <div className="h-screen overflow-hidden select-none" style={{ height: '100dvh', background: palette.ink }}>
-      {!slide ? (
+      {isEmptyChallengeTrack ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-10" style={{ background: palette.ink, color: palette.text }}>
+          <div className="text-[20px] tracking-[0.3em] font-bold uppercase mb-3" style={{ color: palette.hot }}>
+            {tvStrings.activeChallenge}
+          </div>
+          <div className="text-[64px] font-black mb-3" style={{ letterSpacing: '-2px' }}>
+            {tvStrings.noActivity}
+          </div>
+          <div className="text-[20px]" style={{ color: palette.textDim }}>
+            {tvStrings.noActivitySub}
+          </div>
+        </div>
+      ) : !slide ? (
         <div className="absolute inset-0 flex items-center justify-center" style={{ background: palette.ink }}>
           <div className="w-12 h-12 border-2 rounded-full animate-spin" style={{ borderColor: `${palette.hot}30`, borderTopColor: palette.hot }} />
         </div>
@@ -303,6 +357,7 @@ export default function TVDisplay() {
           dateFmt={dateFmt}
           slideIdx={slideIdx}
           totalSlides={slides.length}
+          lang={lang}
         />
       ) : (
         <StyleComponent
@@ -316,6 +371,7 @@ export default function TVDisplay() {
           slideIdx={slideIdx}
           totalSlides={slides.length}
           metricKey={slide.key}
+          lang={lang}
         />
       )}
     </div>
@@ -536,8 +592,9 @@ function MetricSlide({ slide, accent }) {
 // Right: large QR code that links into the app's challenges page so a
 // member walking by can scan + join. The deep link includes the challenge
 // id so the page can scroll to / open the right card on landing.
-function ChallengeSlide({ slide, accent, gymSlug }) {
+function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
   const c = slide.challenge;
+  const tStr = getTvStrings(lang);
   const now = new Date();
   const endDate = c.end_date ? new Date(c.end_date) : null;
   const startDate = c.start_date ? new Date(c.start_date) : null;
@@ -548,12 +605,12 @@ function ChallengeSlide({ slide, accent, gymSlug }) {
   let timeLabel = '';
   if (notStartedYet) {
     const days = Math.ceil((startDate - now) / 86_400_000);
-    timeLabel = days <= 1 ? 'STARTS TOMORROW' : `STARTS IN ${days} DAYS`;
+    timeLabel = days <= 1 ? tStr.startsTomorrow : `${tStr.startsIn} ${days} ${tStr.days}`;
   } else if (endDate) {
     const days = Math.ceil((endDate - now) / 86_400_000);
-    timeLabel = days <= 0 ? 'FINAL HOURS' : days === 1 ? 'ENDS TOMORROW' : `${days} DAYS LEFT`;
+    timeLabel = days <= 0 ? tStr.finalHours : days === 1 ? tStr.endsTomorrow : `${days} ${tStr.daysLeft}`;
   } else {
-    timeLabel = 'ONGOING';
+    timeLabel = tStr.ongoing;
   }
 
   // QR deep link: opens the gym's web app on the challenges page, focused on
@@ -580,7 +637,7 @@ function ChallengeSlide({ slide, accent, gymSlug }) {
       <div className="flex flex-col min-h-0 overflow-hidden">
         <div className="mb-4 lg:mb-5 flex-shrink-0">
           <p className="text-[12px] lg:text-[13px] font-bold tracking-[0.3em] uppercase mb-2" style={{ color: accent }}>
-            Active Challenge · {timeLabel}
+            {tStr.activeChallenge} · {timeLabel}
           </p>
           <h1
             className="font-black leading-none tracking-tight mb-3 text-[40px] lg:text-[48px] xl:text-[56px]"
@@ -608,8 +665,8 @@ function ChallengeSlide({ slide, accent, gymSlug }) {
           {topFive.length === 0 ? (
             <div className="h-full flex items-center justify-center rounded-2xl border-2 border-dashed" style={{ borderColor: `${accent}30` }}>
               <div className="text-center px-8">
-                <p className="text-[26px] lg:text-[32px] font-black" style={{ color: accent }}>Be the first to join</p>
-                <p className="text-[14px] lg:text-[16px] mt-2" style={{ color: 'rgba(255,255,255,0.4)' }}>Scan the code on the right to enter</p>
+                <p className="text-[26px] lg:text-[32px] font-black" style={{ color: accent }}>{tStr.beTheFirst}</p>
+                <p className="text-[14px] lg:text-[16px] mt-2" style={{ color: 'rgba(255,255,255,0.4)' }}>{tStr.scanToJoin}</p>
               </div>
             </div>
           ) : (
@@ -671,14 +728,14 @@ function ChallengeSlide({ slide, accent, gymSlug }) {
           />
         </div>
         <p className="text-[18px] lg:text-[20px] font-black uppercase tracking-widest mb-1" style={{ color: '#FFFFFF' }}>
-          {notStartedYet ? 'Sign up' : 'Join now'}
+          {notStartedYet ? tStr.signUp : tStr.joinNow}
         </p>
         <p className="text-[12px] lg:text-[14px] font-semibold text-center" style={{ color: 'rgba(255,255,255,0.5)' }}>
-          Scan with your phone camera
+          {tStr.scanWithPhone}
         </p>
         {participants.length > 0 && (
           <p className="text-[11px] lg:text-[13px] font-bold uppercase tracking-widest mt-3 lg:mt-4" style={{ color: accent }}>
-            {participants.length} member{participants.length === 1 ? '' : 's'} in
+            {participants.length} {participants.length === 1 ? tStr.memberIn : tStr.membersIn}
           </p>
         )}
       </div>

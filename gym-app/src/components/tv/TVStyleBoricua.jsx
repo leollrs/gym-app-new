@@ -15,9 +15,11 @@
  */
 
 import { TVAvatar, TVLogoMark } from './TVPrimitives';
-import { adjust, alpha, mix, TV_METRIC_DEFS } from '../../lib/tv/palette';
+import { adjust, alpha, mix, TV_METRIC_DEFS, sizeForLabel } from '../../lib/tv/palette';
+import { getTvStrings } from '../../lib/tv/strings';
 
-export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey }) {
+export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock, timeFmt, dateFmt, slideIdx, totalSlides, metricKey, lang = 'en' }) {
+  const t = getTvStrings(lang);
   const entries = slide?.entries || [];
   const top3 = entries.slice(0, 3);
   const rest = entries.slice(3, 8);
@@ -82,7 +84,7 @@ export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock
             </div>
             <div className="text-[12px] font-extrabold tracking-[0.3em] uppercase opacity-85 mt-1 flex items-center gap-2">
               <span className="inline-block w-2 h-2 rounded-full blink-dot bg-white" />
-              En Vivo · Live Leaderboard
+              {t.live} · {t.liveLeaderboard}
             </div>
           </div>
         </div>
@@ -113,9 +115,14 @@ export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock
       {/* ── Headline ───────────────────────────────────── */}
       <div className="absolute left-10 right-10 lg:left-14 lg:right-14 text-center" style={{ top: '110px' }}>
         <div className="text-[13px] lg:text-[14px] font-black tracking-[0.5em] uppercase opacity-85">
-          Los Más Fuertes · {slide?.period}
+          {t.losMasFuertes} · {slide?.period}
         </div>
-        <div className="font-black uppercase mt-1 text-[120px] lg:text-[170px] xl:text-[200px] leading-[0.85]" style={{ letterSpacing: '-8px', textShadow: '0 6px 30px rgba(0,0,0,0.35)' }}>
+        <div className={`font-black uppercase mt-1 ${sizeForLabel(slide?.label || '', [
+          { maxLen: 7,  classes: 'text-[120px] lg:text-[170px] xl:text-[200px]' },
+          { maxLen: 11, classes: 'text-[96px] lg:text-[136px] xl:text-[160px]' },
+          { maxLen: 14, classes: 'text-[76px] lg:text-[108px] xl:text-[130px]' },
+          { maxLen: 99, classes: 'text-[60px] lg:text-[86px] xl:text-[104px]' },
+        ])} leading-[0.85]`} style={{ letterSpacing: '-7px', textShadow: '0 6px 30px rgba(0,0,0,0.35)' }}>
           {slide?.label}
         </div>
       </div>
@@ -163,7 +170,7 @@ export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock
                       className="px-3 py-1.5 rounded-full text-[10px] lg:text-[11px] font-black uppercase tracking-widest"
                       style={{ background: palette.ink, color: '#fff', boxShadow: '0 6px 18px rgba(0,0,0,0.3)' }}
                     >
-                      🏆 Campeón
+                      🏆 {t.champion}
                     </div>
                   )}
                 </div>
@@ -174,15 +181,31 @@ export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock
                 </div>
 
                 {/* name + value */}
-                <div className="text-center">
+                <div className="text-center min-w-0 px-1">
                   <div
-                    className={`font-black uppercase leading-none ${rank === 1 ? 'text-[36px] lg:text-[44px]' : 'text-[26px] lg:text-[32px]'}`}
-                    style={{ color: palette.ink, letterSpacing: '-1.2px' }}
+                    className={`font-black uppercase leading-none truncate ${rank === 1 ? sizeForLabel(r.name || '', [
+                      { maxLen: 10, classes: 'text-[36px] lg:text-[44px]' },
+                      { maxLen: 16, classes: 'text-[28px] lg:text-[34px]' },
+                      { maxLen: 99, classes: 'text-[22px] lg:text-[26px]' },
+                    ]) : sizeForLabel(r.name || '', [
+                      { maxLen: 10, classes: 'text-[26px] lg:text-[32px]' },
+                      { maxLen: 16, classes: 'text-[20px] lg:text-[24px]' },
+                      { maxLen: 99, classes: 'text-[16px] lg:text-[20px]' },
+                    ])}`}
+                    style={{ color: palette.ink, letterSpacing: '-1px' }}
                   >
                     {r.name}
                   </div>
                   <div
-                    className={`font-black tabular-nums leading-[0.9] mt-3 ${rank === 1 ? 'text-[76px] lg:text-[96px]' : 'text-[60px] lg:text-[72px]'}`}
+                    className={`font-black tabular-nums leading-[0.9] mt-3 ${rank === 1 ? sizeForLabel(fmt(r.score), [
+                      { maxLen: 4, classes: 'text-[76px] lg:text-[96px]' },
+                      { maxLen: 7, classes: 'text-[60px] lg:text-[76px]' },
+                      { maxLen: 99, classes: 'text-[44px] lg:text-[58px]' },
+                    ]) : sizeForLabel(fmt(r.score), [
+                      { maxLen: 4, classes: 'text-[60px] lg:text-[72px]' },
+                      { maxLen: 7, classes: 'text-[44px] lg:text-[56px]' },
+                      { maxLen: 99, classes: 'text-[32px] lg:text-[42px]' },
+                    ])}`}
                     style={{ color: palette.ink, letterSpacing: '-3px' }}
                   >
                     {fmt(r.score)}
@@ -197,8 +220,8 @@ export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock
         </div>
       ) : (
         <div className="absolute inset-x-0 text-center" style={{ top: '50%', transform: 'translateY(-50%)' }}>
-          <div className="text-[36px] font-black">Aún no hay actividad</div>
-          <div className="text-[16px] mt-2 opacity-70">Sé el primero en aparecer en el board</div>
+          <div className="text-[36px] font-black">{t.noActivity}</div>
+          <div className="text-[16px] mt-2 opacity-70">{t.noActivitySub}</div>
         </div>
       )}
 
@@ -232,9 +255,9 @@ export default function TVStyleBoricua({ slide, palette, gymName, logoUrl, clock
       <div className="absolute bottom-0 left-0 right-0 h-9 flex items-center justify-between px-10 lg:px-14 text-[11px] font-mono tracking-widest" style={{ color: 'rgba(255,255,255,0.7)' }}>
         <span>
           <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 blink-dot" style={{ background: '#FFD56B' }} />
-          EN VIVO · ROTA CADA 20S · {String(slideIdx + 1).padStart(2, '0')} / {String(totalSlides).padStart(2, '0')}
+          {t.live} · {t.rotatesEvery.toUpperCase()} · {String(slideIdx + 1).padStart(2, '0')} / {String(totalSlides).padStart(2, '0')}
         </span>
-        <span>Próximo ▸ {TV_METRIC_DEFS[(TV_METRIC_DEFS.findIndex(m => m.key === metricKey) + 1) % TV_METRIC_DEFS.length]?.label?.toUpperCase()}</span>
+        <span>{t.next} ▸ {TV_METRIC_DEFS[(TV_METRIC_DEFS.findIndex(m => m.key === metricKey) + 1) % TV_METRIC_DEFS.length]?.label?.toUpperCase()}</span>
       </div>
 
       <style>{`
