@@ -713,6 +713,12 @@ function LazyPostHogProvider({ apiKey, options, children }) {
 // the main provider tree — so if AuthProvider / QueryClient / Router throw
 // and the app below never renders, the watcher still runs its timer and
 // can auto-recover (cache wipe + reload) or surface the manual banner.
+// HMR guard — Vite HMR resets module-level state on every file save, so a
+// `let mounted = false` flag won't survive across hot reloads. Stashing the
+// root on `window` instead so the SAME instance is preserved across HMR
+// reruns of main.jsx, and on subsequent runs we just .render() into the
+// existing root instead of creating a new one (which React 18 warns about).
+// In production main.jsx executes once, so this is purely dev-quality.
 const mountRecoveryRoot = () => {
   try {
     let host = document.getElementById('recovery-root');
@@ -721,16 +727,26 @@ const mountRecoveryRoot = () => {
       host.id = 'recovery-root';
       document.body.appendChild(host);
     }
-    ReactDOM.createRoot(host).render(<StuckLoadingRecovery />);
+    if (!window.__tugymRecoveryRoot) {
+      window.__tugymRecoveryRoot = ReactDOM.createRoot(host);
+    }
+    window.__tugymRecoveryRoot.render(<StuckLoadingRecovery />);
   } catch { /* if even this fails, nothing more we can do */ }
 };
 
+// Same HMR guard as the recovery root — Vite re-runs main.jsx on file save
+// and React 18 logs a "createRoot called twice" warning if we mount a
+// second root on #root. Persisting the root on `window` so HMR re-renders
+// reuse the existing one. (Production main.jsx runs once → noop.)
 const renderApp = () => {
   // Mount recovery FIRST so its 10s timer is already running regardless of
   // whether the main render below throws synchronously.
   mountRecoveryRoot();
 
-  ReactDOM.createRoot(document.getElementById('root')).render(
+  if (!window.__tugymAppRoot) {
+    window.__tugymAppRoot = ReactDOM.createRoot(document.getElementById('root'));
+  }
+  window.__tugymAppRoot.render(
     <React.StrictMode>
       {/* Top-level ErrorBoundary — catches a synchronous throw from ANY
           provider (AuthProvider, ThemeProvider, Router) or from <App />
