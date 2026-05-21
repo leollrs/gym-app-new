@@ -4,7 +4,7 @@ import {
   ArrowLeft, Users, Activity, Settings, Crown, ChevronDown,
   Dumbbell, Clock, Pause, Play, X, Trash2,
   UserPlus, Eye, EyeOff, AlertTriangle,
-  Trophy, Upload, Microscope,
+  Trophy, Upload, Microscope, Database,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -472,6 +472,13 @@ export default function GymDetail() {
           >
             <Microscope size={13} />
             Retention diagnostic
+          </button>
+          <button
+            onClick={() => navigate(`/platform/gym/${gymId}/ops`)}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12px] font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/20 transition-colors"
+          >
+            <Database size={13} />
+            Data &amp; costs
           </button>
         </div>
 

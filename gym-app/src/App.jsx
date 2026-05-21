@@ -168,6 +168,7 @@ const GymsOverview       = lazy(() => import('./pages/platform/GymsOverview'));
 const GymDetail          = lazy(() => import('./pages/platform/GymDetail'));
 const GymImport          = lazy(() => import('./pages/platform/GymImport'));
 const GymDiagnostic      = lazy(() => import('./pages/platform/GymDiagnostic'));
+const GymOps             = lazy(() => import('./pages/platform/GymOps'));
 const PlatformAnalytics  = lazy(() => import('./pages/platform/PlatformAnalytics'));
 const SupportConsole     = lazy(() => import('./pages/platform/SupportConsole'));
 const PlatformSettings   = lazy(() => import('./pages/platform/PlatformSettings'));
@@ -1527,6 +1528,7 @@ function App() {
                 <Route path="/gym/:gymId"          element={<GymDetail />} />
                 <Route path="/gym/:gymId/import"     element={<GymImport />} />
                 <Route path="/gym/:gymId/diagnostic" element={<GymDiagnostic />} />
+                <Route path="/gym/:gymId/ops"        element={<GymOps />} />
                 <Route path="/analytics"    element={<PlatformAnalytics />} />
                 <Route path="/gym-health"   element={<GymHealth />} />
                 <Route path="/adoption"     element={<FeatureAdoption />} />

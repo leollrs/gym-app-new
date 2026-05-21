@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User, Mail, Shield, Camera, Save, Key, Clock, Activity,
-  Calendar, ChevronRight, LogOut, CheckCircle, AlertTriangle, Pencil, X, Repeat,
+  Calendar, ChevronRight, LogOut, CheckCircle, AlertTriangle, Pencil, X, Repeat, Sparkles,
 } from 'lucide-react';
 import ViewSwitcherModal from '../../components/ViewSwitcherModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -573,6 +573,43 @@ export default function AdminProfile() {
         <FadeIn delay={0.25}>
           <SectionLabel>{t('admin.profile.account', 'Account')}</SectionLabel>
           <AdminCard className="p-0 overflow-hidden">
+            {/* "Show welcome guide" — clears the per-admin dismissal flag and
+                bounces to /admin so AdminOverview re-mounts and the modal
+                reads localStorage fresh. Useful when the owner wants to re-
+                read the retention thesis or remembered there were "3 first
+                week actions" but forgot what they were. */}
+            <button
+              onClick={() => {
+                try {
+                  if (profile?.gym_id && profile?.id) {
+                    localStorage.removeItem(`admin_welcome_shown_${profile.gym_id}_${profile.id}`);
+                  }
+                } catch { /* private mode etc. — best effort */ }
+                navigate('/admin');
+              }}
+              className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition-colors duration-200 hover:bg-white/[0.04]"
+            >
+              <span className="flex items-center gap-3">
+                <span
+                  className="p-2 rounded-xl flex-shrink-0"
+                  style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)' }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                    {t('admin.overview.welcomeBtnShowAgain', 'Show welcome guide')}
+                  </span>
+                  <span className="block text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.profile.welcomeBtnSub', 'Re-read the retention thesis and first-week actions')}
+                  </span>
+                </span>
+              </span>
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--color-text-subtle)' }} />
+            </button>
+
+            <div style={{ borderTop: '1px solid var(--color-border-subtle)' }} />
+
             <button
               onClick={signOut}
               className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition-colors duration-200 hover:bg-white/[0.04]"

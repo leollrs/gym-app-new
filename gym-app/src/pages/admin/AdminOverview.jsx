@@ -29,14 +29,34 @@ import { fetchOverviewData } from '../../lib/admin/overviewQuery';
 import NeedsAttentionCard from './components/NeedsAttentionCard';
 import AdminFirstRunChecklist from './components/AdminFirstRunChecklist';
 import MorningQueuePanel from './components/MorningQueuePanel';
+import AdminWelcomeModal from './components/AdminWelcomeModal';
 
 
 export default function AdminOverview() {
-  const { profile, gymConfig } = useAuth();
+  const { profile, gymConfig, gymName } = useAuth();
   const navigate = useNavigate();
 
   const gymId = profile?.gym_id;
   const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+
+  // First-time welcome modal — explains the retention thesis and the first
+  // 3 actions. Per gym + per admin profile localStorage flag (so a 2nd
+  // admin on the same gym still gets the explainer on their first login).
+  // Tracked here so the modal mounts immediately when the user lands on
+  // the dashboard; the AdminFirstRunChecklist that lives below it is the
+  // ongoing setup tracker — different concept, different lifecycle.
+  const [showWelcome, setShowWelcome] = useState(() => {
+    if (typeof window === 'undefined' || !gymId || !profile?.id) return false;
+    try {
+      return localStorage.getItem(`admin_welcome_shown_${gymId}_${profile.id}`) !== '1';
+    } catch { return false; }
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined' || !gymId || !profile?.id) return;
+    try {
+      setShowWelcome(localStorage.getItem(`admin_welcome_shown_${gymId}_${profile.id}`) !== '1');
+    } catch { /* ignore */ }
+  }, [gymId, profile?.id]);
 
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
@@ -145,6 +165,16 @@ export default function AdminOverview() {
 
   return (
     <AdminPageShell>
+      {/* ── First-time welcome modal ─────────────────────── */}
+      {showWelcome && (
+        <AdminWelcomeModal
+          gymId={gymId}
+          gymName={gymName}
+          profileId={profile?.id}
+          onClose={() => setShowWelcome(false)}
+        />
+      )}
+
       {/* ── Password reset approval modal ────────────────── */}
       {resetApprovalId && (
         <PasswordResetApprovalModal
@@ -201,6 +231,10 @@ export default function AdminOverview() {
             icon={CalendarCheck}
             borderColor="var(--color-coach)"
             sub={<DeltaSub delta={formatDelta(stats.checkInsToday, stats.checkInsYesterday, t('admin.overview.vsYesterday', 'vs yesterday'))} />}
+            benchmark={t('admin.overview.benchmarkCheckins', {
+              avg: stats.avgDailyCheckins || 0,
+              defaultValue: 'Healthy gym: ~30–40% of members check in on any given day. Your gym\'s avg/day: {{avg}}.',
+            })}
             onClick={() => navigate('/admin/attendance')}
           />
         </FadeIn>
@@ -211,6 +245,9 @@ export default function AdminOverview() {
               value={stats.classesToday}
               icon={BookOpen}
               borderColor="var(--color-accent)"
+              benchmark={t('admin.overview.benchmarkClasses', {
+                defaultValue: 'Strong gyms run 3–6 classes/day. Empty days = under-utilized real estate.',
+              })}
               onClick={() => navigate('/admin/classes')}
             />
           </FadeIn>
@@ -222,6 +259,9 @@ export default function AdminOverview() {
             icon={UserPlus}
             borderColor="var(--color-success)"
             sub={<DeltaSub delta={formatDelta(stats.newMembersMonth, stats.newMembersPrevMonth, t('admin.overview.vsLastMonth', 'vs last month'))} />}
+            benchmark={t('admin.overview.benchmarkNewMonth', {
+              defaultValue: 'A growing PR gym signs 3–5% of its base in new members each month. Below 2%? Look at referrals + signage.',
+            })}
             onClick={() => navigate('/admin/members')}
           />
         </FadeIn>
@@ -231,6 +271,9 @@ export default function AdminOverview() {
             value={stats.totalMembers}
             icon={Users}
             borderColor="var(--color-coach)"
+            benchmark={t('admin.overview.benchmarkTotal', {
+              defaultValue: 'Total active members. Doesn\'t include archived imports or cancelled accounts — only live, payable members.',
+            })}
             onClick={() => navigate('/admin/members')}
           />
         </FadeIn>

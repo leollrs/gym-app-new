@@ -2816,6 +2816,11 @@
       "vsYesterday": "vs ayer",
       "vsLastMonth": "vs mes pasado",
       "needsAttentionSub": "Miembros que necesitan seguimiento",
+      "benchmarkCheckins": "Gimnasio saludable: ~30–40% de miembros se registran un día cualquiera. Tu gimnasio: {{avg}}/día.",
+      "benchmarkClasses": "Gimnasios fuertes corren 3–6 clases/día. Días vacíos = espacio subutilizado.",
+      "benchmarkNewMonth": "Un gimnasio PR en crecimiento inscribe 3–5% de su base en nuevos miembros cada mes. ¿Por debajo de 2%? Revisa referidos + señalización.",
+      "benchmarkTotal": "Miembros activos totales. No incluye importados archivados ni cuentas canceladas — solo miembros vivos y pagaderos.",
+      "welcomeBtnShowAgain": "Ver guía de bienvenida",
       "actions": {
         "checkin": "registró entrada",
         "workout": "completó entreno",
@@ -3232,6 +3237,7 @@
       "currentPasswordWrong": "Contraseña actual incorrecta",
       "openSettings": "Abrir ajustes",
       "signOutSub": "Cierra sesión en este dispositivo",
+      "welcomeBtnSub": "Vuelve a leer la tesis de retención y las acciones de la primera semana",
       "deleting": "Eliminando…",
       "deleteAccount": "Eliminar cuenta",
       "deleteWarning": "Esta acción es permanente y borra todos tus datos.",
@@ -4818,6 +4824,9 @@
       "title": "Conversaciones de hoy",
       "countLabel": "{{count}} miembro te necesita",
       "countLabel_plural": "{{count}} miembros te necesitan",
+      "whatIsThis": "¿Qué es esto?",
+      "explainerTitle": "¿Qué es esto?",
+      "explainerBody": "Esta cola lista los miembros más probables de cancelar esta semana, ordenados por urgencia. Cada fila te sugiere qué decir según el patrón (no han venido, racha rota, etc.). Tu trabajo del día es escribirles — un mensaje personal, no un broadcast. Esa rutina diaria es la diferencia entre 70% y 85% retención anual.",
       "emptyTitle": "Bandeja vacía. Nadie te necesita ahora mismo.",
       "emptyDesc": "El orquestador revisa cada mañana a las 5am. Las nuevas conversaciones aparecerán aquí.",
       "unknownMember": "Miembro desconocido",
@@ -4853,6 +4862,40 @@
         "returned": "Regresó",
         "no_response": "Sin respuesta",
         "lost": "Perdido"
+      }
+    },
+    "welcome": {
+      "eyebrow": "Bienvenido",
+      "skip": "Saltar",
+      "back": "Atrás",
+      "next": "Continuar",
+      "done": "Empezar",
+      "s1": {
+        "eyebrow": "Lo que es TuGymPR",
+        "title": "{{name}} ya está dentro.",
+        "body": "Esta no es una app de gestión de gimnasios. Es software de retención. Mientras tu sistema actual cobra membresías, TuGymPR responde una pregunta distinta: ¿quiénes están a punto de cancelar y qué les digo hoy?"
+      },
+      "s2": {
+        "eyebrow": "La tesis",
+        "title": "Tu atención es el producto.",
+        "body": "Los gimnasios que retienen son los donde el dueño nota cuando alguien lleva dos semanas sin venir, y le escribe. TuGymPR es la memoria que te dice a quién, cuándo, y qué decirle. No reemplaza tu trato — lo escala.",
+        "footnote": "En tu pantalla principal: \"Conversaciones de hoy\" lista a las 3-5 personas a las que escribir esta mañana. Ese panel es el corazón del producto."
+      },
+      "s3": {
+        "eyebrow": "Tu primera semana",
+        "title": "Tres acciones concretas para empezar.",
+        "a1": {
+          "title": "1. Importa o conoce tu lista",
+          "body": "Si tienes datos viejos en Excel o CSV, súbelos por la consola super-admin. Te genero la curva de retención de los últimos 2 años — el mejor argumento de venta para tu propio negocio."
+        },
+        "a2": {
+          "title": "2. Escribe a 3 miembros hoy",
+          "body": "Abre \"Conversaciones de hoy\" en el resumen. Los 3 primeros son tus mejores candidatos a churn esta semana. Mándales un mensaje real — no un broadcast."
+        },
+        "a3": {
+          "title": "3. Revisa \"Requiere acción\" mañana",
+          "body": "Cada mañana hay 5 minutos de trabajo: respuestas pendientes, alertas, y la nueva cola del día. Esa rutina es la diferencia entre 70% y 85% retención anual."
+        }
       }
     },
     "ltv": {

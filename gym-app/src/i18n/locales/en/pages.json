@@ -2816,6 +2816,11 @@
       "vsYesterday": "vs yesterday",
       "vsLastMonth": "vs last month",
       "needsAttentionSub": "Members who need a follow-up",
+      "benchmarkCheckins": "Healthy gym: ~30–40% of members check in on any given day. Your gym's avg/day: {{avg}}.",
+      "benchmarkClasses": "Strong gyms run 3–6 classes/day. Empty days = under-utilized real estate.",
+      "benchmarkNewMonth": "A growing PR gym signs 3–5% of its base in new members each month. Below 2%? Look at referrals + signage.",
+      "benchmarkTotal": "Total active members. Doesn't include archived imports or cancelled accounts — only live, payable members.",
+      "welcomeBtnShowAgain": "Show welcome guide",
       "actions": {
         "checkin": "checked in",
         "workout": "completed workout",
@@ -3232,6 +3237,7 @@
       "currentPasswordWrong": "Current password is wrong",
       "openSettings": "Open settings",
       "signOutSub": "Sign out from this device",
+      "welcomeBtnSub": "Re-read the retention thesis and first-week actions",
       "deleting": "Deleting…",
       "deleteAccount": "Delete account",
       "deleteWarning": "This action is permanent and will remove all your data.",
@@ -4818,6 +4824,9 @@
       "title": "Today's conversations",
       "countLabel": "{{count}} member needs you",
       "countLabel_plural": "{{count}} members need you",
+      "whatIsThis": "What is this?",
+      "explainerTitle": "What is this?",
+      "explainerBody": "This queue lists the members most likely to cancel this week, ranked by urgency. Each row suggests what to say based on the pattern (haven't shown up, broken streak, etc.). Your daily job is to message them — a personal note, not a broadcast. That routine is the difference between 70% and 85% annual retention.",
       "emptyTitle": "Inbox zero. Nobody needs you right now.",
       "emptyDesc": "The orchestrator checks every morning at 5am. New conversations will appear here.",
       "unknownMember": "Unknown member",
@@ -4853,6 +4862,40 @@
         "returned": "They returned",
         "no_response": "No response",
         "lost": "Lost"
+      }
+    },
+    "welcome": {
+      "eyebrow": "Welcome",
+      "skip": "Skip",
+      "back": "Back",
+      "next": "Continue",
+      "done": "Get started",
+      "s1": {
+        "eyebrow": "What TuGymPR is",
+        "title": "{{name}} is in.",
+        "body": "This isn't a gym management app. It's retention software. While your existing system collects payments, TuGymPR answers a different question: who's about to cancel, and what do I say to them today?"
+      },
+      "s2": {
+        "eyebrow": "The thesis",
+        "title": "Your attention is the product.",
+        "body": "The gyms that retain are the ones where the owner notices when a member has gone two weeks without showing up — and reaches out. TuGymPR is the memory that tells you who, when, and what to say. It doesn't replace your touch — it scales it.",
+        "footnote": "On your home screen: \"Today's conversations\" lists the 3–5 people to message this morning. That panel is the heart of the product."
+      },
+      "s3": {
+        "eyebrow": "Your first week",
+        "title": "Three concrete actions to start.",
+        "a1": {
+          "title": "1. Import or know your roster",
+          "body": "If you have old data in Excel or CSV, upload it through the super-admin console. I'll generate your retention curve from the last 2 years — the strongest sales argument for your own business."
+        },
+        "a2": {
+          "title": "2. Message 3 members today",
+          "body": "Open \"Today's conversations\" on the overview. The first 3 are your top churn risks this week. Send them a real message — not a broadcast."
+        },
+        "a3": {
+          "title": "3. Check \"Needs action\" tomorrow",
+          "body": "Each morning has 5 minutes of work: pending responses, alerts, and the new daily queue. That routine is the difference between 70% and 85% annual retention."
+        }
       }
     },
     "ltv": {

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import {
-  Coffee, Phone, MessageSquare, MapPin, Check, X, Clock, ChevronRight, Loader2, Sparkles,
+  Coffee, Phone, MessageSquare, MapPin, Check, X, Clock, ChevronRight, Loader2, Sparkles, HelpCircle,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -47,6 +47,7 @@ export default function MorningQueuePanel({ gymId }) {
   const [resolving, setResolving] = useState(null);   // queue item being resolved
   const [actingId, setActingId]   = useState(null);   // id of item being mutated (for spinner)
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+  const [showExplainer, setShowExplainer] = useState(false);  // toggles the "what is this?" inline help
 
   // ── Fetch pending queue items ──
   const { data: items = [], isLoading } = useQuery({
@@ -213,9 +214,19 @@ export default function MorningQueuePanel({ gymId }) {
               <Coffee size={18} className="text-[#D4AF37]" />
             </div>
             <div>
-              <p className="text-[15px] font-bold text-[#E5E7EB]">
-                {t('admin.morningQueue.title', "Today's conversations")}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-[15px] font-bold text-[#E5E7EB]">
+                  {t('admin.morningQueue.title', "Today's conversations")}
+                </p>
+                <button
+                  onClick={() => setShowExplainer((v) => !v)}
+                  aria-label={t('admin.morningQueue.whatIsThis', { defaultValue: 'What is this?' })}
+                  className="rounded-full transition-colors hover:opacity-100"
+                  style={{ opacity: showExplainer ? 1 : 0.55 }}
+                >
+                  <HelpCircle size={14} className="text-[#9CA3AF]" />
+                </button>
+              </div>
               <p className="text-[11px] text-[#6B7280] mt-0.5">
                 {t('admin.morningQueue.countLabel', {
                   count: items.length,
@@ -225,6 +236,31 @@ export default function MorningQueuePanel({ gymId }) {
             </div>
           </div>
         </div>
+
+        {/* "What is this?" inline explainer — toggled by the help icon next
+            to the title. Kept inline (not a modal) so the owner can read it
+            without leaving the morning's flow. Single paragraph because the
+            value of this panel collapses into one sentence: "Text these
+            people today before they cancel." */}
+        {showExplainer && (
+          <div
+            className="mb-4 px-4 py-3 rounded-xl border text-[12.5px] leading-relaxed"
+            style={{
+              background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)',
+              borderColor: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            <p className="font-semibold mb-1" style={{ color: 'var(--color-accent)' }}>
+              {t('admin.morningQueue.explainerTitle', { defaultValue: 'What is this?' })}
+            </p>
+            <p>
+              {t('admin.morningQueue.explainerBody', {
+                defaultValue: "This queue lists the members most likely to cancel this week, ranked by urgency. Each row suggests what to say based on the pattern (haven't shown up, broken streak, etc.). Your daily job is to message them — a personal note, not a broadcast. That routine is the difference between 70% and 85% annual retention.",
+              })}
+            </p>
+          </div>
+        )}
 
         {/* Stat chips */}
         {(stats.critical > 0 || stats.at_risk > 0 || stats.cooling > 0) && (
