@@ -23,6 +23,7 @@
 import { subDays } from 'date-fns';
 import logger from '../logger.js';
 import { estimateChurnScoreFallback } from './riskScoring.js';
+import { withQueryTimeout } from '../queryWithTimeout.js';
 
 const MS_PER_DAY = 86400000;
 
@@ -31,11 +32,11 @@ export async function fetchChurnFallback(gymId, supabase) {
   const fourteenDaysAgo = subDays(now, 14).toISOString();
   const thirtyDaysAgo = subDays(now, 30).toISOString();
 
-  const [membersRes, checkInsRes, sessionsRes] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, username, created_at').eq('gym_id', gymId).eq('role', 'member'),
+  const [membersRes, checkInsRes, sessionsRes] = await withQueryTimeout(Promise.all([
+    supabase.from('profiles').select('id, full_name, username, created_at').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false),
     supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', thirtyDaysAgo).order('checked_in_at', { ascending: false }),
     supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', fourteenDaysAgo),
-  ]);
+  ]), 15_000, 'fetchChurnFallback');
 
   const memberRows = membersRes.data || [];
   logger.debug('[ChurnFallback] gymId:', gymId, 'membersRes.error:', membersRes.error, 'memberRows:', memberRows.length);

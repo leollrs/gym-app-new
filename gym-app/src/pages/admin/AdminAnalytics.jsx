@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Target, Check, X, Pencil, TrendingUp, TrendingDown, Minus, LayoutDashboard, Sprout, Zap, Microscope, HeartHandshake } from 'lucide-react';
+import { Target, Check, X, Pencil, TrendingUp, TrendingDown, Minus, LayoutDashboard, Sprout, Zap, Microscope, HeartHandshake, AlertTriangle, Sparkles } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -12,6 +12,8 @@ import { useTranslation } from 'react-i18next';
 import { FadeIn, PageHeader, AdminPageShell, AdminTabs } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import { adminKeys } from '../../lib/adminQueryKeys';
+import { suggestTarget, checkRealism } from '../../lib/admin/realisticTargets';
+import { fetchCurrentKPIs } from '../../lib/admin/currentKPIs';
 
 import GrowthChart from './components/analytics/GrowthChart';
 import RetentionChart from './components/analytics/RetentionChart';
@@ -86,6 +88,18 @@ function KPITargets({ gymId }) {
     enabled: !!gymId,
   });
 
+  // Current KPI values, derived live from profiles/sessions/check_ins. Feeds
+  // both the "current vs target" display and the realistic-target advisor
+  // so suggestions are anchored on this gym's actual performance instead of
+  // floating in space. 5-min staleTime — these don't change minute-to-minute
+  // and the queries scan a few thousand rows.
+  const { data: currentKPIs = {} } = useQuery({
+    queryKey: [...adminKeys.analytics.all(gymId), 'kpi-current'],
+    queryFn: () => fetchCurrentKPIs(gymId),
+    enabled: !!gymId,
+    staleTime: 5 * 60_000,
+  });
+
   const upsert = useMutation({
     mutationFn: async ({ metric, value }) => {
       const { error } = await supabase
@@ -128,10 +142,18 @@ function KPITargets({ gymId }) {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3">
         {KPI_METRICS.map((m) => {
           const row = targets[m.key];
-          const current = row?.current_value;
+          const current = currentKPIs?.[m.key] ?? null;
           const target = row?.target_value;
           const pct = target ? Math.min(((current ?? 0) / target) * 100, 120) : 0;
           const isEditing = editing === m.key;
+          // Suggestion anchored on this gym's current performance (or the
+          // industry default when no baseline exists). Drives both the
+          // tap-to-apply chip and the soft warning below the input.
+          const suggested = suggestTarget(m.key, current);
+          const draftNum = parseFloat(draft);
+          const realism = isEditing && Number.isFinite(draftNum)
+            ? checkRealism(m.key, current, draftNum)
+            : null;
 
           return (
             <div
@@ -188,49 +210,108 @@ function KPITargets({ gymId }) {
 
               {/* Target row */}
               {isEditing ? (
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100000"
-                    aria-label={t('admin.analytics.targetInput', { metric: t(m.labelKey), defaultValue: 'Target value for {{metric}}' })}
-                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-2.5 py-1.5
-                      text-sm text-white outline-none
-                      focus:border-[color:var(--color-accent)] focus:ring-1 focus:ring-[color:var(--color-accent)]/20
-                      transition-all duration-200"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && save(m.key)}
-                    autoFocus
-                  />
-                  <button
-                    onClick={() => save(m.key)}
-                    aria-label={t('admin.analytics.saveTarget', 'Save target')}
-                    className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400
-                      hover:bg-emerald-500/30 active:scale-95 transition-all duration-150"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setEditing(null)}
-                    aria-label={t('admin.analytics.cancelEdit', 'Cancel editing')}
-                    className="p-1.5 rounded-lg bg-white/[0.06] text-white/70
-                      hover:bg-white/10 active:scale-95 transition-all duration-150"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100000"
+                      aria-label={t('admin.analytics.targetInput', { metric: t(m.labelKey), defaultValue: 'Target value for {{metric}}' })}
+                      className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-2.5 py-1.5
+                        text-sm text-white outline-none
+                        focus:border-[color:var(--color-accent)] focus:ring-1 focus:ring-[color:var(--color-accent)]/20
+                        transition-all duration-200"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && save(m.key)}
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => save(m.key)}
+                      aria-label={t('admin.analytics.saveTarget', 'Save target')}
+                      className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400
+                        hover:bg-emerald-500/30 active:scale-95 transition-all duration-150"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setEditing(null)}
+                      aria-label={t('admin.analytics.cancelEdit', 'Cancel editing')}
+                      className="p-1.5 rounded-lg bg-white/[0.06] text-white/70
+                        hover:bg-white/10 active:scale-95 transition-all duration-150"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {/* Suggestion chip — tap to populate the input. Sourced
+                      from realisticTargets.js using this gym's current
+                      baseline (or the industry default when no data). */}
+                  {suggested != null && (
+                    <button
+                      onClick={() => setDraft(String(suggested))}
+                      className="mt-2 inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-md px-1.5 py-1 transition-colors"
+                      style={{
+                        background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                        color: 'var(--color-accent)',
+                      }}
+                    >
+                      <Sparkles className="w-2.5 h-2.5" />
+                      {t('admin.analytics.suggestedTarget', { value: suggested, unit: m.unit, defaultValue: 'Suggested: {{value}}{{unit}}' })}
+                    </button>
+                  )}
+                  {/* Soft warning when the typed value is well outside what
+                      this gym can plausibly hit in a month. Doesn't block
+                      save — the owner can still commit aggressive goals. */}
+                  {realism && (
+                    <div
+                      className="mt-2 flex items-start gap-1.5 text-[10.5px] leading-snug rounded-md px-2 py-1.5"
+                      style={{
+                        background: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+                        color: 'var(--color-warning)',
+                      }}
+                    >
+                      <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                      <span>
+                        {t('admin.analytics.unrealisticWarning', {
+                          baseline: realism.baseline,
+                          delta: realism.monthlyDelta,
+                          suggested: realism.suggested,
+                          unit: realism.unit,
+                          defaultValue: 'From {{baseline}}{{unit}} baseline, gyms typically improve ~{{delta}}{{unit}}/month. Suggested: {{suggested}}{{unit}}.',
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </>
               ) : (
-                <button
-                  onClick={() => { setEditing(m.key); setDraft(target ?? ''); }}
-                  className="flex items-center gap-1.5 text-[11.5px] text-white/60 hover:text-[color:var(--color-accent)]
-                    transition-colors duration-200 text-left group/edit"
-                >
-                  <Pencil className="w-3 h-3 opacity-0 group-hover/edit:opacity-100 transition-opacity duration-200" />
-                  {target != null
-                    ? t('admin.analytics.targetLabel', { value: target, unit: m.unit, defaultValue: 'Target: {{value}}{{unit}}' })
-                    : t('admin.analytics.setTarget', '+ Set Target')}
-                </button>
+                <>
+                  <button
+                    onClick={() => { setEditing(m.key); setDraft(target ?? ''); }}
+                    className="flex items-center gap-1.5 text-[11.5px] text-white/60 hover:text-[color:var(--color-accent)]
+                      transition-colors duration-200 text-left group/edit"
+                  >
+                    <Pencil className="w-3 h-3 opacity-0 group-hover/edit:opacity-100 transition-opacity duration-200" />
+                    {target != null
+                      ? t('admin.analytics.targetLabel', { value: target, unit: m.unit, defaultValue: 'Target: {{value}}{{unit}}' })
+                      : t('admin.analytics.setTarget', '+ Set Target')}
+                  </button>
+                  {/* When no target has been set yet, surface the suggested
+                      value inline so the owner has a one-tap starting point
+                      instead of staring at a blank field. */}
+                  {target == null && suggested != null && (
+                    <button
+                      onClick={() => { setEditing(m.key); setDraft(String(suggested)); }}
+                      className="mt-1.5 inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-md px-1.5 py-1 transition-colors"
+                      style={{
+                        background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                        color: 'var(--color-accent)',
+                      }}
+                    >
+                      <Sparkles className="w-2.5 h-2.5" />
+                      {t('admin.analytics.suggestedTarget', { value: suggested, unit: m.unit, defaultValue: 'Suggested: {{value}}{{unit}}' })}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           );

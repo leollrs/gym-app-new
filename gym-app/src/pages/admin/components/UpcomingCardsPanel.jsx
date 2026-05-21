@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
@@ -12,6 +13,7 @@ import { logAdminAction } from '../../../lib/adminAudit';
 import { AdminCard, Avatar } from '../../../components/admin';
 import usePagedVisible from '../../../hooks/usePagedVisible';
 import PaginationFooter from '../../../components/admin/PaginationFooter';
+import PrintPreviewModal from '../../../components/admin/PrintPreviewModal';
 import CardPreview from './CardPreview';
 
 // Same occasion → icon mapping as CardsToPrintPanel so the visual
@@ -81,6 +83,8 @@ export default function UpcomingCardsPanel({ gymId }) {
   const isEs = i18n.language?.startsWith('es');
   const dateLocale = isEs ? { locale: esLocale } : undefined;
   const pager = usePagedVisible({ initial: 10, step: 10 });
+  // ids currently open in the print preview modal — null when modal closed
+  const [previewIds, setPreviewIds] = useState(null);
 
   const { data: upcoming = [], isLoading, error } = useQuery({
     queryKey: ['upcoming_print_cards', gymId],
@@ -120,12 +124,10 @@ export default function UpcomingCardsPanel({ gymId }) {
       });
       queryClient.invalidateQueries({ queryKey: ['upcoming_print_cards', gymId] });
       queryClient.invalidateQueries({ queryKey: adminKeys.printCards(gymId) });
-      // Open print preview in a new tab. No features string — passing one
-      // (even 'noopener') makes Chrome open a sized popup window instead of
-      // a normal tab. Strip the opener reference via win.opener=null after.
-      const params = new URLSearchParams({ ids: cardId });
-      const win = window.open(`/admin/print-cards/preview?${params.toString()}`, '_blank');
-      if (win) win.opener = null;
+      // Open the preview modal with the freshly-materialized card so the
+      // owner can hit Print right away (modal iframe carries the @page
+      // Letter/margin presets through to the browser dialog).
+      setPreviewIds([cardId]);
       showToast(
         t('admin.upcomingCards.toastQueued', { defaultValue: 'Card queued — preview opened. Mark printed after printing.' }),
         'success'
@@ -148,6 +150,12 @@ export default function UpcomingCardsPanel({ gymId }) {
 
   return (
     <AdminCard className="mb-4">
+      {/* Print preview modal — opens after materialize succeeds, iframe
+          carries the @page Letter/margin presets to the print dialog. */}
+      {previewIds && (
+        <PrintPreviewModal ids={previewIds} onClose={() => setPreviewIds(null)} />
+      )}
+
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-[#8B5CF6]/10 flex items-center justify-center flex-shrink-0">

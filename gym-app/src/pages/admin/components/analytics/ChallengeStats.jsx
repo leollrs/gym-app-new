@@ -19,7 +19,8 @@ async function fetchChallengeData(gymId, filter) {
     .from('profiles')
     .select('id')
     .eq('gym_id', gymId)
-    .eq('role', 'member');
+    .eq('role', 'member')
+    .eq('imported_archived', false);
   if (chalMemError) throw chalMemError;
   const totalMembers = (allMembers || []).length;
 

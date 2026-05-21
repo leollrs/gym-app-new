@@ -36,6 +36,10 @@ import { getCardPaperType } from '../../components/printCards/cardPaperType.js';
 const FONT_HREF =
   'https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&family=Caveat:wght@400&display=swap';
 
+// Sort key for grouping postcards by format. Order matches the printer
+// workflow: 4×6 cardstock first, swap to Letter, swap to Letter (flyer).
+const FORMAT_ORDER = { postcard: 0, 'letter-2up': 1, 'letter-1up': 2 };
+
 export default function PrintCardsView() {
   const [searchParams] = useSearchParams();
   const { gymName, gymLogoUrl, profile } = useAuth();
@@ -47,8 +51,21 @@ export default function PrintCardsView() {
     return raw.split(',').map((s) => s.trim()).filter(Boolean);
   }, [searchParams]);
 
+  // When rendered inside the PrintPreviewModal iframe, the modal supplies
+  // its own header with Print/Close buttons — hide ours to avoid duplication.
+  // Falls back gracefully if the param isn't passed (standalone tab use).
+  const isEmbedded = searchParams.get('embed') === '1';
+
+  // Print format is now PER CARD (print_cards.print_format, migration 0419).
+  // The query pulls it; we sort+group postcards by format below so the print
+  // output minimizes paper swaps (all 4x6 first, then 2-up Letter, then flyer).
+  // The legacy `?format=` URL param still works as a per-job override for
+  // standalone tab use / external links.
+  const formatOverride = searchParams.get('format');
+
   // Cards joined to member profile. We pull occasion_data so card-specific
   // bits (HabitCard count, BirthdayCard month/day, etc.) reach the renderer.
+  // print_format drives the per-card layout (postcard 4x6 / letter 2-up / flyer).
   const { data: cards = [], isLoading } = useQuery({
     queryKey: ['print-cards-preview', gymId, ids.join(',')],
     queryFn: async () => {
@@ -56,7 +73,7 @@ export default function PrintCardsView() {
       const { data, error } = await supabase
         .from('print_cards')
         .select(
-          'id, headline, subline, printed_note, occasion, occasion_data, reward_qr_code, reward_label, profiles:profile_id(full_name)'
+          'id, headline, subline, printed_note, occasion, occasion_data, reward_qr_code, reward_label, print_format, profiles:profile_id(full_name)'
         )
         .eq('gym_id', gymId)
         .in('id', ids);
@@ -124,8 +141,10 @@ export default function PrintCardsView() {
     };
   }, [gymName, t]);
 
-  // Partition cards into the two paper layouts, then chunk postcards into
-  // pairs (2 per sheet). Folded cards are 1-per-sheet so no chunking needed.
+  // Partition cards by paper type, then sort postcards by format so the
+  // printed batch groups all 4×6 together, then all 2-up Letter, then all
+  // flyers — paper changes are minimized. letter-2up cards get paired into
+  // sheets of 2; the other formats are 1-per-sheet.
   const { postcardSheets, foldedCards } = useMemo(() => {
     const post = [];
     const folded = [];
@@ -133,33 +152,56 @@ export default function PrintCardsView() {
       if (getCardPaperType(c.occasion) === 'folded') folded.push(c);
       else post.push(c);
     }
-    const sheets = [];
-    for (let i = 0; i < post.length; i += 2) sheets.push(post.slice(i, i + 2));
-    return { postcardSheets: sheets, foldedCards: folded };
-  }, [cards]);
 
-  const totalCards = postcardSheets.reduce((n, s) => n + s.length, 0) + foldedCards.length;
+    // Resolve format per card — URL override (?format=) wins for the whole
+    // job; otherwise use the card's stored print_format.
+    const fmtOf = (c) => formatOverride || c.print_format || 'postcard';
+
+    // Sort by format key so same-format cards cluster together.
+    post.sort((a, b) => (FORMAT_ORDER[fmtOf(a)] ?? 99) - (FORMAT_ORDER[fmtOf(b)] ?? 99));
+
+    // Walk the sorted list, pairing only consecutive letter-2up cards
+    // (an unpaired tail prints alone on its sheet — second slot blank).
+    const sheets = [];
+    let i = 0;
+    while (i < post.length) {
+      const f = fmtOf(post[i]);
+      if (f === 'letter-2up' && i + 1 < post.length && fmtOf(post[i + 1]) === 'letter-2up') {
+        sheets.push({ cards: [post[i], post[i + 1]], format: f });
+        i += 2;
+      } else {
+        sheets.push({ cards: [post[i]], format: f });
+        i += 1;
+      }
+    }
+    return { postcardSheets: sheets, foldedCards: folded };
+  }, [cards, formatOverride]);
+
+  const totalCards = postcardSheets.reduce((n, s) => n + s.cards.length, 0) + foldedCards.length;
 
   return (
     <div className="print-cards-root">
-      {/* Toolbar (hidden in print) */}
-      <div className="no-print sticky top-0 z-10 bg-[#0F172A] border-b border-white/8 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Printer size={16} className="text-[#D4AF37]" />
-          <p className="text-[13px] font-bold text-[#E5E7EB]">
-            {t('admin.printCards.previewToolbarTitleV2', {
-              defaultValue:
-                'Print preview — postcards 2-up portrait, folded cards 1-up landscape',
-            })}
-          </p>
+      {/* Toolbar (hidden in print, AND hidden when embedded in PrintPreviewModal —
+          the modal supplies its own header with Print/Close). */}
+      {!isEmbedded && (
+        <div className="no-print sticky top-0 z-10 bg-[#0F172A] border-b border-white/8 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Printer size={16} className="text-[#D4AF37]" />
+            <p className="text-[13px] font-bold text-[#E5E7EB]">
+              {t('admin.printCards.previewToolbarTitleV2', {
+                defaultValue:
+                  'Print preview — postcards 2-up portrait, folded cards 1-up landscape',
+              })}
+            </p>
+          </div>
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#D4AF37] text-black hover:brightness-95 transition"
+          >
+            {t('admin.printCards.printBtn', { defaultValue: 'Print' })}
+          </button>
         </div>
-        <button
-          onClick={() => window.print()}
-          className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#D4AF37] text-black hover:brightness-95 transition"
-        >
-          {t('admin.printCards.printBtn', { defaultValue: 'Print' })}
-        </button>
-      </div>
+      )}
 
       {isLoading ? (
         <p className="no-print p-8 text-center text-[#9CA3AF]">
@@ -173,24 +215,39 @@ export default function PrintCardsView() {
         </p>
       ) : (
         <>
-          {/* Postcard sheets — US Letter portrait, 2-up */}
-          {postcardSheets.map((pair, idx) => (
-            <section className="sheet sheet--postcard" key={`pc-${idx}`}>
-              <div className="postcard-pair">
-                <div className="postcard-slot">
-                  <PostcardRenderer card={pair[0]} gym={gym} />
-                </div>
-                {pair[1] ? (
-                  <div className="postcard-slot">
-                    <PostcardRenderer card={pair[1]} gym={gym} />
+          {/* Postcard sheets — each sheet picks its layout from its own
+              format (set per-card in the admin UI, persisted on print_cards). */}
+          {postcardSheets.map((sheet, idx) => (
+            <section
+              className={`sheet sheet--postcard sheet--postcard-${sheet.format}`}
+              key={`pc-${sheet.cards[0]?.id || idx}`}
+            >
+              {sheet.format === 'letter-2up' ? (
+                <>
+                  <div className="postcard-pair">
+                    <div className="postcard-slot">
+                      <PostcardRenderer card={sheet.cards[0]} gym={gym} />
+                    </div>
+                    {sheet.cards[1] ? (
+                      <div className="postcard-slot">
+                        <PostcardRenderer card={sheet.cards[1]} gym={gym} />
+                      </div>
+                    ) : (
+                      <div className="postcard-slot postcard-slot--blank" />
+                    )}
                   </div>
-                ) : (
-                  <div className="postcard-slot postcard-slot--blank" />
-                )}
-              </div>
-              {/* Faint cut guides — visible in screen preview only, hidden on paper */}
-              <div className="postcard-cut-guide postcard-cut-guide--horizontal" aria-hidden />
-              <div className="postcard-cut-guide postcard-cut-guide--vertical" aria-hidden />
+                  <div className="postcard-cut-guide postcard-cut-guide--horizontal" aria-hidden />
+                  <div className="postcard-cut-guide postcard-cut-guide--vertical" aria-hidden />
+                </>
+              ) : sheet.format === 'letter-1up' ? (
+                <div className="postcard-slot postcard-slot--flyer">
+                  <PostcardRenderer card={sheet.cards[0]} gym={gym} />
+                </div>
+              ) : (
+                <div className="postcard-slot">
+                  <PostcardRenderer card={sheet.cards[0]} gym={gym} />
+                </div>
+              )}
             </section>
           ))}
 
@@ -212,15 +269,17 @@ export default function PrintCardsView() {
       )}
 
       {/* Print stylesheet — inline because the route opens in a new window
-          and doesn't share the app's global print CSS. */}
+          and doesn't share the app's global print CSS. Three named @page
+          rules let a mixed-format job (some 4×6, some Letter, some flyer)
+          all print correctly in one PDF — each sheet picks its named page
+          via its CSS class. */}
       <style>{`
-        /* Default @page used when named pages aren't supported (e.g. Firefox).
-           margin:0 makes sure no extra browser-default 22mm margin appears. */
-        @page              { size: letter; margin: 0; }
-        /* Named pages so postcards print portrait and folded cards print landscape
-           within the same print job. Supported in Chromium (what owners use). */
-        @page postcard-page { size: letter portrait; margin: 0; }
-        @page folded-page   { size: letter landscape; margin: 0; }
+        /* Fallback @page for browsers that ignore named pages (Firefox). */
+        @page                  { size: 4in 6in;         margin: 0; }
+        /* Named pages — one per format. */
+        @page postcard-4x6     { size: 4in 6in;         margin: 0; }
+        @page postcard-letter  { size: letter portrait; margin: 0; }
+        @page folded-page      { size: letter landscape; margin: 0; }
 
         .print-cards-root {
           background: #f3f4f6;
@@ -229,23 +288,12 @@ export default function PrintCardsView() {
           min-height: 100vh;
         }
 
-        /* ── Postcard sheet (8.5w × 11h, 2-up portrait) ───────────────────── */
+        /* ── Postcard sheet (base) ────────────────────────────────────────── */
         .sheet--postcard {
-          page: postcard-page;
-          width: 8.5in;
-          height: 11in;
           margin: 12px auto;
           background: #fff;
           position: relative;
           box-sizing: border-box;
-          padding: 2.5in 0.25in;     /* centers the 4×6 pair vertically */
-        }
-        .postcard-pair {
-          display: grid;
-          grid-template-columns: 4in 4in;
-          gap: 0;
-          width: 8in;
-          margin: 0 auto;
         }
         .postcard-slot {
           width: 4in;
@@ -254,10 +302,37 @@ export default function PrintCardsView() {
           page-break-inside: avoid;
         }
         .postcard-slot--blank { background: transparent; }
-        /* The shells render at 384×576 px = 4×6 in @ 96 dpi, so they slot in
-           1:1 without scaling. No transform needed. */
+        /* Shells render at 384×576 px = 4×6 in @ 96 dpi → slot 1:1, no
+           transform needed for non-flyer formats. */
 
-        /* ── Postcard cut guides (faint, paper-friendly) ──────────────────── */
+        /* ── Format: postcard (native 4×6) ────────────────────────────────── */
+        /* One card per 4×6 sheet. Owner loads 4×6 postcard cardstock and
+           prints with zero cutting. ~$10/100 sheets at office stores. */
+        .sheet--postcard-postcard {
+          page: postcard-4x6;
+          width: 4in;
+          height: 6in;
+          padding: 0;
+        }
+
+        /* ── Format: letter-2up (2 per Letter portrait) ───────────────────── */
+        /* 2 cards side-by-side, 8" wide block centered with 2.5" vertical
+           padding so the pair sits in the middle of an 8.5×11 sheet. Owner
+           cuts horizontally at the 8.5" mark and vertically down the middle
+           — 2 cuts per pair, 1 cut per card. */
+        .sheet--postcard-letter-2up {
+          page: postcard-letter;
+          width: 8.5in;
+          height: 11in;
+          padding: 2.5in 0.25in;
+        }
+        .sheet--postcard-letter-2up .postcard-pair {
+          display: grid;
+          grid-template-columns: 4in 4in;
+          gap: 0;
+          width: 8in;
+          margin: 0 auto;
+        }
         .postcard-cut-guide {
           position: absolute;
           background: transparent;
@@ -274,6 +349,28 @@ export default function PrintCardsView() {
           left: 50%;
           width: 0;
           border-left: 0.25pt dashed rgba(0,0,0,0.25);
+        }
+
+        /* ── Format: letter-1up / flyer (scale to fill Letter) ────────────── */
+        /* Card is 4×6 (0.667 aspect). Letter portrait is 8.5×11 (0.773).
+           Card is narrower than Letter, so fit-height: scale = 11/6 = 1.833,
+           giving 7.33×11 — fills the page vertically, leaves 0.585in margin
+           on each side. Visually a flyer-scale piece, not a card. */
+        .sheet--postcard-letter-1up {
+          page: postcard-letter;
+          width: 8.5in;
+          height: 11in;
+          padding: 0;
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          overflow: hidden;
+        }
+        .postcard-slot--flyer {
+          width: 4in;
+          height: 6in;
+          transform: scale(1.833);
+          transform-origin: top center;
         }
 
         /* ── Folded sheet (11w × 8.5h landscape, 1-up) ────────────────────── */

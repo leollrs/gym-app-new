@@ -19,7 +19,8 @@ async function fetchActivityData(gymId, dateFnsLocale) {
     .from('profiles')
     .select('id, created_at')
     .eq('gym_id', gymId)
-    .eq('role', 'member');
+    .eq('role', 'member')
+    .eq('imported_archived', false);
   if (actMemError) throw actMemError;
 
   const members = allMembers || [];

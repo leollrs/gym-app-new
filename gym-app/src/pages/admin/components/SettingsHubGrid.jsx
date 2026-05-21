@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
-  Palette, Clock, Shield, Mail, Building2, ChevronRight,
+  Palette, Clock, Shield, Mail, Building2, ChevronRight, Printer,
 } from 'lucide-react';
 import { FadeIn } from '../../../components/admin';
 
@@ -48,6 +48,12 @@ export default function SettingsHubGrid() {
       label: t('admin.settingsHub.digest', 'Email digest'),
       desc: t('admin.settingsHub.digestDesc', 'Weekly summary sent to you'),
       onClick: () => navigate('/admin/settings/digest'),
+    },
+    {
+      icon: Printer,
+      label: t('admin.settingsHub.cards', 'Print cards'),
+      desc: t('admin.settingsHub.cardsDesc', 'Tune what fires, when, and default rewards'),
+      onClick: () => navigate('/admin/settings/cards'),
     },
   ];
 

@@ -2,6 +2,7 @@ import { subDays } from 'date-fns';
 import { supabase } from '../supabase';
 import logger from '../logger';
 import { fetchMembersWithChurnScores, estimateChurnScoreFallback } from '../churnScore';
+import { withQueryTimeout } from '../queryWithTimeout';
 
 export const MEMBERS_PAGE_SIZE = 200;
 
@@ -17,15 +18,20 @@ export const MEMBERS_PAGE_SIZE = 200;
 export async function fetchMembers(gymId, page = 0) {
   const from = page * MEMBERS_PAGE_SIZE;
   const to = from + MEMBERS_PAGE_SIZE - 1;
-  const [membersRes, followupRes, sessionsRes, scoredAll] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, membership_started_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
+  // Wrap the parallel batch in withQueryTimeout — if any one of these four
+  // Supabase calls stalls (silent socket hang, not a real error), Promise.all
+  // would wait forever and the admin page would freeze on TableSkeleton with
+  // no recovery. 15s is generous for a paged read; under load the slowest
+  // RPC here (fetchMembersWithChurnScores on cold cache) is ~5-8s.
+  const [membersRes, followupRes, sessionsRes, scoredAll] = await withQueryTimeout(Promise.all([
+    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, membership_started_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
     supabase.from('churn_risk_scores').select('profile_id, followup_sent_at, computed_at').eq('gym_id', gymId).order('computed_at', { ascending: false }),
     supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()).limit(5000),
     fetchMembersWithChurnScores(gymId, supabase).catch((err) => {
       logger.error('AdminMembers: fetchMembersWithChurnScores:', err);
       return [];
     }),
-  ]);
+  ]), 15_000, `fetchMembers:page${page}`);
 
   if (membersRes.error) logger.error('AdminMembers: members:', membersRes.error);
   if (followupRes.error) logger.error('AdminMembers: churn followup:', followupRes.error);
@@ -72,11 +78,15 @@ export async function fetchMembers(gymId, page = 0) {
 }
 
 export async function fetchAllInvites(gymId) {
-  const { data, error } = await supabase
-    .from('gym_invites')
-    .select('id, member_name, phone, email, invite_code, created_at, expires_at, used_by, used_at')
-    .eq('gym_id', gymId)
-    .order('created_at', { ascending: false });
+  const { data, error } = await withQueryTimeout(
+    supabase
+      .from('gym_invites')
+      .select('id, member_name, phone, email, invite_code, created_at, expires_at, used_by, used_at')
+      .eq('gym_id', gymId)
+      .order('created_at', { ascending: false }),
+    10_000,
+    'fetchAllInvites',
+  );
 
   if (error) logger.error('AdminMembers: invites:', error);
   return data || [];

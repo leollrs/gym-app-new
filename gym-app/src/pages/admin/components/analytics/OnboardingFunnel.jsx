@@ -13,7 +13,8 @@ async function fetchOnboardingData(gymId) {
     .from('profiles')
     .select('id, is_onboarded, onboarding_step')
     .eq('gym_id', gymId)
-    .eq('role', 'member');
+    .eq('role', 'member')
+    .eq('imported_archived', false);
   if (error) throw error;
 
   const total     = (members || []).length;

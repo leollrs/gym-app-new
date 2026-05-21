@@ -82,6 +82,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     .select('id, full_name, username, phone_number, created_at, membership_started_at, gym_id, preferred_training_days, membership_status')
     .eq('gym_id', gymId)
     .eq('role', 'member')
+    .eq('imported_archived', false)
     .not('membership_status', 'in', '(cancelled,banned,deactivated)')
     .order('full_name', { ascending: true });
 

@@ -14,6 +14,7 @@ import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
 import logger from '../../../lib/logger';
 import { AdminCard, Avatar } from '../../../components/admin';
+import { translateQueueReason } from '../../../lib/churn/signalI18n';
 import QueueItemResolveModal from './QueueItemResolveModal';
 
 // Segment metadata — drives badge colors + ordering.
@@ -267,8 +268,9 @@ export default function MorningQueuePanel({ gymId }) {
                       </button>
                       {segmentBadge(item.segment)}
                     </div>
-                    {/* Reason */}
-                    <p className="text-[12px] text-[#9CA3AF] mt-1 line-clamp-2">{item.reason}</p>
+                    {/* Reason — composed in SQL with English fragments,
+                        translated client-side to match the app's locale. */}
+                    <p className="text-[12px] text-[#9CA3AF] mt-1 line-clamp-2">{translateQueueReason(t, item.reason)}</p>
                     {/* Suggested action + age */}
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
                       <span className="inline-flex items-center gap-1 text-[11px] text-[#D4AF37]">

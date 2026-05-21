@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, FlaskConical, Award, Wrench, UserCog, Bell, Send, Printer,
+  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, FlaskConical, Award, Wrench, UserCog, Bell, Send, Printer, KeyRound, Tv,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,6 +30,7 @@ const NAV_SECTIONS = [
     labelKey: 'adminNav.sectionMembers',
     items: [
       { to: '/admin/members',  labelKey: 'adminNav.members',     icon: Users },
+      { to: '/admin/member-codes', labelKey: 'adminNav.memberCodes', icon: KeyRound },
       { to: '/admin/segments', labelKey: 'adminNav.segments',    icon: Filter },
       { to: '/admin/churn',    labelKey: 'adminNav.churnIntel',  icon: AlertTriangle },
       { to: '/admin/print-cards', labelKey: 'adminNav.printCards', icon: Printer },
@@ -58,6 +59,7 @@ const NAV_SECTIONS = [
     labelKey: 'adminNav.sectionEngagement',
     items: [
       { to: '/admin/leaderboard', labelKey: 'adminNav.leaderboard', icon: BarChart3 },
+      { to: '/admin/tv-setup',    labelKey: 'adminNav.tvDisplay',   icon: Tv },
       { to: '/admin/rewards',     labelKey: 'adminNav.rewards',     icon: Award },
       { to: '/admin/store',       labelKey: 'adminNav.store',       icon: ShoppingBag },
       { to: '/admin/referrals',   labelKey: 'adminNav.referrals',   icon: Gift },

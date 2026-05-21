@@ -16,9 +16,7 @@
  *   });
  */
 
-import { Capacitor } from '@capacitor/core';
-import { Filesystem, Directory } from '@capacitor/filesystem';
-import { Share } from '@capacitor/share';
+import { saveBlob } from './saveBlob';
 
 // Cells that begin with `=`, `+`, `-`, `@`, tab, or carriage return are interpreted
 // as formulas by Excel/Sheets/LibreOffice. Prefix with a single quote to neutralize.
@@ -38,36 +36,17 @@ function escapeCSV(value) {
 }
 
 /**
- * Download a CSV string as a file. Works on native + web.
+ * Download a CSV string as a file. Works on native + web via the shared
+ * saveBlob helper (which handles Capacitor Filesystem+Share on native and
+ * a defer-revoke blob+anchor pattern on web — earlier code revoked the
+ * object URL too fast, which sometimes produced files with garbled names).
  */
 export async function downloadCSVString(filename, csvContent) {
-  if (Capacitor.isNativePlatform()) {
-    try {
-      const fname = filename.endsWith('.csv') ? filename : `${filename}.csv`;
-      const result = await Filesystem.writeFile({
-        path: fname,
-        data: btoa(unescape(encodeURIComponent(csvContent))),
-        directory: Directory.Cache,
-      });
-      await Share.share({
-        title: fname,
-        url: result.uri,
-      });
-    } catch (e) {
-      console.error('Native CSV export failed:', e);
-    }
-  } else {
-    // Browser fallback
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }
+  const fname = filename.endsWith('.csv') ? filename : `${filename}.csv`;
+  // Prepend a UTF-8 BOM so Excel opens the file with the right encoding
+  // (otherwise accented characters render as mojibake on Windows Excel).
+  const blob = new Blob(['﻿', csvContent], { type: 'text/csv;charset=utf-8' });
+  await saveBlob(fname, blob);
 }
 
 export async function exportCSV({ filename, columns, data }) {

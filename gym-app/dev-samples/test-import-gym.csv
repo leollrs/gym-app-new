@@ -1,0 +1,30 @@
+full_name,status,phone,email,join_date,cancellation_date,plan_name,birthday,external_id
+María Rodríguez,active,+17875551001,maria.rodriguez@example.com,2023-06-15,,Mensual,1990-03-12,1001
+José Hernández,active,+17875551002,jose.h@example.com,2023-06-22,,Anual,1985-08-30,1002
+Carmen Vega,archived,+17875551003,carmen.vega@example.com,2023-06-08,2024-01-18,Mensual,1992-11-04,1003
+Luis Ortiz,active,+17875551004,luis.ortiz@example.com,2024-01-12,,Anual,1988-05-21,1004
+Sofía Méndez,active,+17875551005,sofia.m@example.com,2024-01-20,,Mensual,1995-02-14,1005
+Carlos Rivera,archived,+17875551006,carlos.r@example.com,2024-01-08,2024-03-15,Estudiante,2002-09-09,1006
+Andrea Torres,archived,+17875551007,andrea.t@example.com,2024-01-25,2025-02-10,Mensual,1991-07-18,1007
+Diego Santiago,active,+17875551008,diego.s@example.com,2024-06-10,,Familiar,1980-12-01,1008
+Patricia Cruz,active,+17875551009,patricia.c@example.com,2024-06-18,,Familiar,1983-04-25,1009
+Roberto Pagán,archived,+17875551010,roberto.p@example.com,2024-06-05,2024-09-22,Sin compromiso,1987-10-07,1010
+Isabel Fuentes,active,+17875551011,,2024-12-03,,Anual,1993-06-15,1011
+Javier Negrón,active,+17875551012,javier.n@example.com,2024-12-12,,Mensual,1989-01-28,1012
+Lucía Vargas,archived,+17875551013,lucia.v@example.com,2024-12-19,2025-02-08,Estudiante,2001-03-30,1013
+Miguel Acevedo,active,+17875551014,miguel.a@example.com,2025-06-09,,Mensual,1996-08-12,1014
+Valeria Pérez,active,+17875551015,valeria.p@example.com,2025-06-15,,Anual,1994-12-04,1015
+Adrián Colón,active,+17875551016,adrian.c@example.com,2025-06-28,,Familiar,1991-05-17,1016
+Natalia Soto,active,+17875551017,natalia.s@example.com,2025-12-05,,Mensual,1997-10-22,1017
+Eduardo Ramos,active,+17875551018,eduardo.r@example.com,2025-12-14,,Sin compromiso,1986-02-09,1018
+Gabriela Díaz,active,+17875551019,,2026-03-08,,Mensual,1999-09-03,1019
+Fernando Castro,active,+17875551020,fernando.c@example.com,2026-03-20,,Estudiante,2003-11-11,1020
+Yolanda Reyes,archived,+17875551021,yolanda.r@example.com,2022-03-15,2023-01-25,Mensual,1979-06-08,1021
+Héctor Maldonado,archived,+17875551022,hector.m@example.com,2022-08-20,2024-07-10,Anual,1975-04-19,1022
+Liliana Burgos,archived,,liliana.b@example.com,2023-02-10,2023-09-05,Estudiante,2000-08-14,1023
+Ramón Quiñones,archived,,,2021-11-30,2023-03-12,Sin compromiso,1972-01-20,1024
+,active,+17875559001,bad.row@example.com,2025-01-01,,Mensual,1990-01-01,9001
+Test Bad Status,unknown,+17875559002,bad2@example.com,2025-01-01,,Mensual,1990-01-01,9002
+Test No Phone,active,,nophone@example.com,2025-01-01,,Mensual,1990-01-01,9003
+Test Bad Date,active,+17875559004,baddate@example.com,not-a-date,,Mensual,1990-01-01,9004
+María Rodríguez Dup,active,+17875551001,dup@example.com,2024-05-01,,Mensual,1990-03-12,9005

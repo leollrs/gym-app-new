@@ -23,6 +23,7 @@ async function fetchCohortData(gymId) {
     .select('id, created_at')
     .eq('gym_id', gymId)
     .eq('role', 'member')
+    .eq('imported_archived', false)
     .gte('created_at', from);
   if (cohMemError) throw cohMemError;
 

@@ -20,7 +20,8 @@ async function fetchRetentionData(gymId, dateFnsLocale) {
     .from('profiles')
     .select('id, created_at, membership_status')
     .eq('gym_id', gymId)
-    .eq('role', 'member');
+    .eq('role', 'member')
+    .eq('imported_archived', false);
   if (error) throw error;
 
   const members = allMembers || [];

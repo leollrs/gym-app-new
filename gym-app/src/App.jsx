@@ -124,6 +124,8 @@ const TrainerNotifications = lazy(() => import('./pages/trainer/TrainerNotificat
 const AdminLayout        = lazy(() => import('./layouts/AdminLayout'));
 const AdminOverview      = lazy(() => import('./pages/admin/AdminOverview'));
 const AdminMembers       = lazy(() => import('./pages/admin/AdminMembers'));
+const AdminMemberCodes   = lazy(() => import('./pages/admin/AdminMemberCodes'));
+const AdminTVDisplay     = lazy(() => import('./pages/admin/AdminTVDisplay'));
 const AdminAttendance    = lazy(() => import('./pages/admin/AdminAttendance'));
 const AdminChallenges    = lazy(() => import('./pages/admin/AdminChallenges'));
 const AdminPrograms      = lazy(() => import('./pages/admin/AdminPrograms'));
@@ -133,6 +135,7 @@ const AdminOutreach      = lazy(() => import('./pages/admin/AdminOutreach'));
 const AdminSettings      = lazy(() => import('./pages/admin/AdminSettings'));
 const AdminSettingsBranding     = lazy(() => import('./pages/admin/AdminSettingsBranding'));
 const AdminSettingsHours        = lazy(() => import('./pages/admin/AdminSettingsHours'));
+const AdminSettingsCards        = lazy(() => import('./pages/admin/AdminSettingsCards'));
 const AdminSettingsRegistration = lazy(() => import('./pages/admin/AdminSettingsRegistration'));
 const AdminSettingsGymInfo      = lazy(() => import('./pages/admin/AdminSettingsGymInfo'));
 const AdminAnalytics     = lazy(() => import('./pages/admin/AdminAnalytics'));
@@ -163,6 +166,8 @@ const PlatformLayout     = lazy(() => import('./layouts/PlatformLayout'));
 const Operations         = lazy(() => import('./pages/platform/Operations'));
 const GymsOverview       = lazy(() => import('./pages/platform/GymsOverview'));
 const GymDetail          = lazy(() => import('./pages/platform/GymDetail'));
+const GymImport          = lazy(() => import('./pages/platform/GymImport'));
+const GymDiagnostic      = lazy(() => import('./pages/platform/GymDiagnostic'));
 const PlatformAnalytics  = lazy(() => import('./pages/platform/PlatformAnalytics'));
 const SupportConsole     = lazy(() => import('./pages/platform/SupportConsole'));
 const PlatformSettings   = lazy(() => import('./pages/platform/PlatformSettings'));
@@ -1482,8 +1487,14 @@ function App() {
       {/* First-win welcome screen (post-onboarding, pre-dashboard) */}
       <Route path="/welcome" element={<ProtectedRoute><FirstWorkoutWelcome /></ProtectedRoute>} />
 
-      {/* TV display — auth required, no nav (any authenticated user/role) */}
-      <Route path="/tv-display" element={<AuthenticatedRoute><ErrorBoundary><TVDisplay /></ErrorBoundary></AuthenticatedRoute>} />
+      {/* TV display — PUBLIC, code-gated. Gyms can't log a smart TV / Fire Stick /
+          Apple TV into Supabase, so /tv-display now uses a per-gym 6-char code
+          the owner enters once on the TV browser (see migration 0423 +
+          tv_authenticate / tv_get_dashboard_data RPCs). All data access is
+          validated via that code on every RPC call — no auth context needed. */}
+      <Route path="/tv-display" element={<ErrorBoundary><TVDisplay /></ErrorBoundary>} />
+      {/* Short alias for fast typing on a TV remote. */}
+      <Route path="/tv" element={<ErrorBoundary><TVDisplay /></ErrorBoundary>} />
 
       {/* Public-facing trainer profile — viewable by members, trainers, and admins
           within the same gym (gym-id guard enforced inside the page). Standalone
@@ -1511,9 +1522,11 @@ function App() {
               <ErrorBoundary>
               <Suspense fallback={<Skeleton variant="page" />}>
               <Routes>
-                <Route path="/operations"   element={<Operations />} />
-                <Route path="/"             element={<GymsOverview />} />
-                <Route path="/gym/:gymId"   element={<GymDetail />} />
+                <Route path="/operations"          element={<Operations />} />
+                <Route path="/"                    element={<GymsOverview />} />
+                <Route path="/gym/:gymId"          element={<GymDetail />} />
+                <Route path="/gym/:gymId/import"     element={<GymImport />} />
+                <Route path="/gym/:gymId/diagnostic" element={<GymDiagnostic />} />
                 <Route path="/analytics"    element={<PlatformAnalytics />} />
                 <Route path="/gym-health"   element={<GymHealth />} />
                 <Route path="/adoption"     element={<FeatureAdoption />} />
@@ -1558,6 +1571,8 @@ function App() {
               <Routes>
                 <Route path="/"             element={<AdminOverview />} />
                 <Route path="/members"      element={<AdminMembers />} />
+                <Route path="/member-codes" element={<AdminMemberCodes />} />
+                <Route path="/tv-setup"     element={<AdminTVDisplay />} />
                 <Route path="/churn"        element={<AdminChurn />} />
                 <Route path="/attendance"   element={<AdminAttendance />} />
                 <Route path="/challenges"   element={<AdminChallenges />} />
@@ -1588,6 +1603,7 @@ function App() {
                 <Route path="/settings"     element={<AdminSettings />} />
                 <Route path="/settings/branding"     element={<AdminSettingsBranding />} />
                 <Route path="/settings/hours"        element={<AdminSettingsHours />} />
+                <Route path="/settings/cards"        element={<AdminSettingsCards />} />
                 <Route path="/settings/registration" element={<AdminSettingsRegistration />} />
                 <Route path="/settings/gym-info"     element={<AdminSettingsGymInfo />} />
                 <Route path="/settings/digest"       element={<AdminDigestConfig />} />

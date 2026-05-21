@@ -18,7 +18,7 @@ async function fetchSummaryData(gymId, summaryMonth) {
   const [dailyStatsRes, challengePartsRes, allMembersRes, sessionsRes] = await Promise.all([
     supabase.from('mv_gym_stats_daily').select('*').eq('gym_id', gymId).gte('stat_date', mStart.slice(0, 10)).lte('stat_date', mEnd.slice(0, 10)),
     supabase.from('challenge_participants').select('id').eq('gym_id', gymId).gte('joined_at', mStart).lte('joined_at', mEnd).limit(2000),
-    supabase.from('profiles').select('id, created_at').eq('gym_id', gymId).eq('role', 'member').limit(2000),
+    supabase.from('profiles').select('id, created_at').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).limit(2000),
     supabase.from('workout_sessions').select('profile_id, duration_seconds').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', mStart).lte('started_at', mEnd).limit(5000),
   ]);
   if (dailyStatsRes.error) logger.error('MonthlySummary: daily stats error:', dailyStatsRes.error);

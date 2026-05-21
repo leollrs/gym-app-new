@@ -15,7 +15,8 @@ async function fetchLifecycleData(gymId) {
       .from('profiles')
       .select('id, created_at, is_onboarded, membership_status')
       .eq('gym_id', gymId)
-      .eq('role', 'member'),
+      .eq('role', 'member')
+      .eq('imported_archived', false),
     supabase
       .from('workout_sessions')
       .select('profile_id, started_at')

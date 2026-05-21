@@ -623,10 +623,15 @@ const Signup = () => {
       if (inviteStatus === 'valid' && inviteCode && signUpResult?.user) {
         try {
           if (inviteData?._source === 'gym_invites') {
-            const { error: claimErr } = await supabase.rpc('claim_invite_code', {
-              p_invite_code: inviteCode.trim().toUpperCase(),
+            // claim_imported_invite is a superset of claim_invite_code: it
+            // handles the bulk-import case (merging the pre-created shell
+            // profile into the new auth profile) and falls back to the
+            // legacy single-member-invite behavior when no shell exists.
+            // Safe for all gym_invites codes, imported or admin-created.
+            const { error: claimErr } = await supabase.rpc('claim_imported_invite', {
+              p_code: inviteCode.trim().toUpperCase(),
             });
-            if (claimErr) console.warn('claim_invite_code error:', claimErr);
+            if (claimErr) console.warn('claim_imported_invite error:', claimErr);
           } else {
             const { error: claimErr } = await supabase.rpc('claim_member_invite', {
               p_invite_code: inviteCode.trim().toUpperCase(),

@@ -178,39 +178,15 @@ export default function AdminOverview() {
         />
       </FadeIn>
 
-      {/* ════════════════════════════════════════════════════
-           SECTION 2 -- "NEEDS ATTENTION NOW" ALERTS
-           Promoted above the KPI strip so action items lead.
-         ════════════════════════════════════════════════════ */}
-      {/* First-run setup checklist for new gyms — auto-hides when complete. */}
+      {/* First-run setup checklist for new gyms — auto-hides when complete.
+          Stays at the very top because nothing else on this page makes sense
+          until the gym is configured. */}
       <AdminFirstRunChecklist gymId={gymId} />
 
-      {/* Unified "needs your attention" inbox — pending resets, churn risk,
-          moderation reports, referral approvals, onboarding gaps. */}
-      <NeedsAttentionCard
-        gymId={gymId}
-        atRiskCount={stats.criticalCount}
-        pendingResetsCount={pendingResets.length}
-        onboardingCount={onboardingCount}
-        firstPendingResetId={pendingResets[0]?.id}
-        onResetClick={setResetApprovalId}
-      />
-
       {/* ════════════════════════════════════════════════════
-           SECTION 2.5 -- MORNING RETENTION QUEUE
-           "Today's conversations" — produced by the daily orchestrator
-           cron. Sits above the KPI strip because it's the most
-           actionable thing the owner can do this morning.
-         ════════════════════════════════════════════════════ */}
-      <FadeIn delay={20}>
-        <div className="mb-8">
-          <MorningQueuePanel gymId={gymId} />
-        </div>
-      </FadeIn>
-
-      {/* ════════════════════════════════════════════════════
-           SECTION 3 -- HERO KPI STRIP ("Today at a Glance")
-           Critical/At Risk removed (duplicated in Needs Attention + Watchlist)
+           SECTION 2 -- HERO KPI STRIP ("Today at a Glance")
+           Leads the page so the owner gets the daily pulse first,
+           then drops into the action queue below.
          ════════════════════════════════════════════════════ */}
       <FadeIn delay={40}>
         <span className="admin-eyebrow block mb-3">
@@ -272,7 +248,33 @@ export default function AdminOverview() {
       )}
 
       {/* ════════════════════════════════════════════════════
-           SECTION 4 -- RECENT ACTIVITY + FULL WATCHLIST
+           SECTION 3 -- "NEEDS ATTENTION NOW"
+           Unified inbox: pending resets, churn risk, moderation reports,
+           referral approvals, onboarding gaps. Action items follow the
+           daily pulse so the owner reads the situation before acting.
+         ════════════════════════════════════════════════════ */}
+      <NeedsAttentionCard
+        gymId={gymId}
+        atRiskCount={stats.criticalCount}
+        pendingResetsCount={pendingResets.length}
+        onboardingCount={onboardingCount}
+        firstPendingResetId={pendingResets[0]?.id}
+        onResetClick={setResetApprovalId}
+      />
+
+      {/* ════════════════════════════════════════════════════
+           SECTION 4 -- MORNING RETENTION QUEUE
+           "Today's conversations" — produced by the daily orchestrator
+           cron. The longer-form follow-up list, after the inbox.
+         ════════════════════════════════════════════════════ */}
+      <FadeIn delay={20}>
+        <div className="mb-8">
+          <MorningQueuePanel gymId={gymId} />
+        </div>
+      </FadeIn>
+
+      {/* ════════════════════════════════════════════════════
+           SECTION 5 -- RECENT ACTIVITY + FULL WATCHLIST
            Two-column operational view
          ════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-3 md:gap-5">

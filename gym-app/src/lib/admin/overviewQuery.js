@@ -2,6 +2,7 @@ import { supabase } from '../supabase';
 import logger from '../logger';
 import { format, subDays, startOfMonth } from 'date-fns';
 import { fetchMembersWithChurnScores, estimateChurnScoreFallback } from '../churnScore';
+import { withQueryTimeout } from '../queryWithTimeout';
 
 /**
  * Single fetch that powers the Admin → Overview page. Runs the v2 churn
@@ -17,38 +18,50 @@ export async function fetchOverviewData(gymId) {
   const fortyEightHoursAgo = subDays(now, 2).toISOString();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
 
+  // Wrapped in withQueryTimeout so a stalled Supabase fetch surfaces as an
+  // error to React Query instead of hanging React forever. Without this,
+  // a single dead socket on any of these six parallel calls would freeze
+  // the entire admin overview on its skeleton — see queryWithTimeout.js.
   const [
     scoredMembers,
     membersRes, sessionsRes, churnScoresRes,
     notOnboardedRes, checkInsRes,
-  ] = await Promise.all([
+  ] = await withQueryTimeout(Promise.all([
     fetchMembersWithChurnScores(gymId, supabase).catch(err => {
       logger.error('AdminOverview v2 churn scoring failed:', err);
       return null;
     }),
-    supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').limit(2000),
+    supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).limit(2000),
     supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).limit(1000),
     supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).limit(2000),
-    supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).gte('created_at', fortyEightHoursAgo).limit(500),
+    supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).eq('imported_archived', false).gte('created_at', fortyEightHoursAgo).limit(500),
     supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).limit(1000),
-  ]);
+  ]), 15_000, 'fetchOverviewData:primary');
 
-  const { data: todayCheckins, error: todayCheckinsErr } = await supabase
-    .from('check_ins').select('id, profile_id, checked_in_at')
-    .eq('gym_id', gymId).gte('checked_in_at', todayStart)
-    .order('checked_in_at', { ascending: false }).limit(500);
+  const { data: todayCheckins, error: todayCheckinsErr } = await withQueryTimeout(
+    supabase
+      .from('check_ins').select('id, profile_id, checked_in_at')
+      .eq('gym_id', gymId).gte('checked_in_at', todayStart)
+      .order('checked_in_at', { ascending: false }).limit(500),
+    10_000,
+    'fetchOverviewData:todayCheckins',
+  );
   if (todayCheckinsErr) logger.error('AdminOverview todayCheckins:', todayCheckinsErr);
 
   // Today's classes count (active gym_class with schedule for this dow OR today's date)
   const todayDow = now.getDay();
   const todayDate = format(now, 'yyyy-MM-dd');
-  const { data: classSchedules, error: classSchedulesErr } = await supabase
-    .from('gym_class_schedules')
-    .select('id, gym_class:gym_classes!inner(id, gym_id, is_active)')
-    .eq('gym_class.gym_id', gymId)
-    .eq('gym_class.is_active', true)
-    .or(`day_of_week.eq.${todayDow},specific_date.eq.${todayDate}`)
-    .limit(200);
+  const { data: classSchedules, error: classSchedulesErr } = await withQueryTimeout(
+    supabase
+      .from('gym_class_schedules')
+      .select('id, gym_class:gym_classes!inner(id, gym_id, is_active)')
+      .eq('gym_class.gym_id', gymId)
+      .eq('gym_class.is_active', true)
+      .or(`day_of_week.eq.${todayDow},specific_date.eq.${todayDate}`)
+      .limit(200),
+    10_000,
+    'fetchOverviewData:classSchedules',
+  );
   if (classSchedulesErr) logger.error('AdminOverview classSchedules:', classSchedulesErr);
 
   [membersRes, sessionsRes, churnScoresRes, notOnboardedRes, checkInsRes]

@@ -251,11 +251,15 @@ export default function AdminProfile() {
               )}
             </div>
 
-            {/* Identity row — avatar overlaps cover, name+role+meta to the right */}
-            <div className="px-5 sm:px-6 pb-5 sm:pb-6 -mt-14 sm:-mt-16">
-              <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-5">
-                {/* Avatar */}
-                <div className="relative shrink-0">
+            {/* Identity row — avatar overlaps cover, name+role+meta to the right.
+                Negative margin lives on the avatar wrapper ONLY so the name
+                stays below the cover gradient (previously the row-level
+                -mt-14/16 + items-end pulled the name's TOP up into the cover,
+                making the colored band visually cover the start of the name). */}
+            <div className="px-5 sm:px-6 pb-5 sm:pb-6">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-5">
+                {/* Avatar — pulled up into the cover via its own negative margin */}
+                <div className="relative shrink-0 -mt-14 sm:-mt-16">
                   <div
                     className="rounded-3xl overflow-hidden border-4 shadow-xl"
                     style={{ borderColor: 'var(--color-bg-card)', width: 112, height: 112 }}

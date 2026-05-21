@@ -4,14 +4,26 @@ import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import {
-  Printer, Check, X, Loader2, Sparkles, PartyPopper, ArrowLeftRight, Award, Gift, Cake, Calendar,
+  Printer, Check, X, Loader2, Sparkles, PartyPopper, ArrowLeftRight, Award, Gift, Cake, Calendar, FileText,
 } from 'lucide-react';
+import { getCardPaperType } from '../../../components/printCards/cardPaperType.js';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { AdminCard, Avatar } from '../../../components/admin';
+import PrintPreviewModal from '../../../components/admin/PrintPreviewModal';
+import RewardAttachModal from './RewardAttachModal';
+
+// Postcard format options — folded cards (tenure_365, milestone_500) skip
+// this selector entirely since they always need Letter landscape.
+const FORMAT_OPTIONS = [
+  { key: 'postcard',    short: '4×6',   label: 'Postcard 4×6' },
+  { key: 'letter-2up',  short: '2-up',  label: '2 per Letter' },
+  { key: 'letter-1up',  short: 'Flyer', label: 'Flyer (Letter)' },
+];
+const FORMAT_SHORT = Object.fromEntries(FORMAT_OPTIONS.map((o) => [o.key, o.short]));
 
 // Occasion → icon. Keep this small; the headline already says what it is.
 // Legacy occasions (milestone_25, first_pr) stay mapped so pre-v2 cards still
@@ -54,7 +66,8 @@ export default function CardsToPrintPanel({ gymId }) {
         .from('print_cards')
         .select(`
           id, profile_id, occasion, occasion_data, headline, subline, printed_note,
-          status, printed_at, delivered_at, created_at, expires_at,
+          status, printed_at, delivered_at, created_at, expires_at, print_format,
+          reward_qr_code, reward_label,
           profiles:profile_id(full_name, avatar_url)
         `)
         .eq('gym_id', gymId)
@@ -69,6 +82,10 @@ export default function CardsToPrintPanel({ gymId }) {
   });
 
   const [selected, setSelected] = useState(new Set());
+  // ids currently open in the print preview modal — null when modal closed
+  const [previewIds, setPreviewIds] = useState(null);
+  // card row currently being edited in the reward-attach modal
+  const [rewardCard, setRewardCard] = useState(null);
   const allSelected = cards.length > 0 && selected.size === cards.length;
   const someSelected = selected.size > 0;
 
@@ -133,20 +150,42 @@ export default function CardsToPrintPanel({ gymId }) {
     onError: () => showToast(t('admin.printCards.toastFailed', { defaultValue: 'Action failed' }), 'error'),
   });
 
+  // Set print format for one or many cards. Used by per-row pill cycling
+  // and the bulk-set dropdown in the action bar. The print preview groups
+  // by format so all same-format cards print together — owner only swaps
+  // paper between groups, not mid-job.
+  const setFormatMutation = useMutation({
+    mutationFn: async ({ ids, format }) => {
+      const { error } = await supabase
+        .from('print_cards')
+        .update({ print_format: format })
+        .in('id', ids)
+        .eq('gym_id', gymId);
+      if (error) throw error;
+    },
+    onSuccess: (_data, { ids }) => {
+      logAdminAction('print_cards_format_set', 'print_card', ids[0], { count: ids.length });
+      queryClient.invalidateQueries({ queryKey: adminKeys.printCards(gymId) });
+    },
+    onError: () => showToast(t('admin.printCards.toastFailed', { defaultValue: 'Action failed' }), 'error'),
+  });
+
+  // Selected cards that are postcards (folded cards always use Letter
+  // landscape — no format choice). Used to gate the bulk-set dropdown.
+  const selectedPostcardIds = [...selected].filter((id) => {
+    const c = cards.find((x) => x.id === id);
+    return c && getCardPaperType(c.occasion) !== 'folded';
+  });
+
   // ── Print action ──
-  // Opens the print-friendly view in a new window. Owner triggers the
-  // browser print dialog (Cmd/Ctrl+P), prints on Avery 8371 cardstock,
-  // signs by hand, then comes back and clicks "Mark printed" to move
-  // these cards into the "to deliver" bucket.
+  // Opens the PrintPreviewModal — an in-page modal with an iframe of the
+  // preview route. Iframe.contentWindow.print() preserves the @page rules
+  // (Letter, 0 margin) so the browser print dialog opens already preset.
+  // Owner prints + signs, then comes back and clicks "Mark printed".
   const handlePrintSelected = () => {
     const ids = [...selected];
     if (ids.length === 0) return;
-    const params = new URLSearchParams({ ids: ids.join(',') });
-    // No features string — passing one (even just 'noopener') makes Chrome
-    // open a sized popup window instead of a normal tab. We strip the
-    // opener reference via win.opener=null after the fact.
-    const win = window.open(`/admin/print-cards/preview?${params.toString()}`, '_blank');
-    if (win) win.opener = null;
+    setPreviewIds(ids);
   };
 
   // ── Render helpers ──
@@ -159,6 +198,8 @@ export default function CardsToPrintPanel({ gymId }) {
     const isPending = card.status === 'pending';
     const isPrinted = card.status === 'printed';
     const isDelivered = card.status === 'delivered';
+    const isPostcardOccasion = getCardPaperType(card.occasion) !== 'folded';
+    const cardFormat = card.print_format || 'postcard';
 
     let timestampLine;
     if (isDelivered && card.delivered_at) {
@@ -204,7 +245,47 @@ export default function CardsToPrintPanel({ gymId }) {
             )}
             <p className="text-[10px] text-[#6B7280] mt-1">{timestampLine}</p>
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Per-card format selector — pending postcards only. Native
+                <select> for zero custom-popover code; gym-owner-friendly. */}
+            {isPending && isPostcardOccasion && (
+              <select
+                value={cardFormat}
+                onChange={(e) => setFormatMutation.mutate({ ids: [card.id], format: e.target.value })}
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] font-bold uppercase tracking-wide rounded-md px-1.5 py-1 border cursor-pointer"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)',
+                  borderColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)',
+                  color: 'var(--color-accent)',
+                }}
+                title={t('admin.printCards.formatTooltip', { defaultValue: 'Print format' })}
+              >
+                {FORMAT_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>{opt.short}</option>
+                ))}
+              </select>
+            )}
+            {/* Reward attach/detach — pending cards only. Returning + folded
+                cards skip this since returning never gets a reward by design
+                and folded ceremonies already carry their own meaning. */}
+            {isPending && card.occasion !== 'returning' && (
+              <button
+                onClick={() => setRewardCard(card)}
+                title={card.reward_qr_code
+                  ? t('admin.printCards.rewardManage', { defaultValue: 'Manage reward' })
+                  : t('admin.printCards.attachReward', { defaultValue: 'Attach reward' })}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                style={{
+                  background: card.reward_qr_code
+                    ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
+                    : 'var(--color-bg-hover)',
+                  color: card.reward_qr_code ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                }}
+              >
+                <Gift size={14} />
+              </button>
+            )}
             {isPrinted && (
               <button
                 onClick={() => markDeliveredMutation.mutate(card.id)}
@@ -263,7 +344,7 @@ export default function CardsToPrintPanel({ gymId }) {
 
       {/* Bulk action bar (only on pending tab) */}
       {tab === 'pending' && cards.length > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#D4AF37]/8 border border-[#D4AF37]/20">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#D4AF37]/8 border border-[#D4AF37]/20 flex-wrap">
           <button
             onClick={toggleSelectAll}
             className="text-[11px] font-semibold text-[#D4AF37] hover:text-[#E5E7EB] transition-colors"
@@ -274,7 +355,34 @@ export default function CardsToPrintPanel({ gymId }) {
           <span className="text-[11px] font-semibold text-[#D4AF37]">
             {t('admin.printCards.selectedCount', { count: selected.size, defaultValue: '{{count}} selected' })}
           </span>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex gap-2 flex-wrap">
+            {/* Bulk set-format — applies to selected postcards only.
+                Folded selections are ignored (different paper entirely). */}
+            {selectedPostcardIds.length > 0 && (
+              <select
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setFormatMutation.mutate({ ids: selectedPostcardIds, format: v });
+                  e.target.value = '';
+                }}
+                defaultValue=""
+                className="text-[11px] font-bold rounded-lg px-2 py-1.5 border cursor-pointer"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
+                  borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                  color: 'var(--color-accent)',
+                }}
+                title={t('admin.printCards.bulkFormatTooltip', { defaultValue: 'Set format for selected postcards' })}
+              >
+                <option value="" disabled>
+                  <FileText size={10} /> {t('admin.printCards.bulkFormatLabel', { defaultValue: 'Set size…' })}
+                </option>
+                {FORMAT_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>{opt.label}</option>
+                ))}
+              </select>
+            )}
             <button
               onClick={handlePrintSelected}
               disabled={!someSelected}
@@ -293,6 +401,21 @@ export default function CardsToPrintPanel({ gymId }) {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Print preview modal — opens with selected card IDs, calls
+          iframe.print() to honor the @page Letter/margin presets. */}
+      {previewIds && (
+        <PrintPreviewModal ids={previewIds} onClose={() => setPreviewIds(null)} />
+      )}
+
+      {/* Reward attach/detach modal — opens with a single card. */}
+      {rewardCard && (
+        <RewardAttachModal
+          card={rewardCard}
+          gymId={gymId}
+          onClose={() => setRewardCard(null)}
+        />
       )}
 
       {/* List */}

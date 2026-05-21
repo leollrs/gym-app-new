@@ -4,7 +4,7 @@ import {
   ArrowLeft, Users, Activity, Settings, Crown, ChevronDown,
   Dumbbell, Clock, Pause, Play, X, Trash2,
   UserPlus, Eye, EyeOff, AlertTriangle,
-  Trophy,
+  Trophy, Upload, Microscope,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -450,6 +450,29 @@ export default function GymDetail() {
               <p className="text-[24px] font-bold text-[#E5E7EB] truncate">{s.value}</p>
             </div>
           ))}
+        </div>
+
+        {/* Import / Diagnostic actions — onboarding workflow for new gyms.
+            Import accepts a hand-cleaned CSV of the gym's historical roster
+            (super-admin only, per RPC gate). Diagnostic runs the 5-chart
+            retention analysis on imported + live data. Both routes live
+            outside the tab system because they're vendor-onboarding tools,
+            not daily-operational views. */}
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <button
+            onClick={() => navigate(`/platform/gym/${gymId}/import`)}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12px] font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-colors"
+          >
+            <Upload size={13} />
+            Import CSV
+          </button>
+          <button
+            onClick={() => navigate(`/platform/gym/${gymId}/diagnostic`)}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12px] font-semibold bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 transition-colors"
+          >
+            <Microscope size={13} />
+            Retention diagnostic
+          </button>
         </div>
 
         {/* Tabs */}
