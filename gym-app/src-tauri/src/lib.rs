@@ -21,6 +21,7 @@
 //      check-ins from being captured.
 
 mod scanner;
+mod scanner_kbd;
 
 use tauri::{
   menu::{Menu, MenuItem},
@@ -59,11 +60,23 @@ pub fn run() {
       let autostart = app.autolaunch();
       let _ = autostart.enable();
 
-      // Start the always-on USB scanner reader. Runs on its own thread and
-      // emits `scan-received` Tauri events whenever the OBZ scanner sends
-      // a barcode line over USB-serial. The JS side already has the scan
-      // handling pipeline; we're just adding a new input channel that
-      // doesn't depend on keyboard focus.
+      // ── Scanner input channels ────────────────────────────────────
+      // Two parallel readers so the scanner works no matter how it's
+      // configured. The two paths are mutually exclusive in practice:
+      // the scanner is either typing keys (caught by scanner_kbd) OR
+      // streaming over a COM port (caught by scanner) — never both.
+      //
+      // 1. scanner_kbd — global low-level keyboard hook. Catches scans
+      //    even when the TuGymPR window is hidden in the tray, AND
+      //    swallows the keystrokes so they don't get typed into
+      //    Slack / browser / whatever else is focused. Pops the window
+      //    open on scan so the admin approval modal is visible.
+      //
+      // 2. scanner — serial-port reader. Only fires if the user has
+      //    switched the OBZ scanner into USB-Virtual-COM mode (config
+      //    barcode from the manual). Cleaner architecture but requires
+      //    a one-time manual setup per device.
+      scanner_kbd::spawn(app.handle().clone());
       scanner::spawn(app.handle().clone());
 
       // ── System tray ────────────────────────────────────────────────

@@ -25,3 +25,14 @@ tauri = { version = "2.11.2", features = ["tray-icon"] }
 tauri-plugin-log = "2"
 tauri-plugin-autostart = "2"
 serialport = "4.7"
+
+# Global keyboard hook so the scanner can input into TuGymPR even when the
+# window is hidden / unfocused — and crucially, so scanner keystrokes don't
+# get accidentally typed into whatever else has focus (chat windows, etc).
+# rdev's `grab` API gives us low-level hook semantics: callback returns
+# None to swallow the event, Some(event) to pass through to the focused app.
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
+# `unstable_grab` enables the grab() API that can swallow events. The flag
+# is "unstable" in rdev terminology but is the documented production path
+# for this use case; rdev hasn't promoted it out of the feature gate yet.
+rdev = { version = "0.5", features = ["unstable_grab"] }
