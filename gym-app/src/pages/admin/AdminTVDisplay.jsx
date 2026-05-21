@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Tv, Copy, Check, RefreshCw, Wifi, WifiOff, Monitor, AlertTriangle, ExternalLink,
+  Tv, Copy, Check, RefreshCw, Wifi, WifiOff, Monitor, AlertTriangle, ExternalLink, Palette,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from 'react-i18next';
@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { logAdminAction } from '../../lib/adminAudit';
 import { PageHeader, AdminPageShell, AdminCard, FadeIn } from '../../components/admin';
+import { TV_STYLES, derivePalette } from '../../lib/tv/palette';
 
 /**
  * AdminTVDisplay — manages the gym's TV display code + connected screens.
@@ -53,6 +54,56 @@ export default function AdminTVDisplay() {
     enabled: !!gymId,
     // Long staleTime — the code rarely changes unless explicitly rotated.
     staleTime: 5 * 60_000,
+  });
+
+  // ── Current TV style + branding (for the live previews) ──────
+  // Pulls the current style choice + the gym's brand colors so the
+  // picker thumbnails render in the same palette they'll use on the
+  // actual TV. Both come straight from gym_tv_settings + gym_branding.
+  const { data: styleData } = useQuery({
+    queryKey: ['admin-tv-style', gymId],
+    queryFn: async () => {
+      const [{ data: settings }, { data: branding }] = await Promise.all([
+        supabase.from('gym_tv_settings').select('tv_style').eq('gym_id', gymId).maybeSingle(),
+        supabase.from('gym_branding').select('primary_color, accent_color').eq('gym_id', gymId).maybeSingle(),
+      ]);
+      return {
+        currentStyle: settings?.tv_style || 'stadium',
+        primary_color: branding?.primary_color,
+        accent_color: branding?.accent_color,
+      };
+    },
+    enabled: !!gymId,
+    staleTime: 30_000,
+  });
+
+  // ── Style change mutation ────────────────────────────────────
+  const setStyleMutation = useMutation({
+    mutationFn: async (newStyle) => {
+      const { data, error } = await supabase.rpc('admin_set_tv_style', {
+        p_gym_id: gymId,
+        p_style: newStyle,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_data, newStyle) => {
+      logAdminAction('tv_style_changed', 'gym', gymId, { style: newStyle });
+      queryClient.setQueryData(['admin-tv-style', gymId], (prev) => ({
+        ...(prev || {}),
+        currentStyle: newStyle,
+      }));
+      showToast(
+        t('admin.tvDisplay.styleChanged', { defaultValue: 'Style updated — connected TVs will switch within 30s.' }),
+        'success',
+      );
+    },
+    onError: () => {
+      showToast(
+        t('admin.tvDisplay.styleChangeFailed', { defaultValue: 'Could not update style.' }),
+        'error',
+      );
+    },
   });
 
   // ── Sessions list (auto-refetch every 30s to keep alive count fresh) ──
@@ -238,6 +289,74 @@ export default function AdminTVDisplay() {
                 {t('admin.tvDisplay.qrCaption', { defaultValue: 'Scan to open URL' })}
               </p>
             </div>
+          </div>
+        </AdminCard>
+      </FadeIn>
+
+      {/* ── Style picker ─────────────────────────────────────────
+           Four visual themes, each rendered as a small live preview
+           tinted with the gym's actual brand colors (via
+           derivePalette). Tapping a card switches the style for every
+           connected TV — they pick it up on next 30s heartbeat. */}
+      <FadeIn delay={60}>
+        <AdminCard className="mt-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Palette size={15} style={{ color: 'var(--color-accent)' }} />
+            <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+              {t('admin.tvDisplay.styleTitle', { defaultValue: 'TV display style' })}
+            </p>
+            {setStyleMutation.isPending && (
+              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.tvDisplay.applying', { defaultValue: 'Applying…' })}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {TV_STYLES.map((style) => {
+              const active = styleData?.currentStyle === style.id;
+              return (
+                <button
+                  key={style.id}
+                  type="button"
+                  onClick={() => !active && setStyleMutation.mutate(style.id)}
+                  disabled={setStyleMutation.isPending}
+                  className="text-left rounded-xl overflow-hidden transition-all relative group"
+                  style={{
+                    border: active
+                      ? '2px solid var(--color-accent)'
+                      : '2px solid var(--color-border-subtle)',
+                    background: 'var(--color-bg-elevated)',
+                    opacity: setStyleMutation.isPending ? 0.6 : 1,
+                  }}
+                >
+                  <StylePreview
+                    styleId={style.id}
+                    palette={derivePalette({ primary: styleData?.primary_color, accent: styleData?.accent_color })}
+                  />
+                  <div className="p-3">
+                    <div className="flex items-center gap-2">
+                      <p className="text-[13px] font-bold flex-1" style={{ color: 'var(--color-text-primary)' }}>
+                        {style.label}
+                      </p>
+                      {active && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded"
+                          style={{
+                            background: 'var(--color-accent)',
+                            color: 'var(--color-text-on-accent, #000)',
+                          }}
+                        >
+                          <Check size={9} /> Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] mt-1 leading-snug" style={{ color: 'var(--color-text-muted)' }}>
+                      {style.description}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </AdminCard>
       </FadeIn>
@@ -441,6 +560,143 @@ function RotateConfirm({ aliveCount, isPending, onCancel, onConfirm }) {
               : t('admin.tvDisplay.rotateConfirm', { defaultValue: 'Rotate now' })}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Style preview thumbnails — tiny stylized renderings of each TV theme
+// using the gym's actual brand palette. Not pixel-perfect mockups; just
+// distinctive enough that the admin can pick at a glance.
+function StylePreview({ styleId, palette }) {
+  const baseProps = { palette };
+  switch (styleId) {
+    case 'brutal':    return <PreviewBrutal {...baseProps} />;
+    case 'boricua':   return <PreviewBoricua {...baseProps} />;
+    case 'telemetry': return <PreviewTelemetry {...baseProps} />;
+    case 'stadium':
+    default:          return <PreviewStadium {...baseProps} />;
+  }
+}
+
+function PreviewStadium({ palette }) {
+  return (
+    <div className="h-32 px-3 py-2.5" style={{
+      background: `radial-gradient(120px 70px at 18% -10%, ${palette.hotGlow}, transparent 60%),
+                   radial-gradient(90px 60px at 100% 110%, ${palette.tealGlow}, transparent 55%),
+                   linear-gradient(180deg, ${palette.ink} 0%, #06090C 100%)`,
+    }}>
+      <div className="text-[8px] font-bold uppercase tracking-widest" style={{ color: palette.hot }}>● Live</div>
+      <div className="text-[22px] font-black uppercase mt-0.5" style={{ color: '#fff', letterSpacing: '-1px', lineHeight: 1 }}>VOLUME</div>
+      <div className="flex gap-1.5 mt-2 items-end">
+        <div className="flex-1 rounded p-1.5 relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${palette.ink2}, ${palette.ink})`, border: `1px solid ${palette.hotSoft}` }}>
+          <div className="text-[16px] font-black tabular-nums leading-none" style={{ color: palette.hot, letterSpacing: '-0.5px' }}>34K</div>
+          <div className="text-[7px] mt-0.5 truncate" style={{ color: '#fff' }}>María R.</div>
+        </div>
+        <div className="w-12 flex flex-col gap-0.5">
+          <div className="rounded px-1 py-0.5 text-[7px] font-bold flex justify-between" style={{ background: palette.ink2, color: '#fff' }}>
+            <span style={{ color: palette.coach }}>2</span>
+            <span>28K</span>
+          </div>
+          <div className="rounded px-1 py-0.5 text-[7px] font-bold flex justify-between" style={{ background: palette.ink2, color: '#fff' }}>
+            <span style={{ color: palette.teal }}>3</span>
+            <span>22K</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewBrutal({ palette }) {
+  return (
+    <div className="h-32 px-3 py-2.5 relative" style={{ background: palette.cream, color: palette.ink }}>
+      <div className="absolute top-0 right-0 bottom-0 w-1.5" style={{ background: palette.hot }} />
+      <div className="absolute top-0 left-0 bottom-0 w-1.5" style={{ background: palette.ink }} />
+      <div className="px-1.5">
+        <div className="text-[7px] font-mono font-bold uppercase tracking-widest" style={{ color: palette.hot }}>● Live · The Board</div>
+        <div className="text-[24px] font-black uppercase mt-0.5" style={{ letterSpacing: '-1.5px', lineHeight: 0.85 }}>
+          VOLUME<span style={{ color: palette.hot }}>.</span>
+        </div>
+        <div className="mt-1 space-y-0.5">
+          {[
+            { r: 1, n: 'MARÍA', v: '34,720', c: palette.hot },
+            { r: 2, n: 'JOSÉ',  v: '28,200', c: palette.coach },
+            { r: 3, n: 'CARLOS', v: '22,150', c: palette.teal },
+          ].map((row) => (
+            <div key={row.r} className="grid grid-cols-[14px_1fr_42px] gap-1.5 items-center text-[8px] font-black" style={{ borderBottom: `0.5px solid ${palette.textInkFaint}` }}>
+              <span style={{ color: row.c }}>{String(row.r).padStart(2, '0')}</span>
+              <span style={{ letterSpacing: '-0.3px' }}>{row.n}</span>
+              <span className="text-right tabular-nums">{row.v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewBoricua({ palette }) {
+  const sky1 = palette.hot;
+  return (
+    <div className="h-32 px-3 py-2.5 relative overflow-hidden" style={{
+      background: `linear-gradient(180deg, ${sky1} 0%, #FF8A3D 35%, #E83E14 60%, #3D1E5A 90%, #0B1428 100%)`,
+      color: '#fff',
+    }}>
+      <div className="absolute top-1/2 left-1/2 w-24 h-24 rounded-full -translate-x-1/2 -translate-y-1/2" style={{
+        background: 'radial-gradient(circle, rgba(255,243,199,0.6), transparent 70%)',
+      }} />
+      <div className="text-[7px] font-extrabold uppercase tracking-widest text-center opacity-90 relative">Los Más Fuertes</div>
+      <div className="text-[20px] font-black uppercase text-center mt-0.5 relative" style={{ letterSpacing: '-1px', lineHeight: 0.9, textShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+        VOLUMEN
+      </div>
+      <div className="grid grid-cols-3 gap-1 mt-2 items-end relative">
+        {[2, 1, 3].map((rank) => (
+          <div key={rank} className="rounded-t p-1" style={{
+            height: rank === 1 ? '54px' : rank === 2 ? '44px' : '38px',
+            background: rank === 1
+              ? `linear-gradient(180deg, #FFE38A, #FFB04A, #FF6A20)`
+              : rank === 2 ? '#FFF' : 'rgba(255,230,200,0.85)',
+            color: palette.ink,
+          }}>
+            <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black" style={{
+              background: rank === 1 ? '#FFF' : rank === 2 ? palette.coach : palette.teal,
+              color: rank === 1 ? palette.hot : '#FFF',
+              border: '1px solid #FFF',
+            }}>{rank}</div>
+            <div className="text-[8px] font-black tabular-nums text-center mt-0.5" style={{ letterSpacing: '-0.3px' }}>
+              {rank === 1 ? '34K' : rank === 2 ? '28K' : '22K'}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PreviewTelemetry({ palette }) {
+  return (
+    <div className="h-32 px-2 py-2 font-mono relative" style={{ background: '#06090C', color: '#fff' }}>
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: `repeating-linear-gradient(0deg, ${palette.tealSoft} 0 1px, transparent 1px 3px)`,
+      }} />
+      <div className="relative text-[7px] tracking-widest font-bold" style={{ color: palette.teal }}>OPS // FEED ▸ leaderboard</div>
+      <div className="relative text-[18px] font-black uppercase mt-1" style={{ letterSpacing: '-0.8px', lineHeight: 1 }}>
+        VOLUME<span style={{ color: palette.teal }}>_</span>
+      </div>
+      <div className="relative mt-1 space-y-0.5">
+        {[
+          { r: 1, n: 'maria_r',  v: '34,720', c: palette.hot },
+          { r: 2, n: 'jose_v',   v: '28,200', c: palette.amber },
+          { r: 3, n: 'carlos_h', v: '22,150', c: palette.teal },
+          { r: 4, n: 'lola_a',   v: '19,400', c: 'rgba(255,255,255,0.5)' },
+        ].map((row) => (
+          <div key={row.r} className="grid grid-cols-[14px_1fr_44px] gap-1 items-center text-[8px] font-bold tabular-nums" style={{ borderBottom: `0.5px solid ${palette.tealSoft}` }}>
+            <span style={{ color: row.c }}>{String(row.r).padStart(2, '0')}</span>
+            <span style={{ color: 'rgba(255,255,255,0.85)' }}>@{row.n}</span>
+            <span className="text-right">{row.v}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

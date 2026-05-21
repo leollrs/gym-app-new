@@ -1,6 +1,11 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
+import { derivePalette, TV_METRIC_DEFS } from '../lib/tv/palette';
+import TVStyleStadium from '../components/tv/TVStyleStadium';
+import TVStyleBrutal from '../components/tv/TVStyleBrutal';
+import TVStyleBoricua from '../components/tv/TVStyleBoricua';
+import TVStyleTelemetry from '../components/tv/TVStyleTelemetry';
 
 /**
  * TVDisplay — public, code-gated fullscreen leaderboard + challenge rotation.
@@ -15,6 +20,9 @@ import { supabase } from '../lib/supabase';
  *   4. Heartbeat every 30s via tv_get_dashboard_data. If the code was
  *      rotated, the RPC returns invalid_code and we bounce back to the
  *      entry screen + clear localStorage.
+ *   5. The visual style (stadium / brutal / boricua / telemetry) is
+ *      picked by the admin and returned on every heartbeat, so live TVs
+ *      switch within ~30s of the admin changing the choice.
  *
  * The page intentionally takes no auth context — it's expected to run on
  * a TV with no Supabase session. All access is gated by the code.
@@ -24,6 +32,13 @@ const SLIDE_DURATION_MS = 20_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const STORAGE_KEY = 'tugympr_tv_credentials';
 const SESSION_ID_KEY = 'tugympr_tv_session_id';
+
+const STYLE_COMPONENTS = {
+  stadium:   TVStyleStadium,
+  brutal:    TVStyleBrutal,
+  boricua:   TVStyleBoricua,
+  telemetry: TVStyleTelemetry,
+};
 
 const METRIC_SLIDES = [
   { key: 'volume',      label: 'VOLUME',        unit: 'LBS',      period: 'LAST 30 DAYS' },
@@ -86,16 +101,17 @@ export default function TVDisplay() {
   }, []);
 
   // Silent re-auth when stored credentials are missing fields the latest
-  // tv_authenticate version returns (gym_timezone, primary_color, real
-  // gym name). This happens after a server-side RPC upgrade — the TV was
-  // authenticated before the new fields existed, so localStorage holds
-  // the old credential shape. Without this, the clock falls back to
-  // device timezone, primary color stays unset, etc.
-  // We use the stored code (which is still valid) to call tv_authenticate
-  // again, get the fresh shape, and replace the stored credentials.
+  // tv_authenticate version returns (gym_timezone, primary_color, tv_style,
+  // real gym name). This happens after a server-side RPC upgrade — the TV
+  // was authenticated before the new fields existed, so localStorage holds
+  // the old credential shape.
   useEffect(() => {
     if (!credentials?.code) return;
-    if (credentials.gym_timezone !== undefined && credentials.primary_color !== undefined) return;
+    if (
+      credentials.gym_timezone !== undefined
+      && credentials.primary_color !== undefined
+      && credentials.tv_style !== undefined
+    ) return;
     let cancelled = false;
     (async () => {
       try {
@@ -114,13 +130,14 @@ export default function TVDisplay() {
           accent_color: data.accent_color,
           primary_color: data.primary_color,
           logo_url: data.logo_url,
+          tv_style: data.tv_style || 'stadium',
         };
         storeCredentials(fresh);
         setCredentials(fresh);
       } catch { /* silent — let regular heartbeat catch issues */ }
     })();
     return () => { cancelled = true; };
-  }, [credentials?.code, credentials?.gym_timezone, credentials?.primary_color]);
+  }, [credentials?.code, credentials?.gym_timezone, credentials?.primary_color, credentials?.tv_style]);
 
   // Resolve the logo storage path → signed URL. The auth RPC returns the
   // RAW storage path (e.g. "<gym_id>/logo.png") because RPCs can't mint
@@ -255,118 +272,52 @@ export default function TVDisplay() {
   }
 
   // ── Display screen ────────────────────────────────────────────────────
-  const accent = credentials.accent_color || '#10B981';
-  const primary = credentials.primary_color || '#0F172A';
+  // The "style" choice ships from the server on every heartbeat so changes
+  // an admin makes in /admin/tv-setup propagate to live TVs within ~30s
+  // without a page reload. Defaults to `stadium` if the server hasn't
+  // assigned one yet (gym pre-0427) or if an unknown value comes in.
+  const styleKey = dashboardData?.tv_style || credentials.tv_style || 'stadium';
+  const StyleComponent = STYLE_COMPONENTS[styleKey] || TVStyleStadium;
+  const palette = derivePalette({
+    primary: credentials.primary_color,
+    accent: credentials.accent_color,
+  });
   const slide = slides[slideIdx];
 
   return (
-    // h-screen + overflow-hidden + 100dvh fallback so the layout NEVER
-    // scrolls — every child uses flex-1/flex-basis-0 or fixed flex-shrink-0.
-    // Using primary_color for the page background so the gym's brand tints
-    // the whole stage (subtle, mixed with deep slate so text contrast holds).
-    <div
-      className="h-screen flex flex-col overflow-hidden select-none"
-      style={{
-        height: '100dvh',
-        background: `linear-gradient(180deg, ${primary}40 0%, #05070B 60%)`,
-        color: '#E5E7EB',
-        fontFamily: 'Barlow, sans-serif',
-      }}
-    >
-      {/* ── Header ───────────────────────────────────────────────── */}
-      <header
-        className="flex items-center justify-between px-8 lg:px-12 py-4 lg:py-5 flex-shrink-0"
-        style={{ borderBottom: `2px solid ${accent}33` }}
-      >
-        <div className="flex items-center gap-4 lg:gap-5 min-w-0">
-          {resolvedLogoUrl && (
-            // White (with slight transparency) backplate so logos with dark
-            // ink survive the dark TV background. p-1.5 keeps a small inner
-            // margin so the image doesn't bleed to the corner. Shadow + ring
-            // make it pop instead of disappearing into the gradient.
-            <div
-              className="h-14 w-14 lg:h-16 lg:w-16 rounded-xl flex-shrink-0 p-1.5 flex items-center justify-center"
-              style={{
-                background: 'rgba(255,255,255,0.96)',
-                boxShadow: `0 4px 16px rgba(0,0,0,0.4), 0 0 0 1px ${accent}33`,
-              }}
-            >
-              <img
-                src={resolvedLogoUrl}
-                alt={`${credentials.gym_name} logo`}
-                className="w-full h-full object-contain"
-                onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
-              />
-            </div>
-          )}
-          <div className="min-w-0">
-            <p className="text-[12px] lg:text-[13px] font-bold tracking-[0.3em] uppercase" style={{ color: accent }}>
-              Live Leaderboard
-            </p>
-            <p className="text-[24px] lg:text-[28px] font-black text-white leading-tight truncate">{credentials.gym_name}</p>
-          </div>
+    <div className="h-screen overflow-hidden select-none" style={{ height: '100dvh', background: palette.ink }}>
+      {!slide ? (
+        <div className="absolute inset-0 flex items-center justify-center" style={{ background: palette.ink }}>
+          <div className="w-12 h-12 border-2 rounded-full animate-spin" style={{ borderColor: `${palette.hot}30`, borderTopColor: palette.hot }} />
         </div>
-
-        {/* Slide indicator strip — collapses to dots only on tighter widths */}
-        <div className="hidden xl:flex items-center gap-3 overflow-hidden flex-1 justify-center px-6">
-          {slides.slice(0, 10).map((s, i) => (
-            <div key={s.key} className="flex items-center gap-1.5" style={{ opacity: i === slideIdx ? 1 : 0.3 }}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: accent }} />
-              <span className="text-[11px] font-bold tracking-widest uppercase text-white whitespace-nowrap">
-                {s.kind === 'metric' ? s.label : 'RETO'}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="text-right flex-shrink-0">
-          <p className="text-[28px] lg:text-[34px] font-black text-white leading-none tabular-nums">
-            {timeFmt.format(clock)}
-          </p>
-          <p className="text-[11px] lg:text-[12px] tracking-widest uppercase mt-1" style={{ color: accent }}>
-            {dateFmt.format(clock)}
-          </p>
-        </div>
-      </header>
-
-      {/* ── Slide body ──
-           min-h-0 lets the flex child actually shrink below its content size
-           when the rows overflow — without it, flex-1 + content > viewport
-           expands the parent and we lose the no-scroll guarantee. */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        {!slide && (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="w-12 h-12 border-2 rounded-full animate-spin" style={{ borderColor: `${accent}30`, borderTopColor: accent }} />
-          </div>
-        )}
-        {slide?.kind === 'metric' && <MetricSlide slide={slide} accent={accent} />}
-        {slide?.kind === 'challenge' && (
-          <ChallengeSlide
-            slide={slide}
-            accent={accent}
-            gymSlug={credentials.gym_slug}
-          />
-        )}
-      </div>
-
-      {/* ── Footer ───────────────────────────────────────────────── */}
-      <footer
-        className="px-8 lg:px-12 py-3 flex items-center justify-between flex-shrink-0"
-        style={{ borderTop: `1px solid rgba(255,255,255,0.04)` }}
-      >
-        <p className="text-[11px] font-bold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.25)' }}>
-          Updates live · rotates every 20s · {slides.length} slides
-        </p>
-        <div className="flex gap-1.5 max-w-[50%] overflow-hidden">
-          {slides.map((_, i) => (
-            <span
-              key={i}
-              className="h-1 rounded-full transition-all duration-500 flex-shrink-0"
-              style={{ width: i === slideIdx ? '24px' : '6px', background: i === slideIdx ? accent : 'rgba(255,255,255,0.15)' }}
-            />
-          ))}
-        </div>
-      </footer>
+      ) : slide.kind === 'challenge' ? (
+        <ChallengeSlide
+          slide={slide}
+          accent={palette.hot}
+          palette={palette}
+          gymSlug={credentials.gym_slug}
+          gymName={credentials.gym_name}
+          logoUrl={resolvedLogoUrl}
+          clock={clock}
+          timeFmt={timeFmt}
+          dateFmt={dateFmt}
+          slideIdx={slideIdx}
+          totalSlides={slides.length}
+        />
+      ) : (
+        <StyleComponent
+          slide={slide}
+          palette={palette}
+          gymName={credentials.gym_name}
+          logoUrl={resolvedLogoUrl}
+          clock={clock}
+          timeFmt={timeFmt}
+          dateFmt={dateFmt}
+          slideIdx={slideIdx}
+          totalSlides={slides.length}
+          metricKey={slide.key}
+        />
+      )}
     </div>
   );
 }
@@ -406,6 +357,7 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated }) {
         accent_color: data.accent_color,
         primary_color: data.primary_color,
         logo_url: data.logo_url,
+        tv_style: data.tv_style || 'stadium',
       });
     } catch (err) {
       setError(err?.message || 'Connection failed');
