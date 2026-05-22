@@ -115,7 +115,25 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (lookupErr || !data) {
-        // We cannot record an attempt without a known request id, so just reject
+        // Brute-force guard: a wrong code matches no row, so without this an
+        // attacker could guess codes for a known email indefinitely (the
+        // per-request lockout never triggered). Burn an attempt against the
+        // email's active reset request — after MAX_FAILED_ATTEMPTS wrong
+        // guesses the request locks, making the code space unguessable.
+        const { data: activeReq } = await adminClient
+          .from('password_reset_requests')
+          .select('id, failed_attempts')
+          .eq('email', (email as string).toLowerCase().trim())
+          .in('status', ['pending', 'approved'])
+          .is('used_at', null)
+          .gte('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (activeReq) {
+          await recordFailedAttempt(activeReq.id);
+        }
+        await padTiming();
         return jsonResp({ error: 'Invalid or expired code' }, 400);
       }
       if (data.status === 'locked' || data.failed_attempts >= MAX_FAILED_ATTEMPTS) {

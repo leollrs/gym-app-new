@@ -8,6 +8,7 @@ import {
   Pencil, Trash2, AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import logger from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { exName } from '../lib/exerciseName';
 import Confetti from './Confetti';
@@ -163,7 +164,8 @@ export default function GoalsSection() {
   };
 
   const handleDelete = async (goalId) => {
-    await supabase.from('member_goals').delete().eq('id', goalId);
+    const { error } = await supabase.from('member_goals').delete().eq('id', goalId);
+    if (error) { logger.error('GoalsSection delete error', error); return; }
     setGoals(prev => prev.filter(g => g.id !== goalId));
     setEditGoal(null);
   };

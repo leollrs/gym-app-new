@@ -829,12 +829,17 @@ function StrataFeedCard({
     lastCommentTime.current = now;
     setSubmitting(true);
     setCommentText('');
-    const { data: newComment } = await supabase
+    const { data: newComment, error: commentErr } = await supabase
       .from('feed_comments')
       .insert({ feed_item_id: item.id, profile_id: currentUserId, content })
       .select('id, content, created_at, profiles(full_name, avatar_url, avatar_type, avatar_value)')
       .single();
-    if (newComment) setComments((prev) => [...(prev ?? []), newComment]);
+    if (commentErr) {
+      console.error('[StrataFeedCard] failed to post comment:', commentErr);
+      setCommentText(content);
+    } else if (newComment) {
+      setComments((prev) => [...(prev ?? []), newComment]);
+    }
     setSubmitting(false);
   };
 

@@ -161,6 +161,7 @@ function GymWOD() {
   // Check if user already completed a WOD today
   useEffect(() => {
     if (!user?.id) return;
+    let cancelled = false;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     supabase
@@ -172,13 +173,15 @@ function GymWOD() {
       .gte('completed_at', todayStart.toISOString())
       .limit(1)
       .then(({ data }) => {
-        if (data?.length > 0) setWodCompleted(true);
+        if (!cancelled && data?.length > 0) setWodCompleted(true);
       });
+    return () => { cancelled = true; };
   }, [user?.id]);
 
   // Check if user has a scheduled workout today
   useEffect(() => {
     if (!user?.id) return;
+    let cancelled = false;
     const todayDow = new Date().getDay();
     supabase
       .from('workout_schedule')
@@ -187,11 +190,12 @@ function GymWOD() {
       .eq('day_of_week', todayDow)
       .maybeSingle()
       .then(({ data }) => {
-        if (data?.routines?.name) {
+        if (!cancelled && data?.routines?.name) {
           const name = data.routines.name.replace(/^Auto:\s*/, '').replace(/ [AB]$/, '');
           setTodayRoutineName(name);
         }
       });
+    return () => { cancelled = true; };
   }, [user?.id]);
 
   // User taps "Start" — if there's a scheduled workout, ask to confirm replacement

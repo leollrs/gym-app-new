@@ -1,7 +1,7 @@
 import { supabase } from '../supabase';
 import logger from '../logger';
 import { format, subDays, startOfMonth } from 'date-fns';
-import { fetchMembersWithChurnScores, estimateChurnScoreFallback } from '../churnScore';
+import { loadGymChurnScores, estimateChurnScoreFallback } from '../churnScore';
 import { withQueryTimeout } from '../queryWithTimeout';
 
 /**
@@ -27,7 +27,7 @@ export async function fetchOverviewData(gymId) {
     membersRes, sessionsRes, churnScoresRes,
     notOnboardedRes, checkInsRes,
   ] = await withQueryTimeout(Promise.all([
-    fetchMembersWithChurnScores(gymId, supabase).catch(err => {
+    loadGymChurnScores(gymId, supabase).catch(err => {
       logger.error('AdminOverview v2 churn scoring failed:', err);
       return null;
     }),

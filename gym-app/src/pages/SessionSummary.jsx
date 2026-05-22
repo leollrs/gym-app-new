@@ -445,20 +445,21 @@ const SessionSummary = () => {
   const handleDeleteWorkout = async () => {
     if (!sessionId || deleting) return;
     setDeleting(true);
-    try {
-      await supabase
-        .from('workout_sessions')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', sessionId);
+    const { error: deleteError } = await supabase.rpc('soft_delete_workout_session', { p_session_id: sessionId });
+    if (deleteError) {
       showToast(
-        t('sessionSummary.deleteSuccess', { defaultValue: 'Workout discarded' }),
-        'success'
+        t('sessionSummary.deleteError', { defaultValue: 'Failed to discard workout' }),
+        'error'
       );
-      navigate('/');
-    } catch {
       setDeleting(false);
       setDeleteConfirmOpen(false);
+      return;
     }
+    showToast(
+      t('sessionSummary.deleteSuccess', { defaultValue: 'Workout discarded' }),
+      'success'
+    );
+    navigate('/');
   };
 
   return (

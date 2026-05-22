@@ -7,6 +7,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
+import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import { logAdminAction } from '../../lib/adminAudit';
@@ -188,11 +189,14 @@ export default function GymImport() {
     }
 
     const phones = data.map((p) => p.phone).filter(Boolean);
-    const { data: invites } = await supabase
-      .from('gym_invites')
-      .select('phone, member_name, invite_code')
-      .eq('gym_id', gymId)
-      .in('phone', phones);
+    const { data: invites } = await selectInBatches(
+      (chunk) => supabase
+        .from('gym_invites')
+        .select('phone, member_name, invite_code')
+        .eq('gym_id', gymId)
+        .in('phone', chunk),
+      phones
+    );
 
     const inviteByPhone = new Map((invites || []).map((i) => [i.phone, i.invite_code]));
 

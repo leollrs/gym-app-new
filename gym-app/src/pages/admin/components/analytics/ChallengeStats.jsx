@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
+import { selectAllRows } from '../../../../lib/churn/batchedSelect.js';
 import { subMonths } from 'date-fns';
 import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
 
@@ -15,12 +16,17 @@ async function fetchChallengeData(gymId, filter) {
   const now = new Date();
   const from = subMonths(now, 6).toISOString();
 
-  const { data: allMembers, error: chalMemError } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('gym_id', gymId)
-    .eq('role', 'member')
-    .eq('imported_archived', false);
+  // Use selectAllRows so gyms with >1 000 members get an accurate totalMembers count.
+  const { data: allMembers, error: chalMemError } = await selectAllRows((rangeFrom, rangeTo) =>
+    supabase
+      .from('profiles')
+      .select('id')
+      .eq('gym_id', gymId)
+      .eq('role', 'member')
+      .eq('imported_archived', false)
+      .order('id')
+      .range(rangeFrom, rangeTo)
+  );
   if (chalMemError) throw chalMemError;
   const totalMembers = (allMembers || []).length;
 

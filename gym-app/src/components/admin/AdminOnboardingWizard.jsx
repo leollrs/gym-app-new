@@ -26,7 +26,9 @@ const DAY_VALUES = [1, 2, 3, 4, 5, 6, 0]; // Monday=1 ... Sunday=0
 async function compressImage(file, maxSize = 512, quality = 0.8) {
   return new Promise((resolve, reject) => {
     const img = new window.Image();
+    const objectUrl = URL.createObjectURL(file);
     img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
       const canvas = document.createElement('canvas');
       let { width, height } = img;
       if (width > height) {
@@ -45,8 +47,8 @@ async function compressImage(file, maxSize = 512, quality = 0.8) {
         quality,
       );
     };
-    img.onerror = () => reject(new Error('Failed to load image'));
-    img.src = URL.createObjectURL(file);
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Failed to load image')); };
+    img.src = objectUrl;
   });
 }
 
@@ -442,11 +444,13 @@ export default function AdminOnboardingWizard({ onComplete }) {
   // Load existing gym data
   useEffect(() => {
     if (!gymId) return;
+    const alive = { current: true };
     (async () => {
       const [{ data: gym }, { data: branding }] = await Promise.all([
         supabase.from('gyms').select('name, slug, open_time, close_time, open_days, setup_step').eq('id', gymId).single(),
         supabase.from('gym_branding').select('primary_color, logo_url').eq('gym_id', gymId).single(),
       ]);
+      if (!alive.current) return;
       if (gym) {
         setGymName(gym.name || '');
         setSlug(gym.slug || '');
@@ -465,9 +469,10 @@ export default function AdminOnboardingWizard({ onComplete }) {
         const { data: signed } = await supabase.storage
           .from('gym-logos')
           .createSignedUrl(branding.logo_url, 3600);
-        if (signed?.signedUrl) setLogoPreview(signed.signedUrl);
+        if (alive.current && signed?.signedUrl) setLogoPreview(signed.signedUrl);
       }
     })();
+    return () => { alive.current = false; };
   }, [gymId]);
 
   const toggleFeature = useCallback((key) => {

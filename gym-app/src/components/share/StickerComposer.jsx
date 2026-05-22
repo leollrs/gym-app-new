@@ -52,11 +52,13 @@ export default function StickerComposer({
 
   useEffect(() => {
     if (!stickerSrc) return;
+    let cancelled = false;
     const img = new Image();
     img.onload = () => {
-      if (img.width > 0) setStickerAspect(img.height / img.width);
+      if (!cancelled && img.width > 0) setStickerAspect(img.height / img.width);
     };
     img.src = stickerSrc;
+    return () => { cancelled = true; };
   }, [stickerSrc]);
 
   const pickPhoto = useCallback(async () => {

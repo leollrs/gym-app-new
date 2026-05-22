@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { selectInBatches, selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
@@ -94,12 +95,19 @@ export default function GymsOverview() {
       const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
       const [gymsRes, profilesRes, sessionsRes] = await Promise.all([
-        supabase.from('gyms').select('*').order('created_at', { ascending: false }),
-        supabase.from('profiles').select('gym_id'),
-        supabase
-          .from('workout_sessions')
-          .select('gym_id')
-          .gte('started_at', thirtyDaysAgo),
+        selectAllRows((from, to) =>
+          supabase.from('gyms').select('*').order('created_at', { ascending: false }).range(from, to)
+        ),
+        selectAllRows((from, to) =>
+          supabase.from('profiles').select('gym_id').range(from, to)
+        ),
+        selectAllRows((from, to) =>
+          supabase
+            .from('workout_sessions')
+            .select('gym_id')
+            .gte('started_at', thirtyDaysAgo)
+            .range(from, to)
+        ),
       ]);
 
       const gymsList = gymsRes.data || [];
@@ -128,10 +136,13 @@ export default function GymsOverview() {
       // Owner profiles
       const ownerIds = [...new Set(gymsList.map((g) => g.owner_user_id).filter(Boolean))];
       if (ownerIds.length > 0) {
-        const { data: owners } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', ownerIds);
+        const { data: owners } = await selectInBatches(
+          (ids) => supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', ids),
+          ownerIds
+        );
         const map = {};
         (owners || []).forEach((o) => { map[o.id] = o.full_name; });
         setOwnerProfiles(map);

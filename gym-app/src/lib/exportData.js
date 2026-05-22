@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { downloadCSVString } from './csvExport';
+import { selectInBatches } from './churn/batchedSelect';
 
 // ── Helper: trigger CSV download (native + web) ─────────────────────────────
 export async function downloadCSV(filename, csvContent) {
@@ -244,11 +245,13 @@ export async function exportSelectedMembersCSV(selectedIds) {
   const ids = Array.isArray(selectedIds) ? selectedIds : [...(selectedIds || [])];
   if (ids.length === 0) return;
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, full_name, username, membership_status, created_at, last_active_at')
-    .in('id', ids)
-    .limit(10000);
+  const { data, error } = await selectInBatches(
+    (chunk) => supabase
+      .from('profiles')
+      .select('id, full_name, username, membership_status, created_at, last_active_at')
+      .in('id', chunk),
+    ids
+  );
 
   if (error) throw error;
 

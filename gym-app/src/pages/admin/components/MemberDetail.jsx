@@ -260,20 +260,29 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
   const handleSaveNote = async () => {
     setNoteSaving(true);
-    await supabase.from('profiles').update({ admin_note: note || null }).eq('id', member.id).eq('gym_id', gymId);
-    logAdminAction('update_note', 'member', member.id, { note: note?.substring(0, 100) });
+    const { error } = await supabase.from('profiles').update({ admin_note: note || null }).eq('id', member.id).eq('gym_id', gymId);
     setNoteSaving(false);
+    if (error) {
+      logger.error('Failed to save admin note', error);
+      showToast?.(t('admin.memberDetail.noteSaveFailed', { defaultValue: 'Failed to save note.' }), 'error');
+      return;
+    }
+    logAdminAction('update_note', 'member', member.id, { note: note?.substring(0, 100) });
     onNoteSaved(member.id, note);
   };
 
   const handleSaveExternalId = async () => {
     setExternalIdSaving(true);
     const payload = externalId.trim() || null;
-    await supabase.from('profiles').update({
+    const { error } = await supabase.from('profiles').update({
       qr_external_id: payload,
       qr_code_payload: payload,
     }).eq('id', member.id).eq('gym_id', gymId);
     setExternalIdSaving(false);
+    if (error) {
+      logger.error('Failed to save external ID', error);
+      showToast?.(t('admin.memberDetail.externalIdSaveFailed', { defaultValue: 'Failed to save external ID.' }), 'error');
+    }
   };
 
   // Normalize phone for comparison so cosmetic-only differences (spaces/dashes/parens)
@@ -502,7 +511,12 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       logger.error('Followup DM failed:', err);
     }
     const now = new Date().toISOString();
-    if (churnRowId) await supabase.from('churn_risk_scores').update({ followup_sent_at: now }).eq('id', churnRowId);
+    if (churnRowId) {
+      const { error: churnUpdateError } = await supabase.from('churn_risk_scores').update({ followup_sent_at: now }).eq('id', churnRowId);
+      if (churnUpdateError) {
+        logger.error('Failed to record followup_sent_at on churn_risk_scores', churnUpdateError);
+      }
+    }
     logAdminAction('send_followup', 'member', member.id);
     setFollowupSentAt(now);
     setFollowupSending(false);

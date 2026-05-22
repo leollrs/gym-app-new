@@ -134,12 +134,13 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
       // Only one featured reward per gym — clear any existing featured flag
       // before saving this one to satisfy the partial unique index.
       if (payload.is_featured) {
-        await supabase
+        const { error: clearError } = await supabase
           .from('gym_rewards')
           .update({ is_featured: false })
           .eq('gym_id', gymId)
           .eq('is_featured', true)
           .neq('id', reward?.id || '00000000-0000-0000-0000-000000000000');
+        if (clearError) throw clearError;
       }
 
       if (isEdit) {

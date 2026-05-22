@@ -131,12 +131,27 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
       digest_day: fupDraft.digest_day,
       updated_at: new Date().toISOString(),
     };
-    await supabase.from('churn_followup_settings').upsert(payload, { onConflict: 'gym_id' });
-    await supabase.from('drip_campaign_steps').delete().eq('gym_id', gymId);
+    const { error: upsertError } = await supabase.from('churn_followup_settings').upsert(payload, { onConflict: 'gym_id' });
+    if (upsertError) {
+      logger.error('Failed to save follow-up settings', upsertError);
+      setSavingFup(false);
+      return;
+    }
+    const { error: deleteError } = await supabase.from('drip_campaign_steps').delete().eq('gym_id', gymId);
+    if (deleteError) {
+      logger.error('Failed to clear drip campaign steps', deleteError);
+      setSavingFup(false);
+      return;
+    }
     if (steps.length > 0) {
-      await supabase.from('drip_campaign_steps').insert(
+      const { error: insertError } = await supabase.from('drip_campaign_steps').insert(
         steps.map(s => ({ gym_id: gymId, step_number: s.step_number, delay_days: s.delay_days, message_template: s.message_template, message_b: s.message_b || null, channel: s.channel || 'notification' }))
       );
+      if (insertError) {
+        logger.error('Failed to insert drip campaign steps', insertError);
+        setSavingFup(false);
+        return;
+      }
     }
     setSavingFup(false);
     setFupSaved(true);

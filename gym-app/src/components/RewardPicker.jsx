@@ -24,6 +24,11 @@ export default function RewardPicker({ rewardId, gymId, onChosen, onSkip, classN
 
   const isEs = i18n.language === 'es';
 
+  // Auto-skip when there are no reward options (must be top-level, not inside a conditional)
+  useEffect(() => {
+    if (!loading && rewards.length === 0) onSkip?.();
+  }, [loading, rewards.length, onSkip]);
+
   // Fetch available reward options
   useEffect(() => {
     if (!gymId) return;
@@ -99,8 +104,6 @@ export default function RewardPicker({ rewardId, gymId, onChosen, onSkip, classN
   }
 
   if (rewards.length === 0) {
-    // No reward options configured — auto-skip
-    useEffect(() => { onSkip?.(); }, []); // eslint-disable-line
     return null;
   }
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Trophy, Dumbbell, Flame, Sparkles, Award } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -64,40 +64,66 @@ const MilestoneItem = ({ entry, config, currentUserId }) => {
   const [reactionCount, setReactionCount] = useState(entry.reaction_count ?? 0);
   const [hasReacted, setHasReacted] = useState(entry.has_reacted ?? false);
   const [animating, setAnimating] = useState(false);
+  const animTimerRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+    };
+  }, []);
 
   const handleReact = useCallback(async () => {
     if (!currentUserId) return;
 
     if (hasReacted) {
-      // Remove reaction
+      // Optimistic remove
       setHasReacted(false);
       setReactionCount(c => Math.max(0, c - 1));
-      await supabase
+      const { error } = await supabase
         .from('milestone_reactions')
         .delete()
         .eq('milestone_id', entry.id)
         .eq('profile_id', currentUserId);
+      if (error && mountedRef.current) {
+        // Roll back
+        setHasReacted(true);
+        setReactionCount(c => c + 1);
+      }
     } else {
-      // Add reaction + animate
+      // Optimistic add + animate
       setHasReacted(true);
       setReactionCount(c => c + 1);
       setAnimating(true);
-      setTimeout(() => setAnimating(false), 600);
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+      animTimerRef.current = setTimeout(() => {
+        if (mountedRef.current) setAnimating(false);
+      }, 600);
 
-      await supabase
+      const { error } = await supabase
         .from('milestone_reactions')
         .insert({ milestone_id: entry.id, profile_id: currentUserId });
 
-      // Send congratulation notification to milestone owner
-      if (entry.profile_id && entry.profile_id !== currentUserId) {
-        supabase.from('notifications').insert({
-          profile_id: entry.profile_id,
-          type: 'milestone',
-          title: t('social.milestoneReactionTitle'),
-          body: t('social.milestoneReactionBody', { name: entry.name }),
-          data: { milestone_id: entry.id, reactor_id: currentUserId },
-          dedup_key: `milestone_reaction_${entry.id}_${currentUserId}`,
-        }).then(() => {});
+      if (error && mountedRef.current) {
+        // Roll back
+        setHasReacted(false);
+        setReactionCount(c => Math.max(0, c - 1));
+        if (animTimerRef.current) clearTimeout(animTimerRef.current);
+        setAnimating(false);
+      } else if (!error) {
+        // Send congratulation notification to milestone owner
+        if (entry.profile_id && entry.profile_id !== currentUserId) {
+          supabase.from('notifications').insert({
+            profile_id: entry.profile_id,
+            type: 'milestone',
+            title: t('social.milestoneReactionTitle'),
+            body: t('social.milestoneReactionBody', { name: entry.name }),
+            data: { milestone_id: entry.id, reactor_id: currentUserId },
+            dedup_key: `milestone_reaction_${entry.id}_${currentUserId}`,
+          }).then(() => {});
+        }
       }
     }
   }, [currentUserId, hasReacted, entry.id, entry.profile_id, entry.name, t]);

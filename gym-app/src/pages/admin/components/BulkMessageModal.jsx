@@ -60,12 +60,14 @@ export default function BulkMessageModal({ members, gymId, adminId, onClose, onS
         posthog?.capture('admin_winback_sent', { method: 'bulk_message', count: members.length });
         setSent(true);
         setTimeout(() => { onSent?.(); onClose(); }, 1200);
-      } else if (failures.length < 3) {
+      } else if (failures.includes('notifications')) {
+        // Core notification delivery failed — don't claim success or close the modal.
+        showToast(t('admin.churn.bulkAllFailed', { defaultValue: 'All operations failed. Please try again.' }), 'error');
+      } else {
+        // Only the logging tables failed — messages were delivered.
         showToast(t('admin.churn.bulkPartialFailure', { failed: failures.length, total: 3, defaultValue: '{{failed}} of 3 operations failed. Messages may be partially saved.' }), 'warning');
         setSent(true);
         setTimeout(() => { onSent?.(); onClose(); }, 1200);
-      } else {
-        showToast(t('admin.churn.bulkAllFailed', { defaultValue: 'All operations failed. Please try again.' }), 'error');
       }
     } catch (err) {
       logger.error('Bulk message failed', err);

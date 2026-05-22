@@ -76,7 +76,7 @@ export default function GlobalSearch({ open, onClose, onToggle, pageIndex = [] }
   }, [open]);
 
   // Lazy: only fetch when the palette is opened at least once.
-  const { data: index = [] } = useQuery({
+  const { data: index = [], isError: searchFailed } = useQuery({
     queryKey: ['admin', 'global-search', gymId],
     queryFn: async () => {
       const [members, classes, programs, segments, announcements] = await Promise.all([
@@ -105,6 +105,14 @@ export default function GlobalSearch({ open, onClose, onToggle, pageIndex = [] }
           .order('created_at', { ascending: false })
           .limit(50),
       ]);
+      if (members.error) console.error('[GlobalSearch] members query failed:', members.error);
+      if (classes.error) console.error('[GlobalSearch] classes query failed:', classes.error);
+      if (programs.error) console.error('[GlobalSearch] programs query failed:', programs.error);
+      if (segments.error) console.error('[GlobalSearch] segments query failed:', segments.error);
+      if (announcements.error) console.error('[GlobalSearch] announcements query failed:', announcements.error);
+      if (members.error && classes.error && programs.error && segments.error && announcements.error) {
+        throw new Error('All search queries failed');
+      }
       const rows = [];
       (members.data || []).forEach(m => rows.push({
         kind: 'member',
@@ -256,7 +264,14 @@ export default function GlobalSearch({ open, onClose, onToggle, pageIndex = [] }
 
         {/* Results */}
         <div className="flex-1 overflow-y-auto">
-          {flat.length === 0 ? (
+          {searchFailed ? (
+            <div className="px-4 py-12 text-center">
+              <Search size={28} className="mx-auto mb-2" style={{ color: 'var(--color-text-faint)' }} />
+              <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.search.loadError', 'Search unavailable — could not load data.')}
+              </p>
+            </div>
+          ) : flat.length === 0 ? (
             <div className="px-4 py-12 text-center">
               <Search size={28} className="mx-auto mb-2" style={{ color: 'var(--color-text-faint)' }} />
               <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>

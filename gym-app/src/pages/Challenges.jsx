@@ -776,6 +776,7 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t }) => {
 
 // ── Team Formation Modal ──────────────────────────────────
 const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t }) => {
+  const { showToast } = useToast();
   const [step, setStep] = useState('choose'); // 'choose' | 'create' | 'invites'
   const [teamName, setTeamName] = useState('');
   const [friends, setFriends] = useState([]);
@@ -821,11 +822,19 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
     const { data: team, error: teamErr } = await supabase.from('challenge_teams')
       .insert({ challenge_id: challenge.id, name: teamName.trim(), captain_id: userId })
       .select('id').single();
-    if (teamErr || !team) { setSaving(false); return; }
+    if (teamErr || !team) {
+      showToast(t('challenges.team.createError', { defaultValue: 'Failed to create team' }), 'error');
+      setSaving(false);
+      return;
+    }
     // 2. Join as participant with team_id
     const { error: joinErr } = await supabase.from('challenge_participants')
       .insert({ challenge_id: challenge.id, profile_id: userId, gym_id: gymId, team_id: team.id, score: 0 });
-    if (joinErr) { setSaving(false); return; }
+    if (joinErr) {
+      showToast(t('challenges.team.joinError', { defaultValue: 'Failed to join team' }), 'error');
+      setSaving(false);
+      return;
+    }
     // 3. Send invites to selected friends
     if (selectedFriends.length > 0) {
       const invites = selectedFriends.map(fId => ({
@@ -850,10 +859,20 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
   const handleAcceptInvite = async (invite) => {
     setSaving(true);
     // Update invite status
-    await supabase.from('challenge_team_invites').update({ status: 'accepted' }).eq('id', invite.id);
+    const { error: inviteErr } = await supabase.from('challenge_team_invites').update({ status: 'accepted' }).eq('id', invite.id);
+    if (inviteErr) {
+      showToast(t('challenges.team.acceptInviteError', { defaultValue: 'Failed to accept invite' }), 'error');
+      setSaving(false);
+      return;
+    }
     // Join as participant with that team
-    await supabase.from('challenge_participants')
+    const { error: participantErr } = await supabase.from('challenge_participants')
       .insert({ challenge_id: challenge.id, profile_id: userId, gym_id: gymId, team_id: invite.team_id, score: 0 });
+    if (participantErr) {
+      showToast(t('challenges.team.joinError', { defaultValue: 'Failed to join team' }), 'error');
+      setSaving(false);
+      return;
+    }
     setSaving(false);
     onTeamJoined();
     onClose();
@@ -1088,7 +1107,14 @@ const DailyChallenge = ({ userId, gymId, t }) => {
               challenge_date: new Date().toISOString().split('T')[0],
               points_awarded: 25,
             });
-            addPoints(userId, gymId, 'daily_challenge', 25, 'Daily challenge completed').catch(() => {});
+            addPoints(
+              userId,
+              gymId,
+              'daily_challenge',
+              25,
+              'Daily challenge completed',
+              `daily_challenge_${challenge.nameKey}_${new Date().toISOString().split('T')[0]}`,
+            ).catch(() => {});
           }
           posthogDaily?.capture('daily_challenge_completed', { challenge_name: challenge.title });
           localStorage.setItem(storageKey, 'true');

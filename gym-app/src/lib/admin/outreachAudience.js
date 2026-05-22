@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
-import { fetchMembersWithChurnScores } from '../churnScore';
+import { loadGymChurnScores } from '../churnScore';
 import { applySegmentFilters } from './segmentFilters';
+import { selectInBatches, selectAllRows } from '../churn/batchedSelect.js';
 
 /**
  * Resolves an Outreach audience selection into the concrete list of recipients
@@ -35,24 +36,27 @@ export async function resolveOutreachAudience(gymId, selector) {
   if (!gymId || !selector?.type) return [];
 
   if (selector.type === 'all') {
-    const { data } = await supabase
+    // Paginated: an outreach blast to a 2,000-member gym must not silently
+    // resolve to only the first ~1000 recipients.
+    const { data } = await selectAllRows((from, to) => supabase
       .from('profiles')
       .select(PROFILE_FIELDS)
       .eq('gym_id', gymId)
-      .eq('role', 'member');
+      .eq('role', 'member')
+      .order('id')
+      .range(from, to));
     return normalize(data);
   }
 
   if (selector.type === 'tier') {
-    const scored = await fetchMembersWithChurnScores(gymId, supabase).catch(() => []);
+    const scored = await loadGymChurnScores(gymId, supabase).catch(() => []);
     const matchingIds = scored
       .filter(s => (s.riskTier?.tier ?? 'low') === selector.tier)
       .map(s => s.id);
     if (!matchingIds.length) return [];
-    const { data } = await supabase
-      .from('profiles')
-      .select(PROFILE_FIELDS)
-      .in('id', matchingIds);
+    const { data } = await selectInBatches(
+      (ids) => supabase.from('profiles').select(PROFILE_FIELDS).in('id', ids),
+      matchingIds);
     return normalize(data);
   }
 
@@ -71,29 +75,28 @@ export async function resolveOutreachAudience(gymId, selector) {
     const matched = await applySegmentFilters(gymId, seg.filters);
     const ids = (matched || []).map(m => m.id);
     if (!ids.length) return [];
-    const { data } = await supabase
-      .from('profiles')
-      .select(PROFILE_FIELDS)
-      .in('id', ids);
+    const { data } = await selectInBatches(
+      (chunk) => supabase.from('profiles').select(PROFILE_FIELDS).in('id', chunk),
+      ids);
     return normalize(data);
   }
 
   if (selector.type === 'members' && Array.isArray(selector.ids) && selector.ids.length) {
-    const { data } = await supabase
-      .from('profiles')
-      .select(PROFILE_FIELDS)
-      .in('id', selector.ids)
-      .eq('gym_id', gymId);
+    const { data } = await selectInBatches(
+      (chunk) => supabase.from('profiles').select(PROFILE_FIELDS).in('id', chunk).eq('gym_id', gymId),
+      selector.ids);
     return normalize(data);
   }
 
   if (selector.type === 'unonboarded') {
-    const { data } = await supabase
+    const { data } = await selectAllRows((from, to) => supabase
       .from('profiles')
       .select(PROFILE_FIELDS)
       .eq('gym_id', gymId)
       .eq('role', 'member')
-      .eq('is_onboarded', false);
+      .eq('is_onboarded', false)
+      .order('id')
+      .range(from, to));
     return normalize(data);
   }
 
@@ -101,12 +104,14 @@ export async function resolveOutreachAudience(gymId, selector) {
     // Postgres-side filter via RPC would be cleaner; client-side filter is
     // fine for typical gym sizes (< few thousand members). Column is
     // `date_of_birth` (per 0001_initial_schema), not `birth_date`.
-    const { data } = await supabase
+    const { data } = await selectAllRows((from, to) => supabase
       .from('profiles')
       .select(`${PROFILE_FIELDS}, date_of_birth`)
       .eq('gym_id', gymId)
       .eq('role', 'member')
-      .not('date_of_birth', 'is', null);
+      .not('date_of_birth', 'is', null)
+      .order('id')
+      .range(from, to));
     if (!data) return [];
     const now = new Date();
     const weekFromNow = new Date(now.getTime() + 7 * 86400000);

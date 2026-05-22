@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Share2 } from 'lucide-react';
 import { tg } from '../lib/genderText';
@@ -15,6 +15,7 @@ export default function AchievementToast({ achievements, onDone }) {
   const [visible, setVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const advanceTimerRef = useRef(null);
 
   // Animate in on mount / when index changes
   useEffect(() => {
@@ -27,7 +28,8 @@ export default function AchievementToast({ achievements, onDone }) {
 
   const advance = useCallback(() => {
     setExiting(true);
-    setTimeout(() => {
+    clearTimeout(advanceTimerRef.current);
+    advanceTimerRef.current = setTimeout(() => {
       const next = index + 1;
       if (next >= (achievements?.length ?? 0)) {
         onDone?.();
@@ -36,6 +38,9 @@ export default function AchievementToast({ achievements, onDone }) {
       }
     }, 350);
   }, [index, achievements, onDone]);
+
+  // Clear pending advance timer on unmount
+  useEffect(() => () => { clearTimeout(advanceTimerRef.current); }, []);
 
   // Auto-dismiss after 4 seconds (paused while share sheet is open)
   useEffect(() => {

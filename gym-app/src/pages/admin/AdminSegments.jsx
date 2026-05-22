@@ -10,6 +10,7 @@ import { format, subDays, subMonths } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
+import { selectInBatches } from '../../lib/churn/batchedSelect.js';
 import { encryptMessage } from '../../lib/messageEncryption';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -490,11 +491,15 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
     queryFn: async () => {
       const ids = members.map(m => m.id);
       if (!ids.length) return {};
-      const { data } = await supabase
-        .from('churn_risk_scores')
-        .select('profile_id, risk_tier, score')
-        .eq('gym_id', gymId)
-        .in('profile_id', ids);
+      // Segment can match all gym members — batch to avoid HTTP 414.
+      const { data } = await selectInBatches(
+        (chunk) => supabase
+          .from('churn_risk_scores')
+          .select('profile_id, risk_tier, score')
+          .eq('gym_id', gymId)
+          .in('profile_id', chunk),
+        ids
+      );
       const map = {};
       (data || []).forEach(r => { map[r.profile_id] = r; });
       return map;

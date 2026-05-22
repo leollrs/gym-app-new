@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { selectInBatches, selectAllRows } from '../../lib/churn/batchedSelect';
 import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
@@ -346,12 +347,13 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   const toggleMuscle = (m) => setOverrideMuscles(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
 
   useEffect(() => {
-    supabase.from('exercises').select('id, name, muscle_group').order('name')
-      .then(({ data, error }) => {
-        if (error) console.error('[TrainerPlans] Failed to load exercises:', error);
-        setExercises(data || []);
-      })
-      .catch(err => console.error('[TrainerPlans] Failed to load exercises:', err));
+    // exercises table can exceed 1000 rows — paginate to get all of them
+    selectAllRows((from, to) =>
+      supabase.from('exercises').select('id, name, muscle_group').order('name').range(from, to),
+    ).then(({ data, error }) => {
+      if (error) console.error('[TrainerPlans] Failed to load exercises:', error);
+      setExercises(data || []);
+    }).catch(err => console.error('[TrainerPlans] Failed to load exercises:', err));
   }, []);
 
   // Fetch client profile when client changes
@@ -1154,7 +1156,8 @@ export default function TrainerPlans() {
         .from('trainer_workout_plans')
         .select('*, profiles!trainer_workout_plans_client_id_fkey(full_name)')
         .eq('trainer_id', profile.id)
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(500), // a trainer won't realistically have >500 plans
       supabase
         .from('trainer_clients')
         .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name)')
@@ -1173,13 +1176,12 @@ export default function TrainerPlans() {
       const wkEnd = endOfWeek(now, { weekStartsOn: 0 }).toISOString();
       const clientIds = [...new Set(activePlans.map(p => p.client_id))];
 
-      const { data: weekSessions } = await supabase
-        .from('workout_sessions')
-        .select('profile_id')
-        .in('profile_id', clientIds)
-        .eq('status', 'completed')
-        .gte('started_at', wkStart)
-        .lte('started_at', wkEnd);
+      const { data: weekSessions } = await selectInBatches(
+        (ids) => supabase.from('workout_sessions').select('profile_id')
+          .in('profile_id', ids).eq('status', 'completed')
+          .gte('started_at', wkStart).lte('started_at', wkEnd),
+        clientIds,
+      );
 
       const sessionCounts = {};
       (weekSessions || []).forEach(s => {

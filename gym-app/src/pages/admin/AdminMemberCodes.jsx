@@ -10,6 +10,7 @@ import { useToast } from '../../contexts/ToastContext';
 import {
   PageHeader, AdminPageShell, FadeIn, AdminCard,
 } from '../../components/admin';
+import { selectAllRows, selectInBatches } from '../../lib/churn/batchedSelect.js';
 
 /**
  * AdminMemberCodes
@@ -43,22 +44,30 @@ export default function AdminMemberCodes() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-member-codes', gymId],
     queryFn: async () => {
-      const { data: imported } = await supabase
-        .from('profiles')
-        .select('id, full_name, phone, email, membership_started_at, created_at')
-        .eq('gym_id', gymId)
-        .eq('imported_archived', false)
-        .not('import_batch_id', 'is', null)
-        .order('full_name', { ascending: true });
+      // Imported members can be member-scale — paginate to get all rows.
+      const { data: imported } = await selectAllRows((from, to) =>
+        supabase
+          .from('profiles')
+          .select('id, full_name, phone, email, membership_started_at, created_at')
+          .eq('gym_id', gymId)
+          .eq('imported_archived', false)
+          .not('import_batch_id', 'is', null)
+          .order('full_name', { ascending: true })
+          .range(from, to)
+      );
 
       const phones = (imported || []).map((p) => p.phone).filter(Boolean);
       if (phones.length === 0) return { imported: imported || [], invitesByPhone: new Map() };
 
-      const { data: invites } = await supabase
-        .from('gym_invites')
-        .select('phone, invite_code, used_by, used_at, created_at')
-        .eq('gym_id', gymId)
-        .in('phone', phones);
+      // phones array can match all imported members — batch to avoid HTTP 414.
+      const { data: invites } = await selectInBatches(
+        (chunk) => supabase
+          .from('gym_invites')
+          .select('phone, invite_code, used_by, used_at, created_at')
+          .eq('gym_id', gymId)
+          .in('phone', chunk),
+        phones
+      );
 
       const invitesByPhone = new Map();
       (invites || []).forEach((inv) => {

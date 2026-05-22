@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { FlaskConical, CheckCircle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
+import { useToast } from '../../../contexts/ToastContext';
 import { AdminModal, SectionLabel } from '../../../components/admin';
 
 // Stable enum keys persisted to DB (winback_campaigns.variant_a/b.offer_type).
@@ -78,6 +79,7 @@ function VariantForm({ label, variant, onChange, t }) {
 
 export default function CreateCampaignModal({ gymId, onClose, onCreated }) {
   const { t } = useTranslation('pages');
+  const { showToast } = useToast();
   const [name, setName] = useState('');
   const [targetTier, setTargetTier] = useState('high');
   const [variantA, setVariantA] = useState({ offer_type: '', message: '', discount_pct: null, free_days: null });
@@ -104,6 +106,7 @@ export default function CreateCampaignModal({ gymId, onClose, onCreated }) {
       setTimeout(() => { onCreated?.(); onClose(); }, 800);
     } catch (err) {
       logger.error('Failed to create A/B campaign', err);
+      showToast(err?.message || t('admin.churn.campaign.createError', { defaultValue: 'Failed to create campaign. Please try again.' }), 'error');
     } finally {
       setSaving(false);
     }

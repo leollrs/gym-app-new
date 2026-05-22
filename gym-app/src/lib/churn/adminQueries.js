@@ -24,6 +24,7 @@ import { subDays } from 'date-fns';
 import logger from '../logger.js';
 import { estimateChurnScoreFallback } from './riskScoring.js';
 import { withQueryTimeout } from '../queryWithTimeout.js';
+import { selectInBatches } from './batchedSelect.js';
 
 const MS_PER_DAY = 86400000;
 
@@ -85,16 +86,20 @@ export async function autoDetectReturns(winBackAttempts, gymId, supabase) {
   const memberIds = [...new Set(pending.map(a => a.user_id))];
 
   const [sessionsRes, checkInsRes] = await Promise.all([
-    supabase.from('workout_sessions')
-      .select('profile_id, started_at')
-      .eq('gym_id', gymId).eq('status', 'completed')
-      .in('profile_id', memberIds)
-      .order('started_at', { ascending: true }),
-    supabase.from('check_ins')
-      .select('profile_id, checked_in_at')
-      .eq('gym_id', gymId)
-      .in('profile_id', memberIds)
-      .order('checked_in_at', { ascending: true }),
+    selectInBatches(
+      (ids) => supabase.from('workout_sessions')
+        .select('profile_id, started_at')
+        .eq('gym_id', gymId).eq('status', 'completed')
+        .in('profile_id', ids)
+        .order('started_at', { ascending: true }),
+      memberIds),
+    selectInBatches(
+      (ids) => supabase.from('check_ins')
+        .select('profile_id, checked_in_at')
+        .eq('gym_id', gymId)
+        .in('profile_id', ids)
+        .order('checked_in_at', { ascending: true }),
+      memberIds),
   ]);
 
   const sessions = sessionsRes.data || [];

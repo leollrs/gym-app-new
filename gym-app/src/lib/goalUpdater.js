@@ -69,10 +69,15 @@ export async function updateGoalsAfterWorkout(profileId, gymId, sessionData = {}
         ...(isAchieved ? { achieved_at: new Date().toISOString() } : {}),
       };
 
-      await supabase
+      const { error: updateErr } = await supabase
         .from('member_goals')
         .update(updates)
         .eq('id', goal.id);
+
+      if (updateErr) {
+        console.error('[goalUpdater] failed to update goal', goal.id, updateErr);
+        continue;
+      }
 
       if (isAchieved) {
         achieved.push(goal);

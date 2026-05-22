@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, CheckSquare, Square, ClipboardList, Send, UserMinus, Ban, AlertTriangle, ShieldBan, MoreHorizontal, CheckCheck, Activity, Plus, SlidersHorizontal } from 'lucide-react';
@@ -718,12 +719,11 @@ export default function TrainerClients() {
 
       const clientIds = assignedClients.map(c => c.id);
 
-      const { data: recentSessions, error: recSessError } = await supabase
-        .from('workout_sessions')
-        .select('profile_id')
-        .in('profile_id', clientIds)
-        .eq('status', 'completed')
-        .gte('started_at', fourteenDaysAgo);
+      const { data: recentSessions, error: recSessError } = await selectInBatches(
+        (ids) => supabase.from('workout_sessions').select('profile_id')
+          .in('profile_id', ids).eq('status', 'completed').gte('started_at', fourteenDaysAgo),
+        clientIds,
+      );
       if (recSessError) logger.error('TrainerClients: failed to load recent sessions:', recSessError);
 
       const recentCounts = {};
@@ -732,10 +732,11 @@ export default function TrainerClients() {
       });
 
       // Fetch churn risk scores
-      const { data: churnRows, error: churnError } = await supabase
-        .from('churn_risk_scores')
-        .select('profile_id, score, key_signals, computed_at')
-        .in('profile_id', clientIds);
+      const { data: churnRows, error: churnError } = await selectInBatches(
+        (ids) => supabase.from('churn_risk_scores').select('profile_id, score, key_signals, computed_at')
+          .in('profile_id', ids),
+        clientIds,
+      );
       if (churnError) logger.error('TrainerClients: failed to load churn scores:', churnError);
 
       const churnMap = {};

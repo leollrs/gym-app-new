@@ -1,7 +1,7 @@
 import { subDays } from 'date-fns';
 import { supabase } from '../supabase';
 import logger from '../logger';
-import { fetchMembersWithChurnScores, estimateChurnScoreFallback } from '../churnScore';
+import { loadGymChurnScores, estimateChurnScoreFallback } from '../churnScore';
 import { withQueryTimeout } from '../queryWithTimeout';
 
 export const MEMBERS_PAGE_SIZE = 200;
@@ -27,8 +27,8 @@ export async function fetchMembers(gymId, page = 0) {
     supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, membership_started_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
     supabase.from('churn_risk_scores').select('profile_id, followup_sent_at, computed_at').eq('gym_id', gymId).order('computed_at', { ascending: false }),
     supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()).limit(5000),
-    fetchMembersWithChurnScores(gymId, supabase).catch((err) => {
-      logger.error('AdminMembers: fetchMembersWithChurnScores:', err);
+    loadGymChurnScores(gymId, supabase).catch((err) => {
+      logger.error('AdminMembers: loadGymChurnScores:', err);
       return [];
     }),
   ]), 15_000, `fetchMembers:page${page}`);

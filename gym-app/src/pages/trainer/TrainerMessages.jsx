@@ -10,6 +10,7 @@ import { motion } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { encryptMessage, decryptMessage } from '../../lib/messageEncryption';
 import { sanitize } from '../../lib/sanitize';
 import logger from '../../lib/logger';
@@ -425,7 +426,8 @@ export default function TrainerMessages() {
         .from('conversations')
         .select('id, participant_1, participant_2, last_message_at, encryption_seed')
         .or(`participant_1.eq.${profile.id},participant_2.eq.${profile.id}`)
-        .order('last_message_at', { ascending: false });
+        .order('last_message_at', { ascending: false })
+        .limit(500); // a trainer won't realistically have >500 active conversations
       if (error) throw error;
 
       // Filter out any self-conversations (participant_1 === participant_2 === me).
@@ -440,10 +442,12 @@ export default function TrainerMessages() {
 
       const otherIds = [...new Set(convs.map(c => (c.participant_1 === profile.id ? c.participant_2 : c.participant_1)))];
 
-      const { data: profiles } = await supabase
-        .from('gym_member_profiles_safe')
-        .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role, last_active_at')
-        .in('id', otherIds);
+      const { data: profiles } = await selectInBatches(
+        (ids) => supabase.from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role, last_active_at')
+          .in('id', ids),
+        otherIds,
+      );
 
       const profileMap = {};
       (profiles || []).forEach(p => { profileMap[p.id] = p; });
@@ -532,11 +536,14 @@ export default function TrainerMessages() {
           .single();
         if (!cancelled) setOtherUser(u);
 
-        const { data: msgs } = await supabase
+        // Fetch the 200 most-recent messages, then re-sort ascending for display
+        const { data: msgsDesc } = await supabase
           .from('direct_messages')
           .select('*')
           .eq('conversation_id', activeConvId)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: false })
+          .limit(200);
+        const msgs = (msgsDesc || []).reverse();
 
         if (!cancelled) {
           const decrypted = await Promise.all((msgs || []).map(async m => ({

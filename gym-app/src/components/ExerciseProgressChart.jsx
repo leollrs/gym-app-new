@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
+import logger from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { format, parseISO } from 'date-fns';
 import Skeleton from './Skeleton';
@@ -63,13 +64,15 @@ function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
     if (!user || !exerciseId) return;
     const load = async () => {
       setLoading(true);
-      const { data: rows } = await supabase
+      const { data: rows, error } = await supabase
         .from('pr_history')
         .select('estimated_1rm, weight_lbs, reps, achieved_at')
         .eq('profile_id', user.id)
         .eq('exercise_id', exerciseId)
         .order('achieved_at', { ascending: true })
         .limit(12);
+
+      if (error) logger.error('ExerciseProgressChart fetch error', error);
 
       setData((rows || []).map(r => ({
         date:   format(parseISO(r.achieved_at), 'MMM d'),

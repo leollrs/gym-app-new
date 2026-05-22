@@ -26,6 +26,7 @@ import { loadAdaptationSuggestions, dismissAdaptationSuggestions } from '../lib/
 import { usePostHog } from '@posthog/react';
 import { programImageUrl } from '../lib/imageUrl';
 import { getExerciseReasoning } from '../lib/exerciseReasoning';
+import { selectInBatches } from '../lib/churn/batchedSelect';
 
 // Expandable description text — shows 2 lines with "Read more" toggle
 const ExpandableText = ({ text }) => {
@@ -114,13 +115,17 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
     const loadData = async () => {
       const promises = [];
       if (allIds.length > 0) {
+        // Batched: a multi-week program with many exercise IDs can exceed the
+        // ~390-element URL limit on a plain .in() call.
         promises.push(
-          supabase.from('exercises').select('id, name, name_es, muscle_group, equipment').in('id', allIds)
-            .then(({ data }) => {
-              const map = {};
-              (data || []).forEach(ex => { map[ex.id] = { ...ex, muscle: ex.muscle_group, equipment: ex.equipment }; });
-              setExercises(map);
-            })
+          selectInBatches(
+            (ids) => supabase.from('exercises').select('id, name, name_es, muscle_group, equipment').in('id', ids),
+            allIds,
+          ).then(({ data }) => {
+            const map = {};
+            (data || []).forEach(ex => { map[ex.id] = { ...ex, muscle: ex.muscle_group, equipment: ex.equipment }; });
+            setExercises(map);
+          })
         );
       }
       if (user?.id) {

@@ -9,6 +9,7 @@
 import { DEFAULT_WEIGHTS, calculateChurnScore, getRiskTier } from './riskScoring.js';
 import { calculateVelocity } from './metrics.js';
 import { signalTenureRiskV2 } from './churnSignalsV2.js';
+import { selectInBatches } from './batchedSelect.js';
 
 /** @deprecated Use churnSignalsV2 (12-signal model). Kept for callers expecting { value, score, maxPts, label }. */
 export function signalTenureRisk(tenureMonths, totalSessionsFirst90Days) {
@@ -72,7 +73,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
         calibrationAuc: wRow.calibration_auc,
       };
     }
-  } catch (_) {
+  } catch {
     // Table may not exist yet — use defaults
   }
 
@@ -109,107 +110,141 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     referralsRes,
     socialFeedRes,
   ] = await Promise.all([
-    supabase
-      .from('check_ins')
-      .select('profile_id, checked_in_at')
-      .eq('gym_id', gymId)
-      .gte('checked_in_at', sixtyDaysAgo)
-      .in('profile_id', memberIds)
-      .order('checked_in_at', { ascending: false }),
+    // All ID-list queries below go through selectInBatches so the request URL
+    // never exceeds the proxy's ~15 KB limit (broke at ~390 members before).
+    selectInBatches(
+      (ids) => supabase
+        .from('check_ins')
+        .select('profile_id, checked_in_at')
+        .eq('gym_id', gymId)
+        .gte('checked_in_at', sixtyDaysAgo)
+        .in('profile_id', ids)
+        .order('checked_in_at', { ascending: false }),
+      memberIds),
 
-    supabase
-      .from('workout_sessions')
-      .select('profile_id, status, started_at, completed_at, duration_seconds, total_volume_lbs, program_enrollment_id')
-      .eq('gym_id', gymId)
-      .gte('started_at', ninetyDaysAgo)
-      .in('profile_id', memberIds)
-      .order('started_at', { ascending: false }),
+    selectInBatches(
+      (ids) => supabase
+        .from('workout_sessions')
+        .select('profile_id, status, started_at, completed_at, duration_seconds, total_volume_lbs, program_enrollment_id')
+        .eq('gym_id', gymId)
+        .gte('started_at', ninetyDaysAgo)
+        .in('profile_id', ids)
+        .order('started_at', { ascending: false }),
+      memberIds),
 
-    supabase
-      .from('workout_sessions')
-      .select('profile_id, started_at')
-      .eq('gym_id', gymId)
-      .eq('status', 'completed')
-      .in('profile_id', memberIds),
+    selectInBatches(
+      (ids) => supabase
+        .from('workout_sessions')
+        .select('profile_id, started_at')
+        .eq('gym_id', gymId)
+        .eq('status', 'completed')
+        .in('profile_id', ids),
+      memberIds),
 
-    supabase
-      .from('friendships')
-      .select('requester_id, addressee_id')
-      .eq('status', 'accepted')
-      .or(
-        memberIds.map(id => `requester_id.eq.${id}`).join(',') +
-        ',' +
-        memberIds.map(id => `addressee_id.eq.${id}`).join(',')
-      ),
+    // friendships has no gym_id, and each member appears twice in the .or()
+    // (requester + addressee), so use a smaller chunk and dedupe rows whose
+    // two members land in different chunks.
+    selectInBatches(
+      (ids) => supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .eq('status', 'accepted')
+        .or(
+          ids.map(id => `requester_id.eq.${id}`).join(',') +
+          ',' +
+          ids.map(id => `addressee_id.eq.${id}`).join(',')
+        ),
+      memberIds,
+      { chunkSize: 100, dedupeKey: (r) => `${r.requester_id}|${r.addressee_id}` }),
 
-    supabase
-      .from('challenge_participants')
-      .select('profile_id')
-      .in('profile_id', memberIds),
+    selectInBatches(
+      (ids) => supabase
+        .from('challenge_participants')
+        .select('profile_id')
+        .in('profile_id', ids),
+      memberIds),
 
-    supabase
-      .from('body_weight_logs')
-      .select('profile_id, logged_at')
-      .eq('gym_id', gymId)
-      .gte('logged_at', sixtyDaysAgo)
-      .in('profile_id', memberIds)
-      .order('logged_at', { ascending: false }),
+    selectInBatches(
+      (ids) => supabase
+        .from('body_weight_logs')
+        .select('profile_id, logged_at')
+        .eq('gym_id', gymId)
+        .gte('logged_at', sixtyDaysAgo)
+        .in('profile_id', ids)
+        .order('logged_at', { ascending: false }),
+      memberIds),
 
-    supabase
-      .from('trainer_clients')
-      .select('client_id')
-      .eq('gym_id', gymId)
-      .in('client_id', memberIds),
+    selectInBatches(
+      (ids) => supabase
+        .from('trainer_clients')
+        .select('client_id')
+        .eq('gym_id', gymId)
+        .in('client_id', ids),
+      memberIds),
 
-    supabase
-      .from('churn_risk_scores')
-      .select('profile_id, score, computed_at')
-      .eq('gym_id', gymId)
-      .in('profile_id', memberIds)
-      .order('computed_at', { ascending: false }),
+    selectInBatches(
+      (ids) => supabase
+        .from('churn_risk_scores')
+        .select('profile_id, score, computed_at')
+        .eq('gym_id', gymId)
+        .in('profile_id', ids)
+        .order('computed_at', { ascending: false }),
+      memberIds),
 
-    supabase
-      .from('activity_feed_items')
-      .select('actor_id')
-      .eq('gym_id', gymId)
-      .eq('type', 'pr_hit')
-      .gte('created_at', thirtyDaysAgo)
-      .in('actor_id', memberIds),
+    selectInBatches(
+      (ids) => supabase
+        .from('activity_feed_items')
+        .select('actor_id')
+        .eq('gym_id', gymId)
+        .eq('type', 'pr_hit')
+        .gte('created_at', thirtyDaysAgo)
+        .in('actor_id', ids),
+      memberIds),
 
-    supabase
-      .from('workout_schedule')
-      .select('profile_id, day_of_week')
-      .in('profile_id', memberIds)
-      .limit(5000),
+    selectInBatches(
+      (ids) => supabase
+        .from('workout_schedule')
+        .select('profile_id, day_of_week')
+        .in('profile_id', ids)
+        .limit(5000),
+      memberIds),
 
-    supabase
-      .from('notifications')
-      .select('profile_id, read_at, created_at')
-      .gte('created_at', thirtyDaysAgo)
-      .in('profile_id', memberIds)
-      .limit(10000),
+    selectInBatches(
+      (ids) => supabase
+        .from('notifications')
+        .select('profile_id, read_at, created_at')
+        .gte('created_at', thirtyDaysAgo)
+        .in('profile_id', ids)
+        .limit(10000),
+      memberIds),
 
-    supabase
-      .from('notifications')
-      .select('profile_id, created_at, type')
-      .in('type', OUTREACH_TYPES_ARR)
-      .in('profile_id', memberIds)
-      .limit(5000),
+    selectInBatches(
+      (ids) => supabase
+        .from('notifications')
+        .select('profile_id, created_at, type')
+        .in('type', OUTREACH_TYPES_ARR)
+        .in('profile_id', ids)
+        .limit(5000),
+      memberIds),
 
-    supabase
-      .from('referrals')
-      .select('referrer_id')
-      .in('referrer_id', memberIds)
-      .limit(5000),
+    selectInBatches(
+      (ids) => supabase
+        .from('referrals')
+        .select('referrer_id')
+        .in('referrer_id', ids)
+        .limit(5000),
+      memberIds),
 
-    supabase
-      .from('activity_feed_items')
-      .select('actor_id, created_at')
-      .eq('gym_id', gymId)
-      .gte('created_at', thirtyDaysAgo)
-      .in('actor_id', memberIds)
-      .order('created_at', { ascending: false })
-      .limit(5000),
+    selectInBatches(
+      (ids) => supabase
+        .from('activity_feed_items')
+        .select('actor_id, created_at')
+        .eq('gym_id', gymId)
+        .gte('created_at', thirtyDaysAgo)
+        .in('actor_id', ids)
+        .order('created_at', { ascending: false })
+        .limit(5000),
+      memberIds),
   ]);
 
   const checkInRows = attendanceRes.data || [];
@@ -227,23 +262,27 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   const referralRows = referralsRes.data || [];
   const socialFeedRows = socialFeedRes.data || [];
 
-  const { data: sidL30 } = await supabase
-    .from('workout_sessions')
-    .select('id, profile_id')
-    .eq('gym_id', gymId)
-    .eq('status', 'completed')
-    .gte('started_at', thirtyDaysAgo)
-    .in('profile_id', memberIds)
-    .limit(5000);
-  const { data: sidP30 } = await supabase
-    .from('workout_sessions')
-    .select('id, profile_id')
-    .eq('gym_id', gymId)
-    .eq('status', 'completed')
-    .gte('started_at', sixtyDaysAgo)
-    .lt('started_at', thirtyDaysAgo)
-    .in('profile_id', memberIds)
-    .limit(5000);
+  const { data: sidL30 } = await selectInBatches(
+    (ids) => supabase
+      .from('workout_sessions')
+      .select('id, profile_id')
+      .eq('gym_id', gymId)
+      .eq('status', 'completed')
+      .gte('started_at', thirtyDaysAgo)
+      .in('profile_id', ids)
+      .limit(5000),
+    memberIds);
+  const { data: sidP30 } = await selectInBatches(
+    (ids) => supabase
+      .from('workout_sessions')
+      .select('id, profile_id')
+      .eq('gym_id', gymId)
+      .eq('status', 'completed')
+      .gte('started_at', sixtyDaysAgo)
+      .lt('started_at', thirtyDaysAgo)
+      .in('profile_id', ids)
+      .limit(5000),
+    memberIds);
 
   const sessionToProfile = {};
   (sidL30 || []).forEach((s) => { sessionToProfile[s.id] = s.profile_id; });
@@ -256,11 +295,15 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   let exL = [];
   let exP = [];
   if (idsL.length) {
-    const { data } = await supabase.from('session_exercises').select('session_id, exercises(muscle_group)').in('session_id', idsL).limit(10000);
+    const { data } = await selectInBatches(
+      (ids) => supabase.from('session_exercises').select('session_id, exercises(muscle_group)').in('session_id', ids).limit(10000),
+      idsL);
     exL = data || [];
   }
   if (idsP.length) {
-    const { data } = await supabase.from('session_exercises').select('session_id, exercises(muscle_group)').in('session_id', idsP).limit(10000);
+    const { data } = await selectInBatches(
+      (ids) => supabase.from('session_exercises').select('session_id, exercises(muscle_group)').in('session_id', ids).limit(10000),
+      idsP);
     exP = data || [];
   }
 

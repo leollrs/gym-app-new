@@ -122,6 +122,8 @@ const FirstWorkoutWelcome = () => {
   useEffect(() => {
     if (!user) return;
 
+    let cancelled = false;
+
     const fetchData = async () => {
       // Fetch onboarding data for personalization
       const [onboardingRes, routinesRes] = await Promise.all([
@@ -139,6 +141,8 @@ const FirstWorkoutWelcome = () => {
           .limit(1),
       ]);
 
+      if (cancelled) return;
+
       if (onboardingRes.data) {
         setOnboardingData(onboardingRes.data);
       }
@@ -152,6 +156,7 @@ const FirstWorkoutWelcome = () => {
     };
 
     fetchData();
+    return () => { cancelled = true; };
   }, [user]);
 
   const goalInfo = GOAL_KEYS[onboardingData?.primary_goal] || GOAL_KEYS.general_fitness;

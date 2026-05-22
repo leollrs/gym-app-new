@@ -268,7 +268,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
             session_sets ( weight_lbs, reps, is_completed ),
             workout_sessions!inner ( profile_id, completed_at, status )
           `)
-          .eq('workout_sessions.profile_id', user.id)
+          .eq('workout_sessions.profile_id', targetId)
           .eq('workout_sessions.status', 'completed')
           .gte('workout_sessions.completed_at', monthStart)
           .lte('workout_sessions.completed_at', monthEnd),

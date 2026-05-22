@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
+import { selectInBatches } from '../lib/churn/batchedSelect';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const getInitials = (name) => {
@@ -90,12 +91,15 @@ const LiveTrainingIndicator = () => {
     );
 
     // 3. Fetch in-progress sessions for these friends
-    const { data: sessions } = await supabase
-      .from('workout_sessions')
-      .select('id, profile_id, routine_name, started_at, profiles!inner(full_name, avatar_url)')
-      .in('profile_id', friendIds)
-      .eq('status', 'in_progress')
-      .order('started_at', { ascending: false });
+    const { data: sessions } = await selectInBatches(
+      (ids) => supabase
+        .from('workout_sessions')
+        .select('id, profile_id, routine_name, started_at, profiles!inner(full_name, avatar_url)')
+        .in('profile_id', ids)
+        .eq('status', 'in_progress')
+        .order('started_at', { ascending: false }),
+      friendIds
+    );
 
     if (!sessions?.length) {
       setActiveTrainers([]);

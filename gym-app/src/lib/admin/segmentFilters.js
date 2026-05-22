@@ -1,5 +1,6 @@
 import { supabase } from '../supabase.js';
 import logger from '../logger.js';
+import { selectInBatches } from '../churn/batchedSelect.js';
 
 /**
  * Run a member-segment filter spec against the DB and return the matched
@@ -54,11 +55,13 @@ export async function applySegmentFilters(gymId, filters) {
     const safe = filters.fitness_level.filter(l => ALLOWED_LEVELS.includes(l));
     if (safe.length && filtered.length) {
       const memberIds = filtered.map(m => m.id);
-      const { data: onboarding } = await supabase
-        .from('member_onboarding')
-        .select('profile_id, fitness_level')
-        .in('profile_id', memberIds)
-        .in('fitness_level', safe);
+      const { data: onboarding } = await selectInBatches(
+        (ids) => supabase
+          .from('member_onboarding')
+          .select('profile_id, fitness_level')
+          .in('profile_id', ids)
+          .in('fitness_level', safe),
+        memberIds);
       const levelSet = new Set((onboarding || []).map(r => r.profile_id));
       filtered = filtered.filter(m => levelSet.has(m.id));
     }
@@ -73,12 +76,14 @@ export async function applySegmentFilters(gymId, filters) {
   ) {
     const memberIds = filtered.map(m => m.id);
     if (memberIds.length) {
-      const { data: sessions } = await supabase
-        .from('workout_sessions')
-        .select('profile_id, started_at')
-        .eq('gym_id', gymId)
-        .eq('status', 'completed')
-        .in('profile_id', memberIds);
+      const { data: sessions } = await selectInBatches(
+        (ids) => supabase
+          .from('workout_sessions')
+          .select('profile_id, started_at')
+          .eq('gym_id', gymId)
+          .eq('status', 'completed')
+          .in('profile_id', ids),
+        memberIds);
 
       const sessionMap = {};
       const lastSessionMap = {};
@@ -144,12 +149,14 @@ export async function applySegmentFilters(gymId, filters) {
   if (filters.churn_tier?.length) {
     const memberIds = filtered.map(m => m.id);
     if (memberIds.length) {
-      const { data: churnRows } = await supabase
-        .from('churn_risk_scores')
-        .select('profile_id, risk_tier')
-        .eq('gym_id', gymId)
-        .in('profile_id', memberIds)
-        .in('risk_tier', filters.churn_tier);
+      const { data: churnRows } = await selectInBatches(
+        (ids) => supabase
+          .from('churn_risk_scores')
+          .select('profile_id, risk_tier')
+          .eq('gym_id', gymId)
+          .in('profile_id', ids)
+          .in('risk_tier', filters.churn_tier),
+        memberIds);
 
       const churnSet = new Set((churnRows || []).map(r => r.profile_id));
       filtered = filtered.filter(m => churnSet.has(m.id));
@@ -160,11 +167,13 @@ export async function applySegmentFilters(gymId, filters) {
   if (filters.has_referral === true || filters.has_referral === false) {
     const memberIds = filtered.map(m => m.id);
     if (memberIds.length) {
-      const { data: referrals } = await supabase
-        .from('referrals')
-        .select('referrer_id')
-        .eq('gym_id', gymId)
-        .in('referrer_id', memberIds);
+      const { data: referrals } = await selectInBatches(
+        (ids) => supabase
+          .from('referrals')
+          .select('referrer_id')
+          .eq('gym_id', gymId)
+          .in('referrer_id', ids),
+        memberIds);
 
       const referrerSet = new Set((referrals || []).map(r => r.referrer_id));
       filtered = filtered.filter(m =>

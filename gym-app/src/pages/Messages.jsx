@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
+import { selectInBatches } from '../lib/churn/batchedSelect';
 import UserAvatar from '../components/UserAvatar';
 import EmptyState from '../components/EmptyState';
 import ContentActionMenu from '../components/ContentActionMenu';
@@ -196,14 +197,18 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
         return;
       }
 
-      // Search within friends only
+      // Search within friends only (batched: friend list can exceed 150 for
+      // social-heavy users, which would push a plain .in() past the URL limit)
       const safeQuery = query.replace(/[%_\\,()."']/g, '');
-      const { data } = await supabase
-        .from('gym_member_profiles_safe')
-        .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
-        .in('id', friendIds)
-        .or(`full_name.ilike.%${safeQuery}%,username.ilike.%${safeQuery}%`)
-        .limit(20);
+      const { data } = await selectInBatches(
+        (ids) => supabase
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
+          .in('id', ids)
+          .or(`full_name.ilike.%${safeQuery}%,username.ilike.%${safeQuery}%`)
+          .limit(20),
+        friendIds,
+      );
       // Belt-and-suspenders client filter: blocked users (either direction)
       // must never appear in the new-conversation picker.
       const filtered = (data || []).filter((m) => !hiddenIds.has(m.id));
@@ -1055,10 +1060,15 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
     const otherIds = convs.map(c => c.participant_1 === user.id ? c.participant_2 : c.participant_1);
     const uniqueIds = [...new Set(otherIds)];
 
-    const { data: profiles } = await supabase
-      .from('gym_member_profiles_safe')
-      .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
-      .in('id', uniqueIds);
+    // Batched: a user's conversation-partner list grows unbounded; plain .in()
+    // would exceed the URL limit past ~390 unique participants.
+    const { data: profiles } = await selectInBatches(
+      (ids) => supabase
+        .from('gym_member_profiles_safe')
+        .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
+        .in('id', ids),
+      uniqueIds,
+    );
 
     const profileMap = {};
     (profiles || []).forEach(p => { profileMap[p.id] = p; });

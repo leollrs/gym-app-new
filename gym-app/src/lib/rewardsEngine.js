@@ -87,34 +87,11 @@ export async function getUserPoints(userId, gymId) {
   }
 
   if (!data) {
-    let resolvedGymId = gymId;
-    if (!resolvedGymId) {
-      const { data: profileRow } = await supabase
-        .from('profiles')
-        .select('gym_id')
-        .eq('id', userId)
-        .maybeSingle();
-      resolvedGymId = profileRow?.gym_id;
-    }
-    if (!resolvedGymId) {
-      // No gym attached — can't create a row. Return zeros silently.
-      return { total_points: 0, lifetime_points: 0 };
-    }
-
-    const { data: newRow, error: upsertErr } = await supabase
-      .from('reward_points')
-      .upsert(
-        { profile_id: userId, gym_id: resolvedGymId, total_points: 0, lifetime_points: 0, last_updated: new Date().toISOString() },
-        { onConflict: 'profile_id' }
-      )
-      .select('total_points, lifetime_points, last_updated')
-      .single();
-
-    if (upsertErr) {
-      logger.error('getUserPoints upsert error:', upsertErr);
-      return { total_points: 0, lifetime_points: 0 };
-    }
-    return newRow;
+    // No points row yet. We intentionally do NOT create one from the client:
+    // reward_points is SELECT-only for members (migration 0429), and
+    // add_reward_points (SECURITY DEFINER) creates the row on the first
+    // awarded points. Until then, the member simply has zero.
+    return { total_points: 0, lifetime_points: 0 };
   }
 
   return data;

@@ -21,6 +21,13 @@ export {
   fetchMembersWithChurnScores,
 } from './retention.js';
 
+// Preferred loader: reads the nightly precompute + re-applies the inactivity
+// override, falling back to the live engine when stale. Use this instead of
+// fetchMembersWithChurnScores in page loads.
+export {
+  loadGymChurnScores,
+} from './loadScores.js';
+
 // Risk scoring & composite score
 export {
   DEFAULT_WEIGHTS,

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { selectInBatches } from '../lib/churn/batchedSelect';
 import UserAvatar from './UserAvatar';
 import { useCachedState } from '../hooks/useCachedState';
 import { ShareStreakSheet } from './share/QuickShareSheets';
@@ -122,7 +123,7 @@ const Navigation = () => {
       .catch(() => {});
   }, [user?.id, location.pathname]);
 
-  // Fetch unread DM count
+  // Fetch unread DM count — re-runs on every route change and on user change
   useEffect(() => {
     if (!user?.id) return;
     const fetchUnread = async () => {
@@ -133,22 +134,46 @@ const Navigation = () => {
         .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`);
       if (!convs || convs.length === 0) { setUnreadMessages(0); return; }
       const convIds = convs.map(c => c.id);
-      const { count } = await supabase
-        .from('direct_messages')
-        .select('*', { count: 'exact', head: true })
-        .neq('sender_id', user.id)
-        .is('read_at', null)
-        .in('conversation_id', convIds);
-      setUnreadMessages(count || 0);
+      const { data: unreadRows } = await selectInBatches(
+        (ids) => supabase
+          .from('direct_messages')
+          .select('id')
+          .neq('sender_id', user.id)
+          .is('read_at', null)
+          .in('conversation_id', ids),
+        convIds
+      );
+      setUnreadMessages(unreadRows ? unreadRows.length : 0);
     };
     fetchUnread();
+  }, [user?.id, location.pathname]);
 
-    // Realtime subscription for new DMs (debounced to prevent excessive refetches)
-    // Note: direct_messages has no receiver_id column, so we can't filter by
-    // receiver at the channel level. RLS already restricts events to the user's
-    // conversations. We narrow to INSERT events only (new messages) since the
-    // unread count is also re-fetched on every route change via location.pathname.
+  // Realtime subscription for new DMs — subscribed once per user, not per route change.
+  // Note: direct_messages has no receiver_id column, so we can't filter by
+  // receiver at the channel level. RLS already restricts events to the user's
+  // conversations. We narrow to INSERT events only (new messages) since the
+  // unread count is also re-fetched on every route change via location.pathname.
+  useEffect(() => {
+    if (!user?.id) return;
     let debounceTimer;
+    const fetchUnread = async () => {
+      const { data: convs } = await supabase
+        .from('conversations')
+        .select('id')
+        .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`);
+      if (!convs || convs.length === 0) { setUnreadMessages(0); return; }
+      const convIds = convs.map(c => c.id);
+      const { data: unreadRows } = await selectInBatches(
+        (ids) => supabase
+          .from('direct_messages')
+          .select('id')
+          .neq('sender_id', user.id)
+          .is('read_at', null)
+          .in('conversation_id', ids),
+        convIds
+      );
+      setUnreadMessages(unreadRows ? unreadRows.length : 0);
+    };
     const channel = supabase
       .channel('nav-dm-unread')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, () => {
@@ -157,7 +182,7 @@ const Navigation = () => {
       })
       .subscribe();
     return () => { clearTimeout(debounceTimer); supabase.removeChannel(channel); };
-  }, [user?.id, location.pathname]);
+  }, [user?.id]);
 
   const streakCalCacheKey = `streak-calendar-${user?.id || 'anon'}`;
   const streakFreezeCacheKey = `streak-freeze-${user?.id || 'anon'}`;

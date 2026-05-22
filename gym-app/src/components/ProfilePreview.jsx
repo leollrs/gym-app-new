@@ -83,11 +83,14 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
   useEffect(() => {
     if (!isOpen || !userId) return;
 
+    let cancelled = false;
+
     const fetchData = async () => {
       setLoading(true);
 
       const { data, error } = await supabase.rpc('get_profile_preview', { p_user_id: userId });
 
+      if (cancelled) return;
       if (error || !data?.profile) {
         setLoading(false);
         return;
@@ -112,6 +115,7 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
     };
 
     fetchData();
+    return () => { cancelled = true; };
   }, [isOpen, userId]);
 
   // Close on backdrop click

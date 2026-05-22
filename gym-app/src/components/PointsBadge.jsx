@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Coins } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserPoints, getRewardTier } from '../lib/rewardsEngine';
+import logger from '../lib/logger';
 
 export default function PointsBadge({ points: propPoints, tier: propTier }) {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ export default function PointsBadge({ points: propPoints, tier: propTier }) {
       const total = data?.lifetime_points ?? 0;
       setPts(total);
       setTierInfo(getRewardTier(total));
-    });
+    }).catch((err) => logger.error('PointsBadge getUserPoints error', err));
   }, [user?.id, propPoints, propTier, ctxLifetimePoints]);
 
   if (pts === null) return null;

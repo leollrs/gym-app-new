@@ -13,6 +13,7 @@ import { enUS } from 'date-fns/locale/en-US';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
+import { selectInBatches } from '../../lib/churn/batchedSelect';
 import EmptyState from '../../components/EmptyState';
 import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
 import {
@@ -137,41 +138,40 @@ export default function TrainerHome() {
       }
 
       const [churnRes, weekRes, todayRes, prsRes, liveRes] = await Promise.all([
-        supabase
-          .from('churn_risk_scores')
-          .select('profile_id, score, computed_at')
-          .in('profile_id', clientIds)
-          .order('computed_at', { ascending: false })
-          .limit(2000),
-        supabase
-          .from('workout_sessions')
-          .select('id, profile_id, name, started_at, total_volume_lbs, duration_seconds')
-          .in('profile_id', clientIds)
-          .eq('status', 'completed')
-          .gte('started_at', weekStart),
+        selectInBatches(
+          (ids) => supabase.from('churn_risk_scores').select('profile_id, score, computed_at')
+            .in('profile_id', ids).order('computed_at', { ascending: false }),
+          clientIds,
+        ),
+        selectInBatches(
+          (ids) => supabase.from('workout_sessions')
+            .select('id, profile_id, name, started_at, total_volume_lbs, duration_seconds')
+            .in('profile_id', ids).eq('status', 'completed').gte('started_at', weekStart),
+          clientIds,
+        ),
         supabase
           .from('trainer_sessions')
           .select('id, client_id, title, scheduled_at, duration_mins, status, profiles!trainer_sessions_client_id_fkey(id, full_name, username, avatar_url, avatar_type, avatar_value)')
           .eq('trainer_id', profile.id)
           .gte('scheduled_at', todayStart)
           .lte('scheduled_at', todayEnd)
-          .in('status', ['scheduled', 'confirmed', 'completed'])
+          .in('status', ['scheduled', 'confirmed', 'completed']) // fixed 3-value enum, left as-is
           .order('scheduled_at', { ascending: true }),
-        supabase
-          .from('personal_records')
-          .select('id, profile_id, exercise_id, weight_lbs, reps, achieved_at, exercises(name)')
-          .in('profile_id', clientIds)
-          .gte('achieved_at', sevenDaysAgo)
-          .order('achieved_at', { ascending: false })
-          .limit(8),
+        selectInBatches(
+          (ids) => supabase.from('personal_records')
+            .select('id, profile_id, exercise_id, weight_lbs, reps, achieved_at, exercises(name)')
+            .in('profile_id', ids).gte('achieved_at', sevenDaysAgo)
+            .order('achieved_at', { ascending: false }).limit(8),
+          clientIds,
+        ),
         // In-progress workout drafts — feeds the "Watch live" button on session
         // cards. Cheap query: 24h cutoff, just profile_id.
-        supabase
-          .from('session_drafts')
-          .select('profile_id')
-          .in('profile_id', clientIds)
-          .gte('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-          .limit(500),
+        selectInBatches(
+          (ids) => supabase.from('session_drafts').select('profile_id')
+            .in('profile_id', ids)
+            .gte('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+          clientIds,
+        ),
       ]);
 
       if (churnRes.error) logger.error('TrainerHome: churn fetch failed:', churnRes.error);

@@ -97,6 +97,22 @@ serve(async (req) => {
       return jsonResp({ error: 'payload is required' }, 400);
     }
 
+    // Allowlist: only sign known QR payload types. Previously this endpoint
+    // would HMAC-sign ANY arbitrary string for any authenticated member,
+    // which could mint a validly-signed payload of an unexpected shape.
+    // Restricting to the known `gym-*` prefixes shrinks that surface.
+    // NOTE (follow-up): identity-bearing payloads (e.g. gym-checkin:<id>)
+    // should additionally bind the embedded id to `user.id` so a member
+    // can't sign a QR for someone else — that needs the full payload spec
+    // and is tracked as a separate hardening task.
+    const ALLOWED_PREFIXES = [
+      'gym-checkin:', 'gym-member:', 'gym-reward:', 'gym-purchase:',
+      'gym-voucher:', 'gym-referral:', 'gym-reward-redemption:',
+    ];
+    if (!ALLOWED_PREFIXES.some((p) => payload.startsWith(p))) {
+      return jsonResp({ error: 'Unsupported payload type' }, 400);
+    }
+
     // Append a timestamp so the QR code can expire
     const timestampedPayload = payload + ':' + Date.now();
     const signature = await hmacSign(timestampedPayload);

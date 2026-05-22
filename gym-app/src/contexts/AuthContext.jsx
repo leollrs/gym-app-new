@@ -963,12 +963,14 @@ export const AuthProvider = ({ children }) => {
         }
       } catch { /* network blip — ignore */ }
     };
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', () => {
+    const onVisibility = () => {
       if (document.visibilityState === 'visible') handleFocus();
-    });
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [user?.id, profile?.role]);
 
@@ -1023,22 +1025,19 @@ export const AuthProvider = ({ children }) => {
     // privilege the user no longer has.
     try {
       const { data, error } = await supabase.rpc('get_effective_roles');
-      if (!error && data) {
+      if (error) {
+        console.error('[switchView] get_effective_roles RPC error — denying view switch', error?.message);
+        return false;
+      }
+      if (data) {
         const serverRoles = Array.isArray(data) ? data : (data.roles || []);
         if (serverRoles.length && !serverRoles.includes(nextRole)) {
           return false;
         }
-      } else if (error) {
-        // TODO: get_effective_roles RPC not deployed yet — fall back to
-        // client-side check above. Once the RPC is live, this branch should
-        // become a hard reject.
-        // eslint-disable-next-line no-console
-        console.warn('[switchView] get_effective_roles unavailable; falling back to cached roles', error?.message);
       }
     } catch (err) {
-      // TODO: as above — RPC may not exist yet on this gym's project.
-      // eslint-disable-next-line no-console
-      console.warn('[switchView] get_effective_roles threw; falling back', err?.message);
+      console.error('[switchView] get_effective_roles threw — denying view switch', err?.message);
+      return false;
     }
     try { localStorage.setItem('tugympr_active_view', nextRole); } catch { /* quota */ }
     setActiveView(nextRole);

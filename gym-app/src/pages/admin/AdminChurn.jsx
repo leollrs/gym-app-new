@@ -14,7 +14,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
-import { fetchMembersWithChurnScores, estimateChurnScoreFallback, fetchChurnFallback, autoDetectReturns } from '../../lib/churnScore';
+import { loadGymChurnScores, estimateChurnScoreFallback, fetchChurnFallback, autoDetectReturns } from '../../lib/churnScore';
 import { exportCSV } from '../../lib/csvExport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
@@ -40,7 +40,7 @@ import { outcomeConfig, METHOD_I18N } from './components/churnDisplay';
 async function fetchChurnData(gymId) {
   let scored;
   try {
-    scored = await fetchMembersWithChurnScores(gymId, supabase);
+    scored = await loadGymChurnScores(gymId, supabase);
     logger.debug('[Churn] v2 scoring returned:', scored?.length, 'members');
   } catch (err) {
     logger.error('[Churn] v2 scoring THREW:', err);
@@ -446,17 +446,33 @@ export default function AdminChurn() {
   // DB-backed contact logging
   const handleMarkContacted = useCallback(async (memberId, method = 'manual', note = null) => {
     try {
-      await supabase.from('admin_contact_log').insert({ admin_id: adminId, member_id: memberId, gym_id: gymId, method, note });
+      const { error } = await supabase.from('admin_contact_log').insert({ admin_id: adminId, member_id: memberId, gym_id: gymId, method, note });
+      if (error) {
+        logger.error('Failed to log contact', error);
+        showToast(t('admin.churn.markContactedError', { defaultValue: 'Failed to mark as contacted' }), 'error');
+        return;
+      }
       refetch();
-    } catch (err) { logger.error('Failed to log contact', err); }
-  }, [adminId, gymId, refetch]);
+    } catch (err) {
+      logger.error('Failed to log contact', err);
+      showToast(t('admin.churn.markContactedError', { defaultValue: 'Failed to mark as contacted' }), 'error');
+    }
+  }, [adminId, gymId, refetch, showToast, t]);
 
   const handleUnmarkContacted = useCallback(async (memberId) => {
     try {
-      await supabase.from('admin_contact_log').delete().eq('member_id', memberId).eq('gym_id', gymId);
+      const { error } = await supabase.from('admin_contact_log').delete().eq('member_id', memberId).eq('gym_id', gymId);
+      if (error) {
+        logger.error('Failed to unmark contact', error);
+        showToast(t('admin.churn.unmarkContactedError', { defaultValue: 'Failed to unmark contacted' }), 'error');
+        return;
+      }
       refetch();
-    } catch (err) { logger.error('Failed to unmark contact', err); }
-  }, [gymId, refetch]);
+    } catch (err) {
+      logger.error('Failed to unmark contact', err);
+      showToast(t('admin.churn.unmarkContactedError', { defaultValue: 'Failed to unmark contacted' }), 'error');
+    }
+  }, [gymId, refetch, showToast, t]);
 
   const handleAddToChallenge = async (member, challengeId) => {
     if (!challengeId) return;

@@ -51,6 +51,8 @@ export function estimateCardioCalories(cardioType, durationSeconds, weightLbs, d
   if (distanceKm && distanceKm > 0 && CAL_PER_KM_PER_KG[cardioType]) {
     const baseCal = CAL_PER_KM_PER_KG[cardioType] * weightKg * distanceKm;
     // Speed factor: faster pace = higher intensity = more calories
+    // Skip intensity multiplier when duration is zero (avoid Infinity).
+    if (durationHours <= 0) return Math.round(baseCal);
     const speedKmh = distanceKm / durationHours;
     const expectedSpeed = { running: 9, cycling: 20, rowing: 8, swimming: 2.5, walking: 5.5, hiking: 4 };
     const speedRatio = speedKmh / (expectedSpeed[cardioType] || 10);
