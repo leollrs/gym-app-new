@@ -19,6 +19,7 @@ import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { initWatchListeners, onWatchMessage, syncRoutinesToWatch, syncUserContextToWatch, syncQRToWatch } from './lib/watchBridge';
 import { getCached } from './lib/queryCache';
 import { supabase } from './lib/supabase';
+import { installAppResume, notifyBackground, notifyForeground } from './lib/appResume';
 import { hydrateFromDurable, flushToDurable, whenHydrated } from './lib/durableStorage';
 import { i18nPrimaryReady } from './i18n/i18n';
 import './index.css';
@@ -117,6 +118,13 @@ window.addEventListener('pagehide', flushCache);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushCache();
 });
+
+// ── App-resume recovery ────────────────────────────────────────────────────
+// After a real spell in the background, refresh the auth token, wake the
+// realtime socket (non-destructively — see appResume.js), and refetch stale
+// data. Fixes the "left it open, came back, nothing reloaded until I killed
+// and reopened the app" bug across member / admin / front-desk surfaces.
+installAppResume(queryClient);
 
 // ── Cold-start warm-up ────────────────────────────────────────────────────
 // If we have a Supabase session cached in localStorage already, kick off the
@@ -596,14 +604,20 @@ if (isNative) {
     // Handle app state changes (resume/pause)
     CapApp.addListener('appStateChange', ({ isActive }) => {
       if (isActive) {
-        // App resumed from background — check for OTA updates
+        // App resumed from background — check for OTA updates and run the
+        // resume recovery (token refresh + realtime wake + data refetch).
+        // appStateChange is the canonical native signal; visibilitychange is
+        // less reliable in the WebView. notifyForeground is a no-op if we
+        // weren't backgrounded long enough or already healed via visibility.
         CapacitorUpdater.notifyAppReady();
+        notifyForeground(queryClient);
       } else {
         // App going to background: flush localStorage → preferences NOW so
         // iOS can suspend/kill the WebView without losing recent writes (the
         // workout draft, RQ cache, etc.). Fire-and-forget; the OS will give
         // the JS task a brief window to settle.
         flushCache();
+        notifyBackground();
       }
     });
 
