@@ -1,4 +1,9 @@
 {
+  "maintenance": {
+    "title": "App en mantenimiento",
+    "body": "Estamos haciendo un mantenimiento rápido para mejorar la app. Volveremos en breve — gracias por tu paciencia.",
+    "autoResume": "Esta pantalla desaparecerá automáticamente cuando terminemos."
+  },
   "timeAgo": {
     "never": "Nunca",
     "today": "Hoy",
@@ -175,6 +180,7 @@
   },
   "platformNav": {
     "main": "PRINCIPAL",
+    "insights": "ANÁLISIS",
     "tools": "HERRAMIENTAS",
     "system": "SISTEMA",
     "operations": "Operaciones",
@@ -186,7 +192,9 @@
     "errorLogs": "Errores",
     "settings": "Configuración",
     "gymHealth": "Salud del Gimnasio",
-    "adoption": "Adopción"
+    "adoption": "Adopción",
+    "cardQueue": "Tarjetas",
+    "attention": "Atención"
   },
   "platformLayout": {
     "skipToContent": "Ir al contenido principal",

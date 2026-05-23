@@ -4,6 +4,7 @@ import { usePostHog } from '@posthog/react';
 import { useQueryClient } from '@tanstack/react-query';
 import QRCodeModal from './components/QRCodeModal';
 import UpdateRequiredModal from './components/UpdateRequiredModal';
+import MaintenanceGate from './components/MaintenanceGate';
 import { startVersionCheck } from './lib/appVersionCheck';
 import './App.css';
 
@@ -176,6 +177,8 @@ const AuditLog           = lazy(() => import('./pages/platform/AuditLog'));
 const ErrorLogs          = lazy(() => import('./pages/platform/ErrorLogs'));
 const GymHealth          = lazy(() => import('./pages/platform/GymHealth'));
 const FeatureAdoption    = lazy(() => import('./pages/platform/FeatureAdoption'));
+const CardQueue          = lazy(() => import('./pages/platform/CardQueue'));
+const Attention          = lazy(() => import('./pages/platform/Attention'));
 
 // ── APPLY SAVED THEME PREFERENCE ────────────────────────────
 // Theme is now system-based — html.dark class managed by ThemeContext + index.html
@@ -687,7 +690,7 @@ const ProtectedRoute = ({ children }) => {
   // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
   // Super admins always go to /platform — they don't have a member
   // experience even if technically `member` is in additional_roles.
-  if (isSuperAdminView(activeView)) return <Navigate to="/platform/operations" replace />;
+  if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
   if (!profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   // Route based on the user's chosen view, not their primary role. A
   // trainer who switched to member view stays here.
@@ -708,7 +711,7 @@ const OnboardingRoute = ({ children }) => {
   if (memberBlocked) return <MemberBlockedScreen />;
   // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
   if (profile.is_onboarded) {
-    if (isSuperAdminView(activeView)) return <Navigate to="/platform/operations" replace />;
+    if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
     if (isAdminView(activeView))      return <Navigate to="/admin" replace />;
     if (isTrainerView(activeView))    return <Navigate to="/trainer" replace />;
     return <Navigate to="/" replace />;
@@ -728,7 +731,7 @@ const AdminRoute = ({ children }) => {
   if (gymDeactivated)   return <GymDeactivatedScreen />;
   if (memberBlocked)    return <MemberBlockedScreen />;
   // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
-  if (isSuperAdminView(activeView)) return <Navigate to="/platform/operations" replace />;
+  if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
   // Entitlement check: must hold admin (or super_admin) somewhere — and
   // the activeView must be admin/super_admin (so a trainer who's also
   // an admin but switched to trainer view doesn't accidentally see
@@ -754,7 +757,7 @@ const PlatformRoute = ({ children }) => {
   // profile is hydrated without role for security, so `availableRoles`
   // is briefly empty after `loading` flips to false. Without this gate
   // the super_admin check returns false during that window, redirects
-  // to "/", and PublicRoute then bounces back to /platform/operations —
+  // to "/", and PublicRoute then bounces back to /platform/attention —
   // dropping any deep-link path the user actually wanted (e.g. cold-
   // loading /platform/gym/:id/ops would land on operations instead).
   if (!Array.isArray(availableRoles) || availableRoles.length === 0) return <LoadingScreen />;
@@ -781,7 +784,7 @@ const TrainerRoute = ({ children }) => {
   if (!isTrainerView(activeView)) {
     // Entitled but viewing as something else — go to the chosen view.
     if (isAdminView(activeView))      return <Navigate to="/admin" replace />;
-    if (isSuperAdminView(activeView)) return <Navigate to="/platform/operations" replace />;
+    if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
     return <Navigate to="/" replace />;
   }
   return children;
@@ -804,7 +807,7 @@ const PublicRoute = ({ children }) => {
   // of flashing ProfileUnavailableScreen during the brief fetch window
   if (user && !profile) return <LoadingScreen />;
   // Super-admin is identity-level — always route to /platform regardless of activeView
-  if (user && profile && hasRole(availableRoles, 'super_admin')) return <Navigate to="/platform/operations" replace />;
+  if (user && profile && hasRole(availableRoles, 'super_admin')) return <Navigate to="/platform/attention" replace />;
   if (user && profile && !profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   if (user && profile?.is_onboarded) {
     if (isAdminView(activeView))   return <Navigate to="/admin" replace />;
@@ -1449,6 +1452,9 @@ function App() {
         screens) the moment the API reports we're below min_required_version.
         Renders nothing while the client is up to date. */}
     <UpdateRequiredModal />
+    {/* Maintenance lock — full-screen overlay for all non-super-admins while
+        maintenance mode is on (toggled in platform Operations). */}
+    <MaintenanceGate />
     {!isOnline && !offlineDismissed && (
       <div className="fixed top-0 left-0 right-0 z-[999] flex items-center justify-center gap-2 py-2 px-4 animate-slide-down"
         style={{ background: 'var(--color-warning, #F59E0B)', color: '#000' }}>
@@ -1531,6 +1537,7 @@ function App() {
               <ErrorBoundary>
               <Suspense fallback={<Skeleton variant="page" />}>
               <Routes>
+                <Route path="/attention"           element={<Attention />} />
                 <Route path="/operations"          element={<Operations />} />
                 <Route path="/"                    element={<GymsOverview />} />
                 <Route path="/gym/:gymId"          element={<GymDetail />} />
@@ -1540,11 +1547,12 @@ function App() {
                 <Route path="/analytics"    element={<PlatformAnalytics />} />
                 <Route path="/gym-health"   element={<GymHealth />} />
                 <Route path="/adoption"     element={<FeatureAdoption />} />
+                <Route path="/cards"        element={<CardQueue />} />
                 <Route path="/support"      element={<SupportConsole />} />
                 <Route path="/settings"     element={<PlatformSettings />} />
                 <Route path="/audit-log"    element={<AuditLog />} />
                 <Route path="/error-logs"   element={<ErrorLogs />} />
-                <Route path="*"             element={<Navigate to="/platform/operations" replace />} />
+                <Route path="*"             element={<Navigate to="/platform/attention" replace />} />
               </Routes>
               </Suspense>
               </ErrorBoundary>
@@ -1567,6 +1575,23 @@ function App() {
               </Suspense>
             </ErrorBoundary>
           </AdminRoute>
+        }
+      />
+
+      {/* Platform print preview — same PrintCardsView, but gated by
+          PlatformRoute (super_admin) instead of AdminRoute, so the platform
+          card queue can preview/print any gym's cards (?gymId=<id>). Kept
+          OUTSIDE PlatformLayout for the same print-sizing reason as above. */}
+      <Route
+        path="/platform/print-cards/preview"
+        element={
+          <PlatformRoute>
+            <ErrorBoundary>
+              <Suspense fallback={<Skeleton variant="page" />}>
+                <PrintCardsView />
+              </Suspense>
+            </ErrorBoundary>
+          </PlatformRoute>
         }
       />
 

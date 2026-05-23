@@ -44,7 +44,14 @@ export default function PrintCardsView() {
   const [searchParams] = useSearchParams();
   const { gymName, gymLogoUrl, profile } = useAuth();
   const { t } = useTranslation('pages');
-  const gymId = profile?.gym_id;
+  // Optional ?gymId= override — used by the platform (super-admin) print
+  // queue, which previews a *target* gym's cards, not the viewer's own gym.
+  // The super_admin RLS policy on print_cards (migration 0430) lets the
+  // cross-gym read through; branding is fetched from that gym below. When
+  // the param is absent we fall back to the admin's own gym, so the existing
+  // /admin print flow is byte-for-byte unchanged.
+  const overrideGymId = searchParams.get('gymId') || null;
+  const gymId = overrideGymId || profile?.gym_id;
 
   const ids = useMemo(() => {
     const raw = searchParams.get('ids') || '';
@@ -94,12 +101,12 @@ export default function PrintCardsView() {
       const [brandingRes, gymRes] = await Promise.all([
         supabase
           .from('gym_branding')
-          .select('primary_color, accent_color')
+          .select('primary_color, accent_color, logo_url, custom_app_name')
           .eq('gym_id', gymId)
           .maybeSingle(),
         supabase
           .from('gyms')
-          .select('cup_noun, founded_year')
+          .select('name, cup_noun, founded_year')
           .eq('id', gymId)
           .maybeSingle(),
       ]);
@@ -107,6 +114,10 @@ export default function PrintCardsView() {
         primary: brandingRes.data?.primary_color || brandingRes.data?.accent_color || '#111111',
         cupNoun: gymRes.data?.cup_noun || null,
         est: gymRes.data?.founded_year || null,
+        // Only consumed when previewing another gym from the platform
+        // console — for the admin's own gym, AuthContext values win below.
+        name: brandingRes.data?.custom_app_name || gymRes.data?.name || null,
+        logo: brandingRes.data?.logo_url || null,
       };
     },
     enabled: !!gymId,
@@ -115,13 +126,15 @@ export default function PrintCardsView() {
 
   const gym = useMemo(
     () => ({
-      name: gymName || 'TuGymPR',
-      logo: gymLogoUrl || null,
+      // Platform preview (overrideGymId) uses the target gym's fetched
+      // branding; the admin's own preview keeps the AuthContext values.
+      name: (overrideGymId ? gymExtras?.name : gymName) || gymExtras?.name || 'TuGymPR',
+      logo: (overrideGymId ? gymExtras?.logo : gymLogoUrl) || null,
       primary: gymExtras?.primary || '#111111',
       cupNoun: gymExtras?.cupNoun,
       est: gymExtras?.est,
     }),
-    [gymName, gymLogoUrl, gymExtras]
+    [overrideGymId, gymName, gymLogoUrl, gymExtras]
   );
 
   // Set the document title + inject the font stylesheet into the new window's

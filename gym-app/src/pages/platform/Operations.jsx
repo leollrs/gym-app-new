@@ -214,6 +214,9 @@ export default function Operations() {
     activeGyms: 0,
   });
 
+  // Gyms whose member activity is dropping/silent (same rule as Gym Health).
+  const [goingQuietCount, setGoingQuietCount] = useState(0);
+
   const checkHealth = useCallback(async () => {
     const newHealth = {};
     const details = {};
@@ -465,6 +468,26 @@ export default function Operations() {
     }
   }, []);
 
+  // Member-activity "going quiet" count — mirrors the Gym Health watchlist
+  // rule so the daily Operations sweep flags gyms cooling off before churn.
+  const fetchGoingQuiet = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.rpc('platform_gym_activity_pulse', { p_window_days: 14 });
+      if (error || !data) { setGoingQuietCount(0); return; }
+      const now = new Date().getTime();
+      const count = data.filter((g) => {
+        const cur = Number(g.cur_checkins) + Number(g.cur_workouts);
+        const prior = Number(g.prior_checkins) + Number(g.prior_workouts);
+        const declinePct = prior > 0 ? Math.round(((prior - cur) / prior) * 100) : (cur === 0 ? 100 : 0);
+        const daysSince = g.last_activity ? Math.floor((now - new Date(g.last_activity).getTime()) / 86400000) : null;
+        return daysSince !== null && (daysSince >= 7 || (declinePct >= 40 && prior >= 3));
+      }).length;
+      setGoingQuietCount(count);
+    } catch {
+      setGoingQuietCount(0);
+    }
+  }, []);
+
   const fetchFeatureFlags = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -499,20 +522,20 @@ export default function Operations() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([checkHealth(), fetchIncidents(), fetchFeatureFlags()]);
+    await Promise.all([checkHealth(), fetchIncidents(), fetchFeatureFlags(), fetchGoingQuiet()]);
     setLastRefresh(new Date());
     setRefreshing(false);
-  }, [checkHealth, fetchIncidents, fetchFeatureFlags]);
+  }, [checkHealth, fetchIncidents, fetchFeatureFlags, fetchGoingQuiet]);
 
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      await Promise.all([checkHealth(), fetchIncidents(), fetchFeatureFlags()]);
+      await Promise.all([checkHealth(), fetchIncidents(), fetchFeatureFlags(), fetchGoingQuiet()]);
       setLastRefresh(new Date());
       setLoading(false);
     };
     init();
-  }, [checkHealth, fetchIncidents, fetchFeatureFlags]);
+  }, [checkHealth, fetchIncidents, fetchFeatureFlags, fetchGoingQuiet]);
 
   // Auto-refresh every 60s
   useEffect(() => {
@@ -689,6 +712,30 @@ export default function Operations() {
           )}
         </div>
       </FadeIn>
+
+      {/* Gyms going quiet — member-activity early-warning, links to the
+          full watchlist on Gym Health. Only shown when there's something. */}
+      {goingQuietCount > 0 && (
+        <FadeIn delay={170}>
+          <button
+            onClick={() => navigate('/platform/gym-health')}
+            className="w-full mb-6 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/8 border border-amber-500/20 hover:bg-amber-500/12 transition-colors text-left group"
+          >
+            <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+              <Activity size={16} className="text-amber-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-[#E5E7EB]">
+                {t('platform.ops.goingQuiet', { count: goingQuietCount, defaultValue: '{{count}} gyms going quiet' })}
+              </p>
+              <p className="text-[11px] text-[#6B7280]">
+                {t('platform.ops.goingQuietDesc', 'Member activity dropping or silent — review on Gym Health')}
+              </p>
+            </div>
+            <ChevronRight size={14} className="text-[#6B7280] group-hover:text-amber-400 transition-colors flex-shrink-0" />
+          </button>
+        </FadeIn>
+      )}
 
       {/* Blast radius (only show when there are incidents) */}
       {incidents.length > 0 && (

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Bug, AlertTriangle, Search, Filter, ChevronDown, ChevronRight,
-  Monitor, Smartphone, Clock, Building2, Loader2,
+  Monitor, Smartphone, Clock, Building2, Loader2, TrendingUp,
 } from 'lucide-react';
 import { formatDistanceToNow, subDays, subHours } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -188,6 +188,7 @@ export default function ErrorLogs() {
   const debounceRef = useRef(null);
 
   const [gyms, setGyms] = useState([]);
+  const [breakdown, setBreakdown] = useState([]);
 
   // Fetch gyms for the filter dropdown
   useEffect(() => {
@@ -199,6 +200,35 @@ export default function ErrorLogs() {
       if (data) setGyms(data);
     })();
   }, []);
+
+  // Per-gym breakdown + spike detection (server-side aggregate). Reflects the
+  // active date-range + type filters, but NOT the gym filter — it's the "which
+  // gym should I look at" picker, so click a row to drill in.
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.rpc('platform_error_breakdown', {
+        p_range: dateRange,
+        p_type: errorType,
+      });
+      if (error) {
+        logger.error('Error fetching error breakdown:', error);
+        setBreakdown([]);
+        return;
+      }
+      setBreakdown(data || []);
+    })();
+  }, [dateRange, errorType]);
+
+  // A gym is "spiking" when this window is materially worse than the previous
+  // equal-length window: 2×+ the prior count (with a noise floor), or a fresh
+  // burst from near-zero. 'all' range has no prior window, so never spikes.
+  const isSpiking = (row) => {
+    const cur = Number(row.current_count) || 0;
+    const prior = Number(row.prior_count) || 0;
+    if (dateRange === 'all') return false;
+    if (prior === 0) return cur >= 10;
+    return cur >= 5 && cur >= prior * 2;
+  };
 
   // Debounce search input
   useEffect(() => {
@@ -331,6 +361,50 @@ export default function ErrorLogs() {
               })()}
             </p>
             <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.topErrorType', 'Top Error Type')}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Per-gym breakdown — which gyms are having issues, ranked, with spike
+          flags. Click a gym to filter the log below to just that gym. */}
+      {!loading && breakdown.length > 0 && (
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6 overflow-hidden">
+          <div className="flex items-center gap-2 mb-3">
+            <Building2 size={14} className="text-[#6B7280]" />
+            <span className="text-[12px] text-[#6B7280] font-medium uppercase tracking-wider">
+              {t('platform.errors.byGym', 'Errors by gym')}
+            </span>
+          </div>
+          <div className="space-y-1">
+            {breakdown.slice(0, 8).map((row) => {
+              const spiking = isSpiking(row);
+              const active = gymFilter === row.gym_id;
+              return (
+                <button
+                  key={row.gym_id}
+                  onClick={() => setGymFilter(active ? 'all' : row.gym_id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                    active ? 'bg-white/[0.06] border border-white/10' : 'hover:bg-white/[0.03] border border-transparent'
+                  }`}
+                >
+                  <span className="text-[12px] text-[#E5E7EB] truncate flex-1">{row.gym_name}</span>
+                  {spiking && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/15 text-red-400">
+                      <TrendingUp size={10} />
+                      {t('platform.errors.spike', 'Spike')}
+                    </span>
+                  )}
+                  {Number(row.crash_count) > 0 && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-500/15 text-red-400 tabular-nums">
+                      {t('platform.errors.crashCount', { count: Number(row.crash_count), defaultValue: '{{count}} critical' })}
+                    </span>
+                  )}
+                  <span className="text-[12px] font-bold text-[#E5E7EB] tabular-nums w-10 text-right">
+                    {Number(row.current_count).toLocaleString()}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

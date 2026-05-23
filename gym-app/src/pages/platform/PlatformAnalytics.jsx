@@ -9,7 +9,7 @@ import {
   UserPlus, Activity, ChevronRight, AlertTriangle,
   DollarSign, UserCheck, Signal,
 } from 'lucide-react';
-import { format, subDays, subWeeks, subMonths, startOfWeek, startOfMonth, parseISO } from 'date-fns';
+import { format, subMonths, startOfMonth, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
@@ -42,11 +42,14 @@ export default function PlatformAnalytics() {
 
   const [loading, setLoading] = useState(true);
   const [gyms, setGyms] = useState([]);
-  const [profiles, setProfiles] = useState([]);
-  const [sessions, setSessions] = useState([]);
-  const [checkIns, setCheckIns] = useState([]);
-  const [churnScores, setChurnScores] = useState([]);
-  const [growthData, setGrowthData] = useState([]);
+  // Server-side aggregates (migration 0437) — one row per gym, so payload
+  // scales with gym count, not member count.
+  const [statsRows, setStatsRows] = useState([]);
+  const [growthRows, setGrowthRows] = useState([]);
+  const [churnData, setChurnData] = useState({ total_at_risk: 0, avg_score: 0, signals: [] });
+
+  // Per-gym scope: null = all gyms (platform-wide), or a gym id to focus one.
+  const [scopeId, setScopeId] = useState(null);
 
   // Sort state for gym table
   const [sortKey, setSortKey] = useState('members');
@@ -59,84 +62,64 @@ export default function PlatformAnalytics() {
     document.title = `${t('platform.analytics.title', 'Analytics')} | ${window.__APP_NAME || 'TuGymPR'}`;
   }, [t]);
 
-  // ── Fetch all data ─────────────────────────────────────────
+  // ── Gyms + per-gym aggregates (scope-independent; scoping is a client
+  //    filter on the per-gym rows). ────────────────────────────
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const now = new Date();
-      const thirtyDaysAgo = subDays(now, 30).toISOString();
-      const ninetyDaysAgo = subDays(now, 90).toISOString();
-
-      const [gymRes, profileRes, sessionRes, checkInRes, churnRes, recentProfileRes] = await Promise.all([
+      const [gymRes, statsRes] = await Promise.all([
         supabase.from('gyms').select('id, name, slug, is_active, created_at, subscription_tier, monthly_price, plan_type, is_founding'),
-        supabase.from('profiles').select('id, gym_id, role, created_at, last_active_at, membership_status, is_onboarded'),
-        supabase.from('workout_sessions').select('id, gym_id, profile_id, status, started_at').eq('status', 'completed').gte('started_at', thirtyDaysAgo),
-        supabase.from('check_ins').select('id, gym_id, profile_id, checked_in_at').gte('checked_in_at', thirtyDaysAgo),
-        supabase.from('churn_risk_scores').select('id, gym_id, profile_id, score, risk_tier, key_signals'),
-        supabase.from('profiles').select('id, gym_id, created_at').gte('created_at', ninetyDaysAgo),
+        supabase.rpc('platform_gym_stats'),
       ]);
-
       setGyms(gymRes.data || []);
-      setProfiles(profileRes.data || []);
-      setSessions(sessionRes.data || []);
-      setCheckIns(checkInRes.data || []);
-      setChurnScores(churnRes.data || []);
-
-      // Build weekly growth data for last 90 days
-      const recentProfiles = recentProfileRes.data || [];
-      const weeks = [];
-      for (let i = 12; i >= 0; i--) {
-        const weekStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 });
-        const weekEnd = startOfWeek(subWeeks(now, i - 1), { weekStartsOn: 1 });
-        const count = recentProfiles.filter(p => {
-          const d = new Date(p.created_at);
-          return d >= weekStart && d < weekEnd;
-        }).length;
-        weeks.push({
-          week: format(weekStart, 'MMM d'),
-          newMembers: count,
-        });
-      }
-      setGrowthData(weeks);
+      setStatsRows(statsRes.data || []);
       setLoading(false);
     };
-
     fetchAll();
   }, []);
 
-  // ── Derived stats ──────────────────────────────────────────
-  const totalGyms = gyms.length;
-  const totalMembers = profiles.length;
-  const totalSessions = sessions.length;
-  const newMembers30d = useMemo(() => {
-    const cutoff = subDays(new Date(), 30).toISOString();
-    return profiles.filter(p => p.created_at >= cutoff).length;
-  }, [profiles]);
+  // ── Growth + churn signals are time-series / text aggregates the server
+  //    computes for the chosen scope (one gym or all). Refetch on scope change.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [growthRes, churnRes] = await Promise.all([
+        supabase.rpc('platform_member_growth', { p_gym_id: scopeId, p_weeks: 13 }),
+        supabase.rpc('platform_churn_signals', { p_gym_id: scopeId }),
+      ]);
+      if (cancelled) return;
+      setGrowthRows(growthRes.data || []);
+      setChurnData(churnRes.data || { total_at_risk: 0, avg_score: 0, signals: [] });
+    })();
+    return () => { cancelled = true; };
+  }, [scopeId]);
 
-  const avgSessionsPerMember = useMemo(() => {
-    if (!totalMembers) return 0;
-    return (totalSessions / totalMembers).toFixed(1);
-  }, [totalSessions, totalMembers]);
+  // ── Scope: filter the per-gym aggregate rows to the selected gym (or all).
+  const scopeGym = useMemo(() => (scopeId ? gyms.find(g => g.id === scopeId) || null : null), [gyms, scopeId]);
+  const sStats = useMemo(() => (scopeId ? statsRows.filter(r => r.gym_id === scopeId) : statsRows), [statsRows, scopeId]);
 
-  // Members who checked in within last 30d
-  const activeMembers = useMemo(() => {
-    const activeIds = new Set(checkIns.map(c => c.profile_id));
-    return activeIds.size;
-  }, [checkIns]);
+  // ── Derived stats (sum the per-gym aggregate rows) ─────────
+  const sumStat = (key) => sStats.reduce((s, r) => s + (Number(r[key]) || 0), 0);
+  const totalGyms = scopeId ? 1 : gyms.length;
+  const totalMembers = sumStat('member_count');
+  const totalSessions = sumStat('sessions_30d');
+  const newMembers30d = sumStat('new_30d');
+  const activeMembers = sumStat('checkedin_30d');
+  const avgSessionsPerMember = totalMembers ? (totalSessions / totalMembers).toFixed(1) : 0;
+  const retentionRate = totalMembers ? ((activeMembers / totalMembers) * 100).toFixed(1) : 0;
 
-  const retentionRate = useMemo(() => {
-    if (!totalMembers) return 0;
-    return ((activeMembers / totalMembers) * 100).toFixed(1);
-  }, [activeMembers, totalMembers]);
+  // Weekly member-growth series from the server (already scope-aware).
+  const growthData = useMemo(
+    () => growthRows.map(r => ({ week: format(parseISO(r.week_start), 'MMM d'), newMembers: Number(r.new_members) || 0 })),
+    [growthRows]
+  );
 
   // ── Revenue metrics (dynamic pricing based on tier + member count) ──
   const gymMemberCounts = useMemo(() => {
     const counts = {};
-    profiles.forEach(p => {
-      counts[p.gym_id] = (counts[p.gym_id] || 0) + 1;
-    });
+    statsRows.forEach(r => { counts[r.gym_id] = r.member_count || 0; });
     return counts;
-  }, [profiles]);
+  }, [statsRows]);
 
   const getGymPrice = (g) => {
     const memberCount = gymMemberCounts[g.id] || 0;
@@ -148,12 +131,14 @@ export default function PlatformAnalytics() {
     });
   };
 
+  const scopedGyms = useMemo(() => (scopeId ? gyms.filter(g => g.id === scopeId) : gyms), [gyms, scopeId]);
+
   const mrr = useMemo(() => {
-    return gyms.filter(g => g.is_active).reduce((sum, g) => sum + getGymPrice(g), 0);
-  }, [gyms, gymMemberCounts]);
+    return scopedGyms.filter(g => g.is_active).reduce((sum, g) => sum + getGymPrice(g), 0);
+  }, [scopedGyms, gymMemberCounts]);
 
   const revenueByGym = useMemo(() => {
-    return gyms
+    return scopedGyms
       .map(g => {
         const memberCount = gymMemberCounts[g.id] || 0;
         const price = getGymPrice(g);
@@ -170,42 +155,36 @@ export default function PlatformAnalytics() {
         };
       })
       .sort((a, b) => b.price - a.price);
-  }, [gyms, gymMemberCounts]);
+  }, [scopedGyms, gymMemberCounts]);
 
   const monthlyIncomeChart = useMemo(() => {
     const now = new Date();
     const months = [];
     for (let i = 11; i >= 0; i--) {
       const monthStart = startOfMonth(subMonths(now, i));
-      const income = gyms
+      const income = scopedGyms
         .filter(g => new Date(g.created_at) <= monthStart && g.is_active)
         .reduce((sum, g) => sum + getGymPrice(g), 0);
       months.push({ month: format(monthStart, 'MMM'), income });
     }
     return months;
-  }, [gyms, gymMemberCounts]);
+  }, [scopedGyms, gymMemberCounts]);
 
   const arr = mrr * 12;
-  const payingGyms = gyms.filter(g => g.is_active && getGymPrice(g) > 0).length;
+  const payingGyms = scopedGyms.filter(g => g.is_active && getGymPrice(g) > 0).length;
   const avgRevenuePerGym = payingGyms > 0 ? (mrr / payingGyms) : 0;
 
   // ── Per-gym breakdown ──────────────────────────────────────
   const gymBreakdown = useMemo(() => {
+    const byId = Object.fromEntries(statsRows.map(r => [r.gym_id, r]));
     return gyms.map(gym => {
-      const gymProfiles = profiles.filter(p => p.gym_id === gym.id);
-      const gymSessions = sessions.filter(s => s.gym_id === gym.id);
-      const gymCheckIns = checkIns.filter(c => c.gym_id === gym.id);
-      const gymChurn = churnScores.filter(c => c.gym_id === gym.id);
-
-      const memberCount = gymProfiles.length;
-      const activeIds = new Set(gymCheckIns.map(c => c.profile_id));
-      const activeRate = memberCount ? ((activeIds.size / memberCount) * 100) : 0;
-      const sessionCount = gymSessions.length;
-      const retention = memberCount ? ((activeIds.size / memberCount) * 100) : 0;
-      const highChurn = gymChurn.filter(c => c.risk_tier === 'critical' || c.risk_tier === 'high').length;
-      const churnPct = memberCount ? ((highChurn / memberCount) * 100) : 0;
-
-      // Determine if "struggling"
+      const s = byId[gym.id] || {};
+      const memberCount = s.member_count || 0;
+      const activeRate = memberCount ? ((s.checkedin_30d || 0) / memberCount) * 100 : 0;
+      const sessionCount = s.sessions_30d || 0;
+      const retention = activeRate;
+      const highChurn = (s.churn_critical || 0) + (s.churn_high || 0);
+      const churnPct = memberCount ? (highChurn / memberCount) * 100 : 0;
       const isStruggling = activeRate < 30 || churnPct > 20;
 
       return {
@@ -221,7 +200,7 @@ export default function PlatformAnalytics() {
         isStruggling,
       };
     });
-  }, [gyms, profiles, sessions, checkIns, churnScores]);
+  }, [gyms, statsRows]);
 
   // ── Sorted gym table ───────────────────────────────────────
   const sortedGyms = useMemo(() => {
@@ -256,89 +235,48 @@ export default function PlatformAnalytics() {
     return gymBreakdown.filter(g => g.isStruggling).sort((a, b) => a.activeRate - b.activeRate);
   }, [gymBreakdown]);
 
-  // ── Cross-Gym Churn Analysis ────────────────────────────────
+  // ── Cross-Gym Churn Analysis (per-gym from aggregates, totals+signals from RPC) ──
   const crossGymChurn = useMemo(() => {
-    const atRisk = churnScores.filter(c => c.risk_tier === 'critical' || c.risk_tier === 'high');
-    const totalAtRisk = atRisk.length;
-    const platformAvgScore = churnScores.length
-      ? +(churnScores.reduce((s, c) => s + (c.score || 0), 0) / churnScores.length).toFixed(1)
-      : 0;
-
-    // Per-gym avg churn scores
-    const gymScoreMap = {};
-    churnScores.forEach(c => {
-      if (!gymScoreMap[c.gym_id]) gymScoreMap[c.gym_id] = { sum: 0, count: 0 };
-      gymScoreMap[c.gym_id].sum += c.score || 0;
-      gymScoreMap[c.gym_id].count += 1;
-    });
-
     const gymNameMap = {};
     gyms.forEach(g => { gymNameMap[g.id] = g.name; });
 
-    const perGymChurn = Object.entries(gymScoreMap)
-      .map(([gymId, { sum, count }]) => ({
-        gymId,
-        name: gymNameMap[gymId] || t('platform.analytics.unknown', 'Unknown'),
-        avgScore: +(sum / count).toFixed(1),
-        count,
+    const perGymChurn = sStats
+      .filter(r => (r.churn_count || 0) > 0)
+      .map(r => ({
+        gymId: r.gym_id,
+        name: gymNameMap[r.gym_id] || t('platform.analytics.unknown', 'Unknown'),
+        avgScore: +(Number(r.avg_churn_score) || 0).toFixed(1),
+        count: r.churn_count || 0,
       }))
       .sort((a, b) => b.avgScore - a.avgScore);
 
     const gymsRisingChurn = perGymChurn.filter(g => g.avgScore > 50).length;
-
-    // Aggregate key_signals
-    const signalCounts = {};
-    const signalGymCounts = {};
-    atRisk.forEach(c => {
-      const signals = Array.isArray(c.key_signals) ? c.key_signals : [];
-      const gymName = gymNameMap[c.gym_id] || 'Unknown';
-      signals.forEach(sig => {
-        const label = typeof sig === 'string' ? sig : String(sig);
-        if (!label) return;
-        signalCounts[label] = (signalCounts[label] || 0) + 1;
-        if (!signalGymCounts[label]) signalGymCounts[label] = {};
-        signalGymCounts[label][gymName] = (signalGymCounts[label][gymName] || 0) + 1;
-      });
-    });
-
-    const topSignals = Object.entries(signalCounts)
-      .map(([signal, count]) => {
-        const gymEntries = Object.entries(signalGymCounts[signal] || {});
-        const mostAffected = gymEntries.sort((a, b) => b[1] - a[1])[0];
-        return {
-          signal,
-          count,
-          pct: totalAtRisk ? +((count / totalAtRisk) * 100).toFixed(1) : 0,
-          mostAffectedGym: mostAffected ? mostAffected[0] : '—',
-        };
-      })
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
+    const totalAtRisk = Number(churnData.total_at_risk) || 0;
+    const platformAvgScore = +(Number(churnData.avg_score) || 0).toFixed(1);
+    const topSignals = (churnData.signals || []).slice(0, 10).map(s => ({
+      signal: s.signal,
+      count: Number(s.occurrences) || 0,
+      pct: totalAtRisk ? +(((Number(s.occurrences) || 0) / totalAtRisk) * 100).toFixed(1) : 0,
+      mostAffectedGym: s.gym || '—',
+    }));
 
     return { totalAtRisk, platformAvgScore, gymsRisingChurn, perGymChurn, topSignals };
-  }, [churnScores, gyms, t]);
+  }, [sStats, churnData, gyms, t]);
 
-  // ── Onboarding Effectiveness ──────────────────────────────
+  // ── Onboarding Effectiveness (from per-gym aggregates) ─────
   const onboardingData = useMemo(() => {
     const gymNameMap = {};
     gyms.forEach(g => { gymNameMap[g.id] = g.name; });
 
-    const gymOnboardingMap = {};
-    profiles.forEach(p => {
-      if (p.role !== 'member') return;
-      if (!gymOnboardingMap[p.gym_id]) gymOnboardingMap[p.gym_id] = { total: 0, onboarded: 0 };
-      gymOnboardingMap[p.gym_id].total += 1;
-      if (p.is_onboarded) gymOnboardingMap[p.gym_id].onboarded += 1;
-    });
-
-    const perGym = Object.entries(gymOnboardingMap)
-      .map(([gymId, { total, onboarded }]) => ({
-        gymId,
-        name: gymNameMap[gymId] || t('platform.analytics.unknown', 'Unknown'),
-        total,
-        onboarded,
-        rate: total ? +((onboarded / total) * 100).toFixed(1) : 0,
-        notOnboarded: total - onboarded,
+    const perGym = sStats
+      .filter(r => (r.member_count || 0) > 0)
+      .map(r => ({
+        gymId: r.gym_id,
+        name: gymNameMap[r.gym_id] || t('platform.analytics.unknown', 'Unknown'),
+        total: r.member_count || 0,
+        onboarded: r.onboarded_count || 0,
+        rate: r.member_count ? +(((r.onboarded_count || 0) / r.member_count) * 100).toFixed(1) : 0,
+        notOnboarded: (r.member_count || 0) - (r.onboarded_count || 0),
       }))
       .sort((a, b) => b.rate - a.rate);
 
@@ -350,7 +288,7 @@ export default function PlatformAnalytics() {
     const gapsGyms = perGym.filter(g => g.rate < 60);
 
     return { perGym, platformAvgRate, best, worst, gapsGyms };
-  }, [profiles, gyms, t]);
+  }, [sStats, gyms, t]);
 
   // ── Render ─────────────────────────────────────────────────
   if (loading) return <PlatformSpinner />;
@@ -360,8 +298,43 @@ export default function PlatformAnalytics() {
       {/* Header */}
       <FadeIn>
         <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-0.5 truncate">{t('platform.analytics.title', 'Analytics')}</h1>
-        <p className="text-[12px] text-[#6B7280] mb-6">{t('platform.analytics.subtitle', 'Growth, retention, and revenue')}</p>
+        <p className="text-[12px] text-[#6B7280] mb-4">
+          {scopeGym
+            ? t('platform.analytics.subtitleGym', { name: scopeGym.name, defaultValue: 'Growth, retention, and revenue — {{name}}' })
+            : t('platform.analytics.subtitle', 'Growth, retention, and revenue')}
+        </p>
       </FadeIn>
+
+      {/* Per-gym scope selector */}
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
+        <span className="text-[11px] text-[#6B7280] uppercase tracking-wider font-semibold">{t('platform.analytics.viewing', 'Viewing')}</span>
+        <select
+          value={scopeId || 'all'}
+          onChange={(e) => setScopeId(e.target.value === 'all' ? null : e.target.value)}
+          className="bg-[#111827] border border-white/6 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+        >
+          <option value="all">{t('platform.analytics.allGyms', 'All gyms')}</option>
+          {[...gyms].sort((a, b) => a.name.localeCompare(b.name)).map((g) => (
+            <option key={g.id} value={g.id}>{g.name}</option>
+          ))}
+        </select>
+        {scopeGym && (
+          <>
+            <button
+              onClick={() => navigate(`/platform/gym/${scopeGym.id}`)}
+              className="text-[11px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors"
+            >
+              {t('platform.analytics.openGym', 'Open gym →')}
+            </button>
+            <button
+              onClick={() => setScopeId(null)}
+              className="text-[11px] text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+            >
+              {t('platform.analytics.backToAll', '← All gyms')}
+            </button>
+          </>
+        )}
+      </div>
 
       {/* ── Top Stats ───────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
@@ -495,6 +468,8 @@ export default function PlatformAnalytics() {
         </FadeIn>
       </div>
 
+      {/* Cross-gym rankings — only meaningful platform-wide; hidden when a single gym is in scope */}
+      {!scopeId && (<>
       {/* ── Two-column: Top Gyms + Struggling Gyms ──────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Top Gyms */}
@@ -667,17 +642,22 @@ export default function PlatformAnalytics() {
           )}
         </div>
       </FadeIn>
+      </>)}
 
       {/* ── Cross-Gym Churn Patterns ─────────────────────────── */}
       <FadeIn delay={300}>
         <div className="mt-6">
           <div className="flex items-center gap-2 mb-4">
             <TrendingDown className="w-5 h-5 text-red-400" />
-            <h2 className="text-[17px] font-bold text-[#E5E7EB]">{t('platform.analytics.crossGymChurn', 'Cross-Gym Churn Patterns')}</h2>
+            <h2 className="text-[17px] font-bold text-[#E5E7EB]">
+              {scopeGym
+                ? t('platform.analytics.churnPatternsGym', { name: scopeGym.name, defaultValue: 'Churn patterns — {{name}}' })
+                : t('platform.analytics.crossGymChurn', 'Cross-Gym Churn Patterns')}
+            </h2>
           </div>
 
           {/* Churn summary strip */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+          <div className={`grid grid-cols-1 ${scopeId ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-3 mb-6`}>
             <StatCard
               value={crossGymChurn.totalAtRisk.toLocaleString()}
               label={t('platform.analytics.totalAtRisk', 'Total At-Risk Members')}
@@ -687,21 +667,24 @@ export default function PlatformAnalytics() {
             />
             <StatCard
               value={crossGymChurn.platformAvgScore}
-              label={t('platform.analytics.platformAvgChurn', 'Platform Avg Churn Score')}
+              label={scopeGym ? t('platform.analytics.avgChurnScore', 'Avg Churn Score') : t('platform.analytics.platformAvgChurn', 'Platform Avg Churn Score')}
               icon={Activity}
               color="#F59E0B"
               delay={320}
             />
-            <StatCard
-              value={crossGymChurn.gymsRisingChurn}
-              label={t('platform.analytics.gymsRisingChurn', 'Gyms with Rising Churn')}
-              icon={TrendingUp}
-              color="#F97316"
-              delay={330}
-            />
+            {!scopeId && (
+              <StatCard
+                value={crossGymChurn.gymsRisingChurn}
+                label={t('platform.analytics.gymsRisingChurn', 'Gyms with Rising Churn')}
+                icon={TrendingUp}
+                color="#F97316"
+                delay={330}
+              />
+            )}
           </div>
 
-          {/* Churn by Gym Bar Chart */}
+          {/* Churn by Gym Bar Chart — cross-gym only */}
+          {!scopeId && (
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
             <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.avgChurnByGym', 'Avg Churn Score by Gym')}</h3>
             {crossGymChurn.perGymChurn.length === 0 ? (
@@ -744,6 +727,7 @@ export default function PlatformAnalytics() {
               </div>
             )}
           </div>
+          )}
 
           {/* Common Churn Signals Table */}
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
@@ -800,35 +784,44 @@ export default function PlatformAnalytics() {
         <div className="mt-6">
           <div className="flex items-center gap-2 mb-4">
             <UserCheck className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-[17px] font-bold text-[#E5E7EB]">{t('platform.analytics.onboardingEffectiveness', 'Onboarding Effectiveness by Gym')}</h2>
+            <h2 className="text-[17px] font-bold text-[#E5E7EB]">
+              {scopeGym
+                ? t('platform.analytics.onboardingGym', { name: scopeGym.name, defaultValue: 'Onboarding — {{name}}' })
+                : t('platform.analytics.onboardingEffectiveness', 'Onboarding Effectiveness by Gym')}
+            </h2>
           </div>
 
           {/* Onboarding summary strip */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+          <div className={`grid grid-cols-1 ${scopeId ? 'md:grid-cols-1' : 'md:grid-cols-3'} gap-3 mb-6`}>
             <StatCard
               value={`${onboardingData.platformAvgRate}%`}
-              label={t('platform.analytics.platformAvgOnboarding', 'Platform Avg Onboarding Rate')}
+              label={scopeGym ? t('platform.analytics.gymOnboardingRate', 'Onboarding Rate') : t('platform.analytics.platformAvgOnboarding', 'Platform Avg Onboarding Rate')}
               icon={UserCheck}
               color="#10B981"
               delay={360}
             />
-            <StatCard
-              value={onboardingData.best ? `${onboardingData.best.rate}%` : '—'}
-              label={onboardingData.best ? `${t('platform.analytics.bestPerforming', 'Best Performing Gym')}: ${onboardingData.best.name}` : t('platform.analytics.bestPerforming', 'Best Performing Gym')}
-              icon={TrendingUp}
-              color="#6366F1"
-              delay={370}
-            />
-            <StatCard
-              value={onboardingData.worst ? `${onboardingData.worst.rate}%` : '—'}
-              label={onboardingData.worst ? `${t('platform.analytics.lowestPerforming', 'Lowest Performing Gym')}: ${onboardingData.worst.name}` : t('platform.analytics.lowestPerforming', 'Lowest Performing Gym')}
-              icon={TrendingDown}
-              color="#EF4444"
-              delay={380}
-            />
+            {!scopeId && (
+              <StatCard
+                value={onboardingData.best ? `${onboardingData.best.rate}%` : '—'}
+                label={onboardingData.best ? `${t('platform.analytics.bestPerforming', 'Best Performing Gym')}: ${onboardingData.best.name}` : t('platform.analytics.bestPerforming', 'Best Performing Gym')}
+                icon={TrendingUp}
+                color="#6366F1"
+                delay={370}
+              />
+            )}
+            {!scopeId && (
+              <StatCard
+                value={onboardingData.worst ? `${onboardingData.worst.rate}%` : '—'}
+                label={onboardingData.worst ? `${t('platform.analytics.lowestPerforming', 'Lowest Performing Gym')}: ${onboardingData.worst.name}` : t('platform.analytics.lowestPerforming', 'Lowest Performing Gym')}
+                icon={TrendingDown}
+                color="#EF4444"
+                delay={380}
+              />
+            )}
           </div>
 
-          {/* Onboarding Comparison Bar Chart */}
+          {/* Onboarding Comparison Bar Chart — cross-gym only */}
+          {!scopeId && (
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
             <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.onboardingRate', 'Onboarding Rate')}</h3>
             {onboardingData.perGym.length === 0 ? (
@@ -875,6 +868,7 @@ export default function PlatformAnalytics() {
               </div>
             )}
           </div>
+          )}
 
           {/* Onboarding Gap List */}
           {onboardingData.gapsGyms.length > 0 && (

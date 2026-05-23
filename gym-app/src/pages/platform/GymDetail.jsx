@@ -4,7 +4,7 @@ import {
   ArrowLeft, Users, Activity, Settings, Crown, ChevronDown,
   Dumbbell, Clock, Pause, Play, X, Trash2,
   UserPlus, Eye, EyeOff, AlertTriangle,
-  Trophy, Upload, Microscope, Database,
+  Trophy, Upload, Microscope, Database, HeartPulse,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,6 +14,7 @@ import { logAdminAction } from '../../lib/adminAudit';
 import { subDays } from 'date-fns';
 
 import GymOverviewTab from './gym-detail/GymOverviewTab';
+import GymWellnessTab from './gym-detail/GymWellnessTab';
 import GymPeopleTab from './gym-detail/GymPeopleTab';
 import GymActivityTab from './gym-detail/GymActivityTab';
 import GymContentTab from './gym-detail/GymContentTab';
@@ -395,6 +396,7 @@ export default function GymDetail() {
 
   const tabs = [
     { key: 'overview', label: t('platform.gymDetail.tabs.overview', 'Overview'), icon: Activity },
+    { key: 'wellness', label: t('platform.gymDetail.tabs.wellness', 'Wellness'), icon: HeartPulse },
     { key: 'people',   label: t('platform.gymDetail.tabs.people',   'People'),   icon: Users },
     { key: 'activity', label: t('platform.gymDetail.tabs.activity', 'Activity'), icon: Dumbbell },
     { key: 'content',  label: t('platform.gymDetail.tabs.content',  'Content'),  icon: Trophy },
@@ -493,8 +495,9 @@ export default function GymDetail() {
 
         {/* Tab content */}
         {tab === 'overview' && <GymOverviewTab gym={gym} branding={branding} logoUrl={logoUrl} stats={stats} checkIns={checkIns} challenges={challenges} programs={programs} achievements={achievements} invites={invites} members={members} gymId={gymId} setTab={setTab} setContentSubTab={setContentSubTab} />}
+        {tab === 'wellness' && <GymWellnessTab gymId={gymId} />}
         {tab === 'people' && <GymPeopleTab members={members} invites={invites} updateMemberRole={updateMemberRole} updateMemberStatus={updateMemberStatus} deleteMember={deleteMember} setShowAddMemberModal={setShowAddMemberModal} />}
-        {tab === 'activity' && <GymActivityTab sessions={sessions} checkIns={checkIns} />}
+        {tab === 'activity' && <GymActivityTab sessions={sessions} checkIns={checkIns} gymId={gymId} />}
         {tab === 'content' && <GymContentTab challenges={challenges} programs={programs} achievements={achievements} rewardsAvailable={rewardsAvailable} getChallengeStatus={getChallengeStatus} setEditingChallenge={setEditingChallenge} setShowChallengeModal={setShowChallengeModal} setEditingProgram={setEditingProgram} setShowProgramModal={setShowProgramModal} toggleProgramPublish={toggleProgramPublish} setEditingAchievement={setEditingAchievement} setShowAchievementModal={setShowAchievementModal} setDeleteConfirm={setDeleteConfirm} initialSubTab={contentSubTab} />}
         {tab === 'settings' && <GymSettingsTab gym={gym} branding={branding} logoUrl={logoUrl} invites={invites} editingGym={editingGym} setEditingGym={setEditingGym} savingGym={savingGym} saveGymSettings={saveGymSettings} gymStatus={gymStatus} setLifecycleModal={setLifecycleModal} t={t} />}
       </div>

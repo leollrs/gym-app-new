@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import {
-  Printer, Check, X, Loader2, Sparkles, PartyPopper, ArrowLeftRight, Award, Gift, Cake, Calendar, FileText,
+  Printer, Check, X, Loader2, Sparkles, PartyPopper, ArrowLeftRight, Award, Gift, Cake, Calendar, FileText, Truck, UserCheck,
 } from 'lucide-react';
 import { getCardPaperType } from '../../../components/printCards/cardPaperType.js';
 import { supabase } from '../../../lib/supabase';
@@ -59,7 +59,7 @@ export default function CardsToPrintPanel({ gymId }) {
   //               received per member feed analytics, churn weighting).
   const [tab, setTab] = useState('pending');
 
-  const { data: cards = [], isLoading } = useQuery({
+  const { data: cards = [], isLoading, error } = useQuery({
     queryKey: [...adminKeys.printCards(gymId), tab],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -67,6 +67,7 @@ export default function CardsToPrintPanel({ gymId }) {
         .select(`
           id, profile_id, occasion, occasion_data, headline, subline, printed_note,
           status, printed_at, delivered_at, created_at, expires_at, print_format,
+          expected_delivery_at, delivery_fulfilled_by,
           reward_qr_code, reward_label,
           profiles:profile_id(full_name, avatar_url)
         `)
@@ -81,11 +82,42 @@ export default function CardsToPrintPanel({ gymId }) {
     staleTime: 30_000,
   });
 
+  // Members physically present today (checked in since midnight). Drives the
+  // "Here today" flag so staff can prioritize printing + handing over cards to
+  // people who are in the building right now — the whole point of same-visit
+  // delivery. Refetched on a short interval so it tracks the day's foot traffic.
+  const { data: presentTodayIds } = useQuery({
+    queryKey: [...adminKeys.printCards(gymId), 'present-today'],
+    queryFn: async () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const { data, error } = await supabase
+        .from('check_ins')
+        .select('profile_id')
+        .eq('gym_id', gymId)
+        .gte('checked_in_at', start.toISOString())
+        .limit(2000);
+      if (error) throw error;
+      return new Set((data || []).map((c) => c.profile_id));
+    },
+    enabled: !!gymId,
+    staleTime: 60_000,
+  });
+
   const [selected, setSelected] = useState(new Set());
   // ids currently open in the print preview modal — null when modal closed
   const [previewIds, setPreviewIds] = useState(null);
   // card row currently being edited in the reward-attach modal
   const [rewardCard, setRewardCard] = useState(null);
+  // Float cards for members who are in the gym right now to the top, so the
+  // "give it to them today" cards are the first thing staff sees.
+  const orderedCards = useMemo(() => {
+    if (!presentTodayIds || presentTodayIds.size === 0) return cards;
+    return [...cards].sort(
+      (a, b) => (presentTodayIds.has(b.profile_id) ? 1 : 0) - (presentTodayIds.has(a.profile_id) ? 1 : 0)
+    );
+  }, [cards, presentTodayIds]);
+
   const allSelected = cards.length > 0 && selected.size === cards.length;
   const someSelected = selected.size > 0;
 
@@ -238,12 +270,36 @@ export default function CardsToPrintPanel({ gymId }) {
                 <Icon size={11} />
                 {t(`admin.printCards.occasions.${card.occasion}`, card.occasion)}
               </span>
+              {/* Member is in the building today — give it to them now. */}
+              {presentTodayIds?.has(card.profile_id) && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/25">
+                  <UserCheck size={11} />
+                  {t('admin.printCards.hereToday', 'Here today')}
+                </span>
+              )}
             </div>
             <p className="text-[12px] text-[#E5E7EB] mt-1 font-medium">"{card.headline}"</p>
             {card.subline && (
               <p className="text-[11px] text-[#9CA3AF] mt-0.5">{card.subline}</p>
             )}
             <p className="text-[10px] text-[#6B7280] mt-1">{timestampLine}</p>
+            {/* Expected delivery — set when the card is printed (next Saturday,
+                migration 0430). Platform-fulfilled gyms get a delivery promise;
+                self-fulfilling gyms see it as a "hand out by" target. */}
+            {(isPrinted || isDelivered) && card.expected_delivery_at && (
+              <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'var(--color-accent)' }}>
+                <Truck size={10} />
+                {card.delivery_fulfilled_by === 'platform'
+                  ? t('admin.printCards.expectedDeliveryPlatform', {
+                      date: format(new Date(card.expected_delivery_at), isEs ? "d 'de' MMM" : 'MMM d', dateLocale),
+                      defaultValue: 'Arriving ~{{date}}',
+                    })
+                  : t('admin.printCards.expectedDeliverySelf', {
+                      date: format(new Date(card.expected_delivery_at), isEs ? "d 'de' MMM" : 'MMM d', dateLocale),
+                      defaultValue: 'Hand out by {{date}}',
+                    })}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Per-card format selector — pending postcards only. Native
@@ -420,7 +476,14 @@ export default function CardsToPrintPanel({ gymId }) {
 
       {/* List */}
       <AdminCard>
-        {isLoading ? (
+        {error ? (
+          <div className="text-center py-10">
+            <Printer size={28} className="mx-auto text-[#4B5563] mb-2" />
+            <p className="text-[13px]" style={{ color: 'var(--color-danger)' }}>
+              {t('admin.printCards.loadError', 'Could not load cards. Try again in a moment.')}
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 size={20} className="animate-spin text-[#6B7280]" />
           </div>
@@ -442,7 +505,7 @@ export default function CardsToPrintPanel({ gymId }) {
           </div>
         ) : (
           <ul className="divide-y divide-white/[0.06]">
-            {cards.map(renderCard)}
+            {orderedCards.map(renderCard)}
           </ul>
         )}
       </AdminCard>

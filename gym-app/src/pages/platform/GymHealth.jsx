@@ -8,7 +8,7 @@ import {
   Heart, TrendingUp, TrendingDown, Minus, Search,
   ChevronRight, AlertTriangle, Shield,
   Activity, Users, UserCheck, BarChart3, Sparkles,
-  UserX, LogIn,
+  UserX, LogIn, Moon,
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -80,11 +80,9 @@ export default function GymHealth() {
 
   const [loading, setLoading] = useState(true);
   const [gyms, setGyms] = useState([]);
-  const [profiles, setProfiles] = useState([]);
-  const [sessions, setSessions] = useState([]);
-  const [checkIns, setCheckIns] = useState([]);
-  const [churnScores, setChurnScores] = useState([]);
+  const [stats, setStats] = useState([]);
   const [adminPresence, setAdminPresence] = useState([]);
+  const [activityPulse, setActivityPulse] = useState([]);
 
   // Table state
   const [sortKey, setSortKey] = useState('healthScore');
@@ -99,110 +97,59 @@ export default function GymHealth() {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const now = new Date();
-      const thirtyDaysAgo = subDays(now, 30).toISOString();
-      const sevenDaysAgo = subDays(now, 7).toISOString();
+      const sevenDaysAgo = subDays(new Date(), 7).toISOString();
 
-      const [gymRes, profileRes, sessionRes, checkInRes, churnRes, adminRes] = await Promise.all([
+      // Aggregates are computed server-side (one row per gym) so this scales
+      // with gym count, not member count — see migration 0437.
+      const [gymRes, statsRes, adminRes, pulseRes] = await Promise.all([
         supabase.from('gyms').select('id, name, slug, is_active, created_at'),
-        supabase.from('profiles').select('id, gym_id, role, last_active_at, is_onboarded, created_at').eq('role', 'member'),
-        supabase.from('workout_sessions').select('gym_id, profile_id').eq('status', 'completed').gte('started_at', thirtyDaysAgo),
-        supabase.from('check_ins').select('gym_id, profile_id').gte('checked_in_at', thirtyDaysAgo),
-        supabase.from('churn_risk_scores').select('gym_id, profile_id, score'),
+        supabase.rpc('platform_gym_stats'),
         supabase.from('admin_presence').select('gym_id, last_seen_at').gte('last_seen_at', sevenDaysAgo),
+        supabase.rpc('platform_gym_activity_pulse', { p_window_days: 14 }),
       ]);
 
       setGyms(gymRes.data || []);
-      setProfiles(profileRes.data || []);
-      setSessions(sessionRes.data || []);
-      setCheckIns(checkInRes.data || []);
-      setChurnScores(churnRes.data || []);
+      setStats(statsRes.data || []);
       setAdminPresence(adminRes.data || []);
+      setActivityPulse(pulseRes.data || []);
       setLoading(false);
     };
 
     fetchAll();
   }, []);
 
-  // ── Compute per-gym health data ────────────────────────────
-  const thirtyDaysAgoStr = useMemo(() => subDays(new Date(), 30).toISOString(), []);
-
+  // ── Compute per-gym health data (from server-side aggregates) ──
   const gymHealthData = useMemo(() => {
+    const byId = Object.fromEntries(stats.map(s => [s.gym_id, s]));
     return gyms.map(gym => {
-      const gymProfiles = profiles.filter(p => p.gym_id === gym.id);
-      const gymSessions = sessions.filter(s => s.gym_id === gym.id);
-      const gymCheckIns = checkIns.filter(c => c.gym_id === gym.id);
-      const gymChurn = churnScores.filter(c => c.gym_id === gym.id);
+      const s = byId[gym.id] || {};
+      const totalMembers = s.member_count || 0;
+      const activeMembers30d = s.active_30d || 0;
+      const totalSessions30d = s.sessions_30d || 0;
+      const checkedInMembers30d = s.checkedin_30d || 0;
+      const onboardedMembers = s.onboarded_count || 0;
+      const avgChurnScore = +(s.avg_churn_score || 0);
+      const newMembers30d = s.new_30d || 0;
 
-      const totalMembers = gymProfiles.length;
-
-      // Active members (had activity in last 30d)
-      const activeIds = new Set();
-      gymProfiles.forEach(p => {
-        if (p.last_active_at && p.last_active_at >= thirtyDaysAgoStr) {
-          activeIds.add(p.id);
-        }
-      });
-      const activeMembers30d = activeIds.size;
-
-      // Sessions
-      const totalSessions30d = gymSessions.length;
       const sessionsPerMember = totalMembers > 0 ? +(totalSessions30d / totalMembers).toFixed(1) : 0;
-
-      // Check-ins
-      const checkedInIds = new Set(gymCheckIns.map(c => c.profile_id));
-      const checkedInMembers30d = checkedInIds.size;
       const checkinRate = totalMembers > 0 ? +((checkedInMembers30d / totalMembers) * 100).toFixed(1) : 0;
-
-      // Onboarding
-      const onboardedMembers = gymProfiles.filter(p => p.is_onboarded).length;
       const onboardingPct = totalMembers > 0 ? +((onboardedMembers / totalMembers) * 100).toFixed(1) : 0;
-
-      // Churn
-      const avgChurnScore = gymChurn.length > 0
-        ? +(gymChurn.reduce((sum, c) => sum + (c.score || 0), 0) / gymChurn.length).toFixed(1)
-        : 0;
-
-      // New members (30d)
-      const newMembers30d = gymProfiles.filter(p => p.created_at >= thirtyDaysAgoStr).length;
-
-      // Active %
       const activePct = totalMembers > 0 ? +((activeMembers30d / totalMembers) * 100).toFixed(1) : 0;
 
       const healthScore = computeHealthScore({
-        totalMembers,
-        activeMembers30d,
-        totalSessions30d,
-        checkedInMembers30d,
-        onboardedMembers,
-        avgChurnScore,
-        newMembers30d,
+        totalMembers, activeMembers30d, totalSessions30d, checkedInMembers30d,
+        onboardedMembers, avgChurnScore, newMembers30d,
       });
-
       const tier = getTier(healthScore);
-
-      // Admin presence
       const hasRecentAdmin = adminPresence.some(a => a.gym_id === gym.id);
 
       return {
-        id: gym.id,
-        name: gym.name,
-        slug: gym.slug,
-        isActive: gym.is_active,
-        healthScore,
-        tier,
-        totalMembers,
-        activePct,
-        sessionsPerMember,
-        checkinRate,
-        avgChurnScore,
-        onboardingPct,
-        hasRecentAdmin,
-        newMembers30d,
-        activeMembers30d,
+        id: gym.id, name: gym.name, slug: gym.slug, isActive: gym.is_active,
+        healthScore, tier, totalMembers, activePct, sessionsPerMember, checkinRate,
+        avgChurnScore, onboardingPct, hasRecentAdmin, newMembers30d, activeMembers30d,
       };
     });
-  }, [gyms, profiles, sessions, checkIns, churnScores, adminPresence, thirtyDaysAgoStr]);
+  }, [gyms, stats, adminPresence]);
 
   // ── Health distribution counts ─────────────────────────────
   const healthDistribution = useMemo(() => {
@@ -286,6 +233,30 @@ export default function GymHealth() {
     return { biggestImprovement, needsAttention, onboardingGap, adminInactive };
   }, [gymHealthData, t]);
 
+  // ── Gyms going quiet ───────────────────────────────────────
+  // Member activity (check-ins + completed workouts) this 14d window vs the
+  // prior 14d, plus days since the gym's last activity of any kind. A gym
+  // that HAD activity and is now cratering or silent is the earliest churn
+  // signal we have — surfaced before the gym thinks about cancelling.
+  const goingQuiet = useMemo(() => {
+    const now = new Date().getTime();
+    return activityPulse
+      .map((g) => {
+        const cur = Number(g.cur_checkins) + Number(g.cur_workouts);
+        const prior = Number(g.prior_checkins) + Number(g.prior_workouts);
+        const declinePct = prior > 0 ? Math.round(((prior - cur) / prior) * 100) : (cur === 0 ? 100 : 0);
+        const daysSince = g.last_activity
+          ? Math.floor((now - new Date(g.last_activity).getTime()) / 86400000)
+          : null;
+        return { ...g, cur, prior, declinePct, daysSince };
+      })
+      // Only gyms that were ever active (skip never-launched), and that are
+      // either silent 7+ days or down 40%+ vs the prior window.
+      .filter((g) => g.daysSince !== null && (g.daysSince >= 7 || (g.declinePct >= 40 && g.prior >= 3)))
+      .sort((a, b) => (b.daysSince - a.daysSince) || (b.declinePct - a.declinePct))
+      .slice(0, 8);
+  }, [activityPulse]);
+
   // ── Trend arrow helper ─────────────────────────────────────
   const TrendArrow = ({ score }) => {
     if (score >= 60) return <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />;
@@ -328,6 +299,51 @@ export default function GymHealth() {
           delay={250}
         />
       </div>
+
+      {/* ── Gyms going quiet — member-activity decline watchlist ── */}
+      {goingQuiet.length > 0 && (
+        <FadeIn delay={60}>
+          <div className="bg-[#0F172A] border border-amber-500/20 rounded-xl p-4 mb-8">
+            <div className="flex items-center gap-2 mb-1">
+              <Moon size={15} className="text-amber-400" />
+              <h2 className="text-[15px] font-semibold text-[#E5E7EB]">
+                {t('platform.gymHealth.goingQuiet', 'Gyms going quiet')}
+              </h2>
+              <span className="text-[10px] font-bold text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded-full">
+                {goingQuiet.length}
+              </span>
+            </div>
+            <p className="text-[11px] text-[#6B7280] mb-3">
+              {t('platform.gymHealth.goingQuietDesc', 'Member check-ins + workouts dropping or silent — the earliest churn signal. Last 14 days vs the 14 before.')}
+            </p>
+            <div className="space-y-1">
+              {goingQuiet.map((g) => (
+                <button
+                  key={g.gym_id}
+                  onClick={() => navigate(`/platform/gym/${g.gym_id}`)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left hover:bg-white/[0.03] transition-colors group"
+                >
+                  <span className="text-[13px] font-medium text-[#E5E7EB] truncate flex-1 group-hover:text-white">
+                    {g.gym_name}
+                  </span>
+                  {g.declinePct > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-400 tabular-nums">
+                      <TrendingDown size={12} />
+                      {g.declinePct}%
+                    </span>
+                  )}
+                  <span className="text-[11px] text-amber-400/90 tabular-nums w-20 text-right">
+                    {g.daysSince === 0
+                      ? t('platform.gymHealth.activeToday', 'active today')
+                      : t('platform.gymHealth.quietDays', { count: g.daysSince, defaultValue: 'silent {{count}}d' })}
+                  </span>
+                  <ChevronRight size={13} className="text-[#4B5563] group-hover:text-[#D4AF37] transition-colors flex-shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </FadeIn>
+      )}
 
       {/* ── Main content: Table + Insights ────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">

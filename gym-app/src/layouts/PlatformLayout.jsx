@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import {
   Building2, Users, BarChart3, Search, Settings, LogOut,
   ScrollText, MoreHorizontal, X, Shield, Bug,
-  Activity, HeadphonesIcon, AlertTriangle, HeartPulse, Puzzle,
+  Activity, HeadphonesIcon, AlertTriangle, HeartPulse, Puzzle, Printer, ListChecks,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,12 +14,14 @@ const NAV_SECTIONS = [
   {
     labelKey: 'platformNav.main',
     items: [
+      { to: '/platform/attention',   labelKey: 'platformNav.attention',  icon: ListChecks, exact: true },
       { to: '/platform/operations',  labelKey: 'platformNav.operations', icon: Activity, exact: true },
       { to: '/platform',             labelKey: 'platformNav.gyms',       icon: Building2, exact: true },
       { to: '/platform/support',     labelKey: 'platformNav.support',    icon: HeadphonesIcon },
       { to: '/platform/analytics',   labelKey: 'platformNav.analytics',  icon: BarChart3 },
       { to: '/platform/gym-health',  labelKey: 'platformNav.gymHealth',  icon: HeartPulse },
       { to: '/platform/adoption',    labelKey: 'platformNav.adoption',   icon: Puzzle },
+      { to: '/platform/cards',       labelKey: 'platformNav.cardQueue',  icon: Printer },
     ],
   },
   {
@@ -39,7 +41,7 @@ const NAV_SECTIONS = [
 
 const ALL_NAV = NAV_SECTIONS.flatMap(s => s.items);
 
-const MOBILE_PRIMARY_PATHS = ['/platform/operations', '/platform', '/platform/support', '/platform/analytics'];
+const MOBILE_PRIMARY_PATHS = ['/platform/attention', '/platform/operations', '/platform', '/platform/analytics'];
 const MOBILE_NAV = ALL_NAV.filter(n => MOBILE_PRIMARY_PATHS.includes(n.to));
 const MOBILE_MORE_NAV = ALL_NAV.filter(n => !MOBILE_PRIMARY_PATHS.includes(n.to));
 

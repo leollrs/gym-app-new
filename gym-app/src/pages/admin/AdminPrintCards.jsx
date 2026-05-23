@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { AdminPageShell, PageHeader, FadeIn } from '../../components/admin';
 import CardsToPrintPanel from './components/CardsToPrintPanel';
 import UpcomingCardsPanel from './components/UpcomingCardsPanel';
+import CardDeliveryBanner from './components/CardDeliveryBanner';
 
 export default function AdminPrintCards() {
   const { t } = useTranslation('pages');
@@ -33,6 +34,9 @@ export default function AdminPrintCards() {
           subtitle={t('admin.printCards.pageSubtitle', 'Hand-written cards generated daily for welcomes, milestones, and returning members. Print on Avery 8371, sign, and hand them over in person.')}
           className="mb-6"
         />
+      </FadeIn>
+      <FadeIn delay={10}>
+        <CardDeliveryBanner gymId={gymId} />
       </FadeIn>
       <FadeIn delay={20}>
         <UpcomingCardsPanel gymId={gymId} />

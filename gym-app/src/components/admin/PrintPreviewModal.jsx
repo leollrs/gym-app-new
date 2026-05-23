@@ -25,7 +25,7 @@ import { useTranslation } from 'react-i18next';
 import { Printer, X, Loader2, Download } from 'lucide-react';
 import { saveBlob } from '../../lib/saveBlob';
 
-export default function PrintPreviewModal({ ids, onClose }) {
+export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/print-cards/preview', gymId = null }) {
   const { t } = useTranslation('pages');
   const iframeRef = useRef(null);
   const [loaded, setLoaded] = useState(false);
@@ -36,10 +36,16 @@ export default function PrintPreviewModal({ ids, onClose }) {
   // set in CardsToPrintPanel (per-row pill or bulk-set in action bar).
   // PrintCardsView reads the per-card format and sorts/groups so all
   // same-format cards print together.
+  //
+  // previewBase + gymId let the platform (super-admin) console reuse this
+  // modal: it points the iframe at /platform/print-cards/preview (which
+  // isn't gated by AdminRoute) and passes the target gym so PrintCardsView
+  // reads that gym's cards + branding rather than the viewer's own.
   const src = useMemo(() => {
     const params = new URLSearchParams({ ids: ids.join(','), embed: '1' });
-    return `/admin/print-cards/preview?${params.toString()}`;
-  }, [ids]);
+    if (gymId) params.set('gymId', gymId);
+    return `${previewBase}?${params.toString()}`;
+  }, [ids, previewBase, gymId]);
 
   // Lock body scroll while open so the background page can't jiggle.
   useEffect(() => {

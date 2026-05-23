@@ -1,4 +1,9 @@
 {
+  "maintenance": {
+    "title": "App is in maintenance",
+    "body": "We’re doing some quick maintenance to make things better. The app will be back shortly — thanks for your patience.",
+    "autoResume": "This screen will clear automatically when we’re done."
+  },
   "timeAgo": {
     "never": "Never",
     "today": "Today",
@@ -175,6 +180,7 @@
   },
   "platformNav": {
     "main": "MAIN",
+    "insights": "INSIGHTS",
     "tools": "TOOLS",
     "system": "SYSTEM",
     "operations": "Operations",
@@ -186,7 +192,9 @@
     "errorLogs": "Errors",
     "settings": "Settings",
     "gymHealth": "Gym Health",
-    "adoption": "Adoption"
+    "adoption": "Adoption",
+    "cardQueue": "Card Queue",
+    "attention": "Needs Attention"
   },
   "platformLayout": {
     "skipToContent": "Skip to main content",
