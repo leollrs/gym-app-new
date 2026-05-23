@@ -40,6 +40,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   v_30d TIMESTAMPTZ := now() - INTERVAL '30 days';
 BEGIN
@@ -166,7 +167,7 @@ BEGIN
   -- Top signals among at-risk members, with the gym most affected by each.
   WITH sig AS (
     SELECT
-      jsonb_array_elements_text(COALESCE(key_signals, '[]'::jsonb)) AS signal,
+      unnest(COALESCE(key_signals, '{}'::text[])) AS signal,
       gym_id
     FROM churn_risk_scores
     WHERE risk_tier IN ('critical', 'high')

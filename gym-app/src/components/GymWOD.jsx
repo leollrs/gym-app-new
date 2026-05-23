@@ -99,29 +99,39 @@ function GymWOD() {
           estimated_duration: generated.estimated_duration,
         };
 
+        // Persist with ON CONFLICT DO NOTHING (ignoreDuplicates) rather than a
+        // true upsert. The WOD is deterministic per (gym, date), so once a row
+        // exists there's nothing to overwrite — and members only hold an INSERT
+        // grant, not UPDATE. A real upsert degrades to an UPDATE on conflict and
+        // 403s for every member after the first. DO NOTHING is a pure INSERT, so
+        // the first visitor (member or staff) persists the canonical row and
+        // everyone else falls through to read it — no 403, history still builds.
         const { data: inserted, error: insertErr } = await supabase
           .from('gym_workouts_of_the_day')
-          .upsert(row, { onConflict: 'gym_id,date' })
+          .upsert(row, { onConflict: 'gym_id,date', ignoreDuplicates: true })
           .select()
-          .single();
+          .maybeSingle();
 
-        if (insertErr) {
-          // If insert fails (race condition), try fetching again
-          const { data: retry } = await supabase
-            .from('gym_workouts_of_the_day')
-            .select('*')
-            .eq('gym_id', gymId)
-            .eq('date', today)
-            .maybeSingle();
-
-          if (retry && !cancelled) {
-            setWod(retry);
+        if (!cancelled) {
+          if (inserted) {
+            setWod(inserted);
           } else {
-            // Use generated data locally even if DB write failed
-            if (!cancelled) setWod({ ...row, id: 'local', workout_data: generated });
+            // Row already existed (DO NOTHING returned nothing) or the write
+            // failed — fetch the canonical row, falling back to the locally
+            // generated WOD (identical, since generation is deterministic).
+            const { data: retry } = await supabase
+              .from('gym_workouts_of_the_day')
+              .select('*')
+              .eq('gym_id', gymId)
+              .eq('date', today)
+              .maybeSingle();
+
+            if (retry && !cancelled) {
+              setWod(retry);
+            } else if (!cancelled) {
+              setWod({ ...row, id: 'local', workout_data: generated });
+            }
           }
-        } else if (!cancelled) {
-          setWod(inserted);
         }
       } catch (err) {
         if (!cancelled) setError(err.message || t('gymWOD.loadFailed', 'Failed to load workout'));

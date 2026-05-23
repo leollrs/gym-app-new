@@ -39,3 +39,7 @@ GoogleService-Info.plist
 # MCP server configs + temp captures (local-only)
 .mcp.json
 .playwright-mcp/
+
+# Supabase CLI local state (keep config.toml tracked, ignore runtime temp)
+supabase/.temp/
+supabase/.branches/

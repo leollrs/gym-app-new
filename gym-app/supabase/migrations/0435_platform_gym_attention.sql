@@ -34,6 +34,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'super_admin') THEN
     RAISE EXCEPTION 'Permission denied: super_admin role required';
