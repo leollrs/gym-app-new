@@ -11,7 +11,7 @@ import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
 import {
   format, addWeeks, startOfWeek, endOfWeek, addDays,
-  isSameDay, isToday, setHours, setMinutes, subHours,
+  isSameDay, isToday, setHours, setMinutes,
   startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, addMonths,
 } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
@@ -53,7 +53,7 @@ function statusVisuals(status) {
 }
 
 // ── Session Modal (keeps existing UX, restyled with TT tokens) ─────────────
-const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gymId, trainerName, workoutPlans }) => {
+const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gymId, workoutPlans }) => {
   const { showToast } = useToast();
   const { t, i18n } = useTranslation(['pages', 'common']);
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
@@ -248,26 +248,11 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       }
     }
 
-    if (sendReminder && clientId && status !== 'cancelled') {
-      const sessionTime = new Date(`${dateVal}T${timeVal}`);
-      const reminderTime = subHours(sessionTime, 1);
-      if (reminderTime > new Date()) {
-        const timeStr = format(sessionTime, 'HH:mm');
-        const { error: notifErr } = await supabase.from('notifications').upsert({
-          profile_id: clientId,
-          gym_id: gymId,
-          type: 'session_reminder',
-          title: t('pages:trainerCalendar.upcomingSession'),
-          body: t('pages:trainerCalendar.sessionReminderBody', {
-            trainer: trainerName || t('pages:trainerCalendar.yourTrainer'),
-            time: timeStr,
-          }),
-          scheduled_at: reminderTime.toISOString(),
-          created_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
-        if (notifErr) logger.error('SessionModal: failed to schedule reminder:', notifErr);
-      }
-    }
+    // Session reminders are sent server-side: the `send-session-reminders`
+    // pg_cron job (migration 0440) reminds both the client and the trainer
+    // ~1h before any session with send_reminder = true. The old client-side
+    // insert here was broken (no scheduled_at column, invalid enum type) and
+    // never delivered anything, so it was removed.
 
     if (!isEdit && recurring) {
       const step = frequency === 'biweekly' ? 2 : 1;

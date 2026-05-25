@@ -751,12 +751,19 @@ const Workouts = () => {
     if (!programActive) return 0;
     const start = new Date(generatedProgram.program_start);
     start.setHours(0, 0, 0, 0);
-    const startSunday = new Date(start);
-    startSunday.setDate(startSunday.getDate() - startSunday.getDay());
     const todayMidnight = new Date(today);
     todayMidnight.setHours(0, 0, 0, 0);
-    const days = Math.floor((todayMidnight - startSunday) / 86400000);
-    return Math.floor(days / 7) + 1;
+    // schedule_map programs use calendar-week anchoring (Sun→Sat) for mid-week
+    // signup handling. Programs WITHOUT one (the auto-generator / regenerate
+    // path) roll a full 7-day week from program_start, so a freshly generated
+    // plan is Week 1 for its first 7 days instead of flipping to Week 2 the
+    // next Sunday. Clamp >=1 for any near-future start.
+    if (schedMap) {
+      const startSunday = new Date(start);
+      startSunday.setDate(startSunday.getDate() - startSunday.getDay());
+      return Math.max(1, Math.floor((todayMidnight - startSunday) / 86400000 / 7) + 1);
+    }
+    return Math.max(1, Math.floor((todayMidnight - start) / 86400000 / 7) + 1);
   })();
   const currentWeekNum = Math.min(rawWeekNum, totalProgramWeeks);
   const isWeekA = currentWeekNum % 2 === 1;
@@ -1179,17 +1186,35 @@ const Workouts = () => {
         .sort((a, b) => a - b);
       const fallbackPattern = { 1: [1], 2: [1, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6] };
 
-      // Pick N consecutive open days (skip only gym-closed days, not user rest days).
-      // This ensures a 5-day program gets Mon-Fri (or wraps around closed days),
-      // with rest pushed to after the last workout day.
+      // Schedule on the MEMBER'S preferred training days (gym-open only). This is
+      // what they picked in onboarding — e.g. Mon/Wed/Fri instead of a forced
+      // Mon-Tue-Wed block — which also gives natural rest spacing. Only when they
+      // haven't set enough preferred days to cover the N routines do we top up
+      // with other open days (Monday-first) so every routine still lands a slot.
       const allOpenDays = [1, 2, 3, 4, 5, 6, 0].filter(d => !closedDays.has(d));
+      const preferredOpen = userDbDays.filter(d => !closedDays.has(d));
       let allAvailableDays = [];
-      // Start from Monday (1) and take the first N consecutive open days
-      for (const d of allOpenDays) {
-        if (allAvailableDays.length >= firstWeek.length) break;
-        allAvailableDays.push(d);
+      if (preferredOpen.length >= firstWeek.length) {
+        allAvailableDays = preferredOpen.slice(0, firstWeek.length);
+      } else {
+        allAvailableDays = [...preferredOpen];
+        for (const d of allOpenDays) {
+          if (allAvailableDays.length >= firstWeek.length) break;
+          if (!allAvailableDays.includes(d)) allAvailableDays.push(d);
+        }
       }
       allAvailableDays.sort((a, b) => a - b);
+
+      // 'normal' = clean, FULL week 1 aligned to THEIR schedule: start on the next
+      // occurrence of their earliest training day (today if today is that day).
+      // This gives a full first week of their actual days — no collapsed stub
+      // week and no instant jump to "week 2" — without forcing an arbitrary
+      // Monday. 'today' keeps the start-now path (partial shifted week 1).
+      if (useStartMode === 'normal' && allAvailableDays.length > 0) {
+        const firstDow = allAvailableDays[0];
+        startDate.setDate(startDate.getDate() + ((firstDow - startDate.getDay() + 7) % 7));
+        startDate.setHours(0, 0, 0, 0);
+      }
 
       // Schedule mappings: week 1 (shifted), week 2+ (packed Mon-start), last week (remainder)
       const startDow = startDate.getDay();

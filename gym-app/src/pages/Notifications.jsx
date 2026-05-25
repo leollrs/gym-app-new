@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Trophy, Megaphone, Dumbbell, Zap, UserPlus, CheckCheck, ChevronLeft, X, Trash2 } from 'lucide-react';
+import { Bell, Trophy, Megaphone, Dumbbell, Zap, UserPlus, CheckCheck, ChevronLeft, X, Trash2, Calendar, Gift, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications, useInvalidate } from '../hooks/useSupabaseQuery';
@@ -22,6 +22,11 @@ const TYPE_META = {
   milestone:    { icon: Dumbbell,  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
   challenge:    { icon: Zap,       color: 'text-[#6D5FDB]',   bg: 'bg-[#6D5FDB]/10'  },
   friend:       { icon: UserPlus,  color: 'text-pink-400',    bg: 'bg-pink-500/10'    },
+  friend_activity:  { icon: UserPlus, color: 'text-pink-400',    bg: 'bg-pink-500/10'    },
+  class_booking:    { icon: Calendar, color: 'text-blue-400',    bg: 'bg-blue-500/10'    },
+  session_reminder: { icon: Calendar, color: 'text-blue-400',    bg: 'bg-blue-500/10'    },
+  reward:           { icon: Gift,     color: 'text-amber-400',   bg: 'bg-amber-500/10'   },
+  goal:             { icon: Target,   color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
   default:      { icon: Bell,      color: 'text-[var(--color-text-muted)]', bg: 'bg-[var(--color-bg-card)]' },
 };
 

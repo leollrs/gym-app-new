@@ -294,10 +294,37 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 async function checkWorkoutReminder(supabase: ReturnType<typeof createClient>, member: Member, today: string, dayOfWeek: number) {
   if (member.notif_workout_reminders === false) return;
 
-  // Only on their preferred training days (English day names — see migration 0059)
+  // Resolve today's workout from the LIVE program schedule (workout_schedule),
+  // which is rewritten on every regenerate / program change. This is the same
+  // source of truth the app uses to show "today's workout", so the name — and the
+  // "is today a training day" decision — always reflect the CURRENT program.
+  // (workout_schedule.day_of_week is 0=Sun..6=Sat, matching dayOfWeek here.)
+  // Previously this rotated routines by created_at index, which silently kept
+  // showing stale names because old routines aren't deleted on regenerate.
   const todayName = DAY_NAMES[dayOfWeek];
   const trainingDays = member.preferred_training_days || [];
-  if (trainingDays.length > 0 && !trainingDays.includes(todayName)) return;
+
+  let routineName: string | null = null;
+  const { data: todaySched } = await supabase.from('workout_schedule')
+    .select('routine_id')
+    .eq('profile_id', member.id)
+    .eq('day_of_week', dayOfWeek)
+    .maybeSingle();
+
+  if (todaySched?.routine_id) {
+    const { data: r } = await supabase.from('routines')
+      .select('name').eq('id', todaySched.routine_id).maybeSingle();
+    routineName = r?.name || null;
+  } else {
+    // Nothing scheduled today. If they have a program schedule at all, today simply
+    // isn't a training day → skip. Otherwise (no generated schedule) fall back to
+    // their onboarding preferred_training_days.
+    const { count: schedCount } = await supabase.from('workout_schedule')
+      .select('routine_id', { count: 'exact', head: true })
+      .eq('profile_id', member.id);
+    if ((schedCount ?? 0) > 0) return;
+    if (trainingDays.length > 0 && !trainingDays.includes(todayName)) return;
+  }
 
   const lang = member.language || 'en';
   const dedupKey = `sched_workout_${member.id}_${today}`;
@@ -312,18 +339,6 @@ async function checkWorkoutReminder(supabase: ReturnType<typeof createClient>, m
   const { count: sessionsToday } = await supabase.from('workout_sessions').select('id', { count: 'exact', head: true })
     .eq('profile_id', member.id).eq('status', 'completed').gte('started_at', today);
   if ((sessionsToday ?? 0) > 0) return;
-
-  // Try to find a matching routine for variety (rotate by day index in their training schedule)
-  let routineName: string | null = null;
-  const dayIdx = trainingDays.indexOf(todayName);
-  if (dayIdx >= 0) {
-    const { data: routines } = await supabase.from('routines')
-      .select('id, name')
-      .eq('created_by', member.id)
-      .eq('is_template', false)
-      .order('created_at', { ascending: true });
-    if (routines?.length) routineName = routines[dayIdx % routines.length]?.name || null;
-  }
 
   let title: string, body: string;
   if (routineName) {

@@ -481,6 +481,8 @@
     "endsIn": "Termina en",
     "startsIn": "Empieza en",
     "ended": "Finalizó {{date}}",
+    "joinedCount_one": "{{count}} se unió",
+    "joinedCount_other": "{{count}} se unieron",
     "join": "Unirse",
     "leave": "Salir",
     "leaveConfirm": "¿Estás seguro que quieres salir de este reto?",

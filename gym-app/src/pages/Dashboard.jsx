@@ -611,11 +611,18 @@ const Dashboard = () => {
         if (!fetchedProgram || !programStart) return 0;
         const start = new Date(programStart);
         start.setHours(0, 0, 0, 0);
-        const startSunday = new Date(start);
-        startSunday.setDate(startSunday.getDate() - startSunday.getDay());
         const todayMid = new Date(today);
         todayMid.setHours(0, 0, 0, 0);
-        return Math.floor((todayMid - startSunday) / 86400000 / 7) + 1;
+        // schedule_map programs use calendar-week anchoring (Sun→Sat). Programs
+        // without one (auto-generator / regenerate path) roll a 7-day week from
+        // program_start, so a freshly generated plan stays Week 1 for its first
+        // 7 days instead of flipping to Week 2 the next Sunday. Clamp >=1.
+        if (fetchedProgram.schedule_map) {
+          const startSunday = new Date(start);
+          startSunday.setDate(startSunday.getDate() - startSunday.getDay());
+          return Math.max(1, Math.floor((todayMid - startSunday) / 86400000 / 7) + 1);
+        }
+        return Math.max(1, Math.floor((todayMid - start) / 86400000 / 7) + 1);
       })();
       const isWeek1 = programWeekNum === 1;
       // Prefer the new total_calendar_weeks field; fall back to duration_weeks
@@ -1338,6 +1345,7 @@ const Dashboard = () => {
                   workoutDays={scheduledWorkoutDays}
                   schedule={schedule}
                   earliestDate={profile?.created_at}
+                  programStart={activeProgram?.program_start}
                 />
               </section>
 

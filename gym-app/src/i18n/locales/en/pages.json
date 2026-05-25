@@ -481,6 +481,8 @@
     "endsIn": "Ends in",
     "startsIn": "Starts in",
     "ended": "Ended {{date}}",
+    "joinedCount_one": "{{count}} joined",
+    "joinedCount_other": "{{count}} joined",
     "join": "Join",
     "leave": "Leave",
     "leaveConfirm": "Are you sure you want to leave this challenge?",

@@ -1330,6 +1330,8 @@ const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, on
 
 // ── Challenge card ─────────────────────────────────────────
 const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoin, onLeave, t }) => {
+  const { i18n } = useTranslation('pages');
+  const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
   const [open, setOpen] = useState(false);
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -1410,7 +1412,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
             {status === 'upcoming' && <Countdown date={challenge.start_date} prefix={t('challenges.startsIn')} />}
             {status === 'ended' && (
               <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                {t('challenges.ended', { date: format(new Date(challenge.end_date), 'MMM d') })}
+                {t('challenges.ended', { date: format(new Date(challenge.end_date), 'MMM d', { locale: dfLocale }) })}
               </span>
             )}
           </div>
@@ -1458,7 +1460,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
             <p className="text-[13px] leading-relaxed mt-3" style={{ color: 'var(--color-text-muted)' }}>{sanitize(challenge.description)}</p>
           )}
           <div className="mt-2" style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 500 }}>
-            {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
+            {format(new Date(challenge.start_date), 'MMM d', { locale: dfLocale })} – {format(new Date(challenge.end_date), 'MMM d, yyyy', { locale: dfLocale })}
           </div>
 
           {/* Rewards section */}
@@ -1517,6 +1519,8 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
 const DISCOVER_COLORS = ['#6D5FDB', '#FF5A2E', '#2EC4C4', '#E84393', '#0984E3', '#00B894'];
 
 const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin, onLeave, t }) => {
+  const { i18n } = useTranslation('pages');
+  const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
   const [open, setOpen] = useState(false);
   const [joining, setJoining] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
@@ -1576,10 +1580,10 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
 
         {/* Sub */}
         <p style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
-          {participantCount > 0 && <>{participantCount} joined · </>}
+          {participantCount > 0 && <>{t('challenges.joinedCount', { count: participantCount })} · </>}
           {status === 'upcoming'
-            ? `${t('challenges.startsIn')} ${formatDistanceToNow(new Date(challenge.start_date), { addSuffix: false })}`
-            : t('challenges.ended', { date: format(new Date(challenge.end_date), 'MMM d') })
+            ? `${t('challenges.startsIn')} ${formatDistanceToNow(new Date(challenge.start_date), { addSuffix: false, locale: dfLocale })}`
+            : t('challenges.ended', { date: format(new Date(challenge.end_date), 'MMM d', { locale: dfLocale }) })
           }
         </p>
 
@@ -1635,7 +1639,7 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
                   <p style={{ fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5, marginBottom: 12 }}>{sanitize(challenge.description)}</p>
                 )}
                 <p style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 500, marginBottom: 8 }}>
-                  {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
+                  {format(new Date(challenge.start_date), 'MMM d', { locale: dfLocale })} – {format(new Date(challenge.end_date), 'MMM d, yyyy', { locale: dfLocale })}
                 </p>
                 {challenge.type === 'team'
                   ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
@@ -1664,7 +1668,7 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
                 <p style={{ fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5, marginBottom: 12 }}>{sanitize(challenge.description)}</p>
               )}
               <p style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 500, marginBottom: 8 }}>
-                {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
+                {format(new Date(challenge.start_date), 'MMM d', { locale: dfLocale })} – {format(new Date(challenge.end_date), 'MMM d, yyyy', { locale: dfLocale })}
               </p>
               {status === 'upcoming'
                 ? <ParticipantList challengeId={challenge.id} t={t} />

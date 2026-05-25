@@ -35,6 +35,7 @@ const TYPE_META = {
   new_client_assigned:   { icon: UserPlus,      tone: TT.good,   bg: TT.goodSoft,   ink: TT.goodInk,   cat: 'clients' },
   session_rescheduled:   { icon: Calendar,      tone: TT.warn,   bg: TT.warnSoft,   ink: TT.warnInk,   cat: 'schedule' },
   class_booking:         { icon: BookOpen,      tone: TT.accent, bg: TT.accentSoft, ink: TT.accentInk, cat: 'schedule' },
+  session_reminder:      { icon: Calendar,      tone: TT.accent, bg: TT.accentSoft, ink: TT.accentInk, cat: 'schedule' },
   trainer_message:       { icon: MessageSquare, tone: TT.accent, bg: TT.accentSoft, ink: TT.accentInk, cat: 'messages' },
   announcement:          { icon: Users,         tone: TT.coach,  bg: TT.coachSoft,  ink: TT.coach,     cat: 'alerts' },
   system:                { icon: Bell,          tone: TT.textSub,bg: TT.surface2,   ink: TT.textSub,   cat: 'alerts' },

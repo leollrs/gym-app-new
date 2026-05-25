@@ -12,7 +12,7 @@ const toLocalKey = (v) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], schedule = {}, earliestDate }) => {
+const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], schedule = {}, earliestDate, programStart }) => {
   const { t, i18n } = useTranslation('pages');
   const DAYS = t('dayStrip.days', { returnObjects: true });
   const today = new Date();
@@ -49,6 +49,10 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
   // Pre-build a Set of local date keys for O(1) lookups
   const completedKeys = useMemo(() => new Set(workoutDays.map(toLocalKey)), [workoutDays]);
 
+  // Only days on/after the program actually started can be "missed" — days
+  // before it began (or before a near-future 'normal' start) are just rest.
+  const programStartDay = programStart ? startOfDay(new Date(programStart)) : null;
+
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(viewingWeekStart, i);
     const isToday = isSameDay(date, today);
@@ -62,7 +66,11 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
     let state = 'rest';
     if (isSelected) state = 'selected';
     else if (hasCompleted) state = 'completed';
-    else if (assigned) state = isPast ? 'rest' : 'scheduled';
+    else if (assigned) {
+      if (!isPast) state = 'scheduled';
+      else if (programStartDay && isBefore(startOfDay(date), programStartDay)) state = 'rest'; // before the program began — not a miss
+      else state = 'missed';
+    }
 
     return { date, dayIndex: i, label: DAYS[i], dayNum, isToday, isSelected, isPast, isFuture, hasCompleted, state };
   });
@@ -176,6 +184,8 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
                   <div className="w-1 h-1 rounded-full bg-[#C9A227]/70" />
                 ) : state === 'scheduled' ? (
                   <div className="w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--color-accent, #2EC4C4)' }} />
+                ) : state === 'missed' ? (
+                  <div className="w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--color-danger, #EF4444)' }} />
                 ) : null}
             </div>
           </button>
