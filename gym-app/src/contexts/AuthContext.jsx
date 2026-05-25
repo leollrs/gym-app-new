@@ -131,6 +131,12 @@ export const AuthProvider = ({ children }) => {
   // to true — that's the visible "shows → resets → shows again → black"
   // flicker we're fixing.
   const initLoadTimeoutRef = useRef(null);
+  // Latch: once the initial loading gate has cleared by ANY path (getSession,
+  // fetchProfile finally, or a timeout), the full-screen LoadingScreen must
+  // NEVER show again. Without this, a Capgo WebView reload on resume + repeated
+  // SIGNED_IN/TOKEN_REFRESHED events on a zombie socket kept re-raising
+  // `loading` → the app "loaded forever" until a manual kill+reopen.
+  const bootedRef = useRef(false);
 
   // ── Multi-role view switching ─────────────────────────────
   // activeView tracks which "experience" the user is currently in:
@@ -178,7 +184,7 @@ export const AuthProvider = ({ children }) => {
     // the cache and reload. Drop the gate at 8s so the app renders cached
     // state instead. The in-flight fetch keeps running and `setLoading(false)`
     // in the finally is a no-op once already false.
-    const fetchWatchdog = setTimeout(() => setLoading(false), 8000);
+    const fetchWatchdog = setTimeout(() => { bootedRef.current = true; setLoading(false); }, 8000);
     try {
     // Single RPC call replaces profile + branding + gym + points + notifications queries
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_auth_context');
@@ -574,6 +580,7 @@ export const AuthProvider = ({ children }) => {
     }
     } finally {
       clearTimeout(fetchWatchdog);
+      bootedRef.current = true;
       setLoading(false);
     }
   };
@@ -621,6 +628,7 @@ export const AuthProvider = ({ children }) => {
     // so this is safe even on a fast connection.
     initLoadTimeoutRef.current = setTimeout(() => {
       initLoadTimeoutRef.current = null;
+      bootedRef.current = true;
       setLoading(false);
     }, 6000);
 
@@ -709,7 +717,11 @@ export const AuthProvider = ({ children }) => {
         // trip StuckLoadingRecovery into an unnecessary cache wipe).
         // Only re-raise the gate for a genuine new sign-in: the user id
         // is different from the one we already have loaded.
-        if (loadedProfileIdRef.current !== session.user.id) {
+        // ...and never AFTER the gate has already cleared once: a Capgo
+        // WebView reload on resume re-emits SIGNED_IN, and re-raising the
+        // full-screen gate then (on a possibly-zombie socket) is exactly the
+        // "loads forever until I kill the app" hang. Refresh in the background.
+        if (!bootedRef.current && loadedProfileIdRef.current !== session.user.id) {
           setLoading(true);
         }
         fetchProfile(session.user.id);
@@ -997,10 +1009,20 @@ export const AuthProvider = ({ children }) => {
   // The order matters: primary role first, then extras, so the switcher
   // UI lists "your real role" first.
   const availableRoles = useMemo(() => {
-    if (!profile?.role) return [];
+    if (!profile?.role) {
+      // No resolvable role yet. While the auth flow is still loading we return
+      // [] so ProtectedRoute keeps waiting (avoids flashing the wrong view).
+      // But once loading has SETTLED (live fetch done OR timed out) and we have
+      // a profile but still no role — a cache-hydrated boot whose live
+      // get_auth_context fetch hung on a zombie socket — fall back to the
+      // least-privilege 'member' so the app can NEVER trap on the splash
+      // forever (App.jsx ProtectedRoute line ~687). RLS still enforces real
+      // permissions server-side, so this only ever DOWN-grades the view.
+      return (!loading && profile) ? ['member'] : [];
+    }
     const extras = Array.isArray(profile.additional_roles) ? profile.additional_roles : [];
     return [profile.role, ...extras.filter((r) => r !== profile.role)];
-  }, [profile?.role, profile?.additional_roles]);
+  }, [profile, loading]);
 
   // effectiveView resolves to the user's current experience:
   // 1. activeView if set AND it's a role they actually have

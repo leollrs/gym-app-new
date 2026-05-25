@@ -37,6 +37,13 @@ const MIN_MEANINGFUL_TEXT = 60;
 // If resetAppCaches reloaded us within this window and we're STILL stuck,
 // a second auto-recovery would just loop — fall back to the manual banner.
 const AUTO_RECOVERY_COOLDOWN_MS = 120_000;
+// The auth splash (LoadingScreen, [data-loading-screen]) is intentional for a
+// few seconds and AuthContext has its own ~6s self-timeout. But on iOS the
+// WebView sometimes fully reloads on resume and the auth gate hangs on a zombie
+// socket — the splash then stays up forever and the user has to kill+reopen the
+// app. If the splash is STILL up this long after boot, treat it as stuck and
+// auto-recover (the programmatic equivalent of "close and reopen").
+const LOADING_SCREEN_STUCK_MS = 15_000;
 
 function rootIsEmpty() {
   const root = document.getElementById('root');
@@ -94,6 +101,7 @@ export default function StuckLoadingRecovery() {
   useEffect(() => {
     let pollTimer = null;
     let detected = false;
+    const mountedAt = Date.now();
 
     const onStuck = () => {
       if (handledRef.current) return;
@@ -115,6 +123,17 @@ export default function StuckLoadingRecovery() {
 
     const checkOnce = () => {
       if (detected) return;
+      const root = document.getElementById('root');
+      // Auth splash still up long past AuthContext's ~6s self-timeout → the
+      // boot/resume hung (e.g. WebView reloaded on resume + zombie socket).
+      // Auto-recover instead of leaving the user stuck on it forever.
+      if (root && root.querySelector('[data-loading-screen]')) {
+        if (Date.now() - mountedAt > LOADING_SCREEN_STUCK_MS) {
+          detected = true;
+          onStuck();
+        }
+        return;
+      }
       if (rootIsEmpty()) {
         detected = true;
         onStuck();

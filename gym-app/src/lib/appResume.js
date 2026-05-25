@@ -50,20 +50,29 @@ export async function notifyForeground(queryClient) {
 
   // 1. Refresh auth. getSession() transparently refreshes the access token
   //    when it's within the expiry margin, and emits TOKEN_REFRESHED — which
-  //    makes supabase-js push the new JWT into the realtime client. If we're
-  //    offline this throws/returns no session; leave auth alone and let the
-  //    existing online/retry effects in AuthContext recover.
+  //    makes supabase-js push the new JWT into the realtime client.
+  //
+  //    CRITICAL: after a long background, the connection can be a zombie and
+  //    getSession() may hang FOREVER (no timeout in supabase-js). This used to
+  //    block the whole routine — realtime never woke, queries never refetched,
+  //    and the app sat on a stale/"connecting" screen until a full restart.
+  //    So we race getSession() against a timeout: if it stalls (or errors), we
+  //    fall through and STILL wake realtime + refetch. We only bail on a
+  //    DEFINITIVE "no session" (a clean getSession result with no session →
+  //    signed out elsewhere); a timeout/blip is treated as still-signed-in
+  //    (we have cached state) so the screens recover.
+  let timedOut = false;
   let hasSession = true;
   try {
-    const { data } = await supabase.auth.getSession();
-    hasSession = !!data?.session;
+    const res = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise((resolve) => setTimeout(() => { timedOut = true; resolve(null); }, 5000)),
+    ]);
+    if (!timedOut && res) hasSession = !!res?.data?.session;
   } catch {
-    return;
+    // network blip / transient error — assume still signed in and recover.
   }
-  // No live session (signed out elsewhere, or refresh token revoked). Don't
-  // touch realtime/queries — AuthContext's onAuthStateChange + 401 guard own
-  // the sign-out path.
-  if (!hasSession) return;
+  if (!timedOut && !hasSession) return; // definitively signed out — let AuthContext own it
 
   // 2. Wake realtime — NON-destructively. supabase.realtime.disconnect() would
   //    call channel.teardown() and wipe every channel's bindings, so the
