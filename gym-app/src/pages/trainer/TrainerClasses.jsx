@@ -1,25 +1,23 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-// eslint-disable-next-line no-unused-vars
-import { motion } from 'framer-motion';
 import {
   CalendarDays, Users, Clock, Dumbbell, BarChart3, Star, Plus,
-  Trash2, Search, Check, UserCheck, X, ChevronRight,
+  Trash2, Search, Check, UserCheck, X, ChevronRight, ChevronLeft,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
 import logger from '../../lib/logger';
-import { format, addDays, startOfDay } from 'date-fns';
+import { format, addDays, addMonths, startOfDay, startOfMonth, startOfWeek, endOfWeek, endOfMonth, getDay, getDaysInMonth, isSameDay } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import Skeleton from '../../components/Skeleton';
 import TrainerEmptyState from './components/TrainerEmptyState';
 import { TT, TFont } from './components/designTokens';
 import {
-  TCard, TEyebrow, TPageTitle, TPrimaryButton, TDarkButton, TTabPill,
+  TCard, TEyebrow, TPageTitle, TDarkButton,
 } from './components/designPrimitives';
 
 const DAYS_OF_WEEK = [
@@ -218,168 +216,169 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
 // ── Tab 1: My Classes ──
 function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
   const [selectedClass, setSelectedClass] = useState(null);
-  const [filter, setFilter] = useState('all'); // all | today | week | past
+  const [view, setView] = useState('week'); // day | week | month
+  const [dayDate, setDayDate] = useState(() => startOfDay(new Date()));
+  const [monthDate, setMonthDate] = useState(() => startOfMonth(new Date()));
 
-  // Compute next upcoming date for each class
-  const getNextDate = (cls) => {
-    const schedules = cls.gym_class_schedules || [];
-    if (schedules.length === 0) return null;
-    const today = new Date();
-    const todayDay = today.getDay();
-    let minDaysAhead = 8;
-    for (const s of schedules) {
-      let diff = s.day_of_week - todayDay;
-      if (diff < 0) diff += 7;
-      if (diff < minDaysAhead) minDaysAhead = diff;
-    }
-    if (minDaysAhead > 7) return null;
-    return addDays(startOfDay(today), minDaysAhead);
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const dowLabel = (dow) => tc(DAYS_OF_WEEK.find(d => d.value === dow)?.labelKey || '');
+  const todayDow = new Date().getDay();
+
+  // Explode classes into slot-instances grouped by weekday.
+  const slotsByDow = useMemo(() => {
+    const map = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+    classes.forEach(cls => {
+      (cls.gym_class_schedules || []).forEach(slot => {
+        if (slot.day_of_week == null || !map[slot.day_of_week]) return;
+        map[slot.day_of_week].push({ cls, slot });
+      });
+    });
+    Object.values(map).forEach(arr => arr.sort((a, b) => (a.slot.start_time || '').localeCompare(b.slot.start_time || '')));
+    return map;
+  }, [classes]);
+
+  const totalSlots = useMemo(() => Object.values(slotsByDow).reduce((n, a) => n + a.length, 0), [slotsByDow]);
+
+  const SlotRow = ({ entry }) => {
+    const { cls, slot } = entry;
+    const accent = cls.accent_color || TT.accent;
+    return (
+      <button type="button" onClick={() => setSelectedClass(cls)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '11px 12px', borderRadius: 12, background: TT.surface, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, cursor: 'pointer', textAlign: 'left', marginBottom: 8 }}>
+        <div style={{ width: 4, alignSelf: 'stretch', minHeight: 34, borderRadius: 999, background: accent, flexShrink: 0 }} />
+        <div style={{ fontFamily: TFont.mono, fontSize: 12, fontWeight: 800, color: TT.text, width: 94, flexShrink: 0, letterSpacing: -0.3 }}>
+          {slot.start_time?.slice(0, 5)}<span style={{ color: TT.textMute }}>–{slot.end_time?.slice(0, 5)}</span>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cls.name}</div>
+          <div style={{ fontSize: 11, color: TT.textSub, marginTop: 1 }}>
+            {cls.max_capacity} {t('trainerClasses.spots', 'spots')} · {cls.duration_minutes} {t('trainerClasses.minutesShort', 'min')}
+          </div>
+        </div>
+        <ChevronRight size={14} color={TT.textMute} style={{ flexShrink: 0 }} />
+      </button>
+    );
   };
 
-  // Filter classes by tab
-  const todayDow = new Date().getDay();
-  const filtered = classes.filter(cls => {
-    const sch = cls.gym_class_schedules || [];
-    if (filter === 'today') return sch.some(s => s.day_of_week === todayDow);
-    if (filter === 'week') return sch.length > 0;
-    if (filter === 'past') return sch.length === 0;
-    return true;
-  });
+  const Stepper = ({ label, onPrev, onNext }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <button type="button" onClick={onPrev} aria-label={t('trainerClasses.prev', 'Previous')}
+        style={{ width: 36, height: 36, borderRadius: 11, border: `1px solid ${TT.border}`, background: TT.surface, display: 'grid', placeItems: 'center', color: TT.text, cursor: 'pointer', flexShrink: 0 }}>
+        <ChevronLeft size={18} />
+      </button>
+      <div style={{ flex: 1, textAlign: 'center', fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.4, textTransform: 'capitalize' }}>{label}</div>
+      <button type="button" onClick={onNext} aria-label={t('trainerClasses.next', 'Next')}
+        style={{ width: 36, height: 36, borderRadius: 11, border: `1px solid ${TT.border}`, background: TT.surface, display: 'grid', placeItems: 'center', color: TT.text, cursor: 'pointer', flexShrink: 0 }}>
+        <ChevronRight size={18} />
+      </button>
+    </div>
+  );
 
-  const counts = useMemo(() => {
-    const todayN = classes.filter(c => (c.gym_class_schedules || []).some(s => s.day_of_week === todayDow)).length;
-    const weekN = classes.filter(c => (c.gym_class_schedules || []).length > 0).length;
-    const pastN = classes.filter(c => (c.gym_class_schedules || []).length === 0).length;
-    return { all: classes.length, today: todayN, week: weekN, past: pastN };
-  }, [classes, todayDow]);
+  // ── Day view ──
+  const renderDay = () => {
+    const entries = slotsByDow[dayDate.getDay()] || [];
+    return (
+      <>
+        <Stepper
+          label={cap(format(dayDate, 'EEEE d MMM', { locale: dateLocale }))}
+          onPrev={() => setDayDate(d => addDays(d, -1))}
+          onNext={() => setDayDate(d => addDays(d, 1))}
+        />
+        {entries.length === 0
+          ? <div style={{ padding: '28px 0', textAlign: 'center', fontSize: 13, color: TT.textMute }}>{t('trainerClasses.noClassesDay', 'No classes this day')}</div>
+          : entries.map((e, i) => <SlotRow key={i} entry={e} />)}
+      </>
+    );
+  };
+
+  // ── Week view (Mon-first agenda) ──
+  const renderWeek = () => (
+    <div>
+      {[1, 2, 3, 4, 5, 6, 0].map(dow => {
+        const entries = slotsByDow[dow] || [];
+        const isToday = dow === todayDow;
+        return (
+          <div key={dow} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontFamily: TFont.display, fontSize: 12.5, fontWeight: 800, color: isToday ? TT.accent : TT.text, letterSpacing: 0.3, textTransform: 'uppercase' }}>{dowLabel(dow)}</span>
+              {isToday && <span style={{ fontSize: 9, fontWeight: 800, color: '#06363B', background: TT.accent, padding: '2px 7px', borderRadius: 999, letterSpacing: 0.5, textTransform: 'uppercase' }}>{t('trainerClasses.filterToday', 'Today')}</span>}
+              {entries.length > 0 && <span style={{ fontSize: 11, color: TT.textMute, fontWeight: 600 }}>{entries.length}</span>}
+            </div>
+            {entries.length === 0
+              ? <div style={{ fontSize: 11.5, color: TT.textMute, paddingLeft: 2, paddingBottom: 2 }}>{t('trainerClasses.free', 'Free')}</div>
+              : entries.map((e, i) => <SlotRow key={i} entry={e} />)}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  // ── Month view (calendar; tap a day → day view) ──
+  const renderMonth = () => {
+    const first = startOfMonth(monthDate);
+    const lead = (getDay(first) + 6) % 7; // Monday-first offset
+    const days = getDaysInMonth(monthDate);
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push(null);
+    for (let d = 1; d <= days; d++) cells.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), d));
+    const weekdayLabels = [1, 2, 3, 4, 5, 6, 0].map(d => format(new Date(2024, 0, 7 + d), 'EEEEE', { locale: dateLocale }));
+    return (
+      <>
+        <Stepper
+          label={cap(format(monthDate, 'MMMM yyyy', { locale: dateLocale }))}
+          onPrev={() => setMonthDate(m => addMonths(m, -1))}
+          onNext={() => setMonthDate(m => addMonths(m, 1))}
+        />
+        <TCard padded={12}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
+            {weekdayLabels.map((w, i) => <div key={i} style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 800, color: TT.textMute, textTransform: 'uppercase' }}>{w}</div>)}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+            {cells.map((d, i) => {
+              if (!d) return <div key={i} />;
+              const count = (slotsByDow[d.getDay()] || []).length;
+              const today = isSameDay(d, new Date());
+              const has = count > 0;
+              return (
+                <button key={i} type="button" disabled={!has}
+                  onClick={() => { setDayDate(startOfDay(d)); setView('day'); }}
+                  style={{ aspectRatio: '1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, borderRadius: 9, border: today ? `2px solid ${TT.text}` : '1px solid transparent', background: has ? TT.accentSoft : 'transparent', color: has ? TT.accentInk : TT.textMute, cursor: has ? 'pointer' : 'default' }}>
+                  <span style={{ fontSize: 12, fontWeight: has ? 800 : 500 }}>{d.getDate()}</span>
+                  {has && <span style={{ fontSize: 8.5, fontWeight: 800 }}>{count}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </TCard>
+      </>
+    );
+  };
 
   return (
     <>
-      {/* Filter pills */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        <TTabPill active={filter === 'all'} onClick={() => setFilter('all')} count={counts.all || null}>
-          {t('trainerClasses.filterAll', 'All')}
-        </TTabPill>
-        <TTabPill active={filter === 'today'} onClick={() => setFilter('today')} count={counts.today || null}>
-          {t('trainerClasses.filterToday', 'Today')}
-        </TTabPill>
-        <TTabPill active={filter === 'week'} onClick={() => setFilter('week')} count={counts.week || null}>
-          {t('trainerClasses.filterThisWeek', 'This week')}
-        </TTabPill>
-        <TTabPill active={filter === 'past'} onClick={() => setFilter('past')} count={counts.past || null}>
-          {t('trainerClasses.filterPast', 'Past')}
-        </TTabPill>
+      {/* View toggle */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {[['day', t('trainerClasses.viewDay', 'Day')], ['week', t('trainerClasses.viewWeek', 'Week')], ['month', t('trainerClasses.viewMonth', 'Month')]].map(([k, label]) => {
+          const on = view === k;
+          return (
+            <button key={k} type="button" onClick={() => setView(k)}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 11, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? '#fff' : TT.textSub }}>
+              {label}
+            </button>
+          );
+        })}
       </div>
 
-      {filtered.length === 0 ? (
+      {totalSlots === 0 ? (
         <TrainerEmptyState
           icon={CalendarDays}
           title={t('trainerClasses.noClasses', 'No classes assigned')}
           description={t('trainerClasses.emptyDesc', 'Once your gym admin assigns classes to you, they will appear here.')}
         />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filtered.map((cls, idx) => {
-            const nextDate = getNextDate(cls);
-            const slots = cls.gym_class_schedules?.length || 0;
-            const accent = cls.accent_color || TT.accent;
-            const isToday = (cls.gym_class_schedules || []).some(s => s.day_of_week === todayDow);
-            return (
-              <motion.button
-                key={cls.id}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, delay: Math.min(idx * 0.04, 0.4) }}
-                onClick={() => setSelectedClass(cls)}
-                style={{
-                  width: '100%', padding: 0, border: 'none',
-                  borderRadius: 18, overflow: 'hidden', textAlign: 'left',
-                  background: TT.surface, cursor: 'pointer',
-                  boxShadow: TT.shadow,
-                  display: 'flex', flexDirection: 'column',
-                }}
-                aria-label={cls.name}
-              >
-                {/* Image-card top half */}
-                <div style={{
-                  position: 'relative', width: '100%',
-                  aspectRatio: '16 / 9',
-                  background: cls.image_url ? `url(${cls.image_url}) center/cover` : `linear-gradient(135deg, ${accent}33, ${accent}11)`,
-                  borderTopLeftRadius: 18, borderTopRightRadius: 18,
-                }}>
-                  {!cls.image_url && (
-                    <div style={{
-                      position: 'absolute', inset: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <CalendarDays size={42} style={{ color: accent, opacity: 0.6 }} />
-                    </div>
-                  )}
-                  {isToday && (
-                    <div style={{
-                      position: 'absolute', top: 10, left: 10,
-                      padding: '4px 10px', borderRadius: 999,
-                      background: TT.accent, color: '#06363B',
-                      fontSize: 10, fontWeight: 800, letterSpacing: 0.6,
-                      textTransform: 'uppercase',
-                    }}>
-                      {t('trainerClasses.filterToday', 'Today')}
-                    </div>
-                  )}
-                </div>
-                {/* Body */}
-                <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div>
-                    <div style={{
-                      fontFamily: TFont.display, fontSize: 16, fontWeight: 800,
-                      color: TT.text, letterSpacing: -0.3, lineHeight: 1.15,
-                    }}>
-                      {cls.name}
-                    </div>
-                    <div style={{
-                      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10,
-                      marginTop: 4,
-                    }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: TT.textSub }}>
-                        <Clock size={11} /> {cls.duration_minutes} {t('trainerClasses.minutesShort', 'min')}
-                      </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: TT.textSub }}>
-                        <Users size={11} /> {cls.max_capacity}
-                      </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: TT.textSub }}>
-                        <CalendarDays size={11} /> {slots} {t('trainerClasses.slots')}
-                      </span>
-                    </div>
-                  </div>
-                  {nextDate && (
-                    <div style={{ fontSize: 11, color: TT.accent, fontWeight: 700 }}>
-                      {t('trainerClasses.nextDate')}: {format(nextDate, 'EEE, MMM d', { locale: dateLocale })}
-                    </div>
-                  )}
-                  {isToday && (
-                    <TPrimaryButton
-                      style={{ width: '100%', justifyContent: 'center' }}
-                      onClick={(e) => { e.stopPropagation(); setSelectedClass(cls); }}
-                    >
-                      <UserCheck size={13} strokeWidth={2.4} />
-                      {t('trainerClasses.takeAttendance', 'Take attendance')}
-                    </TPrimaryButton>
-                  )}
-                </div>
-              </motion.button>
-            );
-          })}
-        </div>
-      )}
+      ) : view === 'day' ? renderDay() : view === 'week' ? renderWeek() : renderMonth()}
 
       {selectedClass && (
-        <ClassDetailDrawer
-          cls={selectedClass}
-          gymId={gymId}
-          onClose={() => setSelectedClass(null)}
-          t={t}
-          tc={tc}
-        />
+        <ClassDetailDrawer cls={selectedClass} gymId={gymId} onClose={() => setSelectedClass(null)} t={t} tc={tc} />
       )}
     </>
   );
@@ -387,23 +386,32 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
 
 // ── Tab 2: Bookings ──
 function BookingsTab({ classes, t, dateLocale }) {
-  const today = startOfDay(new Date());
-  const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
-  const [selectedDate, setSelectedDate] = useState(format(today, 'yyyy-MM-dd'));
+  const [view, setView] = useState('day'); // day | week | month
+  const [anchorDate, setAnchorDate] = useState(() => startOfDay(new Date()));
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-
   const classIds = classes.map(c => c.id);
 
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+  const [rangeStart, rangeEnd] = useMemo(() => {
+    if (view === 'week') return [startOfWeek(anchorDate, { weekStartsOn: 1 }), endOfWeek(anchorDate, { weekStartsOn: 1 })];
+    if (view === 'month') return [startOfMonth(anchorDate), endOfMonth(anchorDate)];
+    return [anchorDate, anchorDate];
+  }, [view, anchorDate]);
+  const rangeStartStr = format(rangeStart, 'yyyy-MM-dd');
+  const rangeEndStr = format(rangeEnd, 'yyyy-MM-dd');
+
   const { data: bookings = [], isLoading } = useQuery({
-    queryKey: ['trainer', 'all-class-bookings', selectedDate, classIds],
+    queryKey: ['trainer', 'all-class-bookings', rangeStartStr, rangeEndStr, classIds],
     queryFn: async () => {
       if (classIds.length === 0) return [];
       const { data } = await supabase
         .from('gym_class_bookings')
         .select('id, status, attended, booked_date, class_id, profiles(id, full_name, avatar_url)')
         .in('class_id', classIds)
-        .eq('booked_date', selectedDate)
+        .gte('booked_date', rangeStartStr)
+        .lte('booked_date', rangeEndStr)
         .order('booked_date');
       return data || [];
     },
@@ -423,106 +431,184 @@ function BookingsTab({ classes, t, dateLocale }) {
     }
   };
 
-  // Group by class
   const classMap = {};
   for (const c of classes) classMap[c.id] = c;
-  const grouped = bookings.reduce((acc, b) => {
-    const cId = b.class_id;
-    if (!acc[cId]) acc[cId] = [];
-    acc[cId].push(b);
-    return acc;
-  }, {});
 
-  return (
-    <div className="space-y-4">
-      {/* Day pills */}
-      <div className="relative -mx-3 sm:-mx-0">
-        <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 px-3 sm:px-1 scrollbar-hide">
-          {days.map(day => {
-            const dayStr = format(day, 'yyyy-MM-dd');
-            const isActive = dayStr === selectedDate;
-            return (
-              <button
-                key={dayStr}
-                onClick={() => setSelectedDate(dayStr)}
-                className={`flex-shrink-0 flex flex-col items-center px-2.5 sm:px-3 py-2 rounded-xl min-w-[46px] sm:min-w-[52px] min-h-[52px] transition-all ${
-                  isActive
-                    ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30'
-                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)] hover:border-white/12'
-                }`}
-              >
-                <span className="text-[10px] font-medium uppercase">{format(day, 'EEE', { locale: dateLocale })}</span>
-                <span className={`text-[15px] font-bold ${isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>
-                  {format(day, 'd')}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[var(--color-bg-primary)] to-transparent pointer-events-none sm:hidden" />
-      </div>
+  const byDate = useMemo(() => {
+    const m = {};
+    for (const b of bookings) { (m[b.booked_date] = m[b.booked_date] || []).push(b); }
+    return m;
+  }, [bookings]);
 
-      {/* Bookings content */}
-      {isLoading ? (
-        <Spinner label={t('trainerClasses.loading')} />
-      ) : Object.keys(grouped).length === 0 ? (
+  const renderStepper = ({ label, onPrev, onNext }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <button type="button" onClick={onPrev} aria-label={t('trainerClasses.prev', 'Previous')}
+        style={{ width: 36, height: 36, borderRadius: 11, border: `1px solid ${TT.border}`, background: TT.surface, display: 'grid', placeItems: 'center', color: TT.text, cursor: 'pointer', flexShrink: 0 }}>
+        <ChevronLeft size={18} />
+      </button>
+      <div style={{ flex: 1, textAlign: 'center', fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.4, textTransform: 'capitalize' }}>{label}</div>
+      <button type="button" onClick={onNext} aria-label={t('trainerClasses.next', 'Next')}
+        style={{ width: 36, height: 36, borderRadius: 11, border: `1px solid ${TT.border}`, background: TT.surface, display: 'grid', placeItems: 'center', color: TT.text, cursor: 'pointer', flexShrink: 0 }}>
+        <ChevronRight size={18} />
+      </button>
+    </div>
+  );
+
+  // Bookings for one date, grouped by class.
+  const renderDayBookings = (dateStr) => {
+    const dayBookings = byDate[dateStr] || [];
+    const grouped = dayBookings.reduce((acc, b) => {
+      (acc[b.class_id] = acc[b.class_id] || []).push(b);
+      return acc;
+    }, {});
+    if (Object.keys(grouped).length === 0) {
+      return (
         <TrainerEmptyState
           icon={Users}
           title={t('trainerClasses.noBookings', 'No bookings yet')}
           description={t('trainerClasses.noBookingsDesc', 'When members book this day, they will show up here ready to mark attendance.')}
           compact
         />
-      ) : (
-        <div className="space-y-4">
-          {Object.entries(grouped).map(([classId, classBookings]) => {
-            const cls = classMap[classId];
-            return (
-              <div key={classId}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div
-                    className="w-6 h-6 rounded-lg flex items-center justify-center"
-                    style={{ backgroundColor: (cls?.accent_color || '#D4AF37') + '20' }}
-                  >
-                    <CalendarDays size={12} style={{ color: cls?.accent_color || '#D4AF37' }} />
-                  </div>
-                  <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{cls?.name || t('trainerClasses.unknown')}</span>
-                  <span className="text-[11px] text-[var(--color-text-muted)] ml-auto">{classBookings.length}</span>
+      );
+    }
+    return (
+      <div className="space-y-4">
+        {Object.entries(grouped).map(([classId, classBookings]) => {
+          const cls = classMap[classId];
+          return (
+            <div key={classId}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ backgroundColor: (cls?.accent_color || '#D4AF37') + '20' }}>
+                  <CalendarDays size={12} style={{ color: cls?.accent_color || '#D4AF37' }} />
                 </div>
-                <div className="space-y-1.5">
-                  {classBookings.map(b => (
-                    <div key={b.id} className="flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)] overflow-hidden">
-                      {b.profiles?.avatar_url ? (
-                        <img src={b.profiles.avatar_url} alt={b.profiles?.full_name || t('trainerClasses.members')} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
-                          <span className="text-[11px] font-bold text-[var(--color-accent)]">
-                            {b.profiles?.full_name?.[0]?.toUpperCase() || '?'}
-                          </span>
-                        </div>
-                      )}
-                      <span className="flex-1 text-[13px] text-[var(--color-text-primary)] truncate">
-                        {b.profiles?.full_name || t('trainerClasses.unknown')}
-                      </span>
-                      {b.attended ? (
-                        <span className="flex items-center gap-1 text-[11px] text-[#10B981] bg-[#10B981]/10 px-2.5 py-1 rounded-full font-medium">
-                          <Check size={11} /> {t('trainerClasses.attended')}
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleMarkAttended(b.id)}
-                          className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-2.5 py-2 sm:py-1.5 rounded-full font-medium hover:bg-[var(--color-accent)]/20 transition-colors min-h-[44px] sm:min-h-[32px]"
-                        >
-                          <UserCheck size={11} /> {t('trainerClasses.markAttended')}
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{cls?.name || t('trainerClasses.unknown')}</span>
+                <span className="text-[11px] text-[var(--color-text-muted)] ml-auto">{classBookings.length}</span>
               </div>
+              <div className="space-y-1.5">
+                {classBookings.map(b => (
+                  <div key={b.id} className="flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)] overflow-hidden">
+                    {b.profiles?.avatar_url ? (
+                      <img src={b.profiles.avatar_url} alt={b.profiles?.full_name || t('trainerClasses.members')} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
+                        <span className="text-[11px] font-bold text-[var(--color-accent)]">{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
+                      </div>
+                    )}
+                    <span className="flex-1 text-[13px] text-[var(--color-text-primary)] truncate">{b.profiles?.full_name || t('trainerClasses.unknown')}</span>
+                    {b.attended ? (
+                      <span className="flex items-center gap-1 text-[11px] text-[#10B981] bg-[#10B981]/10 px-2.5 py-1 rounded-full font-medium">
+                        <Check size={11} /> {t('trainerClasses.attended')}
+                      </span>
+                    ) : (
+                      <button onClick={() => handleMarkAttended(b.id)} className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-2.5 py-2 sm:py-1.5 rounded-full font-medium hover:bg-[var(--color-accent)]/20 transition-colors min-h-[44px] sm:min-h-[32px]">
+                        <UserCheck size={11} /> {t('trainerClasses.markAttended')}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // ── Week view: 7 day-summary rows ──
+  const renderWeek = () => {
+    const ws = startOfWeek(anchorDate, { weekStartsOn: 1 });
+    const days = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {days.map(day => {
+          const dayStr = format(day, 'yyyy-MM-dd');
+          const dayB = byDate[dayStr] || [];
+          const attended = dayB.filter(b => b.attended).length;
+          const isToday = isSameDay(day, new Date());
+          return (
+            <button key={dayStr} type="button" onClick={() => { setAnchorDate(startOfDay(day)); setView('day'); }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 12, background: TT.surface, border: `1px solid ${isToday ? TT.accent : TT.border}`, boxShadow: TT.shadow, cursor: 'pointer', textAlign: 'left' }}>
+              <div style={{ width: 42, flexShrink: 0, textAlign: 'center' }}>
+                <div style={{ fontSize: 9.5, fontWeight: 800, color: isToday ? TT.accent : TT.textMute, textTransform: 'uppercase' }}>{format(day, 'EEE', { locale: dateLocale })}</div>
+                <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: TT.text, letterSpacing: -0.4, lineHeight: 1 }}>{format(day, 'd')}</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {dayB.length === 0 ? (
+                  <span style={{ fontSize: 12.5, color: TT.textMute }}>{t('trainerClasses.free', 'Free')}</span>
+                ) : (
+                  <span style={{ fontSize: 12.5, color: TT.text, fontWeight: 600 }}>
+                    {t('trainerClasses.weekDaySummary', '{{n}} booked · {{a}} attended', { n: dayB.length, a: attended })}
+                  </span>
+                )}
+              </div>
+              {dayB.length > 0 && <ChevronRight size={14} color={TT.textMute} style={{ flexShrink: 0 }} />}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // ── Month view: calendar with booking-count badges ──
+  const renderMonth = () => {
+    const first = startOfMonth(anchorDate);
+    const lead = (getDay(first) + 6) % 7;
+    const daysIn = getDaysInMonth(anchorDate);
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push(null);
+    for (let d = 1; d <= daysIn; d++) cells.push(new Date(anchorDate.getFullYear(), anchorDate.getMonth(), d));
+    const weekdayLabels = [1, 2, 3, 4, 5, 6, 0].map(d => format(new Date(2024, 0, 7 + d), 'EEEEE', { locale: dateLocale }));
+    return (
+      <TCard padded={12}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
+          {weekdayLabels.map((w, i) => <div key={i} style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 800, color: TT.textMute, textTransform: 'uppercase' }}>{w}</div>)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {cells.map((d, i) => {
+            if (!d) return <div key={i} />;
+            const count = (byDate[format(d, 'yyyy-MM-dd')] || []).length;
+            const today = isSameDay(d, new Date());
+            const has = count > 0;
+            return (
+              <button key={i} type="button" disabled={!has}
+                onClick={() => { setAnchorDate(startOfDay(d)); setView('day'); }}
+                style={{ aspectRatio: '1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, borderRadius: 9, border: today ? `2px solid ${TT.text}` : '1px solid transparent', background: has ? TT.accentSoft : 'transparent', color: has ? TT.accentInk : TT.textMute, cursor: has ? 'pointer' : 'default' }}>
+                <span style={{ fontSize: 12, fontWeight: has ? 800 : 500 }}>{d.getDate()}</span>
+                {has && <span style={{ fontSize: 8.5, fontWeight: 800 }}>{count}</span>}
+              </button>
             );
           })}
         </div>
-      )}
+      </TCard>
+    );
+  };
+
+  const weekLabel = `${format(rangeStart, 'd MMM', { locale: dateLocale })} – ${format(rangeEnd, 'd MMM', { locale: dateLocale })}`;
+
+  return (
+    <div className="space-y-4">
+      {/* View toggle */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[['day', t('trainerClasses.viewDay', 'Day')], ['week', t('trainerClasses.viewWeek', 'Week')], ['month', t('trainerClasses.viewMonth', 'Month')]].map(([k, label]) => {
+          const on = view === k;
+          return (
+            <button key={k} type="button" onClick={() => setView(k)}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 11, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? '#fff' : TT.textSub }}>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {view === 'day' && renderStepper({ label: cap(format(anchorDate, 'EEEE d MMM', { locale: dateLocale })), onPrev: () => setAnchorDate(d => addDays(d, -1)), onNext: () => setAnchorDate(d => addDays(d, 1)) })}
+      {view === 'week' && renderStepper({ label: weekLabel, onPrev: () => setAnchorDate(d => addDays(d, -7)), onNext: () => setAnchorDate(d => addDays(d, 7)) })}
+      {view === 'month' && renderStepper({ label: cap(format(anchorDate, 'MMMM yyyy', { locale: dateLocale })), onPrev: () => setAnchorDate(d => addMonths(d, -1)), onNext: () => setAnchorDate(d => addMonths(d, 1)) })}
+
+      {isLoading ? (
+        <Spinner label={t('trainerClasses.loading')} />
+      ) : view === 'day' ? renderDayBookings(format(anchorDate, 'yyyy-MM-dd'))
+        : view === 'week' ? renderWeek()
+        : renderMonth()}
     </div>
   );
 }

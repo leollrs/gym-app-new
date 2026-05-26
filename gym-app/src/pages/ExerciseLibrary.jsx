@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, X, ChevronDown, ChevronRight, Dumbbell, Plus, Bookmark, Check, Users, SlidersHorizontal, ArrowUpDown, Star, Pencil, Edit3, Sparkles, Play, Minus, Heart, MoreHorizontal, Trophy, Flame } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, X, ChevronDown, ChevronLeft, ChevronRight, Dumbbell, Plus, Bookmark, Check, Users, SlidersHorizontal, ArrowUpDown, Star, Pencil, Edit3, Sparkles, Play, Minus, Heart, MoreHorizontal, Trophy, Flame } from 'lucide-react';
 import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT, CATEGORIES } from '../data/exercises';
 import BodyMusclePicker from '../components/BodyMusclePicker';
 import MuscleExercisesSheet from '../components/MuscleExercisesSheet';
@@ -2510,6 +2511,7 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
 /* ── Full-page wrapper ──────────────────────────────────────────────────────── */
 export const ExerciseLibraryPage = () => {
   const { t } = useTranslation('pages');
+  const navigate = useNavigate();
   const { user, profile } = useAuth();
   const posthog = usePostHog();
   const [tab, setTab]               = useState('all');
@@ -2988,6 +2990,15 @@ export const ExerciseLibraryPage = () => {
           viewport — that was making the tooltip fall back to an off-screen
           position above the header. */}
       <header className="mb-3.5" data-tour="tour-exercise-library">
+        <button
+          onClick={() => navigate('/workouts')}
+          className="flex items-center gap-1 -ml-1 mb-2 min-h-[40px] text-[14px] font-bold active:opacity-70"
+          style={{ color: 'var(--color-text-muted)' }}
+          aria-label={t('exerciseLibrary.backToWorkouts', 'Back to Entrenos')}
+        >
+          <ChevronLeft size={20} />
+          {t('workouts.title', 'Entrenos')}
+        </button>
         <div className="text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-accent)' }}>
           {t('exerciseLibrary.yourArsenal', 'YOUR ARSENAL')} · {totalCount} {t('exerciseLibrary.moves', 'MOVES')}
         </div>

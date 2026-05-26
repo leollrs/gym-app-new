@@ -178,6 +178,8 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
     trainer_years_exp: profile?.trainer_years_exp != null ? String(profile.trainer_years_exp) : '',
     bio: profile?.bio || '',
     trainer_tagline: profile?.trainer_tagline || '',
+    trainer_default_rate: profile?.trainer_default_rate != null ? String(profile.trainer_default_rate) : '',
+    trainer_rate_unit: profile?.trainer_rate_unit || 'month',
   }));
 
   const submit = () => {
@@ -194,6 +196,8 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
         : null,
       bio: draft.bio.trim() || null,
       trainer_tagline: draft.trainer_tagline.trim() || null,
+      trainer_default_rate: draft.trainer_default_rate.trim() ? Math.max(0, Number(draft.trainer_default_rate) || 0) : null,
+      trainer_rate_unit: draft.trainer_default_rate.trim() ? (draft.trainer_rate_unit || 'month') : null,
     };
     // Email is on auth.users, not profiles — pass it as a side-channel so the
     // parent can route it through supabase.auth.updateUser (verification email).
@@ -311,6 +315,35 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
             maxLength={80}
             style={inputStyle}
           />
+        </div>
+        <div>
+          <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.rate', 'Your rate (optional)')}</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 16, fontWeight: 800, color: TT.textSub }}>$</span>
+              <input
+                type="text" inputMode="decimal"
+                value={draft.trainer_default_rate}
+                onChange={(e) => setDraft(d => ({ ...d, trainer_default_rate: e.target.value.replace(/[^0-9.]/g, '') }))}
+                placeholder={t('pages:trainerProfile.editIdentity.ratePlaceholder', 'e.g. 50')}
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+              {['month', 'session'].map(u => {
+                const on = (draft.trainer_rate_unit || 'month') === u;
+                return (
+                  <button key={u} type="button" onClick={() => setDraft(d => ({ ...d, trainer_rate_unit: u }))}
+                    style={{ padding: '0 12px', borderRadius: 10, border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.accent : TT.surface2, color: on ? '#fff' : TT.textSub, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    {u === 'month' ? t('pages:trainerProfile.editIdentity.perMonth', '/mo') : t('pages:trainerProfile.editIdentity.perSession', '/sess')}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: TT.textMute, marginTop: 5 }}>
+            {t('pages:trainerProfile.editIdentity.rateHint', 'Pre-fills new clients’ fees. Optional.')}
+          </div>
         </div>
         <div>
           <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.tagline', 'Tagline')}</label>

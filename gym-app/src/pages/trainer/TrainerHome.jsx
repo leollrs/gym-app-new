@@ -3,22 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle, X, ChevronRight,
-  Users, TrendingUp, CalendarCheck, Activity,
+  Users, TrendingUp, CalendarCheck, Activity, DollarSign,
+  Play, MessageSquare, FileText,
 } from 'lucide-react';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
-import { subDays, format, startOfWeek, startOfDay, endOfDay } from 'date-fns';
+import { subDays, format, startOfWeek, startOfDay, endOfDay, isTomorrow } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { enUS } from 'date-fns/locale/en-US';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
-import EmptyState from '../../components/EmptyState';
 import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
 import {
-  TCard, TAvatar, TSparkBars, TRing, THeroDark,
-  TEyebrow, TPageTitle, TSectionHeader, TDarkButton, TSegmented,
+  TCard, TAvatar, TSparkBars, TPill,
+  TEyebrow, TDarkButton, TSegmented,
 } from './components/designPrimitives';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -65,11 +65,12 @@ export default function TrainerHome() {
   const [weekSessions, setWeekSessions] = useState([]);
   const [todaySessions, setTodaySessions] = useState([]);
   const [churnScores, setChurnScores] = useState({});
+  const [moneyOverview, setMoneyOverview] = useState(null);
+  const [upcomingSessions, setUpcomingSessions] = useState([]);
   // Set of client profile ids who currently have an in-progress workout draft.
   // Hook is intentionally minimal here — full real-time updates happen on
   // /trainer/live/:sessionId itself.
   const [liveClientIds, setLiveClientIds] = useState(new Set());
-  // eslint-disable-next-line no-unused-vars
   const [recentPRs, setRecentPRs] = useState([]);
   const [callModal, setCallModal] = useState(null);
   const [callNote, setCallNote] = useState('');
@@ -128,16 +129,48 @@ export default function TrainerHome() {
       const clientIds = assignedClients.map(c => c.id);
       setClients(assignedClients);
 
+      // Always load — keyed off the trainer, not the client roster — so a trainer
+      // with zero assigned clients still sees today's booked sessions + cobros.
+      const sessionCols = 'id, client_id, title, scheduled_at, duration_mins, status, profiles!trainer_sessions_client_id_fkey(id, full_name, username, avatar_url, avatar_type, avatar_value)';
+      const [todayRes, upcomingRes, moneyRes] = await Promise.all([
+        supabase
+          .from('trainer_sessions')
+          .select(sessionCols)
+          .eq('trainer_id', profile.id)
+          .gte('scheduled_at', todayStart)
+          .lte('scheduled_at', todayEnd)
+          .in('status', ['scheduled', 'confirmed', 'completed'])
+          .order('scheduled_at', { ascending: true }),
+        // Upcoming sessions beyond today — feeds the hero fallback + the
+        // scrollable "Próximas sesiones" list so quiet days aren't empty.
+        supabase
+          .from('trainer_sessions')
+          .select(sessionCols)
+          .eq('trainer_id', profile.id)
+          .gt('scheduled_at', todayEnd)
+          .in('status', ['scheduled', 'confirmed'])
+          .order('scheduled_at', { ascending: true })
+          .limit(12),
+        // Money overview RPC; null if migration 0451 isn't applied yet.
+        supabase.rpc('get_trainer_money_overview'),
+      ]);
+      if (todayRes.error) logger.error('TrainerHome: today fetch failed:', todayRes.error);
+      if (upcomingRes.error) logger.error('TrainerHome: upcoming fetch failed:', upcomingRes.error);
+      if (moneyRes?.error) logger.error('TrainerHome: money overview fetch failed:', moneyRes.error);
+      setTodaySessions(todayRes.data || []);
+      setUpcomingSessions(upcomingRes.data || []);
+      setMoneyOverview(moneyRes?.error ? null : (moneyRes?.data || null));
+
       if (clientIds.length === 0) {
         setWeekSessions([]);
-        setTodaySessions([]);
         setRecentPRs([]);
         setChurnScores({});
+        setLiveClientIds(new Set());
         setLoading(false);
         return;
       }
 
-      const [churnRes, weekRes, todayRes, prsRes, liveRes] = await Promise.all([
+      const [churnRes, weekRes, prsRes, liveRes] = await Promise.all([
         selectInBatches(
           (ids) => supabase.from('churn_risk_scores').select('profile_id, score, computed_at')
             .in('profile_id', ids).order('computed_at', { ascending: false }),
@@ -149,14 +182,6 @@ export default function TrainerHome() {
             .in('profile_id', ids).eq('status', 'completed').gte('started_at', weekStart),
           clientIds,
         ),
-        supabase
-          .from('trainer_sessions')
-          .select('id, client_id, title, scheduled_at, duration_mins, status, profiles!trainer_sessions_client_id_fkey(id, full_name, username, avatar_url, avatar_type, avatar_value)')
-          .eq('trainer_id', profile.id)
-          .gte('scheduled_at', todayStart)
-          .lte('scheduled_at', todayEnd)
-          .in('status', ['scheduled', 'confirmed', 'completed']) // fixed 3-value enum, left as-is
-          .order('scheduled_at', { ascending: true }),
         selectInBatches(
           (ids) => supabase.from('personal_records')
             .select('id, profile_id, exercise_id, weight_lbs, reps, achieved_at, exercises(name)')
@@ -164,8 +189,7 @@ export default function TrainerHome() {
             .order('achieved_at', { ascending: false }).limit(8),
           clientIds,
         ),
-        // In-progress workout drafts — feeds the "Watch live" button on session
-        // cards. Cheap query: 24h cutoff, just profile_id.
+        // In-progress workout drafts — feeds the "Watch live" button. 24h cutoff.
         selectInBatches(
           (ids) => supabase.from('session_drafts').select('profile_id')
             .in('profile_id', ids)
@@ -176,7 +200,6 @@ export default function TrainerHome() {
 
       if (churnRes.error) logger.error('TrainerHome: churn fetch failed:', churnRes.error);
       if (weekRes.error)  logger.error('TrainerHome: week fetch failed:',  weekRes.error);
-      if (todayRes.error) logger.error('TrainerHome: today fetch failed:', todayRes.error);
       if (prsRes.error)   logger.error('TrainerHome: prs fetch failed:',   prsRes.error);
       if (liveRes.error)  logger.error('TrainerHome: live drafts fetch failed:', liveRes.error);
 
@@ -185,7 +208,6 @@ export default function TrainerHome() {
       setChurnScores(cmap);
 
       setWeekSessions(weekRes.data || []);
-      setTodaySessions(todayRes.data || []);
       setRecentPRs(prsRes.data || []);
       setLiveClientIds(new Set((liveRes.data || []).map(r => r.profile_id)));
     } catch (err) {
@@ -238,19 +260,94 @@ export default function TrainerHome() {
     return bars;
   }, [weekSessions]);
 
-  // Greeting based on hour
+  // Greeting based on hour. The greeting* keys bake in ", {{name}}" — pass an
+  // empty name and strip the trailing separator so we get just the salutation
+  // ("Buenas tardes"); the name is appended (accented) in the markup.
   const greeting = useMemo(() => {
     const h = new Date().getHours();
-    if (h < 12) return t('trainerHome.greetingMorning');
-    if (h < 18) return t('trainerHome.greetingAfternoon');
-    return t('trainerHome.greetingEvening');
+    const key = h < 12 ? 'greetingMorning' : h < 18 ? 'greetingAfternoon' : 'greetingEvening';
+    return t(`trainerHome.${key}`, { name: '' }).replace(/[,、，]\s*$/, '').trim();
   }, [t]);
 
   const trainerFirstName = (profile?.full_name || profile?.username || '').split(' ')[0];
   const todayDate = format(new Date(), 'EEEE, MMMM d', { locale: dateFnsLocale });
   const heroEyebrow = format(new Date(), 'EEEE · h:mm a', { locale: dateFnsLocale });
   const todaySessionsCount = todaySessions.length;
-  const sessionsLeft = todaySessions.filter(s => s.status !== 'completed').length;
+
+  // ── Home (V3 redesign) derived values ──
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const homeEyebrow = cap(format(new Date(), 'EEEE · d MMMM · h:mm a', { locale: dateFnsLocale }));
+  const todayTotalMins = todaySessions.reduce((a, s) => a + (s.duration_mins || 60), 0);
+  const hoursLabel = (() => {
+    const h = Math.floor(todayTotalMins / 60), m = todayTotalMins % 60;
+    return h > 0 ? (m > 0 ? `${h} h ${m} m` : `${h} h`) : `${m} m`;
+  })();
+  const todayUpcoming = todaySessions.filter(s => s.status !== 'completed'); // not-yet-done today
+  const allUpcoming = [...todayUpcoming, ...upcomingSessions];               // chronological
+  const heroSession = allUpcoming[0] || null;                               // never empty if anything's booked
+  const heroIsToday = !!(heroSession && todayUpcoming.some(s => s.id === heroSession.id));
+  const heroClientId = heroSession ? (heroSession.profiles?.id || heroSession.client_id) : null;
+  const heroName = heroSession ? (heroSession.profiles?.full_name || heroSession.profiles?.username || t('trainerCalendar.client', 'Client')) : '';
+  const heroPR = heroClientId ? recentPRs.find(p => p.profile_id === heroClientId) : null;
+  const heroClientLastActive = heroClientId ? (clients.find(c => c.id === heroClientId)?.last_active_at || null) : null;
+  const minsUntilNext = (heroIsToday && heroSession) ? Math.round((new Date(heroSession.scheduled_at).getTime() - new Date().getTime()) / 60000) : null;
+  const heroWhen = !heroSession ? '' : (heroIsToday
+    ? (minsUntilNext != null && minsUntilNext > 0 ? t('trainerHome.nextIn', 'Next · in {{n}} min', { n: minsUntilNext }) : t('trainerHome.nextNow', 'Up next'))
+    : t('trainerHome.nextOn', 'Next · {{when}}', { when: isTomorrow(new Date(heroSession.scheduled_at)) ? t('trainerHome.tomorrow', 'tomorrow') : format(new Date(heroSession.scheduled_at), 'EEE d', { locale: dateFnsLocale }) }));
+  const upcomingList = allUpcoming.slice(1); // everything after the hero (today's rest + future)
+  const cobrosPending = Number(moneyOverview?.pending_total || 0);
+  const cobrosPendingCount = moneyOverview?.pending_count || 0;
+  const cobrosAvatars = (Array.isArray(moneyOverview?.clients) ? moneyOverview.clients : [])
+    .filter(c => Number(c.monthly_fee || 0) > 0 && !c.paid_this_month).slice(0, 3);
+
+  // ── Money card (manual payment tracking) — links to /trainer/payments ──
+  const renderMoneyCard = () => {
+    if (!moneyOverview) return null;
+    const collected = Number(moneyOverview.collected_total || 0);
+    const pendingCount = moneyOverview.pending_count || 0;
+    const pendingTotal = Number(moneyOverview.pending_total || 0);
+    const withFee = moneyOverview.with_fee || 0;
+    const monthLabel = format(new Date(), 'MMMM', { locale: dateFnsLocale });
+    return (
+      <button
+        type="button"
+        onClick={() => navigate('/trainer/payments')}
+        aria-label={t('trainerHome.money.open', 'Open payments')}
+        style={{
+          width: '100%', textAlign: 'left', cursor: 'pointer',
+          background: TT.surface, border: `1px solid ${TT.border}`,
+          borderRadius: 18, boxShadow: TT.shadow, padding: 16,
+          display: 'flex', alignItems: 'center', gap: 14,
+        }}
+      >
+        <div style={{ width: 48, height: 48, borderRadius: 14, background: TT.accentSoft, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <DollarSign size={22} style={{ color: TT.accent }} strokeWidth={2.4} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: TT.textMute }}>
+            {t('trainerHome.money.title', 'Collected · {{month}}', { month: monthLabel })}
+          </div>
+          {withFee === 0 ? (
+            <div style={{ fontSize: 13, color: TT.textSub, marginTop: 3, fontWeight: 600 }}>
+              {t('trainerHome.money.setup', 'Set client fees to track payments')}
+            </div>
+          ) : (
+            <>
+              <div style={{ fontFamily: TFont.display, fontSize: 26, fontWeight: 800, color: TT.text, letterSpacing: -1, lineHeight: 1, marginTop: 3 }}>
+                ${collected.toFixed(0)}
+              </div>
+              <div style={{ fontSize: 11.5, color: pendingCount > 0 ? TT.hot : TT.good, marginTop: 4, fontWeight: 700 }}>
+                {pendingCount > 0
+                  ? t('trainerHome.money.pending', '{{count}} pending · ${{amount}}', { count: pendingCount, amount: pendingTotal.toFixed(0) })
+                  : t('trainerHome.money.allPaid', 'All paid up ✓')}
+              </div>
+            </>
+          )}
+        </div>
+        <ChevronRight size={18} color={TT.textMute} />
+      </button>
+    );
+  };
 
   // ── Roster (top 5 by sessions) ──
   const rosterClients = useMemo(() => {
@@ -284,25 +381,6 @@ export default function TrainerHome() {
   }, [clients, churnScores, weekSessions, liveClientIds, dateFnsLocale, t]);
 
   // ── Today's sessions horizontal strip ──
-  const todayStrip = useMemo(() => {
-    return todaySessions.map(s => {
-      const fullName = s.profiles?.full_name || s.profiles?.username || t('trainerCalendar.client', 'Client');
-      const firstName = fullName.split(' ')[0];
-      const time = format(new Date(s.scheduled_at), 'h:mm a', { locale: dateFnsLocale });
-      const dur = `${s.duration_mins || 60}m`;
-      return {
-        id: s.id,
-        time,
-        dur,
-        firstName,
-        plan: s.title || '',
-        clientId: s.profiles?.id,
-        avatarUrl: s.profiles?.avatar_url,
-        fullName,
-      };
-    });
-  }, [todaySessions, dateFnsLocale, t]);
-
   // ── Quick handlers ──
   async function openConversation(clientId) {
     const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
@@ -356,26 +434,10 @@ export default function TrainerHome() {
     );
   }
 
-  // ── No clients state ──
-  if (clients.length === 0) {
-    return (
-      <div style={{ background: TT.bg, minHeight: '100%' }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="mb-6">
-            <TEyebrow>{heroEyebrow}</TEyebrow>
-            <TPageTitle>{trainerFirstName ? `${greeting}, ${trainerFirstName}` : greeting}</TPageTitle>
-          </div>
-          <EmptyState
-            icon={Users}
-            title={t('trainerDashboard.noClients', 'No clients assigned yet')}
-            description={t('trainerDashboard.noClientsDesc', 'Your dashboard will come to life once you have clients assigned. Ask your gym admin to assign clients to you.')}
-            actionLabel={t('trainerDashboard.goToClients', 'View Clients')}
-            onAction={() => navigate('/trainer/clients')}
-          />
-        </div>
-      </div>
-    );
-  }
+  // No early return on an empty roster — the home renders its full structure
+  // (greeting + sessions + cobros) regardless, with graceful per-section empties.
+
+  const noClients = clients.length === 0;
 
   // ── KPIs (desktop) ──
   const kpiCards = [
@@ -425,112 +487,6 @@ export default function TrainerHome() {
     <div style={{ background: TT.bg, minHeight: '100%' }}>
       {/* ─────────────────── MOBILE LAYOUT ─────────────────── */}
       <div className="md:hidden">
-        <THeroDark style={{ marginTop: 0 }}>
-          <div style={{ padding: '8px 18px 14px' }}>
-            <TEyebrow color={TT.accent}>{heroEyebrow}</TEyebrow>
-            <div style={{
-              fontFamily: TFont.display, fontSize: 32, fontWeight: 800,
-              letterSpacing: -1.2, lineHeight: 1, marginTop: 6, color: '#fff',
-            }}>
-              {sessionsLeft > 0 ? (
-                <>{t('trainerHome.heroTitle', '{{count}} sessions left today.', { count: sessionsLeft })}</>
-              ) : (
-                <>{t('trainerHome.heroQuiet', 'Quiet day. {{day}}.', { day: format(new Date(), 'EEEE', { locale: dateFnsLocale }) })}</>
-              )}
-            </div>
-          </div>
-
-          {/* Today's sessions horizontal strip */}
-          {todayStrip.length > 0 && (
-            <div style={{ display: 'flex', gap: 10, padding: '0 18px', overflowX: 'auto' }}>
-              {todayStrip.map((s, i) => {
-                const isNext = i === 0;
-                const isLive = !!(s.clientId && liveClientIds.has(s.clientId));
-                const goLive = (e) => {
-                  e.stopPropagation();
-                  navigate(`/trainer/live/${s.clientId}`);
-                };
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      if (s.clientId) navigate(`/trainer/clients/${s.clientId}`);
-                      else navigate('/trainer/calendar');
-                    }}
-                    aria-label={t('trainerHome.openSession', 'Open session')}
-                    style={{
-                      minWidth: 180, flexShrink: 0,
-                      background: isNext ? TT.accent : 'rgba(255,255,255,0.06)',
-                      color: isNext ? '#06363B' : '#fff',
-                      borderRadius: 18, padding: 14,
-                      border: isNext ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                      position: 'relative',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {isNext && !isLive && (
-                      <div style={{
-                        position: 'absolute', top: 10, right: 10,
-                        fontSize: 9, fontWeight: 800, letterSpacing: 1.2,
-                        textTransform: 'uppercase', color: '#06363B',
-                      }}>
-                        ↓ {t('trainerHome.next', 'Next')}
-                      </div>
-                    )}
-                    {isLive && (
-                      <span
-                        role="link"
-                        tabIndex={0}
-                        onClick={goLive}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') goLive(e); }}
-                        aria-label={t('trainerLive.watchLive', 'Watch live')}
-                        style={{
-                          position: 'absolute', top: 10, right: 10,
-                          padding: '4px 8px', borderRadius: 999,
-                          background: TT.hot, color: '#fff',
-                          fontSize: 10, fontWeight: 800,
-                          letterSpacing: 0.6, textTransform: 'uppercase',
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <span style={{
-                          width: 6, height: 6, borderRadius: 999,
-                          background: '#fff',
-                        }} />
-                        {t('trainerLive.watchLive', 'Watch live')}
-                      </span>
-                    )}
-                    <div style={{
-                      fontFamily: TFont.display, fontSize: 22, fontWeight: 800,
-                      letterSpacing: -0.6, lineHeight: 1,
-                    }}>{s.time}</div>
-                    <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2, fontWeight: 700 }}>{s.dur}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                      <TAvatar
-                        name={s.fullName}
-                        size={28}
-                        idx={avatarIdx(s.clientId)}
-                        src={s.avatarUrl}
-                      />
-                      <div style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{s.firstName}</div>
-                    </div>
-                    <div style={{
-                      fontSize: 11, marginTop: 8,
-                      opacity: isNext ? 0.7 : 0.55,
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>
-                      {s.plan}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </THeroDark>
-
         {/* Error banner */}
         {error && (
           <div style={{ padding: '12px 16px 0' }}>
@@ -541,170 +497,230 @@ export default function TrainerHome() {
                 <p className="text-[13px] font-bold">{t('trainerDashboard.errorTitle', 'Failed to load dashboard')}</p>
                 <p className="text-[12px] mt-0.5 truncate">{error}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => fetchHomeData()}
-                className="shrink-0 text-[12px] font-bold px-2 py-1 rounded-lg"
-                style={{ background: '#fff', color: TT.hot }}
-              >
+              <button type="button" onClick={() => fetchHomeData()} className="shrink-0 text-[12px] font-bold px-2 py-1 rounded-lg" style={{ background: '#fff', color: TT.hot }}>
                 {t('trainerDashboard.retry', 'Retry')}
               </button>
             </div>
           </div>
         )}
 
-        {/* Roster table */}
-        <div style={{ padding: '18px 16px 14px' }}>
-          <TSectionHeader
-            title={t('trainerHome.rosterThisWeek', 'Roster · this week')}
-            action={
-              <button
-                type="button"
-                onClick={() => navigate('/trainer/clients')}
-                style={{ color: TT.accent, fontSize: 12, fontWeight: 700, background: 'transparent', border: 'none', cursor: 'pointer' }}
-              >
-                {t('trainerHome.seeAll', 'See all →')}
-              </button>
-            }
-          />
-          <TCard padded={0}>
-            <div style={{
-              display: 'grid', gridTemplateColumns: '1.6fr 1fr 50px 36px',
-              gap: 8, padding: '10px 14px',
-              fontSize: 10, fontWeight: 800, letterSpacing: 1.2,
-              textTransform: 'uppercase', color: TT.textMute,
-              borderBottom: `1px solid ${TT.border}`,
-            }}>
-              <span>{t('trainerHome.colClient', 'Client')}</span>
-              <span>{t('trainerHome.colWeek', 'Week')}</span>
-              <span style={{ textAlign: 'center' }}>{t('trainerHome.colAdh', 'Adh')}</span>
-              <span></span>
+        {/* Greeting */}
+        <div style={{ padding: '8px 18px 12px' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: TT.accent, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+            {homeEyebrow}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4, gap: 12 }}>
+            <div style={{ fontFamily: TFont.display, fontSize: 22, fontWeight: 800, color: TT.text, letterSpacing: -0.7, lineHeight: 1.05 }}>
+              {greeting}{trainerFirstName ? <>{', '}<span style={{ color: TT.accent }}>{trainerFirstName}.</span></> : '.'}
             </div>
-            {rosterClients.map((c, i) => {
-              const tone = statusTone(c.status);
-              const fullName = c.name;
-              const parts = fullName.split(' ');
-              const firstName = parts[0];
-              const lastInitial = parts[1] ? `${parts[1][0]}.` : '';
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => navigate(c.isLive ? `/trainer/live/${c.id}` : `/trainer/clients/${c.id}`)}
-                  aria-label={c.isLive
-                    ? t('trainerHome.openLive', 'Open live session for {{name}}', { name: fullName })
-                    : t('trainerHome.openClient', 'Open {{name}}', { name: fullName })}
-                  style={{
-                    width: '100%', display: 'grid',
-                    gridTemplateColumns: '1.6fr 1fr 50px 36px',
-                    gap: 8, padding: '12px 14px', alignItems: 'center',
-                    borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
-                    background: 'transparent', border: 'none', cursor: 'pointer',
-                    textAlign: 'left', minHeight: 56,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                    <div style={{ position: 'relative' }}>
-                      <TAvatar name={fullName} size={32} idx={avatarIdx(c.id)} src={c.avatarUrl} />
-                      {c.isLive && (
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            position: 'absolute', bottom: -2, right: -2,
-                            width: 10, height: 10, borderRadius: '50%',
-                            background: '#FF3B30',
-                            boxShadow: `0 0 0 2px ${TT.cardBg || '#fff'}, 0 0 0 4px rgba(255,59,48,0.30)`,
-                            animation: 'live-pulse 1.4s ease-in-out infinite',
-                          }}
-                        />
-                      )}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {firstName} {lastInitial}
-                        {c.isLive && (
-                          <span style={{
-                            fontSize: 9, fontWeight: 800, letterSpacing: 0.6,
-                            padding: '2px 6px', borderRadius: 999,
-                            background: '#FF3B30', color: '#fff',
-                          }}>{t('trainerHome.liveBadge', 'EN VIVO')}</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: c.isLive ? '#FF3B30' : TT.textMute, marginTop: 1, fontWeight: c.isLive ? 700 : 400 }}>{c.lastLabel}</div>
-                    </div>
-                  </div>
-                  <div>
-                    <TSparkBars data={c.bars} w={70} h={22} color={tone} />
-                    <div style={{ fontSize: 10, color: TT.textMute, marginTop: 2, fontFamily: TFont.mono }}>
-                      {c.sessionCount}/{4}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <TRing
-                      value={c.adh}
-                      size={32}
-                      stroke={3}
-                      color={tone}
-                      label={`${Math.round(c.adh * 100)}`}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <ChevronRight size={14} color={TT.textMute} />
-                  </div>
-                </button>
-              );
-            })}
-          </TCard>
+            {todaySessionsCount > 0 && (
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: TT.text, letterSpacing: -0.4, lineHeight: 1 }}>
+                  {todaySessionsCount}<span style={{ fontSize: 11, color: TT.textMute, fontWeight: 600 }}>&nbsp;{t('trainerHome.sessionsWord', 'sessions')}</span>
+                </div>
+                <div style={{ fontSize: 11, color: TT.textSub, marginTop: 2, fontWeight: 600 }}>{t('trainerHome.hoursToday', '{{h}} today', { h: hoursLabel })}</div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Needs attention */}
-        {atRiskClients.length > 0 && (
-          <div style={{ padding: '0 16px 18px' }}>
-            <TSectionHeader
-              title={t('trainerHome.needsAttention', 'Needs attention · {{count}}', { count: atRiskClients.length })}
-              accent
-              action={
-                <button
-                  type="button"
-                  onClick={() => navigate('/trainer/clients')}
-                  style={{ color: TT.textSub, fontSize: 12, fontWeight: 700, background: 'transparent', border: 'none', cursor: 'pointer' }}
-                >
-                  {t('trainerHome.sweepAll', 'Sweep all →')}
-                </button>
-              }
-            />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {atRiskClients.map((item) => {
-                const c = item.client;
-                const status = deriveClientStatus(c, item.churnScore);
-                const tone = statusTone(status);
-                const name = c.full_name || c.username || t('trainerDashboard.unknownFallback');
-                const reason = item.churnScore != null && item.churnScore >= 60
-                  ? t('trainerHome.attentionReasonChurn', '{{days}} days quiet · churn {{score}}', {
-                      days: item.daysInactive, score: item.churnScore,
-                    })
-                  : t('trainerHome.attentionReasonInactive', '{{days}} days quiet', { days: item.daysInactive });
-                return (
-                  <TCard key={c.id} padded={14} style={{ borderLeft: `3px solid ${tone}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <TAvatar name={name} size={40} idx={avatarIdx(c.id)} src={c.avatar_url} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text }}>{name}</div>
-                        <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>{reason}</div>
-                      </div>
-                      <TDarkButton
-                        onClick={() => openConversation(c.id)}
-                        style={{ padding: '7px 11px', fontSize: 11, borderRadius: 9 }}
-                      >
-                        {t('trainerHome.sendCheckin', 'Send check-in')}
-                      </TDarkButton>
+        {/* Hero — next session (or rest-day state) */}
+        <div style={{ padding: '0 16px 12px' }}>
+          {heroSession ? (
+            <div style={{ background: TT.surface, borderRadius: 20, padding: 16, border: `1px solid ${TT.border}`, boxShadow: TT.shadow }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 999, background: heroIsToday ? TT.hot : TT.accent, boxShadow: `0 0 0 4px ${(heroIsToday ? TT.hot : TT.accent)}25` }} />
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: heroIsToday ? TT.hot : TT.accent, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+                    {heroWhen}
+                  </span>
+                </div>
+                <div style={{ fontFamily: TFont.mono, fontSize: 11, color: TT.textMute, fontWeight: 700 }}>
+                  {format(new Date(heroSession.scheduled_at), 'h:mm a', { locale: dateFnsLocale })} · {heroSession.duration_mins || 60} min
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <TAvatar name={heroName} size={52} idx={avatarIdx(heroClientId)} src={heroSession.profiles?.avatar_url} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: TFont.display, fontSize: 20, fontWeight: 800, color: TT.text, letterSpacing: -0.5, lineHeight: 1.1 }}>{heroName}</div>
+                  {heroSession.title && <div style={{ fontSize: 12, color: TT.textSub, marginTop: 3 }}>{heroSession.title}</div>}
+                </div>
+              </div>
+
+              {(heroPR || heroClientLastActive) && (
+                <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, background: TT.surface2, border: `1px solid ${TT.border}` }}>
+                  {heroPR && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                      <span style={{ color: TT.textSub }}>{t('trainerHome.lastPR', 'Last PR')}</span>
+                      <span style={{ fontWeight: 700, color: TT.text }}>{heroPR.exercises?.name || ''} · {heroPR.weight_lbs} lb × {heroPR.reps}</span>
                     </div>
-                  </TCard>
+                  )}
+                  {heroClientLastActive && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: heroPR ? 6 : 0 }}>
+                      <span style={{ color: TT.textSub }}>{t('trainerHome.lastActiveLabel', 'Last active')}</span>
+                      <span style={{ fontWeight: 700, color: TT.text }}>{format(new Date(heroClientLastActive), 'd MMM', { locale: dateFnsLocale })}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                {heroIsToday ? (
+                  <button type="button" onClick={() => navigate(`/trainer/live/${heroClientId}`)}
+                    style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: TT.text, color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', letterSpacing: 0.2 }}>
+                    <Play size={15} strokeWidth={2.6} fill="#fff" /> {t('trainerHome.startSession', 'Start session')}
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)}
+                    style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: TT.text, color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', letterSpacing: 0.2 }}>
+                    {t('trainerHome.openClientCta', 'Open client')}
+                  </button>
+                )}
+                <button type="button" onClick={() => openConversation(heroClientId)} aria-label={t('trainerHome.message', 'Message')}
+                  style={{ width: 46, height: 46, borderRadius: 12, border: `1px solid ${TT.borderSolid}`, background: '#fff', color: TT.text, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                  <MessageSquare size={18} />
+                </button>
+                {heroIsToday && (
+                  <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)} aria-label={t('trainerHome.openClientShort', 'Open client')}
+                    style={{ width: 46, height: 46, borderRadius: 12, border: `1px solid ${TT.borderSolid}`, background: '#fff', color: TT.text, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                    <FileText size={18} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <TCard padded={18} style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text }}>
+                {noClients ? t('trainerHome.noClientsYet', 'No clients yet') : t('trainerHome.noUpcoming', 'No upcoming sessions')}
+              </div>
+              <div style={{ fontSize: 12.5, color: TT.textSub, marginTop: 4 }}>
+                {noClients ? t('trainerHome.noClientsYetSub', 'Add a client to start scheduling sessions and tracking payments.') : t('trainerHome.noUpcomingSub', 'Schedule a session with a client to see it here.')}
+              </div>
+              <button type="button" onClick={() => navigate(noClients ? '/trainer/clients' : '/trainer/calendar')}
+                style={{ marginTop: 12, padding: '9px 16px', borderRadius: 11, border: 'none', background: TT.text, color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 12.5, cursor: 'pointer' }}>
+                {noClients ? t('trainerHome.addClients', 'Add clients') : t('trainerHome.viewAgenda', 'View calendar')}
+              </button>
+            </TCard>
+          )}
+        </div>
+
+        {/* Upcoming sessions — horizontal scroll (today's rest + future days) */}
+        {upcomingList.length > 0 && (
+          <div style={{ padding: '0 0 14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 18px 8px' }}>
+              <div style={{ fontFamily: TFont.display, fontSize: 13, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>{t('trainerHome.upcoming', 'Upcoming')}</div>
+              <button type="button" onClick={() => navigate('/trainer/calendar')} style={{ fontSize: 11, color: TT.textSub, fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                {t('trainerHome.seeAll', 'See all →')}
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 10, padding: '0 16px', overflowX: 'auto' }}>
+              {upcomingList.map(s => {
+                const cId = s.profiles?.id || s.client_id;
+                const cName = s.profiles?.full_name || s.profiles?.username || t('trainerCalendar.client', 'Client');
+                const d = new Date(s.scheduled_at);
+                const isToday = todaySessions.some(x => x.id === s.id);
+                const dayLabel = isToday ? t('trainerHome.todayShort', 'Today') : (isTomorrow(d) ? t('trainerHome.tomorrow', 'tomorrow') : format(d, 'EEE d', { locale: dateFnsLocale }));
+                return (
+                  <button key={s.id} type="button" onClick={() => navigate(`/trainer/clients/${cId}`)}
+                    style={{ minWidth: 156, padding: 12, borderRadius: 14, background: TT.surface, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, flexShrink: 0, textAlign: 'left', cursor: 'pointer' }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: isToday ? TT.accent : TT.textMute, letterSpacing: 0.6, textTransform: 'uppercase' }}>{dayLabel}</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 2 }}>
+                      <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.4, lineHeight: 1 }}>{format(d, 'h:mm', { locale: dateFnsLocale })}</div>
+                      <span style={{ fontFamily: TFont.mono, fontSize: 10, color: TT.textMute, fontWeight: 700 }}>{s.duration_mins || 60}m</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+                      <TAvatar name={cName} size={24} idx={avatarIdx(cId)} src={s.profiles?.avatar_url} />
+                      <div style={{ fontSize: 12, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cName.split(' ')[0]}</div>
+                    </div>
+                    {s.title && <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</div>}
+                  </button>
                 );
               })}
             </div>
           </div>
         )}
+
+        {/* Attend today + Cobros/Adherencia */}
+        <div style={{ padding: '4px 16px 14px' }}>
+          {atRiskClients.length > 0 && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>{t('trainerHome.attendToday', 'Attend today')}</div>
+                  <TPill tone="hot" size="s">{atRiskClients.length}</TPill>
+                </div>
+                <button type="button" onClick={() => navigate('/trainer/clients')} style={{ fontSize: 11.5, color: TT.textSub, fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer' }}>{t('trainerHome.seeAll', 'See all →')}</button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                {atRiskClients.slice(0, 3).map((item) => {
+                  const c = item.client;
+                  const tone = statusTone(deriveClientStatus(c, item.churnScore));
+                  const name = c.full_name || c.username || t('trainerDashboard.unknownFallback');
+                  const reason = item.churnScore != null && item.churnScore >= 60
+                    ? t('trainerHome.attentionReasonChurn', '{{days}} days quiet · churn {{score}}', { days: item.daysInactive, score: item.churnScore })
+                    : t('trainerHome.attentionReasonInactive', '{{days}} days quiet', { days: item.daysInactive });
+                  return (
+                    <TCard key={c.id} padded={12} style={{ borderLeft: `3px solid ${tone}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <TAvatar name={name} size={36} idx={avatarIdx(c.id)} src={c.avatar_url} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TT.text }}>{name}</div>
+                        <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>{reason}</div>
+                      </div>
+                      <button type="button" onClick={() => openConversation(c.id)}
+                        style={{ padding: '7px 11px', borderRadius: 9, background: TT.text, color: '#fff', border: 'none', fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                        {t('trainerHome.greet', 'Say hi')}
+                      </button>
+                    </TCard>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'stretch' }}>
+            {/* Cobros — teal */}
+            <button type="button" onClick={() => navigate('/trainer/payments')}
+              style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', display: 'block', height: '100%' }}>
+              <TCard padded={14} style={{ height: '100%', borderLeft: `3px solid ${TT.accent}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 7, background: TT.accentSoft, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <DollarSign size={13} strokeWidth={2.6} style={{ color: TT.accent }} />
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: TT.accentInk, letterSpacing: 1, textTransform: 'uppercase' }}>{t('trainerPayments.title', 'Payments')}</span>
+                </div>
+                <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.text, letterSpacing: -0.8, lineHeight: 1 }}>${cobrosPending.toFixed(0)}</div>
+                <div style={{ fontSize: 11, color: cobrosPendingCount > 0 ? TT.hot : TT.good, fontWeight: 700, marginTop: 4 }}>
+                  {cobrosPendingCount > 0 ? t('trainerHome.nPending', '{{count}} pending', { count: cobrosPendingCount }) : t('trainerHome.allPaidShort', 'All paid')}
+                </div>
+                {cobrosAvatars.length > 0 && (
+                  <div style={{ display: 'flex', marginTop: 8 }}>
+                    {cobrosAvatars.map((c, i) => (
+                      <div key={i} style={{ marginLeft: i ? -8 : 0, border: '2px solid #fff', borderRadius: 999 }}>
+                        <TAvatar name={c.full_name || '?'} size={22} idx={avatarIdx(c.client_id)} src={c.avatar_url} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TCard>
+            </button>
+            {/* Adherencia — green, taps to clients */}
+            <button type="button" onClick={() => navigate('/trainer/clients')}
+              style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', display: 'block', height: '100%' }}>
+              <TCard padded={14} style={{ height: '100%', background: TT.goodSoft, borderColor: 'transparent', borderLeft: `3px solid ${TT.good}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 7, background: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <Activity size={13} strokeWidth={2.6} style={{ color: TT.good }} />
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: TT.goodInk, letterSpacing: 1, textTransform: 'uppercase' }}>{t('trainerHome.kpi.avgAdherence', 'Adherence')}</span>
+                </div>
+                <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.goodInk, letterSpacing: -0.8, lineHeight: 1 }}>{retentionPct}<span style={{ fontSize: 13, color: TT.good, opacity: 0.7 }}>%</span></div>
+                <div style={{ fontSize: 11, color: TT.goodInk, opacity: 0.75, fontWeight: 600, marginTop: 4 }}>{t('trainerHome.kpi.last30', 'last 30 days')}</div>
+                <div style={{ marginTop: 6 }}><TSparkBars data={weekDaySpark} w={120} h={18} color={TT.good} track="rgba(30,122,78,0.15)" /></div>
+              </TCard>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ─────────────────── DESKTOP LAYOUT ─────────────────── */}
@@ -731,6 +747,13 @@ export default function TrainerHome() {
               </div>
             </div>
           </div>
+
+          {/* Money card */}
+          {moneyOverview && (
+            <div style={{ marginBottom: 16, maxWidth: 460 }}>
+              {renderMoneyCard()}
+            </div>
+          )}
 
           {/* KPI strip */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>

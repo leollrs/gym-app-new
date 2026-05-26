@@ -2,11 +2,12 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, CheckSquare, Square, ClipboardList, Send, UserMinus, Ban, AlertTriangle, ShieldBan, MoreHorizontal, CheckCheck, Activity, Plus, SlidersHorizontal } from 'lucide-react';
+import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, MessageCircle, CheckSquare, Square, ClipboardList, Send, UserMinus, Ban, AlertTriangle, ShieldBan, MoreHorizontal, CheckCheck, Activity, Plus, SlidersHorizontal } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { encryptMessage } from '../../lib/messageEncryption';
+import { openWhatsApp, hasWhatsApp } from '../../lib/whatsapp';
 import posthog from 'posthog-js';
 import logger from '../../lib/logger';
 import { formatDistanceToNow, subDays } from 'date-fns';
@@ -700,7 +701,7 @@ export default function TrainerClients() {
           client_id,
           notes,
           profiles!trainer_clients_client_id_fkey (
-            id, full_name, username, last_active_at, created_at, assigned_program_id
+            id, full_name, username, last_active_at, created_at, assigned_program_id, phone_number
           )
         `)
         .eq('trainer_id', profile.id)
@@ -986,6 +987,12 @@ export default function TrainerClients() {
                 ? formatDistanceToNow(new Date(c.last_active_at), { addSuffix: true, locale: dateFnsLocale })
                 : t('trainerClients.neverActive', 'Never active');
               const isSelected = bulkSelected.has(c.id);
+              const canWA = hasWhatsApp(c.phone_number);
+              const openWA = (e) => {
+                e.stopPropagation();
+                const firstName = (c.full_name || '').split(' ')[0];
+                openWhatsApp(c.phone_number, t('trainerClients.waGreeting', 'Hi {{name}}!', { name: firstName || '' }));
+              };
               return (
                 <motion.button
                   key={c.id}
@@ -1057,6 +1064,22 @@ export default function TrainerClients() {
                       </span>
                     </div>
                   </div>
+                  {canWA && !selectMode && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={openWA}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openWA(e); }}
+                      aria-label={t('trainerClients.whatsapp', 'WhatsApp {{name}}', { name: c.full_name || '' })}
+                      style={{
+                        width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                        background: '#25D366', color: '#fff',
+                        display: 'grid', placeItems: 'center', cursor: 'pointer',
+                      }}
+                    >
+                      <MessageCircle size={17} strokeWidth={2.4} />
+                    </span>
+                  )}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                     <TRing value={adherenceVal} size={40} stroke={4} color={tone} label={`${adherencePct}`} />
                     <div style={{ fontSize: 9, color: TT.textMute, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase' }}>

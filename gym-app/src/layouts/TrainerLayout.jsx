@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
-import { Home, Users, CalendarDays, ClipboardList, MessageSquare, Bell, LogOut, BookOpen } from 'lucide-react';
+import { Home, Users, CalendarDays, ClipboardList, MessageSquare, Bell, LogOut, BookOpen, DollarSign } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -10,6 +10,7 @@ const BASE_NAV = [
   { to: '/trainer/clients',  labelKey: 'trainerNav.clients',  icon: Users },
   { to: '/trainer/calendar', labelKey: 'trainerNav.calendar', icon: CalendarDays },
   { to: '/trainer/plans',    labelKey: 'trainerNav.plans',    icon: ClipboardList },
+  { to: '/trainer/payments', labelKey: 'trainerNav.payments', icon: DollarSign, desktopOnly: true },
   { to: '/trainer/classes',  labelKey: 'trainerNav.classes',  icon: BookOpen, requiresClasses: true },
   { to: '/trainer/messages', labelKey: 'trainerNav.messages', icon: MessageSquare },
 ];
@@ -26,6 +27,9 @@ export default function TrainerLayout({ children }) {
   const { profile, gymName, gymLogoUrl, gymConfig, signOut } = useAuth();
   const classesEnabled = gymConfig?.classesEnabled !== false;
   const NAV = BASE_NAV.filter(n => !n.requiresClasses || classesEnabled);
+  // Mobile bottom nav stays at 5–6 tabs; the money tracker lives in the desktop
+  // sidebar + the dashboard money card on mobile.
+  const MOBILE_NAV = NAV.filter(n => !n.desktopOnly);
   const navigate = useNavigate();
 
   const [unreadNotifs, setUnreadNotifs] = useState(0);
@@ -192,7 +196,7 @@ export default function TrainerLayout({ children }) {
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        {NAV.map(({ to, labelKey, icon: Icon, exact }) => (
+        {MOBILE_NAV.map(({ to, labelKey, icon: Icon, exact }) => (
           <NavLink key={to} to={to} end={exact}
             className={({ isActive }) =>
               `flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors relative ${

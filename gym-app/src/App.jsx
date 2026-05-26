@@ -120,6 +120,7 @@ const TrainerHelp          = lazy(() => import('./pages/trainer/TrainerHelp'));
 const TrainerPrivacy       = lazy(() => import('./pages/trainer/TrainerPrivacy'));
 const TrainerLiveSession   = lazy(() => import('./pages/trainer/TrainerLiveSession'));
 const TrainerNotifications = lazy(() => import('./pages/trainer/TrainerNotifications'));
+const TrainerPayments      = lazy(() => import('./pages/trainer/TrainerPayments'));
 
 // ── Lazy-loaded admin pages ─────────────────────────────────
 const AdminLayout        = lazy(() => import('./layouts/AdminLayout'));
@@ -1663,6 +1664,7 @@ function App() {
                 <Route path="/"                         element={<TrainerHome />} />
                 <Route path="/clients"                  element={<TrainerClients />} />
                 <Route path="/clients/:clientId"        element={<TrainerClientDetail />} />
+                <Route path="/payments"                 element={<TrainerPayments />} />
                 <Route path="/calendar"                 element={<TrainerCalendar />} />
                 <Route path="/plans"                    element={<TrainerPlans />} />
                 <Route path="/messages"                 element={<TrainerMessages />} />

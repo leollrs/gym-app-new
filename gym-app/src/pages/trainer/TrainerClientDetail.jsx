@@ -23,6 +23,10 @@ import { calculateMacros } from '../../lib/macroCalculator';
 import { generateDayPlan } from '../../lib/mealPlanner';
 import AnimatedCounter from '../../components/AnimatedCounter';
 import TrainerStatCard from './components/TrainerStatCard';
+import TrainerClientRecovery from './components/TrainerClientRecovery';
+import TrainerClientPayment from './components/TrainerClientPayment';
+import TrainerClientSchedule from './components/TrainerClientSchedule';
+import TrainerClientAttendance from './components/TrainerClientAttendance';
 import { TT, TFont, avatarIdx, avatarGradient } from './components/designTokens';
 import { TCard, TPill, TPrimaryButton } from './components/designPrimitives';
 
@@ -1234,6 +1238,10 @@ export default function TrainerClientNotes() {
       {/* ── Overview tab content (new visual layer) ────────── */}
       {activeTab === 'overview' && (
         <div style={{ padding: '0 16px 14px' }} className="md:max-w-[860px] md:mx-auto">
+          {/* Payment (trainer tool) */}
+          <TrainerClientPayment clientId={clientId} />
+          {/* Weekly schedule (trainer tool) */}
+          <TrainerClientSchedule clientId={clientId} />
           {/* Next session */}
           {(programName || recentSessions.length > 0) && (
             <>
@@ -1459,6 +1467,10 @@ export default function TrainerClientNotes() {
           Trainer still sees the full picture (weight trend, body comp, measurements grid, photo timeline). */}
       {activeTab === 'body' && (
         <div style={{ padding: '0 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
+          {/* Recovery + what-to-train (trainer tool) */}
+          <TrainerClientRecovery clientId={clientId} />
+          {/* Attendance calendar (with-you vs alone) */}
+          <TrainerClientAttendance clientId={clientId} />
           {/* View-only banner */}
           <div style={{
             background: TT.warnSoft, color: TT.warnInk,
