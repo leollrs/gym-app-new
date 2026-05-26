@@ -1311,6 +1311,13 @@ body.keyboard-open {
    moment focus is dismissed (`keyboardWillHide` removes the class). */
 body.keyboard-open .ob-bottom-bar { display: none !important; }
 
+/* Same fix for the member bottom tab bar: with native keyboard-resize the
+   WebView shrinks, which otherwise shoves the fixed bottom nav UP to sit just
+   above the keyboard (e.g. tapping the Messages "search conversations" field).
+   Hiding it while the keyboard is open keeps it from jumping; it returns on
+   `keyboardWillHide`. */
+body.keyboard-open .member-bottom-nav { display: none !important; }
+
 /* ── Offline indicator ───────────────────────────────────────────── */
 body.offline::after {
   content: 'No Connection';

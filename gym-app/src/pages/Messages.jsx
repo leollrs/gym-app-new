@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft, Archive, Trash2, MoreHorizontal, Ban, Lock } from 'lucide-react';
+import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft, Archive, ArchiveRestore, RotateCcw, Trash2, MoreHorizontal, Ban, Lock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -398,12 +398,12 @@ const ChatView = ({ conversationId, onBack }) => {
         setLoading(false);
       }
 
-      await supabase
-        .from('direct_messages')
-        .update({ read_at: new Date().toISOString() })
-        .eq('conversation_id', conversationId)
-        .neq('sender_id', user.id)
-        .is('read_at', null);
+      // Mark the whole conversation read via the RLS-proof RPC. A direct UPDATE
+      // on direct_messages can be silently blocked by the gym-scoped
+      // messages_update policy, which left the unread bubble stuck. Then notify
+      // the nav badge / list to recount.
+      await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId });
+      try { window.dispatchEvent(new CustomEvent('dm:read', { detail: { conversationId } })); } catch { /* no-op */ }
     };
 
     load();
@@ -458,11 +458,11 @@ const ChatView = ({ conversationId, onBack }) => {
             });
 
           if (payload.new.sender_id !== user.id) {
-            supabase
-              .from('direct_messages')
-              .update({ read_at: new Date().toISOString() })
-              .eq('id', payload.new.id)
-              .then(() => {});
+            // We're actively viewing — mark the conversation read (RPC bypasses
+            // the gym-scoped RLS) and ping the nav badge to recount live.
+            supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId }).then(() => {
+              try { window.dispatchEvent(new CustomEvent('dm:read', { detail: { conversationId } })); } catch { /* no-op */ }
+            });
           }
         }
       )
@@ -827,19 +827,24 @@ const ChatView = ({ conversationId, onBack }) => {
 };
 
 // ── Swipeable Row (Apple-style swipe actions) ──────────────────
-const SwipeableRow = ({ children, onArchive, onDelete, openRowId, setOpenRowId, rowId, t }) => {
+// Generic swipe-to-reveal row. `actions` is an ordered list of
+// { key, icon, label, confirmLabel?, bg, color, destructive? onClick } rendered
+// right-to-left behind the row. A full left-swipe fires the destructive action
+// (or the last one). Actions with a confirmLabel require a second tap.
+const SwipeableRow = ({ children, actions = [], openRowId, setOpenRowId, rowId }) => {
   const rowRef = useRef(null);
   const startXRef = useRef(0);
   const currentXRef = useRef(0);
   const isDraggingRef = useRef(false);
   const [offsetX, setOffsetX] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [confirmKey, setConfirmKey] = useState(null);
   const [transitioning, setTransitioning] = useState(false);
 
   const SNAP_THRESHOLD = 80;
   const FULL_SWIPE_THRESHOLD = 200;
-  const OPEN_WIDTH = 150; // 75px per button
+  const OPEN_WIDTH = Math.max(1, actions.length) * 75; // 75px per button
+  const fullSwipeAction = actions.find(a => a.destructive) || actions[actions.length - 1];
 
   // Close when another row opens
   useEffect(() => {
@@ -847,7 +852,7 @@ const SwipeableRow = ({ children, onArchive, onDelete, openRowId, setOpenRowId, 
       setTransitioning(true);
       setOffsetX(0);
       setIsOpen(false);
-      setDeleteConfirm(false);
+      setConfirmKey(null);
       setTimeout(() => setTransitioning(false), 300);
     }
   }, [openRowId, rowId, isOpen]);
@@ -879,11 +884,11 @@ const SwipeableRow = ({ children, onArchive, onDelete, openRowId, setOpenRowId, 
     setTimeout(() => setTransitioning(false), 300);
 
     if (offsetX > FULL_SWIPE_THRESHOLD) {
-      // Full swipe — trigger delete directly
+      // Full swipe — trigger the destructive action directly
       setOffsetX(0);
       setIsOpen(false);
-      setDeleteConfirm(false);
-      onDelete();
+      setConfirmKey(null);
+      fullSwipeAction?.onClick?.();
       return;
     }
 
@@ -896,33 +901,27 @@ const SwipeableRow = ({ children, onArchive, onDelete, openRowId, setOpenRowId, 
       // Snap closed
       setOffsetX(0);
       setIsOpen(false);
-      setDeleteConfirm(false);
+      setConfirmKey(null);
     }
-  }, [offsetX, onDelete, rowId, setOpenRowId, isOpen]);
+  }, [offsetX, fullSwipeAction, rowId, setOpenRowId, OPEN_WIDTH]);
 
   const handleClose = useCallback(() => {
     setTransitioning(true);
     setOffsetX(0);
     setIsOpen(false);
-    setDeleteConfirm(false);
+    setConfirmKey(null);
     setTimeout(() => setTransitioning(false), 300);
   }, []);
 
-  const handleArchiveClick = useCallback((e) => {
+  const handleActionClick = useCallback((e, action) => {
     e.stopPropagation();
-    handleClose();
-    onArchive();
-  }, [onArchive, handleClose]);
-
-  const handleDeleteClick = useCallback((e) => {
-    e.stopPropagation();
-    if (!deleteConfirm) {
-      setDeleteConfirm(true);
+    if (action.confirmLabel && confirmKey !== action.key) {
+      setConfirmKey(action.key);
       return;
     }
     handleClose();
-    onDelete();
-  }, [deleteConfirm, onDelete, handleClose]);
+    action.onClick?.();
+  }, [confirmKey, handleClose]);
 
   // Touch events
   const onTouchStart = useCallback((e) => handleStart(e.touches[0].clientX), [handleStart]);
@@ -961,47 +960,34 @@ const SwipeableRow = ({ children, onArchive, onDelete, openRowId, setOpenRowId, 
         display: 'flex',
         height: '100%',
       }}>
-        <button
-          onClick={handleArchiveClick}
-          style={{
-            width: 75,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 4,
-            background: 'var(--color-bg-elevated, #374151)',
-            color: 'var(--color-text-primary, #fff)',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: 11,
-            fontWeight: 600,
-          }}
-        >
-          <Archive size={20} />
-          <span>{t('messages.archive', { defaultValue: 'Archive' })}</span>
-        </button>
-        <button
-          onClick={handleDeleteClick}
-          style={{
-            width: deleteConfirm ? 100 : 75,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 4,
-            background: 'var(--color-danger, #EF4444)',
-            color: '#fff',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: 11,
-            fontWeight: 600,
-            transition: 'width 0.2s ease',
-          }}
-        >
-          <Trash2 size={20} />
-          <span>{deleteConfirm ? t('messages.deleteConfirm', { defaultValue: 'Delete?' }) : t('messages.deleteConversation', { defaultValue: 'Delete' })}</span>
-        </button>
+        {actions.map((action) => {
+          const ActionIcon = action.icon;
+          const confirming = action.confirmLabel && confirmKey === action.key;
+          return (
+            <button
+              key={action.key}
+              onClick={(e) => handleActionClick(e, action)}
+              style={{
+                width: confirming ? 100 : 75,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                background: action.bg,
+                color: action.color || '#fff',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: 600,
+                transition: 'width 0.2s ease',
+              }}
+            >
+              <ActionIcon size={20} />
+              <span>{confirming ? action.confirmLabel : action.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Sliding row content */}
@@ -1028,6 +1014,23 @@ const SwipeableRow = ({ children, onArchive, onDelete, openRowId, setOpenRowId, 
   );
 };
 
+// Recently-deleted chats are restorable for this long; after that the daily
+// cron purges them. Kept in sync with migration 0449's 30-day window.
+const RECENTLY_DELETED_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Which list a conversation belongs in, from the user's per-conversation state.
+function conversationBucket(state) {
+  if (!state) return 'active';
+  if (state.purged_at) return 'purged';
+  if (state.deleted_at) {
+    return (Date.now() - new Date(state.deleted_at).getTime() <= RECENTLY_DELETED_WINDOW_MS)
+      ? 'deleted'
+      : 'purged';
+  }
+  if (state.archived_at) return 'archived';
+  return 'active';
+}
+
 // ── Conversation List View (iMessage style) ─────────────────────
 const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, headerExtra }) => {
   const { t, i18n } = useTranslation('pages');
@@ -1036,11 +1039,11 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [openRowId, setOpenRowId] = useState(null);
-  const [archivedIds, setArchivedIds] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('archived_conversations') || '[]');
-    } catch { return []; }
-  });
+  // Per-conversation state (archived/deleted/purged) keyed by conversation id,
+  // sourced from conversation_member_state. Drives which tab each chat lands in.
+  const [stateMap, setStateMap] = useState({});
+  // Which list we're viewing: 'active' | 'archived' | 'deleted'.
+  const [tab, setTab] = useState('active');
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
@@ -1053,9 +1056,18 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
 
     if (!convs || convs.length === 0) {
       setConversations([]);
+      setStateMap({});
       setLoading(false);
       return;
     }
+
+    // Per-user archive / soft-delete state (RLS scopes rows to this user).
+    const { data: stateRows } = await supabase
+      .from('conversation_member_state')
+      .select('conversation_id, archived_at, deleted_at, purged_at');
+    const sMap = {};
+    (stateRows || []).forEach(s => { sMap[s.conversation_id] = s; });
+    setStateMap(sMap);
 
     const otherIds = convs.map(c => c.participant_1 === user.id ? c.participant_2 : c.participant_1);
     const uniqueIds = [...new Set(otherIds)];
@@ -1132,25 +1144,50 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
     if (openRowId) setOpenRowId(null);
   }, [openRowId]);
 
+  // Optimistically patch a conversation's local state, then persist via RPC.
+  // The row jumps to its new tab instantly; loadConversations reconciles later.
+  const applyState = useCallback((convId, patch) => {
+    setStateMap(prev => ({ ...prev, [convId]: { ...(prev[convId] || {}), ...patch } }));
+  }, []);
+
   const handleArchive = useCallback((convId) => {
-    setArchivedIds(prev => {
-      const next = [...prev, convId];
-      localStorage.setItem('archived_conversations', JSON.stringify(next));
-      return next;
+    applyState(convId, { archived_at: new Date().toISOString(), deleted_at: null, purged_at: null });
+    supabase.rpc('set_conversation_archived', { p_conversation_id: convId, p_archived: true }).then(() => {});
+  }, [applyState]);
+
+  const handleUnarchive = useCallback((convId) => {
+    applyState(convId, { archived_at: null, deleted_at: null, purged_at: null });
+    supabase.rpc('set_conversation_archived', { p_conversation_id: convId, p_archived: false }).then(() => {});
+  }, [applyState]);
+
+  const handleSoftDelete = useCallback((convId) => {
+    applyState(convId, { deleted_at: new Date().toISOString(), archived_at: null, purged_at: null });
+    supabase.rpc('soft_delete_conversation', { p_conversation_id: convId }).then(() => {});
+  }, [applyState]);
+
+  const handleRestore = useCallback((convId) => {
+    applyState(convId, { archived_at: null, deleted_at: null, purged_at: null });
+    supabase.rpc('restore_conversation', { p_conversation_id: convId }).then(() => {});
+  }, [applyState]);
+
+  const handlePurge = useCallback((convId) => {
+    applyState(convId, { purged_at: new Date().toISOString() });
+    supabase.rpc('purge_conversation', { p_conversation_id: convId }).then(() => {});
+  }, [applyState]);
+
+  // Count conversations per tab (for the segmented control badges).
+  const tabCounts = useMemo(() => {
+    const counts = { active: 0, archived: 0, deleted: 0 };
+    conversations.forEach(c => {
+      const b = conversationBucket(stateMap[c.id]);
+      if (counts[b] !== undefined) counts[b] += 1;
     });
-  }, []);
+    return counts;
+  }, [conversations, stateMap]);
 
-  const handleDelete = useCallback(async (convId) => {
-    // Optimistic removal from local state
-    setConversations(prev => prev.filter(c => c.id !== convId));
-    // Delete messages then conversation from database
-    await supabase.from('direct_messages').delete().eq('conversation_id', convId);
-    await supabase.from('conversations').delete().eq('id', convId);
-  }, []);
-
-  // Filter conversations by search query and exclude archived
+  // Conversations in the current tab, then filtered by search.
   const filteredConversations = useMemo(() => {
-    let result = conversations.filter(c => !archivedIds.includes(c.id));
+    let result = conversations.filter(c => conversationBucket(stateMap[c.id]) === tab);
     if (!searchQuery.trim()) return result;
     const q = searchQuery.toLowerCase();
     return result.filter(conv => {
@@ -1159,7 +1196,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
       const lastMsg = (conv.lastMessage?.body || '').toLowerCase();
       return name.includes(q) || username.includes(q) || lastMsg.includes(q);
     });
-  }, [conversations, searchQuery, archivedIds]);
+  }, [conversations, stateMap, tab, searchQuery]);
 
   return (
     <div className="overflow-x-hidden">
@@ -1192,6 +1229,36 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
           </button>
         </div>
       </div>
+
+      {/* Folder tabs: Inbox / Archived / Recently Deleted */}
+      {!loading && conversations.length > 0 && (
+        <div className="px-4 pb-2 flex items-center gap-2 overflow-x-auto">
+          {[
+            { key: 'active', label: t('messages.tabActive', { defaultValue: 'Inbox' }) },
+            { key: 'archived', label: t('messages.tabArchived', { defaultValue: 'Archived' }) },
+            { key: 'deleted', label: t('messages.tabDeleted', { defaultValue: 'Deleted' }) },
+          ].map(({ key, label }) => {
+            const selected = tab === key;
+            const count = tabCounts[key];
+            return (
+              <button
+                key={key}
+                onClick={() => { setTab(key); setOpenRowId(null); setSearchQuery(''); }}
+                className="px-3 py-1.5 rounded-full text-[12.5px] font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 flex-shrink-0"
+                style={{
+                  background: selected ? 'var(--color-accent, #D4AF37)' : 'rgba(255,255,255,0.05)',
+                  color: selected ? '#000' : 'var(--color-text-muted)',
+                }}
+              >
+                {label}
+                {count > 0 && (
+                  <span className="text-[10px] font-bold" style={{ opacity: selected ? 0.7 : 0.9 }}>{count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Search bar */}
       {!loading && conversations.length > 0 && (
@@ -1231,14 +1298,38 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
           description={t('messages.emptyDescription')}
         />
       ) : filteredConversations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 gap-2 px-4">
-          <Search size={24} style={{ color: 'var(--color-text-subtle)' }} />
-          <p className="text-[14px]" style={{ color: 'var(--color-text-subtle)' }}>
-            {t('messages.noSearchResults', { defaultValue: 'No conversations match your search' })}
-          </p>
+        <div className="flex flex-col items-center justify-center py-12 gap-2 px-4 text-center">
+          {searchQuery ? (
+            <>
+              <Search size={24} style={{ color: 'var(--color-text-subtle)' }} />
+              <p className="text-[14px]" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('messages.noSearchResults', { defaultValue: 'No conversations match your search' })}
+              </p>
+            </>
+          ) : (
+            <>
+              {tab === 'archived'
+                ? <Archive size={24} style={{ color: 'var(--color-text-subtle)' }} />
+                : tab === 'deleted'
+                  ? <Trash2 size={24} style={{ color: 'var(--color-text-subtle)' }} />
+                  : <MessageCircle size={24} style={{ color: 'var(--color-text-subtle)' }} />}
+              <p className="text-[14px]" style={{ color: 'var(--color-text-subtle)' }}>
+                {tab === 'archived'
+                  ? t('messages.emptyArchived', { defaultValue: 'No archived conversations' })
+                  : tab === 'deleted'
+                    ? t('messages.emptyDeleted', { defaultValue: 'Nothing in Recently Deleted' })
+                    : t('messages.emptyActive', { defaultValue: 'No conversations here' })}
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div onClick={handleListClick}>
+          {tab === 'deleted' && (
+            <p className="px-4 py-2 text-[11.5px]" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('messages.recentlyDeletedNote', { defaultValue: 'Deleted chats are kept for 30 days, then permanently removed.' })}
+            </p>
+          )}
           {filteredConversations.map((conv, idx) => {
             const other = conv.otherUser;
             const displayName = other?.full_name || other?.username || t('messages.member', { defaultValue: 'Member' });
@@ -1250,15 +1341,48 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
             const isSentByMe = conv.lastMessage?.sender_id === user.id;
             const hasUnread = conv.unreadCount > 0;
 
+            const deleteAction = {
+              key: 'delete', icon: Trash2, destructive: true,
+              label: t('messages.deleteConversation', { defaultValue: 'Delete' }),
+              confirmLabel: t('messages.deleteConfirm', { defaultValue: 'Delete?' }),
+              bg: 'var(--color-danger, #EF4444)', color: '#fff',
+              onClick: () => handleSoftDelete(conv.id),
+            };
+            const rowActions = tab === 'archived'
+              ? [
+                  { key: 'unarchive', icon: ArchiveRestore,
+                    label: t('messages.unarchive', { defaultValue: 'Unarchive' }),
+                    bg: 'var(--color-bg-elevated, #374151)', color: 'var(--color-text-primary, #fff)',
+                    onClick: () => handleUnarchive(conv.id) },
+                  deleteAction,
+                ]
+              : tab === 'deleted'
+                ? [
+                    { key: 'restore', icon: RotateCcw,
+                      label: t('messages.restore', { defaultValue: 'Restore' }),
+                      bg: 'var(--color-bg-elevated, #374151)', color: 'var(--color-text-primary, #fff)',
+                      onClick: () => handleRestore(conv.id) },
+                    { key: 'purge', icon: Trash2, destructive: true,
+                      label: t('messages.deleteForever', { defaultValue: 'Delete' }),
+                      confirmLabel: t('messages.deleteForeverConfirm', { defaultValue: 'Forever?' }),
+                      bg: 'var(--color-danger, #EF4444)', color: '#fff',
+                      onClick: () => handlePurge(conv.id) },
+                  ]
+                : [
+                    { key: 'archive', icon: Archive,
+                      label: t('messages.archive', { defaultValue: 'Archive' }),
+                      bg: 'var(--color-bg-elevated, #374151)', color: 'var(--color-text-primary, #fff)',
+                      onClick: () => handleArchive(conv.id) },
+                    deleteAction,
+                  ];
+
             return (
               <SwipeableRow
                 key={conv.id}
                 rowId={conv.id}
                 openRowId={openRowId}
                 setOpenRowId={setOpenRowId}
-                onArchive={() => handleArchive(conv.id)}
-                onDelete={() => handleDelete(conv.id)}
-                t={t}
+                actions={rowActions}
               >
                 <button
                   onClick={() => onSelectConversation(conv.id)}

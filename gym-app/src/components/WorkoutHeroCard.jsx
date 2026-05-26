@@ -7,10 +7,8 @@ import { exName } from '../lib/exerciseName';
 import ReadinessModal from './ReadinessModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useRecentSessionsWithSets } from '../hooks/useSupabaseQuery';
-import {
-  computeDashboardReadiness,
-  loadCachedRecoveryMetrics,
-} from '../lib/readinessEngine';
+import { computeDashboardReadiness } from '../lib/readinessEngine';
+import { useRecoveryMetrics } from '../hooks/useRecoveryMetrics';
 
 const CYCLE_INTERVAL = 4000; // ms per exercise
 
@@ -44,6 +42,10 @@ const WorkoutHeroCard = ({
   // may have updated localStorage) re-runs the memo immediately.
   const { user } = useAuth();
   const { data: recentSessions = [] } = useRecentSessionsWithSets(user?.id, 14);
+  // Self-refreshing recovery metrics (mount + app foreground), shared with the
+  // Dashboard chip so the pill and chip never drift. `readinessOpen` re-reads
+  // the cache when the modal closes.
+  const recoveryMetrics = useRecoveryMetrics(readinessOpen);
   const readinessScore = React.useMemo(() => {
     let todaySoreness = null;
     try {
@@ -57,13 +59,12 @@ const WorkoutHeroCard = ({
         }
       }
     } catch { /* ignore */ }
-    const cachedMetrics = loadCachedRecoveryMetrics();
     return computeDashboardReadiness({
       sessions: recentSessions,
-      recoveryMetrics: cachedMetrics,
+      recoveryMetrics,
       soreness: todaySoreness,
     });
-  }, [recentSessions, readinessOpen]);
+  }, [recentSessions, recoveryMetrics, readinessOpen]);
 
   // Preload all exercise videos on mount
   useEffect(() => {

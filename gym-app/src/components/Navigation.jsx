@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight, QrCode, Gift, Apple, Settings, User, BookOpen, LogOut, Shield, Calendar as CalendarIcon, Share2 as ShareIcon } from 'lucide-react';
+import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight, QrCode, Gift, Apple, Settings, User, BookOpen, LogOut, Shield, Calendar as CalendarIcon } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,7 +8,6 @@ import { supabase } from '../lib/supabase';
 import { selectInBatches } from '../lib/churn/batchedSelect';
 import UserAvatar from './UserAvatar';
 import { useCachedState } from '../hooks/useCachedState';
-import { ShareStreakSheet } from './share/QuickShareSheets';
 
 // ── Prefetch map for lazy-loaded route chunks ────────────────────────────────
 const PREFETCH_MAP = {
@@ -95,7 +94,6 @@ const Navigation = () => {
   const streak = streakDerived !== null ? streakDerived : streakRaw;
   const setStreak = setStreakRaw; // so existing setters still feed the raw value
   const [showStreakModal, setShowStreakModal] = useState(false);
-  const [shareStreakOpen, setShareStreakOpen] = useState(false);
   const streakOpenedAtRef = useRef(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   // Scroll locking for streak modal
@@ -133,7 +131,15 @@ const Navigation = () => {
         .select('id')
         .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`);
       if (!convs || convs.length === 0) { setUnreadMessages(0); return; }
-      const convIds = convs.map(c => c.id);
+      let convIds = convs.map(c => c.id);
+      // Exclude conversations the user has deleted/purged so their old unread
+      // messages don't keep the badge lit (a new message resurfaces the chat).
+      const { data: hiddenRows } = await supabase
+        .from('conversation_member_state')
+        .select('conversation_id, deleted_at, purged_at');
+      const hidden = new Set((hiddenRows || []).filter(s => s.deleted_at || s.purged_at).map(s => s.conversation_id));
+      convIds = convIds.filter(id => !hidden.has(id));
+      if (convIds.length === 0) { setUnreadMessages(0); return; }
       const { data: unreadRows } = await selectInBatches(
         (ids) => supabase
           .from('direct_messages')
@@ -162,7 +168,15 @@ const Navigation = () => {
         .select('id')
         .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`);
       if (!convs || convs.length === 0) { setUnreadMessages(0); return; }
-      const convIds = convs.map(c => c.id);
+      let convIds = convs.map(c => c.id);
+      // Exclude conversations the user has deleted/purged so their old unread
+      // messages don't keep the badge lit (a new message resurfaces the chat).
+      const { data: hiddenRows } = await supabase
+        .from('conversation_member_state')
+        .select('conversation_id, deleted_at, purged_at');
+      const hidden = new Set((hiddenRows || []).filter(s => s.deleted_at || s.purged_at).map(s => s.conversation_id));
+      convIds = convIds.filter(id => !hidden.has(id));
+      if (convIds.length === 0) { setUnreadMessages(0); return; }
       const { data: unreadRows } = await selectInBatches(
         (ids) => supabase
           .from('direct_messages')
@@ -174,14 +188,18 @@ const Navigation = () => {
       );
       setUnreadMessages(unreadRows ? unreadRows.length : 0);
     };
+    const bump = (delay = 800) => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => fetchUnread(), delay); };
     const channel = supabase
       .channel('nav-dm-unread')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => fetchUnread(), 2000);
-      })
+      // New messages bump the count; read_at UPDATEs (incl. mark-as-read) clear it.
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, () => bump(2000))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'direct_messages' }, () => bump(800))
       .subscribe();
-    return () => { clearTimeout(debounceTimer); supabase.removeChannel(channel); };
+    // Local signal dispatched the instant a chat is opened + marked read, so the
+    // badge clears promptly without waiting on the realtime round-trip.
+    const onRead = () => bump(300);
+    window.addEventListener('dm:read', onRead);
+    return () => { clearTimeout(debounceTimer); window.removeEventListener('dm:read', onRead); supabase.removeChannel(channel); };
   }, [user?.id]);
 
   const streakCalCacheKey = `streak-calendar-${user?.id || 'anon'}`;
@@ -733,7 +751,7 @@ const Navigation = () => {
     {/* ── Mobile Bottom Navigation (Strava-style 5 tabs with center Record) ─── */}
     <nav
       aria-label={t('navigation.mobileNavigation', { ns: 'pages', defaultValue: 'Mobile navigation' })}
-      className="md:hidden fixed bottom-0 left-0 right-0 z-50 backdrop-blur-2xl border-t border-white/6 flex items-end justify-around px-2"
+      className="member-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-50 backdrop-blur-2xl border-t border-white/6 flex items-end justify-around px-2"
       style={{
         backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)',
         paddingBottom: 'calc(0.75rem + var(--safe-area-bottom, env(safe-area-inset-bottom)))',
@@ -784,7 +802,7 @@ const Navigation = () => {
             data-tour={`tour-nav-${id}`}
             aria-label={t(labelKey)}
             onTouchStart={() => prefetchRoute(to)}
-            onClick={() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, 100); }}
+            onClick={() => { if (id === 'workouts') { try { window.dispatchEvent(new CustomEvent('workouts:hub')); } catch { /* noop */ } } window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, 100); }}
             style={{ '--tab-active-color': 'var(--color-accent, #FF8A00)' }}
             className={({ isActive }) =>
               `flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[52px] min-h-[44px] justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
@@ -829,30 +847,6 @@ const Navigation = () => {
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Share button — surfaces the streak-kind ShareSheet so the user
-            can post their day-count to IG / WA / Messages. Placed next to
-            close so it's discoverable but doesn't compete with the hero. */}
-        <button
-          onClick={() => setShareStreakOpen(true)}
-          aria-label={t('share.share', { ns: 'pages', defaultValue: 'Share' })}
-          className="absolute top-3 right-14 w-9 h-9 rounded-full flex items-center justify-center z-10 focus:outline-none focus:ring-2"
-          style={{
-            background: 'rgba(255,255,255,0.18)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.25)',
-            color: '#fff',
-            '--tw-ring-color': 'rgba(255,255,255,0.6)',
-          }}
-        >
-          {/* Inline arrow icon (the Share2 from lucide isn't imported here) */}
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
-            <polyline points="16 6 12 2 8 6" />
-            <line x1="12" y1="2" x2="12" y2="15" />
-          </svg>
-        </button>
-
         {/* Close button (floats above the hero) */}
         <button
           onClick={() => setShowStreakModal(false)}
@@ -993,33 +987,6 @@ const Navigation = () => {
             </div>
           </div>
 
-          {/* ── Share streak ─────────────────────────────────────────────── */}
-          {/* Streak shares are the highest-retention social hook in fitness apps
-              (Strava's milestone celebrations, Duolingo's 100-day flexes). Only
-              surface when the streak crosses 3 days — sharing a 1-day streak
-              reads as desperate and depresses click-through. */}
-          {streak >= 3 && (
-            <div className="px-4 pt-3">
-              <button
-                type="button"
-                onClick={() => setShareStreakOpen(true)}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl"
-                style={{
-                  background: 'var(--color-accent)',
-                  color: 'var(--color-bg-secondary, #0A0D10)',
-                  fontWeight: 800,
-                  fontSize: 13,
-                  letterSpacing: 0.2,
-                  border: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <ShareIcon size={14} />
-                {t('navigation.streaks.share', { ns: 'pages', defaultValue: 'Share streak' })}
-              </button>
-            </div>
-          )}
-
           {/* ── Calendar card ──────────────────────────────────────────────── */}
           <div className="px-4 pt-3 pb-4">
             <div className="rounded-[20px] p-4"
@@ -1140,16 +1107,6 @@ const Navigation = () => {
     </div>,
     document.body
   )}
-  {/* Streak share sheet. Mounted at the Navigation level so it overlays
-      everything (including the streak modal it was triggered from). */}
-  <ShareStreakSheet
-    open={shareStreakOpen}
-    onClose={() => setShareStreakOpen(false)}
-    streakDays={streak}
-    user={profile}
-    gym={gymName}
-    gymLogo={gymLogoUrl}
-  />
   </>
   );
 };

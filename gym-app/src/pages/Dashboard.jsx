@@ -33,7 +33,8 @@ import DayStrip from '../components/DayStrip';
 import WorkoutHeroCard from '../components/WorkoutHeroCard';
 import ReadinessModal from '../components/ReadinessModal';
 import { useRecentSessionsWithSets } from '../hooks/useSupabaseQuery';
-import { computeDashboardReadiness, loadCachedRecoveryMetrics } from '../lib/readinessEngine';
+import { computeDashboardReadiness } from '../lib/readinessEngine';
+import { useRecoveryMetrics } from '../hooks/useRecoveryMetrics';
 import CoachMark from '../components/CoachMark';
 // 8 modals lazy-loaded — most users never open them in a session, but eagerly
 // importing them inflated the Dashboard chunk by ~30-50 KB. Each is gated by
@@ -1124,6 +1125,10 @@ const Dashboard = () => {
   // Recovery score shown on the post-completion Recovery chip. Mirrors the
   // memo in WorkoutHeroCard so the chip and the hero pill never drift.
   const { data: recoveryRecentSessions = [] } = useRecentSessionsWithSets(user?.id, 14);
+  // Self-refreshing recovery metrics — fetches fresh sleep/HRV/RHR on mount and
+  // on app foreground so the chip updates without opening the Recovery modal.
+  // `readinessOpen` flips it to re-read the cache when the modal closes.
+  const recoveryMetrics = useRecoveryMetrics(readinessOpen);
   const readinessScore = useMemo(() => {
     let todaySoreness = null;
     try {
@@ -1137,13 +1142,12 @@ const Dashboard = () => {
         }
       }
     } catch { /* ignore */ }
-    const cachedMetrics = loadCachedRecoveryMetrics();
     return computeDashboardReadiness({
       sessions: recoveryRecentSessions,
-      recoveryMetrics: cachedMetrics,
+      recoveryMetrics,
       soreness: todaySoreness,
     });
-  }, [recoveryRecentSessions, readinessOpen, wellnessRefreshKey]);
+  }, [recoveryRecentSessions, recoveryMetrics, readinessOpen, wellnessRefreshKey]);
 
   // Gym is only "closed" if gym_hours says closed AND there's no program workout scheduled
   // (user who chose "Start Today" on a closed day overrides the gym schedule)

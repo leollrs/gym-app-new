@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2,
+  Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2, Circle, Lock,
   Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info, RotateCcw,
 } from 'lucide-react';
 import { useRoutines } from '../hooks/useRoutines';
@@ -322,6 +322,29 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => 
 const TU_DISPLAY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
 const TU_ACCENT = 'var(--color-accent, #2EC4C4)';
 
+// Estimated per-session minute ranges for the "Por Tiempo" browse buckets.
+const TIME_BUCKETS = {
+  express:  [0, 20],
+  rapidas:  [21, 40],
+  estandar: [41, 65],
+  largas:   [66, 9999],
+};
+
+// App-provided "Gym Quick Routines". Tapping "add" creates a real (deletable)
+// routine in the user's library. Built from trainer-style circuits using real
+// catalog exercises. Tuples: [exercise_id, sets, reps, restSeconds].
+const STARTER_ROUTINES = [
+  // Trainer HIIT circuit (burpees / KB swing / thruster / box jump), short rest, 4 rounds.
+  { key: 'hiit', nameEn: 'HIIT Circuit', nameEs: 'Circuito HIIT', subKey: 'starterSubHiit',
+    ex: [['ex_burp', 4, 15, 20], ['ex_kg', 4, 15, 20], ['ex_thrst', 4, 12, 20], ['ex_bxjp', 4, 12, 30]] },
+  // Cardio conditioning circuit (jump rope, high knees, boxing, jumping jacks).
+  { key: 'cardio', nameEn: 'Cardio Conditioning', nameEs: 'Cardio', subKey: 'starterSubCardio',
+    ex: [['ex_cd_jumprope', 3, 40, 30], ['ex_wu_hw', 3, 30, 20], ['ex_kg', 3, 20, 20], ['ex_cd_boxing', 3, 30, 30], ['ex_wu_jj', 3, 30, 20]] },
+  // Quick full-body strength.
+  { key: 'full', nameEn: 'Quick Full Body', nameEs: 'Cuerpo Completo Rápido', subKey: 'starterSubFull',
+    ex: [['ex_sq', 3, 10, 60], ['ex_bp', 3, 10, 60], ['ex_bbr', 3, 10, 60], ['ex_ohp', 3, 10, 60], ['ex_bcr', 3, 20, 45]] },
+];
+
 // ── Main page ──────────────────────────────────────────────
 const Workouts = () => {
   const navigate = useNavigate();
@@ -420,6 +443,8 @@ const Workouts = () => {
   const [deletingId, setDeletingId]           = useState(null);
   const [showGenerator, setShowGenerator]     = useState(false);
   const [programCategoryFilter, setProgramCategoryFilter] = useState('All');
+  const [programLevelFilter, setProgramLevelFilter] = useState('All');
+  const [programDurationFilter, setProgramDurationFilter] = useState('all'); // 'all' | 'quick'
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateWeek, setTemplateWeek] = useState('1');
   // Switch program confirmation flow: null | 'confirm' | 'final'
@@ -438,6 +463,19 @@ const Workouts = () => {
   const [myProgWeek, setMyProgWeek] = useState('1');
   const [dayCompressionWarning, setDayCompressionWarning] = useState(null);
   const [goalMismatchWarning, setGoalMismatchWarning] = useState(null);
+  // Multi-select bulk delete for My Routines + My Programs. The active routine
+  // (part of the running program) and the active program can't be selected.
+  const [routineSelectMode, setRoutineSelectMode] = useState(false);
+  const [selectedRoutineIds, setSelectedRoutineIds] = useState(() => new Set());
+  const [programSelectMode, setProgramSelectMode] = useState(false);
+  const [selectedProgramIds, setSelectedProgramIds] = useState(() => new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(null); // { kind:'routines'|'programs', count } | null
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  // Page→page navigation within Workouts: a hub (today + entry cards) that
+  // drills into focused pages. Decluttered from the old single long scroll.
+  const [workoutsView, setWorkoutsView] = useState('hub'); // 'hub' | 'routines' | 'myPrograms' | 'browse'
+  // Browse drill-down: null = show the section boxes; a key = show that section's programs.
+  const [browseSection, setBrowseSection] = useState(null); // null | 'all' | 'gym' | 'Beginner' | 'Intermediate' | 'Advanced' | 'quick'
 
   // Gym programs — cached across unmount / app-restart so tab switches paint instantly
   const wCacheKey = `workouts-${user?.id}`;
@@ -733,6 +771,27 @@ const Workouts = () => {
   const today = new Date();
   const programActive  = generatedProgram && new Date(generatedProgram.expires_at) > today;
   const programExpired = generatedProgram && new Date(generatedProgram.expires_at) <= today;
+  // Routines belonging to the CURRENT active program — these are locked from
+  // deletion + shown highlighted. Resolved precisely via the active program's
+  // persisted routine_ids, so routines left over from a regenerated/replaced
+  // program are NOT treated as active. Falls back to the legacy "Auto:" name
+  // prefix only for older active programs that never persisted routine_ids.
+  const activeProgramRoutineIds = useMemo(() => {
+    if (!programActive) return new Set();
+    const sm = generatedProgram?.schedule_map || {};
+    // routine_ids is the combined list; _a/_b cover A/B-split programs. Union
+    // all three so every routine the active program owns is recognized.
+    return new Set([
+      ...(Array.isArray(sm.routine_ids) ? sm.routine_ids : []),
+      ...(Array.isArray(sm.routine_ids_a) ? sm.routine_ids_a : []),
+      ...(Array.isArray(sm.routine_ids_b) ? sm.routine_ids_b : []),
+    ]);
+  }, [programActive, generatedProgram]);
+  const isActiveRoutine = useCallback((routine) => {
+    if (!programActive || !routine) return false;
+    if (activeProgramRoutineIds.size > 0) return activeProgramRoutineIds.has(routine.id);
+    return !!routine.name?.startsWith('Auto:');
+  }, [programActive, activeProgramRoutineIds]);
   // Use schedule_map from generated_programs (authoritative)
   const schedMap = generatedProgram?.schedule_map || null;
   const programStartDow = schedMap?.start_dow ?? (programActive ? new Date(generatedProgram.program_start).getDay() : 1);
@@ -1018,6 +1077,29 @@ const Workouts = () => {
     setSelectedMyProgram(null);
   };
 
+  // Add an app-provided starter routine as a real, deletable routine.
+  const [addingStarter, setAddingStarter] = useState(null);
+  const handleAddStarter = async (starter) => {
+    if (addingStarter) return;
+    setAddingStarter(starter.key);
+    try {
+      const name = i18n.language === 'es' ? starter.nameEs : starter.nameEn;
+      const routine = await createRoutine(name);
+      const rows = starter.ex.map(([id, sets, reps, rest], i) => ({
+        routine_id: routine.id, exercise_id: id, position: i + 1,
+        target_sets: sets, target_reps: reps, rest_seconds: rest,
+      }));
+      await supabase.from('routine_exercises').insert(rows);
+      posthog?.capture('starter_routine_added', { starter: starter.key });
+      await refetch();
+    } catch (err) {
+      logger.error(err);
+      alert(t('workouts.deleteRoutineFailed', { defaultValue: 'Could not add routine: {{msg}}', msg: err?.message || 'unknown' }));
+    } finally {
+      setAddingStarter(null);
+    }
+  };
+
   const handleSaveCreateModal = async ({ name, exercises }) => {
     const routine = await createRoutine(name);
     posthog?.capture('routine_created');
@@ -1036,9 +1118,9 @@ const Workouts = () => {
   };
   const handleDelete = (e, id) => {
     e.preventDefault(); e.stopPropagation();
-    // Prevent deleting routines that belong to the active program
+    // Prevent deleting routines that belong to the CURRENT active program only.
     const routine = routines.find(r => r.id === id);
-    if (programActive && routine?.name?.startsWith('Auto:')) {
+    if (isActiveRoutine(routine)) {
       // alert() is silently dropped in Capacitor iOS WebView, which made the
       // delete button feel broken. Show an in-app info modal instead.
       setDeleteBlockedInfo({ reason: 'active_program' });
@@ -1059,6 +1141,152 @@ const Workouts = () => {
     } finally {
       setDeletingId(null);
       setDeleteRoutineConfirm(null);
+    }
+  };
+
+  // ── Multi-select bulk delete ──
+  const toggleRoutineSel = useCallback((id) => {
+    setSelectedRoutineIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }, []);
+  const toggleProgramSel = useCallback((id) => {
+    setSelectedProgramIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }, []);
+  const exitRoutineSelect = useCallback(() => { setRoutineSelectMode(false); setSelectedRoutineIds(new Set()); }, []);
+  const exitProgramSelect = useCallback(() => { setProgramSelectMode(false); setSelectedProgramIds(new Set()); }, []);
+
+  // Switch hub view + reset scroll to the top. The member scroll container is
+  // #main-content (App.jsx scrolls it on route change); an in-page view swap
+  // has to do the same or you land mid-page. rAF runs it after the new view paints.
+  const goToView = useCallback((v) => {
+    setBrowseSection(null); // entering a top-level view resets the browse drill-down
+    setWorkoutsView(v);
+  }, []);
+
+  // Reset scroll to the very top after the new view/section actually commits.
+  // (A rAF inside the click handler fired before render, so pages landed
+  // mid-scroll — that was the bug.) Mirrors the targets App.jsx resets on a
+  // route change: window + documentElement + body + #main-content.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    document.getElementById('main-content')?.scrollTo(0, 0);
+  }, [workoutsView, browseSection]);
+
+  // Tapping the "Entrenos" footer tab while already on a sub-page returns to
+  // the hub (the route doesn't change, so Navigation fires this event instead).
+  useEffect(() => {
+    const onHub = () => goToView('hub');
+    window.addEventListener('workouts:hub', onHub);
+    return () => window.removeEventListener('workouts:hub', onHub);
+  }, [goToView]);
+
+  // Rough per-session minutes for a template's representative day. Templates
+  // store sets + rest only (no reps), so we use the same constants the app's
+  // estimateDuration uses (10 reps × 7s + ~10s setup + rest, + warmup/cooldown).
+  // Enough to bucket "quick" (~30 min) sessions.
+  const estimateTemplateSessionMin = useCallback((tmpl) => {
+    const exs = tmpl?.weeks?.['1']?.[0]?.exercises;
+    if (!Array.isArray(exs) || exs.length === 0) return null;
+    let secs = 0;
+    for (const ex of exs) {
+      const sets = ex.sets || 3;
+      const rest = ex.rest_seconds ?? 90;
+      secs += sets * (10 * 7 + 10 + rest);
+    }
+    return Math.round(secs / 60 + 8);
+  }, []);
+
+  // Open a Browse section: set the underlying filters the program grid reads,
+  // then switch from the magazine landing to the filtered list.
+  const openBrowseSection = useCallback((key) => {
+    const isLevel = ['Beginner', 'Intermediate', 'Advanced'].includes(key);
+    const isTime = Object.prototype.hasOwnProperty.call(TIME_BUCKETS, key);
+    setProgramCategoryFilter(key === 'gym' ? 'Gym Exclusive' : 'All');
+    setProgramLevelFilter(isLevel ? key : 'All');
+    setProgramDurationFilter(isTime ? key : 'all');
+    setBrowseSection(key);
+  }, []);
+
+  // Templates ranked best-fit first (drives the recommended hero + "Para ti").
+  const scoredTemplates = useMemo(() => (
+    [...programTemplates]
+      .map(t => ({ t, score: scoreProgram(t, onboardingData) }))
+      .sort((a, b) => b.score - a.score)
+      .map(x => x.t)
+  ), [programTemplates, onboardingData, scoreProgram]);
+  const recommendedTemplate = scoredTemplates[0] || null;
+  const levelCounts = useMemo(() => {
+    const c = { Beginner: 0, Intermediate: 0, Advanced: 0 };
+    programTemplates.forEach(t => { if (c[t.level] !== undefined) c[t.level] += 1; });
+    return c;
+  }, [programTemplates]);
+  const timeCounts = useMemo(() => {
+    const c = { express: 0, rapidas: 0, estandar: 0, largas: 0 };
+    programTemplates.forEach(t => {
+      const m = estimateTemplateSessionMin(t) ?? 999;
+      if (m <= 20) c.express += 1; else if (m <= 40) c.rapidas += 1; else if (m <= 65) c.estandar += 1; else c.largas += 1;
+    });
+    return c;
+  }, [programTemplates, estimateTemplateSessionMin]);
+
+  // Title for the Programas page — reflects the open section so you know where
+  // you are (e.g. "Principiante", "Rápidas") instead of always "Programas".
+  const browseTitle = (() => {
+    if (!browseSection) return t('workouts.programs');
+    if (browseSection === 'all') return t('workouts.browseAll', 'All programs');
+    if (browseSection === 'gym') return t('workouts.gymExclusive', 'Gym Exclusive');
+    if (['Beginner', 'Intermediate', 'Advanced'].includes(browseSection)) {
+      return t(`workouts.programLevels.${browseSection}`, browseSection);
+    }
+    const tl = {
+      express: t('workouts.timeExpressLabel', 'Express'),
+      rapidas: t('workouts.timeRapidasLabel', 'Quick'),
+      estandar: t('workouts.timeEstandarLabel', 'Standard'),
+      largas: t('workouts.timeLargasLabel', 'Long'),
+    };
+    return tl[browseSection] || t('workouts.programs');
+  })();
+
+  const handleBulkDeleteRoutines = async () => {
+    setBulkDeleting(true);
+    try {
+      // Never delete active-program routines, even if somehow selected.
+      const ids = [...selectedRoutineIds].filter(id => !isActiveRoutine(routines.find(r => r.id === id)));
+      for (const id of ids) {
+        await deleteRoutine(id);
+      }
+    } catch (err) {
+      logger.error(err);
+      alert(t('workouts.deleteRoutineFailed', { defaultValue: 'Could not delete routine: {{msg}}', msg: err?.message || 'unknown' }));
+    } finally {
+      setBulkDeleting(false);
+      setBulkDeleteConfirm(null);
+      exitRoutineSelect();
+    }
+  };
+
+  const handleBulkDeletePrograms = async () => {
+    setBulkDeleting(true);
+    try {
+      // Never delete the active program.
+      const activeProgId = (generatedProgram && new Date(generatedProgram.expires_at) > new Date()) ? generatedProgram.id : null;
+      const ids = [...selectedProgramIds].filter(id => id !== activeProgId);
+      if (ids.length) {
+        await supabase.from('generated_programs').delete().in('id', ids);
+      }
+      const { data: allGp } = await supabase.from('generated_programs')
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+        .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+      const programs = allGp || [];
+      setAllPrograms(programs);
+      setGeneratedProgram(programs[0] || null);
+    } catch (err) {
+      logger.error(err);
+    } finally {
+      setBulkDeleting(false);
+      setBulkDeleteConfirm(null);
+      exitProgramSelect();
     }
   };
 
@@ -1420,6 +1648,7 @@ const Workouts = () => {
     <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 lg:px-8 pt-4 pb-28 md:pb-12">
 
       {/* ── Header ─────────────────────────────────────────── */}
+      {workoutsView === 'hub' ? (
       <div className="flex items-center justify-between mb-6 gap-2 min-w-0" data-tour="tour-workouts-page">
         <h1 className="min-w-0 truncate flex-shrink" style={{ fontFamily: TU_DISPLAY, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>{t('workouts.title')}</h1>
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -1443,7 +1672,19 @@ const Workouts = () => {
           </button>
         </div>
       </div>
+      ) : (
+        <button
+          onClick={() => { if (workoutsView === 'browse' && browseSection) { setBrowseSection(null); } else { goToView('hub'); } }}
+          className="flex items-center gap-1 mb-6 -ml-1 pr-2 min-h-[44px] text-[15px] font-bold"
+          style={{ color: 'var(--color-text-primary)' }}
+        >
+          <ChevronLeft size={22} />
+          {workoutsView === 'browse' && browseSection ? t('workouts.programs') : t('workouts.title')}
+        </button>
+      )}
 
+      {/* ── HUB VIEW: today's hero + entry cards into the focused pages ── */}
+      {workoutsView === 'hub' && (<>
       {/* ════════════════════════════════════════════════════════
           SECTION 1: CURRENT PROGRAM — Hero
          ════════════════════════════════════════════════════════ */}
@@ -1786,10 +2027,7 @@ const Workouts = () => {
 
           {/* Secondary — Browse templates */}
           <button
-            onClick={() => {
-              const el = document.getElementById('discover-programs');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            }}
+            onClick={() => goToView('browse')}
             className="w-full flex items-center gap-3 px-5 py-3.5 rounded-[16px] text-left active:scale-[0.98] transition-transform duration-150"
             style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}
           >
@@ -1800,20 +2038,110 @@ const Workouts = () => {
         </section>
       )}
 
+      {/* Hub entry — A2: two count cards with name-peek + ACTIVO badge */}
+      <div className="grid grid-cols-2 gap-2.5 mb-4">
+        {[
+          { key: 'routines', label: t('workouts.myRoutines'), n: routines.length, accentNum: false,
+            peek: routines.slice(0, 3).map(r => localizeRoutineName(r.name)) },
+          { key: 'myPrograms', label: t('workouts.myPrograms'), n: allPrograms.length, accentNum: true,
+            peek: allPrograms.slice(0, 3).map(p => gpName(p)), active: programActive },
+        ].map((card) => (
+          <button
+            key={card.key}
+            onClick={() => goToView(card.key)}
+            className="flex flex-col gap-2.5 p-3.5 rounded-3xl text-left active:scale-[0.98] transition-transform duration-150"
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+          >
+            <div className="flex items-baseline justify-between">
+              <span style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 38, lineHeight: 0.9, letterSpacing: -1.3, color: card.accentNum ? TU_ACCENT : 'var(--color-text-primary)' }}>{card.n}</span>
+              {card.active && (
+                <span className="px-2 py-1 rounded-full" style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.5, color: '#10B981', background: 'rgba(16,185,129,0.14)' }}>1 ACTIVO</span>
+              )}
+            </div>
+            <span style={{ fontFamily: TU_DISPLAY, fontWeight: 800, fontSize: 15, letterSpacing: -0.3, color: 'var(--color-text-primary)' }}>{card.label}</span>
+            <div className="pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+              {(card.peek.length ? card.peek : ['—']).map((p, i) => (
+                <p key={i} className="truncate" style={{ fontSize: 11, padding: '3px 0', fontWeight: i === 0 ? 700 : 500, color: i === 0 ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>{p}</p>
+              ))}
+            </div>
+            <span className="flex items-center gap-1" style={{ fontSize: 11, fontWeight: 700, color: TU_ACCENT }}>
+              {t('workouts.viewAll', 'View all')} <ChevronRight size={12} strokeWidth={2.4} />
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Explorar Programas — bold CTA (dark + accent glow) */}
+      <button
+        onClick={() => goToView('browse')}
+        className="relative w-full overflow-hidden flex items-center gap-3.5 p-5 rounded-3xl text-left active:scale-[0.99] transition-transform duration-150 mb-10"
+        style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 18%, var(--color-bg-card)), var(--color-bg-card))', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }}
+      >
+        <div className="absolute pointer-events-none" style={{ top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'radial-gradient(circle, color-mix(in srgb, var(--color-accent) 40%, transparent) 0%, transparent 70%)' }} />
+        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 48, height: 48, borderRadius: 14, background: TU_ACCENT, color: 'var(--color-bg-primary)' }}>
+          <BookOpen size={22} strokeWidth={2.4} />
+        </div>
+        <div className="relative flex-1 min-w-0">
+          <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase', color: TU_ACCENT }}>{t('workouts.discover', 'Discover')}</p>
+          <p style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 19, letterSpacing: -0.5, marginTop: 3, color: 'var(--color-text-primary)' }}>{t('workouts.browsePrograms', 'Browse programs')}</p>
+          <p style={{ fontSize: 11, marginTop: 2, color: 'var(--color-text-muted)' }}>{t('workouts.browseSubCount', { count: programTemplates.length || 0, defaultValue: '{{count}} available · 4 to 16 weeks' })}</p>
+        </div>
+        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 38, height: 38, borderRadius: 999, background: TU_ACCENT, color: 'var(--color-bg-primary)' }}>
+          <ChevronRight size={18} strokeWidth={2.6} />
+        </div>
+      </button>
+      </>)}
+
+      {/* ── ROUTINES VIEW ── */}
+      {workoutsView === 'routines' && (<>
       {/* ════════════════════════════════════════════════════════
           SECTION 2: MY ROUTINES
          ════════════════════════════════════════════════════════ */}
       <section className="mb-10">
         <div className="flex items-center justify-between mb-4 px-1">
           <p style={{ fontFamily: TU_DISPLAY, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('workouts.myRoutines')}</p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1 text-[12px] font-bold min-h-[44px] min-w-[44px] px-2.5 py-1 rounded-full whitespace-nowrap"
-            style={{ color: TU_ACCENT, background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)` }}
-          >
-            <Plus size={12} strokeWidth={2.4} />
-            {t('workouts.newRoutine', 'New routine')}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {routineSelectMode ? (
+              <>
+                <button
+                  onClick={() => selectedRoutineIds.size > 0 && setBulkDeleteConfirm({ kind: 'routines', count: selectedRoutineIds.size })}
+                  disabled={selectedRoutineIds.size === 0}
+                  className="flex items-center gap-1 text-[12px] font-bold min-h-[44px] px-2.5 py-1 rounded-full whitespace-nowrap disabled:opacity-40"
+                  style={{ color: '#F87171', background: 'rgba(248,113,113,0.12)' }}
+                >
+                  <Trash2 size={12} strokeWidth={2.4} />
+                  {t('workouts.deleteSelected', { count: selectedRoutineIds.size, defaultValue: 'Delete ({{count}})' })}
+                </button>
+                <button
+                  onClick={exitRoutineSelect}
+                  className="text-[12px] font-bold min-h-[44px] px-2.5 py-1 rounded-full whitespace-nowrap"
+                  style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                >
+                  {t('workouts.cancel', 'Cancel')}
+                </button>
+              </>
+            ) : (
+              <>
+                {routines.length > 0 && (
+                  <button
+                    onClick={() => setRoutineSelectMode(true)}
+                    className="text-[12px] font-bold min-h-[44px] px-2.5 py-1 rounded-full whitespace-nowrap"
+                    style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                  >
+                    {t('workouts.select', 'Select')}
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex items-center gap-1 text-[12px] font-bold min-h-[44px] min-w-[44px] px-2.5 py-1 rounded-full whitespace-nowrap"
+                  style={{ color: TU_ACCENT, background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)` }}
+                >
+                  <Plus size={12} strokeWidth={2.4} />
+                  {t('workouts.newRoutine', 'New routine')}
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -1834,13 +2162,24 @@ const Workouts = () => {
             <>
               <div className="grid grid-cols-2 gap-3">
                 {visible.map(routine => {
+                  const active = isActiveRoutine(routine);
+                  const selected = selectedRoutineIds.has(routine.id);
                   return (
                     <div key={routine.id} className="relative">
                       <button
                         type="button"
-                        onClick={() => setExpandedRoutineId(routine.id)}
+                        onClick={() => {
+                          if (routineSelectMode) { if (!active) toggleRoutineSel(routine.id); return; }
+                          setExpandedRoutineId(routine.id);
+                        }}
                         className="w-full text-left p-4 rounded-[18px] transition-colors duration-200"
-                        style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 4px 12px rgba(15,20,25,0.04)' }}
+                        style={{
+                          background: active ? 'color-mix(in srgb, #10B981 12%, var(--color-bg-card))' : 'var(--color-bg-card)',
+                          border: active
+                            ? '1px solid color-mix(in srgb, #10B981 45%, transparent)'
+                            : (routineSelectMode && selected ? '1px solid var(--color-accent)' : '1px solid transparent'),
+                          boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 4px 12px rgba(15,20,25,0.04)',
+                        }}
                       >
                         <div className="w-9 h-9 rounded-[12px] flex items-center justify-center mb-3"
                           style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
@@ -1850,7 +2189,21 @@ const Workouts = () => {
                         <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
                           {t('workouts.exercisesPerWeek', { count: routine.exerciseCount, defaultValue: '{{count}} exercises / week' })}
                         </p>
+                        {active && (
+                          <span className="inline-flex items-center gap-1 mt-2 text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ color: '#10B981', background: 'rgba(16,185,129,0.12)' }}>
+                            <Lock size={9} /> {t('workouts.active')}
+                          </span>
+                        )}
                       </button>
+                      {routineSelectMode && (
+                        <span className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center pointer-events-none" style={{ background: 'var(--color-bg-card)' }}>
+                          {active
+                            ? <Lock size={14} style={{ color: 'var(--color-text-subtle)' }} />
+                            : selected
+                              ? <CheckCircle2 size={18} style={{ color: 'var(--color-accent)' }} />
+                              : <Circle size={18} style={{ color: 'var(--color-text-subtle)' }} />}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -1885,22 +2238,94 @@ const Workouts = () => {
             </>
           );
         })()}
+
+        {/* Sugeridas — app-provided starter routines (become real, deletable routines) */}
+        {(() => {
+          const existing = new Set(routines.map(r => (r.name || '').toLowerCase()));
+          const avail = STARTER_ROUTINES.filter(s => !existing.has((i18n.language === 'es' ? s.nameEs : s.nameEn).toLowerCase()));
+          if (avail.length === 0) return null;
+          return (
+            <div className="mt-8">
+              <p className="text-[10px] font-bold uppercase mb-3 px-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em' }}>{t('workouts.gymQuickRoutines', 'Gym Quick Routines')}</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                {avail.map(s => (
+                  <button
+                    key={s.key}
+                    onClick={() => handleAddStarter(s)}
+                    disabled={addingStarter === s.key}
+                    className="flex flex-col items-start gap-2.5 p-4 rounded-2xl text-left active:scale-[0.98] transition-transform duration-150 disabled:opacity-50 min-h-[132px]"
+                    style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+                  >
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)`, color: TU_ACCENT }}>
+                      <Dumbbell size={18} strokeWidth={2} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{i18n.language === 'es' ? s.nameEs : s.nameEn}</p>
+                      <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t(`workouts.${s.subKey}`, s.subKey)} · {s.ex.length} {t('workouts.exercises')}</p>
+                    </div>
+                    <span className="flex items-center gap-1 mt-auto" style={{ fontSize: 12, fontWeight: 700, color: TU_ACCENT }}>
+                      {addingStarter === s.key ? '…' : <><Plus size={13} strokeWidth={2.6} /> {t('workouts.add', 'Add')}</>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </section>
 
+      </>)}
+
+      {/* ── MY PROGRAMS VIEW ── */}
+      {workoutsView === 'myPrograms' && (<>
       {/* ════════════════════════════════════════════════════════
           SECTION 3: MY PROGRAMS
          ════════════════════════════════════════════════════════ */}
       <section className="mb-10">
         <div className="flex items-center justify-between mb-4 px-1">
           <p style={{ fontFamily: TU_DISPLAY, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('workouts.myPrograms')}</p>
-          <button
-            onClick={() => setShowGenerator(true)}
-            className="flex items-center gap-1 px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold transition-colors"
-            style={{ background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)`, color: TU_ACCENT }}
-          >
-            <Zap size={12} strokeWidth={2.4} />
-            {t('workouts.newProgram')}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {programSelectMode ? (
+              <>
+                <button
+                  onClick={() => selectedProgramIds.size > 0 && setBulkDeleteConfirm({ kind: 'programs', count: selectedProgramIds.size })}
+                  disabled={selectedProgramIds.size === 0}
+                  className="flex items-center gap-1 px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold transition-colors disabled:opacity-40"
+                  style={{ color: '#F87171', background: 'rgba(248,113,113,0.12)' }}
+                >
+                  <Trash2 size={12} strokeWidth={2.4} />
+                  {t('workouts.deleteSelected', { count: selectedProgramIds.size, defaultValue: 'Delete ({{count}})' })}
+                </button>
+                <button
+                  onClick={exitProgramSelect}
+                  className="px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold whitespace-nowrap"
+                  style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                >
+                  {t('workouts.cancel', 'Cancel')}
+                </button>
+              </>
+            ) : (
+              <>
+                {allPrograms.length > 0 && (
+                  <button
+                    onClick={() => setProgramSelectMode(true)}
+                    className="px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold whitespace-nowrap"
+                    style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                  >
+                    {t('workouts.select', 'Select')}
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowGenerator(true)}
+                  className="flex items-center gap-1 px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold transition-colors"
+                  style={{ background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)`, color: TU_ACCENT }}
+                >
+                  <Zap size={12} strokeWidth={2.4} />
+                  {t('workouts.newProgram')}
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Goals mismatch alert */}
@@ -1948,10 +2373,19 @@ const Workouts = () => {
               const totalDays = progTotalWeeks * 7;
               const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), totalDays);
               const progress = Math.round((daysElapsed / totalDays) * 100);
+              const selected = selectedProgramIds.has(prog.id);
 
               return (
-                <div key={prog.id} className="relative rounded-2xl transition-colors duration-200 group" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                  <button onClick={() => { loadExerciseNames(); setSelectedMyProgram(prog); setMyProgWeek('1'); }} className="w-full text-left p-5" aria-label={`View program: ${gpName(prog)}`}>
+                <div key={prog.id} className="relative rounded-2xl transition-colors duration-200 group" style={{
+                  backgroundColor: isActive ? 'color-mix(in srgb, #10B981 10%, var(--color-surface-hover))' : 'var(--color-surface-hover)',
+                  border: isActive
+                    ? '1px solid color-mix(in srgb, #10B981 40%, transparent)'
+                    : (programSelectMode && selected ? '1px solid var(--color-accent)' : '1px solid transparent'),
+                }}>
+                  <button onClick={() => {
+                    if (programSelectMode) { if (!isActive) toggleProgramSel(prog.id); return; }
+                    loadExerciseNames(); setSelectedMyProgram(prog); setMyProgWeek('1');
+                  }} className="w-full text-left p-5" aria-label={`View program: ${gpName(prog)}`}>
                     <div className="flex items-center justify-between mb-2.5">
                       <div className="flex items-center gap-2.5 flex-1 min-w-0">
                         <p className="text-[15px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -1983,7 +2417,7 @@ const Workouts = () => {
                        calendar week the user was on when it expired.
                        Hidden for the canonical active program and for
                        legacy rows without persisted routine_ids. */}
-                  {!isActive && (prog.schedule_map?.routine_ids?.length > 0) && (
+                  {!programSelectMode && !isActive && (prog.schedule_map?.routine_ids?.length > 0) && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1996,18 +2430,30 @@ const Workouts = () => {
                       <RotateCcw size={13} />
                     </button>
                   )}
-                  {/* Delete program */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setLeaveProgramConfirm({ id: prog.id, name: prog.split_type, isActive });
-                    }}
-                    className="absolute top-3 right-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-lg flex items-center justify-center hover:text-red-400 hover:bg-red-500/10 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                    style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
-                    aria-label={t('workouts.ariaDeleteProgram', 'Delete program')}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  {/* Delete program (single) — hidden in multi-select mode */}
+                  {!programSelectMode && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLeaveProgramConfirm({ id: prog.id, name: prog.split_type, isActive });
+                      }}
+                      className="absolute top-3 right-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-lg flex items-center justify-center hover:text-red-400 hover:bg-red-500/10 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
+                      aria-label={t('workouts.ariaDeleteProgram', 'Delete program')}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                  {/* Multi-select checkbox / lock (active program can't be deleted) */}
+                  {programSelectMode && (
+                    <span className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center pointer-events-none" style={{ background: 'var(--color-surface-hover)' }}>
+                      {isActive
+                        ? <Lock size={15} style={{ color: 'var(--color-text-subtle)' }} />
+                        : selected
+                          ? <CheckCircle2 size={19} style={{ color: 'var(--color-accent)' }} />
+                          : <Circle size={19} style={{ color: 'var(--color-text-subtle)' }} />}
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -2034,85 +2480,162 @@ const Workouts = () => {
 
       </section>
 
+      </>)}
+
+      {/* ── BROWSE PROGRAMS VIEW ── */}
+      {workoutsView === 'browse' && (<>
       {/* ════════════════════════════════════════════════════════
           SECTION 4: DISCOVER PROGRAMS
          ════════════════════════════════════════════════════════ */}
       <section id="discover-programs" className="mb-6">
-        {/* Visual separator */}
-        <div className="h-px mb-10" style={{ background: 'linear-gradient(to right, transparent, var(--color-border-subtle), transparent)' }} />
-
-        <div className="mb-6 px-1">
-          <p className="text-[10px] font-bold uppercase mb-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>{t('workouts.discover')}</p>
-          <h2 style={{ fontFamily: TU_DISPLAY, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('workouts.programs')}</h2>
+        {/* B1 header — label + big title + small "Todos" link */}
+        <div className="mb-4 px-1 flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase mb-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em' }}>{t('workouts.discover')}</p>
+            <h2 style={{ fontFamily: TU_DISPLAY, fontSize: 32, fontWeight: 900, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>{browseTitle}</h2>
+          </div>
+          {browseSection === null && programTemplates.length > 0 && (
+            <button onClick={() => openBrowseSection('all')} className="flex items-center gap-1 py-1 flex-shrink-0" style={{ fontSize: 11, fontWeight: 700, color: TU_ACCENT }}>
+              {t('workouts.browseAll', 'All')} · {programTemplates.length} <ChevronRight size={11} strokeWidth={2.2} />
+            </button>
+          )}
         </div>
 
-        {/* Category filter chips — Gym Exclusive added */}
-        <div className="flex gap-2 overflow-x-auto scrollbar-none pb-5 -mx-1 px-1">
-          {['Gym Exclusive', ...PROGRAM_CATEGORIES].map(cat => {
-            const isActive = programCategoryFilter === cat;
-            const isGym = cat === 'Gym Exclusive';
-            return (
+        {/* Magazine landing (no section selected) */}
+        {browseSection === null && (
+          <>
+            {/* Recommended hero */}
+            {recommendedTemplate && (
               <button
-                key={cat}
-                onClick={() => setProgramCategoryFilter(cat)}
-                className="shrink-0 px-3.5 py-2 min-h-[44px] rounded-full text-[12px] font-semibold transition-all"
-                style={isActive
-                  ? { background: isGym ? `color-mix(in srgb, ${TU_ACCENT} 15%, transparent)` : 'var(--color-text-primary)', color: isGym ? TU_ACCENT : 'var(--color-bg-primary)', border: isGym ? `1px solid color-mix(in srgb, ${TU_ACCENT} 30%, transparent)` : 'none' }
-                  : { color: 'var(--color-text-muted)', border: isGym ? '1px solid var(--color-border-subtle)' : '1px solid transparent' }
-                }
+                onClick={() => { loadExerciseNames(); setSelectedTemplate(recommendedTemplate); setTemplateWeek('1'); }}
+                className="relative w-full overflow-hidden rounded-[22px] mb-5 text-left active:scale-[0.99] transition-transform"
+                style={{ aspectRatio: '1 / 1', background: 'var(--color-bg-deep, #0e0d0a)' }}
               >
-                {isGym ? t('workouts.gymExclusive', 'Gym Exclusive') : t(`workouts.programCategories.${cat}`, cat)}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Gym Exclusive programs section */}
-        {programCategoryFilter !== 'Gym Exclusive' && gymPrograms.length > 0 && (
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-px flex-1" style={{ background: 'linear-gradient(to right, color-mix(in srgb, var(--color-accent) 30%, transparent), transparent)' }} />
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] shrink-0" style={{ color: 'var(--color-accent)' }}>
-                {t('workouts.gymExclusive', 'Gym Exclusive')}
-              </p>
-              <div className="h-px flex-1" style={{ background: 'linear-gradient(to left, color-mix(in srgb, var(--color-accent) 30%, transparent), transparent)' }} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {gymPrograms.slice(0, 2).map(prog => (
-                <button
-                  key={prog.id}
-                  onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); setTemplateWeek('1'); }}
-                  className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150"
-                  style={{ aspectRatio: '3 / 4', backgroundColor: 'var(--color-bg-card)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
-                  aria-label={`${prog.name} - Gym Exclusive program`}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card)), var(--color-bg-card))' }} />
-                  <div className="absolute top-3 left-3 z-10">
-                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)', color: 'var(--color-accent)' }}>
-                      {t('workouts.gymExclusive', 'Gym Exclusive')}
+                {recommendedTemplate.image && (
+                  <img src={programImageUrl(recommendedTemplate.image)} alt={progName(recommendedTemplate)} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
+                )}
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.88) 100%)' }} />
+                <div className="absolute" style={{ top: 14, left: 14 }}>
+                  <span style={{ background: TU_ACCENT, color: 'var(--color-bg-primary)', fontSize: 9, fontWeight: 900, letterSpacing: 1, padding: '5px 9px', borderRadius: 999 }}>{t('workouts.recommendedForYou')}</span>
+                </div>
+                <div className="absolute left-4 right-4" style={{ bottom: 14, color: '#fff' }}>
+                  <p style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 24, letterSpacing: -0.7, lineHeight: 1.05 }}>{progName(recommendedTemplate)}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>
+                      {t(`workouts.programLevels.${recommendedTemplate.level}`, recommendedTemplate.level)} · {t('workouts.durationWk', { count: recommendedTemplate.durationWeeks })} · {t('workouts.xPerWeek', { count: recommendedTemplate.daysPerWeek })}
+                    </span>
+                    <span className="flex items-center justify-center flex-shrink-0" style={{ width: 38, height: 38, borderRadius: 999, background: TU_ACCENT, color: 'var(--color-bg-primary)' }}>
+                      <ChevronRight size={16} strokeWidth={2.4} />
                     </span>
                   </div>
-                  <div className="absolute bottom-0 left-0 right-0 p-3.5 z-10">
-                    <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{prog.name}</p>
-                    <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                      {t('workouts.programDuration', { weeks: prog.duration_weeks || 6, days: prog.weeks?.['1']?.length || '?', defaultValue: '{{weeks}} weeks, {{days}} days/wk' })}
-                    </p>
-                  </div>
+                </div>
+              </button>
+            )}
+
+            {/* POR NIVEL */}
+            <div className="mb-3 px-1">
+              <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em' }}>{t('workouts.byLevel', 'By level')}</p>
+              <p style={{ fontFamily: TU_DISPLAY, fontWeight: 800, fontSize: 17, color: 'var(--color-text-primary)', letterSpacing: -0.4 }}>{t('workouts.startHere', 'Start here')}</p>
+            </div>
+            <div className="flex gap-2.5 overflow-x-auto scrollbar-none pb-1 -mx-1 px-1 mb-7">
+              {[
+                { key: 'Beginner', sub: t('workouts.levelSubBeginner', 'Just getting started'), tint: 'rgba(16,185,129,0.14)', col: '#10B981' },
+                { key: 'Intermediate', sub: t('workouts.levelSubIntermediate', '6+ months training'), tint: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', col: TU_ACCENT },
+                { key: 'Advanced', sub: t('workouts.levelSubAdvanced', '2+ years strong'), tint: 'var(--color-surface-hover)', col: 'var(--color-text-primary)' },
+              ].map(c => (
+                <button key={c.key} onClick={() => openBrowseSection(c.key)} className="flex-shrink-0 text-left p-3.5 rounded-2xl active:scale-[0.98] transition-transform" style={{ width: 168, background: c.tint }}>
+                  <div style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 32, letterSpacing: -1, lineHeight: 0.95, color: c.col }}>{levelCounts[c.key]}</div>
+                  <div style={{ fontFamily: TU_DISPLAY, fontWeight: 800, fontSize: 15, letterSpacing: -0.3, marginTop: 6, color: 'var(--color-text-primary)' }}>{t(`workouts.programLevels.${c.key}`, c.key)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>{c.sub}</div>
                 </button>
               ))}
             </div>
-            {/* Separator before community programs */}
-            <div className="flex items-center gap-3 mt-8">
-              <div className="h-px flex-1" style={{ background: 'linear-gradient(to right, var(--color-border-subtle), transparent)' }} />
-              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
-                {t('workouts.communityPrograms', 'Programs')}
-              </p>
-              <div className="h-px flex-1" style={{ background: 'linear-gradient(to left, var(--color-border-subtle), transparent)' }} />
+
+            {/* PARA TI */}
+            {scoredTemplates.length > 0 && (
+              <>
+                <div className="mb-3 px-1">
+                  <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em' }}>{t('workouts.forYou', 'For you')}</p>
+                  <p style={{ fontFamily: TU_DISPLAY, fontWeight: 800, fontSize: 17, color: 'var(--color-text-primary)', letterSpacing: -0.4 }}>{t('workouts.basedOnGoals', 'Based on your goals')}</p>
+                </div>
+                <div className="flex gap-3 overflow-x-auto scrollbar-none pb-1 -mx-1 px-1 mb-7">
+                  {scoredTemplates.slice(0, 6).map(tmpl => (
+                    <button key={tmpl.id} onClick={() => { loadExerciseNames(); setSelectedTemplate(tmpl); setTemplateWeek('1'); }} className="flex-shrink-0 text-left active:scale-[0.98] transition-transform" style={{ width: 190 }}>
+                      <div className="relative rounded-2xl overflow-hidden" style={{ aspectRatio: '3 / 4', background: 'var(--color-bg-deep, #0e0d0a)' }}>
+                        {tmpl.image && <img src={programImageUrl(tmpl.image)} alt={progName(tmpl)} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />}
+                        <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0.1) 60%)' }} />
+                        <div className="absolute left-3 right-3" style={{ bottom: 12 }}>
+                          <p style={{ fontFamily: TU_DISPLAY, fontWeight: 800, fontSize: 15, color: '#fff', letterSpacing: -0.3, lineHeight: 1.1 }}>{progName(tmpl)}</p>
+                          <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 3 }}>{t('workouts.durationWk', { count: tmpl.durationWeeks })} · {t('workouts.xPerWeek', { count: tmpl.daysPerWeek })}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* POR TIEMPO */}
+            <div className="mb-3 px-1">
+              <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em' }}>{t('workouts.byTime', 'By time')}</p>
+              <p style={{ fontFamily: TU_DISPLAY, fontWeight: 800, fontSize: 17, color: 'var(--color-text-primary)', letterSpacing: -0.4 }}>{t('workouts.howMuchTime', 'How much can you commit')}</p>
             </div>
-          </div>
+            <div className="grid grid-cols-2 gap-2.5 mb-7">
+              {[
+                { key: 'express', icon: Zap, label: t('workouts.timeExpressLabel', 'Express'), sub: '≤20 min' },
+                { key: 'rapidas', icon: Clock, label: t('workouts.timeRapidasLabel', 'Quick'), sub: '~30 min' },
+                { key: 'estandar', icon: Target, label: t('workouts.timeEstandarLabel', 'Standard'), sub: '45–60 min' },
+                { key: 'largas', icon: Activity, label: t('workouts.timeLargasLabel', 'Long'), sub: '75+ min' },
+              ].map(c => (
+                <button key={c.key} onClick={() => openBrowseSection(c.key)} className="text-left p-3.5 rounded-2xl active:scale-[0.98] transition-transform" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                  <div className="flex items-center justify-between">
+                    <c.icon size={18} style={{ color: TU_ACCENT }} />
+                    <span style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 18, color: 'var(--color-text-primary)', letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' }}>{timeCounts[c.key]}</span>
+                  </div>
+                  <div style={{ fontFamily: TU_DISPLAY, fontWeight: 800, fontSize: 14, letterSpacing: -0.3, marginTop: 6, color: 'var(--color-text-primary)' }}>{c.label}</div>
+                  <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>{c.sub}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* GYM EXCLUSIVE — hero treatment */}
+            {gymPrograms.length > 0 && (
+              <button
+                onClick={() => openBrowseSection('gym')}
+                className="relative w-full overflow-hidden rounded-[22px] text-left mb-2 active:scale-[0.99] transition-transform"
+                style={{ padding: 18, background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 14%, var(--color-bg-card)), var(--color-bg-card))', border: '1.5px solid color-mix(in srgb, var(--color-accent) 45%, transparent)' }}
+              >
+                <div className="absolute pointer-events-none" style={{ top: -40, right: -40, width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, color-mix(in srgb, var(--color-accent) 35%, transparent) 0%, transparent 70%)' }} />
+                <div className="relative flex items-center gap-2 mb-3">
+                  <span className="flex items-center justify-center" style={{ width: 22, height: 22, borderRadius: 6, background: TU_ACCENT }}>
+                    <Zap size={12} style={{ color: 'var(--color-bg-primary)' }} fill="currentColor" strokeWidth={0} />
+                  </span>
+                  <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: 1.4, color: TU_ACCENT }}>{t('workouts.exclusiveOfYourGym', 'Exclusive to your gym')}</span>
+                </div>
+                <p className="relative" style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 21, letterSpacing: -0.6, lineHeight: 1.12, color: 'var(--color-text-primary)' }}>{t('workouts.gymExclusiveTitle', 'Programs built by your coaches')}</p>
+                <p className="relative" style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 6, lineHeight: 1.4 }}>{t('workouts.gymExclusiveSub', { count: gymPrograms.length, defaultValue: '{{count}} programs · members only' })}</p>
+                <div className="relative mt-3 pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                  {gymPrograms.slice(0, 2).map((p, i) => (
+                    <div key={p.id} className="flex items-center gap-2.5 py-2" style={i > 0 ? { borderTop: '1px solid var(--color-border-subtle)' } : undefined}>
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate" style={{ fontFamily: TU_DISPLAY, fontWeight: 700, fontSize: 13, letterSpacing: -0.2, color: 'var(--color-text-primary)' }}>{p.name}</p>
+                        <p style={{ fontSize: 10, color: 'var(--color-text-subtle)' }}>{t('workouts.durationWk', { count: p.duration_weeks || 6 })}</p>
+                      </div>
+                      <ChevronRight size={13} style={{ color: 'var(--color-text-subtle)' }} />
+                    </div>
+                  ))}
+                </div>
+                <span className="relative flex items-center justify-center gap-1.5 mt-3.5 w-full" style={{ padding: '11px 14px', borderRadius: 12, background: TU_ACCENT, color: 'var(--color-bg-primary)', fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 12, letterSpacing: 0.5 }}>
+                  {t('workouts.seeAllGymPrograms', { count: gymPrograms.length, defaultValue: 'See all {{count}} programs' })}
+                  <ChevronRight size={13} strokeWidth={2.6} />
+                </span>
+              </button>
+            )}
+          </>
         )}
 
-        {/* Program cards grid */}
+        {/* Programs for the selected section */}
+        {browseSection !== null && (
         <div className="grid grid-cols-2 gap-4">
           {(() => {
             // Gym Exclusive filter shows only gym programs
@@ -2151,7 +2674,14 @@ const Workouts = () => {
             }
 
             const filtered = programTemplates
-              .filter(p => programCategoryFilter === 'All' || p.category === programCategoryFilter);
+              .filter(p => programCategoryFilter === 'All' || p.category === programCategoryFilter)
+              .filter(p => programLevelFilter === 'All' || p.level === programLevelFilter)
+              .filter(p => {
+                if (programDurationFilter === 'all') return true;
+                const [lo, hi] = TIME_BUCKETS[programDurationFilter] || [0, 9999];
+                const m = estimateTemplateSessionMin(p) ?? 999;
+                return m >= lo && m <= hi;
+              });
             // Score and sort: recommended first, then by category
             const scored = filtered.map(tmpl => ({
               tmpl,
@@ -2218,7 +2748,9 @@ const Workouts = () => {
             ));
           })()}
         </div>
+        )}
       </section>
+      </>)}
 
     </div>
 
@@ -3107,6 +3639,44 @@ const Workouts = () => {
               {deletingId === deleteRoutineConfirm.id
                 ? t('workouts.deleting', 'Deleting…')
                 : t('workouts.confirmDeleteRoutine', 'Yes, delete')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {bulkDeleteConfirm && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => !bulkDeleting && setBulkDeleteConfirm(null)}>
+        <div className="w-full max-w-sm rounded-[20px] p-6" style={{ backgroundColor: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
+          <div className="w-14 h-14 rounded-2xl bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+            <Trash2 size={26} className="text-red-400" />
+          </div>
+          <h3 className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+            {bulkDeleteConfirm.kind === 'programs'
+              ? t('workouts.bulkDeleteProgramsTitle', { count: bulkDeleteConfirm.count, defaultValue: 'Delete {{count}} programs?' })
+              : t('workouts.bulkDeleteRoutinesTitle', { count: bulkDeleteConfirm.count, defaultValue: 'Delete {{count}} routines?' })}
+          </h3>
+          <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-muted)' }}>
+            {bulkDeleteConfirm.kind === 'programs'
+              ? t('workouts.bulkDeleteProgramsDesc', 'Removes the selected past programs. Your logged sessions stay in your history. This cannot be undone.')
+              : t('workouts.bulkDeleteRoutinesDesc', 'Removes the selected routines from your library. Logged sessions stay in your history. This cannot be undone.')}
+          </p>
+          <div className="space-y-2.5">
+            <button
+              onClick={() => setBulkDeleteConfirm(null)}
+              disabled={bulkDeleting}
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors disabled:opacity-50"
+              style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+            >
+              {t('workouts.cancel', 'Cancel')}
+            </button>
+            <button
+              onClick={bulkDeleteConfirm.kind === 'programs' ? handleBulkDeletePrograms : handleBulkDeleteRoutines}
+              disabled={bulkDeleting}
+              className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors disabled:opacity-50"
+            >
+              {bulkDeleting
+                ? t('workouts.deleting', 'Deleting…')
+                : t('workouts.bulkDeleteConfirmBtn', { count: bulkDeleteConfirm.count, defaultValue: 'Delete {{count}}' })}
             </button>
           </div>
         </div>
