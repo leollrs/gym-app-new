@@ -18,6 +18,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { initWatchListeners, onWatchMessage, syncRoutinesToWatch, syncUserContextToWatch, syncQRToWatch } from './lib/watchBridge';
 import { getCached } from './lib/queryCache';
+import { applyCachedBranding } from './lib/branding';
 import { supabase } from './lib/supabase';
 import { installAppResume, notifyBackground, notifyForeground } from './lib/appResume';
 import { hydrateFromDurable, flushToDurable, whenHydrated } from './lib/durableStorage';
@@ -167,11 +168,15 @@ installAppResume(queryClient);
       },
     }).catch(() => {});
     queryClient.prefetchQuery({
-      queryKey: ['notifications', userId],
+      // Key + columns + audience filter MUST match useNotifications(userId,'member')
+      // exactly, or the prefetch lands under a different cache entry and the hook
+      // refetches anyway (the mismatch this prefetch used to have).
+      queryKey: ['notifications', userId, 'member'],
       queryFn: async () => {
         const { data, error } = await supabase
           .from('notifications')
-          .select('id, title, body, type, read_at, created_at, profile_id')
+          .select('id, title, body, type, read_at, created_at, profile_id, audience, data')
+          .or('audience.is.null,audience.eq.member')
           .eq('profile_id', userId)
           .is('dismissed_at', null)
           .order('created_at', { ascending: false })
@@ -753,6 +758,14 @@ const mountRecoveryRoot = () => {
 // second root on #root. Persisting the root on `window` so HMR re-renders
 // reuse the existing one. (Production main.jsx runs once → noop.)
 const renderApp = () => {
+  // Paint the gym's brand colors from cache BEFORE first render, so a warm
+  // boot never flashes the default amber palette while the live profile
+  // fetch is in flight. Runs after native durable-storage hydration (this
+  // function is gated on it below), so localStorage is populated. The
+  // dark-mode class is already set pre-paint by the inline script in
+  // index.html, so surface tints resolve correctly.
+  applyCachedBranding();
+
   // Mount recovery FIRST so its 10s timer is already running regardless of
   // whether the main render below throws synchronously.
   mountRecoveryRoot();

@@ -2,6 +2,7 @@ import { supabase } from '../supabase';
 import { sendNotification } from '../notifications';
 import logger from '../logger';
 import { logAdminAction } from '../adminAudit';
+import { fetchMemberStats, tokensNeeded } from './outreachPersonalization';
 
 /**
  * Single send pipeline used by the unified Outreach composer. Given a resolved
@@ -23,6 +24,14 @@ export async function sendOutreach({
   channels,              // { push, email, sms, inApp }
   subject,               // string (email)
   body,                  // string (all channels)
+  html = null,           // optional pre-rendered email HTML (designer templates).
+                         // When set, it's sent as the email body (merge tags
+                         // inside it are personalized per recipient) instead of
+                         // wrapping `body` in a <p>. Push/SMS/in-app still use `body`.
+  personalize = {},      // gym-level constants for designer-template tokens:
+                         // { gymName, coachName }. Per-recipient stats
+                         // (streak_count/workout_count/days_inactive) are
+                         // fetched here when their tokens appear in the copy.
   templateKey = null,    // optional — recorded in the audit log
   audienceLabel = '',    // human-readable description for the audit log
 }) {
@@ -36,19 +45,38 @@ export async function sendOutreach({
 
   if (!recipients?.length) return results;
 
-  // Personalize the body for each recipient (replaces {{name}} / {{first_name}}).
+  // Pre-fetch per-recipient stats once for the whole audience, but only for the
+  // stat tokens this particular send actually references. Cheap (streak_cache /
+  // last_active_at) plus a heavier completed-sessions count when needed.
+  const statTokens = tokensNeeded(subject, body, html);
+  const statsMap = statTokens.length
+    ? await fetchMemberStats(gymId, recipients.map((r) => r.id), statTokens)
+    : {};
+
+  const gymNameToken = personalize.gymName || '';
+  const coachNameToken = personalize.coachName || personalize.gymName || '';
+
+  // Personalize the body for each recipient. Order matters for `full_name` vs
+  // `name` — replace the longer token first so it doesn't get clipped.
   const renderBody = (recipient, raw) => {
     if (!raw) return '';
     const first = (recipient.full_name || '').split(' ')[0] || '';
+    const s = statsMap[recipient.id] || {};
     return raw
+      .replace(/\{\{full_name\}\}/g, recipient.full_name || '')
       .replace(/\{\{first_name\}\}/g, first)
       .replace(/\{\{name\}\}/g, recipient.full_name || '')
-      .replace(/\{\{full_name\}\}/g, recipient.full_name || '');
+      .replace(/\{\{gym_name\}\}/g, gymNameToken)
+      .replace(/\{\{coach_name\}\}/g, coachNameToken)
+      .replace(/\{\{streak_count\}\}/g, s.streak_count ?? '0')
+      .replace(/\{\{workout_count\}\}/g, s.workout_count ?? '0')
+      .replace(/\{\{days_inactive\}\}/g, s.days_inactive ?? '—');
   };
 
   const tasks = recipients.map(async (r) => {
     const personalizedBody = renderBody(r, body);
     const personalizedSubject = renderBody(r, subject);
+    const personalizedHtml = html ? renderBody(r, html) : null;
 
     // Push + in-app (notifications row) via the same helper.
     if (channels.push) {
@@ -91,7 +119,7 @@ export async function sendOutreach({
           body: {
             to: r.email,
             subject: personalizedSubject || 'Message from your gym',
-            html: `<p>${personalizedBody.replace(/\n/g, '<br>')}</p>`,
+            html: personalizedHtml || `<p>${personalizedBody.replace(/\n/g, '<br>')}</p>`,
             text: personalizedBody,
           },
         });

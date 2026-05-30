@@ -513,9 +513,16 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showMenu]);
 
-  // Load blocked-user ids (both directions) so mention autocomplete can filter them.
+  // Lazily load blocked-user ids (both directions) the FIRST time the viewer
+  // opens this card's comment composer — they're used only to filter the
+  // @mention autocomplete. Loading them eagerly per-card on mount was an N+1
+  // (two queries × every card in the feed), a major contributor to the slow
+  // Community load. Deferring to comment-open removes it from the feed's
+  // critical path entirely; the dropdown only ever appears inside comments.
+  const blockedLoadedRef = useRef(false);
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!currentUserId || !showComments || blockedLoadedRef.current) return;
+    blockedLoadedRef.current = true;
     let cancelled = false;
     (async () => {
       const [outgoing, incoming] = await Promise.all([
@@ -529,7 +536,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
       setHiddenIds(ids);
     })();
     return () => { cancelled = true; };
-  }, [currentUserId]);
+  }, [currentUserId, showComments]);
 
   // Mention autocomplete — search friends when user types @
   useEffect(() => {
@@ -1354,15 +1361,19 @@ const SocialFeed = ({ embedded = false }) => {
     const init = async () => {
       setLoading(true);
       try {
-        const { data: fships } = await supabase
+        // Fetch friendships IN PARALLEL with the feed. loadFeed doesn't depend
+        // on them (its first arg is unused — the feed RPC joins friendships
+        // server-side); friendships are only for the friend-count badge and
+        // the For-You ranking. Awaiting them first just added a serial network
+        // hop to the critical load path, a big chunk of the 10s cold load.
+        const friendshipsPromise = supabase
           .from('friendships')
           .select('id, requester_id, addressee_id, status')
           .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-          .limit(500);
-        if (cancelled) return;
-        const resolved = fships ?? [];
-        setFriendships(resolved);
-        await loadFeed(resolved);
+          .limit(500)
+          .then(({ data }) => { if (!cancelled) setFriendships(data ?? []); })
+          .catch(() => {});
+        await Promise.all([loadFeed(null), friendshipsPromise]);
       } finally {
         // loadFeed sets loading=false on success paths, but if either await
         // above throws we still need to clear the skeleton — otherwise the

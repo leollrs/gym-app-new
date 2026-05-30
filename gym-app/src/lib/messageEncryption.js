@@ -29,9 +29,32 @@ async function deriveKey(conversationId, seed) {
   );
 }
 
+// The derived AES-GCM key is IDENTICAL for every message in a conversation, but
+// deriveKey runs a deliberately-expensive 600k-iteration PBKDF2. Without a cache,
+// opening a thread re-derived the key once PER MESSAGE (200 messages ≈ 120M
+// iterations on the main thread → multi-second freeze). Cache the derived key
+// (as a Promise, so concurrent decrypts in a Promise.all dedupe to one
+// derivation). Keyed by conversationId+seed so a rotated seed derives afresh.
+// NOTE: iteration count is intentionally unchanged — altering it would change
+// the derived key and make every already-stored ciphertext undecryptable.
+const keyCache = new Map();
+
+function getKey(conversationId, seed) {
+  const cacheId = `${conversationId}|${seed}`;
+  let keyPromise = keyCache.get(cacheId);
+  if (!keyPromise) {
+    keyPromise = deriveKey(conversationId, seed).catch((e) => {
+      keyCache.delete(cacheId); // don't cache a failed derivation
+      throw e;
+    });
+    keyCache.set(cacheId, keyPromise);
+  }
+  return keyPromise;
+}
+
 export async function encryptMessage(text, conversationId, seed) {
   try {
-    const key = await deriveKey(conversationId, seed);
+    const key = await getKey(conversationId, seed);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encrypted = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv },
@@ -56,7 +79,7 @@ export async function decryptMessage(ciphertext, conversationId, seed) {
     const data = Uint8Array.from(atob(ciphertext.slice(4)), c => c.charCodeAt(0));
     const iv = data.slice(0, 12);
     const encrypted = data.slice(12);
-    const key = await deriveKey(conversationId, seed);
+    const key = await getKey(conversationId, seed);
     const decrypted = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv },
       key,

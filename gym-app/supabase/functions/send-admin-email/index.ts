@@ -171,7 +171,7 @@ ${escHtml(gymName)} · ${str.poweredBy} <span style="color:#6b7280;">TuGymPR</sp
 </html>`;
 }
 
-const DEPLOY_STAMP = 'DEPLOY_2026_05_19_REMOTE_URLS';
+const DEPLOY_STAMP = 'DEPLOY_2026_05_29_TESTMODE';
 
 Deno.serve(async (req) => {
   console.log('[send-admin-email]', DEPLOY_STAMP, 'method=', req.method, 'url=', req.url);

@@ -184,9 +184,13 @@ const GymPulse = () => {
     // Filtered by gym_id so we only receive events for the current gym.
     const gymId = profile.gym_id;
     let debounceTimer;
+    // Skip refetches while the app is backgrounded — GymPulse lives on the
+    // keep-alive Dashboard, so without this a busy gym's workout/check-in
+    // firehose kept refetching pulse data with nobody looking. We catch up via
+    // the visibilitychange listener below the moment the app returns.
     const debouncedFetch = () => {
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => fetchPulse(), 5000);
+      debounceTimer = setTimeout(() => { if (!document.hidden) fetchPulse(); }, 5000);
     };
     const channel = supabase
       .channel('gym-pulse-realtime')
@@ -210,13 +214,18 @@ const GymPulse = () => {
       }, debouncedFetch)
       .subscribe();
 
-    // Fallback polling every 2 minutes in case realtime misses an event
-    const interval = setInterval(fetchPulse, 120_000);
+    // Fallback polling every 2 minutes in case realtime misses an event — also
+    // gated on visibility so it doesn't poll while backgrounded.
+    const interval = setInterval(() => { if (!document.hidden) fetchPulse(); }, 120_000);
+    // Catch up immediately when the app returns to the foreground.
+    const onVisible = () => { if (!document.hidden) fetchPulse(); };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [user, profile?.gym_id]);
 

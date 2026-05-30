@@ -44,6 +44,11 @@ export default function TrainerLiveSession() {
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0); // forces elapsed re-render
   const tickRef = useRef();
+  // Mirror the current routine id into a ref so the realtime subscription can
+  // compare against incoming draft updates WITHOUT taking `routine` as a
+  // dependency — see the subscription effect below.
+  const routineIdRef = useRef(null);
+  useEffect(() => { routineIdRef.current = routine?.id ?? null; }, [routine?.id]);
 
   // Hide bottom nav while live session is active
   useEffect(() => {
@@ -139,14 +144,20 @@ export default function TrainerLiveSession() {
           const next = payload.new;
           if (next?.routine_id) {
             setDraft(prev => ({ ...(prev || {}), ...next }));
-            // If routine_id changed, refetch routine. Otherwise just keep latest draft.
-            if (!routine || routine.id !== next.routine_id) loadSession();
+            // If routine_id changed, refetch routine. Otherwise just keep latest
+            // draft. Read the current routine id from a ref so this handler
+            // doesn't need `routine` in the effect deps.
+            if (routineIdRef.current !== next.routine_id) loadSession();
           }
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [sessionId, routine, loadSession]);
+    // Subscribe ONCE per session. `routine` was previously a dep, which tore
+    // down + recreated the WebSocket channel on every routine change — socket
+    // churn that could thrash re-renders and, on flaky native sockets, reset
+    // the app. `loadSession` is a useMemo keyed on [sessionId], so it's stable.
+  }, [sessionId, loadSession]);
 
   // Elapsed ticker (1s) — drift-free re-render based on started_at
   useEffect(() => {

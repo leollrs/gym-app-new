@@ -31,6 +31,14 @@ import { resetAppCaches } from '../lib/resetAppCaches';
 
 const STUCK_THRESHOLD_MS = 10_000;
 const POLL_INTERVAL_MS = 1_500;
+// Number of CONSECUTIVE empty readings required before declaring the app
+// stuck. A single empty reading is unreliable — there's a sub-frame window
+// during route transitions / Suspense fallbacks / a slow page that renders
+// only a spinner where #root momentarily has no meaningful text. Requiring a
+// sustained streak (≈3 × 1.5s = ~4.5s of continuous emptiness, on top of the
+// 10s initial delay) means only a genuinely dead screen trips recovery, never
+// a brief gap or a slow-but-rendering page. Any paint resets the streak.
+const REQUIRED_EMPTY_STREAK = 3;
 // Anything below this many visible characters of text is considered
 // "empty" — covers blank screen, lone "Loading..." spinner, etc.
 const MIN_MEANINGFUL_TEXT = 60;
@@ -101,6 +109,7 @@ export default function StuckLoadingRecovery() {
   useEffect(() => {
     let pollTimer = null;
     let detected = false;
+    let emptyStreak = 0;
     const mountedAt = Date.now();
 
     const onStuck = () => {
@@ -126,17 +135,30 @@ export default function StuckLoadingRecovery() {
       const root = document.getElementById('root');
       // Auth splash still up long past AuthContext's ~6s self-timeout → the
       // boot/resume hung (e.g. WebView reloaded on resume + zombie socket).
-      // Auto-recover instead of leaving the user stuck on it forever.
+      // Auto-recover instead of leaving the user stuck on it forever. The
+      // splash is an intentional, fully-rendered state — not an "empty" gap —
+      // so it doesn't feed the empty-streak counter; reset it while the splash
+      // is legitimately up.
       if (root && root.querySelector('[data-loading-screen]')) {
+        emptyStreak = 0;
         if (Date.now() - mountedAt > LOADING_SCREEN_STUCK_MS) {
           detected = true;
           onStuck();
         }
         return;
       }
+      // Require several CONSECUTIVE empty readings before recovering. Any
+      // paint (real content, a spinner with text, a partially-loaded page)
+      // resets the streak, so transient transition gaps and slow-but-
+      // rendering pages never trip the cache wipe + reload.
       if (rootIsEmpty()) {
-        detected = true;
-        onStuck();
+        emptyStreak += 1;
+        if (emptyStreak >= REQUIRED_EMPTY_STREAK) {
+          detected = true;
+          onStuck();
+        }
+      } else {
+        emptyStreak = 0;
       }
     };
 

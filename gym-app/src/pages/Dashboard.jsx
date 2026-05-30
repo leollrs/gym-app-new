@@ -14,19 +14,24 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { getCached, setCache } from '../lib/queryCache';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { computeStreakFromSessions } from '../lib/achievements';
 import { hasCardioLoggedAfter, hasRecentCardioLog, recordCardioLogged } from '../lib/cardioLedger';
 import { getRewardTier } from '../lib/rewardsEngine';
 import { getLevel } from '../components/LevelBadge';
-import { exercises as exerciseLibrary } from '../data/exercises';
+import { exerciseMeta as exerciseLibrary } from '../data/exerciseMeta';
 import { localizeRoutineName } from '../lib/exerciseName';
 import { translateCreativeName } from '../lib/programNaming';
 import { getCurrentWeekClamped, getTotalProgramWeeks, getProgramWeekNum } from '../lib/programWeek';
 import { AppleHealthSourceBadge } from '../components/AppleHealthBadge';
 import { tg } from '../lib/genderText';
-import GymPulse from '../components/GymPulse';
-import GymWOD from '../components/GymWOD';
+// Lazy — both are below-the-fold cards. GymWOD pulls the full ~104KB exercise
+// library (getExerciseById), so lazy-loading it keeps that data out of the
+// eager entry chunk; GymPulse defers its realtime subscription setup until the
+// dashboard body actually renders.
+const GymPulse = lazy(() => import('../components/GymPulse'));
+const GymWOD   = lazy(() => import('../components/GymWOD'));
 import { getTodayChallenge } from '../lib/dailyChallenges';
 
 import DayStrip from '../components/DayStrip';
@@ -492,6 +497,13 @@ const Dashboard = () => {
   // await) and skip its dispatch — leaving state stuck at loading=true until
   // the user navigates away and back.
   const rerunPendingRef = useRef(false);
+  // Once the first dashboard load has run, later loads (foreground / nav /
+  // programs-changed via refreshKey) are allowed to hit the network fresh.
+  // The FIRST load instead reuses the React Query prefetch fired in
+  // main.jsx/App.jsx (same ['dashboard', userId] key) so the heavy
+  // get_dashboard_data RPC runs ONCE on cold start instead of 2-3×.
+  const initialDashLoadRef = useRef(false);
+  const queryClient = useQueryClient();
 
   // Load data
   useEffect(() => {
@@ -511,7 +523,22 @@ const Dashboard = () => {
       if (!hasCached) dispatch({ type: 'SET_LOADING', payload: true });
 
       // Start RPC + class bookings + cardio sessions in parallel (gymConfig is from AuthContext, available immediately)
-      const rpcPromise = supabase.rpc('get_dashboard_data');
+      // Route get_dashboard_data through React Query so the cold-start prefetch
+      // (main.jsx / App.jsx, same key) and this load dedupe into ONE network
+      // call. First load reuses the prefetch (staleTime 30s); later refreshKey-
+      // driven loads force fresh (staleTime 0) to preserve refresh-on-foreground
+      // behavior. `.then/.catch` re-wraps to the { data, error } shape used below.
+      const isInitialDashLoad = !initialDashLoadRef.current;
+      initialDashLoadRef.current = true;
+      const rpcPromise = queryClient.fetchQuery({
+        queryKey: ['dashboard', user.id],
+        queryFn: async () => {
+          const { data, error } = await supabase.rpc('get_dashboard_data');
+          if (error) throw error;
+          return data;
+        },
+        staleTime: isInitialDashLoad ? 30_000 : 0,
+      }).then((data) => ({ data, error: null })).catch((error) => ({ data: null, error }));
       const classPromise = gymConfig?.classesEnabled
         ? supabase
             .from('gym_class_bookings')
@@ -2304,12 +2331,12 @@ const Dashboard = () => {
               <div className="lg:grid lg:grid-cols-2 lg:gap-4">
               <section className="mt-0 mb-3 lg:mb-0">
                 <div className="h-px bg-gradient-to-r from-transparent via-[var(--color-border-subtle)] to-transparent mb-3 lg:hidden" />
-                <GymWOD />
+                <Suspense fallback={null}><GymWOD /></Suspense>
               </section>
 
               <section className="mt-0 mb-6 lg:mb-0">
                 <div className="h-px bg-gradient-to-r from-transparent via-[var(--color-border-subtle)] to-transparent mb-3 lg:hidden" />
-                <GymPulse />
+                <Suspense fallback={null}><GymPulse /></Suspense>
               </section>
               </div>
 

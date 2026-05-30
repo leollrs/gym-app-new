@@ -433,8 +433,12 @@ const Profile = () => {
           return;
         }
 
-        // Strip EXIF metadata (GPS, device info) before uploading
-        const cleanFile = await stripExif(file);
+        // Strip EXIF metadata (GPS, device info) AND downscale before uploading.
+        // Avatars never render larger than ~96px, but the default stripExif keeps
+        // up to 2048px — a multi-MB image then re-downloaded everywhere it appears
+        // (feed, leaderboard, member lists). 256px @ q0.85 is plenty for a retina
+        // avatar and slashes transfer/decode cost across the app.
+        const cleanFile = await stripExif(file, { maxDimension: 256, quality: 0.85 });
         const path = `${user.id}/${Date.now()}.jpg`;
 
         const { error: storageErr } = await supabase.storage

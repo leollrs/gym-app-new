@@ -497,14 +497,18 @@ export default function TrainerMessages() {
   useEffect(() => {
     if (!profile?.id) return undefined;
     let timer;
+    // Unfiltered gym-wide direct_messages subscription — skip the full reload
+    // while backgrounded and catch up on foreground (see Messages.jsx).
     const channel = supabase
       .channel('trainer-dm-list')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, () => {
         clearTimeout(timer);
-        timer = setTimeout(() => loadConversations(), 1500);
+        timer = setTimeout(() => { if (!document.hidden) loadConversations(); }, 1500);
       })
       .subscribe();
-    return () => { clearTimeout(timer); supabase.removeChannel(channel); };
+    const onVisible = () => { if (!document.hidden) loadConversations(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible); supabase.removeChannel(channel); };
   }, [profile?.id, loadConversations]);
 
   // ── Load active thread ───────────────

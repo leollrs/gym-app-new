@@ -193,7 +193,10 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
       if (debounceHandle) clearTimeout(debounceHandle);
       supabase.removeChannel(channel);
     };
-  }, [challenge, gymId]);
+    // Depend on challenge.id, not the whole object — a parent refetch that
+    // produces a new challenge reference (same id) would otherwise tear down +
+    // re-subscribe the channel. id/type/dates are immutable for a challenge.
+  }, [challenge.id, gymId]);
 
   const scoreLabel = challenge.type === 'volume' ? t('admin.challenges.scoreLbs', 'lbs') : challenge.type === 'consistency' ? t('admin.challenges.scoreWorkouts', 'workouts') : t('admin.challenges.scorePRs', 'PRs');
 

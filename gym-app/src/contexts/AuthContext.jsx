@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { applyBranding } from '../lib/branding';
+import { applyBranding, cacheBranding } from '../lib/branding';
 import { setAppName } from '../lib/appName';
 import { getPalette } from '../lib/palettes';
 import { resetToDefault } from '../lib/themeGenerator';
@@ -64,7 +64,7 @@ const clearPersistedUserData = () => {
       'platform_gym_defaults',
       'admin_export_history',
     ];
-    const exactKeys = ['offline_profile', 'offline_gym', 'tugympr-query-cache'];
+    const exactKeys = ['offline_profile', 'offline_gym', 'offline_branding', 'tugympr-query-cache'];
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -293,18 +293,27 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      let brandingArgs = null;
       if (branding?.palette_name) {
         const palette = getPalette(branding.palette_name);
-        applyBranding({
+        brandingArgs = {
           primaryColor: branding.primary_color || palette.primary,
           secondaryColor: branding.accent_color || palette.secondary,
           surfaceColor: branding.surface_color || null,
-        });
+        };
       } else if (branding?.primary_color || branding?.accent_color) {
-        applyBranding({
+        brandingArgs = {
           primaryColor: branding.primary_color,
           secondaryColor: branding.accent_color,
-        });
+          surfaceColor: branding.surface_color || null,
+        };
+      }
+      if (brandingArgs) {
+        applyBranding(brandingArgs);
+        // Persist resolved colors so the next cold boot paints them
+        // synchronously (applyCachedBranding in main.jsx) — kills the
+        // default-amber → gym-color flash on startup.
+        cacheBranding(brandingArgs);
       }
       const resolvedName = gym?.name || branding?.custom_app_name || '';
       setGymName(resolvedName);
@@ -1018,11 +1027,22 @@ export const AuthProvider = ({ children }) => {
       // least-privilege 'member' so the app can NEVER trap on the splash
       // forever (App.jsx ProtectedRoute line ~687). RLS still enforces real
       // permissions server-side, so this only ever DOWN-grades the view.
+      //
+      // EXCEPTION: on a fresh-cache boot `loading` is false from the start
+      // (the cached profile carries no role — it's stripped for security), so
+      // this fallback would fire IMMEDIATELY and render the member home for a
+      // split second before the live role fetch lands and redirects a
+      // multi-role user to /admin|/trainer. If the persisted activeView says
+      // this user last used a privileged surface, keep waiting ([] → guards
+      // show LoadingScreen) until the real roles arrive — no member flash.
+      // Pure members (activeView null/'member', ~all users) still boot
+      // straight to the dashboard with no spinner.
+      if (activeView && activeView !== 'member') return [];
       return (!loading && profile) ? ['member'] : [];
     }
     const extras = Array.isArray(profile.additional_roles) ? profile.additional_roles : [];
     return [profile.role, ...extras.filter((r) => r !== profile.role)];
-  }, [profile, loading]);
+  }, [profile, loading, activeView]);
 
   // effectiveView resolves to the user's current experience:
   // 1. activeView if set AND it's a role they actually have

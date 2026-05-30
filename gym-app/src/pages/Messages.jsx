@@ -1124,6 +1124,9 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
   // Realtime: reload when new messages arrive (debounced to prevent excessive refetches)
   useEffect(() => {
     let debounceTimer;
+    // This listens to ALL gym direct_messages (no per-user filter possible here)
+    // and Messages is keep-alive, so skip the full conversation-list reload while
+    // backgrounded/hidden and catch up on the next foreground.
     const channel = supabase
       .channel('dm-list')
       .on(
@@ -1131,12 +1134,14 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
         { event: 'INSERT', schema: 'public', table: 'direct_messages' },
         () => {
           clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => loadConversations(), 2000);
+          debounceTimer = setTimeout(() => { if (!document.hidden) loadConversations(); }, 2000);
         }
       )
       .subscribe();
+    const onVisible = () => { if (!document.hidden) loadConversations(); };
+    document.addEventListener('visibilitychange', onVisible);
 
-    return () => { clearTimeout(debounceTimer); supabase.removeChannel(channel); };
+    return () => { clearTimeout(debounceTimer); document.removeEventListener('visibilitychange', onVisible); supabase.removeChannel(channel); };
   }, [loadConversations]);
 
   // Close swipe row when tapping outside

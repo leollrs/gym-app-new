@@ -14,6 +14,7 @@
  * if the gym has configured a default for that occasion.
  */
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { X, Gift, Trash2, Loader2 } from 'lucide-react';
@@ -27,9 +28,30 @@ const EMOJI_PRESETS = ['🎁', '☕', '🥤', '🍪', '🏋️', '⭐', '💪', 
 export default function RewardAttachModal({ card, gymId, onClose }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const isEs = i18n.language?.startsWith('es');
 
   const hasReward = !!card.reward_qr_code;
+
+  // The gym's reward catalog (store rewards). The owner picks one of these and
+  // its name + emoji prefill the card reward, so the printed QR redeems a real
+  // listed reward at the desk — instead of typing a label from scratch.
+  const { data: catalog = [] } = useQuery({
+    queryKey: ['gym-rewards-active', gymId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('gym_rewards')
+        .select('id, name, name_es, emoji_icon, cost_points, is_active')
+        .eq('gym_id', gymId)
+        .eq('is_active', true)
+        .order('sort_order');
+      return data || [];
+    },
+    enabled: !!gymId && !hasReward,
+    staleTime: 5 * 60_000,
+  });
+  const rewardName = (r) => (isEs ? (r.name_es || r.name) : r.name);
+  const [selectedRewardId, setSelectedRewardId] = useState(null);
 
   // Read gym defaults so we can pre-fill the label for known occasions
   // (e.g., habit_9in6 → "shaker"). Defaults come from gym_card_settings
@@ -110,7 +132,10 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
   const canSubmit = label.trim().length > 0 && expiresDays > 0 && expiresDays <= 365;
   const isPending = attachMutation.isPending || detachMutation.isPending;
 
-  return (
+  // Portal to <body> — same containing-block trap as PrintPreviewModal: the
+  // admin page's framer-motion wrappers would otherwise pin this fixed overlay
+  // inside a panel instead of the viewport.
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
@@ -191,14 +216,51 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
           ) : (
             // No reward yet — form
             <div className="space-y-3">
+              {/* Pick from the gym's reward catalog — fills the label + icon. */}
+              {catalog.length > 0 && (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                    {t('admin.printCards.rewardChooseFromList', { defaultValue: 'Choose from your rewards' })}
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {catalog.map((r) => {
+                      const active = selectedRewardId === r.id;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedRewardId(r.id);
+                            setLabel(rewardName(r));
+                            if (r.emoji_icon) setEmoji(r.emoji_icon);
+                          }}
+                          className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition"
+                          style={{
+                            background: active ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'var(--color-bg-input)',
+                            border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-default)'}`,
+                          }}
+                        >
+                          <span className="text-[16px] leading-none flex-shrink-0">{r.emoji_icon || '🎁'}</span>
+                          <span className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                            {rewardName(r)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-subtle)' }}>
-                  {t('admin.printCards.rewardLabelField', { defaultValue: 'What does this reward?' })}
+                  {catalog.length > 0
+                    ? t('admin.printCards.rewardLabelOrCustom', { defaultValue: 'Reward name (or type a custom one)' })
+                    : t('admin.printCards.rewardLabelField', { defaultValue: 'What does this reward?' })}
                 </label>
                 <input
                   type="text"
                   value={label}
-                  onChange={(e) => setLabel(e.target.value)}
+                  onChange={(e) => { setLabel(e.target.value); setSelectedRewardId(null); }}
                   placeholder={t('admin.printCards.rewardLabelPlaceholder', { defaultValue: 'e.g. Shaker bottle, free smoothie' })}
                   maxLength={80}
                   className="w-full px-3 py-2 rounded-lg text-[13px]"
@@ -267,6 +329,7 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

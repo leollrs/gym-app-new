@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
 import { computeReadiness, computeDashboardReadiness } from '../../../lib/readinessEngine';
+import MuscleFigure from '../../../components/MuscleFigure';
 import { TT, TFont } from './designTokens';
 
 // readiness region id → major muscle group
@@ -102,6 +103,18 @@ export default function TrainerClientRecovery({ clientId }) {
                 {t('trainerRecovery.goalLabel', 'Goal')}: {t(`trainerRecovery.goal.${goal}`, goal)}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Muscle map — same anatomical visualization the client sees */}
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${TT.border}` }}>
+          <MuscleFigure readiness={map} accent={TT.accent} labels={{ front: t('trainerRecovery.front', 'Front'), back: t('trainerRecovery.back', 'Back') }} />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', marginTop: 10 }}>
+            {[['fresh', '#3DAD7C', 'Fresh'], ['moderate', '#E0A042', 'Recovering'], ['fatigued', '#E26B5C', 'Sore'], ['rest', '#9CA3AB', 'Untrained']].map(([k, c, def]) => (
+              <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: TT.textSub, fontWeight: 600 }}>
+                <span style={{ width: 9, height: 9, borderRadius: 3, background: c }} /> {t(`trainerRecovery.state.${k}`, def)}
+              </span>
+            ))}
           </div>
         </div>
 

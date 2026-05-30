@@ -1,51 +1,62 @@
 /**
- * PrintPreviewModal — in-page preview + PDF download / print for selected cards.
+ * PrintPreviewModal — in-app preview + PDF download / print for selected cards.
  *
- * Two output paths, both targeting the existing /admin/print-cards/preview
- * route in a same-origin iframe:
+ * The card sheets are rendered INLINE (PrintCardSheets), not in an iframe. An
+ * iframe pointed at the preview route can't work on native: the app boots with
+ * MemoryRouter there and never reads the iframe URL, so it just shows the app
+ * home. Rendering inline keeps the cards in the same React tree / auth context
+ * on both web and native.
  *
- *   1. Download PDF (primary) — captures each .sheet element to a canvas
- *      and builds a multi-page PDF where each page's MediaBox matches the
- *      card's physical size (4x6 for postcards, 11x8.5 for folded). Browser
- *      print dialogs don't respect CSS @page size when picking the printer
- *      paper, but PDF readers DO respect the embedded page size — so opening
- *      the downloaded PDF and printing at Actual Size gives correctly-sized
- *      cards with zero cutting (assuming 4x6 cardstock is loaded).
+ * Output paths:
+ *   1. Download PDF (primary, all platforms) — reveal every card, then capture
+ *      each .sheet element to a canvas and build a multi-page PDF whose page
+ *      sizes match the physical card (4×6 / Letter). PDF readers honour the
+ *      embedded page size, so printing at Actual Size gives correct cards.
+ *   2. Print direct (web only) — opens the standalone /admin/print-cards/preview
+ *      route in its own window with ?autoprint=1, which prints just the cards.
+ *      Hidden on native (window.open + MemoryRouter can't reach the route).
  *
- *   2. Print (secondary) — direct iframe.contentWindow.print(). Fast but
- *      relies on the user manually selecting the right paper size in the
- *      browser print dialog. Kept as an escape hatch for owners who've
- *      already configured 4x6 as their printer default.
- *
- * jspdf + html2canvas are dynamically imported on first click so they don't
- * bloat the main bundle.
+ * jspdf + html2canvas are dynamically imported on first click.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { Capacitor } from '@capacitor/core';
 import { Printer, X, Loader2, Download } from 'lucide-react';
 import { saveBlob } from '../../lib/saveBlob';
+import PrintCardSheets from '../printCards/PrintCardSheets.jsx';
+
+// Job-level size override shown in the preview header. 'auto' = honour each
+// card's own print_format; the rest force every card to that layout for this
+// preview + its PDF/print output (passed through as formatOverride). Folded
+// cards (tenure_365 / milestone_500) ignore this — they're always 1-up Letter.
+const SIZE_OPTIONS = [
+  { key: 'auto',        short: 'Auto' },
+  { key: 'postcard',    short: '4×6' },
+  { key: 'letter-2up',  short: '2-up' },
+  { key: 'letter-1up',  short: 'Flyer' },
+];
 
 export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/print-cards/preview', gymId = null }) {
   const { t } = useTranslation('pages');
-  const iframeRef = useRef(null);
+  const sheetsApiRef = useRef(null);   // imperative handle (revealAll)
+  const containerRef = useRef(null);   // scroll container holding the .sheet DOM
   const [loaded, setLoaded] = useState(false);
+  const [empty, setEmpty] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
+  // 'auto' = use each card's saved print_format; otherwise force this layout
+  // for the whole preview/print job.
+  const [sizeKey, setSizeKey] = useState('auto');
+  const formatOverride = sizeKey === 'auto' ? null : sizeKey;
 
-  // No format selector here — each card carries its own print_format,
-  // set in CardsToPrintPanel (per-row pill or bulk-set in action bar).
-  // PrintCardsView reads the per-card format and sorts/groups so all
-  // same-format cards print together.
-  //
-  // previewBase + gymId let the platform (super-admin) console reuse this
-  // modal: it points the iframe at /platform/print-cards/preview (which
-  // isn't gated by AdminRoute) and passes the target gym so PrintCardsView
-  // reads that gym's cards + branding rather than the viewer's own.
-  const src = useMemo(() => {
-    const params = new URLSearchParams({ ids: ids.join(','), embed: '1' });
-    if (gymId) params.set('gymId', gymId);
-    return `${previewBase}?${params.toString()}`;
-  }, [ids, previewBase, gymId]);
+  const isNative = Capacitor.isNativePlatform();
+
+  // PrintCardSheets reports its load/empty state up so we can gate the buttons.
+  const handleState = useCallback(({ isLoading, total }) => {
+    setLoaded(!isLoading);
+    setEmpty(!isLoading && total === 0);
+  }, []);
 
   // Lock body scroll while open so the background page can't jiggle.
   useEffect(() => {
@@ -61,37 +72,38 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, generating]);
 
+  // Web only: open the standalone route in its own window and let it print
+  // itself. Reliable across browsers (no iframe-print quirks).
   const handlePrint = () => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    // focus() first — some browsers ignore print() on an unfocused iframe.
-    win.focus();
-    win.print();
+    const params = new URLSearchParams({ ids: ids.join(','), autoprint: '1' });
+    if (gymId) params.set('gymId', gymId);
+    if (formatOverride) params.set('format', formatOverride);
+    window.open(`${previewBase}?${params.toString()}`, '_blank');
   };
 
   const handleDownloadPDF = async () => {
-    const iframe = iframeRef.current;
-    const doc = iframe?.contentDocument;
-    if (!doc) return;
     setGenerating(true);
     setError(null);
     try {
-      // Lazy-load the PDF libs — ~450KB combined, kept out of the main bundle.
+      // Reveal every card (preview only renders the first few), then give React
+      // a tick to paint them before we measure/capture.
+      sheetsApiRef.current?.revealAll();
+      await new Promise((r) => setTimeout(r, 500));
+
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
         import('jspdf'),
         import('html2canvas'),
       ]);
 
-      // Wait for the iframe's web fonts to finish loading. Without this,
-      // html2canvas can capture mid-load and the EB Garamond / Caveat text
-      // renders in fallback fonts (Times / cursive) — looks wrong on print.
-      try { await doc.fonts?.ready; } catch { /* not all browsers expose .fonts */ }
+      // Wait for web fonts so html2canvas doesn't capture fallback fonts.
+      try { await document.fonts?.ready; } catch { /* not all browsers */ }
 
-      const sheets = Array.from(doc.querySelectorAll('.sheet'));
+      const root = containerRef.current;
+      const sheets = root ? Array.from(root.querySelectorAll('.sheet')) : [];
       if (sheets.length === 0) throw new Error('No sheets to capture');
 
-      // Page dimensions per sheet — picked off the CSS class so we don't
-      // duplicate format logic between the iframe and the PDF builder.
+      // Page dimensions per sheet — read off the CSS class so we don't
+      // duplicate format logic between the layout and the PDF builder.
       const dimsFor = (sheet) => {
         if (sheet.classList.contains('sheet--folded')) {
           return { w: 11, h: 8.5, orient: 'landscape' };
@@ -99,22 +111,16 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
         if (sheet.classList.contains('sheet--postcard-postcard')) {
           return { w: 4, h: 6, orient: 'portrait' };
         }
-        // Both letter-2up and letter-1up sit on US Letter portrait.
         if (sheet.classList.contains('sheet--postcard-letter-2up') ||
             sheet.classList.contains('sheet--postcard-letter-1up')) {
           return { w: 8.5, h: 11, orient: 'portrait' };
         }
-        // Defensive default — should never hit.
         return { w: 4, h: 6, orient: 'portrait' };
       };
 
       let pdf = null;
       for (const sheet of sheets) {
         const { w, h, orient } = dimsFor(sheet);
-
-        // Render at 3x device pixel density for crisp print output. The
-        // ~285 DPI result is comfortably above the 200 DPI floor where
-        // print artifacts become visible.
         const canvas = await html2canvas(sheet, {
           scale: 3,
           backgroundColor: '#ffffff',
@@ -124,7 +130,6 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
           windowHeight: sheet.offsetHeight,
         });
         const imgData = canvas.toDataURL('image/png');
-
         if (!pdf) {
           pdf = new jsPDF({ unit: 'in', format: [w, h], orientation: orient });
         } else {
@@ -133,10 +138,6 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
         pdf.addImage(imgData, 'PNG', 0, 0, w, h);
       }
       const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
-      // pdf.save() uses jsPDF's web-only blob+anchor pattern AND revokes
-      // the object URL synchronously, which on Capacitor WebView and some
-      // Chromium builds produced files with garbled names. Route through
-      // saveBlob instead — native on iOS/Android, defer-revoke on web.
       const blob = pdf.output('blob');
       await saveBlob(`print-cards-${stamp}.pdf`, blob);
     } catch (err) {
@@ -147,7 +148,13 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
     }
   };
 
-  return (
+  const busy = !loaded || empty || generating;
+
+  // Portal to <body> so the overlay is positioned against the viewport, not
+  // an ancestor. The admin page wraps panels in framer-motion (FadeIn), whose
+  // transform creates a containing block that would otherwise trap this
+  // `fixed inset-0` inside the panel — pushing it below the fold.
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-3 md:p-6"
       style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
@@ -181,19 +188,21 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={handlePrint}
-              disabled={!loaded || generating}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition active:scale-95 disabled:opacity-50"
-              style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-muted)' }}
-              title={t('admin.printCards.directPrintHint', { defaultValue: 'Opens browser print dialog. Set paper size manually.' })}
-            >
-              <Printer size={11} />
-              {t('admin.printCards.printDirectBtn', { defaultValue: 'Print direct' })}
-            </button>
+            {!isNative && (
+              <button
+                onClick={handlePrint}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition active:scale-95 disabled:opacity-50"
+                style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-muted)' }}
+                title={t('admin.printCards.directPrintHint', { defaultValue: 'Opens browser print dialog. Set paper size manually.' })}
+              >
+                <Printer size={11} />
+                {t('admin.printCards.printDirectBtn', { defaultValue: 'Print direct' })}
+              </button>
+            )}
             <button
               onClick={handleDownloadPDF}
-              disabled={!loaded || generating}
+              disabled={busy}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold transition active:scale-95 disabled:opacity-50"
               style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
             >
@@ -214,6 +223,38 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
           </div>
         </div>
 
+        {/* Size selector — overrides the print format for the whole job so the
+            owner can switch 4×6 / 2-up / Flyer right here without going back to
+            the list. Feeds the inline preview, the PDF, and the print window. */}
+        <div
+          className="flex items-center gap-1.5 px-4 py-2 flex-shrink-0 flex-wrap"
+          style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wider mr-1" style={{ color: 'var(--color-text-subtle)' }}>
+            {t('admin.printCards.sizeLabel', { defaultValue: 'Size' })}
+          </span>
+          {SIZE_OPTIONS.map((opt) => {
+            const active = sizeKey === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={() => setSizeKey(opt.key)}
+                disabled={generating}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold transition active:scale-95 disabled:opacity-50"
+                style={{
+                  background: active ? 'var(--color-accent)' : 'var(--color-bg-hover)',
+                  color: active ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
+                  border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-default)'}`,
+                }}
+              >
+                {opt.key === 'auto'
+                  ? t('admin.printCards.sizeAuto', { defaultValue: 'Auto' })
+                  : opt.short}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Error banner */}
         {error && (
           <div className="px-4 py-2 text-[12px] font-medium flex-shrink-0"
@@ -226,10 +267,10 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
           </div>
         )}
 
-        {/* Iframe body */}
-        <div className="flex-1 relative overflow-hidden" style={{ background: '#f3f4f6' }}>
+        {/* Preview body — sheets rendered inline (no iframe). */}
+        <div ref={containerRef} className="flex-1 relative overflow-auto" style={{ background: '#f3f4f6' }}>
           {!loaded && (
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <Loader2 size={28} className="animate-spin" style={{ color: 'var(--color-text-subtle)' }} />
             </div>
           )}
@@ -242,15 +283,16 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
               </p>
             </div>
           )}
-          <iframe
-            ref={iframeRef}
-            src={src}
-            title="print-cards-preview"
-            className="w-full h-full border-0"
-            onLoad={() => setLoaded(true)}
+          <PrintCardSheets
+            ref={sheetsApiRef}
+            ids={ids}
+            overrideGymId={gymId}
+            formatOverride={formatOverride}
+            onState={handleState}
           />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

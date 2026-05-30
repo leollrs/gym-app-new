@@ -9,7 +9,8 @@
       "Bash(grep -l \"QR\\\\|qr\" /Users/leollorens/Downloads/gym-app-new-main/gym-app/src/pages/*.jsx)",
       "Bash(ls /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/025*)",
       "Bash(ls /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/0260* /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/0261*)",
-      "Bash(grep -l \"CREATE TABLE\" /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/*.sql)"
+      "Bash(grep -l \"CREATE TABLE\" /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/*.sql)",
+      "WebFetch(domain:api.anthropic.com)"
     ]
   }
 }

@@ -14,6 +14,8 @@
  * format on `email_templates` and the local in-editor shape.
  */
 
+import QRCode from 'qrcode';
+
 // ── XSS helpers ───────────────────────────────────────────────
 
 export function escHtml(s) {
@@ -23,6 +25,41 @@ export function escHtml(s) {
 
 export function safeColor(c) {
   return /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : '#000000';
+}
+
+// ── QR helpers ────────────────────────────────────────────────
+// The reward block ships a QR for the redemption code. We render the QR as
+// an inline SVG wrapped in a data-URI <img> so it survives every email client
+// we care about — modern clients render the SVG, Outlook desktop (which mangles
+// SVG) shows the `alt` text with the actual code as a graceful fallback.
+
+/**
+ * Build the QR payload for a reward block. Uses the `earned-reward:` prefix
+ * so a scan at the front desk routes through the existing redemption pipeline
+ * (RewardAttachModal + handleEarnedRewardScan).
+ */
+export function rewardQrPayload(reward) {
+  if (!reward) return '';
+  const raw = reward.code || reward.reward_id || (reward.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'reward';
+  return `earned-reward:${raw}`;
+}
+
+/** Sync SVG-string QR. Returns '' on any failure so the caller can no-op. */
+export function rewardQrSvg(payload, size = 160) {
+  try {
+    const qr = QRCode.create(payload, { errorCorrectionLevel: 'M' });
+    const n = qr.modules.size;
+    const data = qr.modules.data;
+    let rects = '';
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        if (data[y * n + x]) rects += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+      }
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges" style="display:block;background:#fff;"><rect width="${n}" height="${n}" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
+  } catch {
+    return '';
+  }
 }
 
 // ── Template-variable substitution ────────────────────────────
@@ -125,17 +162,30 @@ ${hero.subtitle ? `<p style="margin:0;font-size:17px;color:rgba(255,255,255,0.88
 ${bodyHtml}
 </td></tr>
 
-${reward?.enabled && reward?.title ? `<!-- Reward -->
+${reward?.enabled && reward?.title ? (() => {
+  // QR is auto-generated from the code (or a slug fallback). Outlook desktop
+  // mangles inline SVG, so we embed it as a data-URI image with an `alt` that
+  // includes the code — degrades to readable text if the image is stripped.
+  const payload = rewardQrPayload(reward);
+  const svg = rewardQrSvg(payload, 160);
+  // btoa is universal (browser + Node 16+). Our SVG is ASCII-only.
+  const b64 = svg ? (typeof btoa === 'function' ? btoa(svg) : '') : '';
+  const qrImg = b64
+    ? `<img src="data:image/svg+xml;base64,${b64}" width="160" height="160" alt="${escHtml(reward.code || 'Reward code')}" style="display:block;margin:18px auto 0;width:160px;height:160px;border:8px solid #ffffff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.06);" />`
+    : '';
+  return `<!-- Reward -->
 <tr><td style="padding:8px ${pad}px 24px;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,${safeColor(c.primary)}08,${safeColor(c.primary)}15);border:2px dashed ${safeColor(c.primary)}40;border-radius:${Math.min(parseInt(br), 16)}px;overflow:hidden;">
 <tr><td style="padding:24px;text-align:center;">
 <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:${safeColor(c.primary)};text-transform:uppercase;letter-spacing:2px;">🎁 ${escHtml(reward.title)}</p>
 ${reward.description ? `<p style="margin:8px 0 0;font-size:14px;color:${safeColor(c.text)};line-height:1.5;">${escHtml(reward.description)}</p>` : ''}
-${reward.code ? `<div style="margin:16px auto 0;display:inline-block;padding:10px 28px;background:${safeColor(c.primary)};color:#ffffff;font-size:18px;font-weight:800;letter-spacing:4px;border-radius:8px;">${escHtml(reward.code)}</div>` : ''}
-${reward.expiry ? `<p style="margin:12px 0 0;font-size:11px;color:#9CA3AF;">${escHtml(reward.expiry)}</p>` : ''}
+${qrImg}
+${reward.code ? `<p style="margin:10px 0 0;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:13px;font-weight:700;color:${safeColor(c.text)};letter-spacing:3px;">${escHtml(reward.code)}</p>` : ''}
+<p style="margin:6px 0 0;font-size:11px;color:#9CA3AF;">${escHtml(reward.expiry || '')}</p>
 </td></tr>
 </table>
-</td></tr>` : ''}
+</td></tr>`;
+})() : ''}
 
 ${cta.enabled ? `<!-- CTA -->
 <tr><td style="padding:8px ${pad}px ${pad}px;text-align:center;">
@@ -179,6 +229,7 @@ export function dbRowToTemplate(row) {
     hero: d.hero || { enabled: false, imageUrl: '', headline: '', subtitle: '' },
     body: d.body || { text: '' },
     cta: d.cta || { enabled: false, text: '', url: '', color: '#D4AF37' },
+    reward: d.reward || { enabled: false, reward_id: '', title: '', description: '', code: '', expiry: '' },
     footer: d.footer || { enabled: true, text: '', unsubscribeText: 'Unsubscribe' },
     colors: d.colors || { primary: '#D4AF37', background: '#ffffff', text: '#333333' },
   };
@@ -196,6 +247,7 @@ export function templateToDbPayload(tpl, gymId) {
       hero: tpl.hero,
       body: tpl.body,
       cta: tpl.cta,
+      reward: tpl.reward,
       footer: tpl.footer,
       colors: tpl.colors,
     },

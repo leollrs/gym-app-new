@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle, User, Trash2 } from 'lucide-react';
+import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle, User, Camera, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +15,8 @@ import { logAdminAction } from '../../../lib/adminAudit';
 import posthog from 'posthog-js';
 import { Avatar, SectionLabel, AdminModal, PhoneInput } from '../../../components/admin';
 import { StatusBadge } from '../../../components/admin/StatusBadge';
+import CheckinPhotoEditor from '../../../components/CheckinPhotoEditor';
+import { signCheckinPhoto } from '../../../lib/checkinPhoto';
 import CancellationSurveyModal from './CancellationSurveyModal';
 import CancellationSaveStep from './CancellationSaveStep';
 
@@ -120,6 +122,19 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [memberName, setMemberName] = useState(member.full_name ?? '');
   const [memberUsername, setMemberUsername] = useState(member.username ?? '');
   const [memberEmail, setMemberEmail] = useState(member.email ?? '');
+  // Staff check-in reference photo. Seed the signed URL from the list row
+  // (already signed) so the header avatar paints instantly; only re-sign when
+  // the photo actually changes, or on mount if the row arrived without a URL.
+  const [checkinPath, setCheckinPath] = useState(member.checkin_photo_path || null);
+  const [checkinUrl, setCheckinUrl] = useState(member.checkin_photo_url || null);
+  const checkinFirstSignRef = useRef(Boolean(member.checkin_photo_url));
+  useEffect(() => {
+    if (checkinFirstSignRef.current) { checkinFirstSignRef.current = false; return undefined; }
+    let cancelled = false;
+    if (!checkinPath) { setCheckinUrl(null); return undefined; }
+    signCheckinPhoto(checkinPath).then(u => { if (!cancelled) setCheckinUrl(u); });
+    return () => { cancelled = true; };
+  }, [checkinPath]);
   // Admin override for the member's actual gym join date — drives
   // the tenure-based churn signal so members who pre-date the app
   // aren't penalized by the 90-day onboarding window.
@@ -542,7 +557,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <Avatar name={member.full_name} size="lg" />
+            <Avatar name={member.full_name} size="lg" src={checkinUrl} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p id="member-detail-title" className="text-[14px] font-bold text-[#E5E7EB] truncate">{member.full_name}</p>
@@ -715,6 +730,19 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
           {/* ── INFO TAB ─────────────────────────────────────── */}
           {!loading && tab === 'info' && (<>
+          {/* Check-in reference photo (staff-managed) */}
+          <div>
+            <SectionLabel icon={Camera} className="mb-3">{t('checkinPhoto.title', 'Check-in photo')}</SectionLabel>
+            <div className="bg-[#111827] border border-white/6 rounded-xl p-3">
+              <CheckinPhotoEditor
+                subjectId={member.id}
+                path={checkinPath}
+                onChange={setCheckinPath}
+                theme={{ accent: 'var(--color-accent)', surface: '#0F172A', border: 'rgba(255,255,255,0.08)', text: '#E5E7EB', textSub: '#9CA3AF', danger: 'var(--color-danger)', badgeBorder: '#111827' }}
+                labels={{ photo: t('checkinPhoto.title', 'Check-in photo'), hint: t('checkinPhoto.hint', 'Staff only — used to verify identity at check-in.'), add: t('checkinPhoto.add', 'Add photo'), replace: t('checkinPhoto.replace', 'Replace'), remove: t('checkinPhoto.remove', 'Remove') }}
+              />
+            </div>
+          </div>
           {/* Member Info */}
           <div>
             <SectionLabel icon={User} className="mb-3">{t('admin.memberDetail.memberInfo', 'Member Info')}</SectionLabel>

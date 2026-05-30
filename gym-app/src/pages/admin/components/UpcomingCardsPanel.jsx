@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import {
-  Calendar, Award, Cake, Sparkles, Loader2, Eye, Printer,
+  Calendar, Award, Cake, Sparkles, Loader2, Eye, Printer, Check,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
@@ -253,19 +253,45 @@ export default function UpcomingCardsPanel({ gymId }) {
                       />
                     </div>
                   </div>
-                  {/* Action row — pre-materialize this card into print_cards
-                      so the owner can print + sign before the cron generates
-                      it. Once materialized, the card flows through the
-                      standard pending → printed → delivered pipeline. */}
-                  <div className="mt-3 flex justify-end gap-2">
-                    <button
-                      onClick={() => materializeMutation.mutate(row)}
-                      disabled={materializeMutation.isPending}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#8B5CF6] text-white hover:brightness-110 transition disabled:opacity-50"
-                    >
-                      {isPending ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
-                      {t('admin.upcomingCards.printNow', { defaultValue: 'Print early' })}
-                    </button>
+                  {/* Action row. The card stays listed all week even after
+                      it's queued/printed (the milestone is still upcoming) —
+                      so if a card already exists for this occasion we show its
+                      status + a "Ver" action instead of letting the owner
+                      double-queue it (the materialize RPC rejects duplicates
+                      anyway). Otherwise "Print early" materializes it. */}
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                    {row.card_status && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold border ${
+                          row.card_status === 'printed'
+                            ? 'bg-[#10B981]/10 border-[#10B981]/25 text-[#10B981]'
+                            : 'bg-[#D4AF37]/10 border-[#D4AF37]/25 text-[#D4AF37]'
+                        }`}
+                      >
+                        <Check size={11} />
+                        {row.card_status === 'printed'
+                          ? t('admin.upcomingCards.statusPrinted', { defaultValue: 'Printed' })
+                          : t('admin.upcomingCards.statusQueued', { defaultValue: 'Queued' })}
+                      </span>
+                    )}
+                    {row.card_id ? (
+                      <button
+                        onClick={() => setPreviewIds([row.card_id])}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#1E293B] text-[#E5E7EB] border border-white/10 hover:brightness-110 transition"
+                      >
+                        <Eye size={12} />
+                        {t('admin.upcomingCards.viewBtn', { defaultValue: 'View' })}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => materializeMutation.mutate(row)}
+                        disabled={materializeMutation.isPending}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#8B5CF6] text-white hover:brightness-110 transition disabled:opacity-50"
+                      >
+                        {isPending ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
+                        {t('admin.upcomingCards.printNow', { defaultValue: 'Print early' })}
+                      </button>
+                    )}
                   </div>
                 </li>
               );

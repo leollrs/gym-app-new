@@ -10,6 +10,7 @@
  * because each paper type prints on a differently-oriented US Letter
  * sheet (postcards = portrait 2-up, folded = landscape 1-up).
  */
+import { useTranslation } from 'react-i18next';
 import {
   WelcomeCard, HabitCard, Tenure30Card, Tenure90Card,
   Milestone100Card, Milestone250Card, ReturningCard, BirthdayCard, CustomCard,
@@ -17,6 +18,7 @@ import {
 import {
   Tenure365Outside, Tenure365Inside, Milestone500Outside, Milestone500Inside,
 } from './FoldedCards.jsx';
+import { localizeHeadlineSubline } from './cardI18n.js';
 
 const POSTCARD_MAP = {
   welcome:       WelcomeCard,
@@ -56,8 +58,11 @@ function cardPropsFromRow(card, gym) {
  * renderFoldedCard separately and lay it out on a landscape sheet.
  */
 export function PostcardRenderer({ card, gym }) {
+  const { t } = useTranslation('pages');
   const Component = POSTCARD_MAP[card.occasion] || CustomCard;
-  return <Component {...cardPropsFromRow(card, gym)} />;
+  const props = cardPropsFromRow(card, gym);
+  const { headline, subline } = localizeHeadlineSubline(card, t);
+  return <Component {...props} headline={headline} subline={subline} />;
 }
 
 /**
@@ -65,10 +70,14 @@ export function PostcardRenderer({ card, gym }) {
  * Returns null if the occasion isn't a folded type.
  */
 export function FoldedSpreadRenderer({ card, gym, side }) {
+  const { t } = useTranslation('pages');
   const pair = FOLDED_MAP[card.occasion];
   if (!pair) return null;
   const Component = side === 'inside' ? pair.inside : pair.outside;
   const props = cardPropsFromRow(card, gym);
+  const loc = localizeHeadlineSubline(card, t);
+  props.headline = loc.headline;
+  props.subline = loc.subline;
   // The outside cover uses the current year for the "for <member> · 2026" line.
   // Pass it explicitly so the component stays time-aware without reading clocks.
   if (side === 'outside') {

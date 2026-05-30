@@ -204,21 +204,8 @@ export default function ProgressOverview() {
         const cardioDistance = cardioRows.reduce((s, r) => s + (parseFloat(r.distance_km) || 0), 0);
         const cardioCals = cardioRows.reduce((s, r) => s + (r.calories_burned || 0), 0);
         const next = { minutes: cardioMinutes, distance: Math.round(cardioDistance * 10) / 10, calories: cardioCals, hasData: true };
-        // Diagnostic — surfaces the raw cardio rows + aggregated values used by
-        // the "Distancia" stat. If users report stale data, these logs let us
-        // verify whether the query is returning fresh rows or whether the
-        // render is reading from a stale cache.
-        // eslint-disable-next-line no-console
-        console.log('[ProgressOverview] weeklyCardio refresh', {
-          refreshKey,
-          rowsCount: cardioRows.length,
-          rawRows: cardioRows,
-          rendered: next,
-        });
         setWeeklyCardio(next);
       } else {
-        // eslint-disable-next-line no-console
-        console.log('[ProgressOverview] weeklyCardio refresh — no rows', { refreshKey });
         setWeeklyCardio({ minutes: 0, distance: 0, calories: 0, hasData: false });
       }
 

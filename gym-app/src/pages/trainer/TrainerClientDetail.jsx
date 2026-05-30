@@ -29,6 +29,7 @@ import TrainerClientSchedule from './components/TrainerClientSchedule';
 import TrainerClientAttendance from './components/TrainerClientAttendance';
 import { TT, TFont, avatarIdx, avatarGradient } from './components/designTokens';
 import { TCard, TPill, TPrimaryButton } from './components/designPrimitives';
+import CheckinPhotoEditor from '../../components/CheckinPhotoEditor';
 
 const TAB_KEYS = ['overview', 'history', 'body', 'notesFollowUp', 'programNutrition'];
 
@@ -196,7 +197,7 @@ export default function TrainerClientNotes() {
       ] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, full_name, username, last_active_at, created_at, assigned_program_id')
+          .select('id, full_name, username, last_active_at, created_at, assigned_program_id, checkin_photo_path')
           .eq('id', clientId)
           .single(),
         supabase
@@ -265,26 +266,10 @@ export default function TrainerClientNotes() {
           .gte('started_at', weekStart.toISOString()),
       ]);
 
-      let loadedProgramName = null;
-      let loadedEnrollment = null;
-      if (clientRes.data?.assigned_program_id) {
-        const { data: prog } = await supabase
-          .from('gym_programs')
-          .select('name')
-          .eq('id', clientRes.data.assigned_program_id)
-          .single();
-        if (prog) loadedProgramName = prog.name;
-
-        const { data: enr } = await supabase
-          .from('gym_program_enrollments')
-          .select('started_at, gym_programs(name, duration_weeks, weeks)')
-          .eq('profile_id', clientId)
-          .eq('program_id', clientRes.data.assigned_program_id)
-          .order('started_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        loadedEnrollment = enr;
-      }
+      // Resolve the assigned program id now; the program name + enrollment are
+      // fetched IN the parallel batch below instead of as two extra serial
+      // round-trips between the two Promise.all batches.
+      const assignedProgramId = clientRes.data?.assigned_program_id || null;
 
       const totalVolume = (statsRes.data || []).reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
 
@@ -329,8 +314,10 @@ export default function TrainerClientNotes() {
         processedWeeklyWorkouts = Object.entries(weekMap).map(([week, count]) => ({ week, count }));
       }
 
-      // Load available programs, progress photos, and check-ins in parallel
-      const [progsRes, photosRes, checkInsRes] = await Promise.all([
+      // Load available programs, progress photos, check-ins, AND the assigned
+      // program name + enrollment all in parallel (program name/enrollment were
+      // previously two serial hops between batches).
+      const [progsRes, photosRes, checkInsRes, progNameRes, enrRes] = await Promise.all([
         supabase
           .from('gym_programs')
           .select('id, name, duration_weeks, weeks')
@@ -349,16 +336,37 @@ export default function TrainerClientNotes() {
           .eq('profile_id', clientId)
           .order('checked_in_at', { ascending: false })
           .limit(30),
+        assignedProgramId
+          ? supabase.from('gym_programs').select('name').eq('id', assignedProgramId).single()
+          : Promise.resolve({ data: null }),
+        assignedProgramId
+          ? supabase
+              .from('gym_program_enrollments')
+              .select('started_at, gym_programs(name, duration_weeks, weeks)')
+              .eq('profile_id', clientId)
+              .eq('program_id', assignedProgramId)
+              .order('started_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
       ]);
 
-      const photosWithUrls = await Promise.all(
-        (photosRes.data || []).map(async (photo) => {
-          const { data: urlData } = await supabase.storage
-            .from('progress-photos')
-            .createSignedUrl(photo.storage_path, 3600);
-          return { ...photo, signedUrl: urlData?.signedUrl || '' };
-        })
-      );
+      const loadedProgramName = progNameRes.data?.name || null;
+      const loadedEnrollment = enrRes.data || null;
+
+      // Batch all photo signed URLs into ONE request (was one round-trip per photo).
+      const photoPaths = (photosRes.data || []).map((p) => p.storage_path);
+      let signedByPath = {};
+      if (photoPaths.length) {
+        const { data: signed } = await supabase.storage
+          .from('progress-photos')
+          .createSignedUrls(photoPaths, 3600);
+        (signed ?? []).forEach((s) => { if (s.signedUrl) signedByPath[s.path] = s.signedUrl; });
+      }
+      const photosWithUrls = (photosRes.data || []).map((photo) => ({
+        ...photo,
+        signedUrl: signedByPath[photo.storage_path] || '',
+      }));
 
       dispatch({
         type: 'SET',
@@ -1238,6 +1246,17 @@ export default function TrainerClientNotes() {
       {/* ── Overview tab content (new visual layer) ────────── */}
       {activeTab === 'overview' && (
         <div style={{ padding: '0 16px 14px' }} className="md:max-w-[860px] md:mx-auto">
+          {/* Check-in reference photo (staff-managed) */}
+          <TCard padded={14} style={{ marginBottom: 14 }}>
+            <CheckinPhotoEditor
+              subjectId={clientId}
+              path={client.checkin_photo_path}
+              size={84}
+              onChange={(p) => dispatch({ type: 'SET', payload: { client: { ...client, checkin_photo_path: p } } })}
+              theme={{ accent: TT.accent, surface: TT.surface2, border: TT.border, text: TT.text, textSub: TT.textSub, danger: TT.hot, badgeBorder: TT.surface }}
+              labels={{ photo: t('checkinPhoto.title', 'Check-in photo'), hint: t('checkinPhoto.hint', 'Staff only — used to verify identity at check-in.'), add: t('checkinPhoto.add', 'Add photo'), replace: t('checkinPhoto.replace', 'Replace'), remove: t('checkinPhoto.remove', 'Remove') }}
+            />
+          </TCard>
           {/* Payment (trainer tool) */}
           <TrainerClientPayment clientId={clientId} />
           {/* Weekly schedule (trainer tool) */}

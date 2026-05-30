@@ -11,6 +11,7 @@ import { dispatchToIntegration } from '../../lib/integrationBridge';
 import { dispatchToLocalBridge } from '../../lib/localBridge';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
+import { signCheckinPhoto } from '../../lib/checkinPhoto';
 import { useScanClaimContext } from '../../contexts/ScanClaimContext';
 
 // ── Sound feedback ───────────────────────────────────────
@@ -53,16 +54,18 @@ async function lookupMemberForScan(parsed, gymId) {
   if (parsed.type === 'checkin') {
     const { data } = await supabase
       .from('profiles')
-      .select('id, full_name, avatar_url')
+      .select('id, full_name, avatar_url, checkin_photo_path')
       .eq('gym_id', gymId)
       .eq('qr_code_payload', parsed.qrPayload)
       .single();
+    // Sign the staff reference photo so the approval card can show the face.
+    if (data?.checkin_photo_path) data._checkinPhotoUrl = await signCheckinPhoto(data.checkin_photo_path);
     return data;
   }
   if (parsed.type === 'purchase') {
     const { data } = await supabase
       .from('profiles')
-      .select('id, full_name, avatar_url')
+      .select('id, full_name, avatar_url, checkin_photo_path')
       .eq('id', parsed.memberId)
       .eq('gym_id', gymId)
       .single();
@@ -72,7 +75,10 @@ async function lookupMemberForScan(parsed, gymId) {
       .select('name')
       .eq('id', parsed.productId)
       .single();
-    if (data) data._productName = product?.name;
+    if (data) {
+      data._productName = product?.name;
+      if (data.checkin_photo_path) data._checkinPhotoUrl = await signCheckinPhoto(data.checkin_photo_path);
+    }
     return data;
   }
   return null;
@@ -175,13 +181,16 @@ export default function ScanFeedback() {
   const handleApprove = useCallback(async () => {
     if (!pending) return;
     const { parsed } = pending;
+    // Carry the already-signed reference photo into the success toast so the
+    // confirmed check-in keeps showing the same face (no second sign round-trip).
+    const photoOverride = pending.member?._checkinPhotoUrl || null;
     setPending(null);
     setProcessing(true);
 
     try {
       const ctx = { gymId, adminId, supabase, t };
       const result = await dispatchScanAction(parsed, ctx);
-      handleResult(parsed, result);
+      handleResult(parsed, result, photoOverride);
     } catch (err) {
       playError();
       setToast({ success: false, message: err.message || 'Action failed' });
@@ -196,7 +205,7 @@ export default function ScanFeedback() {
   }, []);
 
   // ── Process result (shared by immediate + approved) ───
-  const handleResult = useCallback((parsed, result) => {
+  const handleResult = useCallback((parsed, result, photoOverride = null) => {
     if (result.success) {
       playSuccess();
       queryClient.invalidateQueries({ queryKey: adminKeys.overview(gymId) });
@@ -213,7 +222,7 @@ export default function ScanFeedback() {
       message: result.message,
       memberName: result.memberName,
       memberId: result.memberId,
-      avatarUrl: result.avatarUrl,
+      avatarUrl: photoOverride || result.avatarUrl,
       actionType: parsed.type,
       data: result.data,
     });
@@ -280,43 +289,70 @@ export default function ScanFeedback() {
             <div className="h-1.5" style={{ background: pendingCfg?.color || 'var(--color-accent)' }} />
 
             <div className="px-6 py-5">
-              {/* Member info */}
-              <div className="flex items-center gap-4 mb-5">
-                <div className="relative">
-                  {pending.member.avatar_url ? (
-                    <img src={pending.member.avatar_url} alt="" className="w-14 h-14 rounded-full object-cover" />
-                  ) : (
-                    <div className="w-14 h-14 rounded-full flex items-center justify-center"
-                      style={{ background: `color-mix(in srgb, ${pendingCfg?.color || 'var(--color-accent)'} 15%, transparent)` }}>
-                      <span className="text-[20px] font-bold" style={{ color: pendingCfg?.color || 'var(--color-accent)' }}>
-                        {pending.member.full_name?.[0]?.toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-                  {PendingIcon && (
-                    <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center shadow-lg"
-                      style={{ background: pendingCfg.color, border: '2.5px solid var(--color-bg-card)' }}>
-                      <PendingIcon size={13} color="#fff" />
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[17px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                    {pending.member.full_name}
-                  </p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                      style={{ background: `color-mix(in srgb, ${pendingCfg?.color} 15%, transparent)`, color: pendingCfg?.color }}>
-                      {pendingCfg?.label}
-                    </span>
-                    {pending.member._productName && (
-                      <span className="text-[12px] truncate" style={{ color: 'var(--color-text-muted)' }}>
-                        {pending.member._productName}
-                      </span>
+              {/* Member info — for a check-in WITH a staff reference photo, show
+                  it big so the front desk can match the face at a glance. */}
+              {pending.parsed.type === 'checkin' && pending.member._checkinPhotoUrl ? (
+                <div className="flex flex-col items-center text-center mb-5">
+                  <div className="relative">
+                    <img
+                      src={pending.member._checkinPhotoUrl}
+                      alt=""
+                      className="w-40 h-40 rounded-2xl object-cover"
+                      style={{ border: `3px solid ${pendingCfg?.color || 'var(--color-accent)'}` }}
+                    />
+                    {PendingIcon && (
+                      <div className="absolute -bottom-2 -right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg"
+                        style={{ background: pendingCfg.color, border: '3px solid var(--color-bg-card)' }}>
+                        <PendingIcon size={16} color="#fff" />
+                      </div>
                     )}
                   </div>
+                  <p className="text-[20px] font-bold mt-3 max-w-full truncate" style={{ color: 'var(--color-text-primary)' }}>
+                    {pending.member.full_name}
+                  </p>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full mt-1"
+                    style={{ background: `color-mix(in srgb, ${pendingCfg?.color} 15%, transparent)`, color: pendingCfg?.color }}>
+                    {pendingCfg?.label}
+                  </span>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center gap-4 mb-5">
+                  <div className="relative">
+                    {(pending.member._checkinPhotoUrl || pending.member.avatar_url) ? (
+                      <img src={pending.member._checkinPhotoUrl || pending.member.avatar_url} alt="" className="w-14 h-14 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-full flex items-center justify-center"
+                        style={{ background: `color-mix(in srgb, ${pendingCfg?.color || 'var(--color-accent)'} 15%, transparent)` }}>
+                        <span className="text-[20px] font-bold" style={{ color: pendingCfg?.color || 'var(--color-accent)' }}>
+                          {pending.member.full_name?.[0]?.toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    {PendingIcon && (
+                      <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center shadow-lg"
+                        style={{ background: pendingCfg.color, border: '2.5px solid var(--color-bg-card)' }}>
+                        <PendingIcon size={13} color="#fff" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[17px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                      {pending.member.full_name}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                        style={{ background: `color-mix(in srgb, ${pendingCfg?.color} 15%, transparent)`, color: pendingCfg?.color }}>
+                        {pendingCfg?.label}
+                      </span>
+                      {pending.member._productName && (
+                        <span className="text-[12px] truncate" style={{ color: 'var(--color-text-muted)' }}>
+                          {pending.member._productName}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Confirmation text */}
               <p className="text-[13px] text-center mb-5" style={{ color: 'var(--color-text-muted)' }}>

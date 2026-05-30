@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Eye } from 'lucide-react';
-import { replaceVariables } from '../../../lib/admin/emailTemplateRenderer';
+import { QRCodeSVG } from 'qrcode.react';
+import { replaceVariables, rewardQrPayload } from '../../../lib/admin/emailTemplateRenderer';
 
 /**
  * Renders the right-side WYSIWYG preview pane in the email template editor.
@@ -85,10 +86,71 @@ export default function EmailLivePreview({ template, gymName, gymLogoUrl }) {
             {renderBody(template.body.text)}
           </div>
 
-          {/* CTA */}
+          {/* Reward — mirrors the same `reward?.enabled && reward?.title`
+              gate the HTML renderer uses (emailTemplateRenderer.js), so what
+              the admin sees here matches what actually ships. */}
+          {template.reward?.enabled && template.reward?.title && (
+            <div style={{ padding: '4px 32px 16px' }}>
+              <div
+                style={{
+                  background: `linear-gradient(135deg, ${c.primary}08, ${c.primary}15)`,
+                  border: `2px dashed ${c.primary}40`,
+                  borderRadius: 12,
+                  padding: 20,
+                  textAlign: 'center',
+                }}
+              >
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: c.primary,
+                    textTransform: 'uppercase',
+                    letterSpacing: 2,
+                  }}
+                >
+                  {template.reward.title.startsWith('🎁') ? '' : '🎁 '}
+                  {template.reward.title}
+                </p>
+                {template.reward.description && (
+                  <p style={{ margin: '8px 0 0', fontSize: 13, color: c.text, lineHeight: 1.5 }}>
+                    {template.reward.description}
+                  </p>
+                )}
+                {/* Auto-generated QR — mirrors the rendered email so admins
+                    see the same redemption artifact they're shipping. */}
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+                  <div style={{ padding: 8, background: '#fff', borderRadius: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>
+                    <QRCodeSVG value={rewardQrPayload(template.reward)} size={120} level="M" includeMargin={false} />
+                  </div>
+                </div>
+                {template.reward.code && (
+                  <p style={{
+                    margin: '10px 0 0',
+                    fontFamily: '"JetBrains Mono", ui-monospace, Menlo, monospace',
+                    fontSize: 12, fontWeight: 700, letterSpacing: 3, color: c.text,
+                  }}>
+                    {template.reward.code}
+                  </p>
+                )}
+                {template.reward.expiry && (
+                  <p style={{ margin: '6px 0 0', fontSize: 10.5, color: 'var(--color-text-subtle, #9CA3AF)' }}>
+                    {template.reward.expiry}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* CTA — render as a real anchor so the preview button is actually
+              clickable, matching what recipients get in the sent email. */}
           {template.cta.enabled && template.cta.text && (
             <div style={{ padding: '4px 32px 32px', textAlign: 'center' }}>
-              <span
+              <a
+                href={template.cta.url || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{
                   display: 'inline-block',
                   padding: '14px 36px',
@@ -103,7 +165,7 @@ export default function EmailLivePreview({ template, gymName, gymLogoUrl }) {
                 }}
               >
                 {replaceVariables(template.cta.text, gymName)}
-              </span>
+              </a>
             </div>
           )}
 

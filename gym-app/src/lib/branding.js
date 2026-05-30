@@ -222,6 +222,54 @@ export function applyBranding({
   `;
 }
 
+// ── Cold-boot branding cache ─────────────────────────────────────────────────
+// Branding colors are otherwise only applied after the `get_auth_context`
+// network round-trip in AuthContext, so every cold start flashes the default
+// amber palette until the network returns. We cache the resolved colors (a
+// non-privilege visual config — safe to store) and re-apply them synchronously
+// at boot, before React renders, to kill that flash.
+const BRANDING_CACHE_KEY = 'offline_branding';
+
+/**
+ * Persist the resolved branding args for instant re-apply on the next boot.
+ * @param {Object} args – the same shape passed to applyBranding().
+ */
+export function cacheBranding(args) {
+  try {
+    if (!args || (!args.primaryColor && !args.secondaryColor)) return;
+    localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify({
+      primaryColor: args.primaryColor || null,
+      secondaryColor: args.secondaryColor || null,
+      surfaceColor: args.surfaceColor || null,
+    }));
+  } catch { /* quota / unavailable */ }
+}
+
+/**
+ * Apply branding from the localStorage cache, if present. Call at boot BEFORE
+ * the first React render so the gym's accent/surface colors are on screen
+ * immediately instead of flashing the default amber palette while the live
+ * profile fetch is in flight. Relies on the dark-mode class already being set
+ * (index.html sets it pre-paint) so surface tints resolve correctly.
+ * @returns {boolean} true if cached branding was applied.
+ */
+export function applyCachedBranding() {
+  try {
+    const raw = localStorage.getItem(BRANDING_CACHE_KEY);
+    if (!raw) return false;
+    const args = JSON.parse(raw);
+    if (!args || (!args.primaryColor && !args.secondaryColor)) return false;
+    applyBranding({
+      primaryColor: args.primaryColor || undefined,
+      secondaryColor: args.secondaryColor || undefined,
+      surfaceColor: args.surfaceColor || null,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Reset branding to the default Obsidian & Amber palette.
  */

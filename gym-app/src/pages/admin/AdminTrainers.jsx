@@ -19,6 +19,8 @@ import AddTrainerModal from './components/AddTrainerModal';
 import ConfirmDemoteModal from './components/ConfirmDemoteModal';
 import usePagedVisible from '../../hooks/usePagedVisible';
 import PaginationFooter from '../../components/admin/PaginationFooter';
+import CheckinPhotoEditor from '../../components/CheckinPhotoEditor';
+import { signCheckinPhotos } from '../../lib/checkinPhoto';
 
 // ── Fetch function ────────────────────────────────────────────────────────
 
@@ -27,7 +29,7 @@ const fetchTrainerData = async (gymId) => {
   const thirtyDaysAgo = subDays(now, 30).toISOString();
 
   const results = await Promise.allSettled([
-    supabase.from('profiles').select('id, full_name, username, created_at').eq('gym_id', gymId).eq('role', 'trainer'),
+    supabase.from('profiles').select('id, full_name, username, created_at, checkin_photo_path').eq('gym_id', gymId).eq('role', 'trainer'),
     supabase.from('trainer_clients').select('trainer_id, client_id, is_active, notes, assigned_at').eq('gym_id', gymId),
     supabase.from('workout_sessions').select('profile_id').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', thirtyDaysAgo),
     supabase.from('profiles').select('id, full_name, username').eq('gym_id', gymId).eq('role', 'member'),
@@ -90,12 +92,19 @@ const fetchTrainerData = async (gymId) => {
       name: t.full_name || 'Unnamed',
       username: t.username || '',
       createdAt: t.created_at,
+      checkinPhotoPath: t.checkin_photo_path || null,
       clientCount,
       retention,
       avgWorkouts,
       totalSessions: totalClientSessions,
     };
   });
+
+  // Sign trainer-staff check-in reference photos in one batched call.
+  try {
+    const photoMap = await signCheckinPhotos(trainers.map(tr => tr.checkinPhotoPath));
+    trainers.forEach(tr => { tr.checkinPhotoUrl = tr.checkinPhotoPath ? (photoMap.get(tr.checkinPhotoPath) || null) : null; });
+  } catch { /* fall back to initials */ }
 
   trainers.sort((a, b) => b.clientCount - a.clientCount);
 
@@ -409,7 +418,7 @@ export default function AdminTrainers() {
                       onClick={() => setExpanded(isExpanded ? null : tr.id)}
                     >
                       <div className="flex items-center gap-3.5">
-                        <Avatar name={tr.name} size="md" variant="accent" />
+                        <Avatar name={tr.name} size="md" variant="accent" src={tr.checkinPhotoUrl} />
                         <div className="flex-1 min-w-0">
                           <p className="admin-page-title text-[15px] truncate" style={{ letterSpacing: '-0.015em' }}>{tr.name}</p>
                           {tr.username && <p className="text-[11.5px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>@{tr.username}</p>}
@@ -486,6 +495,17 @@ export default function AdminTrainers() {
                     <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                       <div className="overflow-hidden">
                         <div className="px-4 pb-4" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
+                          {/* Staff check-in reference photo for this trainer */}
+                          <div className="mt-3 mb-3 pb-3" style={{ borderBottom: '1px solid var(--color-admin-border)' }}>
+                            <CheckinPhotoEditor
+                              subjectId={tr.id}
+                              path={tr.checkinPhotoPath}
+                              size={72}
+                              theme={{ accent: 'var(--color-accent)', surface: 'var(--color-admin-panel)', border: 'var(--color-admin-border)', text: 'var(--color-admin-text)', textSub: 'var(--color-admin-text-muted)', danger: 'var(--color-danger)', badgeBorder: 'var(--color-bg-card)' }}
+                              labels={{ photo: t('checkinPhoto.title', 'Check-in photo'), hint: t('checkinPhoto.hint', 'Staff only — used to verify identity at check-in.'), add: t('checkinPhoto.add', 'Add photo'), replace: t('checkinPhoto.replace', 'Replace'), remove: t('checkinPhoto.remove', 'Remove') }}
+                              onChange={() => queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) })}
+                            />
+                          </div>
                           <div className="flex items-center justify-between mt-3 mb-2 gap-2 flex-wrap">
                             <SectionLabel>{t('admin.trainers.clientsCount', { count: clients.length })}</SectionLabel>
                             <div className="flex items-center gap-2 flex-wrap flex-1 justify-end">

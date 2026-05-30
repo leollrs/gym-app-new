@@ -6,6 +6,7 @@
  * the lower-right reserved for either a real QR (when admin attached
  * a reward) or blank handwriting lines (owner adds a note by pen).
  */
+import { useTranslation } from 'react-i18next';
 import { GymMark, PostcardShell, QRBlock, SignBlock, Stamp } from './CardPrimitives.jsx';
 
 function PostcardScaffold({ children, gym, topStamp, padding = 28 }) {
@@ -32,8 +33,9 @@ function PostcardScaffold({ children, gym, topStamp, padding = 28 }) {
 
 // ── 1. WELCOME ─────────────────────────────────────────────────────────
 export function WelcomeCard({ gym, member, headline, subline, note, qr, rewardLabel }) {
+  const { t } = useTranslation('pages');
   return (
-    <PostcardScaffold gym={gym} topStamp={<Stamp text="day one" color={gym.primary} />}>
+    <PostcardScaffold gym={gym} topStamp={<Stamp text={t('admin.printCards.card.stamp.dayOne', { defaultValue: 'day one' })} color={gym.primary} />}>
       <div style={{ display: 'grid', gridTemplateRows: '1fr auto', rowGap: 26 }}>
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14 }}>
           <div
@@ -68,12 +70,12 @@ export function WelcomeCard({ gym, member, headline, subline, note, qr, rewardLa
         <div style={{ display: 'grid', gridTemplateRows: 'auto auto', rowGap: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'end' }}>
             <div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)', marginBottom: 4 }}>for</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)', marginBottom: 4 }}>{t('admin.printCards.card.for', { defaultValue: 'for' })}</div>
               <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 19, lineHeight: 1.05, color: '#111', fontWeight: 500, maxWidth: 200 }}>{member}</div>
             </div>
             {qr && <QRBlock size={72} value={qr} label={rewardLabel} />}
           </div>
-          <SignBlock color={gym.primary} note={note} noteLines={qr ? 1 : 2} />
+          <SignBlock color={gym.primary} label={t('admin.printCards.card.signed', { defaultValue: 'signed' })} note={note} noteLines={qr ? 1 : 2} />
         </div>
       </div>
     </PostcardScaffold>
@@ -82,6 +84,7 @@ export function WelcomeCard({ gym, member, headline, subline, note, qr, rewardLa
 
 // ── 2. HABIT_9IN6 — pickup ticket ──────────────────────────────────────
 export function HabitCard({ gym, member, headline, note, qr, rewardLabel, occasionData = {} }) {
+  const { t } = useTranslation('pages');
   const window_days = occasionData.window_days || 42;
   const count = occasionData.count || 9;
   const cupNoun = gym.cupNoun || 'shaker';
@@ -98,25 +101,25 @@ export function HabitCard({ gym, member, headline, note, qr, rewardLabel, occasi
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <GymMark gymName={gym.name} gymLogoUrl={gym.logo} size="sm" />
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.22em', textTransform: 'uppercase', color: gym.primary, fontWeight: 600 }}>pickup ticket</div>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)', marginTop: 3 }}>no. {String(count).padStart(3, '0')}</div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.22em', textTransform: 'uppercase', color: gym.primary, fontWeight: 600 }}>{t('admin.printCards.card.habit.pickupTicket', { defaultValue: 'pickup ticket' })}</div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)', marginTop: 3 }}>{t('admin.printCards.card.habit.ticketNo', { n: String(count).padStart(3, '0'), defaultValue: 'no. {{n}}' })}</div>
           </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6 }}>
           <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.6)' }}>
-            present at front desk —
+            {t('admin.printCards.card.habit.present', { defaultValue: 'present at front desk —' })}
           </div>
           <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 36, lineHeight: 0.95, color: '#111', letterSpacing: '-0.02em' }}>
-            One {cupNoun},
+            {t('admin.printCards.card.habit.oneCup', { cup: cupNoun, defaultValue: 'One {{cup}},' })}
             <br />
-            <span style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontWeight: 500 }}>with your name on it.</span>
+            <span style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontWeight: 500 }}>{t('admin.printCards.card.habit.withYourName', { defaultValue: 'with your name on it.' })}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 8 }}>
             <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 30, fontWeight: 500, color: gym.primary, lineHeight: 1, letterSpacing: '-0.02em' }}>{count}</div>
             <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, color: 'rgba(17,17,17,0.65)', lineHeight: 1.3 }}>
-              workouts in {window_days} days.<br />
-              That counts as a habit.
+              {t('admin.printCards.card.habit.workoutsInDays', { days: window_days, defaultValue: 'workouts in {{days}} days.' })}<br />
+              {t('admin.printCards.card.habit.countsAsHabit', { defaultValue: 'That counts as a habit.' })}
             </div>
           </div>
           {headline && (
@@ -128,11 +131,11 @@ export function HabitCard({ gym, member, headline, note, qr, rewardLabel, occasi
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'end' }}>
           <div>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)', marginBottom: 4 }}>bearer</div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)', marginBottom: 4 }}>{t('admin.printCards.card.bearer', { defaultValue: 'bearer' })}</div>
             <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 14, lineHeight: 1.1, color: '#111', marginBottom: 12, maxWidth: 180 }}>{member}</div>
-            <SignBlock color={gym.primary} label="signed by" noteLines={1} note={note} compact />
+            <SignBlock color={gym.primary} label={t('admin.printCards.card.signedBy', { defaultValue: 'signed by' })} noteLines={1} note={note} compact />
           </div>
-          {qr ? <QRBlock size={84} value={qr} label={rewardLabel || 'redeem at desk'} /> : null}
+          {qr ? <QRBlock size={84} value={qr} label={rewardLabel || t('admin.printCards.card.habit.redeemAtDesk', { defaultValue: 'redeem at desk' })} /> : null}
         </div>
       </div>
     </PostcardShell>
@@ -141,13 +144,14 @@ export function HabitCard({ gym, member, headline, note, qr, rewardLabel, occasi
 
 // ── 3. TENURE_30 ───────────────────────────────────────────────────────
 export function Tenure30Card({ gym, member, headline, subline, note, qr, rewardLabel }) {
+  const { t } = useTranslation('pages');
   return (
-    <PostcardScaffold gym={gym} topStamp={<Stamp text="thirty days" color={gym.primary} />}>
+    <PostcardScaffold gym={gym} topStamp={<Stamp text={t('admin.printCards.card.stamp.thirtyDays', { defaultValue: 'thirty days' })} color={gym.primary} />}>
       <div style={{ display: 'grid', gridTemplateRows: '1fr auto', rowGap: 22 }}>
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 16 }}>
           <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 76, lineHeight: 0.88, fontWeight: 500, letterSpacing: '-0.04em', color: '#111' }}>
-            thirty<br />
-            <span style={{ fontStyle: 'italic', color: gym.primary }}>days.</span>
+            {t('admin.printCards.card.tenure30.big1', { defaultValue: 'thirty' })}<br />
+            <span style={{ fontStyle: 'italic', color: gym.primary }}>{t('admin.printCards.card.tenure30.big2', { defaultValue: 'days.' })}</span>
           </div>
           <div style={{ height: 1, background: gym.primary, width: 60 }} />
           <div style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontSize: 19, lineHeight: 1.2, color: '#111', maxWidth: 260, textWrap: 'balance' }}>
@@ -163,7 +167,7 @@ export function Tenure30Card({ gym, member, headline, subline, note, qr, rewardL
         <div style={{ display: 'grid', gridTemplateRows: 'auto auto', rowGap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'end' }}>
             <div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>for</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>{t('admin.printCards.card.for', { defaultValue: 'for' })}</div>
               <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 17, lineHeight: 1.05, color: '#111', fontWeight: 500, maxWidth: 200, marginTop: 2 }}>{member}</div>
             </div>
             {qr && <QRBlock size={68} value={qr} label={rewardLabel} />}
@@ -177,23 +181,25 @@ export function Tenure30Card({ gym, member, headline, subline, note, qr, rewardL
 
 // ── 4. TENURE_90 — the cliff ───────────────────────────────────────────
 export function Tenure90Card({ gym, member, headline, subline, note, qr, rewardLabel }) {
+  const { t } = useTranslation('pages');
   return (
     <PostcardShell>
-      <div style={{ position: 'absolute', inset: '28px 28px' }}>
+      {/* Balanced header / centered-middle / footer grid so the card fills the
+          full 4×6 instead of leaving a dead band at the top. */}
+      <div style={{ position: 'absolute', inset: 28, display: 'grid', gridTemplateRows: 'auto 1fr auto', rowGap: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <GymMark gymName={gym.name} gymLogoUrl={gym.logo} size="sm" />
-          <Stamp text="past the cliff" color={gym.primary} />
+          <Stamp text={t('admin.printCards.card.stamp.pastTheCliff', { defaultValue: 'past the cliff' })} color={gym.primary} />
         </div>
 
-        <div style={{ position: 'absolute', left: 0, right: 0, top: 224, height: 1, background: gym.primary }} />
-        <div style={{ position: 'absolute', left: 0, top: 192, fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.45)' }}>
-          ─── day 0 ─────────────────── day 90 ───→
-        </div>
-
-        <div style={{ position: 'absolute', left: 0, right: 0, top: 252, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 68, lineHeight: 0.88, fontWeight: 500, letterSpacing: '-0.04em', color: '#111' }}>
-            Ninety<br />
-            <span style={{ fontStyle: 'italic' }}>days in.</span>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14 }}>
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.45)' }}>
+            {t('admin.printCards.card.tenure90.timeline', { defaultValue: '─── day 0 ─────────────────── day 90 ───→' })}
+          </div>
+          <div style={{ height: 1, background: gym.primary }} />
+          <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 68, lineHeight: 0.88, fontWeight: 500, letterSpacing: '-0.04em', color: '#111', marginTop: 4 }}>
+            {t('admin.printCards.card.tenure90.big1', { defaultValue: 'Ninety' })}<br />
+            <span style={{ fontStyle: 'italic' }}>{t('admin.printCards.card.tenure90.big2', { defaultValue: 'days in.' })}</span>
           </div>
           <div style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontSize: 18, lineHeight: 1.25, color: 'rgba(17,17,17,0.78)', maxWidth: 270, textWrap: 'balance' }}>
             {headline}
@@ -205,13 +211,13 @@ export function Tenure90Card({ gym, member, headline, subline, note, qr, rewardL
           )}
         </div>
 
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, display: 'grid', gridTemplateRows: 'auto auto', rowGap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateRows: 'auto auto', rowGap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'end' }}>
             <div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>for</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>{t('admin.printCards.card.for', { defaultValue: 'for' })}</div>
               <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 17, lineHeight: 1.05, color: '#111', fontWeight: 500, maxWidth: 200, marginTop: 2 }}>{member}</div>
             </div>
-            {qr && <QRBlock size={68} value={qr} label={rewardLabel || 'juice / smoothie token'} />}
+            {qr && <QRBlock size={68} value={qr} label={rewardLabel || t('admin.printCards.card.tenure90.qrLabel', { defaultValue: 'juice / smoothie token' })} />}
           </div>
           <SignBlock color={gym.primary} note={note} noteLines={1} compact />
         </div>
@@ -222,13 +228,14 @@ export function Tenure90Card({ gym, member, headline, subline, note, qr, rewardL
 
 // ── 5. MILESTONE_100 — century mark ────────────────────────────────────
 export function Milestone100Card({ gym, member, headline, subline, note, qr, rewardLabel }) {
+  const { t } = useTranslation('pages');
   return (
     <PostcardShell>
       <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 8, background: gym.primary }} />
       <div style={{ position: 'absolute', inset: '36px 28px 28px', display: 'grid', gridTemplateRows: 'auto 1fr auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <GymMark gymName={gym.name} gymLogoUrl={gym.logo} size="sm" />
-          <Stamp text="century mark" color={gym.primary} />
+          <Stamp text={t('admin.printCards.card.stamp.centuryMark', { defaultValue: 'century mark' })} color={gym.primary} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 18 }}>
@@ -248,7 +255,7 @@ export function Milestone100Card({ gym, member, headline, subline, note, qr, rew
         <div style={{ display: 'grid', gridTemplateRows: 'auto auto', rowGap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'end' }}>
             <div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>for</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>{t('admin.printCards.card.for', { defaultValue: 'for' })}</div>
               <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 16, lineHeight: 1.05, color: '#111', maxWidth: 200, marginTop: 2 }}>{member}</div>
             </div>
             {qr && <QRBlock size={72} value={qr} label={rewardLabel} />}
@@ -262,6 +269,7 @@ export function Milestone100Card({ gym, member, headline, subline, note, qr, rew
 
 // ── 6. MILESTONE_250 — rare company ────────────────────────────────────
 export function Milestone250Card({ gym, member, headline, note, qr, rewardLabel }) {
+  const { t } = useTranslation('pages');
   return (
     <PostcardShell>
       <div style={{ position: 'absolute', inset: 14, border: `0.5px solid ${gym.primary}`, pointerEvents: 'none' }} />
@@ -269,12 +277,12 @@ export function Milestone250Card({ gym, member, headline, note, qr, rewardLabel 
       <div style={{ position: 'absolute', inset: '36px 36px', display: 'grid', gridTemplateRows: 'auto 1fr auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <GymMark gymName={gym.name} gymLogoUrl={gym.logo} size="sm" />
-          <Stamp text="rare company" color={gym.primary} />
+          <Stamp text={t('admin.printCards.card.stamp.rareCompany', { defaultValue: 'rare company' })} color={gym.primary} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 10, textAlign: 'center' }}>
           <div style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontSize: 15, color: 'rgba(17,17,17,0.65)', letterSpacing: '0.04em' }}>
-            this is to acknowledge
+            {t('admin.printCards.card.milestone250.acknowledge', { defaultValue: 'this is to acknowledge' })}
           </div>
           <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 22, fontWeight: 500, lineHeight: 1.05, color: '#111', maxWidth: 280 }}>
             {member}
@@ -284,7 +292,7 @@ export function Milestone250Card({ gym, member, headline, note, qr, rewardLabel 
             250
           </div>
           <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: '0.28em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.6)', marginTop: -2 }}>
-            workouts logged
+            {t('admin.printCards.card.milestone250.workoutsLogged', { defaultValue: 'workouts logged' })}
           </div>
           <div style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontSize: 16, lineHeight: 1.25, color: '#111', marginTop: 12, maxWidth: 280, textWrap: 'balance' }}>
             {headline}
@@ -292,7 +300,7 @@ export function Milestone250Card({ gym, member, headline, note, qr, rewardLabel 
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: qr ? '1fr auto' : '1fr', gap: 14, alignItems: 'end' }}>
-          <SignBlock color={gym.primary} label="inscribed" note={note} noteLines={qr ? 1 : 2} compact />
+          <SignBlock color={gym.primary} label={t('admin.printCards.card.inscribed', { defaultValue: 'inscribed' })} note={note} noteLines={qr ? 1 : 2} compact />
           {qr && <QRBlock size={64} value={qr} label={rewardLabel} />}
         </div>
       </div>
@@ -302,6 +310,7 @@ export function Milestone250Card({ gym, member, headline, note, qr, rewardLabel 
 
 // ── 7. RETURNING — never a QR, never a reward ──────────────────────────
 export function ReturningCard({ gym, member, headline, subline, note, occasionData = {} }) {
+  const { t } = useTranslation('pages');
   const days = occasionData.absence_days || 23;
   return (
     <PostcardScaffold
@@ -309,7 +318,7 @@ export function ReturningCard({ gym, member, headline, subline, note, occasionDa
       topStamp={
         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.55)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 5, height: 5, background: gym.primary, display: 'inline-block' }} />
-          {days} days
+          {t('admin.printCards.card.stamp.daysAgo', { days, defaultValue: '{{days}} days' })}
         </div>
       }
     >
@@ -327,7 +336,7 @@ export function ReturningCard({ gym, member, headline, subline, note, occasionDa
 
         <div style={{ display: 'grid', gridTemplateRows: 'auto auto', rowGap: 14 }}>
           <div>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>for</div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>{t('admin.printCards.card.for', { defaultValue: 'for' })}</div>
             <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 17, lineHeight: 1.05, color: '#111', fontWeight: 500, maxWidth: 280, marginTop: 2 }}>{member}</div>
           </div>
           <SignBlock color={gym.primary} note={note} noteLines={2} />
@@ -339,19 +348,20 @@ export function ReturningCard({ gym, member, headline, subline, note, occasionDa
 
 // ── 8. BIRTHDAY ────────────────────────────────────────────────────────
 export function BirthdayCard({ gym, member, headline, subline, note, qr, rewardLabel, occasionData = {} }) {
+  const { t } = useTranslation('pages');
   const day = occasionData.day || '—';
   const month = occasionData.month || '';
   return (
     <PostcardScaffold
       gym={gym}
-      topStamp={<Stamp text="your week" color={gym.primary} />}
+      topStamp={<Stamp text={t('admin.printCards.card.stamp.yourWeek', { defaultValue: 'your week' })} color={gym.primary} />}
     >
       <div style={{ display: 'grid', gridTemplateRows: '1fr auto', rowGap: 22 }}>
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 22 }}>
           <div style={{ display: 'inline-flex', alignSelf: 'flex-start', border: `1.5px solid ${gym.primary}`, padding: '10px 16px 12px', flexDirection: 'column', alignItems: 'center', minWidth: 110 }}>
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: '0.28em', color: gym.primary, fontWeight: 600 }}>{month}</div>
             <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 64, lineHeight: 0.92, fontWeight: 500, color: '#111', letterSpacing: '-0.03em' }}>{day}</div>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8.5, letterSpacing: '0.24em', color: 'rgba(17,17,17,0.55)', marginTop: 2, textTransform: 'uppercase' }}>yours</div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8.5, letterSpacing: '0.24em', color: 'rgba(17,17,17,0.55)', marginTop: 2, textTransform: 'uppercase' }}>{t('admin.printCards.card.yours', { defaultValue: 'yours' })}</div>
           </div>
           <div style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontSize: 28, lineHeight: 1.08, color: '#111', letterSpacing: '-0.015em', maxWidth: 290, textWrap: 'balance' }}>
             {headline}
@@ -366,10 +376,10 @@ export function BirthdayCard({ gym, member, headline, subline, note, qr, rewardL
         <div style={{ display: 'grid', gridTemplateRows: 'auto auto', rowGap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'end' }}>
             <div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>for</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>{t('admin.printCards.card.for', { defaultValue: 'for' })}</div>
               <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 17, lineHeight: 1.05, color: '#111', fontWeight: 500, maxWidth: 200, marginTop: 2 }}>{member}</div>
             </div>
-            {qr && <QRBlock size={72} value={qr} label={rewardLabel || 'drink on the house'} />}
+            {qr && <QRBlock size={72} value={qr} label={rewardLabel || t('admin.printCards.card.birthday.qrLabel', { defaultValue: 'drink on the house' })} />}
           </div>
           <SignBlock color={gym.primary} note={note} noteLines={qr ? 1 : 2} />
         </div>
@@ -380,13 +390,14 @@ export function BirthdayCard({ gym, member, headline, subline, note, qr, rewardL
 
 // ── 9. CUSTOM ──────────────────────────────────────────────────────────
 export function CustomCard({ gym, member, headline, subline, qr, rewardLabel }) {
+  const { t } = useTranslation('pages');
   return (
     <PostcardShell>
       <div style={{ position: 'absolute', left: 28, right: 28, top: 32, height: 1, background: gym.primary }} />
       <div style={{ position: 'absolute', inset: '44px 28px 28px', display: 'grid', gridTemplateRows: 'auto 1fr auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <GymMark gymName={gym.name} gymLogoUrl={gym.logo} size="md" />
-          <Stamp text="a note" color={gym.primary} />
+          <Stamp text={t('admin.printCards.card.stamp.aNote', { defaultValue: 'a note' })} color={gym.primary} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28, justifyContent: 'center', paddingTop: 8, paddingBottom: 8 }}>
@@ -404,7 +415,7 @@ export function CustomCard({ gym, member, headline, subline, qr, rewardLabel }) 
 
         <div style={{ display: 'grid', gridTemplateRows: 'auto auto', rowGap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'end' }}>
-            <div style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontSize: 17, color: '#111', lineHeight: 1.05 }}>for {member}</div>
+            <div style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontSize: 17, color: '#111', lineHeight: 1.05 }}>{t('admin.printCards.card.for', { defaultValue: 'for' })} {member}</div>
             {qr && <QRBlock size={64} value={qr} label={rewardLabel} />}
           </div>
           <SignBlock color={gym.primary} noteLines={0} compact />

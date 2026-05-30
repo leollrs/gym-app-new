@@ -14,16 +14,29 @@ import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin
 
 async function fetchActivityData(gymId, dateFnsLocale) {
   const now = new Date();
+  const windowStart = startOfMonth(subMonths(now, 5));
 
-  const { data: allMembers, error: actMemError } = await supabase
-    .from('profiles')
-    .select('id, created_at')
-    .eq('gym_id', gymId)
-    .eq('role', 'member')
-    .eq('imported_archived', false);
-  if (actMemError) throw actMemError;
+  // ONE query over the whole 6-month window + members, in parallel — was an
+  // N+1 (one sequential, unbounded sessions query PER month = 6 serial RTTs).
+  const [membersRes, sessionsRes] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, created_at')
+      .eq('gym_id', gymId)
+      .eq('role', 'member')
+      .eq('imported_archived', false),
+    supabase
+      .from('workout_sessions')
+      .select('profile_id, started_at')
+      .eq('gym_id', gymId)
+      .eq('status', 'completed')
+      .gte('started_at', windowStart.toISOString()),
+  ]);
+  if (membersRes.error) throw membersRes.error;
+  if (sessionsRes.error) throw sessionsRes.error;
 
-  const members = allMembers || [];
+  const members = membersRes.data || [];
+  const sessions = sessionsRes.data || [];
   const months = [];
 
   for (let i = 5; i >= 0; i--) {
@@ -32,16 +45,12 @@ async function fetchActivityData(gymId, dateFnsLocale) {
 
     const totalThatMonth = members.filter(m => new Date(m.created_at) <= monthEnd).length;
 
-    const { data: sessions, error: sessError } = await supabase
-      .from('workout_sessions')
-      .select('profile_id')
-      .eq('gym_id', gymId)
-      .eq('status', 'completed')
-      .gte('started_at', monthStart.toISOString())
-      .lte('started_at', monthEnd.toISOString());
-
-    if (sessError) throw sessError;
-    const uniqueActive = new Set((sessions || []).map(s => s.profile_id)).size;
+    const activeIds = new Set();
+    for (const s of sessions) {
+      const ts = new Date(s.started_at);
+      if (ts >= monthStart && ts <= monthEnd) activeIds.add(s.profile_id);
+    }
+    const uniqueActive = activeIds.size;
     const pct = totalThatMonth > 0 ? Math.round((uniqueActive / totalThatMonth) * 100) : 0;
 
     months.push({
@@ -62,6 +71,9 @@ function ActivityChart({ gymId }) {
     queryKey: [...adminKeys.analytics.activity(gymId), i18n.language],
     queryFn: () => fetchActivityData(gymId, dateFnsLocale),
     enabled: !!gymId,
+    // Engagement data changes slowly; 5 min avoids a refetch on every
+    // analytics-tab switch (matches LTVCard / currentKPIs).
+    staleTime: 5 * 60_000,
   });
 
   const handleExport = () => {

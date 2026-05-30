@@ -9,22 +9,8 @@
  * The "QRBlock" uses qrcode.react so the printed QR is the real
  * earned-reward code, not a visual placeholder.
  */
+import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
-
-export function SignatureMark({ color = '#111', opacity = 0.6, width = 110 }) {
-  return (
-    <svg viewBox="0 0 110 28" width={width} height={width * 0.25} style={{ display: 'block' }}>
-      <path
-        d="M2 22 C 10 4, 18 4, 22 18 S 32 26, 40 12 C 44 6, 50 8, 54 16 C 58 24, 64 22, 70 14 C 76 6, 84 8, 90 18 C 94 24, 102 20, 108 6"
-        fill="none"
-        stroke={color}
-        strokeOpacity={opacity}
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 export function GymMark({ gymName, gymLogoUrl, size = 'md', color }) {
   const sizes = {
@@ -84,7 +70,9 @@ export function QRBlock({ size = 72, value, label }) {
   );
 }
 
-export function SignBlock({ color, label = 'signed', note, noteLines = 2, width = '100%', compact = false }) {
+export function SignBlock({ label, note, noteLines = 2, width = '100%', compact = false }) {
+  const { t } = useTranslation('pages');
+  const resolvedLabel = label ?? t('admin.printCards.card.signed', { defaultValue: 'signed' });
   const lineColor = 'rgba(17,17,17,0.18)';
   const lineH = compact ? 14 : 18;
   return (
@@ -109,6 +97,9 @@ export function SignBlock({ color, label = 'signed', note, noteLines = 2, width 
           ) : null}
         </div>
       ))}
+      {/* Signature line — intentionally LEFT BLANK so the gym owner signs it
+          by hand. A printed-in signature defeats the personal-touch retention
+          signal this card exists for. The label + rule below are the line. */}
       <div
         style={{
           display: 'flex',
@@ -130,9 +121,8 @@ export function SignBlock({ color, label = 'signed', note, noteLines = 2, width 
             flexShrink: 0,
           }}
         >
-          {label}
+          {resolvedLabel}
         </span>
-        <SignatureMark color={color} width={90} />
       </div>
     </div>
   );

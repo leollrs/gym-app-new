@@ -64,7 +64,9 @@ if (typeof window !== 'undefined') {
     socialFeedImport();
     rewardsImport();
     challengesImport();
-    nutritionImport();
+    // nutritionImport() intentionally NOT prefetched — the Nutrition chunk pulls
+    // ~312KB of recipe + food-image data (+ recharts) that most sessions never
+    // need. It still lazy-loads on actual navigation to /nutrition.
     activeSessionImport();
     messagesImport();
     myGymImport();
@@ -1024,13 +1026,16 @@ function App() {
     const userId = user.id;
     const gymId = profile.gym_id;
 
-    // Notifications list
+    // Notifications list — key + columns + audience filter MUST match
+    // useNotifications(userId,'member') or the prefetch lands under a
+    // different cache entry and the hook refetches on mount anyway.
     queryClient.prefetchQuery({
-      queryKey: ['notifications', userId],
+      queryKey: ['notifications', userId, 'member'],
       queryFn: async () => {
         const { data, error } = await supabase
           .from('notifications')
-          .select('id, title, body, type, read_at, created_at, profile_id')
+          .select('id, title, body, type, read_at, created_at, profile_id, audience, data')
+          .or('audience.is.null,audience.eq.member')
           .eq('profile_id', userId)
           .is('dismissed_at', null)
           .order('created_at', { ascending: false })

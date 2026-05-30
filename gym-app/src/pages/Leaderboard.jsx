@@ -516,18 +516,27 @@ const Leaderboard = ({ embedded = false }) => {
   // so we keep a single Realtime connection open per page mount.
   useEffect(() => {
     if (!gymId) return;
+    // Coalesce bursts (a busy gym fires workout/PR/check-in inserts constantly)
+    // into a single trailing invalidation, and skip entirely while the app is
+    // backgrounded — Leaderboard is keep-alive, so without this every gym event
+    // refetched up to ~13 leaderboard RPCs with nobody looking.
+    let invalidateTimer;
     const invalidateAll = () => {
-      const keys = [
-        'leaderboard',
-        'leaderboard-improved',
-        'leaderboard-consistency',
-        'leaderboard-prs',
-        'leaderboard-checkins',
-        'leaderboard-newcomers',
-      ];
-      for (const key of keys) {
-        queryClient.invalidateQueries({ queryKey: [key], exact: false });
-      }
+      clearTimeout(invalidateTimer);
+      invalidateTimer = setTimeout(() => {
+        if (document.hidden) return;
+        const keys = [
+          'leaderboard',
+          'leaderboard-improved',
+          'leaderboard-consistency',
+          'leaderboard-prs',
+          'leaderboard-checkins',
+          'leaderboard-newcomers',
+        ];
+        for (const key of keys) {
+          queryClient.invalidateQueries({ queryKey: [key], exact: false });
+        }
+      }, 4000);
     };
     const channel = supabase
       .channel(`leaderboard-${gymId}`)
@@ -556,7 +565,7 @@ const Leaderboard = ({ embedded = false }) => {
         filter: `gym_id=eq.${gymId}`,
       }, invalidateAll)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { clearTimeout(invalidateTimer); supabase.removeChannel(channel); };
   }, [gymId, queryClient]);
 
   const [expanded, setExpanded] = useState(null); // which board is expanded
@@ -602,13 +611,16 @@ const Leaderboard = ({ embedded = false }) => {
   const milestones = useMilestoneFeed(gymId);
 
   // ── Expanded data (uses adjustable filters) ──
-  const exVolume     = useLeaderboard(gymId, 'volume', exStart);
-  const exWorkouts   = useLeaderboard(gymId, 'workouts', exStart);
-  const exStreak     = useLeaderboard(gymId, 'streak', null);
-  const exImproved   = useLeaderboardMostImproved(gymId, 'volume', exPeriod);
-  const exConsistency = useLeaderboardConsistency(gymId, exPeriod);
-  const exPrs        = useLeaderboardPrs(gymId, exStart);
-  const exCheckins   = useLeaderboardCheckins(gymId, exStart);
+  // Only the currently-expanded board fetches. Passing null gymId disables the
+  // hook (each is `enabled: !!gymId`), so opening Leaderboard no longer fires
+  // ~7 extra RPCs up front — they load on demand when a board is opened.
+  const exVolume     = useLeaderboard(expanded === 'volume' ? gymId : null, 'volume', exStart);
+  const exWorkouts   = useLeaderboard(expanded === 'workouts' ? gymId : null, 'workouts', exStart);
+  const exStreak     = useLeaderboard(expanded === 'streak' ? gymId : null, 'streak', null);
+  const exImproved   = useLeaderboardMostImproved(expanded === 'improved' ? gymId : null, 'volume', exPeriod);
+  const exConsistency = useLeaderboardConsistency(expanded === 'consistency' ? gymId : null, exPeriod);
+  const exPrs        = useLeaderboardPrs(expanded === 'prs' ? gymId : null, exStart);
+  const exCheckins   = useLeaderboardCheckins(expanded === 'checkins' ? gymId : null, exStart);
 
   // Normalize streak entries
   const normalizeStreak = (data) => {

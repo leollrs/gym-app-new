@@ -3,6 +3,7 @@ import { supabase } from '../supabase';
 import logger from '../logger';
 import { loadGymChurnScores, estimateChurnScoreFallback } from '../churnScore';
 import { withQueryTimeout } from '../queryWithTimeout';
+import { signCheckinPhotos } from '../checkinPhoto';
 
 export const MEMBERS_PAGE_SIZE = 200;
 
@@ -24,7 +25,7 @@ export async function fetchMembers(gymId, page = 0) {
   // no recovery. 15s is generous for a paged read; under load the slowest
   // RPC here (fetchMembersWithChurnScores on cold cache) is ~5-8s.
   const [membersRes, followupRes, sessionsRes, scoredAll] = await withQueryTimeout(Promise.all([
-    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, membership_started_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
+    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, membership_started_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded, checkin_photo_path').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
     supabase.from('churn_risk_scores').select('profile_id, followup_sent_at, computed_at').eq('gym_id', gymId).order('computed_at', { ascending: false }),
     supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()).limit(5000),
     loadGymChurnScores(gymId, supabase).catch((err) => {
@@ -52,7 +53,7 @@ export async function fetchMembers(gymId, page = 0) {
   });
 
   const nowMs = Date.now();
-  return (membersRes.data || []).map(m => {
+  const rows = (membersRes.data || []).map(m => {
     const scored = scoredMap[m.id];
     const effectiveLast = m.last_active_at ?? lastSessionAt[m.id] ?? m.created_at;
     const recentWorkouts = sessionsLast14[m.id] ?? 0;
@@ -75,6 +76,17 @@ export async function fetchMembers(gymId, page = 0) {
       neverActive,
     };
   });
+
+  // Sign staff check-in reference photos for this page in one batched call so
+  // the roster can show faces. Members without one fall back to initials.
+  try {
+    const photoMap = await signCheckinPhotos(rows.map(r => r.checkin_photo_path));
+    rows.forEach(r => { r.checkin_photo_url = r.checkin_photo_path ? (photoMap.get(r.checkin_photo_path) || null) : null; });
+  } catch (err) {
+    logger.warn('AdminMembers: sign checkin photos:', err?.message);
+  }
+
+  return rows;
 }
 
 export async function fetchAllInvites(gymId) {

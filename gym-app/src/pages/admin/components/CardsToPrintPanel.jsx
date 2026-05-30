@@ -86,7 +86,11 @@ export default function CardsToPrintPanel({ gymId }) {
   // "Here today" flag so staff can prioritize printing + handing over cards to
   // people who are in the building right now — the whole point of same-visit
   // delivery. Refetched on a short interval so it tracks the day's foot traffic.
-  const { data: presentTodayIds } = useQuery({
+  // NOTE: return a plain array, not a Set. React Query persists this cache to
+  // localStorage (see persistQueryClient), and a Set serializes to `{}` on
+  // rehydrate — losing `.has`/`.size` and crashing the sort below. We keep the
+  // serializable array here and build the Set in a useMemo.
+  const { data: presentTodayList } = useQuery({
     queryKey: [...adminKeys.printCards(gymId), 'present-today'],
     queryFn: async () => {
       const start = new Date();
@@ -98,11 +102,18 @@ export default function CardsToPrintPanel({ gymId }) {
         .gte('checked_in_at', start.toISOString())
         .limit(2000);
       if (error) throw error;
-      return new Set((data || []).map((c) => c.profile_id));
+      return (data || []).map((c) => c.profile_id);
     },
     enabled: !!gymId,
     staleTime: 60_000,
   });
+  // Guard the input: an older build cached this query as a Set, which a
+  // persisted-cache rehydrate turns into a non-iterable `{}`. `new Set({})`
+  // would throw, so only build from a real array.
+  const presentTodayIds = useMemo(
+    () => new Set(Array.isArray(presentTodayList) ? presentTodayList : []),
+    [presentTodayList]
+  );
 
   const [selected, setSelected] = useState(new Set());
   // ids currently open in the print preview modal — null when modal closed
@@ -210,9 +221,9 @@ export default function CardsToPrintPanel({ gymId }) {
   });
 
   // ── Print action ──
-  // Opens the PrintPreviewModal — an in-page modal with an iframe of the
-  // preview route. Iframe.contentWindow.print() preserves the @page rules
-  // (Letter, 0 margin) so the browser print dialog opens already preset.
+  // Opens the PrintPreviewModal — an in-page modal that renders the card
+  // sheets inline (works on web + native) with PDF download, and on web a
+  // "Print direct" that prints the standalone preview window.
   // Owner prints + signs, then comes back and clicks "Mark printed".
   const handlePrintSelected = () => {
     const ids = [...selected];

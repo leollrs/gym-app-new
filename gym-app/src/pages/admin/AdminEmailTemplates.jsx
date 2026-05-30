@@ -13,6 +13,8 @@ import { dbRowToTemplate, templateToDbPayload } from '../../lib/admin/emailTempl
 import { defaultTemplate, getPrebuiltTemplates } from './components/emailTemplatePrebuilts';
 import EmailTemplateEditor from './components/EmailTemplateEditor';
 import EmailTemplateCard, { PrebuiltCard } from './components/EmailTemplateCard';
+import EmailDesignerGallery from './components/EmailDesignerGallery';
+import { listDesignerTemplateIds } from '../../lib/admin/emailDesignerTemplates';
 
 export default function AdminEmailTemplates() {
   const { gymName, gymLogoUrl, profile } = useAuth();
@@ -29,7 +31,7 @@ export default function AdminEmailTemplates() {
 
   const [editing, setEditing] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [listTab, setListTab] = useState('mine');
+  const [listTab, setListTab] = useState('designer');
 
   useEffect(() => { document.title = `${t('admin.emailTemplates.title', 'Admin - Email Templates')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -154,6 +156,7 @@ export default function AdminEmailTemplates() {
   }
 
   const tabs = [
+    { key: 'designer', label: t('admin.emailTemplates.tabDesigner', 'Designs'), count: listDesignerTemplateIds().length },
     { key: 'mine', label: t('admin.emailTemplates.tabMine', 'My Templates'), count: templates.length },
     { key: 'prebuilt', label: t('admin.emailTemplates.tabPrebuilt', 'Prebuilt'), count: prebuiltTemplates.length },
   ];
@@ -166,7 +169,7 @@ export default function AdminEmailTemplates() {
         actions={
           <button
             onClick={handleNewTemplate}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-colors" style={{ backgroundColor: '#D4AF37', color: '#000' }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-colors" style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-bg-card, #000)' }}
           >
             <Plus size={16} /> {t('admin.emailTemplates.createNew')}
           </button>
@@ -178,6 +181,9 @@ export default function AdminEmailTemplates() {
 
       <SwipeableTabContent tabs={tabs} active={listTab} onChange={setListTab}>
         {(tabKey) => {
+          if (tabKey === 'designer') return (
+            <EmailDesignerGallery gymName={gymName} gymLogoUrl={gymLogoUrl} />
+          );
           if (tabKey === 'mine') return (
             <>
               {isLoading ? (
@@ -193,7 +199,8 @@ export default function AdminEmailTemplates() {
                     <p className="text-[14px] text-[#9CA3AF]">{t('admin.emailTemplates.noTemplates')}</p>
                     <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.emailTemplates.noTemplatesHint')}</p>
                     <button onClick={handleNewTemplate}
-                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:brightness-90 transition-colors">
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold hover:brightness-90 transition-colors"
+                      style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-bg-card, #000)' }}>
                       <Plus size={14} /> {t('admin.emailTemplates.createNew')}
                     </button>
                   </div>

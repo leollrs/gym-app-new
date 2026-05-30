@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import {
   Image, Type, MousePointerClick, FileText, Loader2,
   Save, Send, Copy, ArrowLeft, Eye, Gift,
@@ -57,9 +58,31 @@ function Field({ label, children }) {
  * HTML clipboard export. Persistence is delegated to the parent via `onSave`.
  */
 export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName, gymLogoUrl, saving }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { showToast } = useToast();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const gymId = profile?.gym_id;
+  const isEs = i18n.language?.startsWith('es');
+
+  // The gym's own rewards catalog — what the admin already configured under
+  // /admin/rewards. We surface these as a picker inside the Reward section so
+  // the email can attach to a real listed reward instead of free-form copy.
+  const { data: gymRewards = [] } = useQuery({
+    queryKey: ['gym-rewards-active', gymId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('gym_rewards')
+        .select('id, name, name_es, description, description_es, emoji_icon, cost_points, is_active')
+        .eq('gym_id', gymId)
+        .eq('is_active', true)
+        .order('sort_order');
+      return data || [];
+    },
+    enabled: !!gymId,
+    staleTime: 5 * 60_000,
+  });
+  const rewardName = (r) => (isEs ? (r.name_es || r.name) : r.name);
+  const rewardDesc = (r) => (isEs ? (r.description_es || r.description) : r.description);
   const [template, setTemplate] = useState(initial);
   const bodyRef = useRef(null);
   const [testEmail, setTestEmail] = useState(user?.email || '');
@@ -68,12 +91,20 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
   // a fullscreen preview behind a button so admins can actually see what they're editing.
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
 
+  // Dotted-path setter. Auto-creates missing intermediates — older templates
+  // (rows from before `reward` was part of the schema) don't have every nested
+  // object seeded, and writing `set('reward.enabled', true)` was crashing in
+  // Safari with "undefined is not an object (evaluating 'obj[parts[…]] = …')".
   const set = useCallback((path, value) => {
     setTemplate(prev => {
       const parts = path.split('.');
       const copy = JSON.parse(JSON.stringify(prev));
       let obj = copy;
-      for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]];
+      for (let i = 0; i < parts.length - 1; i++) {
+        const key = parts[i];
+        if (obj[key] == null || typeof obj[key] !== 'object') obj[key] = {};
+        obj = obj[key];
+      }
       obj[parts[parts.length - 1]] = value;
       copy.updatedAt = new Date().toISOString();
       return copy;
@@ -291,12 +322,33 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
             />
           </Field>
           <Field label={t('admin.emailTemplates.ctaUrl')}>
-            <input
-              value={template.cta.url}
-              onChange={e => set('cta.url', e.target.value)}
-              placeholder={t('admin.emailTemplates.urlPlaceholder', 'https://...')}
-              className={inputClass}
-            />
+            <div className="flex items-center gap-2">
+              <input
+                value={template.cta.url}
+                onChange={e => set('cta.url', e.target.value)}
+                placeholder={t('admin.emailTemplates.urlPlaceholder', 'https://...')}
+                className={`${inputClass} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined') set('cta.url', window.location.origin);
+                }}
+                className="px-3 py-2 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-colors"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent, #D4AF37) 12%, transparent)',
+                  color: 'var(--color-accent, #D4AF37)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent, #D4AF37) 25%, transparent)',
+                }}
+              >
+                {t('admin.emailTemplates.useAppUrl', 'Use app URL')}
+              </button>
+            </div>
+            {template.cta.enabled && !template.cta.url && (
+              <p className="text-[10.5px] mt-1.5" style={{ color: 'var(--color-warning, #F59E0B)' }}>
+                {t('admin.emailTemplates.ctaUrlMissing', 'Button has no link — recipients clicking it will go nowhere.')}
+              </p>
+            )}
           </Field>
           <Field label={t('admin.emailTemplates.ctaColor')}>
             <div className="flex items-center gap-2">
@@ -322,6 +374,43 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           enabled={template.reward?.enabled || false}
           onToggle={v => set('reward.enabled', v)}
         >
+          {/* Catalog picker — pulls from the gym's configured rewards
+              (/admin/rewards). Picking one prefills title + description; the
+              fields below stay editable so admins can tweak the copy. */}
+          <Field label={t('admin.emailTemplates.chooseFromCatalog', 'Choose from your rewards')}>
+            <select
+              value={template.reward?.reward_id || ''}
+              onChange={e => {
+                const id = e.target.value;
+                const picked = gymRewards.find(r => r.id === id);
+                setTemplate(prev => ({
+                  ...prev,
+                  reward: {
+                    ...(prev.reward || {}),
+                    reward_id: id || '',
+                    ...(picked ? {
+                      title: `${picked.emoji_icon || '🎁'} ${rewardName(picked)}`,
+                      description: rewardDesc(picked) || prev.reward?.description || '',
+                    } : {}),
+                  },
+                  updatedAt: new Date().toISOString(),
+                }));
+              }}
+              className={inputClass}
+            >
+              <option value="">
+                {gymRewards.length === 0
+                  ? t('admin.emailTemplates.catalogEmpty', 'No rewards configured — set them up in Rewards')
+                  : t('admin.emailTemplates.customReward', '— Custom (enter manually) —')}
+              </option>
+              {gymRewards.map(r => (
+                <option key={r.id} value={r.id}>
+                  {(r.emoji_icon || '🎁') + ' ' + rewardName(r)}
+                  {r.cost_points ? ` · ${r.cost_points} ${t('admin.emailTemplates.pointsShort', 'pts')}` : ''}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label={t('admin.emailTemplates.rewardTitle', 'Reward Title')}>
             <input
               value={template.reward?.title || ''}
@@ -492,7 +581,8 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-[13px] transition-colors disabled:opacity-50" style={{ backgroundColor: '#D4AF37', color: '#000' }}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-[13px] transition-colors disabled:opacity-50"
+            style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent, #000)' }}
           >
             {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
             {t('admin.emailTemplates.save')}

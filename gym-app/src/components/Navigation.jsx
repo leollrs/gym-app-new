@@ -188,9 +188,15 @@ const Navigation = () => {
       );
       setUnreadMessages(unreadRows ? unreadRows.length : 0);
     };
-    const bump = (delay = 800) => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => fetchUnread(), delay); };
+    // Skip the unread recount while the app is backgrounded — this subscribes
+    // to ALL gym direct_messages, so a busy gym otherwise drove a 3-query
+    // recount on every message with the app in someone's pocket. We catch up on
+    // the next foreground via the visibilitychange listener below.
+    const bump = (delay = 800) => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => { if (!document.hidden) fetchUnread(); }, delay); };
+    // Per-user channel name so a transient double-mount can't collide on a
+    // shared static name and silently drop realtime.
     const channel = supabase
-      .channel('nav-dm-unread')
+      .channel(`nav-dm-unread-${user?.id}`)
       // New messages bump the count; read_at UPDATEs (incl. mark-as-read) clear it.
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, () => bump(2000))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'direct_messages' }, () => bump(800))
@@ -198,8 +204,10 @@ const Navigation = () => {
     // Local signal dispatched the instant a chat is opened + marked read, so the
     // badge clears promptly without waiting on the realtime round-trip.
     const onRead = () => bump(300);
+    const onVisible = () => { if (!document.hidden) fetchUnread(); };
     window.addEventListener('dm:read', onRead);
-    return () => { clearTimeout(debounceTimer); window.removeEventListener('dm:read', onRead); supabase.removeChannel(channel); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearTimeout(debounceTimer); window.removeEventListener('dm:read', onRead); document.removeEventListener('visibilitychange', onVisible); supabase.removeChannel(channel); };
   }, [user?.id]);
 
   const streakCalCacheKey = `streak-calendar-${user?.id || 'anon'}`;

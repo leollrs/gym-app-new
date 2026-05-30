@@ -141,6 +141,15 @@ export default defineConfig({
           // leaflet + react-leaflet only ship with LiveCardio's RouteMap. Splitting
           // them into a dedicated chunk keeps cardio start-up snappy by deferring
           // ~40 KB gz until the user actually opens a cardio session.
+          // Framework code in dedicated long-lived vendor chunks so it stays
+          // cached across deploys (the app entry hash changes every build, but
+          // React/Router/Query rarely change) — keeps it out of the volatile
+          // entry chunk and off the re-download path on each OTA update.
+          if (id.includes('node_modules/react-router') ||
+              id.includes('node_modules/react-dom/') ||
+              id.includes('node_modules/react/') ||
+              id.includes('node_modules/scheduler/')) return 'vendor-react';
+          if (id.includes('node_modules/@tanstack/')) return 'vendor-query';
           if (id.includes('node_modules/leaflet/') || id.includes('node_modules/react-leaflet/')) return 'leaflet';
           if (id.includes('node_modules/recharts/')) return 'recharts';
           if (id.includes('node_modules/framer-motion/')) return 'framer-motion';

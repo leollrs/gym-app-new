@@ -157,6 +157,11 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
   const inputRef = useRef(null);
   const convoIdsRef = useRef([]);
   const seedMapRef = useRef({});
+  // Latest activeConvoId for the realtime handler, kept in a ref so the
+  // direct_messages subscription does NOT tear down + re-subscribe every time
+  // the admin clicks a different conversation (that was a WS re-subscribe storm
+  // on normal inbox navigation).
+  const activeConvoIdRef = useRef(activeConvoId);
 
   // ── Load conversations + member list ──────────────────
   const loadConversations = useCallback(async () => {
@@ -435,6 +440,8 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
   }, []);
 
   // ── Realtime subscription ─────────────────────────────
+  useEffect(() => { activeConvoIdRef.current = activeConvoId; }, [activeConvoId]);
+
   useEffect(() => {
     if (!gymId || !adminId) return;
 
@@ -448,8 +455,8 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
       const newMsg = payload.new;
       if (!convoIdsRef.current.includes(newMsg.conversation_id)) return;
 
-      if (newMsg.conversation_id === activeConvoId) {
-        decryptMessage(newMsg.body, activeConvoId, seedMapRef.current[activeConvoId]).then(decryptedBody => {
+      if (newMsg.conversation_id === activeConvoIdRef.current) {
+        decryptMessage(newMsg.body, activeConvoIdRef.current, seedMapRef.current[activeConvoIdRef.current]).then(decryptedBody => {
           setMessages(prev => {
             if (prev.some(m => m.id === newMsg.id)) return prev;
             // Reconcile with optimistic temp messages from same sender + body.
@@ -488,7 +495,7 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
                 last_message_at: newMsg.created_at,
                 last_message_preview: decryptedPreview,
                 last_message_sender_id: newMsg.sender_id,
-                unread_count: c.id === activeConvoId ? 0 : c.unread_count + 1,
+                unread_count: c.id === activeConvoIdRef.current ? 0 : c.unread_count + 1,
               }
             : c
         ).sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)));
@@ -508,7 +515,7 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
         { event: 'INSERT', schema: 'public', table: 'direct_messages' },
         (payload) => {
           // For messages in the active conversation, process immediately
-          if (payload.new.conversation_id === activeConvoId) {
+          if (payload.new.conversation_id === activeConvoIdRef.current) {
             clearTimeout(insertDebounceTimer);
             processInsert(payload);
           } else {
@@ -540,7 +547,9 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
       clearTimeout(updateDebounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [gymId, adminId, activeConvoId]);
+    // activeConvoId intentionally NOT a dep — read via activeConvoIdRef so the
+    // channel stays subscribed across conversation switches.
+  }, [gymId, adminId]);
 
   // ── Send message ──────────────────────────────────────
   const handleSend = async () => {

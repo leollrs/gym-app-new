@@ -984,13 +984,18 @@ export default function ProgressBody() {
     if (!photoMeta?.length) { setProgressPhotos([]); return; }
     let cancelled = false;
     (async () => {
-      const withUrls = await Promise.all(photoMeta.map(async (p) => {
-        const { data } = await supabase.storage
-          .from('progress-photos')
-          .createSignedUrl(p.storage_path, 3600);
-        return { ...p, url: data?.signedUrl || null };
-      }));
-      if (!cancelled) setProgressPhotos(withUrls.filter(p => p.url));
+      // Batch into ONE createSignedUrls call instead of one round-trip per photo
+      // (was N parallel HTTPS requests on every Body-tab open).
+      const paths = photoMeta.map((p) => p.storage_path);
+      const { data: signed } = await supabase.storage
+        .from('progress-photos')
+        .createSignedUrls(paths, 3600);
+      const urlByPath = {};
+      (signed ?? []).forEach((s) => { if (s.signedUrl) urlByPath[s.path] = s.signedUrl; });
+      const withUrls = photoMeta
+        .map((p) => ({ ...p, url: urlByPath[p.storage_path] || null }))
+        .filter((p) => p.url);
+      if (!cancelled) setProgressPhotos(withUrls);
     })();
     return () => { cancelled = true; };
   }, [photoMeta]);

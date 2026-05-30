@@ -36,6 +36,7 @@ export const defaultTemplate = (gymName, primaryColor, t) => ({
   hero: { enabled: false, imageUrl: '', headline: '', subtitle: '' },
   body: { text: '' },
   cta: { enabled: false, text: '', url: '', color: primaryColor || '#D4AF37' },
+  reward: { enabled: false, reward_id: '', title: '', description: '', code: '', expiry: '' },
   footer: { enabled: true, text: `© ${new Date().getFullYear()} ${gymName || t?.('admin.emailTemplates.yourGym', 'Your Gym') || 'Your Gym'}`, unsubscribeText: t?.('admin.emailTemplates.unsubscribe', 'Unsubscribe') || 'Unsubscribe' },
   colors: { primary: primaryColor || '#D4AF37', background: '#ffffff', text: '#333333' },
 });

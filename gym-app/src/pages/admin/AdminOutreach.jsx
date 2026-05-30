@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Send, Loader2, Sparkles, Eye } from 'lucide-react';
+import { Send, Loader2, Sparkles, Eye, Mail } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
@@ -15,6 +15,25 @@ import { sendOutreach } from '../../lib/admin/outreachSender';
 import OutreachAudiencePicker from './components/OutreachAudiencePicker';
 import OutreachChannelPicker from './components/OutreachChannelPicker';
 import { getPrebuiltTemplates } from './components/emailTemplatePrebuilts';
+import { renderDesignerEmail } from '../../lib/admin/emailDesignerTemplates';
+
+// Read the gym's current brand colors so designer templates render on-brand.
+// branding.js sets these vars on :root (--accent-primary / --accent-secondary).
+function readBrandColors() {
+  if (typeof document === 'undefined') return { primary: '', secondary: '' };
+  const css = getComputedStyle(document.documentElement);
+  const pick = (...names) => {
+    for (const n of names) {
+      const v = css.getPropertyValue(n).trim();
+      if (v) return v;
+    }
+    return '';
+  };
+  return {
+    primary: pick('--accent-primary', '--color-accent'),
+    secondary: pick('--accent-secondary'),
+  };
+}
 
 const inputClass = 'w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors';
 const inputStyle = {
@@ -36,8 +55,8 @@ const inputStyle = {
  *  - ?channel=push|email|sms|inApp            — pre-toggles a single channel
  */
 export default function AdminOutreach() {
-  const { t } = useTranslation('pages');
-  const { profile, gymName } = useAuth();
+  const { t, i18n } = useTranslation('pages');
+  const { user, profile, gymName, gymLogoUrl } = useAuth();
   const { showToast } = useToast();
   const [searchParams] = useSearchParams();
   const gymId = profile?.gym_id;
@@ -77,6 +96,11 @@ export default function AdminOutreach() {
   const [templateKey, setTemplateKey] = useState('');
   const [sending, setSending] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [sendingTest, setSendingTest] = useState(false);
+  // When a designer template is in play, `designer.html` is the pre-rendered
+  // email (with the {{first_name}} merge token still inside) that gets sent as
+  // the email body verbatim. The body textarea then only feeds push/SMS/in-app.
+  const [designer, setDesigner] = useState(null); // { id, html, subject }
 
   useEffect(() => { document.title = `${t('admin.outreach.pageTitle', 'Outreach')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -85,6 +109,34 @@ export default function AdminOutreach() {
   // gym_email_templates row; if a prebuilt key is provided, we look it up in
   // the in-memory prebuilt catalog. Either way we flip channels.email on and
   // set subject + body from the template's stored content.
+  // ── Prefill from a designer template (?designer=<id>). Renders the polished
+  // editorial HTML with the gym's name/logo, an adaptive palette derived from
+  // the gym's brand colors, and keeps the per-recipient merge tokens literal
+  // so the sender personalizes them per recipient.
+  useEffect(() => {
+    const designerId = searchParams.get('designer');
+    if (!designerId) return;
+    const lang = i18n.language?.startsWith('es') ? 'es' : 'en';
+    const { primary, secondary } = readBrandColors();
+    const r = renderDesignerEmail(designerId, {
+      lang, gymName, logoUrl: gymLogoUrl,
+      primaryColor: primary, secondaryColor: secondary,
+      coachName: gymName,
+      name: '{{first_name}}',
+      vars: {
+        streak_count: '{{streak_count}}',
+        workout_count: '{{workout_count}}',
+        days_inactive: '{{days_inactive}}',
+      },
+    });
+    if (!r) return;
+    setDesigner({ id: designerId, html: r.html, subject: r.subject });
+    setSubject(r.subject);
+    setBody(prev => prev || r.preview);
+    setChannels(prev => ({ ...prev, email: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gymId, gymName, gymLogoUrl]);
+
   useEffect(() => {
     const templateId = searchParams.get('template');
     const prebuiltKey = searchParams.get('prebuilt');
@@ -137,6 +189,7 @@ export default function AdminOutreach() {
 
   const handleTemplate = (key) => {
     setTemplateKey(key);
+    setDesigner(null); // a plain template replaces any active designer design
     const tpl = activeTemplates.find(x => x.key === key);
     if (!tpl) return;
     if (tpl.subject) setSubject(tpl.subject);
@@ -187,6 +240,30 @@ export default function AdminOutreach() {
   const anyChannelOn = channels.push || channels.inApp || channels.email || channels.sms;
   const canSend = !!gymId && anyChannelOn && body.trim().length > 0 && !sending;
 
+  // Send a one-off test of the current designer email to the admin's own
+  // address — same edge function as the broadcast, just an audience of one.
+  // Lets the admin preview the rich design in their real inbox before blasting.
+  const handleSendTest = async () => {
+    if (!user?.email || !designer?.html) return;
+    setSendingTest(true);
+    try {
+      const first = (profile?.full_name || 'there').split(' ')[0] || 'there';
+      const html = designer.html.replace(/\{\{first_name\}\}/g, first);
+      const subj = (subject || designer.subject || 'Message from your gym').replace(/\{\{first_name\}\}/g, first);
+      const { data: { session } } = await supabase.auth.getSession();
+      const { error } = await supabase.functions.invoke('send-admin-email', {
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        body: { to: user.email, subject: `[TEST] ${subj}`, html, text: body || '' },
+      });
+      if (error) throw error;
+      showToast(t('admin.outreach.testSent', { email: user.email, defaultValue: 'Test sent to {{email}}' }), 'success');
+    } catch {
+      showToast(t('admin.outreach.testFailed', 'Test send failed'), 'error');
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!canSend) return;
     setSending(true);
@@ -203,7 +280,11 @@ export default function AdminOutreach() {
         channels,
         subject,
         body,
-        templateKey,
+        html: designer?.html || null,
+        // Gym-level constants for designer-template tokens. Per-recipient stats
+        // are fetched inside the sender when their tokens appear in the copy.
+        personalize: { gymName, coachName: gymName },
+        templateKey: designer ? `designer:${designer.id}` : templateKey,
         audienceLabel,
       });
       setLastResult({ recipients: recipients.length, results });
@@ -248,6 +329,57 @@ export default function AdminOutreach() {
                 <label className="block text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>
                   {t('admin.outreach.content', 'Message')}
                 </label>
+
+                {designer && (
+                  <div
+                    className="rounded-xl overflow-hidden"
+                    style={{ border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 7%, transparent)' }}
+                  >
+                    <div className="flex items-center justify-between gap-2 px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Sparkles size={13} style={{ color: 'var(--color-accent)' }} />
+                        <span className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                          {t('admin.outreach.designerAttached', 'Designer email attached')}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleSendTest}
+                          disabled={sendingTest || !user?.email}
+                          title={user?.email || ''}
+                          className="flex items-center gap-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                          style={{ color: 'var(--color-accent)' }}
+                        >
+                          {sendingTest ? <Loader2 size={11} className="animate-spin" /> : <Mail size={11} />}
+                          {t('admin.outreach.sendTest', 'Send test')}
+                        </button>
+                        <span style={{ color: 'var(--color-text-subtle)' }}>·</span>
+                        <button
+                          type="button"
+                          onClick={() => setDesigner(null)}
+                          className="text-[11px] font-semibold transition-colors hover:underline"
+                          style={{ color: 'var(--color-text-muted)' }}
+                        >
+                          {t('admin.outreach.designerRemove', 'Remove')}
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ height: 280, overflow: 'hidden', background: '#f0eee9' }}>
+                      <iframe
+                        title="designer-preview"
+                        srcDoc={designer.html}
+                        scrolling="no"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        style={{ width: 640, height: 620, border: 0, transform: 'scale(0.45)', transformOrigin: 'top left', pointerEvents: 'none' }}
+                      />
+                    </div>
+                    <p className="px-3 py-2 text-[10.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                      {t('admin.outreach.designerHint', 'Email recipients get this full design. The body below is only used for push, SMS and in-app.')}
+                    </p>
+                  </div>
+                )}
 
                 {activeTemplates.length > 0 && (
                   <div>
