@@ -33,7 +33,7 @@ import { fetchMembers, fetchAllInvites, getInviteStatus, MEMBERS_PAGE_SIZE } fro
 export { translateChurnSignal };
 
 export default function AdminMembers() {
-  const { profile } = useAuth();
+  const { profile, availableRoles } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { t, i18n } = useTranslation('pages');
@@ -45,7 +45,7 @@ export default function AdminMembers() {
   // SECURITY: Always derive gymId from the authenticated user's profile.
   // Never accept gymId from URL params, query strings, or other user input.
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   const [tab, setTab] = useState('members'); // 'members' | 'invites' | 'resets'
   const [search, setSearch] = useState('');
@@ -420,7 +420,7 @@ export default function AdminMembers() {
       sortValue: (m) => m.full_name?.toLowerCase() || '',
       render: (m) => (
         <div className="flex items-center gap-3 min-w-0">
-          <Avatar name={m.full_name} />
+          <Avatar name={m.full_name} src={m.checkin_photo_url} />
           <div className="min-w-0">
             <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>{m.full_name}</p>
             <p className="text-[12px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
@@ -699,7 +699,7 @@ export default function AdminMembers() {
                         <Square size={16} style={{ color: 'var(--color-text-faint)' }} className="group-hover:opacity-80" />
                       )}
                     </div>
-                    <Avatar name={m.full_name} />
+                    <Avatar name={m.full_name} src={m.checkin_photo_url} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{m.full_name}</p>
@@ -1024,7 +1024,7 @@ export default function AdminMembers() {
               style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
               onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center gap-3 mb-4">
-                <Avatar name={targetMember?.full_name} />
+                <Avatar name={targetMember?.full_name} src={targetMember?.checkin_photo_url} />
                 <div className="min-w-0">
                   <h3 className="text-[16px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
                     {t('admin.members.messageToMember', { name: targetMember?.full_name?.split(' ')[0] || '', defaultValue: 'Message {{name}}' })}

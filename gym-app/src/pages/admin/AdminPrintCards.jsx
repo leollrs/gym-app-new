@@ -8,9 +8,9 @@ import CardDeliveryBanner from './components/CardDeliveryBanner';
 
 export default function AdminPrintCards() {
   const { t } = useTranslation('pages');
-  const { profile } = useAuth();
+  const { profile, availableRoles } = useAuth();
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   useEffect(() => {
     document.title = `${t('admin.printCards.pageTitle', 'Print Cards')} | ${window.__APP_NAME || 'TuGymPR'}`;

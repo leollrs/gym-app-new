@@ -168,29 +168,36 @@ serve(async (req: Request) => {
     // ── Request body ──
     const { memberName, gymName, punchCards, cardName, profileId: bodyProfileId } = await req.json();
 
-    // ── Auth: try user token first, fall back to service role + profileId ──
-    let userId: string | null = null;
-
     const { data: { user } } = await supabase.auth.getUser(token);
-    if (user) {
-      userId = user.id;
-    } else if (bodyProfileId) {
-      if (await timingSafeEqual(token, SUPABASE_SERVICE_ROLE_KEY)) {
-        userId = bodyProfileId;
-      }
-    }
-
-    if (!userId) {
+    if (!user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    const userId = user.id;
+    if (bodyProfileId && bodyProfileId !== userId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    // ── Rate limiting BYPASSED (same broken supabase-js path as apple pass) ──
-    // The PostgREST count query against ai_rate_limits returns an empty-message
-    // error through supabase-js in this Edge Runtime, blocking every call.
-    // TODO: restore rate limiting after diagnosing the supabase-js issue.
+    // ── Rate limiting (10 / hr / user) ──
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: rlCount } = await supabase
+      .from('ai_rate_limits')
+      .select('*', { count: 'exact', head: true })
+      .eq('profile_id', userId)
+      .eq('endpoint', 'generate-punch-card-pass')
+      .gte('requested_at', oneHourAgo);
+    if ((rlCount ?? 0) >= 10) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded — max 10 requests per hour' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    await supabase.from('ai_rate_limits').insert({ profile_id: userId, endpoint: 'generate-punch-card-pass' });
 
     // ── Fetch profile ──
     const { data: profile } = await supabase
@@ -469,11 +476,7 @@ serve(async (req: Request) => {
 
   } catch (err: any) {
     console.error('generate-punch-card-pass error:', err?.message, err?.stack);
-    return new Response(JSON.stringify({
-      error: 'Pass generation failed',
-      details: String(err?.message || err),
-      stack: String(err?.stack || '').split('\n').slice(0, 6).join('\n'),
-    }), {
+    return new Response(JSON.stringify({ error: 'Pass generation failed' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

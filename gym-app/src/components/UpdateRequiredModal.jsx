@@ -36,7 +36,9 @@ export default function UpdateRequiredModal() {
   // needs to reach the Platform → Settings page to bump min_required_version
   // back down (or to ship a new bundle). Without this exemption, a misclick
   // on the version field can wedge the only role that can undo it.
-  if (profile?.role === 'super_admin') return null;
+  const isSuperAdmin = profile?.role === 'super_admin'
+    || (Array.isArray(profile?.additional_roles) && profile.additional_roles.includes('super_admin'));
+  if (isSuperAdmin) return null;
 
   const platform = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
   let storeUrl = null;

@@ -63,12 +63,12 @@ async function getSignedLogoUrl(path) {
 }
 
 export default function AdminSettingsBranding() {
-  const { profile, refreshProfile } = useAuth();
+  const { profile, refreshProfile, availableRoles } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const { t } = useTranslation('pages');
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   const [error, setError] = useState('');
   const [primaryColor, setPrimary] = useState('var(--color-accent)');

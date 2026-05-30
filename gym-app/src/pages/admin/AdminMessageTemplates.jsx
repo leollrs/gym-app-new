@@ -86,12 +86,12 @@ function StatusPill({ status, t }) {
 }
 
 export default function AdminMessageTemplates() {
-  const { profile } = useAuth();
+  const { profile, availableRoles } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation('pages');
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   const [kindTab, setKindTab] = useState('lifecycle');
   const [editing, setEditing] = useState(null); // { row, title, body, enabled }

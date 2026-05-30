@@ -101,11 +101,21 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Rate limiting BYPASSED for diagnosis ──
-    // The PostgREST rate-limit query was returning an empty-message error
-    // through supabase-js, blocking every wallet-pass call. Bypass while we
-    // pin down the root cause so the actual signing path can be exercised.
-    // TODO: restore proper rate limiting after diagnosing.
+    // ── Rate limiting (10 / hr / user) ──
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: rlCount } = await supabase
+      .from('ai_rate_limits')
+      .select('*', { count: 'exact', head: true })
+      .eq('profile_id', user.id)
+      .eq('endpoint', 'generate-apple-pass')
+      .gte('requested_at', oneHourAgo);
+    if ((rlCount ?? 0) >= 10) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded — max 10 requests per hour' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'generate-apple-pass' });
 
     // ── Request body ──
     const { payload, memberName, gymName, punchCards, kind, referralCode, referralReward } = await req.json();
@@ -544,14 +554,7 @@ serve(async (req: Request) => {
 
   } catch (err: any) {
     console.error('generate-apple-pass error:', err?.message, err?.stack);
-    return new Response(JSON.stringify({
-      error: 'Pass generation failed',
-      // DEBUG: surface the message + stack so the client can show it without
-      // needing dashboard log access. Safe because the function is auth-gated
-      // and only the requesting user sees this. REMOVE after diagnosing.
-      details: String(err?.message || err),
-      stack: String(err?.stack || '').split('\n').slice(0, 6).join('\n'),
-    }), {
+    return new Response(JSON.stringify({ error: 'Pass generation failed' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

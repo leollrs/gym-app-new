@@ -193,9 +193,20 @@ serve(async (req: Request) => {
 
   try {
     // ── POST /v1/log ──
+    // Apple PassKit posts device error logs here. Apple does NOT include an
+    // auth token on these calls, so we can't verify the caller is a real
+    // device. We accept ONLY if the request carries a valid HMAC (server-to-
+    // server replay path) OR a known PassKit User-Agent. Otherwise drop on
+    // the floor with 200 (200 to keep Apple happy, drop to avoid log-flood
+    // abuse from anonymous attackers spamming arbitrary JSON).
     if (api[0] === 'log' && req.method === 'POST') {
+      const ua = req.headers.get('user-agent') || '';
+      const fromPassKit = /PassKit|PassbookWebService/i.test(ua);
+      if (!hmacPassed && !fromPassKit) {
+        return new Response('', { status: 200 }); // silent drop
+      }
       const body = rawBody ? JSON.parse(rawBody) : {};
-      console.log('[Wallet Log] Device logs:', JSON.stringify(body));
+      console.log('[Wallet Log] Device logs:', JSON.stringify(body).slice(0, 2000));
       return new Response('', { status: 200 });
     }
 

@@ -33,11 +33,11 @@ import AdminWelcomeModal from './components/AdminWelcomeModal';
 
 
 export default function AdminOverview() {
-  const { profile, gymConfig, gymName } = useAuth();
+  const { profile, gymConfig, gymName, availableRoles } = useAuth();
   const navigate = useNavigate();
 
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   // First-time welcome modal — explains the retention thesis and the first
   // 3 actions. Per gym + per admin profile localStorage flag (so a 2nd

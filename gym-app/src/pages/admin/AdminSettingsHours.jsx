@@ -21,12 +21,12 @@ const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'frida
 const defaultHours = () => [0,1,2,3,4,5,6].map(d => ({ day_of_week: d, open_time: '06:00', close_time: '22:00', is_closed: false }));
 
 export default function AdminSettingsHours() {
-  const { profile } = useAuth();
+  const { profile, availableRoles } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const { t } = useTranslation('pages');
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);

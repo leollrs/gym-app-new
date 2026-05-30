@@ -85,20 +85,27 @@ serve(async (req: Request) => {
     await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'generate-google-pass' });
 
     // ── Request body ──
-    const { payload, memberName, gymName } = await req.json();
+    // `payload` is accepted from the client for back-compat but is NOT trusted —
+    // we always fetch the calling user's own qr_code_payload from the DB and
+    // embed THAT in the pass. Without this, an authed user could pass any QR
+    // string and Google would sign a wallet pass with someone else's identity
+    // (phishing / impersonation vector).
+    const { memberName, gymName } = await req.json();
+
+    // ── Fetch gym + qr payload (server-trusted) ──
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('gym_id, qr_code_payload')
+      .eq('id', user.id)
+      .single();
+
+    const payload = profile?.qr_code_payload;
     if (!payload) {
-      return new Response(JSON.stringify({ error: 'Missing payload' }), {
+      return new Response(JSON.stringify({ error: 'No QR payload on profile' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    // ── Fetch gym config ──
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('gym_id')
-      .eq('id', user.id)
-      .single();
 
     // Branding and gym data both depend on gym_id but are independent of each other
     const [{ data: branding }, { data: gymData }] = await Promise.all([

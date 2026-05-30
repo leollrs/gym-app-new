@@ -66,12 +66,12 @@ const DEFAULTS = {
 };
 
 export default function AdminSettingsCards() {
-  const { profile } = useAuth();
+  const { profile, availableRoles } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const { t } = useTranslation('pages');
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   const [form, setForm] = useState(DEFAULTS);
   const [error, setError] = useState('');

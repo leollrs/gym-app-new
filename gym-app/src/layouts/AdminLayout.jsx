@@ -121,7 +121,7 @@ const linkClass = (active) =>
   }`;
 
 export default function AdminLayout({ children }) {
-  const { profile, gymName, gymLogoUrl, signOut, gymConfig } = useAuth();
+  const { profile, gymName, gymLogoUrl, signOut, gymConfig, availableRoles } = useAuth();
   const { t } = useTranslation('common');
   const navigate = useNavigate();
   const location = useLocation();
@@ -168,12 +168,15 @@ export default function AdminLayout({ children }) {
     return () => clearInterval(interval);
   }, [profile?.gym_id, profile?.id, gymConfig?.multiAdminEnabled]);
 
-  // Show onboarding wizard for admins who haven't completed setup
+  // Show onboarding wizard for admins who haven't completed setup.
+  // Multi-role users (e.g. member + admin via additional_roles) also need
+  // the wizard the first time they enter the admin view.
+  const isAdminEntitled = availableRoles?.some(r => r === 'admin' || r === 'super_admin');
   useEffect(() => {
-    if (profile?.role === 'admin' && gymConfig.setupCompleted === false) {
+    if (isAdminEntitled && gymConfig.setupCompleted === false) {
       setShowOnboardingWizard(true);
     }
-  }, [profile?.role, gymConfig.setupCompleted]);
+  }, [isAdminEntitled, gymConfig.setupCompleted]);
 
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
 
@@ -278,7 +281,8 @@ export default function AdminLayout({ children }) {
   // Unread admin-audience notifications (live).
   useEffect(() => {
     if (!profile?.id) return;
-    const audValues = profile.role === 'super_admin' ? ['admin', 'super_admin'] : ['admin'];
+    const isSuperAdmin = profile.role === 'super_admin' || (profile.additional_roles || []).includes('super_admin');
+    const audValues = isSuperAdmin ? ['admin', 'super_admin'] : ['admin'];
     const refreshUnread = () => {
       supabase
         .from('notifications')

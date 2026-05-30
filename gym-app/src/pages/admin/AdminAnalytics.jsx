@@ -376,9 +376,9 @@ const ANALYTICS_TAB_KEYS = [
 
 export default function AdminAnalytics() {
   const { t } = useTranslation('pages');
-  const { profile } = useAuth();
+  const { profile, availableRoles } = useAuth();
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'overview';
   const setActiveTab = useCallback((tab) => {

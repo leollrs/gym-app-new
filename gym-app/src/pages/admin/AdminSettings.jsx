@@ -33,10 +33,10 @@ function ConfigPill({ label, value, color }) {
  * config summary pills and the hub grid.
  */
 export default function AdminSettings() {
-  const { profile } = useAuth();
+  const { profile, availableRoles } = useAuth();
   const { t } = useTranslation('pages');
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   useEffect(() => { document.title = `${t('admin.settings.pageTitle', 'Admin - Settings')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 

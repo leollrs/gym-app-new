@@ -29,7 +29,7 @@ export default function AdminSettingsGymInfo() {
   const queryClient = useQueryClient();
   const { t, i18n } = useTranslation('pages');
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);

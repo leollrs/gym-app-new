@@ -93,13 +93,18 @@ Deno.serve(async (req) => {
   if (!isAuthorized) {
     const { data: callerProfile } = await supabase
       .from('profiles')
-      .select('id, role, gym_id')
+      .select('id, role, gym_id, additional_roles')
       .eq('id', callerId)
       .single();
 
+    const hasAdminPrimary = !!callerProfile && ADMIN_ROLES.has(callerProfile.role);
+    const hasAdminAdditional = !!callerProfile
+      && Array.isArray(callerProfile.additional_roles)
+      && callerProfile.additional_roles.some((r: string) => ADMIN_ROLES.has(r));
+
     if (
       callerProfile &&
-      ADMIN_ROLES.has(callerProfile.role) &&
+      (hasAdminPrimary || hasAdminAdditional) &&
       callerProfile.gym_id === redemption.gym_id
     ) {
       isAuthorized = true;

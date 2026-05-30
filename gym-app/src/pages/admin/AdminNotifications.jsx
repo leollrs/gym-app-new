@@ -175,7 +175,8 @@ export default function AdminNotifications() {
     const now = new Date().toISOString();
     const unreadIds = items.filter(n => !n.read_at).map(n => n.id);
     setItems(prev => prev.map(n => n.read_at ? n : { ...n, read_at: now }));
-    const audValues = profile?.role === 'super_admin' ? ['admin', 'super_admin'] : ['admin'];
+    const isSuperAdmin = profile?.role === 'super_admin' || (profile?.additional_roles || []).includes('super_admin');
+    const audValues = isSuperAdmin ? ['admin', 'super_admin'] : ['admin'];
     const { error } = await supabase
       .from('notifications')
       .update({ read_at: now })
@@ -216,7 +217,8 @@ export default function AdminNotifications() {
     const snapshot = items;
     setItems([]);
     const now = new Date().toISOString();
-    const audValues = profile?.role === 'super_admin' ? ['admin', 'super_admin'] : ['admin'];
+    const isSuperAdmin = profile?.role === 'super_admin' || (profile?.additional_roles || []).includes('super_admin');
+    const audValues = isSuperAdmin ? ['admin', 'super_admin'] : ['admin'];
     let { error } = await supabase
       .from('notifications')
       .update({ dismissed_at: now, read_at: now })

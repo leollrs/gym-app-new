@@ -129,7 +129,7 @@ async function fetchChurnData(gymId) {
 }
 
 export default function AdminChurn() {
-  const { profile } = useAuth();
+  const { profile, availableRoles } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -137,7 +137,7 @@ export default function AdminChurn() {
 
   const gymId = profile?.gym_id;
   const adminId = profile?.id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   useEffect(() => { document.title = `${t('admin.churn.title', 'Admin - Churn')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 

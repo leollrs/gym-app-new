@@ -57,14 +57,14 @@ import ClassesListView from './components/ClassesListView';
 // ── Main Page ──────────────────────────────────────────────
 // ────────────────────────────────────────────────────────────
 export default function AdminClasses() {
-  const { profile } = useAuth();
+  const { profile, availableRoles } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const { t, i18n } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
   const appLocale = i18n.language?.startsWith('es') ? 'es' : 'en';
   const gymId = profile?.gym_id;
-  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
+  const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
   const [activeTab, setActiveTab] = useState('classes');
   const [formModal, setFormModal] = useState(null);
