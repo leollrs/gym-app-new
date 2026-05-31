@@ -271,11 +271,17 @@ export default function TVDisplay() {
       });
       if (error) throw error;
       if (!data?.success) {
-        // Code was rotated or otherwise invalidated. Drop back to entry.
+        // Code rotated, this screen revoked by an admin, or otherwise
+        // invalidated. Drop back to the entry screen so it can re-auth.
         clearCredentials();
         setCredentials(null);
         setDashboardData(null);
-        setAuthError('Code expired. Please re-enter.');
+        const tStr = getTvStrings(lang);
+        setAuthError(
+          data?.error === 'revoked'
+            ? (tStr.entryErrRevoked || tStr.entryErrGeneric)
+            : (tStr.entryErrExpired || tStr.entryErrGeneric),
+        );
         return;
       }
       setDashboardData(data);
@@ -284,7 +290,9 @@ export default function TVDisplay() {
       // just leave the last-known data on screen and try again next tick.
       console.warn('[TV] refresh failed:', err?.message || err);
     }
-  }, [credentials?.code]);
+    // lang is included only for the bounce-error message; it's effectively
+    // static per TV (URL param / gym timezone), so it won't churn the interval.
+  }, [credentials?.code, lang]);
 
   useEffect(() => {
     if (!credentials?.code) return;
@@ -403,6 +411,7 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated, lang = 'en'
         setError(
           data?.error === 'invalid_code' ? tStr.entryErrInvalid :
           data?.error === 'gym_inactive' ? tStr.entryErrPaused :
+          data?.error === 'rate_limited' ? tStr.entryErrRateLimited :
           tStr.entryErrGeneric
         );
         return;
@@ -443,17 +452,22 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated, lang = 'en'
           <input
             type="text"
             value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
-            placeholder="••••••"
-            maxLength={6}
+            onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+            placeholder="••••••••"
+            maxLength={8}
             autoFocus
             inputMode="text"
             autoCapitalize="characters"
             autoComplete="off"
             spellCheck={false}
-            className="w-full text-center bg-transparent outline-none border-0 border-b-4 font-mono font-black tabular-nums tracking-[0.4em]"
+            className="w-full text-center bg-transparent outline-none border-0 border-b-4 font-mono font-black tabular-nums tracking-[0.3em]"
             style={{
-              fontSize: '88px',
+              // clamp so an 8-char code (migration 0491) fits the max-w-xl
+              // (576px) entry container WITHOUT horizontal overflow: at ~0.9em
+              // per monospace glyph incl. 0.3em tracking, 8 chars ≈ 7.2em, so
+              // the 72px cap keeps it ≈518px (< 576). Still a big hero input on
+              // a TV; scales down toward 44px on phones.
+              fontSize: 'clamp(44px, 9vw, 72px)',
               color: '#FFFFFF',
               borderColor: 'rgba(212,175,55,0.4)',
               padding: '12px 0',
@@ -469,7 +483,7 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated, lang = 'en'
 
           <button
             type="submit"
-            disabled={code.length !== 6 || submitting}
+            disabled={(code.length !== 6 && code.length !== 8) || submitting}
             className="px-10 py-4 rounded-xl text-[15px] font-bold transition-all disabled:opacity-30"
             style={{
               background: '#D4AF37',

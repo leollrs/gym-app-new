@@ -68,8 +68,9 @@ const ParticipantList = ({ challengeId, t }) => {
   useEffect(() => {
     supabase
       .from('challenge_participants')
-      .select('profiles(full_name)')
+      .select('profiles!inner(full_name)')
       .eq('challenge_id', challengeId)
+      .eq('profiles.is_staff', false) // staff don't appear in challenge participant lists
       .limit(100)
       .then(({ data }) => {
         setNames((data || []).map(p => p.profiles?.full_name).filter(Boolean));
@@ -130,8 +131,9 @@ const PastChallengeParticipants = ({ challenge, t }) => {
         // Participants with null/0 score and their profile info
         const { data } = await supabase
           .from('challenge_participants')
-          .select('profile_id, score, profiles(full_name, username, avatar_url)')
+          .select('profile_id, score, profiles!inner(full_name, username, avatar_url)')
           .eq('challenge_id', challenge.id)
+          .eq('profiles.is_staff', false) // staff excluded from challenge rankings
           .order('created_at', { ascending: true })
           .limit(500);
         if (cancelled) return;
@@ -392,8 +394,9 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
   const fetch = useCallback(async () => {
     const { data } = await supabase
       .from('challenge_participants')
-      .select('profile_id, score, profiles(full_name)')
+      .select('profile_id, score, profiles!inner(full_name)')
       .eq('challenge_id', challenge.id)
+      .eq('profiles.is_staff', false) // staff don't appear in challenge rankings
       .order('score', { ascending: false })
       .limit(100);
 
@@ -665,8 +668,9 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t }) => {
   const fetch = useCallback(async () => {
     const { data } = await supabase
       .from('challenge_participants')
-      .select('profile_id, score, profiles(full_name)')
+      .select('profile_id, score, profiles!inner(full_name)')
       .eq('challenge_id', challenge.id)
+      .eq('profiles.is_staff', false) // staff don't appear in challenge rankings
       .order('score', { ascending: false })
       .limit(100);
     setEntries((data || []).map(p => ({

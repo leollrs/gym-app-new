@@ -18,7 +18,7 @@ import { TV_STYLES, derivePalette } from '../../lib/tv/palette';
  * AdminTVDisplay — manages the gym's TV display code + connected screens.
  *
  * The admin sees:
- *   - The current 6-char code (large, copyable, also rendered as a QR for
+ *   - The current code (large, copyable, also rendered as a QR for
  *     scanning from a phone and loading onto the TV browser).
  *   - The URL the TV should be pointed at.
  *   - Step-by-step setup instructions.
@@ -150,6 +150,36 @@ export default function AdminTVDisplay() {
     },
   });
 
+  // ── Revoke ONE session (surgical disconnect) ─────────────────
+  // Unlike rotate (which kills every TV), this disconnects just the one
+  // screen on its next ≤30s heartbeat. The TV bounces to the code-entry
+  // screen and can reconnect by re-entering the same code.
+  const revokeMutation = useMutation({
+    mutationFn: async (sessionId) => {
+      const { data, error } = await supabase.rpc('admin_revoke_tv_session', {
+        p_gym_id: gymId,
+        p_session_id: sessionId,
+      });
+      if (error) throw error;
+      if (data && data.success === false) throw new Error(data.error || 'revoke_failed');
+      return data;
+    },
+    onSuccess: (_data, sessionId) => {
+      logAdminAction('tv_session_revoked', 'gym', gymId, { session_id: sessionId });
+      queryClient.invalidateQueries({ queryKey: ['admin-tv-sessions', gymId] });
+      showToast(
+        t('admin.tvDisplay.sessionRevoked', { defaultValue: 'TV disconnected. It will drop within 30 seconds.' }),
+        'success',
+      );
+    },
+    onError: () => {
+      showToast(
+        t('admin.tvDisplay.sessionRevokeFailed', { defaultValue: 'Could not disconnect that TV. Try again.' }),
+        'error',
+      );
+    },
+  });
+
   const copy = async (text, field) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -204,12 +234,17 @@ export default function AdminTVDisplay() {
               ) : (
                 <div className="flex items-center gap-3 flex-wrap mb-5">
                   <p
-                    className="font-mono font-black tabular-nums tracking-[0.25em]"
+                    className="font-mono font-black tabular-nums"
                     style={{
-                      fontSize: '56px',
+                      // clamp so a new 8-char code (migration 0491) doesn't
+                      // overflow the card on mobile — shrinks toward 34px on a
+                      // phone, stays a big 56px on desktop. Tighter tracking
+                      // (0.25em→0.18em) buys room for the 2 extra glyphs.
+                      fontSize: 'clamp(34px, 9vw, 56px)',
                       lineHeight: 1,
                       color: 'var(--color-accent)',
-                      letterSpacing: '0.25em',
+                      letterSpacing: '0.18em',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     {code}
@@ -379,7 +414,7 @@ export default function AdminTVDisplay() {
             <li className="flex gap-3">
               <span className="font-bold flex-shrink-0 w-5 text-right" style={{ color: 'var(--color-accent)' }}>2.</span>
               <span>
-                {t('admin.tvDisplay.step2', { defaultValue: 'Type the 6-character code shown above.' })}
+                {t('admin.tvDisplay.step2', { defaultValue: 'Type the code shown above.' })}
               </span>
             </li>
             <li className="flex gap-3">
@@ -453,7 +488,7 @@ export default function AdminTVDisplay() {
           </div>
           <p className="text-[11px] mt-3" style={{ color: 'var(--color-text-subtle)' }}>
             {t('admin.tvDisplay.multiTvNote', {
-              defaultValue: 'All TVs share the same 6-character code — rotating disconnects every one of them.',
+              defaultValue: 'All TVs share the same code — rotating disconnects every one of them.',
             })}
           </p>
         </AdminCard>
@@ -511,7 +546,12 @@ export default function AdminTVDisplay() {
           ) : (
             <ul className="divide-y" style={{ borderColor: 'var(--color-admin-border)' }}>
               {sessions.map((s) => (
-                <SessionRow key={s.session_id} session={s} />
+                <SessionRow
+                  key={s.session_id}
+                  session={s}
+                  onRevoke={() => revokeMutation.mutate(s.session_id)}
+                  isRevoking={revokeMutation.isPending && revokeMutation.variables === s.session_id}
+                />
               ))}
             </ul>
           )}
@@ -531,10 +571,13 @@ export default function AdminTVDisplay() {
   );
 }
 
-function SessionRow({ session }) {
+function SessionRow({ session, onRevoke, isRevoking }) {
   const { t, i18n } = useTranslation('pages');
   const locale = i18n.language === 'es' ? { locale: esLocale } : undefined;
   const browserHint = parseBrowser(session.user_agent);
+  // A revoked row reads as "Disconnected" regardless of last heartbeat — the
+  // RPC already forces is_alive=false for revoked sessions, but guard here too.
+  const revoked = !!session.revoked_at;
   return (
     <li className="px-5 py-3 flex items-center gap-3">
       <div
@@ -555,14 +598,37 @@ function SessionRow({ session }) {
       <div className="text-right">
         <p className="text-[11px] font-semibold flex items-center gap-1 justify-end" style={{ color: session.is_alive ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
           {session.is_alive ? <Wifi size={11} /> : <WifiOff size={11} />}
-          {session.is_alive
-            ? t('admin.tvDisplay.sessionLive', { defaultValue: 'Live' })
-            : t('admin.tvDisplay.sessionDropped', { defaultValue: 'Dropped' })}
+          {revoked
+            ? t('admin.tvDisplay.sessionDisconnected', { defaultValue: 'Disconnected' })
+            : session.is_alive
+              ? t('admin.tvDisplay.sessionLive', { defaultValue: 'Live' })
+              : t('admin.tvDisplay.sessionDropped', { defaultValue: 'Dropped' })}
         </p>
         <p className="text-[10.5px]" style={{ color: 'var(--color-text-subtle)' }}>
           {formatDistanceToNow(new Date(session.last_heartbeat_at), { addSuffix: true, ...(locale || {}) })}
         </p>
       </div>
+      {/* Deactivate — only meaningful while the TV is still alive. Once it has
+          dropped/been revoked there's nothing to kick. */}
+      {session.is_alive && !revoked && (
+        <button
+          onClick={onRevoke}
+          disabled={isRevoking}
+          title={t('admin.tvDisplay.sessionRevoke', { defaultValue: 'Disconnect this TV' })}
+          aria-label={t('admin.tvDisplay.sessionRevoke', { defaultValue: 'Disconnect this TV' })}
+          className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-40"
+          style={{
+            background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)',
+            color: 'var(--color-danger)',
+            border: '1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)',
+          }}
+        >
+          <WifiOff size={12} />
+          {isRevoking
+            ? t('admin.tvDisplay.sessionRevoking', { defaultValue: 'Disconnecting…' })
+            : t('admin.tvDisplay.sessionRevokeBtn', { defaultValue: 'Disconnect' })}
+        </button>
+      )}
     </li>
   );
 }
@@ -593,7 +659,7 @@ function RotateConfirm({ aliveCount, isPending, onCancel, onConfirm }) {
                     defaultValue: `${aliveCount} connected TV${aliveCount === 1 ? '' : 's'} will disconnect immediately. You'll need to type the new code on each one.`,
                   })
                 : t('admin.tvDisplay.rotateConfirmBody', {
-                    defaultValue: 'A new 6-character code will replace the current one. The old code stops working immediately.',
+                    defaultValue: 'A new code will replace the current one. The old code stops working immediately.',
                   })}
             </p>
           </div>

@@ -15,32 +15,56 @@ async function fetchSummaryData(gymId, summaryMonth) {
   const mStart = startOfMonth(target).toISOString();
   const mEnd   = endOfMonth(target).toISOString();
 
-  const [dailyStatsRes, challengePartsRes, allMembersRes, sessionsRes] = await Promise.all([
-    supabase.from('mv_gym_stats_daily').select('*').eq('gym_id', gymId).gte('stat_date', mStart.slice(0, 10)).lte('stat_date', mEnd.slice(0, 10)),
-    supabase.from('challenge_participants').select('id').eq('gym_id', gymId).gte('joined_at', mStart).lte('joined_at', mEnd).limit(2000),
-    supabase.from('profiles').select('id, created_at').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).limit(2000),
-    supabase.from('workout_sessions').select('profile_id, duration_seconds').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', mStart).lte('started_at', mEnd).limit(5000),
+  // Computed from raw tables, NOT mv_gym_stats_daily: migration 0476 revoked
+  // SELECT on that matview from `authenticated`, so the client can't read it
+  // (the old matview path silently returned empty). Every query joins profiles
+  // with `is_staff = false` so staff who train/check-in never inflate the
+  // member-facing monthly numbers. Limits are generous per single gym-month.
+  const [sessionsRes, checkInsRes, prsRes, challengePartsRes, allMembersRes] = await Promise.all([
+    supabase.from('workout_sessions')
+      .select('profile_id, duration_seconds, total_volume_lbs, profiles!inner(is_staff)')
+      .eq('gym_id', gymId).eq('status', 'completed').eq('profiles.is_staff', false)
+      .gte('started_at', mStart).lte('started_at', mEnd).limit(10000),
+    supabase.from('check_ins')
+      .select('id, profiles!inner(is_staff)')
+      .eq('gym_id', gymId).eq('profiles.is_staff', false)
+      .gte('checked_in_at', mStart).lte('checked_in_at', mEnd).limit(10000),
+    supabase.from('pr_history')
+      .select('id, profiles!inner(is_staff)')
+      .eq('gym_id', gymId).eq('profiles.is_staff', false)
+      .gte('achieved_at', mStart).lte('achieved_at', mEnd).limit(10000),
+    supabase.from('challenge_participants')
+      .select('id, profiles!inner(is_staff)')
+      .eq('gym_id', gymId).eq('profiles.is_staff', false)
+      .gte('joined_at', mStart).lte('joined_at', mEnd).limit(2000),
+    supabase.from('profiles')
+      .select('id, created_at')
+      .eq('gym_id', gymId).eq('role', 'member').eq('is_staff', false).eq('imported_archived', false).limit(5000),
   ]);
-  if (dailyStatsRes.error) logger.error('MonthlySummary: daily stats error:', dailyStatsRes.error);
+  if (sessionsRes.error) logger.error('MonthlySummary: sessions error:', sessionsRes.error);
+  if (checkInsRes.error) logger.error('MonthlySummary: check-ins error:', checkInsRes.error);
+  if (prsRes.error) logger.error('MonthlySummary: prs error:', prsRes.error);
   if (challengePartsRes.error) logger.error('MonthlySummary: challenge participants error:', challengePartsRes.error);
   if (allMembersRes.error) logger.error('MonthlySummary: all members error:', allMembersRes.error);
-  if (sessionsRes.error) logger.error('MonthlySummary: sessions error:', sessionsRes.error);
 
-  const dailyStats = dailyStatsRes.data || [];
-  const challengeParts = challengePartsRes.data;
-  const allMembers = allMembersRes.data;
   const sessions = sessionsRes.data || [];
+  const allMembers = allMembersRes.data || [];
+  const startMs = new Date(mStart).getTime();
+  const endMs = new Date(mEnd).getTime();
 
-  const totalWorkouts = dailyStats.reduce((sum, d) => sum + (d.total_sessions || 0), 0);
-  const totalVolume = dailyStats.reduce((sum, d) => sum + (parseFloat(d.total_volume_lbs) || 0), 0);
-  const totalCheckIns = dailyStats.reduce((sum, d) => sum + (d.total_check_ins || 0), 0);
-  const newMemberCount = dailyStats.reduce((sum, d) => sum + (d.new_members || 0), 0);
-  const totalPrs = dailyStats.reduce((sum, d) => sum + (d.new_prs || 0), 0);
-
+  const totalWorkouts = sessions.length;
+  const totalVolume = sessions.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
+  const totalCheckIns = (checkInsRes.data || []).length;
+  const totalPrs = (prsRes.data || []).length;
   const uniqueActive = new Set(sessions.map(s => s.profile_id)).size;
   const totalDuration = sessions.reduce((sum, s) => sum + (Math.round((parseFloat(s.duration_seconds) || 0) / 60)), 0);
   const avgWorkoutsPerActive = uniqueActive > 0 ? (totalWorkouts / uniqueActive).toFixed(1) : '0';
-  const totalMembersAtEnd = (allMembers || []).filter(m => new Date(m.created_at) <= new Date(mEnd)).length;
+
+  const newMemberCount = allMembers.filter(m => {
+    const c = new Date(m.created_at).getTime();
+    return c >= startMs && c <= endMs;
+  }).length;
+  const totalMembersAtEnd = allMembers.filter(m => new Date(m.created_at).getTime() <= endMs).length;
   const activeRate = totalMembersAtEnd > 0 ? Math.round((uniqueActive / totalMembersAtEnd) * 100) : 0;
 
   return {
@@ -53,7 +77,7 @@ async function fetchSummaryData(gymId, summaryMonth) {
     avgWorkoutsPerActive,
     checkIns: totalCheckIns,
     prs: totalPrs,
-    challengeJoins: (challengeParts || []).length,
+    challengeJoins: (challengePartsRes.data || []).length,
     totalMembers: totalMembersAtEnd,
     activeRate,
   };

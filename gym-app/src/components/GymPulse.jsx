@@ -68,16 +68,18 @@ const GymPulse = () => {
       // Fetch today's workout sessions for this gym via a join on profiles
       const { data: sessions } = await supabase
         .from('workout_sessions')
-        .select('profile_id, status, total_volume_lbs, completed_at, started_at, profiles!inner(gym_id, full_name, avatar_url, avatar_type, avatar_value)')
+        .select('profile_id, status, total_volume_lbs, completed_at, started_at, profiles!inner(gym_id, is_staff, full_name, avatar_url, avatar_type, avatar_value)')
         .eq('profiles.gym_id', gymId)
+        .eq('profiles.is_staff', false) // staff who train don't show in who's-here
         .gte('started_at', start)
         .lt('started_at', end);
 
       // Fetch today's check-ins for this gym
       const { data: checkIns } = await supabase
         .from('check_ins')
-        .select('profile_id, checked_in_at, profiles!inner(gym_id, full_name, avatar_url, avatar_type, avatar_value)')
+        .select('profile_id, checked_in_at, profiles!inner(gym_id, is_staff, full_name, avatar_url, avatar_type, avatar_value)')
         .eq('profiles.gym_id', gymId)
+        .eq('profiles.is_staff', false) // staff check-ins don't show in who's-here
         .gte('checked_in_at', start)
         .lt('checked_in_at', end);
 

@@ -146,6 +146,18 @@ export const AuthProvider = ({ children }) => {
   const [activeView, setActiveView] = useState(() => {
     try { return localStorage.getItem('tugympr_active_view') || null; } catch { return null; }
   });
+  // landingHint — a NON-authoritative, persisted copy of the user's resolved
+  // primary role from the last successful auth (written in fetchProfile after
+  // setProfile). On a fresh-cache cold boot the cached profile carries NO role
+  // (it's stripped for security at hydration), so without this hint a returning
+  // STAFF user's availableRoles would fall back to ['member'] for a frame and
+  // flash the member home before the live get_auth_context lands and redirects
+  // to /admin|/trainer. The hint lets us HOLD the splash for staff while keeping
+  // the instant, no-spinner boot for members. Pure UI hint like activeView —
+  // RLS still enforces real permissions server-side.
+  const [landingHint] = useState(() => {
+    try { return localStorage.getItem('tugympr_landing_hint') || null; } catch { return null; }
+  });
 
   // Fetch unread notification count for the *member* inbox only.
   // Trainer/admin views maintain their own badge counts (audience-scoped).
@@ -222,6 +234,12 @@ export const AuthProvider = ({ children }) => {
     }
 
     setProfile(data ?? null);
+    // Persist a non-authoritative landing hint (the user's primary role) so the
+    // NEXT cold boot knows whether this user lands on a privileged surface and
+    // can hold the splash instead of flashing the member home. See landingHint.
+    try {
+      if (data?.role) localStorage.setItem('tugympr_landing_hint', data.role);
+    } catch { /* quota — non-fatal, we just lose the anti-flash hint */ }
     if (data?.id) loadedProfileIdRef.current = data.id;
 
     // Update last_active_at for all roles (client-side, throttled once/hour)
@@ -890,6 +908,7 @@ export const AuthProvider = ({ children }) => {
     try { if (user?.id) await removePushTokens(user.id); } catch (err) { console.warn('[signOut] removePushTokens failed:', err); }
     try { clearPersistedUserData(); } catch (err) { console.warn('[signOut] clearPersistedUserData failed:', err); }
     try { localStorage.removeItem('tugympr_active_view'); } catch { /* noop */ }
+    try { localStorage.removeItem('tugympr_landing_hint'); } catch { /* noop */ }
     try { setActiveView(null); } catch { /* noop */ }
     try {
       await supabase.auth.signOut();
@@ -1037,12 +1056,13 @@ export const AuthProvider = ({ children }) => {
       // show LoadingScreen) until the real roles arrive — no member flash.
       // Pure members (activeView null/'member', ~all users) still boot
       // straight to the dashboard with no spinner.
-      if (activeView && activeView !== 'member') return [];
+      if ((activeView && activeView !== 'member') ||
+          (landingHint && landingHint !== 'member')) return [];
       return (!loading && profile) ? ['member'] : [];
     }
     const extras = Array.isArray(profile.additional_roles) ? profile.additional_roles : [];
     return [profile.role, ...extras.filter((r) => r !== profile.role)];
-  }, [profile, loading, activeView]);
+  }, [profile, loading, activeView, landingHint]);
 
   // effectiveView resolves to the user's current experience:
   // 1. activeView if set AND it's a role they actually have

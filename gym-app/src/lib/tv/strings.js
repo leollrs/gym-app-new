@@ -71,12 +71,15 @@ const STRINGS = {
     // Code-entry screen
     entryHeader: 'TuGymPR Display',
     entryTitle: 'Enter TV Code',
-    entryHint: 'Find the 6-character code in your admin panel under TV Display.',
+    entryHint: 'Find the code in your admin panel under TV Display.',
     entryConnect: 'Connect',
     entryConnecting: 'Connecting…',
     entryErrInvalid: 'Code not recognized. Check the admin panel for the current code.',
     entryErrPaused: 'This gym is paused.',
     entryErrGeneric: 'Could not connect. Try again.',
+    entryErrRateLimited: 'Too many attempts. Wait a few minutes and try again.',
+    entryErrExpired: 'Code expired. Please re-enter it.',
+    entryErrRevoked: 'This screen was disconnected by an admin. Re-enter the code to reconnect.',
     entrySession: 'Session:',
   },
   es: {
@@ -128,12 +131,15 @@ const STRINGS = {
     // Code-entry screen
     entryHeader: 'Pantalla TuGymPR',
     entryTitle: 'Escribe el código',
-    entryHint: 'Encuentra el código de 6 caracteres en tu panel de admin, sección Pantalla TV.',
+    entryHint: 'Encuentra el código en tu panel de admin, sección Pantalla TV.',
     entryConnect: 'Conectar',
     entryConnecting: 'Conectando…',
     entryErrInvalid: 'Código no reconocido. Revisa el panel de admin para ver el código actual.',
     entryErrPaused: 'Este gym está pausado.',
     entryErrGeneric: 'No se pudo conectar. Inténtalo de nuevo.',
+    entryErrRateLimited: 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.',
+    entryErrExpired: 'El código expiró. Vuelve a escribirlo.',
+    entryErrRevoked: 'Un admin desconectó esta pantalla. Vuelve a escribir el código para reconectar.',
     entrySession: 'Sesión:',
   },
 };
