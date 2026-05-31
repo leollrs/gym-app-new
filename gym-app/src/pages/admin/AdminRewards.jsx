@@ -20,7 +20,7 @@ import {
   PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton,
   SectionLabel, AdminPageShell, AdminTabs,
 } from '../../components/admin';
-import { typeColor, rewardKeys } from './components/rewardConstants';
+import { typeColor, rewardKeys, REWARD_INPUT_CLASS } from './components/rewardConstants';
 import RewardModal from './components/RewardModal';
 import RewardLog from './components/RewardLog';
 import BirthdayRewardsCard from './components/BirthdayRewardsCard';
@@ -387,7 +387,7 @@ export default function AdminRewards() {
                 onChange={e => setDeactivateNote(e.target.value)}
                 rows={2}
                 placeholder={t('admin.rewards.deactivateNotePlaceholder', 'Reason for deactivating...')}
-                className={inputClass + ' resize-none'}
+                className={REWARD_INPUT_CLASS + ' resize-none'}
               />
             </div>
 

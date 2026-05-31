@@ -6,12 +6,19 @@
  *
  * Definitions match the existing analytics charts to keep numbers
  * consistent across the page:
- *   - retention_rate: % of members who existed at month-start AND are
- *     still active (membership_status not cancelled/banned). Mirrors
- *     RetentionChart.
+ *   - retention_rate: BEHAVIORAL retention — of "established" members
+ *     (joined > 30 days ago), the % who logged a completed workout in
+ *     the last 30 days. This replaced the old status-snapshot version
+ *     ("% not currently cancelled/banned"), which systematically
+ *     OVERSTATED retention: it applied today's membership_status to
+ *     historical members and ignored that cancelled rows are often
+ *     deleted rather than flagged. The behavioral measure asks the real
+ *     question — "are members who've been here a while still showing
+ *     up?" — and pairs with RetentionChart's pooled survival curve.
  *   - new_members: count of members joined this calendar month.
- *   - active_rate: % of members with a completed workout in the last
- *     30 days. Mirrors the activity chart's "active member" definition.
+ *   - active_rate: % of ALL members with a completed workout in the last
+ *     30 days (includes brand-new members — that's the difference from
+ *     retention, which only counts established members).
  *   - avg_workouts: completed workouts in the last 30 days divided by
  *     total member count — a per-member training frequency proxy.
  *   - checkin_rate: avg daily check-ins / total members. Reads as "what
@@ -77,22 +84,22 @@ export async function fetchCurrentKPIs(gymId) {
     };
   }
 
-  // ── retention_rate ─────────────────────────────────────────────────
-  // Members who existed at month-start AND are still non-cancelled.
-  const startingMembers = members.filter((m) => m.created_at < monthStartIso);
-  const retained = startingMembers.filter(
-    (m) => m.membership_status !== 'cancelled' && m.membership_status !== 'banned'
-  ).length;
-  const retentionRate = startingMembers.length > 0
-    ? Math.round((retained / startingMembers.length) * 100)
+  // ── active_rate (all members) ──────────────────────────────────────
+  const activeIds = new Set(sessions.map((s) => s.profile_id));
+  const activeRate = Math.round((activeIds.size / totalMembers) * 100);
+
+  // ── retention_rate (behavioral, established members) ───────────────
+  // Of members who joined MORE than 30 days ago, what % logged a workout
+  // in the last 30 days. Reuses `sessions` (already = completed, last 30d)
+  // and `activeIds`. Behavioral, not status-based — see the file header.
+  const establishedMembers = members.filter((m) => m.created_at < thirtyDaysAgoIso);
+  const retainedEstablished = establishedMembers.filter((m) => activeIds.has(m.id)).length;
+  const retentionRate = establishedMembers.length > 0
+    ? Math.round((retainedEstablished / establishedMembers.length) * 100)
     : null;
 
   // ── new_members ────────────────────────────────────────────────────
   const newMembersThisMonth = members.filter((m) => m.created_at >= monthStartIso).length;
-
-  // ── active_rate ────────────────────────────────────────────────────
-  const activeIds = new Set(sessions.map((s) => s.profile_id));
-  const activeRate = Math.round((activeIds.size / totalMembers) * 100);
 
   // ── avg_workouts (per member, last 30d) ────────────────────────────
   const avgWorkouts = Math.round((sessions.length / totalMembers) * 10) / 10;

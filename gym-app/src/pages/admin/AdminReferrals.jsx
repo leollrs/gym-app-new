@@ -79,7 +79,7 @@ export default function AdminReferrals() {
 
   // Fetch referrals
   const { data: referrals = [], isLoading } = useQuery({
-    queryKey: adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId, period.key],
+    queryKey: [...(adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId]), period.key],
     queryFn: async () => {
       let query = supabase
         .from('referrals')
@@ -104,7 +104,8 @@ export default function AdminReferrals() {
       const { error } = await supabase
         .from('referrals')
         .update({ status: 'completed', completed_at: new Date().toISOString() })
-        .eq('id', referralId);
+        .eq('id', referralId)
+        .eq('gym_id', gymId); // defense-in-depth: scope to this gym, not RLS alone
       if (error) throw error;
     },
     onSuccess: () => {
@@ -120,7 +121,8 @@ export default function AdminReferrals() {
       const { error } = await supabase
         .from('referrals')
         .update({ status: 'expired' })
-        .eq('id', referralId);
+        .eq('id', referralId)
+        .eq('gym_id', gymId); // defense-in-depth: scope to this gym, not RLS alone
       if (error) throw error;
     },
     onSuccess: () => {

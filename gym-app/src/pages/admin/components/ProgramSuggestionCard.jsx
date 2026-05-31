@@ -45,9 +45,9 @@ export default function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram 
         ...s,
         topGoal: topGoal[0],
         goalCount: topGoal[1],
-        totalMembers: profiles.length,
+        totalMembers: onboardings.length,
         topLevel: topLevel?.[0],
-        pct: Math.round((topGoal[1] / profiles.length) * 100),
+        pct: Math.round((topGoal[1] / onboardings.length) * 100),
       };
     },
     staleTime: 24 * 60 * 60 * 1000,

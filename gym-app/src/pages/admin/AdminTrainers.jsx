@@ -199,12 +199,26 @@ export default function AdminTrainers() {
   // Promote a member to trainer role
   const promoteToTrainer = async (memberId) => {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: 'trainer' })
-        .eq('id', memberId)
-        .eq('gym_id', gymId);
-      if (error) throw error;
+      // Prefer the atomic, gym-clamped, additional_roles-aware RPC (migration
+      // 0489) — mirrors demote_trainer_atomically. The old direct
+      // `profiles.role='trainer'` write was RLS-only and clobbered the primary
+      // role of multi-role users. Fall back to that write only if the RPC isn't
+      // deployed yet (migration window).
+      const { error: rpcErr } = await supabase.rpc('promote_member_to_trainer', { p_member_id: memberId });
+      if (rpcErr) {
+        const rpcMissing = (
+          rpcErr.code === '42883'
+          || rpcErr.code === 'PGRST202'
+          || /does not exist/i.test(rpcErr.message || '')
+        );
+        if (!rpcMissing) throw rpcErr;
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: 'trainer' })
+          .eq('id', memberId)
+          .eq('gym_id', gymId);
+        if (error) throw error;
+      }
       logAdminAction('add_trainer', 'trainer', memberId);
       setShowAddTrainer(false);
       await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });

@@ -56,27 +56,42 @@ export async function sendOutreach({
   const gymNameToken = personalize.gymName || '';
   const coachNameToken = personalize.coachName || personalize.gymName || '';
 
-  // Personalize the body for each recipient. Order matters for `full_name` vs
+  // HTML-escape member-controlled values before they're substituted into the
+  // pre-rendered designer HTML. The designer renderer escapes its own literals
+  // but leaves merge tokens (e.g. {{first_name}}) intact for per-recipient
+  // substitution here — without escaping, a member whose name contains markup
+  // (`<img onerror=…>`) would inject active HTML into the email they receive.
+  const escapeHtml = (s) => String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  // Personalize text for each recipient. Order matters for `full_name` vs
   // `name` — replace the longer token first so it doesn't get clipped.
-  const renderBody = (recipient, raw) => {
+  // `escape` is set ONLY for the HTML email path (plain push/SMS/in-app text
+  // must NOT be HTML-escaped).
+  const renderTokens = (recipient, raw, { escape = false } = {}) => {
     if (!raw) return '';
     const first = (recipient.full_name || '').split(' ')[0] || '';
     const s = statsMap[recipient.id] || {};
+    const v = (x) => (escape ? escapeHtml(x) : x);
     return raw
-      .replace(/\{\{full_name\}\}/g, recipient.full_name || '')
-      .replace(/\{\{first_name\}\}/g, first)
-      .replace(/\{\{name\}\}/g, recipient.full_name || '')
-      .replace(/\{\{gym_name\}\}/g, gymNameToken)
-      .replace(/\{\{coach_name\}\}/g, coachNameToken)
-      .replace(/\{\{streak_count\}\}/g, s.streak_count ?? '0')
-      .replace(/\{\{workout_count\}\}/g, s.workout_count ?? '0')
-      .replace(/\{\{days_inactive\}\}/g, s.days_inactive ?? '—');
+      .replace(/\{\{full_name\}\}/g, v(recipient.full_name || ''))
+      .replace(/\{\{first_name\}\}/g, v(first))
+      .replace(/\{\{name\}\}/g, v(recipient.full_name || ''))
+      .replace(/\{\{gym_name\}\}/g, v(gymNameToken))
+      .replace(/\{\{coach_name\}\}/g, v(coachNameToken))
+      .replace(/\{\{streak_count\}\}/g, v(s.streak_count ?? '0'))
+      .replace(/\{\{workout_count\}\}/g, v(s.workout_count ?? '0'))
+      .replace(/\{\{days_inactive\}\}/g, v(s.days_inactive ?? '—'));
   };
 
   const tasks = recipients.map(async (r) => {
-    const personalizedBody = renderBody(r, body);
-    const personalizedSubject = renderBody(r, subject);
-    const personalizedHtml = html ? renderBody(r, html) : null;
+    const personalizedBody = renderTokens(r, body);
+    const personalizedSubject = renderTokens(r, subject);
+    const personalizedHtml = html ? renderTokens(r, html, { escape: true }) : null;
 
     // Push + in-app (notifications row) via the same helper.
     if (channels.push) {
@@ -114,13 +129,18 @@ export async function sendOutreach({
       if (!r.email) { results.skipped.noEmail++; return; }
       try {
         const { data: { session } } = await supabase.auth.getSession();
+        // The edge function requires `memberId` (it looks up the member, verifies
+        // they belong to the caller's gym, resolves the stored email, audits, and
+        // rate-limits). When a designer template is attached we pass the
+        // pre-rendered, token-substituted `html`; otherwise we send `body` and the
+        // function wraps it in the gym's branded template.
         const { error } = await supabase.functions.invoke('send-admin-email', {
           headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
           body: {
-            to: r.email,
+            memberId: r.id,
             subject: personalizedSubject || 'Message from your gym',
-            html: personalizedHtml || `<p>${personalizedBody.replace(/\n/g, '<br>')}</p>`,
-            text: personalizedBody,
+            body: personalizedBody || personalizedSubject || ' ',
+            ...(personalizedHtml ? { html: personalizedHtml } : {}),
           },
         });
         if (error) throw error;
@@ -135,9 +155,11 @@ export async function sendOutreach({
       if (!r.phone) { results.skipped.noPhone++; return; }
       try {
         const { data: { session } } = await supabase.auth.getSession();
+        // send-sms derives the recipient phone + gym from the member record
+        // server-side; it requires `{ memberId, body }` (a raw `to` is ignored).
         const { error } = await supabase.functions.invoke('send-sms', {
           headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
-          body: { to: r.phone, message: personalizedBody },
+          body: { memberId: r.id, body: personalizedBody },
         });
         if (error) throw error;
         results.sms.sent++;

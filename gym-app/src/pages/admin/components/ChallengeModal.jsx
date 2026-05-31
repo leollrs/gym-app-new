@@ -392,11 +392,15 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                     <div className="flex-1 flex gap-2">
                       <div className="w-24">
                         <input
-                          type="number" min={0} value={r.points}
+                          type="number" min={0} max={100000} value={r.points}
                           aria-label={`${medals[i]} ${t('admin.challenges.points', 'points')}`}
                           onChange={e => {
+                            // Clamp to [0, 100000] to mirror the server cap in
+                            // award_challenge_prizes (migration 0490). Prevents an
+                            // admin minting unbounded points via the prize field.
+                            const pts = Math.max(0, Math.min(parseInt(e.target.value, 10) || 0, 100000));
                             const updated = [...form.rewards];
-                            updated[i] = { ...r, points: parseInt(e.target.value) || 0 };
+                            updated[i] = { ...r, points: pts };
                             set('rewards', updated);
                           }}
                           className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 text-center"

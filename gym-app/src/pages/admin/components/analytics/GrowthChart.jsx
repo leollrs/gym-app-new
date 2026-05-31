@@ -13,9 +13,9 @@ import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin
 import ChartTooltip from '../../../../components/ChartTooltip';
 import { es as esLocale } from 'date-fns/locale';
 
-async function fetchGrowthData(gymId, dateFnsLocale) {
+async function fetchGrowthData(gymId, dateFnsLocale, span) {
   const now = new Date();
-  const from = subMonths(startOfMonth(now), 11).toISOString();
+  const from = subMonths(startOfMonth(now), span - 1).toISOString();
 
   const { data: members, error } = await supabase
     .from('profiles')
@@ -27,7 +27,7 @@ async function fetchGrowthData(gymId, dateFnsLocale) {
   if (error) throw error;
 
   const monthMap = {};
-  for (let i = 11; i >= 0; i--) {
+  for (let i = span - 1; i >= 0; i--) {
     const label = format(subMonths(now, i), 'MMM yy', dateFnsLocale);
     monthMap[label] = 0;
   }
@@ -39,12 +39,13 @@ async function fetchGrowthData(gymId, dateFnsLocale) {
   return Object.entries(monthMap).map(([month, count]) => ({ month, count }));
 }
 
-function GrowthChart({ gymId }) {
+function GrowthChart({ gymId, monthsBack }) {
   const { t, i18n } = useTranslation('pages');
   const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : {};
+  const span = monthsBack || 12; // 'All' (null) caps at 12 months for growth
   const { data: growthData = [], isLoading, isError, refetch } = useQuery({
-    queryKey: [...adminKeys.analytics.growth(gymId), i18n.language],
-    queryFn: () => fetchGrowthData(gymId, dateFnsLocale),
+    queryKey: [...adminKeys.analytics.growth(gymId), i18n.language, span],
+    queryFn: () => fetchGrowthData(gymId, dateFnsLocale, span),
     enabled: !!gymId,
   });
 
@@ -71,7 +72,7 @@ function GrowthChart({ gymId }) {
       <div className="flex items-center justify-between mb-2">
         <div className="min-w-0 flex-1">
           <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight truncate">{t('admin.analytics.growthTitle', 'Member Growth')}</p>
-          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-relaxed">{t('admin.analytics.growthFooter', 'New signups per month — last 12 months')}</p>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-relaxed">{t('admin.analytics.growthFooterDynamic', { count: span, defaultValue: 'New signups per month — last {{count}} months' })}</p>
         </div>
         <button
           onClick={handleExport}
@@ -105,7 +106,7 @@ function GrowthChart({ gymId }) {
               tick={{ fontSize: 10, fill: 'var(--color-text-muted)', fontWeight: 500 }}
               tickLine={false}
               axisLine={false}
-              interval={2}
+              interval={Math.max(0, Math.floor(span / 6))}
               dy={6}
             />
             <YAxis

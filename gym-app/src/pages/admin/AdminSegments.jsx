@@ -478,6 +478,11 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  // Message-all uses a proper modal (was window.prompt(), which is unreliable in
+  // the Capacitor/iOS WKWebView — see project memory on native nav/dialogs).
+  const [msgModalOpen, setMsgModalOpen] = useState(false);
+  const [msgText, setMsgText] = useState('');
+  const [sending, setSending] = useState(false);
 
   const { data: members = [], isLoading } = useQuery({
     queryKey: [...adminKeys.segments.members(gymId, segment.id), refreshKey],
@@ -534,9 +539,9 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
   };
 
   const handleSendMessage = async () => {
-    if (!filtered.length) return;
-    const message = prompt(t('admin.segments.messagePrompt', 'Message to send to all members in this segment:'));
-    if (!message?.trim()) return;
+    const message = msgText.trim();
+    if (!filtered.length || !message) return;
+    setSending(true);
 
     // Throttle: send in batches of 10 in parallel, then a short pause before the
     // next batch. This avoids hammering Supabase with hundreds of sequential
@@ -553,7 +558,7 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
         if (!convoId) { failed++; return; }
         const { data: convo } = await supabase.from('conversations').select('encryption_seed').eq('id', convoId).single();
         const seed = convo?.encryption_seed || convoId;
-        const encrypted = await encryptMessage(message.trim(), convoId, seed);
+        const encrypted = await encryptMessage(message, convoId, seed);
         await supabase.from('direct_messages').insert({ conversation_id: convoId, sender_id: adminId, body: encrypted });
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
         sent++;
@@ -570,6 +575,10 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
         await new Promise(r => setTimeout(r, PAUSE_MS));
       }
     }
+
+    setSending(false);
+    setMsgModalOpen(false);
+    setMsgText('');
 
     // Surface partial failures so the admin can retry rather than discover later.
     if (failed > 0) {
@@ -617,7 +626,7 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
           <button onClick={() => setRefreshKey(k => k + 1)} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all" title={t('admin.segments.refresh', 'Refresh')} aria-label={t('admin.segments.refresh', 'Refresh')}>
             <RefreshCw size={13} />
           </button>
-          <button onClick={handleSendMessage} disabled={!filtered.length} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all disabled:opacity-40" title={t('admin.segments.sendMessage', 'Message All')} aria-label={t('admin.segments.sendMessage', 'Message All')}>
+          <button onClick={() => setMsgModalOpen(true)} disabled={!filtered.length} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all disabled:opacity-40" title={t('admin.segments.sendMessage', 'Message All')} aria-label={t('admin.segments.sendMessage', 'Message All')}>
             <Send size={13} />
           </button>
           <button onClick={handleExport} disabled={!filtered.length} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all disabled:opacity-40" title={t('admin.segments.export', 'Export CSV')} aria-label={t('admin.segments.export', 'Export CSV')}>
@@ -628,6 +637,53 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
           </button>
         </div>
       </div>
+
+      {/* Message-all modal (replaces window.prompt — native-safe) */}
+      {msgModalOpen && (
+        <AdminModal
+          isOpen
+          onClose={() => { if (!sending) { setMsgModalOpen(false); setMsgText(''); } }}
+          title={t('admin.segments.sendMessage', 'Message All')}
+          titleIcon={Send}
+          size="md"
+        >
+          <div className="space-y-4">
+            <p className="text-[13px] text-[#9CA3AF]">
+              {t('admin.segments.messageModalDesc', {
+                count: filtered.length,
+                defaultValue: 'This sends a direct message to all {{count}} members in this segment.',
+              })}
+            </p>
+            <textarea
+              value={msgText}
+              onChange={e => setMsgText(e.target.value)}
+              rows={4}
+              maxLength={1000}
+              autoFocus
+              placeholder={t('admin.segments.messagePlaceholder', 'Write your message…')}
+              className="w-full bg-white/[0.04] border border-white/8 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30 resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setMsgModalOpen(false); setMsgText(''); }}
+                disabled={sending}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-medium text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+              >
+                {t('common:cancel', 'Cancel')}
+              </button>
+              <button
+                onClick={handleSendMessage}
+                disabled={sending || !msgText.trim()}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {sending
+                  ? t('admin.segments.sending', 'Sending…')
+                  : t('admin.segments.sendToCount', { count: filtered.length, defaultValue: 'Send to {{count}}' })}
+              </button>
+            </div>
+          </div>
+        </AdminModal>
+      )}
 
       {/* Member list */}
       <div className="lg:max-h-[calc(100vh-420px)] overflow-y-auto">

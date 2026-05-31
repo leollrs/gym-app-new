@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Download } from 'lucide-react';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
-import { format, subMonths, startOfMonth, endOfMonth, addDays, differenceInMonths } from 'date-fns';
+import { format, subMonths, startOfMonth, addDays } from 'date-fns';
 import { exportCSV } from '../../../../lib/csvExport';
 import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
 
@@ -14,9 +14,9 @@ const cohortCellStyle = (pct) => {
   return                  { bg: 'bg-red-500/15',     text: 'text-red-400' };
 };
 
-async function fetchCohortData(gymId) {
+async function fetchCohortData(gymId, span) {
   const now = new Date();
-  const from = subMonths(startOfMonth(now), 5).toISOString();
+  const from = subMonths(startOfMonth(now), span - 1).toISOString();
 
   const { data: members, error: cohMemError } = await supabase
     .from('profiles')
@@ -49,7 +49,7 @@ async function fetchCohortData(gymId) {
   });
 
   const rows = [];
-  for (let i = 5; i >= 0; i--) {
+  for (let i = span - 1; i >= 0; i--) {
     const cohortMonthDate = subMonths(now, i);
     const label           = format(cohortMonthDate, 'MMM yy');
     const cohortMembers   = cohortMap[label] || [];
@@ -90,11 +90,12 @@ async function fetchCohortData(gymId) {
   return rows;
 }
 
-export default function CohortTable({ gymId }) {
+export default function CohortTable({ gymId, monthsBack }) {
   const { t } = useTranslation('pages');
+  const span = monthsBack || 6; // 'All' (null) caps at 6 cohorts
   const { data: cohortData = [], isLoading, isError, refetch } = useQuery({
-    queryKey: adminKeys.analytics.cohort(gymId),
-    queryFn: () => fetchCohortData(gymId),
+    queryKey: [...adminKeys.analytics.cohort(gymId), span],
+    queryFn: () => fetchCohortData(gymId, span),
     enabled: !!gymId,
   });
 

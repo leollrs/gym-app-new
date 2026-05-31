@@ -338,11 +338,16 @@ function SectionDivider({ label }) {
 }
 
 // ── Period Selector Pills ────────────────────────────────
+// Every chart on this page is a MONTHLY trend (growth / retention curve /
+// engagement / cohort), so the selector is month-spans, not day windows — a
+// "7 day" window of a monthly chart is meaningless. `months` drives the trend
+// charts; `days` is kept only so the shared InsightsRangeContext still
+// interoperates with the day-based sibling pages (Attendance/Revenue/NPS).
 const PERIODS = [
-  { key: '7d', labelKey: 'admin.analytics.period7d', fallback: '7d', days: 7 },
-  { key: '30d', labelKey: 'admin.analytics.period30d', fallback: '30d', days: 30 },
-  { key: '90d', labelKey: 'admin.analytics.period90d', fallback: '90d', days: 90 },
-  { key: 'all', labelKey: 'admin.analytics.periodAll', fallback: 'All Time', days: null },
+  { key: '3m', labelKey: 'admin.analytics.period3m', fallback: '3M', days: 90, months: 3 },
+  { key: '6m', labelKey: 'admin.analytics.period6m', fallback: '6M', days: 180, months: 6 },
+  { key: '12m', labelKey: 'admin.analytics.period12m', fallback: '12M', days: 365, months: 12 },
+  { key: 'all', labelKey: 'admin.analytics.periodAll', fallback: 'All', days: null, months: null },
 ];
 
 function PeriodSelector({ value, onChange }) {
@@ -389,7 +394,7 @@ export default function AdminAnalytics() {
   // (e.g. NPS set 180d which Analytics doesn't offer), fall back to '30d'
   // for display + queries without overwriting the shared state.
   const { periodDays: ctxPeriodDays, setPeriodDays } = useInsightsRange();
-  const matchedPeriod = PERIODS.find((p) => p.days === ctxPeriodDays) ?? PERIODS.find((p) => p.key === '30d');
+  const matchedPeriod = PERIODS.find((p) => p.days === ctxPeriodDays) ?? PERIODS.find((p) => p.key === '6m');
   const period = matchedPeriod.key;
   const setPeriod = (key) => setPeriodDays((PERIODS.find((p) => p.key === key) || {}).days ?? null);
 
@@ -435,21 +440,29 @@ export default function AdminAnalytics() {
           the admin picked. PERIODS map: 7d/30d/90d → days; 'all' → null (component
           interprets null as "no upper bound"). */}
       {(() => {
-        const periodDays = (PERIODS.find((p) => p.key === period) || {}).days ?? null;
+        const selectedPeriod = PERIODS.find((p) => p.key === period) || {};
+        // monthsBack drives the monthly trend charts (Growth / Retention curve /
+        // Engagement / Cohort). null = "All" → each chart applies its own bounded
+        // cap. Snapshot cards (KPIs, LTV, Lifecycle, Onboarding, Trainer,
+        // MonthlySummary) intentionally ignore it — they're point-in-time or have
+        // their own range control.
+        const monthsBack = selectedPeriod.months ?? null;
         return (
           <SwipeableTabContent tabs={ANALYTICS_TABS} active={activeTab} onChange={setActiveTab}>
             {(tabKey) => {
               if (tabKey === 'overview') return (
                 <>
                   <FadeIn delay={30}>
-                    <KPITargets gymId={gymId} period={period} periodDays={periodDays} />
+                    {/* KPI targets are monthly / 30d by design — period N/A. */}
+                    <KPITargets gymId={gymId} />
                   </FadeIn>
                   <FadeIn delay={50}>
                     <SectionDivider label={t('admin.analytics.sectionLifecycle', 'Lifecycle')} />
                   </FadeIn>
                   <FadeIn delay={60}>
                     <div className="mb-8">
-                      <LifecycleStages gymId={gymId} period={period} periodDays={periodDays} />
+                      {/* Snapshot — current lifecycle mix; period N/A by design. */}
+                      <LifecycleStages gymId={gymId} />
                     </div>
                   </FadeIn>
                 </>
@@ -463,8 +476,8 @@ export default function AdminAnalytics() {
                   </FadeIn>
                   <FadeIn delay={40}>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-                      <GrowthChart gymId={gymId} period={period} periodDays={periodDays} />
-                      <RetentionChart gymId={gymId} period={period} periodDays={periodDays} />
+                      <GrowthChart gymId={gymId} monthsBack={monthsBack} />
+                      <RetentionChart gymId={gymId} monthsBack={monthsBack} />
                     </div>
                   </FadeIn>
                 </>
@@ -476,8 +489,9 @@ export default function AdminAnalytics() {
                   </FadeIn>
                   <FadeIn delay={40}>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-                      <OnboardingFunnel gymId={gymId} period={period} periodDays={periodDays} />
-                      <ChallengeStats gymId={gymId} period={period} periodDays={periodDays} />
+                      {/* Snapshots / own filters — period N/A by design. */}
+                      <OnboardingFunnel gymId={gymId} />
+                      <ChallengeStats gymId={gymId} />
                     </div>
                   </FadeIn>
                   <FadeIn delay={60}>
@@ -485,7 +499,7 @@ export default function AdminAnalytics() {
                   </FadeIn>
                   <FadeIn delay={70}>
                     <div className="mb-8">
-                      <ActivityChart gymId={gymId} period={period} periodDays={periodDays} />
+                      <ActivityChart gymId={gymId} monthsBack={monthsBack} />
                     </div>
                   </FadeIn>
                 </>
@@ -517,7 +531,7 @@ export default function AdminAnalytics() {
                   </FadeIn>
                   <FadeIn delay={40}>
                     <div className="mb-8">
-                      <CohortTable gymId={gymId} period={period} periodDays={periodDays} />
+                      <CohortTable gymId={gymId} monthsBack={monthsBack} />
                     </div>
                   </FadeIn>
                   <FadeIn delay={60}>
@@ -525,14 +539,16 @@ export default function AdminAnalytics() {
                   </FadeIn>
                   <FadeIn delay={70}>
                     <div className="mb-8">
-                      <TrainerPerformance gymId={gymId} period={period} periodDays={periodDays} />
+                      {/* 30-day performance snapshot — own fixed window by design. */}
+                      <TrainerPerformance gymId={gymId} />
                     </div>
                   </FadeIn>
                   <FadeIn delay={90}>
                     <SectionDivider label={t('admin.analytics.sectionMonthlySummary', 'Monthly Summary')} />
                   </FadeIn>
                   <FadeIn delay={100}>
-                    <MonthlySummary gymId={gymId} period={period} periodDays={periodDays} />
+                    {/* Has its own month navigator — period selector N/A. */}
+                    <MonthlySummary gymId={gymId} />
                   </FadeIn>
                 </>
               );

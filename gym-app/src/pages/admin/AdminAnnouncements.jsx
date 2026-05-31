@@ -90,18 +90,31 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
       logAdminAction('create_announcement', 'announcement', null, { title: finalTitle });
       posthog?.capture('admin_announcement_sent', { type: form.type });
       queryClient.invalidateQueries({ queryKey: adminKeys.announcements(gymId) });
-      showToast(t('admin.announcements.published', 'Announcement published'), 'success');
-      // Forward the form-selected type so per-type opt-outs are honored —
-      // broadcastNotification → sendPushToUser passes `type` through as
-      // `notification_type` to the edge function, which gates on
-      // notif_<type>_enabled per recipient.
-      broadcastNotification({
-        gymId,
-        type: form.type || 'announcement',
-        title: finalTitle,
-        body: finalMessage,
-        dedupKey: `announcement_${form.type || 'announcement'}_${finalTitle.replace(/\s+/g, '_').slice(0, 40)}_${Date.now() / 60000 | 0}`,
-      });
+      // A future-dated announcement must NOT push now — the member-facing feed
+      // (MyGym / Notifications) already hides it until published_at via a
+      // `.lte('published_at', now)` filter, and the broadcast_due_announcements
+      // cron (migration 0490) fires the push when published_at passes. Pushing
+      // here would notify everyone immediately, defeating the schedule.
+      const isScheduled = form.scheduled_for && isFuture(new Date(form.scheduled_for));
+      showToast(
+        isScheduled
+          ? t('admin.announcements.scheduled', 'Announcement scheduled')
+          : t('admin.announcements.published', 'Announcement published'),
+        'success',
+      );
+      if (!isScheduled) {
+        // Forward the form-selected type so per-type opt-outs are honored —
+        // broadcastNotification → sendPushToUser passes `type` through as
+        // `notification_type` to the edge function, which gates on
+        // notif_<type>_enabled per recipient.
+        broadcastNotification({
+          gymId,
+          type: form.type || 'announcement',
+          title: finalTitle,
+          body: finalMessage,
+          dedupKey: `announcement_${form.type || 'announcement'}_${finalTitle.replace(/\s+/g, '_').slice(0, 40)}_${Date.now() / 60000 | 0}`,
+        });
+      }
       onClose();
     },
     onError: (err) => { setError(err.message); showToast(err.message, 'error'); },

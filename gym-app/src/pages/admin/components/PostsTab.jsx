@@ -42,7 +42,8 @@ export default function PostsTab({ gymId }) {
     await supabase
       .from('activity_feed_items')
       .update({ is_deleted: nextDeleted })
-      .eq('id', post.id);
+      .eq('id', post.id)
+      .eq('gym_id', gymId); // defense-in-depth: scope to this gym, not RLS alone
     logAdminAction('moderation', 'activity_feed_item', post.id, {
       action: nextDeleted ? 'soft_delete' : 'restore',
       post_type: post.type,

@@ -12,9 +12,9 @@ import { es as esLocale } from 'date-fns/locale';
 import { exportCSV } from '../../../../lib/csvExport';
 import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
 
-async function fetchActivityData(gymId, dateFnsLocale) {
+async function fetchActivityData(gymId, dateFnsLocale, span) {
   const now = new Date();
-  const windowStart = startOfMonth(subMonths(now, 5));
+  const windowStart = startOfMonth(subMonths(now, span - 1));
 
   // ONE query over the whole 6-month window + members, in parallel — was an
   // N+1 (one sequential, unbounded sessions query PER month = 6 serial RTTs).
@@ -39,7 +39,7 @@ async function fetchActivityData(gymId, dateFnsLocale) {
   const sessions = sessionsRes.data || [];
   const months = [];
 
-  for (let i = 5; i >= 0; i--) {
+  for (let i = span - 1; i >= 0; i--) {
     const monthStart = startOfMonth(subMonths(now, i));
     const monthEnd   = endOfMonth(subMonths(now, i));
 
@@ -64,12 +64,13 @@ async function fetchActivityData(gymId, dateFnsLocale) {
   return months;
 }
 
-function ActivityChart({ gymId }) {
+function ActivityChart({ gymId, monthsBack }) {
   const { t, i18n } = useTranslation('pages');
   const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : {};
+  const span = monthsBack || 6; // 'All' (null) caps at 6 months for engagement
   const { data: activityData = [], isLoading, isError, refetch } = useQuery({
-    queryKey: [...adminKeys.analytics.activity(gymId), i18n.language],
-    queryFn: () => fetchActivityData(gymId, dateFnsLocale),
+    queryKey: [...adminKeys.analytics.activity(gymId), i18n.language, span],
+    queryFn: () => fetchActivityData(gymId, dateFnsLocale, span),
     enabled: !!gymId,
     // Engagement data changes slowly; 5 min avoids a refetch on every
     // analytics-tab switch (matches LTVCard / currentKPIs).

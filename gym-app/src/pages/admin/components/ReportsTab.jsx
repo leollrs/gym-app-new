@@ -62,7 +62,8 @@ export default function ReportsTab({ gymId }) {
     await supabase
       .from('content_reports')
       .update({ status: newStatus, reviewed_at: new Date().toISOString() })
-      .eq('id', report.id);
+      .eq('id', report.id)
+      .eq('gym_id', gymId); // defense-in-depth: scope to this gym, not RLS alone
 
     // If actioned, soft-delete the underlying content based on its type.
     // - activity : soft-delete the feed item (existing behavior).
@@ -81,7 +82,8 @@ export default function ReportsTab({ gymId }) {
         await supabase
           .from('activity_feed_items')
           .update({ is_deleted: true })
-          .eq('id', report.feed_item_id);
+          .eq('id', report.feed_item_id)
+          .eq('gym_id', gymId); // defense-in-depth
       } else if (ct === 'comment' && report.content_id) {
         await supabase
           .from('feed_comments')

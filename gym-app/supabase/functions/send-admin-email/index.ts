@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
     // ── END GYM USAGE CAP CHECK ─────────────────────────────────
 
     const payload = await req.json();
-    const { memberId, subject, body, overrideEmail, emailOverrideAcknowledged, lang, rewardType, rewardLabel, testMode, to, html } = payload;
+    const { memberId, subject, body, overrideEmail, emailOverrideAcknowledged, lang, rewardType, rewardLabel, testMode, to, html, prerenderedHtml } = payload;
 
     // ── TEST MODE: admin previewing a template by sending it to a free-form address ──
     // Skips member lookup, audit-log linkage, and the buildEmailHtml branding wrap —
@@ -319,16 +319,28 @@ Deno.serve(async (req) => {
       return jsonResp({ ok: true, testMode: true });
     }
 
-    if (!memberId || !subject || !body) {
-      return jsonResp({ error: 'memberId, subject, and body are required' }, 400);
+    // A pre-rendered designer template may be supplied via `html` (the unified
+    // Outreach composer renders the gym-branded designer HTML client-side and
+    // personalizes its merge tokens — already HTML-escaped — per recipient).
+    // When present, `body` is optional (the HTML is the email). When absent we
+    // fall back to the branded buildEmailHtml wrap around `body`.
+    const designerHtml = (typeof html === 'string' && html.length > 0)
+      ? html
+      : (typeof prerenderedHtml === 'string' && prerenderedHtml.length > 0 ? prerenderedHtml : null);
+
+    if (!memberId || !subject || (!body && !designerHtml)) {
+      return jsonResp({ error: 'memberId, subject, and body (or html) are required' }, 400);
     }
 
     // Input length limits
     if (typeof subject !== 'string' || subject.length > 200) {
       return jsonResp({ error: 'Subject must be 200 characters or fewer' }, 400);
     }
-    if (typeof body !== 'string' || body.length > 10000) {
+    if (body != null && (typeof body !== 'string' || body.length > 10000)) {
       return jsonResp({ error: 'Body must be 10000 characters or fewer' }, 400);
+    }
+    if (designerHtml && designerHtml.length > 200000) {
+      return jsonResp({ error: 'HTML must be 200000 characters or fewer' }, 400);
     }
 
     // SECURITY: overrideEmail bypasses the member's stored email address.
@@ -485,7 +497,12 @@ Deno.serve(async (req) => {
         `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(voucherQrCode)}`;
     }
 
-    const renderedHtml = buildEmailHtml({
+    // When the caller supplied a pre-rendered designer template, send it
+    // verbatim (it's already gym-branded + personalized + token-escaped by the
+    // composer). The recipient is a verified member of the caller's gym, so
+    // — unlike testMode — there's no phishing-to-arbitrary-address risk. The
+    // branded buildEmailHtml wrap is only used for the plain-text body path.
+    const renderedHtml = designerHtml || buildEmailHtml({
       gymName,
       logoUrl,
       primaryColor,

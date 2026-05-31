@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import {
   ClipboardList, Download, ChevronDown, ChevronUp, Filter,
-  User, Settings, FileText, ShieldAlert, Calendar, Search, X,
+  User, Calendar, Search, X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
@@ -20,19 +20,37 @@ import {
 // Bumped from 20 to 50 — high-volume audits don't want to click "load more" twice as often.
 const PAGE_SIZE = 50;
 
+// Curated filter options — these are REAL action strings written by
+// logAdminAction(...) across the app (verified against every call site). The
+// full action set is ~90; this is the subset admins actually filter by. Any
+// action not listed still shows under the "All" view and still gets a sensible
+// tone + icon from the prefix resolvers below. (The previous list used invented
+// names like 'setting_updated'/'role_changed' that NEVER matched a real row, so
+// every filter returned nothing — that's the bug this fixes.)
 const ACTION_TYPES = [
-  'member_invited',
-  'member_deleted',
-  'role_changed',
-  'setting_updated',
-  'challenge_created',
-  'announcement_published',
-  'class_created',
-  'program_created',
-  'store_item_created',
-  'trainer_added',
-  'trainer_demoted',
-  'moderation_action',
+  'add_member',
+  'invite_member',
+  'change_status',
+  'deactivate_member',
+  'delete_account',
+  'change_role',
+  'add_trainer',
+  'demote_trainer',
+  'update_settings',
+  'settings_cards_updated',
+  'update_hours',
+  'create_challenge',
+  'create_program',
+  'create_class',
+  'create_product',
+  'create_announcement',
+  'outreach_send',
+  'send_email',
+  'send_sms',
+  'award_prizes',
+  'moderation',
+  'print_cards_marked',
+  'print_cards_delivered',
 ];
 
 const DATE_PRESETS = [
@@ -42,46 +60,73 @@ const DATE_PRESETS = [
   { key: '90d',   days: 90 },
 ];
 
-// Action type → admin-pill tone (reference spec: create_*=teal/good, invite_*=coach, claim_*=warn, delete_*=hot)
-const ACTION_TONE = {
-  member_invited:          'coach',
-  member_deleted:          'hot',
-  role_changed:            'hot',
-  setting_updated:         'warn',
-  challenge_created:       'good',
-  announcement_published:  'good',
-  class_created:           'good',
-  program_created:         'good',
-  store_item_created:      'good',
-  trainer_added:           'coach',
-  trainer_demoted:         'hot',
-  moderation_action:       'hot',
-};
-
 const fallbackColor = 'admin-pill admin-pill--outline';
 
-// Action type icon mapping
-const ACTION_ICONS = {
-  member_invited:          User,
-  member_deleted:          User,
-  role_changed:            ShieldAlert,
-  setting_updated:         Settings,
-  challenge_created:       FileText,
-  announcement_published:  FileText,
-  class_created:           Calendar,
-  program_created:         FileText,
-  store_item_created:      FileText,
-  trainer_added:           User,
-  trainer_demoted:         User,
-  moderation_action:       ShieldAlert,
+// Tone/icon are resolved by PREFIX so all ~90 real action strings (and any new
+// ones added later) get a sensible treatment without enumerating each. Explicit
+// overrides handle the handful that don't follow the verb_noun prefix pattern.
+const TONE_OVERRIDES = {
+  moderation: 'hot',
+  block_user: 'hot',
+  unblock_user: 'good',
+  change_role: 'hot',
+  add_trainer: 'coach',
+  demote_trainer: 'hot',
+  outreach_send: 'coach',
+  gym_import: 'warn',
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// First matching prefix wins — order matters (more specific first).
+const TONE_PREFIXES = [
+  ['permanently_', 'hot'],
+  ['super_admin_delete', 'hot'],
+  ['super_admin_schedule', 'hot'],
+  ['delete_', 'hot'],
+  ['revoke_', 'hot'],
+  ['deactivate_', 'hot'],
+  ['pause_', 'hot'],
+  ['expire_', 'hot'],
+  ['create_', 'good'],
+  ['add_', 'good'],
+  ['award_', 'good'],
+  ['claim_', 'good'],
+  ['redeem_', 'good'],
+  ['reactivate_', 'good'],
+  ['resolve_', 'good'],
+  ['invite_', 'coach'],
+  ['resend_', 'coach'],
+  ['send_', 'coach'],
+  ['bulk_', 'coach'],
+  ['quick_', 'coach'],
+  ['update_', 'warn'],
+  ['change_', 'warn'],
+  ['set_', 'warn'],
+  ['save_', 'warn'],
+  ['toggle_', 'warn'],
+  ['settings_', 'warn'],
+  ['reset_', 'warn'],
+  ['print_card', 'info'],
+  ['checkin_', 'info'],
+  ['purchase_', 'info'],
+  ['referral', 'info'],
+  ['tv_', 'info'],
+];
+
+function getActionTone(action) {
+  if (!action) return null;
+  if (TONE_OVERRIDES[action]) return TONE_OVERRIDES[action];
+  for (const [prefix, tone] of TONE_PREFIXES) {
+    if (action.startsWith(prefix)) return tone;
+  }
+  return null;
+}
 
 function getActionColor(action) {
-  const tone = ACTION_TONE[action];
+  const tone = getActionTone(action);
   return tone ? `admin-pill admin-pill--${tone}` : fallbackColor;
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function relativeTime(ts, dateFnsLocale) {
   if (!ts) return '\u2014';

@@ -26,6 +26,32 @@ import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShe
 
 const LOGO_URL_EXPIRY_SECONDS = 60 * 60 * 24 * 7;
 
+// Resolve a color value to a concrete #hex. State may hold a CSS-variable string
+// (e.g. 'var(--color-accent)') when a gym hasn't customized branding yet.
+// Persisting that literally corrupts the palette downstream —
+// hexToRgb('var(--color-accent)') → NaN, so applyBranding/generatePalette emit a
+// broken theme on every load, and a native <input type=color> can't display it
+// (renders black). Resolve vars against the live computed style; fall back to a
+// safe brand hex when resolution isn't possible (SSR / unknown var).
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+function resolveColorToHex(value, fallbackVar, fallbackHex) {
+  if (typeof value === 'string' && HEX_RE.test(value.trim())) return value.trim();
+  try {
+    const source = (typeof value === 'string' && value.includes('var(')) ? value : fallbackVar;
+    const m = source.match(/var\(\s*(--[a-zA-Z0-9-]+)\s*\)/);
+    if (m && typeof document !== 'undefined') {
+      const resolved = getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim();
+      if (HEX_RE.test(resolved)) return resolved;
+      const rgb = resolved.match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
+      if (rgb) {
+        return '#' + [rgb[1], rgb[2], rgb[3]]
+          .map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+      }
+    }
+  } catch { /* fall through to the safe hex */ }
+  return fallbackHex;
+}
+
 async function compressImage(file, maxSize = 512, quality = 0.8) {
   return new Promise((resolve, reject) => {
     const img = new window.Image();
@@ -106,8 +132,11 @@ export default function AdminSettingsBranding() {
     if (!brandingData) return;
     const { branding, signedLogoUrl } = brandingData;
     if (branding) {
-      setPrimary(branding.primary_color ?? 'var(--color-accent)');
-      setAccent(branding.accent_color ?? 'var(--color-success)');
+      // Resolve null/var() defaults to concrete hex so the native color inputs
+      // render a real swatch AND an untouched Save can never persist a var()
+      // string (which would corrupt this gym's palette on every load).
+      setPrimary(resolveColorToHex(branding.primary_color, 'var(--color-accent)', '#D4AF37'));
+      setAccent(resolveColorToHex(branding.accent_color, 'var(--color-success)', '#10B981'));
       setWelcome(branding.welcome_message ?? '');
       const paletteName = branding.palette_name || null;
       setSelectedPalette(paletteName);
@@ -156,17 +185,25 @@ export default function AdminSettingsBranding() {
 
   const saveBrandingMutation = useMutation({
     mutationFn: async () => {
+      // Defensive: resolve any lingering var() default to hex BEFORE persisting,
+      // so gym_branding never stores 'var(--color-accent)' (which corrupts the
+      // palette on reload). All the palette/custom handlers already set real hex;
+      // this catches the "saved without touching colors" path.
+      const primaryHex = resolveColorToHex(primaryColor, 'var(--color-accent)', '#D4AF37');
+      const accentHex = resolveColorToHex(accentColor, 'var(--color-success)', '#10B981');
       const { error: brandingErr } = await supabase.from('gym_branding').upsert({
         gym_id: gymId,
-        primary_color: primaryColor,
-        accent_color: accentColor,
+        primary_color: primaryHex,
+        accent_color: accentHex,
         welcome_message: welcomeMsg,
         palette_name: selectedPalette || DEFAULT_PALETTE,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'gym_id' });
       if (brandingErr) throw brandingErr;
       logAdminAction('update_settings', 'gym', gymId);
-      applyBranding({ primaryColor, secondaryColor: accentColor });
+      setPrimary(primaryHex);
+      setAccent(accentHex);
+      applyBranding({ primaryColor: primaryHex, secondaryColor: accentHex });
     },
     onSuccess: () => {
       posthog?.capture('admin_branding_updated');

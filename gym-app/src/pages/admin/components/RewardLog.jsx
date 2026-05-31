@@ -41,10 +41,14 @@ export default function RewardLog({ gymId, isEs, t }) {
       // p_user_id/p_gym_id/p_action/p_points/p_description and 'redemption_refund'
       // isn't in its action whitelist, so it always raised; worse, crediting
       // here would DOUBLE-count since nothing was ever deducted.)
+      // All three source tables (challenge_prizes, email_reward_vouchers,
+      // reward_redemptions) carry a gym_id column — scope the write to this gym
+      // for defense-in-depth rather than relying on RLS alone.
       const { error } = await supabase
         .from(entry.table)
         .update({ status: 'expired' })
-        .eq('id', entry.dbId);
+        .eq('id', entry.dbId)
+        .eq('gym_id', gymId);
       if (error) throw error;
       logAdminAction('expire_reward_redemption', entry.table, entry.dbId);
       queryClient.invalidateQueries({ queryKey: [...rewardKeys.all(gymId), 'activity-log'] });
