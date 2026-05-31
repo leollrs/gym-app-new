@@ -67,10 +67,12 @@ export default function MyGym() {
   useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {
-      const [gymRes, hoursRes, holidaysRes, annRes] = await Promise.all([
+      const todayStr = new Date().toISOString().split('T')[0];
+      const [gymRes, hoursRes, holidaysRes, closuresRes, annRes] = await Promise.all([
         supabase.from('gyms').select('id, name, open_days, open_time, close_time, country, address').eq('id', profile.gym_id).maybeSingle(),
         supabase.from('gym_hours').select('day_of_week, is_closed, open_time, close_time').eq('gym_id', profile.gym_id).order('day_of_week'),
-        supabase.from('gym_holidays').select('id, label, date, is_closed, open_time, close_time').eq('gym_id', profile.gym_id).gte('date', new Date().toISOString().split('T')[0]).order('date').limit(5),
+        supabase.from('gym_holidays').select('id, label, date, is_closed, open_time, close_time').eq('gym_id', profile.gym_id).gte('date', todayStr).order('date').limit(5),
+        supabase.from('gym_closures').select('id, name, closure_date, reason').eq('gym_id', profile.gym_id).gte('closure_date', todayStr).order('closure_date').limit(5),
         supabase
           .from('announcements')
           .select('id, title, message, type, published_at')
@@ -81,7 +83,37 @@ export default function MyGym() {
       ]);
       setGym(gymRes.data);
       setHours(hoursRes.data || []);
-      setHolidays(holidaysRes.data || []);
+      // "Próximos Feriados" merges TWO admin-managed tables:
+      //   • gym_holidays — admin Hours page; can be a full closure OR special hours
+      //   • gym_closures — admin "Cierres del Gym" card; full-closure only, and
+      //                    the table the streak-protection logic reads.
+      // Both must surface to members. Dedupe by date, preferring the gym_holidays
+      // row (it can express special open/close hours, not just "closed").
+      {
+        // Reason → member-facing label fallback when a closure has no custom name.
+        const reasonLabel = {
+          holiday: t('admin.closures.reasonHoliday', 'Holiday'),
+          maintenance: t('admin.closures.reasonMaintenance', 'Maintenance'),
+          special_event: t('admin.closures.reasonSpecialEvent', 'Special event'),
+          other: t('myGym.closed', 'Closed'),
+        };
+        const hols = holidaysRes.data || [];
+        const seenDates = new Set(hols.map(h => h.date));
+        const mappedClosures = (closuresRes.data || [])
+          .filter(c => c.closure_date && !seenDates.has(c.closure_date))
+          .map(c => ({
+            id: `closure-${c.id}`,
+            label: c.name || reasonLabel[c.reason] || t('myGym.closed', 'Closed'),
+            date: c.closure_date,
+            is_closed: true,
+            open_time: null,
+            close_time: null,
+          }));
+        const merged = [...hols, ...mappedClosures]
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .slice(0, 5);
+        setHolidays(merged);
+      }
       setAnnouncements(annRes.data || []);
 
       // Fetch upcoming classes if enabled — next 7 days of scheduled classes

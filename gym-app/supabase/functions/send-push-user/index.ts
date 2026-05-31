@@ -510,13 +510,18 @@ serve(async (req) => {
         });
         if (res.ok) return 'sent';
         const errBody = await res.text().catch(() => '');
-        // Apple returns "BadDeviceToken" when a sandbox token hits the
-        // production host or vice versa — that's specifically a wrong-env
-        // signal, not an invalid token. Anything else (Unregistered,
-        // ExpiredToken) means the token is dead.
-        const isWrongEnv = res.status === 400 && /BadDeviceToken/i.test(errBody);
+        // Apple signals an env mismatch (sandbox token → prod host or vice
+        // versa) two ways: 400 "BadDeviceToken" OR 403 "BadEnvironmentKeyToken"
+        // (the .p8 auth key's environment doesn't match this host). BOTH mean
+        // "retry the other host", NOT "dead token". Anything else (Unregistered,
+        // ExpiredToken) means the token is genuinely dead.
+        const isWrongEnv =
+          (res.status === 400 && /BadDeviceToken/i.test(errBody)) ||
+          (res.status === 403 && /BadEnvironmentKey/i.test(errBody));
         console.error(`APNs error (${host}): ${res.status} ${errBody}`);
         if (isWrongEnv) return 'wrong-env';
+        // 403 (other than env mismatch) = provider/auth issue, not a dead token
+        // — don't delete the token over it. Only 410/400 mean drop it.
         if (res.status === 410 || res.status === 400) return 'invalid';
         return 'failed';
       };
@@ -548,7 +553,11 @@ serve(async (req) => {
             return;
           }
 
-          if (outcome === 'invalid' || outcome === 'wrong-env') {
+          // Only delete tokens Apple says are genuinely DEAD ('invalid' =
+          // 410 Unregistered / ExpiredToken). Do NOT delete on 'wrong-env'
+          // (env mismatch that failed both hosts) or 'failed' (transient /
+          // provider issue) — those tokens may still be valid.
+          if (outcome === 'invalid') {
             const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
             if (deleteErr) console.error(`Failed to remove invalid iOS token ${token.substring(0, 10)}...: ${deleteErr.message}`);
           }
