@@ -236,14 +236,33 @@ async function getFCMAccessToken(): Promise<string> {
 // `notif_push_enabled` is the master toggle and is checked separately.
 // Callers that omit `notification_type` still respect the master toggle
 // but skip the per-category check (backward compatible).
+//
+// IMPORTANT: producers send the FULL notification_type enum value (e.g.
+// 'friend_activity', 'workout_reminder') — NOT the short tokens the original
+// map used ('friend', 'workout'). A miss here returns null → the category
+// check is SKIPPED and the push sends regardless, silently defeating the
+// Settings toggle (Apple G4.5.4 / G5.1.1 violation + user-trust break). So we
+// key on the real enum values. Short tokens are kept as aliases for any
+// legacy caller. Transactional types with no dedicated toggle (class_booking,
+// session_reminder, goal, churn_followup, announcement, trainer_*) are
+// intentionally absent → master toggle still gates them, but they always send
+// when push is on (they're service/appointment messages, not promotional).
 const NOTIFICATION_TYPE_COLUMNS: Record<string, string> = {
+  // Full enum values (what DB triggers + client producers actually send)
+  workout_reminder: 'notif_workout_reminders',
+  streak_warning:   'notif_streak_alerts',
+  friend_activity:  'notif_friend_activity',
+  challenge_update: 'notif_challenge_updates',
+  milestone:        'notif_milestone_alerts',
+  pr_beaten:        'notif_milestone_alerts',   // PR celebration = milestone-class
+  reward:           'notif_reward_reminders',
+  weekly_summary:   'notif_weekly_summary',
+  // Legacy short-token aliases (harmless if unused)
   workout:   'notif_workout_reminders',
   streak:    'notif_streak_alerts',
   summary:   'notif_weekly_summary',
   friend:    'notif_friend_activity',
-  milestone: 'notif_milestone_alerts',
   challenge: 'notif_challenge_updates',
-  reward:    'notif_reward_reminders',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

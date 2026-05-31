@@ -290,7 +290,7 @@ const SessionSummary = () => {
           title:    sessionPRs.length > 1
             ? i18n.t('notifications.newPRsPlural', { ns: 'common', count: sessionPRs.length, defaultValue: `${sessionPRs.length} new PRs this session!` })
             : i18n.t('notifications.newPRsSingular', { ns: 'common', count: sessionPRs.length, defaultValue: `${sessionPRs.length} new PR this session!` }),
-          body:     sessionPRs.slice(0, 3).map(p => p.exerciseName ?? p.exercise_name ?? i18n.t('social.feedContent.exercise', { ns: 'pages', defaultValue: 'Exercise' })).join(', '),
+          body:     sessionPRs.slice(0, 3).map(p => p.exercise || p.exerciseName || p.exercise_name || i18n.t('social.feedContent.exercise', { ns: 'pages', defaultValue: 'Exercise' })).join(', '),
           dedupKey: `pr_session_${completedAt}_${user.id}`,
         });
       }

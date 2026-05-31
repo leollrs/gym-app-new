@@ -224,46 +224,6 @@ function TemplateChip({ active, onClick, label, preview }) {
         </div>
       </div>
     ),
-    st: (
-      // Sticker preview: transparent backdrop (checkerboard hint) with a
-      // small frosted-glass pill — mirrors how the export will overlay on
-      // the user's IG Story photo.
-      <div
-        style={{
-          position: 'absolute',
-          inset: 3,
-          borderRadius: 6,
-          overflow: 'hidden',
-          backgroundImage:
-            'linear-gradient(45deg, rgba(255,255,255,0.06) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.06) 75%), linear-gradient(45deg, rgba(255,255,255,0.06) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.06) 75%)',
-          backgroundSize: '6px 6px',
-          backgroundPosition: '0 0, 3px 3px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <div
-          style={{
-            width: '78%',
-            padding: '4px 5px',
-            borderRadius: 4,
-            background: 'rgba(10,13,16,0.85)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-          }}
-        >
-          <div style={{ height: 2, width: '40%', background: '#2EC4C4', borderRadius: 1 }} />
-          <div style={{ height: 6, width: '90%', background: '#fff', borderRadius: 1 }} />
-          <div style={{ display: 'flex', gap: 2, marginTop: 1 }}>
-            <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.5)', borderRadius: 1 }} />
-            <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.5)', borderRadius: 1 }} />
-            <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.5)', borderRadius: 1 }} />
-          </div>
-        </div>
-      </div>
-    ),
     // Sticker preview — checkerboard hint at transparency, frosted card on top.
     st: (
       <div
