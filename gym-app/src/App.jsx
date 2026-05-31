@@ -587,6 +587,20 @@ const ProfileUnavailableScreen = () => {
   const { t } = useTranslation('pages');
   const offline = typeof navigator !== 'undefined' && !navigator.onLine;
   const [retrying, setRetrying] = useState(false);
+  // GRACE WINDOW: on a fresh login the boot watchdog can drop `loading` to false
+  // while the profile fetch is still in flight — leaving `user` set but
+  // `profile` null for a beat. Without this, the scary "profile unavailable /
+  // error" card flashes before the profile lands and the dashboard paints,
+  // making a perfectly normal login look broken. So while ONLINE we show the
+  // neutral LoadingScreen for a few seconds first; only if the profile STILL
+  // hasn't arrived do we reveal the retry/sign-out UI (a genuine failure).
+  // Offline is a definite state, so we skip the grace and show it immediately.
+  const [graceElapsed, setGraceElapsed] = useState(offline);
+  useEffect(() => {
+    if (offline) { setGraceElapsed(true); return undefined; }
+    const id = setTimeout(() => setGraceElapsed(true), 5000);
+    return () => clearTimeout(id);
+  }, [offline]);
 
   const handleRetry = useCallback(async () => {
     if (retrying) return;
@@ -597,6 +611,13 @@ const ProfileUnavailableScreen = () => {
       setRetrying(false);
     }
   }, [retrying, refreshProfile]);
+
+  // Still within the grace window and online → the profile fetch is almost
+  // certainly just in flight. Show the same neutral splash the rest of the
+  // boot uses, NOT the error card. This component unmounts the instant the
+  // profile arrives (ProtectedRoute re-renders children), so the user never
+  // sees this on a normal login.
+  if (!graceElapsed) return <LoadingScreen />;
 
   // Auto-reload when we come back online — the next boot will hydrate the
   // profile from a fresh getSession + fetchProfile. safeReload uses navigate(0)

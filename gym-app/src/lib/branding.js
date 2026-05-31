@@ -13,6 +13,7 @@ import {
   generatePalette,
   textOnColor,
 } from './themeGenerator';
+import { mirrorToDurable } from './durableStorage';
 
 // ── Defaults (Obsidian & Amber) ─────────────────────────────────────────────
 const DEFAULT_PRIMARY   = '#F0A500';
@@ -237,11 +238,16 @@ const BRANDING_CACHE_KEY = 'offline_branding';
 export function cacheBranding(args) {
   try {
     if (!args || (!args.primaryColor && !args.secondaryColor)) return;
-    localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify({
+    const serialized = JSON.stringify({
       primaryColor: args.primaryColor || null,
       secondaryColor: args.secondaryColor || null,
       surfaceColor: args.surfaceColor || null,
-    }));
+    });
+    localStorage.setItem(BRANDING_CACHE_KEY, serialized);
+    // Mirror to durable storage immediately (native only) so even a hard app
+    // kill right after first login keeps the colors — without waiting for the
+    // next background-flush. No-op on web / for untracked keys.
+    mirrorToDurable(BRANDING_CACHE_KEY, serialized);
   } catch { /* quota / unavailable */ }
 }
 

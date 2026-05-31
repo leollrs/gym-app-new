@@ -7,6 +7,7 @@
 //   - gym_session_<routineId>      → in-progress workout draft
 //   - tugympr-query-cache          → React Query persisted cache (dashboard, etc.)
 //   - offline_profile / offline_gym → cold-start hydration data
+//   - offline_branding             → cached gym accent/surface colors
 //
 // Strategy: keep localStorage as the fast sync read cache, mirror critical keys
 // to @capacitor/preferences (NSUserDefaults / SharedPreferences — never evicted).
@@ -25,7 +26,14 @@ const isNative = (() => {
 })();
 
 const TRACKED_PREFIXES = ['gym_session_', 'gym_rest_'];
-const TRACKED_EXACT = new Set(['tugympr-query-cache', 'offline_profile', 'offline_gym']);
+// offline_branding holds the resolved gym accent/surface colors. It MUST be
+// durable: without it, an iOS localStorage eviction while the app is backgrounded
+// wipes the colors (but NOT offline_profile/offline_gym, which are restored from
+// Preferences) — so the next resume boots on the default amber palette until the
+// network round-trip lands, and only a full close+reopen fixes it. Tracking it
+// here means the background flush mirrors it and the boot hydrate restores it,
+// so the gym's colors paint on the very first frame after every resume.
+const TRACKED_EXACT = new Set(['tugympr-query-cache', 'offline_profile', 'offline_gym', 'offline_branding']);
 
 const isTracked = (key) => {
   if (!key) return false;
