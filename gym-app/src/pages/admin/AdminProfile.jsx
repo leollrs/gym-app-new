@@ -56,7 +56,11 @@ export default function AdminProfile() {
       if (type === 'photo' && file) {
         const compressed = await compressAvatar(file);
         const ext = file.name.split('.').pop() || 'jpg';
-        const path = `avatars/${profile.id}.${ext}`;
+        // Object key must be <uid>/<file> so foldername[1] === auth.uid() (the
+        // profile-photos INSERT RLS check). The old 'avatars/<id>.ext' key set
+        // foldername[1] = 'avatars' and was rejected. Unique timestamp avoids
+        // needing an UPDATE policy for upsert overwrites.
+        const path = `${profile.id}/${Date.now()}.${ext}`;
         const { error: upErr } = await supabase.storage.from('profile-photos').upload(path, compressed, { upsert: true });
         if (upErr) throw upErr;
         const { data: urlData } = supabase.storage.from('profile-photos').getPublicUrl(path);

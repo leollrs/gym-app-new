@@ -104,6 +104,37 @@ Deno.serve(async (req) => {
 
     if (email_code && email) {
       // Email-code flow: auto-approved (email itself is the verification)
+
+      // SECURITY (defense in depth): per-email aggregate guess cap that
+      // survives code-churn. The per-row failed_attempts lockout (5) is reset
+      // every time send-reset-email mints a fresh code, so on its own it does
+      // not bound a brute force. Sum failed_attempts across ALL of this
+      // email's requests in the last hour; once the total crosses a hard
+      // ceiling, refuse verification for the window no matter how many fresh
+      // codes were generated. (send-reset-email's 3/hour cap is the primary
+      // control; this backstops it.) Fail CLOSED on error.
+      const normalizedEmail = (email as string).toLowerCase().trim();
+      const capWindowStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: recentRows, error: capErr } = await adminClient
+        .from('password_reset_requests')
+        .select('failed_attempts')
+        .eq('email', normalizedEmail)
+        .gte('created_at', capWindowStart);
+      if (capErr) {
+        console.error('Reset guess-cap check failed:', capErr);
+        return jsonResp({ error: 'Unable to verify code right now. Please try again later.' }, 503);
+      }
+      const totalFailed = (recentRows ?? []).reduce(
+        (sum, r) => sum + (r.failed_attempts ?? 0),
+        0,
+      );
+      if (totalFailed >= 15) {
+        return jsonResp(
+          { error: 'Too many incorrect attempts. Please wait an hour and request a new code.' },
+          429,
+        );
+      }
+
       const { data, error: lookupErr } = await adminClient
         .from('password_reset_requests')
         .select('id, profile_id, status, expires_at, used_at, failed_attempts')

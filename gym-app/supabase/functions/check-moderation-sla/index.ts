@@ -38,7 +38,41 @@ function escHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-Deno.serve(async (_req) => {
+// Timing-safe comparison (HMAC-based, no length leak)
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const keyA = await crypto.subtle.importKey('raw', enc.encode(a), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const keyB = await crypto.subtle.importKey('raw', enc.encode(b), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const msg = enc.encode('timing-safe-compare');
+  const [sigA, sigB] = await Promise.all([
+    crypto.subtle.sign('HMAC', keyA, msg),
+    crypto.subtle.sign('HMAC', keyB, msg),
+  ]);
+  const bytesA = new Uint8Array(sigA);
+  const bytesB = new Uint8Array(sigB);
+  if (bytesA.length !== bytesB.length) return false;
+  let result = 0;
+  for (let i = 0; i < bytesA.length; i++) result |= bytesA[i] ^ bytesB[i];
+  return result === 0;
+}
+
+Deno.serve(async (req) => {
+  // ── Auth: require valid cron secret OR service-role token ──
+  // The existing pg_cron job (migration 0348) sends Authorization: Bearer <service_role_key>.
+  // Newer cron entries may send X-Cron-Secret. Either is accepted so the existing
+  // pg_cron schedule keeps working without a forced migration.
+  const cronSecret = Deno.env.get('CRON_SECRET');
+  const incomingCronSecret = req.headers.get('X-Cron-Secret') ?? '';
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, '');
+
+  const cronOk = !!(cronSecret && incomingCronSecret && await timingSafeEqual(cronSecret, incomingCronSecret));
+  const serviceRoleOk = !!(bearerToken && SUPABASE_SERVICE_ROLE_KEY && await timingSafeEqual(bearerToken, SUPABASE_SERVICE_ROLE_KEY));
+
+  if (!cronOk && !serviceRoleOk) {
+    return jsonResp({ error: 'Unauthorized' }, 401);
+  }
+
   try {
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 

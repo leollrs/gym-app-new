@@ -3,7 +3,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') || '*';
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) throw new Error('ALLOWED_ORIGIN env var is required');
 
 // Don't throw at module init for missing env vars. A boot-time throw
 // makes Supabase return 503 BOOT_ERROR with no CORS headers, which
@@ -180,10 +181,10 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  // Debug ping: GET request returns the deploy stamp so we can verify the
-  // function is running our latest code without needing auth or a body.
-  if (req.method === 'GET') {
-    return jsonResp({ ok: true, stamp: DEPLOY_STAMP, time: new Date().toISOString() });
+  // Only POST is served. (A prior unauthenticated GET debug-stamp endpoint
+  // was removed — it leaked deploy metadata with no auth.)
+  if (req.method !== 'POST') {
+    return jsonResp({ error: 'Method not allowed' }, 405);
   }
 
   if (MISSING_ENV) {
@@ -215,15 +216,16 @@ Deno.serve(async (req) => {
       && callerProfile.additional_roles.some((r: string) => ADMIN_ROLES.includes(r));
 
     if (!callerProfile || (!hasAdminPrimary && !hasAdminAdditional)) {
-      return jsonResp({
-        error: 'Admin access required',
-        stamp: DEPLOY_STAMP,
+      // Log detail server-side; return a generic response to the client so we
+      // don't leak the actor id, roles, or profile-lookup internals.
+      console.warn('[send-admin-email] forbidden', {
         actor: user.id,
         role: callerProfile?.role ?? null,
         additional_roles: callerProfile?.additional_roles ?? null,
         profileFound: !!callerProfile,
         profileErr: callerErr?.message ?? null,
-      }, 403);
+      });
+      return jsonResp({ error: 'forbidden' }, 403);
     }
 
     // ── GYM USAGE CAP CHECK ──
@@ -252,6 +254,31 @@ Deno.serve(async (req) => {
         return jsonResp({ error: 'HTML must be 1-200000 characters' }, 400);
       }
 
+      // SECURITY: testMode sends caller-supplied (un-sanitized) `html` from
+      // noreply@tugympr.com. To prevent it being abused as a phishing primitive
+      // to send arbitrary HTML to arbitrary addresses, the recipient is
+      // restricted to the calling admin's OWN email. The raw template HTML is
+      // intentionally not run through buildEmailHtml escaping because the whole
+      // point of testMode is to preview the fully-rendered template verbatim;
+      // restricting the recipient to self + the rate limit below bound the risk.
+      const adminEmail = (user.email || '').toLowerCase();
+      if (!adminEmail || to.toLowerCase() !== adminEmail) {
+        return jsonResp({ error: 'testMode can only send to your own email address' }, 403);
+      }
+
+      // Rate limiting: same cap as the live-send path, applied here too so
+      // testMode is not an unbounded send channel. Counts all of this admin's
+      // email actions (live + test) in the last hour.
+      const { count: recentTestCount } = await supabase
+        .from('admin_audit_log')
+        .select('*', { count: 'exact', head: true })
+        .eq('actor_id', user.id)
+        .in('action', ['send_email', 'send_test_email'])
+        .gte('created_at', new Date(Date.now() - 3600000).toISOString());
+      if ((recentTestCount ?? 0) >= 5000) {
+        return jsonResp({ error: 'admin_hourly_limit_exceeded', limit: 5000 }, 429);
+      }
+
       const { data: gymRow } = await supabase
         .from('gyms').select('name').eq('id', callerProfile.gym_id).single();
       const fromName = gymRow?.name || 'Your Gym';
@@ -271,7 +298,8 @@ Deno.serve(async (req) => {
       });
       if (!resp.ok) {
         const errText = await resp.text();
-        return jsonResp({ error: `Email send failed: ${errText}` }, 502);
+        console.error('[send-admin-email] testMode Resend error:', resp.status, errText);
+        return jsonResp({ error: 'Failed to send email' }, 502);
       }
 
       // Light audit (no member_id since this is a self-test).
@@ -490,20 +518,11 @@ Deno.serve(async (req) => {
 
     if (!emailResp.ok) {
       const errBody = await emailResp.text();
+      // Keep the upstream Resend status + body server-side for debugging
+      // (most common cause: sender domain not verified → 403 with detail),
+      // but return a generic message so we don't leak upstream internals.
       console.error('Resend error:', emailResp.status, errBody);
-      // Surface the upstream Resend status + a short snippet of the body
-      // so the admin UI can show why the send failed (most common cause:
-      // sender domain not verified in Resend → 403 with explanatory body).
-      let detail = errBody.slice(0, 240);
-      try {
-        const parsed = JSON.parse(errBody);
-        detail = parsed.message || parsed.error || detail;
-      } catch { /* keep raw */ }
-      return jsonResp({
-        error: 'Failed to send email',
-        upstreamStatus: emailResp.status,
-        upstreamMessage: detail,
-      }, 502);
+      return jsonResp({ error: 'Failed to send email' }, 502);
     }
 
     // Log for audit trail and rate limiting.
@@ -523,29 +542,11 @@ Deno.serve(async (req) => {
       details: auditDetails,
     });
 
-    return jsonResp({
-      success: true,
-      _debug: {
-        gymName,
-        primaryColor,
-        secondaryColor,
-        logoRef: rawLogoRef ?? null,
-        logoUrlResolved: logoUrl ?? null,
-        logoUrlDebug,
-        qrUrl: voucherQrImageUrl ?? null,
-        qrCode: voucherQrCode ?? null,
-        gymRowFound: !!gym,
-        brandingRowFound: !!branding,
-        gymRow: gym ?? null,
-        brandingRow: branding ?? null,
-        voucher: voucherDebug,
-      },
-    });
+    return jsonResp({ success: true });
   } catch (err) {
+    // Keep the full error (incl. message/stack) server-side only; return a
+    // generic message so internals aren't leaked to the client.
     console.error('send-admin-email error:', err);
-    // Surface the actual error message so the admin UI shows something
-    // actionable. Stack traces stay server-side; only the message goes out.
-    const detail = err instanceof Error ? err.message : String(err);
-    return jsonResp({ error: 'Internal error', detail, stamp: DEPLOY_STAMP }, 500);
+    return jsonResp({ error: 'Internal error' }, 500);
   }
 });

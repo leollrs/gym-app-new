@@ -9,8 +9,8 @@ import RewardEditor from './RewardEditor';
 
 const DEFAULT_REFERRAL_CONFIG = {
   enabled: true,
-  approval_required: true,
-  max_per_month: null,
+  require_admin_approval: true,
+  max_referrals_per_month: null,
   referrer_reward: { type: 'points', value: 250 },
   referred_reward: { type: 'points', value: 100 },
 };
@@ -98,7 +98,7 @@ export default function ReferralProgramConfig({ gymId, config, t, isEs }) {
 
       const payload = {
         ...draft,
-        max_per_month: draft.max_per_month ? Number(draft.max_per_month) : null,
+        max_referrals_per_month: draft.max_referrals_per_month ? Number(draft.max_referrals_per_month) : null,
         referrer_reward: cleanReward(draft.referrer_reward),
         referred_reward: cleanReward(draft.referred_reward),
       };
@@ -173,8 +173,8 @@ export default function ReferralProgramConfig({ gymId, config, t, isEs }) {
             </label>
             <input
               type="number" min="0"
-              value={draft.max_per_month ?? ''}
-              onChange={e => set('max_per_month', e.target.value || null)}
+              value={draft.max_referrals_per_month ?? ''}
+              onChange={e => set('max_referrals_per_month', e.target.value || null)}
               placeholder={t('admin.referral.unlimited', 'Unlimited')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none"
               style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
@@ -184,8 +184,8 @@ export default function ReferralProgramConfig({ gymId, config, t, isEs }) {
             <label className="flex items-center gap-2 text-[12px] font-medium cursor-pointer" style={{ color: 'var(--color-text-primary)' }}>
               <input
                 type="checkbox"
-                checked={!!draft.approval_required}
-                onChange={e => set('approval_required', e.target.checked)}
+                checked={!!draft.require_admin_approval}
+                onChange={e => set('require_admin_approval', e.target.checked)}
                 className="w-4 h-4 rounded"
               />
               {t('admin.referral.approvalRequired', 'Require admin approval before reward is granted')}

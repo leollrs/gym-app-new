@@ -99,6 +99,26 @@ Deno.serve(async (req) => {
       return jsonResp({ error: 'Body must be 640 characters or fewer' }, 400);
     }
 
+    // Validate mediaUrl (optional). It is attacker-controlled and passed straight
+    // to Twilio as MediaUrl (MMS), so we reject anything that isn't an https URL
+    // hosted on our own Supabase project. This prevents cost amplification and
+    // arbitrary content fetch by Twilio. Reject with 400 (don't silently drop).
+    if (mediaUrl !== undefined && mediaUrl !== null && mediaUrl !== '') {
+      if (typeof mediaUrl !== 'string') {
+        return jsonResp({ error: 'mediaUrl must be a string' }, 400);
+      }
+      let parsedMedia: URL;
+      try {
+        parsedMedia = new URL(mediaUrl);
+      } catch {
+        return jsonResp({ error: 'mediaUrl must be a valid URL' }, 400);
+      }
+      const supabaseHost = new URL(SUPABASE_URL).host;
+      if (parsedMedia.protocol !== 'https:' || parsedMedia.host !== supabaseHost) {
+        return jsonResp({ error: 'mediaUrl must be an https URL on this project\'s Supabase storage' }, 400);
+      }
+    }
+
     // Get member profile with phone number
     const { data: memberProfile } = await supabase
       .from('profiles')

@@ -258,14 +258,24 @@ Deno.serve(async (req) => {
       .gte('requested_at', oneHourAgo);
 
     if (emailCountErr) {
-      // Postgres "relation does not exist" → 42P01
+      // Postgres "relation does not exist" → 42P01. The deletion-requests table
+      // ships in migration 0340; if it's genuinely missing we must FAIL CLOSED
+      // rather than proceed with no rate limit + no persistence, which would let
+      // an attacker fan out unlimited "confirm your account deletion" emails to
+      // arbitrary victim addresses (email-bomb / phishing lure). Return the
+      // generic OK without sending anything.
       if ((emailCountErr as { code?: string })?.code === '42P01') {
-        console.warn(
-          `[request-account-deletion] table ${TABLE} does not exist; skipping rate limit + persistence. Run the migration documented at the top of this file.`,
+        console.error(
+          `[request-account-deletion] table ${TABLE} missing — failing closed (no email sent). Run migration 0340.`,
         );
-        tableExists = false;
+        await timingPad(t0);
+        return jsonResp(GENERIC_OK);
       } else {
-        console.error('[request-account-deletion] email rate-limit query failed:', emailCountErr);
+        // Any other query error: also fail closed — we can't confirm the caller
+        // is under the rate limit, so we must not send.
+        console.error('[request-account-deletion] email rate-limit query failed (failing closed):', emailCountErr);
+        await timingPad(t0);
+        return jsonResp(GENERIC_OK);
       }
     } else if ((emailCount ?? 0) >= PER_EMAIL_LIMIT) {
       // Silently absorb — still return generic so attacker cannot probe

@@ -80,13 +80,35 @@ export function calculateMacros({
   calories = Math.max(calories, 1200); // safety floor
 
   // Macros
-  const protein = Math.round(weightLbs * proteinPerLb);
-  const fat = Math.round((calories * 0.25) / 9); // 25% of calories from fat
-  const carbCalories = calories - protein * 4 - fat * 9;
-  const carbs = Math.max(Math.round(carbCalories / 4), 50); // floor at 50g
+  let protein = Math.round(weightLbs * proteinPerLb);
+  let fat = Math.round((calories * 0.25) / 9); // 25% of calories from fat
+  let carbCalories = calories - protein * 4 - fat * 9;
+  let carbs = Math.round(carbCalories / 4);
+
+  // Guard the carb floor. For a light person on an aggressive deficit, protein +
+  // fat can already consume nearly the whole calorie budget, leaving carbs near
+  // zero. Flooring carbs to 50g would silently add up to ~200 cal ON TOP of the
+  // target, quietly erasing the deficit. Instead, when carbs would fall below
+  // the 50g floor, hold carbs at 50g and trim FAT to keep the calorie total on
+  // target (protein is preserved — it's the priority macro). Only if fat hits
+  // its own minimum do we let the total drift up.
+  const CARB_FLOOR = 50;
+  const FAT_FLOOR = Math.round((calories * 0.15) / 9); // never drop fat below 15% of cals
+  if (carbs < CARB_FLOOR) {
+    const deficitCals = (CARB_FLOOR - carbs) * 4; // extra calories the floor adds
+    const fatReducible = Math.max(0, fat - FAT_FLOOR);
+    const fatToCut = Math.min(fatReducible, Math.round(deficitCals / 9));
+    fat -= fatToCut;
+    carbs = CARB_FLOOR;
+  }
+
+  // Recompute the true calorie total from the final macros so the returned
+  // `calories` matches protein/carbs/fat (rather than a target the macros no
+  // longer sum to).
+  const finalCalories = protein * 4 + carbs * 4 + fat * 9;
 
   return {
-    calories: Math.round(calories),
+    calories: finalCalories,
     protein,
     carbs,
     fat,

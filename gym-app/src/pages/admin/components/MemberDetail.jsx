@@ -337,7 +337,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     setEmailSaving(true);
     setEmailSaved(false);
     try {
-      // Update email in both auth.users and profiles via RPC
+      // The login email lives on auth.users only — profiles has no email column.
       const { error } = await supabase.rpc('admin_update_member_email', {
         p_member_id: member.id,
         p_new_email: memberEmail.trim(),
@@ -345,15 +345,6 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       if (error) throw error;
       logAdminAction('update_email', 'member', member.id, { email: memberEmail.trim() });
       originalEmailRef.current = memberEmail.trim();
-      // Re-fetch the member row so list views and downstream caches stay in sync.
-      try {
-        const { data: refreshed } = await supabase
-          .from('profiles').select('email').eq('id', member.id).maybeSingle();
-        if (refreshed?.email) {
-          setMemberEmail(refreshed.email);
-          originalEmailRef.current = refreshed.email;
-        }
-      } catch { /* non-fatal */ }
       setEmailSaved(true);
       setTimeout(() => setEmailSaved(false), 2000);
     } catch (err) {

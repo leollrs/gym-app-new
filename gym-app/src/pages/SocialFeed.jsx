@@ -1554,7 +1554,10 @@ const SocialFeed = ({ embedded = false }) => {
       }
       // Strip EXIF metadata (GPS, device info) before uploading
       const cleanPhoto = await stripExif(photoFile);
-      storagePath = `social-posts/${user.id}/${Date.now()}.jpg`;
+      // Object key must NOT include the bucket name — the INSERT RLS policy
+      // requires foldername[1] === auth.uid(). Prefixing with 'social-posts/'
+      // made foldername[1] = 'social-posts' and silently failed every upload.
+      storagePath = `${user.id}/${Date.now()}.jpg`;
       const { error: uploadErr } = await supabase.storage.from('social-posts').upload(storagePath, cleanPhoto, { contentType: 'image/jpeg' });
       if (!uploadErr) {
         // Use signed URL (1 hour expiry) instead of public URL

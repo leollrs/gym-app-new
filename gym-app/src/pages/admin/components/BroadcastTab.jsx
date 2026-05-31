@@ -53,9 +53,10 @@ export default function BroadcastTab({ gymId, adminId, gym, t, dateFnsLocale }) 
       });
       if (pushError) logger.error('Broadcast push error:', pushError);
 
-      // Create in-app notifications via RPC.
-      // RPC derives gym from auth context (current_gym_id()) — passing p_gym_id is silently ignored.
+      // Create in-app notifications via RPC. The current signature (migration
+      // 0181) REQUIRES p_gym_id and validates it against the caller's gym.
       const { error: rpcError } = await supabase.rpc('broadcast_notification', {
+        p_gym_id: gymId,
         p_title: title.trim(),
         p_body: body.trim(),
         p_type: 'announcement',

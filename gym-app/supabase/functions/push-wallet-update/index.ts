@@ -235,8 +235,16 @@ serve(async (req: Request) => {
     // Send empty push to each registered device
     for (const reg of registrations) {
       try {
+        // Validate the device token before interpolating it into the APNs URL
+        // path. push_token is device-supplied (via wallet registration) — an
+        // APNs token is hex; reject anything else so a crafted token can't
+        // inject path segments / control chars into the request to api.push.apple.com.
+        if (typeof reg.push_token !== 'string' || !/^[a-fA-F0-9]{64,200}$/.test(reg.push_token)) {
+          errors.push(`skipped invalid push_token for registration ${reg.id ?? '(unknown)'}`);
+          continue;
+        }
         // Use the registration's own pass type as the APNs topic
-        const res = await fetch(`${apnsHost}/3/device/${reg.push_token}`, {
+        const res = await fetch(`${apnsHost}/3/device/${encodeURIComponent(reg.push_token)}`, {
           method: 'POST',
           headers: {
             'authorization': `bearer ${jwt}`,

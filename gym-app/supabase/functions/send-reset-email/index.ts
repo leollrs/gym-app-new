@@ -69,15 +69,37 @@ Deno.serve(async (req) => {
       return jsonResp({ error: 'Invalid email format' }, 400);
     }
 
+    // ── Ownership check ──
+    // This endpoint REQUIRES a valid JWT, so it is never the logged-out
+    // forgot-password path (that uses Supabase's native resetPasswordForEmail).
+    // Therefore the only legitimate caller is a logged-in user requesting a
+    // code for THEIR OWN address. Without this check, any authenticated member
+    // could mint reset codes for arbitrary victim emails (spam / brute-force
+    // setup). Compare case-insensitively against the JWT email.
+    if (!user.email || user.email.toLowerCase() !== email.toLowerCase()) {
+      return jsonResp({ error: 'You can only request a reset code for your own account' }, 403);
+    }
+
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // --- Rate limiting: max 3 reset emails per email address per hour ---
+    // SECURITY: this cap is the linchpin that bounds the reset-code brute
+    // force. The verify endpoint (reset-password) locks a code after 5 wrong
+    // guesses, but minting a fresh code resets that per-row counter — so the
+    // ONLY thing limiting total guesses/hour is how many codes can be
+    // generated here. Two correctness requirements:
+    //  1. Filter on `created_at` — the table has NO `requested_at` column
+    //     (migration 0114), so the old query errored on every call.
+    //  2. Compare against the lowercased email — create_password_reset_request
+    //     stores lower(email), so a mixed-case input would miss prior rows.
+    // It already fails CLOSED (500 on count error), which we keep.
+    const normalizedEmail = email.toLowerCase();
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { count, error: countErr } = await adminClient
       .from('password_reset_requests')
       .select('*', { count: 'exact', head: true })
-      .eq('email', email)
-      .gte('requested_at', oneHourAgo);
+      .eq('email', normalizedEmail)
+      .gte('created_at', oneHourAgo);
 
     if (countErr) {
       console.error('Rate limit check error:', countErr);

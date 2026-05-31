@@ -114,12 +114,12 @@ export default function AdminReferrals() {
     onError: () => showToast(t('admin.referrals.approveFailedToast', 'Failed to approve referral'), 'error'),
   });
 
-  // Reject mutation — record expired_at so historical audit can answer "when was this rejected?".
+  // Reject mutation — mark the referral 'expired' (valid per the status CHECK).
   const rejectMutation = useMutation({
     mutationFn: async (referralId) => {
       const { error } = await supabase
         .from('referrals')
-        .update({ status: 'expired', expired_at: new Date().toISOString() })
+        .update({ status: 'expired' })
         .eq('id', referralId);
       if (error) throw error;
     },

@@ -274,6 +274,18 @@ export default function AdminOutreach() {
         setSending(false);
         return;
       }
+      // resolveOutreachAudience leaves email null (it lives on auth.users, not
+      // profiles). Hydrate addresses in one batch RPC when the email channel is
+      // on — otherwise sendOutreach skips every recipient as "no email".
+      if (channels.email) {
+        try {
+          const { data: emailRows } = await supabase.rpc('admin_get_member_emails', {
+            p_member_ids: recipients.map((r) => r.id),
+          });
+          const emailById = new Map((emailRows || []).map((e) => [e.member_id, e.email]));
+          recipients.forEach((r) => { r.email = emailById.get(r.id) || null; });
+        } catch { /* non-fatal — senders tally recipients with no email */ }
+      }
       const results = await sendOutreach({
         gymId,
         recipients,

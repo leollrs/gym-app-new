@@ -15,8 +15,6 @@ const CHALLENGE_TYPES = [
   { value: 'pr_count' },
   { value: 'specific_lift' },
   { value: 'team' },
-  { value: 'streak' },
-  { value: 'checkin' },
 ];
 
 const CHALLENGE_COVERS = [

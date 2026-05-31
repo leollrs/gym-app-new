@@ -4,7 +4,7 @@ import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizon
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { computeSuggestion, computeIntraSessionSuggestion } from '../lib/overloadEngine';
+import { computeSuggestion, computeIntraSessionSuggestion, epley1RM as engineEpley1RM } from '../lib/overloadEngine';
 import { requestNotificationPermission, scheduleRestDoneNotification, cancelRestNotification } from '../lib/restNotification';
 import { startWorkoutNotification, updateWorkoutNotification, cancelWorkoutNotification } from '../lib/workoutNotification';
 import { startLiveActivity, updateLiveActivity, endLiveActivity } from '../lib/liveActivityBridge';
@@ -339,12 +339,10 @@ class ActiveSessionErrorBoundary extends Component {
 }
 
 // ── PR Detection ──────────────────────────────────────────────────────────────
-const epley1RM = (weight, reps) => {
-  if (!weight || !reps || reps <= 0) return 0;
-  // Use Brzycki formula for reps > 12 to avoid overestimation (Fix #26)
-  if (reps > 12) return weight / (1.0278 - 0.0278 * reps);
-  return weight * (1 + reps / 30);
-};
+// Delegate to the engine's canonical 1RM (single source of truth — picks up the
+// corrected Epley/Brzycki 10-rep crossover + the reps>=30 Epley fallback).
+// Kept as a local alias so the many in-component call sites don't change.
+const epley1RM = engineEpley1RM;
 
 const isPR = (exerciseId, weight, reps, knownPRs) => {
   const w = parseFloat(weight);
@@ -1295,12 +1293,12 @@ const ActiveSession = () => {
           .maybeSingle(),
         supabase
           .from('workout_sessions')
-          .select('id')
+          .select('id, completed_at')
           .eq('profile_id', user.id)
           .eq('routine_id', id)
           .eq('status', 'completed')
           .order('completed_at', { ascending: false })
-          .limit(1),
+          .limit(6),
         supabase
           .from('session_drafts')
           .select('logged_sets, session_prs, live_prs, current_exercise_index, elapsed_time, started_at, is_paused, exercises, removed_exercise_ids, skipped_exercise_ids')
@@ -1316,17 +1314,54 @@ const ActiveSession = () => {
       onboardingRef.current = onboarding;
 
       const prevSetsMap = {};
+      // consecutiveMap[exerciseId] = how many of the most recent sessions show
+      // an UNBROKEN run of strength progression (each session's best estimated
+      // 1RM beating the prior one). Feeds the deload trigger in computeSuggestion
+      // (shouldDeload fires at >= 4). Previously this was hardcoded to 0, so the
+      // automatic deload never fired.
+      const consecutiveMap = {};
       if (lastSessions?.length > 0) {
-        const { data: prevExercises } = await supabase
-          .from('session_exercises')
-          .select(`exercise_id, session_sets(set_number, weight_lbs, reps, is_completed)`)
-          .eq('session_id', lastSessions[0].id);
+        // Sessions are already ordered newest-first. Pull every exercise's sets
+        // across all of them in ONE query, then derive both the most-recent
+        // history (for suggestions) and the per-exercise progression streak.
+        const sessionOrder = lastSessions.map(s => s.id); // newest → oldest
+        const sessionRank = new Map(sessionOrder.map((sid, i) => [sid, i]));
 
-        prevExercises?.forEach(se => {
-          prevSetsMap[se.exercise_id] = (se.session_sets || [])
+        const { data: allExercises } = await supabase
+          .from('session_exercises')
+          .select(`session_id, exercise_id, session_sets(set_number, weight_lbs, reps, is_completed)`)
+          .in('session_id', sessionOrder);
+
+        // exerciseId → array indexed by session rank (0 = newest) of best e1RM
+        const bestByExercise = {};
+        (allExercises || []).forEach(se => {
+          const completed = (se.session_sets || [])
             .filter(s => s.is_completed)
             .sort((a, b) => a.set_number - b.set_number)
             .map(s => ({ weight: s.weight_lbs, reps: s.reps }));
+
+          // Most-recent session populates the suggestion history.
+          if (sessionRank.get(se.session_id) === 0) {
+            prevSetsMap[se.exercise_id] = completed.map(s => ({ weight: s.weight, reps: s.reps }));
+          }
+
+          const rank = sessionRank.get(se.session_id);
+          if (rank == null) return;
+          const bestE1RM = completed.reduce((m, s) => Math.max(m, epley1RM(s.weight, s.reps)), 0);
+          if (!bestByExercise[se.exercise_id]) bestByExercise[se.exercise_id] = [];
+          bestByExercise[se.exercise_id][rank] = bestE1RM;
+        });
+
+        // Count the trailing run of strictly-increasing best e1RM (newest first).
+        Object.entries(bestByExercise).forEach(([exId, bests]) => {
+          let streak = 0;
+          for (let i = 0; i < bests.length - 1; i++) {
+            const cur = bests[i];
+            const prev = bests[i + 1];
+            if (cur != null && prev != null && cur > prev) streak++;
+            else break;
+          }
+          consecutiveMap[exId] = streak;
         });
       }
 
@@ -1352,7 +1387,7 @@ const ActiveSession = () => {
         const libEx = localExercises.find(e => e.id === ex.id);
         const exerciseMeta = libEx ? { movementPattern: libEx.movementPattern } : null;
         const prevForEx = prevSetsMap[ex.id] || [];
-        const baseSuggestion = computeSuggestion(prevForEx, onboarding, ex.targetReps, 0, exerciseMeta, prMap[ex.id] || null);
+        const baseSuggestion = computeSuggestion(prevForEx, onboarding, ex.targetReps, consecutiveMap[ex.id] || 0, exerciseMeta, prMap[ex.id] || null);
         // ── Diagnostic for fix #5 (suggested PR accuracy) ────────────────────
         // The "Suggested" chip is derived from the most recent completed
         // session only (see lastSessions[0] above). It does NOT cross-reference
@@ -1437,7 +1472,7 @@ const ActiveSession = () => {
           const libEx = localExercises.find(e => e.id === draftEx.id);
           const prevForEx = prevSetsMap[draftEx.id] || [];
           const baseSuggestion = enrichedMatch?.suggestion
-            ?? computeSuggestion(prevForEx, onboarding, draftEx.targetReps, 0,
+            ?? computeSuggestion(prevForEx, onboarding, draftEx.targetReps, consecutiveMap[draftEx.id] || 0,
                                  libEx ? { movementPattern: libEx.movementPattern } : null,
                                  prMap[draftEx.id] || null);
           return {

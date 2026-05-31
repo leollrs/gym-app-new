@@ -150,14 +150,37 @@ Deno.serve(async (req) => {
     if (gr?.emoji_icon) emoji = gr.emoji_icon;
   } catch {}
 
-  // Build and sign the QR payload
-  const rawPayload = `gym-reward:${redemption.gym_id}:${redemption.profile_id}:${redemption.id}`;
-  let qrValue = rawPayload;
-  if (QR_SIGNING_SECRET) {
-    const timestamped = rawPayload + ':' + Date.now();
-    const sig = await hmacSign(timestamped);
-    qrValue = timestamped + ':' + sig;
+  // SECURITY: only the redemption OWNER may be issued a claimable signed
+  // `gym-reward:` token. A same-gym admin passes the authorization check above
+  // (so they can VIEW status — the claimed/cancelled pages above already
+  // rendered for them), but the signed QR is the artifact the *member* presents
+  // to staff to claim. Minting it for an admin would let that admin self-scan
+  // and claim a member's pending reward without the member being present.
+  // Admins therefore get a status-only response for pending redemptions.
+  if (!isOwner) {
+    return new Response(
+      renderError('Only the reward owner can display this QR code'),
+      {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+      },
+    );
   }
+
+  // Build and sign the QR payload. Fail CLOSED if the signing secret is unset:
+  // emitting an unsigned `gym-reward:...` payload would be forgeable and the
+  // scanner/verifier could accept it, letting anyone mint a reward redemption QR.
+  if (!QR_SIGNING_SECRET) {
+    console.error('[reward-qr] QR_SIGNING_SECRET not set — refusing to mint an unsigned QR');
+    return new Response(
+      '<html><body style="font-family:sans-serif;padding:40px;text-align:center">Reward QR is temporarily unavailable. Please try again later.</body></html>',
+      { status: 503, headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } },
+    );
+  }
+  const rawPayload = `gym-reward:${redemption.gym_id}:${redemption.profile_id}:${redemption.id}`;
+  const timestamped = rawPayload + ':' + Date.now();
+  const sig = await hmacSign(timestamped);
+  const qrValue = timestamped + ':' + sig;
 
   const gymName = gym?.name || 'Your Gym';
   const format = url.searchParams.get('format');
@@ -273,7 +296,7 @@ function renderQRPage(gymName: string, rewardName: string, emoji: string, qrValu
   <div class="card">
     <div class="badge">${isGift ? '&#x1f381; Gift Reward' : '&#x2705; Reward Redeemed'}</div>
     <div class="info">
-      <div class="emoji">${emoji}</div>
+      <div class="emoji">${escaped(emoji)}</div>
       <div class="reward-name">${escaped(rewardName)}</div>
       <div class="gym-name">${escaped(gymName)}</div>
     </div>

@@ -4,7 +4,10 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') || '*';
+// Do not advertise a wildcard ACAO. If ALLOWED_ORIGIN is unset, fall back to ''
+// (no cross-origin) — matching the stricter functions. The probe itself remains
+// callable; it only returns { ok, time } with no sensitive data.
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') || '';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,

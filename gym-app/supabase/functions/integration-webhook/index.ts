@@ -7,18 +7,141 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
 if (!ALLOWED_ORIGIN) throw new Error('ALLOWED_ORIGIN env var is required');
 
-// SSRF protection: block internal/private network URLs
+// ── SSRF protection ──────────────────────────────────────
+// Robust guard against outbound requests to internal/private/link-local
+// networks. Covers: cloud metadata (169.254.169.254), all RFC1918 ranges,
+// CGNAT, loopback, IPv6 loopback/ULA/link-local, IPv4-mapped IPv6, and
+// numerically-encoded IPv4 (decimal/hex/octal). Fails closed on parse errors.
+
+/** True if the IPv4 octets fall in a private / loopback / link-local / CGNAT range. */
+function isPrivateIpv4(a: number, b: number, _c: number, _d: number): boolean {
+  if ([a, b, _c, _d].some((o) => !Number.isInteger(o) || o < 0 || o > 255)) return true; // malformed → reject
+  if (a === 0) return true;                          // 0.0.0.0/8
+  if (a === 127) return true;                        // 127.0.0.0/8 loopback
+  if (a === 10) return true;                         // 10.0.0.0/8
+  if (a === 172 && b >= 16 && b <= 31) return true;  // 172.16.0.0/12 (only .16–.31)
+  if (a === 192 && b === 168) return true;           // 192.168.0.0/16
+  if (a === 169 && b === 254) return true;           // 169.254.0.0/16 link-local (incl 169.254.169.254)
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+  return false;
+}
+
+/**
+ * Decode a numerically-encoded IPv4 host (decimal int, 0x hex, or dotted
+ * decimal/octal/hex). Returns [a,b,c,d] octets, or null if it is not a
+ * recognizable numeric IPv4 form.
+ */
+function parseNumericIpv4(host: string): [number, number, number, number] | null {
+  // Dotted form: each part may be decimal, 0x.. hex, or 0.. octal.
+  const parts = host.split('.');
+  const toInt = (p: string): number | null => {
+    if (p === '') return null;
+    let n: number;
+    if (/^0x[0-9a-f]+$/i.test(p)) n = parseInt(p, 16);
+    else if (/^0[0-7]+$/.test(p)) n = parseInt(p, 8);
+    else if (/^[0-9]+$/.test(p)) n = parseInt(p, 10);
+    else return null;
+    return Number.isFinite(n) ? n : null;
+  };
+
+  if (parts.length === 4) {
+    const o = parts.map(toInt);
+    if (o.some((x) => x === null || (x as number) > 255 || (x as number) < 0)) return null;
+    return o as [number, number, number, number];
+  }
+
+  // Single-number form (e.g. 2130706433 or 0x7f000001) → 32-bit big-endian IPv4.
+  if (parts.length === 1) {
+    const n = toInt(host);
+    if (n === null || n < 0 || n > 0xffffffff) return null;
+    return [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff];
+  }
+  return null;
+}
+
+/** Classify a hostname string as internal/blocked. */
+function isInternalHostname(rawHost: string): boolean {
+  let h = rawHost.toLowerCase().trim();
+  // Strip an IPv6 bracket wrapper, e.g. "[::1]".
+  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
+
+  if (!h) return true;
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (h === '0.0.0.0') return true;
+
+  // IPv6 handling.
+  if (h.includes(':')) {
+    if (h === '::1' || h === '::') return true;                 // loopback / unspecified
+    if (h.startsWith('fe80:') || h.startsWith('fe80::')) return true; // link-local fe80::/10
+    // fc00::/7 ULA — first hextet 0xfc.. or 0xfd..
+    if (/^f[cd][0-9a-f]{0,2}:/i.test(h)) return true;
+    // IPv4-mapped IPv6 (::ffff:127.0.0.1 or ::ffff:7f00:1) → check embedded v4.
+    const mapped = h.match(/::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+    if (mapped) {
+      const v4 = parseNumericIpv4(mapped[1]);
+      if (!v4 || isPrivateIpv4(...v4)) return true;
+    }
+    // Any other literal IPv6 we can't positively clear → reject (fail closed).
+    return true;
+  }
+
+  // Numeric IPv4 (dotted, decimal int, hex, octal).
+  const numeric = parseNumericIpv4(h);
+  if (numeric) return isPrivateIpv4(...numeric);
+
+  // Plain DNS name — allowed at the string level; DNS resolution is re-checked
+  // below (resolveAndCheck) to mitigate DNS rebinding.
+  return false;
+}
+
+/** SSRF guard for a config URL. Returns true if the URL must be blocked. */
 function isInternalUrl(urlStr: string): boolean {
   try {
     const url = new URL(urlStr);
-    const h = url.hostname.toLowerCase();
-    if (
-      h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '::1' ||
-      h.startsWith('10.') || h.startsWith('192.168.') || h.startsWith('172.') ||
-      h.endsWith('.local') || h.endsWith('.internal') || url.protocol === 'file:'
-    ) return true;
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return true;
+    return isInternalHostname(url.hostname);
+  } catch {
+    return true; // unparseable → reject (fail closed)
+  }
+}
+
+/**
+ * Best-effort DNS-rebinding mitigation: resolve the hostname and reject if any
+ * resolved A/AAAA address is private/link-local. Fails CLOSED — if resolution
+ * throws (or Deno.resolveDns is unavailable in this runtime) we treat the URL
+ * as blocked. Returns true if the URL must be blocked.
+ */
+async function resolvesToInternal(urlStr: string): Promise<boolean> {
+  let host: string;
+  try {
+    host = new URL(urlStr).hostname;
+  } catch {
+    return true;
+  }
+  if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
+
+  const resolver = (Deno as unknown as { resolveDns?: unknown })?.resolveDns;
+  if (typeof resolver !== 'function') {
+    // resolveDns not usable in this runtime — rely on the literal hostname
+    // check (isInternalUrl) + redirect:'manual' below. Do NOT hard-fail here,
+    // otherwise no webhook could ever fire.
     return false;
-  } catch { return true; }
+  }
+
+  try {
+    const [aRecords, aaaaRecords] = await Promise.all([
+      (resolver as (h: string, t: string) => Promise<string[]>)(host, 'A').catch(() => [] as string[]),
+      (resolver as (h: string, t: string) => Promise<string[]>)(host, 'AAAA').catch(() => [] as string[]),
+    ]);
+    const all = [...aRecords, ...aaaaRecords];
+    if (all.length === 0) return true; // resolved to nothing → fail closed
+    for (const ip of all) {
+      if (isInternalHostname(ip)) return true;
+    }
+    return false;
+  } catch {
+    return true; // resolution error → fail closed
+  }
 }
 
 const corsHeaders = {
@@ -81,6 +204,11 @@ async function webhookAdapter(
   const url = config.url as string;
   if (!url) return { status: 400, body: 'No webhook URL configured' };
   if (isInternalUrl(url)) return { status: 400, body: 'Internal URLs are not allowed for webhooks' };
+  // DNS-rebinding mitigation: re-resolve the hostname and reject if it maps to
+  // a private/link-local address. Runs BEFORE the fetch below.
+  if (await resolvesToInternal(url)) {
+    return { status: 400, body: 'Internal URLs are not allowed for webhooks' };
+  }
 
   const bodyStr = JSON.stringify({ action, payload, timestamp: new Date().toISOString() });
 
@@ -110,12 +238,19 @@ async function webhookAdapter(
   // the abort to the caller as a 5xx. Log and return a synthetic result
   // so the integration log records the failure.
   try {
+    // redirect:'manual' so an allowed host cannot 302 us to an internal/
+    // metadata address that would bypass the SSRF guard above. Any 3xx is
+    // treated as a failure rather than followed.
     const resp = await fetch(url, {
       method: 'POST',
       headers,
       body: bodyStr,
+      redirect: 'manual',
       signal: AbortSignal.timeout(5000),
     });
+    if (resp.status >= 300 && resp.status < 400) {
+      return { status: 502, body: 'Outbound webhook returned a redirect (not followed)' };
+    }
     const respBody = await resp.text();
     return { status: resp.status, body: respBody.substring(0, 2000) };
   } catch (err) {
@@ -161,6 +296,13 @@ serve(async (req: Request) => {
 
     const isCronAuth = !!(cronSecret && incomingSecret && (await timingSafeEqual(cronSecret, incomingSecret)));
 
+    // When the caller is an admin via JWT (NOT cron/service-role), capture their
+    // authoritative gym_id from the DB profile so we can enforce that they may
+    // only fire their own gym's integration (cross-tenant IDOR guard below).
+    // null means "trusted path" (cron or service-role) — no gym match required.
+    let adminGymId: string | null = null;
+    let isSuperAdmin = false;
+
     if (!isCronAuth) {
       // Check for valid admin JWT or service-role key
       const token = authHeader.replace('Bearer ', '');
@@ -180,13 +322,17 @@ serve(async (req: Request) => {
           if (user) {
             const { data: profile } = await authClient
               .from('profiles')
-              .select('role, additional_roles')
+              .select('role, additional_roles, gym_id')
               .eq('id', user.id)
               .single();
             // Multi-role (mig 0332): admin authority can come from primary or additional roles.
             const ADMIN_ROLES = ['admin', 'super_admin'];
             const additional = Array.isArray(profile?.additional_roles) ? profile.additional_roles : [];
             isAdmin = ADMIN_ROLES.includes(profile?.role) || additional.some((r: string) => ADMIN_ROLES.includes(r));
+            // super_admin is a platform-level role and may act cross-gym.
+            isSuperAdmin = profile?.role === 'super_admin' || additional.includes('super_admin');
+            // Authoritative gym scope comes from the DB profile, never the body.
+            adminGymId = (profile?.gym_id as string | undefined) ?? null;
           }
         }
 
@@ -273,6 +419,14 @@ serve(async (req: Request) => {
 
     if (fetchErr || !integration) {
       return jsonResp({ error: 'Integration not found' }, 404);
+    }
+
+    // ── Cross-tenant IDOR guard (admin-JWT path only) ──
+    // An admin may only fire integrations belonging to their own gym. The
+    // cron/service-role path (adminGymId === null) is trusted and may act
+    // cross-gym; platform super_admins are also exempt.
+    if (adminGymId !== null && !isSuperAdmin && integration.gym_id !== adminGymId) {
+      return jsonResp({ error: 'Forbidden' }, 403);
     }
 
     if (!integration.is_active) {

@@ -81,11 +81,29 @@ serve(async (req: Request) => {
     let failed = 0;
 
     for (const item of items) {
-      // Mark as processing
-      await db
+      // Atomically CLAIM the row before processing. The UPDATE is gated on the
+      // row still being in a claimable state, so two overlapping cron runs can't
+      // both grab the same row and double-fire the outbound webhook. .select()
+      // returns the affected rows: if it's empty, another run claimed it first
+      // (or its status changed) — skip it.
+      const { data: claimed, error: claimErr } = await db
         .from('integration_queue')
         .update({ status: 'processing' })
-        .eq('id', item.id);
+        .eq('id', item.id)
+        .in('status', ['pending', 'failed'])
+        .select('id');
+
+      if (claimErr || !claimed?.length) {
+        // Lost the race (another run is handling it) — skip without counting.
+        continue;
+      }
+
+      // NOTE (stale-recovery): rows stuck in 'processing' after a crash are NOT
+      // self-healed here because the table has no updated_at/processing_at
+      // timestamp column to detect staleness (the function only reads
+      // created_at/next_retry_at/completed_at). To add a stale-reaper, first add
+      // a timestamp column (e.g. processing_at) set on claim, then also pick up
+      // status='processing' rows where processing_at < now() - interval '10 min'.
 
       try {
         // Invoke the webhook function

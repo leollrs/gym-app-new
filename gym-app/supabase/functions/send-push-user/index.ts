@@ -318,26 +318,12 @@ serve(async (req) => {
     title = stripHtml(title);
     body = stripHtml(body);
 
-    // Rate limiting: max 20 pushes per target user per hour (database-backed)
-    {
-      const supabaseRL = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { count } = await supabaseRL
-        .from('ai_rate_limits')
-        .select('*', { count: 'exact', head: true })
-        .eq('profile_id', profile_id)
-        .eq('endpoint', 'send-push-user')
-        .gte('requested_at', oneHourAgo);
-      if ((count ?? 0) >= 20) {
-        return jsonResp({ error: 'Rate limit exceeded — too many pushes to this user' }, 429);
-      }
-      // Record this push for rate limiting
-      await supabaseRL
-        .from('ai_rate_limits')
-        .insert({ profile_id: profile_id, endpoint: 'send-push-user' });
-    }
-
     // Auth check: service role can push to anyone; users can only push to themselves or if admin/trainer
+    // NOTE: this MUST run before the rate-limit record below. Previously the
+    // rate limit was keyed on (and incremented against) the attacker-controlled
+    // TARGET profile_id before authorization, letting any caller exhaust a
+    // victim's push budget (even cross-gym). Authorize first, then rate-limit
+    // keyed on the authenticated CALLER.
     if (!isServiceRole && userId && profile_id !== userId) {
       const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
       const { data: callerProfile } = await supabaseAdmin
@@ -367,6 +353,29 @@ serve(async (req) => {
       if (!targetProfile || targetProfile.gym_id !== callerProfile.gym_id) {
         return jsonResp({ error: 'Forbidden — target user is not in your gym' }, 403);
       }
+    }
+
+    // Rate limiting: max 20 pushes per hour (database-backed), keyed on the
+    // authenticated CALLER (not the target) so a caller can't burn through a
+    // victim's budget. Only applies to user-authenticated callers; service-role
+    // (trusted system/bulk) traffic is exempt. Runs AFTER the authorization
+    // check above so unauthorized attempts never touch the counter.
+    if (!isServiceRole && userId) {
+      const supabaseRL = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count } = await supabaseRL
+        .from('ai_rate_limits')
+        .select('*', { count: 'exact', head: true })
+        .eq('profile_id', userId)
+        .eq('endpoint', 'send-push-user')
+        .gte('requested_at', oneHourAgo);
+      if ((count ?? 0) >= 20) {
+        return jsonResp({ error: 'Rate limit exceeded — too many pushes' }, 429);
+      }
+      // Record this push for rate limiting (keyed on caller)
+      await supabaseRL
+        .from('ai_rate_limits')
+        .insert({ profile_id: userId, endpoint: 'send-push-user' });
     }
 
     // Service client to read tokens (bypasses RLS)

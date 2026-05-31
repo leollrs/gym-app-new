@@ -145,33 +145,32 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
       const weightNum = weightLbs ? Math.max(0, parseFloat(weightLbs)) : null;
       const trainingDays = trainingDaysPerWeek ? Math.max(1, Math.min(7, parseInt(trainingDaysPerWeek, 10))) : null;
 
-      // 1. Create profile directly with optional info
-      const profileInsert = {
-        gym_id: gymId,
-        full_name: name.trim(),
-        email: email.trim().toLowerCase(),
-        role: 'member',
-        membership_status: 'active',
-        is_onboarded: false,
-      };
-      if (ageNum !== null && !Number.isNaN(ageNum)) profileInsert.age = ageNum;
-      if (sex) profileInsert.sex = sex;
-      if (heightInchesTotal !== null && !Number.isNaN(heightInchesTotal) && heightInchesTotal > 0) profileInsert.height_inches = heightInchesTotal;
-      if (weightNum !== null && !Number.isNaN(weightNum) && weightNum > 0) profileInsert.initial_weight_lbs = weightNum;
-      if (fitnessLevel) profileInsert.fitness_level = fitnessLevel;
-      if (primaryGoal) profileInsert.primary_goal = primaryGoal;
-      if (trainingDays !== null && !Number.isNaN(trainingDays)) profileInsert.training_days_per_week = trainingDays;
-      if (externalId.trim()) profileInsert.qr_external_id = externalId.trim();
-      if (adminNote.trim()) profileInsert.admin_note = adminNote.trim();
-      if (membershipStartedAt) profileInsert.membership_started_at = membershipStartedAt;
+      // 1. Create the member via RPC. A direct profiles insert can't work:
+      //    profiles.id is an FK to auth.users with no default, and
+      //    email / initial_weight_lbs / fitness_level / primary_goal /
+      //    training_days_per_week are NOT profiles columns. The RPC
+      //    provisions a real auth user + profile and routes the fitness
+      //    fields to member_onboarding.
+      const { data: created, error: rpcError } = await supabase.rpc('admin_create_member', {
+        p_gym_id: gymId,
+        p_full_name: name.trim(),
+        p_email: email.trim().toLowerCase(),
+        p_phone: phone.trim() || null,
+        p_membership_started_at: membershipStartedAt || null,
+        p_external_id: externalId.trim() || null,
+        p_admin_note: adminNote.trim() || null,
+        p_age: (ageNum !== null && !Number.isNaN(ageNum)) ? ageNum : null,
+        p_sex: sex || null,
+        p_height_inches: (heightInchesTotal !== null && !Number.isNaN(heightInchesTotal) && heightInchesTotal > 0) ? heightInchesTotal : null,
+        p_weight_lbs: (weightNum !== null && !Number.isNaN(weightNum) && weightNum > 0) ? weightNum : null,
+        p_fitness_level: fitnessLevel || null,
+        p_primary_goal: primaryGoal || null,
+        p_training_days: (trainingDays !== null && !Number.isNaN(trainingDays)) ? trainingDays : null,
+      });
 
-      const { data: newProfile, error: profileError } = await supabase
-        .from('profiles')
-        .insert(profileInsert)
-        .select('id')
-        .single();
-
-      if (profileError) throw profileError;
+      if (rpcError) throw rpcError;
+      const newMemberId = created?.id;
+      if (!newMemberId) throw new Error(k('somethingWentWrong'));
 
       // 2. Generate a link code and insert into gym_invites (marked as claimed)
       const linkCode = generateCode();
@@ -188,7 +187,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
           email: email.trim().toLowerCase(),
           phone: phone.trim() || null,
           role: 'member',
-          used_by: newProfile.id,
+          used_by: newMemberId,
           used_at: new Date().toISOString(),
           referral_code_id: referrerInfo?.codeId || null,
         });
@@ -196,14 +195,14 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
       if (inviteError) throw inviteError;
 
       // 3. Log admin action
-      logAdminAction('add_member', 'member', newProfile.id, {
+      logAdminAction('add_member', 'member', newMemberId, {
         name: name.trim(),
         email: email.trim(),
         has_referral: !!referrerInfo,
       });
       posthog?.capture('admin_member_invited', { method: 'direct_add' });
 
-      setResult({ profileId: newProfile.id, code: linkCode, name: name.trim() });
+      setResult({ profileId: newMemberId, code: linkCode, name: name.trim() });
       setPhase('result');
       if (onCreated) onCreated();
     } catch (err) {

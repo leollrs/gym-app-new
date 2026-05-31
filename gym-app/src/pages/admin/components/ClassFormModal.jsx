@@ -10,7 +10,7 @@ import RoutineSelector from './RoutineSelector';
 import ScheduleSlotForm from './ScheduleSlotForm';
 import CoverPreview, { CLASS_COVERS } from './CoverPreview';
 
-const DEFAULT_COLOR = 'var(--color-accent)';
+const DEFAULT_COLOR = '#D4AF37';
 const NAME_MAX = 100;
 const DESC_MAX = 500;
 

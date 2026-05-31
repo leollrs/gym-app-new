@@ -21,21 +21,6 @@ const QR_SIGNING_SECRET    = Deno.env.get('QR_SIGNING_SECRET');
 const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ALLOWED_ORIGIN       = Deno.env.get('ALLOWED_ORIGIN');
-const IP_HASH_SALT         = Deno.env.get('IP_HASH_SALT') || Deno.env.get('DENO_DEPLOYMENT_ID') || '';
-
-/**
- * SHA-256 hash of (ip + salt). We never store raw IPs; the hash is used as
- * an opaque dedup key for sliding-window IP rate limiting. Kept here so the
- * helper is in scope when the dedicated `ip_rate_limits` table lands (see
- * TODO at top of file).
- */
-async function hashIp(ip: string): Promise<string> {
-  const enc = new TextEncoder().encode(ip + IP_HASH_SALT);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN ?? '',
@@ -69,6 +54,15 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   let result = 0;
   for (let i = 0; i < bytesA.length; i++) result |= bytesA[i] ^ bytesB[i];
   return result === 0;
+}
+
+/** SHA-256 hex digest — used to key the consumed-nonce store without
+ *  storing the raw signed payload in the DB. */
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 async function hmacSign(payload: string): Promise<string> {
@@ -110,18 +104,11 @@ serve(async (req) => {
   }
 
   try {
-    // ── IP-based rate limiting ───────────────────────────────────
-    // Extract client IP from forwarded headers. We compute the hash so the
-    // wiring is complete; the actual DB check is skipped until a dedicated
-    // table exists (see TODO at top of file). The FK on ai_rate_limits.
-    // profile_id -> profiles(id) prevents overloading that table with an
-    // IP hash value, so doing the check there would break the endpoint.
-    const ipRaw = (req.headers.get('x-forwarded-for')
-                 ?? req.headers.get('x-real-ip')
-                 ?? 'unknown').split(',')[0].trim();
-    // Compute the hash so the helper is exercised and ready for use; it's
-    // intentionally unused at the DB layer until the migration ships.
-    void (await hashIp(ipRaw));
+    // ── IP-based rate limiting (NOT YET IMPLEMENTED) ─────────────
+    // IP-based limiting requires a dedicated table (see TODO at top of file);
+    // until that migration ships, only the per-user limit below applies.
+    // The previous dead `hashIp(ipRaw)` computation was removed — it was a
+    // no-op that produced a value which was immediately discarded.
 
     // ── Authenticate caller ──────────────────────────────────────
     const authHeader = req.headers.get('Authorization');
@@ -148,9 +135,10 @@ serve(async (req) => {
       .gte('requested_at', oneHourAgo);
 
     if (rlError) {
-      // Don't fail closed on rate-limit DB errors — log + proceed so
-      // verify-qr stays usable even if the rate-limit table is degraded.
-      console.warn('Rate limit check failed (proceeding):', rlError.message);
+      // Fail CLOSED: if we cannot confirm the caller is under the limit,
+      // reject rather than allowing unbounded verification attempts.
+      console.error('Rate limit check failed (rejecting):', rlError.message);
+      return jsonResp({ error: 'Rate limit check unavailable' }, 503);
     } else if ((count ?? 0) >= 60) {
       return jsonResp({ error: 'Rate limit exceeded — max 60 requests per hour' }, 429);
     }
@@ -179,8 +167,11 @@ serve(async (req) => {
       return jsonResp({ error: 'Invalid payload format' }, 400);
     }
 
-    // ── Check expiration (3-minute window) ───────────────────────
-    const QR_EXPIRY_MS = 180_000; // 3 minutes
+    // ── Check expiration ─────────────────────────────────────────
+    // Reduced from 180_000 (3 minutes) to 60_000 (60 seconds) to shrink the
+    // replay window. The QR is presented and scanned immediately at the desk,
+    // so 60s is ample for the scan UX.
+    const QR_EXPIRY_MS = 60_000; // 60 seconds (was 180_000 / 3 minutes)
     const timestamp = parseInt(parts[parts.length - 1]);
 
     if (isNaN(timestamp)) {
@@ -189,6 +180,33 @@ serve(async (req) => {
 
     if (Date.now() - timestamp > QR_EXPIRY_MS) {
       return jsonResp({ valid: false, error: 'QR code expired' });
+    }
+
+    // ── Single-use enforcement (replay protection) ───────────────
+    // The signature is valid and the timestamp is within the 60s window.
+    // Without this step a captured {payload, signature} pair could be
+    // re-verified any number of times inside that window → double check-in /
+    // double reward scan. We atomically claim the payload by INSERTing its
+    // hash into qr_consumed_nonces (PRIMARY KEY on payload_hash). The FIRST
+    // verify wins; a replay hits the unique violation (Postgres 23505) and is
+    // rejected as already-used. Rows are pruned after a 10-min TTL by the
+    // cron in migration 0478. Uses the service-role client (rlClient) already
+    // created above, which bypasses RLS on the service-role-only table.
+    const payloadHash = await sha256Hex(payload);
+    const { error: nonceErr } = await rlClient
+      .from('qr_consumed_nonces')
+      .insert({ payload_hash: payloadHash });
+
+    if (nonceErr) {
+      // 23505 = unique_violation → this payload was already consumed.
+      if (nonceErr.code === '23505') {
+        return jsonResp({ valid: false, error: 'QR code already used' });
+      }
+      // Any other DB error: fail CLOSED. We could not prove the QR is
+      // unused, so we must not allow the verify to succeed (a double scan
+      // is the exact thing this guards against).
+      console.error('Nonce claim failed (rejecting):', nonceErr.message);
+      return jsonResp({ error: 'Verification unavailable' }, 503);
     }
 
     return jsonResp({ valid: true });

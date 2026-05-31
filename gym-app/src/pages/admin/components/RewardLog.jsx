@@ -6,7 +6,6 @@ import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { logAdminAction } from '../../../lib/adminAudit';
-import logger from '../../../lib/logger';
 import { AdminCard, FadeIn, SectionLabel } from '../../../components/admin';
 import { rewardKeys } from './rewardConstants';
 
@@ -17,10 +16,10 @@ import { rewardKeys } from './rewardConstants';
  * date-sorted feed.
  *
  * Each row supports an "Expire" action for entries that haven't been
- * claimed yet. For `reward_redemptions.pending`, the expire flow
- * additionally calls the `add_reward_points` RPC to refund the points
- * the member spent — that's the authoritative balance-mutation path,
- * matching what the original redemption flow uses to deduct.
+ * claimed yet. For `reward_redemptions.pending`, expiring simply flips
+ * the status — a pending redemption only HOLDS points (available =
+ * total_points − SUM pending points_spent), so releasing the hold
+ * restores the member's balance without any explicit refund.
  */
 export default function RewardLog({ gymId, isEs, t }) {
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
@@ -32,28 +31,16 @@ export default function RewardLog({ gymId, isEs, t }) {
   const handleDeactivate = async (entry) => {
     setDeactivating(entry.id);
     try {
-      // If cancelling a pending redemption, refund the points by calling the
-      // server-side `add_reward_points` RPC (which is the authoritative way to
-      // mutate balances — same RPC the redemption flow uses to deduct).
-      // Doing it here means the toast copy "points returned" is actually true.
-      if (entry.table === 'reward_redemptions' && entry.status === 'pending') {
-        const { data: redemption } = await supabase
-          .from('reward_redemptions')
-          .select('profile_id, points_spent')
-          .eq('id', entry.dbId)
-          .single();
-        if (redemption?.profile_id && (redemption.points_spent || 0) > 0) {
-          const { error: refundErr } = await supabase.rpc('add_reward_points', {
-            p_profile_id: redemption.profile_id,
-            p_points: redemption.points_spent,
-            p_source: 'redemption_refund',
-            p_metadata: { redemption_id: entry.dbId, expired_by_admin: true },
-          });
-          // Don't block the expire on a refund-RPC missing — fall back to logging.
-          if (refundErr) logger.error('Refund failed for redemption', entry.dbId, refundErr);
-        }
-      }
-
+      // Expiring a PENDING redemption needs no point refund: a pending
+      // redemption only HOLDS points — available balance is
+      // total_points − SUM(points_spent WHERE status='pending'), and
+      // total_points is only debited later by claim_redemption. So flipping
+      // the status to 'expired' releases the hold automatically; the member's
+      // available balance rises back on its own. (The old code here called
+      // add_reward_points to "refund" — that RPC's real signature is
+      // p_user_id/p_gym_id/p_action/p_points/p_description and 'redemption_refund'
+      // isn't in its action whitelist, so it always raised; worse, crediting
+      // here would DOUBLE-count since nothing was ever deducted.)
       const { error } = await supabase
         .from(entry.table)
         .update({ status: 'expired' })
@@ -61,7 +48,7 @@ export default function RewardLog({ gymId, isEs, t }) {
       if (error) throw error;
       logAdminAction('expire_reward_redemption', entry.table, entry.dbId);
       queryClient.invalidateQueries({ queryKey: [...rewardKeys.all(gymId), 'activity-log'] });
-      showToast(t('admin.rewards.rewardCancelled', 'Reward cancelled — points returned'), 'success');
+      showToast(t('admin.rewards.rewardCancelled', 'Reward expired — held points released'), 'success');
     } catch (err) {
       showToast(err.message, 'error');
     } finally {

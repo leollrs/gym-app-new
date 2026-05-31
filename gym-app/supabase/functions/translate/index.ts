@@ -90,7 +90,16 @@ serve(async (req) => {
     // insert, blowing past the limit. With insert-first the post-check is
     // race-free because every winning request is already counted.
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'translate' });
+    // Fail closed if the slot insert errors — an unchecked insert lets the
+    // counter under-count and the per-user cap (DeepL cost control) be bypassed.
+    const { error: rlInsErr } = await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'translate' });
+    if (rlInsErr) {
+      console.error('Rate-limit slot insert failed (rejecting):', rlInsErr.message);
+      return new Response(
+        JSON.stringify({ error: 'Rate limit unavailable. Try again later.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     const { count, error: rlError } = await supabase
       .from('ai_rate_limits')
       .select('*', { count: 'exact', head: true })

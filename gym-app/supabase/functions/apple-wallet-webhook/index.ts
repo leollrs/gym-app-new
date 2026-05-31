@@ -184,11 +184,31 @@ serve(async (req: Request) => {
   // If the header is present but the signature is invalid, AND the existing
   // Apple Wallet auth also fails, reject with 401.
   const hmacResult = await verifyWebhookSignature(req, rawBody);
-  const hmacPassed = hmacResult === true;
+  let hmacPassed = hmacResult === true;
   const hmacFailed = hmacResult === false; // header present but signature invalid
 
   if (hmacFailed) {
     console.warn('[Wallet] HMAC signature verification failed');
+  }
+
+  // ── Best-effort replay protection ──
+  // The HMAC currently covers only the body, so a captured (body, signature)
+  // pair replays forever. If the caller sends an x-webhook-timestamp header,
+  // reject signatures older than 5 minutes to bound the replay window. Absent
+  // header → behavior unchanged (don't break existing callers).
+  // FOLLOW-UP: full replay protection requires the signer (push-wallet-update)
+  // to send the timestamp AND include it in the HMAC input so it can't be
+  // tampered with; until then this is a non-authenticated, best-effort bound.
+  if (hmacPassed) {
+    const tsHeader = req.headers.get('x-webhook-timestamp');
+    if (tsHeader) {
+      const ts = Date.parse(tsHeader) || Number(tsHeader);
+      const ageMs = Number.isFinite(ts) ? Date.now() - (ts > 1e12 ? ts : ts * 1000) : NaN;
+      if (!Number.isFinite(ageMs) || Math.abs(ageMs) > 5 * 60 * 1000) {
+        console.warn('[Wallet] HMAC rejected: stale or invalid x-webhook-timestamp');
+        hmacPassed = false;
+      }
+    }
   }
 
   try {
@@ -214,10 +234,13 @@ serve(async (req: Request) => {
     // FIX: Uses profiles.pass_data_updated_at instead of registration.updated_at
     // to avoid the race condition where push-wallet-update hasn't finished yet.
     if (api[0] === 'devices' && req.method === 'GET') {
-      // Verify Apple Wallet auth token
+      // Verify Apple Wallet auth token. This route returns member-specific
+      // data (the device's updatable serials), so ownership is ALWAYS required:
+      // HMAC (a global, untenant-scoped secret) no longer substitutes for the
+      // per-pass Apple authenticationToken here.
       const profile = await verifyAuthToken(req, supabase);
-      if (!profile && !hmacPassed) {
-        console.warn('[Wallet] GET registrations: no valid auth (Apple Wallet token or HMAC)');
+      if (!profile) {
+        console.warn('[Wallet] GET registrations: no valid Apple Wallet auth token');
         return new Response('Unauthorized', { status: 401 });
       }
 
@@ -277,7 +300,9 @@ serve(async (req: Request) => {
     if (api[0] === 'devices' && req.method === 'POST') {
       const deviceId = api[1], passTypeId = api[3], serial = api[4];
       const authToken = getAuthToken(req);
-      if (!authToken && !hmacPassed) return new Response('', { status: 401 });
+      // Mutating route: require the per-pass Apple authenticationToken regardless
+      // of HMAC. HMAC (global secret) no longer substitutes for ownership here.
+      if (!authToken) return new Response('', { status: 401 });
 
       // Profile data is required for registration insert (profile_id, gym_id).
       // Scope by serial (which uniquely identifies the profile) and
@@ -328,7 +353,11 @@ serve(async (req: Request) => {
     if (api[0] === 'devices' && req.method === 'DELETE') {
       const deviceId = api[1], passTypeId = api[3], serial = api[4];
       const authToken = getAuthToken(req);
-      if (!authToken && !hmacPassed) return new Response('', { status: 401 });
+      // Destructive route: require the per-pass Apple authenticationToken
+      // regardless of HMAC. HMAC (a single global secret with no tenant scoping)
+      // no longer substitutes for ownership here — otherwise anyone holding the
+      // secret could delete registrations by serial across all gyms.
+      if (!authToken) return new Response('', { status: 401 });
 
       // Verify the token matches the registration before allowing deletion
       const { data: reg } = await supabase.from('wallet_pass_registrations')
@@ -340,11 +369,11 @@ serve(async (req: Request) => {
 
       if (!reg) return new Response('', { status: 404 });
 
-      // Verify the auth token belongs to the profile that owns this registration
-      // (skip ownership check if HMAC-authenticated — trusted server-to-server call).
-      // Scope by profile id (already known from the registration) and compare
-      // hashed tokens in constant time on the JS side.
-      if (!hmacPassed) {
+      // Verify the auth token belongs to the profile that owns this
+      // registration. This ownership check is now UNCONDITIONAL — HMAC no longer
+      // bypasses it. Scope by profile id (already known from the registration)
+      // and compare hashed tokens in constant time on the JS side.
+      {
         const hashedToken = await hashAuthToken(authToken);
         const { data: profile } = await supabase.from('profiles')
           .select('id, wallet_auth_token')
@@ -367,7 +396,10 @@ serve(async (req: Request) => {
     if (api[0] === 'passes' && req.method === 'GET') {
       const passTypeId = api[1], serial = api[2];
       const authToken = getAuthToken(req);
-      if (!authToken && !hmacPassed) return new Response('', { status: 401 });
+      // Returns member-specific pass data: require the per-pass Apple
+      // authenticationToken regardless of HMAC. HMAC (global secret) no longer
+      // substitutes for ownership here.
+      if (!authToken) return new Response('', { status: 401 });
 
       console.log(`[Wallet] Fetch pass: type=${passTypeId} serial=${serial}`);
 

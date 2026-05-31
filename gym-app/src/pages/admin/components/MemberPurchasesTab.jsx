@@ -168,7 +168,7 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
       queryClient.invalidateQueries({ queryKey: storeKeys.all(gymId) });
       const totalPoints = (selectedProduct.points_per_purchase ?? 0) * quantity;
       let msg = t('admin.store.purchaseRecorded', 'Purchase recorded! {{points}} points earned.', { points: totalPoints });
-      if (data?.free_reward_earned) {
+      if (data?.free_earned) {
         msg += ` ${t('admin.store.freeItemEarned', 'Free {{name}} earned!', { name: selectedProduct.name })}`;
       }
       showToast(msg, 'success');

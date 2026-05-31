@@ -118,32 +118,33 @@ serve(async (req: Request) => {
     await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'generate-apple-pass' });
 
     // ── Request body ──
-    const { payload, memberName, gymName, punchCards, kind, referralCode, referralReward } = await req.json();
-    if (!payload) {
-      return new Response(JSON.stringify({ error: 'Missing payload' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    // ── Ownership re-check ──
-    // We use SERVICE_ROLE_KEY for subsequent queries which bypasses RLS, so we
-    // must verify the requester actually owns the profile referenced in the
-    // payload. Without this, an authenticated user could pass any profileId
-    // and generate a pass for another member.
-    if (!payload?.profileId || payload.profileId !== user.id) {
-      return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // The client `payload` is intentionally IGNORED for the membership barcode.
+    // We always embed the caller's OWN server-stored qr_code_payload (fetched
+    // below) so an authenticated member cannot mint a pass carrying another
+    // member's identity. (The previous `payload.profileId === user.id` check was
+    // both broken — callers send `payload` as a string, so it always 403'd — and
+    // conceptually wrong: it trusted client-supplied barcode content.) This now
+    // mirrors generate-google-pass, the correct reference implementation.
+    // Referral passes encode the caller's own referralCode, not an identity payload.
+    const { memberName, gymName, punchCards, kind, referralCode, referralReward } = await req.json();
     const isReferral = kind === 'referral';
 
     // ── Fetch profile (including stable wallet pass serial + created_at for "member since") ──
     const { data: profile } = await supabase
       .from('profiles')
-      .select('gym_id, wallet_pass_serial, wallet_auth_token, created_at')
+      .select('gym_id, wallet_pass_serial, wallet_auth_token, created_at, qr_code_payload')
       .eq('id', user.id)
       .single();
+
+    // Server-trusted identity payload for the membership barcode. Referral passes
+    // don't need it (they encode referralCode), so only require it otherwise.
+    const payload = profile?.qr_code_payload;
+    if (!isReferral && !payload) {
+      return new Response(JSON.stringify({ error: 'No QR payload on profile' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Ensure stable serial + auth token exist
     let passSerial = profile?.wallet_pass_serial;

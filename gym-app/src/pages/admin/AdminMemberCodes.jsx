@@ -48,7 +48,7 @@ export default function AdminMemberCodes() {
       const { data: imported } = await selectAllRows((from, to) =>
         supabase
           .from('profiles')
-          .select('id, full_name, phone, email, membership_started_at, created_at')
+          .select('id, full_name, phone:phone_number, membership_started_at, created_at')
           .eq('gym_id', gymId)
           .eq('imported_archived', false)
           .not('import_batch_id', 'is', null)
@@ -136,9 +136,9 @@ export default function AdminMemberCodes() {
       await navigator.clipboard.writeText(code);
       setCopiedCode(code);
       setTimeout(() => setCopiedCode(null), 1600);
-      showToast(`Code ${code} copied`, 'success');
+      showToast(t('admin.memberCodes.codeCopied', { code, defaultValue: `Code ${code} copied` }), 'success');
     } catch {
-      showToast('Copy failed — long-press to select', 'error');
+      showToast(t('admin.memberCodes.copyFailed', 'Copy failed — long-press to select'), 'error');
     }
   };
 
@@ -146,25 +146,26 @@ export default function AdminMemberCodes() {
     // Window.print over a print-formatted body section. Each card holds
     // name + phone + the big 6-char code in tracking-wide mono. Designed
     // to be cut into business-card slips at the front desk.
+    const instr = t('admin.memberCodes.printInstr', 'Open the app → Sign up → Use this code');
     const cardsHtml = rows.filter((r) => r.code).map((r) => `
       <div class="card">
         <div class="card-name">${escapeHtml(r.name)}</div>
         <div class="card-phone">${escapeHtml(r.phone)}</div>
         <div class="card-code">${r.code}</div>
-        <div class="card-instr">Open the app → Sign up → Use this code</div>
+        <div class="card-instr">${escapeHtml(instr)}</div>
       </div>
     `).join('');
 
     const win = window.open('', '_blank');
     if (!win) {
-      showToast('Allow popups to print codes', 'error');
+      showToast(t('admin.memberCodes.popupBlocked', 'Allow popups to print codes'), 'error');
       return;
     }
     win.document.write(`
       <!doctype html>
       <html>
         <head>
-          <title>Member codes</title>
+          <title>${escapeHtml(t('admin.memberCodes.printTitle', 'Member codes'))}</title>
           <style>
             @page { size: letter; margin: 0.4in; }
             * { box-sizing: border-box; }
@@ -179,7 +180,7 @@ export default function AdminMemberCodes() {
           </style>
         </head>
         <body>
-          <h1>Member Access Codes — ${escapeHtml(profile?.full_name || 'Gym')} (${rows.filter(r => r.code).length})</h1>
+          <h1>${escapeHtml(t('admin.memberCodes.printHeading', 'Member Access Codes'))} — ${escapeHtml(profile?.full_name || 'Gym')} (${rows.filter(r => r.code).length})</h1>
           <div class="grid">${cardsHtml}</div>
           <script>window.onload = function() { window.print(); };</script>
         </body>
@@ -190,10 +191,10 @@ export default function AdminMemberCodes() {
 
   return (
     <AdminPageShell>
-      <FadeIn>
+      <FadeIn className="mb-6">
         <PageHeader
-          title="Member Codes"
-          subtitle={`Imported members and their app access codes`}
+          title={t('admin.memberCodes.title', 'Member Codes')}
+          subtitle={t('admin.memberCodes.subtitle', 'Imported members and their app access codes')}
           actions={
             <button
               onClick={handlePrint}
@@ -202,7 +203,7 @@ export default function AdminMemberCodes() {
               style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
             >
               <Printer size={13} />
-              Print codes sheet
+              {t('admin.memberCodes.printSheet', 'Print codes sheet')}
             </button>
           }
         />
@@ -211,9 +212,9 @@ export default function AdminMemberCodes() {
       {/* Stats strip */}
       <FadeIn delay={40}>
         <div className="grid grid-cols-3 gap-2.5 md:gap-3 mb-5">
-          <MiniStat label="Imported" value={stats.total} icon={Users} />
-          <MiniStat label="Claimed" value={stats.claimed} icon={CheckCircle2} accent="success" />
-          <MiniStat label="Unclaimed" value={stats.unclaimed} icon={KeyRound} accent="warning" />
+          <MiniStat label={t('admin.memberCodes.imported', 'Imported')} value={stats.total} icon={Users} />
+          <MiniStat label={t('admin.memberCodes.claimed', 'Claimed')} value={stats.claimed} icon={CheckCircle2} accent="success" />
+          <MiniStat label={t('admin.memberCodes.unclaimed', 'Unclaimed')} value={stats.unclaimed} icon={KeyRound} accent="warning" />
         </div>
       </FadeIn>
 
@@ -221,9 +222,9 @@ export default function AdminMemberCodes() {
       <FadeIn delay={80}>
         <div className="flex flex-wrap items-center gap-2 mb-4">
           {[
-            { key: 'unclaimed', label: 'Unclaimed', count: stats.unclaimed },
-            { key: 'claimed',   label: 'Claimed',   count: stats.claimed   },
-            { key: 'all',       label: 'All',       count: stats.total     },
+            { key: 'unclaimed', label: t('admin.memberCodes.filterUnclaimed', 'Unclaimed'), count: stats.unclaimed },
+            { key: 'claimed',   label: t('admin.memberCodes.filterClaimed', 'Claimed'),     count: stats.claimed   },
+            { key: 'all',       label: t('admin.memberCodes.filterAll', 'All'),             count: stats.total     },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -240,7 +241,7 @@ export default function AdminMemberCodes() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, phone, or code"
+              placeholder={t('admin.memberCodes.searchPlaceholder', 'Search name, phone, or code')}
               className="rounded-xl pl-9 pr-3 py-2 text-[12.5px] w-[260px] outline-none transition-colors"
               style={{
                 background: 'var(--color-bg-input, var(--color-bg-elevated))',
@@ -254,7 +255,7 @@ export default function AdminMemberCodes() {
 
       {/* Empty + loading states */}
       {isLoading && (
-        <AdminCard><p className="text-center text-[12px] py-6" style={{ color: 'var(--color-text-muted)' }}>Loading…</p></AdminCard>
+        <AdminCard><p className="text-center text-[12px] py-6" style={{ color: 'var(--color-text-muted)' }}>{t('admin.memberCodes.loading', 'Loading…')}</p></AdminCard>
       )}
 
       {!isLoading && stats.total === 0 && (
@@ -263,15 +264,15 @@ export default function AdminMemberCodes() {
             <div className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center mb-3" style={{ background: 'var(--color-admin-panel)' }}>
               <KeyRound size={18} style={{ color: 'var(--color-text-subtle)' }} />
             </div>
-            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>No imported members</p>
-            <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>This page populates after the platform runs a CSV import for your gym.</p>
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.memberCodes.emptyTitle', 'No imported members')}</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.memberCodes.emptyDesc', 'This page populates after the platform runs a CSV import for your gym.')}</p>
           </div>
         </AdminCard>
       )}
 
       {!isLoading && stats.total > 0 && rows.length === 0 && (
         <AdminCard>
-          <p className="text-center py-8 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>No matches.</p>
+          <p className="text-center py-8 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.memberCodes.noMatches', 'No matches.')}</p>
         </AdminCard>
       )}
 
@@ -286,11 +287,11 @@ export default function AdminMemberCodes() {
                       <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{r.name || '—'}</p>
                       {r.claimed ? (
                         <span className="admin-pill admin-pill--success text-[10px]" style={{ padding: '1px 6px' }}>
-                          Claimed
+                          {t('admin.memberCodes.claimed', 'Claimed')}
                         </span>
                       ) : (
                         <span className="admin-pill admin-pill--warning text-[10px]" style={{ padding: '1px 6px' }}>
-                          Unclaimed
+                          {t('admin.memberCodes.unclaimed', 'Unclaimed')}
                         </span>
                       )}
                     </div>
@@ -300,7 +301,7 @@ export default function AdminMemberCodes() {
                   {r.code ? (
                     <button
                       onClick={() => handleCopy(r.code)}
-                      title="Tap to copy"
+                      title={t('admin.memberCodes.tapToCopy', 'Tap to copy')}
                       className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono font-bold tracking-[0.18em] transition-colors"
                       style={{
                         background: copiedCode === r.code
@@ -314,7 +315,7 @@ export default function AdminMemberCodes() {
                       <span className="text-[13px]">{r.code}</span>
                     </button>
                   ) : (
-                    <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>No code</span>
+                    <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('admin.memberCodes.noCode', 'No code')}</span>
                   )}
                 </li>
               ))}
@@ -330,8 +331,8 @@ export default function AdminMemberCodes() {
 function escapeHtml(s) {
   return String(s || '')
     .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+    .replace(/[<]/g, '&lt;')
+    .replace(/[>]/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
 
@@ -342,7 +343,7 @@ function MiniStat({ label, value, icon: Icon, accent }) {
   return (
     <div className="admin-card p-3 flex items-center gap-3">
       <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: `color-mix(in srgb, ${color} 10%, transparent)` }}>
-        <Icon size={15} style={{ color }} />
+        {Icon && <Icon size={15} style={{ color }} />}
       </div>
       <div className="min-w-0">
         <p className="admin-eyebrow" style={{ fontSize: '10.5px' }}>{label}</p>

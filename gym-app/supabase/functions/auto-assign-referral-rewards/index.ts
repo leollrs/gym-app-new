@@ -113,15 +113,22 @@ serve(async (req: Request) => {
       if (!updateErr) {
         assigned++;
 
-        // If points-based, credit via RPC
-        if (defaultReward.type === 'points' && defaultReward.points) {
-          await db.rpc('add_reward_points', {
-            p_user_id: reward.profile_id,
-            p_gym_id: reward.gym_id,
-            p_action: 'referral',
-            p_points: defaultReward.points,
-            p_description: `Auto-assigned referral reward: ${defaultReward.label || defaultReward.points + ' points'}`,
-          });
+        // If points-based, credit via RPC. Clamp the points to a sane bounded
+        // integer first — `defaultReward` is gym-admin-controlled JSON, and a
+        // malicious/buggy config (e.g. points: 1e9 or "abc") would otherwise be
+        // credited verbatim. Bound to [1, 10000]; skip non-positive/NaN values.
+        if (defaultReward.type === 'points') {
+          const rawPts = Number(defaultReward.points);
+          const pts = Number.isFinite(rawPts) ? Math.min(Math.max(Math.floor(rawPts), 0), 10000) : 0;
+          if (pts > 0) {
+            await db.rpc('add_reward_points', {
+              p_user_id: reward.profile_id,
+              p_gym_id: reward.gym_id,
+              p_action: 'referral',
+              p_points: pts,
+              p_description: `Auto-assigned referral reward: ${defaultReward.label || pts + ' points'}`,
+            });
+          }
         }
       }
     }

@@ -91,12 +91,16 @@ const GOAL_WEIGHT_MODIFIER = {
   endurance:       0.75,
 };
 
-// 1RM estimate — Epley for reps <= 12, Brzycki for reps > 12 (Fix #26)
+// 1RM estimate — Epley for low reps, Brzycki for higher reps.
+// Crossover is at 10 reps, NOT 12: the two formulas are numerically equal at
+// ~10 reps, so switching there is continuous + monotonic. Switching at 12 (the
+// old value) created a ~7% discontinuity — a set of 13 reps would spuriously
+// out-rank a heavier set of 12 because Brzycki(13) jumps above Epley(12).
+// For reps >= 30 Brzycki's denominator collapses, so fall back to Epley.
 export const epley1RM = (weight, reps) => {
   if (!weight || !reps || reps <= 0) return 0;
-  // For reps >= 30, always use Epley formula (Brzycki breaks down)
   if (reps >= 30) return weight * (1 + reps / 30);
-  if (reps > 12) {
+  if (reps > 10) {
     const result = weight / (1.0278 - 0.0278 * reps);
     return isFinite(result) && result > 0 ? result : weight * (1 + reps / 30);
   }
@@ -115,10 +119,11 @@ const isCompoundMovement = (movementPattern) => {
   return ['push', 'pull', 'squat', 'hinge', 'carry'].includes(movementPattern);
 };
 
-/**
- * Legacy: decide if compound based on rep target (fallback when no movementPattern).
- */
-const isCompound = (targetReps) => targetReps <= 8;
+// (Removed the legacy rep-based isCompound() heuristic. When an exercise has no
+//  movementPattern we now default to the ISOLATION increment — the smaller,
+//  safer step. The old heuristic tagged any low-rep set as "compound" and
+//  handed out the larger +5lb jump, which over-suggested weight for e.g. a
+//  heavy-but-isolated curl in a strength block.)
 
 /**
  * Estimate a starting weight for an exercise the user has never done before.
@@ -207,10 +212,8 @@ export const computeIntraSessionSuggestion = (completedSetsThisSession, onboardi
   const lastSet = completedSetsThisSession[completedSetsThisSession.length - 1];
   if (!lastSet || !lastSet.weight || lastSet.weight <= 0 || !lastSet.reps || lastSet.reps <= 0) return null;
 
-  // Determine if compound from movementPattern, fallback to rep-based heuristic
-  const compound = movementPattern
-    ? isCompoundMovement(movementPattern)
-    : isCompound(targetReps || config.min);
+  // Compound only when the exercise library says so; unknown → isolation (safer).
+  const compound = movementPattern ? isCompoundMovement(movementPattern) : false;
   const incr = compound ? increments.compound : increments.isolation;
 
   // If last set reps >= top of goal range at current weight → bump weight for next set
@@ -257,10 +260,31 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
   const config    = GOAL_CONFIG[goal] ?? GOAL_CONFIG.general_fitness;
   const increments = INCREMENTS[level] ?? INCREMENTS.intermediate;
 
-  // Rep target: honour routine config if it falls in goal range; else use range midpoint
-  const repTarget = targetReps
-    ? Math.max(config.min, Math.min(config.max, targetReps))
-    : Math.round((config.min + config.max) / 2);
+  // ── Effective rep band (the double-progression window) ──────────────────────
+  // Three cases:
+  //  • no explicit routine target          → progress across the GOAL range
+  //  • target inside the goal range         → goal-range double progression,
+  //                                            displaying the routine's target
+  //  • target OUTSIDE the goal range        → the routine/trainer deliberately
+  //    prescribed a different scheme (e.g. a 5×5 strength block for a member
+  //    whose goal is hypertrophy). Honour it as fixed linear progression on the
+  //    prescribed reps instead of silently rewriting it into the goal range
+  //    (the old code clamped it, hiding the prescription).
+  const hasTarget = Number.isFinite(targetReps) && targetReps > 0;
+  const targetInGoalRange = hasTarget && targetReps >= config.min && targetReps <= config.max;
+
+  let bandMin, bandMax;
+  if (!hasTarget || targetInGoalRange) {
+    bandMin = config.min;
+    bandMax = config.max;
+  } else {
+    bandMin = targetReps;   // fixed-target linear progression
+    bandMax = targetReps;
+  }
+
+  // Rep number shown as "aim for X" on fresh/maintenance suggestions.
+  const repTarget = hasTarget ? targetReps : Math.round((config.min + config.max) / 2);
+  const repRangeLabel = bandMin === bandMax ? `${bandMin}` : `${bandMin}–${bandMax}`;
 
   // No usable history → try body-weight-based estimate, else generic first_time
   const completedSets = (history ?? []).filter(s => s.weight > 0 && s.reps > 0);
@@ -283,7 +307,7 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
           suggestedWeight: estimated,
           suggestedReps:   repTarget,
           note:  'first_time_estimated',
-          label: `Suggested start: ${estimated} lbs × ${config.min}–${config.max} reps`,
+          label: `Suggested start: ${estimated} lbs × ${repRangeLabel} reps`,
         };
       }
     }
@@ -292,7 +316,7 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
       suggestedWeight: null,
       suggestedReps:   repTarget,
       note:  'first_time',
-      label: `Start light — aim for ${config.min}–${config.max} reps`,
+      label: `Start light — aim for ${repRangeLabel} reps`,
     };
   }
 
@@ -309,55 +333,64 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
     epley1RM(s.weight, s.reps) > epley1RM(top.weight, top.reps) ? s : top
   );
 
+  // Reps that drive the weight-up vs reps-up decision. Normally this is the
+  // average of the most recent session's sets. BUT if the PR floor kicks in
+  // below, we must judge against the PR's OWN reps, not this session's — see
+  // the PR-floor block.
+  let decisionReps = Math.round(
+    completedSets.reduce((sum, s) => sum + s.reps, 0) / completedSets.length
+  );
+
   // ── PR floor ──────────────────────────────────────────────────────────────
-  // If the recorded personal_records.estimated_1rm is higher than the best
-  // set from the most-recent session, the PR was set on a different day and
-  // the most recent session was a maintenance/deload day. Progress from the
-  // PR — not from a lighter set — so the suggestion doesn't drift backwards.
-  // We treat the PR as the "best" for progression purposes but keep the
-  // session's `avgReps` to decide between weight-up vs reps-up.
+  // If the recorded PR has a higher estimated 1RM than the best set from the
+  // most-recent session, that session was a back-off / maintenance / deload day
+  // and the PR is the real working level. Progress FROM the PR so the
+  // suggestion doesn't drift backwards.
+  //
+  // Critically, when we adopt the PR as `best` we must ALSO judge weight-up vs
+  // reps-up by the PR's own reps. The old code kept this session's avgReps,
+  // which produced absurd jumps: PR 225×5 + a light 135×15 back-off day →
+  // avgReps 15 ≥ max → "add weight to 227.5", ignoring that the PR was only 5
+  // reps. Using the PR's reps (5 < range) correctly suggests +1 rep at 225.
   if (personalRecord && personalRecord.weight > 0 && personalRecord.reps > 0) {
     const prE1RM = epley1RM(personalRecord.weight, personalRecord.reps);
     const bestE1RM = epley1RM(best.weight, best.reps);
     if (prE1RM > bestE1RM) {
       best = { weight: personalRecord.weight, reps: personalRecord.reps };
+      decisionReps = personalRecord.reps;
     }
   }
 
-  // Average completed reps across last session's sets
-  const avgReps = Math.round(
-    completedSets.reduce((sum, s) => sum + s.reps, 0) / completedSets.length
-  );
-
-  // Determine if compound from movementPattern, fallback to rep-based heuristic
+  // Compound only when the exercise library says so; unknown → isolation (safer).
   const compound = exerciseMeta?.movementPattern
     ? isCompoundMovement(exerciseMeta.movementPattern)
-    : isCompound(repTarget);
+    : false;
   const incr = compound ? increments.compound : increments.isolation;
 
-  // Hit top of range (or beginner who hit target) → increase weight
-  if (avgReps >= config.max || (level === 'beginner' && avgReps >= repTarget)) {
+  // Hit top of the working band (or beginner who hit their target) → add weight,
+  // reset reps to the bottom of the band (classic double progression).
+  if (decisionReps >= bandMax || (level === 'beginner' && decisionReps >= repTarget)) {
     const suggestedWeight = roundToPlate(best.weight + incr);
 
     const MAX_REASONABLE_WEIGHT = 1500; // lbs - beyond any human capability
     if (suggestedWeight > MAX_REASONABLE_WEIGHT) {
-      return { suggestedWeight: best.weight, note: 'maintain', label: 'Weight appears unusually high — verify your logs' };
+      return { suggestedWeight: best.weight, suggestedReps: bandMin, note: 'maintain', label: 'Weight appears unusually high — verify your logs' };
     }
 
     return {
       suggestedWeight,
-      suggestedReps:   config.min,
+      suggestedReps:   bandMin,
       note:  'increase_weight',
       label: `+${incr} lbs — you crushed last session`,
     };
   }
 
-  // Didn't quite hit top → same weight, push for 1 more rep
-  const nextReps = Math.min(avgReps + 1, config.max);
+  // Didn't quite hit the top → same weight, push for 1 more rep (capped at band top).
+  const nextReps = Math.min(decisionReps + 1, bandMax);
   return {
     suggestedWeight: best.weight,
     suggestedReps:   nextReps,
     note:  'increase_reps',
     label: `Same weight — aim for ${nextReps} reps this time`,
   };
-};
+};;

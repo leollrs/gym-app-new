@@ -42,8 +42,32 @@ function stripPngMetadata(bytes: Uint8Array): Uint8Array {
   return concatUint8Arrays(result);
 }
 
-/** Strip EXIF/metadata from JPEG and PNG to prevent GPS/device info leakage */
-function stripImageMetadata(base64: string): string {
+/** Detect image format via magic bytes. Returns 'jpeg' | 'png' | 'unsupported'. */
+function detectImageFormat(base64: string): 'jpeg' | 'png' | 'unsupported' {
+  try {
+    // Decode just enough of the prefix to read the magic bytes.
+    const head = atob(base64.slice(0, 16));
+    const b = new Uint8Array(head.length);
+    for (let i = 0; i < head.length; i++) b[i] = head.charCodeAt(i);
+    // JPEG: FF D8 FF
+    if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'jpeg';
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (
+      b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47 &&
+      b[4] === 0x0D && b[5] === 0x0A && b[6] === 0x1A && b[7] === 0x0A
+    ) return 'png';
+    return 'unsupported';
+  } catch {
+    return 'unsupported';
+  }
+}
+
+/**
+ * Strip EXIF/metadata from JPEG and PNG to prevent GPS/device info leakage.
+ * Fails closed: returns null on any error or unsupported format so the caller
+ * never sends unstripped/unknown bytes to OpenAI.
+ */
+function stripImageMetadata(base64: string): string | null {
   try {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -79,16 +103,16 @@ function stripImageMetadata(base64: string): string {
     else if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
       cleanedBytes = stripPngMetadata(bytes);
     }
-    // Other formats (WebP, etc.): return as-is
+    // Other formats (WebP, HEIC, etc.): fail closed — do NOT leak metadata.
     else {
-      return base64;
+      return null;
     }
 
     let result = '';
     for (let j = 0; j < cleanedBytes.length; j++) result += String.fromCharCode(cleanedBytes[j]);
     return btoa(result);
   } catch {
-    return base64; // On error, return original
+    return null; // Fail closed — never return unstripped bytes.
   }
 }
 
@@ -219,9 +243,28 @@ serve(async (req) => {
     {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('gym_id')
+        .select('gym_id, ai_consent')
         .eq('id', user.id)
         .maybeSingle();
+
+      // ── AI CONSENT CHECK (GDPR Art. 7) — fail closed ───────────
+      // Consent is recorded per-feature in profiles.ai_consent JSONB as
+      // { body: ISO8601, food: ISO8601, menu: ISO8601, version: 1 }.
+      // A feature is consented when its timestamp is truthy AND the
+      // consent version matches. Missing profile/consent ⇒ not consented.
+      const aiConsent = profile?.ai_consent;
+      const consented = !!aiConsent
+        && typeof aiConsent === 'object'
+        && aiConsent.version === 1
+        && Boolean(aiConsent.food);
+      if (!consented) {
+        return new Response(
+          JSON.stringify({ error: 'consent_required', feature: 'food-analysis' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      // ── END AI CONSENT CHECK ───────────────────────────────────
+
       const gymId = profile?.gym_id;
       if (gymId) {
         const { data: cap } = await supabase
@@ -272,8 +315,24 @@ serve(async (req) => {
         { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    // Strip EXIF metadata before sending to AI
+    // ── Image format validation (reject HEIC/WebP/etc.) ─────────
+    // Server-side backstop: only JPEG/PNG are allowed. Any other format
+    // is rejected rather than having its EXIF forwarded to OpenAI.
+    if (detectImageFormat(rawImage) === 'unsupported') {
+      return new Response(
+        JSON.stringify({ error: 'Unsupported image format. Please upload a JPEG or PNG.' }),
+        { status: 415, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Strip EXIF metadata before sending to AI (fails closed → null)
     const image = stripImageMetadata(rawImage);
+    if (image === null) {
+      return new Response(
+        JSON.stringify({ error: 'Unsupported image format. Please upload a JPEG or PNG.' }),
+        { status: 415, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // ── RATE LIMIT CHECK (15 requests/hour per user) — fail closed ──
     // Insert FIRST to claim a slot, then count. This prevents race conditions
@@ -284,11 +343,20 @@ serve(async (req) => {
       const ENDPOINT = 'analyze-food-photo';
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-      // Insert the rate limit record first to claim the slot
-      await supabase.from('ai_rate_limits').insert({
+      // Insert the rate limit record first to claim the slot. Fail closed if the
+      // insert errors — otherwise the counter under-counts and the per-user cap
+      // (the real OpenAI cost-control) can be bypassed indefinitely.
+      const { error: rlInsErr } = await supabase.from('ai_rate_limits').insert({
         profile_id: user.id,
         endpoint: ENDPOINT,
       });
+      if (rlInsErr) {
+        console.error('Rate-limit slot insert failed (rejecting):', rlInsErr.message);
+        return new Response(
+          JSON.stringify({ error: 'Rate limit unavailable. Try again later.' }),
+          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       // Now count including the just-inserted record
       const { count: requestCount } = await supabase

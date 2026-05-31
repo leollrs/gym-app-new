@@ -101,16 +101,35 @@ serve(async (req) => {
     // would HMAC-sign ANY arbitrary string for any authenticated member,
     // which could mint a validly-signed payload of an unexpected shape.
     // Restricting to the known `gym-*` prefixes shrinks that surface.
-    // NOTE (follow-up): identity-bearing payloads (e.g. gym-checkin:<id>)
-    // should additionally bind the embedded id to `user.id` so a member
-    // can't sign a QR for someone else — that needs the full payload spec
-    // and is tracked as a separate hardening task.
     const ALLOWED_PREFIXES = [
       'gym-checkin:', 'gym-member:', 'gym-reward:', 'gym-purchase:',
       'gym-voucher:', 'gym-referral:', 'gym-reward-redemption:',
     ];
     if (!ALLOWED_PREFIXES.some((p) => payload.startsWith(p))) {
       return jsonResp({ error: 'Unsupported payload type' }, 400);
+    }
+
+    // ── Identity binding (anti-impersonation) ──
+    // For the value-bearing payloads below, the SIGNING member's own profile
+    // id sits at split index 2:
+    //   gym-purchase:{gymId}:{profileId}:{productId}
+    //   gym-reward:{gymId}:{profileId}:{redemptionId}
+    // profiles.id === auth.uid() in this app, so that id MUST equal the
+    // caller. Without this, any member could mint a server-signed QR charging
+    // a purchase to / redeeming a reward of another member (the scanner
+    // trusts any well-signed blob and acts on the embedded id). Other allowed
+    // prefixes are NOT profile-id-bearing at index 2 (gym-checkin is an opaque
+    // qr_code_payload; gym-voucher/gym-referral carry a code), so they are not
+    // constrained here — constraining them would break legitimate flows.
+    const IDENTITY_BOUND_PREFIXES = ['gym-purchase:', 'gym-reward:'];
+    if (IDENTITY_BOUND_PREFIXES.some((p) => payload.startsWith(p))) {
+      const embeddedProfileId = payload.split(':')[2];
+      if (!embeddedProfileId || embeddedProfileId !== user.id) {
+        console.warn(
+          `[sign-qr] identity mismatch: caller ${user.id} tried to sign for ${embeddedProfileId ?? '(none)'}`,
+        );
+        return jsonResp({ error: 'Payload identity mismatch' }, 403);
+      }
     }
 
     // Append a timestamp so the QR code can expire
