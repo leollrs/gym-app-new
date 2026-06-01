@@ -841,7 +841,13 @@ const ExerciseCard = ({
                           ? t('activeSession.suggestionFirstTime')
                           : suggestion?.note === 'intra_session_bump'
                             ? t('activeSession.suggestionBump')
-                            : t('activeSession.suggestionOverload')}
+                            : (suggestion?.note === 'readiness_reduce' || suggestion?.note === 'recovery_deload')
+                              ? t('activeSession.suggestionReadiness')
+                              : suggestion?.note === 'rpe_hold'
+                                ? t('activeSession.suggestionRpeHold')
+                                : suggestion?.note === 'meso_deload'
+                                  ? t('activeSession.suggestionMesoDeload')
+                                  : t('activeSession.suggestionOverload')}
                         position="bottom"
                         dismissLabel={t('activeSession.gotIt')}
                       >

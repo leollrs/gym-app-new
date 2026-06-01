@@ -38,8 +38,8 @@ xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug \
   -destination 'generic/platform=iOS' -derivedDataPath ios/App/build \
   -allowProvisioningUpdates build
 
-echo "▶ 6/6  Installing on device $UDID…"
-xcrun devicectl device install app --device "$UDID" \
+echo "▶ 6/6  Installing on device ${UDID}…"
+xcrun devicectl device install app --device "${UDID}" \
   ios/App/build/Build/Products/Debug-iphoneos/App.app
 
 echo "✅ Done. App installed on the iPhone."

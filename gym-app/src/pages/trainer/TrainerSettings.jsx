@@ -12,6 +12,7 @@ import i18n from 'i18next';
 import ViewSwitcherModal from '../../components/ViewSwitcherModal';
 import { TT, TFont } from './components/designTokens';
 import { TCard, TEyebrow, TPageTitle, TIconButton } from './components/designPrimitives';
+import TrainerAutomations from './components/TrainerAutomations';
 
 const LANGUAGES = [
   { code: 'en', label: 'English', flag: '🇺🇸' },
@@ -214,6 +215,11 @@ export default function TrainerSettings() {
           </TCard>
         </div>
       )}
+
+      {/* Automations (#7) — retention/progress autoflows */}
+      <div className="max-w-3xl mx-auto" style={{ padding: '0 16px 14px' }}>
+        <TrainerAutomations />
+      </div>
 
       {/* Sign out */}
       <div className="max-w-3xl mx-auto" style={{ padding: '0 16px 14px' }}>

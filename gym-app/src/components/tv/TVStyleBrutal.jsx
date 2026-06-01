@@ -50,7 +50,7 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
               {t.live} · {gymName}
             </div>
             <div className="text-[28px] lg:text-[30px] font-black leading-none mt-0.5" style={{ letterSpacing: '-1px' }}>
-              The Board / Monthly
+              {t.boardMonthly}
             </div>
           </div>
         </div>
@@ -124,7 +124,7 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
           color: palette.textInkDim,
           borderBottom: `2px solid ${palette.ink}`,
         }}>
-          <span>RANK</span><span>LIFTER</span><span>VS PEERS</span><span>POSITION</span><span className="text-right">TOTAL · {slide?.unit?.toUpperCase()}</span>
+          <span>{t.colRank}</span><span>{t.colLifter}</span><span>{t.colVsPeers}</span><span>{t.colPosition}</span><span className="text-right">{t.colTotal} · {slide?.unit?.toUpperCase()}</span>
         </div>
 
         {entries.length === 0 ? (
@@ -196,15 +196,15 @@ export default function TVStyleBrutal({ slide, palette, gymName, logoUrl, clock,
       <div className="absolute bottom-0 left-6 right-6 h-14 flex items-center overflow-hidden" style={{ background: palette.ink, color: palette.cream }}>
         <div className="px-5 h-full flex items-center text-[14px] lg:text-[16px] font-black uppercase tracking-widest flex-shrink-0" style={{ background: palette.hot, color: palette.onHot }}>
           <span className="inline-block w-2 h-2 mr-2 blink-dot" style={{ background: palette.onHot, transform: 'rotate(45deg)' }} />
-          NOW
+          {t.now}
         </div>
         <div className="flex-1 overflow-hidden whitespace-nowrap px-6 font-mono text-[13px] lg:text-[15px] font-semibold tracking-wide">
-          <span>EN VIVO · ROTATING EVERY 20S</span>
+          <span>{t.live} · {t.rotatesEvery.toUpperCase()}</span>
           <span className="mx-4" style={{ color: alpha(palette.cream, 0.3) }}>////</span>
           <span style={{ color: palette.hot }}>{t.next} ▸ </span>
           <span>{localizedMetrics[(localizedMetrics.findIndex(m => m.key === metricKey) + 1) % localizedMetrics.length]?.label?.toUpperCase()}</span>
           <span className="mx-4" style={{ color: alpha(palette.cream, 0.3) }}>////</span>
-          <span>{entries.length} ON THE BOARD · {fmtTotal(total)} TOTAL</span>
+          <span>{entries.length} {t.onTheBoard} · {fmtTotal(total)} {t.colTotal}</span>
         </div>
         <div className="px-5 h-full flex items-center font-mono text-[12px] lg:text-[13px] font-bold tracking-widest flex-shrink-0" style={{ background: palette.cream, color: palette.ink }}>
           {String(slideIdx + 1).padStart(2, '0')} / {String(totalSlides).padStart(2, '0')} · 20S

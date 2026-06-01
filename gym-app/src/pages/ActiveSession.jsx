@@ -4,7 +4,9 @@ import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizon
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { computeSuggestion, computeIntraSessionSuggestion, epley1RM as engineEpley1RM } from '../lib/overloadEngine';
+import { computeSuggestion, computeIntraSessionSuggestion, applyReadinessToSuggestion, epley1RM as engineEpley1RM } from '../lib/overloadEngine';
+import { computeReadiness, exerciseReadiness } from '../lib/readinessEngine';
+import { getMesocyclePosition, MESO_DELOAD_FACTOR } from '../lib/mesocycle';
 import { requestNotificationPermission, scheduleRestDoneNotification, cancelRestNotification } from '../lib/restNotification';
 import { startWorkoutNotification, updateWorkoutNotification, cancelWorkoutNotification } from '../lib/workoutNotification';
 import { startLiveActivity, updateLiveActivity, endLiveActivity } from '../lib/liveActivityBridge';
@@ -1282,7 +1284,7 @@ const ActiveSession = () => {
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
       // Fetch PRs, onboarding, last session, and DB draft in parallel (was 4 sequential queries)
-      const [{ data: prs }, { data: onboarding }, { data: lastSessions }, { data: dbDraft }] = await Promise.all([
+      const [{ data: prs }, { data: onboarding }, { data: lastSessions }, { data: dbDraft }, { data: recoverySessions }, { data: mesoDates }] = await Promise.all([
         supabase.from('personal_records')
           .select('exercise_id, weight_lbs, reps, estimated_1rm')
           .eq('profile_id', user.id)
@@ -1306,6 +1308,25 @@ const ActiveSession = () => {
           .eq('routine_id', id)
           .gte('updated_at', cutoff)
           .maybeSingle(),
+        // Cross-routine recent sessions WITH sets — feeds per-muscle readiness
+        // (#1) so a split program's other-day fatigue still softens today's
+        // targets. 7-day window matches computeReadiness's default.
+        supabase
+          .from('workout_sessions')
+          .select('id, completed_at, session_exercises(exercise_id, session_sets(weight_lbs, reps, is_completed))')
+          .eq('profile_id', user.id)
+          .eq('status', 'completed')
+          .gte('completed_at', new Date(Date.now() - 7 * 86400000).toISOString())
+          .order('completed_at', { ascending: false }),
+        // Session DATES over ~10 weeks for mesocycle week-counting (#4) —
+        // lightweight (no sets); drives the planned deload week.
+        supabase
+          .from('workout_sessions')
+          .select('completed_at')
+          .eq('profile_id', user.id)
+          .eq('status', 'completed')
+          .gte('completed_at', new Date(Date.now() - 70 * 86400000).toISOString())
+          .order('completed_at', { ascending: false }),
       ]);
 
       const prMap = {};
@@ -1320,6 +1341,31 @@ const ActiveSession = () => {
       // (shouldDeload fires at >= 4). Previously this was hardcoded to 0, so the
       // automatic deload never fired.
       const consecutiveMap = {};
+      // Per-muscle readiness map (#1) — built from ALL completed sessions in the
+      // last 7 days (cross-routine, so a split program's other-day fatigue isn't
+      // missed), letting the overload suggestion soften targets for fatigued
+      // muscles. Empty history → all-fresh map → modulation is a safe no-op.
+      const readinessMap = computeReadiness(
+        (recoverySessions || []).map(s => ({
+          id: s.id,
+          completed_at: s.completed_at,
+          workout_sets: (s.session_exercises || []).flatMap(se =>
+            (se.session_sets || []).map(st => ({
+              exercise_id: se.exercise_id,
+              weight_lbs: st.weight_lbs,
+              reps: st.reps,
+              completed: st.is_completed,
+            }))
+          ),
+        })),
+        { windowDays: 7 },
+      );
+
+      // Mesocycle position (#4) — on the cycle's planned deload week, pull all
+      // working weights back. Derived from ~10 weeks of session dates; no
+      // stored state, and a missed week naturally resets the cycle.
+      const meso = getMesocyclePosition(mesoDates || [], { level: onboarding?.fitness_level });
+      const mesoDeloadFactor = meso.isDeloadWeek ? MESO_DELOAD_FACTOR : 1;
       if (lastSessions?.length > 0) {
         // Sessions are already ordered newest-first. Pull every exercise's sets
         // across all of them in ONE query, then derive both the most-recent
@@ -1329,7 +1375,7 @@ const ActiveSession = () => {
 
         const { data: allExercises } = await supabase
           .from('session_exercises')
-          .select(`session_id, exercise_id, session_sets(set_number, weight_lbs, reps, is_completed)`)
+          .select(`session_id, exercise_id, session_sets(set_number, weight_lbs, reps, is_completed, rpe)`)
           .in('session_id', sessionOrder);
 
         // exerciseId → array indexed by session rank (0 = newest) of best e1RM
@@ -1338,11 +1384,12 @@ const ActiveSession = () => {
           const completed = (se.session_sets || [])
             .filter(s => s.is_completed)
             .sort((a, b) => a.set_number - b.set_number)
-            .map(s => ({ weight: s.weight_lbs, reps: s.reps }));
+            .map(s => ({ weight: s.weight_lbs, reps: s.reps, rpe: s.rpe }));
 
-          // Most-recent session populates the suggestion history.
+          // Most-recent session populates the suggestion history (incl. RPE so
+          // computeSuggestion can autoregulate aggressiveness — #2).
           if (sessionRank.get(se.session_id) === 0) {
-            prevSetsMap[se.exercise_id] = completed.map(s => ({ weight: s.weight, reps: s.reps }));
+            prevSetsMap[se.exercise_id] = completed.map(s => ({ weight: s.weight, reps: s.reps, rpe: s.rpe }));
           }
 
           const rank = sessionRank.get(se.session_id);
@@ -1407,16 +1454,42 @@ const ActiveSession = () => {
             suggestion: baseSuggestion,
           });
         } catch { /* logging is non-critical */ }
-        // Apply per-session deload to the suggested weight only — keep reps
-        // alone so users still hit their target rep range at lighter load.
-        const suggestion = baseSuggestion && recoveryDeloadFactor < 1 && baseSuggestion.suggestedWeight
-          ? {
+        // Per-muscle readiness modulation (#1): soften THIS exercise's target
+        // when its prime-mover muscle is still fatigued — recovery-aware, still
+        // one tap to accept.
+        const exReadiness = readinessMap ? exerciseReadiness(readinessMap, ex.id) : null;
+        let suggestion = applyReadinessToSuggestion(baseSuggestion, exReadiness);
+
+        // The whole-body opt-in deload (ReadinessModal flag) still applies, but
+        // as a FLOOR — take whichever is lighter so the per-muscle and global
+        // signals never stack into an absurdly light target. Keeps reps alone so
+        // users still hit their target rep range at the lighter load.
+        if (recoveryDeloadFactor < 1 && baseSuggestion?.suggestedWeight) {
+          const globalWeight = Math.max(5, Math.round(baseSuggestion.suggestedWeight * recoveryDeloadFactor / 2.5) * 2.5);
+          if (!suggestion?.suggestedWeight || globalWeight < suggestion.suggestedWeight) {
+            suggestion = {
               ...baseSuggestion,
-              suggestedWeight: Math.max(5, Math.round(baseSuggestion.suggestedWeight * recoveryDeloadFactor / 2.5) * 2.5),
+              suggestedWeight: globalWeight,
               note: 'recovery_deload',
               label: `Recovery deload — ${Math.round((1 - recoveryDeloadFactor) * 100)}% lighter`,
-            }
-          : baseSuggestion;
+            };
+          }
+        }
+
+        // Planned mesocycle deload (#4): on the cycle's deload week, pull every
+        // working weight back. Same "lighter wins" rule so it never stacks with
+        // the per-muscle or whole-body deloads.
+        if (mesoDeloadFactor < 1 && baseSuggestion?.suggestedWeight) {
+          const mesoWeight = Math.max(5, Math.round(baseSuggestion.suggestedWeight * mesoDeloadFactor / 2.5) * 2.5);
+          if (!suggestion?.suggestedWeight || mesoWeight < suggestion.suggestedWeight) {
+            suggestion = {
+              ...baseSuggestion,
+              suggestedWeight: mesoWeight,
+              note: 'meso_deload',
+              label: `Deload week — ${Math.round((1 - mesoDeloadFactor) * 100)}% lighter (planned recovery)`,
+            };
+          }
+        }
         return {
           ...ex,
           movementPattern: libEx?.movementPattern || null,
@@ -1472,9 +1545,12 @@ const ActiveSession = () => {
           const libEx = localExercises.find(e => e.id === draftEx.id);
           const prevForEx = prevSetsMap[draftEx.id] || [];
           const baseSuggestion = enrichedMatch?.suggestion
-            ?? computeSuggestion(prevForEx, onboarding, draftEx.targetReps, consecutiveMap[draftEx.id] || 0,
-                                 libEx ? { movementPattern: libEx.movementPattern } : null,
-                                 prMap[draftEx.id] || null);
+            ?? applyReadinessToSuggestion(
+                 computeSuggestion(prevForEx, onboarding, draftEx.targetReps, consecutiveMap[draftEx.id] || 0,
+                                   libEx ? { movementPattern: libEx.movementPattern } : null,
+                                   prMap[draftEx.id] || null),
+                 readinessMap ? exerciseReadiness(readinessMap, draftEx.id) : null,
+               );
           return {
             ...draftEx,
             movementPattern: libEx?.movementPattern || draftEx.movementPattern || null,
@@ -2417,6 +2493,7 @@ const ActiveSession = () => {
       if (error) {
         // eslint-disable-next-line no-console
         console.warn('handleCreateCustomAndSwap insert failed:', error);
+        showToast(t('activeSession.customExerciseError', "Couldn't create that exercise. Try again."), 'error');
         return;
       }
       // Build a library-shaped object so handleSwapExercise can consume it.
@@ -2498,6 +2575,7 @@ const ActiveSession = () => {
       });
       if (error) {
         console.warn('handleCreateCustomAndAdd insert failed:', error);
+        showToast(t('activeSession.customExerciseError', "Couldn't create that exercise. Try again."), 'error');
         return;
       }
       // Cache locally so future searches / suggestions / swaps pick it up

@@ -1188,12 +1188,17 @@ const Onboarding = () => {
       if (profileErr) throw profileErr;
 
       if (data.initial_weight_lbs) {
-        await supabase.from('body_weight_logs').insert({
+        // Enhancement seed data (feeds the overload engine + macro calc). The
+        // critical profile write above already throws on failure; these are
+        // best-effort, but a silent failure must stay diagnosable rather than
+        // vanishing — so capture + warn instead of bare-awaiting.
+        const { error: weightErr } = await supabase.from('body_weight_logs').insert({
           profile_id: user.id,
           gym_id:     gymId,
           weight_lbs: parseFloat(data.initial_weight_lbs),
           notes:      t('initialWeightNote'),
         });
+        if (weightErr) console.warn('[onboarding] initial weight log failed:', weightErr.message);
       }
 
       const maxEntries = Object.entries(data.known_maxes)
@@ -1212,9 +1217,10 @@ const Onboarding = () => {
         });
 
       if (maxEntries.length > 0) {
-        await supabase
+        const { error: prErr } = await supabase
           .from('personal_records')
           .upsert(maxEntries, { onConflict: 'profile_id,exercise_id' });
+        if (prErr) console.warn('[onboarding] known-maxes seed failed:', prErr.message);
       }
 
       await supabase
@@ -1619,13 +1625,19 @@ const Onboarding = () => {
       goal: snapshot.primary_goal || 'general_fitness',
     });
 
-    await supabase
-      .from('member_onboarding')
-      .update({
-        dietary_restrictions: snapshot.dietaryRestrictions,
-        food_allergies: snapshot.foodAllergies,
-      })
-      .eq('profile_id', user.id);
+    // Background worker — these are best-effort (member can regenerate/edit the
+    // plan later in Nutrition), so they don't block onboarding. But keep
+    // failures diagnosable rather than silently swallowed.
+    {
+      const { error: prefErr } = await supabase
+        .from('member_onboarding')
+        .update({
+          dietary_restrictions: snapshot.dietaryRestrictions,
+          food_allergies: snapshot.foodAllergies,
+        })
+        .eq('profile_id', user.id);
+      if (prefErr) console.warn('[onboarding] dietary prefs save failed:', prefErr.message);
+    }
 
     if (snapshot.dislikedIngredients.length > 0) {
       const dislikeRows = snapshot.dislikedIngredients.map(ing => ({
@@ -1633,9 +1645,10 @@ const Onboarding = () => {
         gym_id: gymId,
         food_name: ing,
       }));
-      await supabase
+      const { error: dislikeErr } = await supabase
         .from('disliked_foods')
         .upsert(dislikeRows, { onConflict: 'profile_id,food_name', ignoreDuplicates: true });
+      if (dislikeErr) console.warn('[onboarding] disliked foods save failed:', dislikeErr.message);
     }
 
     const weekPlan = generateWeekPlan({
@@ -1648,7 +1661,7 @@ const Onboarding = () => {
 
     const startOfWeek = new Date();
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1);
-    await supabase
+    const { error: planErr } = await supabase
       .from('generated_meal_plans')
       .upsert({
         profile_id: user.id,
@@ -1658,8 +1671,9 @@ const Onboarding = () => {
         macro_targets: macros,
         is_active: true,
       }, { onConflict: 'profile_id,week_start' });
+    if (planErr) console.warn('[onboarding] generated meal plan save failed:', planErr.message);
 
-    await supabase
+    const { error: targetErr } = await supabase
       .from('nutrition_targets')
       .upsert({
         profile_id: user.id,
@@ -1668,9 +1682,8 @@ const Onboarding = () => {
         protein_g: macros.protein,
         carbs_g: macros.carbs,
         fat_g: macros.fat,
-      }, { onConflict: 'profile_id' })
-      .then(() => {})
-      .catch(() => {});
+      }, { onConflict: 'profile_id' });
+    if (targetErr) console.warn('[onboarding] nutrition targets save failed:', targetErr.message);
 
     posthog?.capture('onboarding_meal_plan_generated', {
       restrictions: snapshot.dietaryRestrictions,

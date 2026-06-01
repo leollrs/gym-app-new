@@ -352,12 +352,14 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
   // which produced absurd jumps: PR 225×5 + a light 135×15 back-off day →
   // avgReps 15 ≥ max → "add weight to 227.5", ignoring that the PR was only 5
   // reps. Using the PR's reps (5 < range) correctly suggests +1 rep at 225.
+  let prFloorApplied = false;
   if (personalRecord && personalRecord.weight > 0 && personalRecord.reps > 0) {
     const prE1RM = epley1RM(personalRecord.weight, personalRecord.reps);
     const bestE1RM = epley1RM(best.weight, best.reps);
     if (prE1RM > bestE1RM) {
       best = { weight: personalRecord.weight, reps: personalRecord.reps };
       decisionReps = personalRecord.reps;
+      prFloorApplied = true;
     }
   }
 
@@ -367,10 +369,28 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
     : false;
   const incr = compound ? increments.compound : increments.isolation;
 
+  // ── RPE autoregulation (#2) ──────────────────────────────────────────────
+  // Scale how aggressively we progress by how hard last session actually felt,
+  // using the average RPE of the logged working sets (1–10; higher = closer to
+  // failure / fewer reps in reserve). Optional: a no-op when no RPE was logged.
+  // Skipped when the PR-floor replaced `best` — that PR is from another day, so
+  // this session's RPE doesn't describe it.
+  let rpeBand = null; // 'easy' (reps in reserve) | 'hard' (grinding) | null
+  if (!prFloorApplied) {
+    const rped = completedSets.filter(s => typeof s.rpe === 'number' && s.rpe > 0);
+    if (rped.length > 0) {
+      const avgRPE = rped.reduce((a, s) => a + s.rpe, 0) / rped.length;
+      if (avgRPE <= 6.5) rpeBand = 'easy';
+      else if (avgRPE >= 9) rpeBand = 'hard';
+    }
+  }
+
   // Hit top of the working band (or beginner who hit their target) → add weight,
   // reset reps to the bottom of the band (classic double progression).
   if (decisionReps >= bandMax || (level === 'beginner' && decisionReps >= repTarget)) {
-    const suggestedWeight = roundToPlate(best.weight + incr);
+    // Reps to spare last time (low RPE) → take a double jump; else single incr.
+    const effIncr = rpeBand === 'easy' ? incr * 2 : incr;
+    const suggestedWeight = roundToPlate(best.weight + effIncr);
 
     const MAX_REASONABLE_WEIGHT = 1500; // lbs - beyond any human capability
     if (suggestedWeight > MAX_REASONABLE_WEIGHT) {
@@ -381,16 +401,81 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
       suggestedWeight,
       suggestedReps:   bandMin,
       note:  'increase_weight',
-      label: `+${incr} lbs — you crushed last session`,
+      label: rpeBand === 'easy'
+        ? `+${effIncr} lbs — you had reps in reserve`
+        : `+${effIncr} lbs — you crushed last session`,
     };
   }
 
-  // Didn't quite hit the top → same weight, push for 1 more rep (capped at band top).
-  const nextReps = Math.min(decisionReps + 1, bandMax);
+  // Didn't quite hit the top of the band.
+  if (rpeBand === 'hard') {
+    // Already grinding (high RPE) → consolidate at the same load and reps before
+    // forcing another rep onto a near-failure set.
+    return {
+      suggestedWeight: best.weight,
+      suggestedReps:   decisionReps,
+      note:  'rpe_hold',
+      label: 'Tough last session — repeat it before adding load',
+    };
+  }
+  // Low RPE → reps in reserve, push two; otherwise the standard single rep.
+  const repStep = rpeBand === 'easy' ? 2 : 1;
+  const nextReps = Math.min(decisionReps + repStep, bandMax);
   return {
     suggestedWeight: best.weight,
     suggestedReps:   nextReps,
     note:  'increase_reps',
-    label: `Same weight — aim for ${nextReps} reps this time`,
+    label: rpeBand === 'easy'
+      ? `Same weight — aim for ${nextReps} reps (you had more in you)`
+      : `Same weight — aim for ${nextReps} reps this time`,
   };
-};;
+};
+
+/**
+ * Soften a progression suggestion when the trained muscle is still fatigued.
+ *
+ * Asymmetric by design: a fatigued muscle gets a lighter target, but a FRESH
+ * one is never pushed harder automatically — that would risk auto-overreaching,
+ * and the member can always choose to do more. This keeps the suggestion
+ * recovery-aware without adding a single tap: the member still just accepts the
+ * chip; it's simply the right load for how recovered the muscle actually is.
+ *
+ * Only genuine progression notes are modulated. First-time estimates and an
+ * already-deloaded prescription are left untouched.
+ *
+ * @param {object|null} suggestion - output of computeSuggestion
+ * @param {object|null} readiness  - { recovery: 0-100, state } for the exercise's
+ *   muscles, from readinessEngine.exerciseReadiness(). null → no-op.
+ * @returns {object|null} the (possibly softened) suggestion
+ */
+export const applyReadinessToSuggestion = (suggestion, readiness) => {
+  if (!suggestion || !readiness) return suggestion;
+
+  // Never override a first-time estimate or an existing deload.
+  const MODULABLE = new Set(['increase_weight', 'increase_reps', 'maintain', 'rpe_hold']);
+  if (!MODULABLE.has(suggestion.note)) return suggestion;
+
+  const recovery = Number(readiness.recovery);
+  if (!Number.isFinite(recovery)) return suggestion;
+
+  // Fresh / moderate (>= 50): train as prescribed.
+  if (recovery >= 50) return suggestion;
+
+  // Nothing to soften without a real weight (e.g. pure bodyweight work).
+  if (!suggestion.suggestedWeight || suggestion.suggestedWeight <= 0) return suggestion;
+
+  // Deeply fatigued (< 35) → ~10% lighter; fatigued (35–49) → ~5% lighter.
+  const factor = recovery < 35 ? 0.90 : 0.95;
+  const reduced = Math.max(5, Math.round((suggestion.suggestedWeight * factor) / 2.5) * 2.5);
+
+  // If rounding didn't actually drop the load (very light weights), leave it —
+  // don't relabel a suggestion we didn't meaningfully change.
+  if (reduced >= suggestion.suggestedWeight) return suggestion;
+
+  return {
+    ...suggestion,
+    suggestedWeight: reduced,
+    note: 'readiness_reduce',
+    label: `Target muscle still recovering — ~${Math.round((1 - factor) * 100)}% lighter`,
+  };
+};

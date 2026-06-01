@@ -5943,12 +5943,22 @@ export default function Nutrition({ embedded = false }) {
       setPhotoResult(null);
       setPhotoPreview(null);
       setScanResult(null);
+    } else if (error) {
+      // Keep the modal open so the member can retry instead of assuming it logged.
+      showToast(t('nutrition.logFailed', "Couldn't log that food. Try again."), 'error');
     }
   };
 
   const handleDeleteLog = async (logId) => {
-    await supabase.from('food_logs').delete().eq('id', logId).eq('profile_id', user.id);
+    // Optimistic remove with snapshot rollback — a swallowed failure here makes
+    // the entry reappear on next refresh with no explanation.
+    const snapshot = todayLogs;
     setTodayLogs(prev => prev.filter(l => l.id !== logId));
+    const { error } = await supabase.from('food_logs').delete().eq('id', logId).eq('profile_id', user.id);
+    if (error) {
+      setTodayLogs(snapshot);
+      showToast(t('nutrition.deleteFailed', "Couldn't remove that entry. Try again."), 'error');
+    }
   };
 
   // ── Menu scan: log a ranked menu item straight into food_logs ──
@@ -6017,6 +6027,8 @@ export default function Nutrition({ embedded = false }) {
     if (!error && data) {
       setTodayLogs(prev => prev.map(l => l.id === logId ? data : l));
       setDetailLog(data);
+    } else if (error) {
+      showToast(t('nutrition.updateFailed', "Couldn't update that entry. Try again."), 'error');
     }
   };
 
@@ -6046,7 +6058,13 @@ export default function Nutrition({ embedded = false }) {
     };
     const { data, error } = await supabase.from('nutrition_targets')
       .upsert(payload, { onConflict: 'profile_id' }).select().single();
-    if (!error) { setTargets(data); setEditing(false); }
+    if (!error) {
+      setTargets(data);
+      setEditing(false);
+    } else {
+      // Keep the editor open so the member knows the targets didn't save.
+      showToast(t('nutrition.targetsFailed', "Couldn't save your targets. Try again."), 'error');
+    }
     setSaving(false);
   };
 

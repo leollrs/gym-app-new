@@ -60,17 +60,25 @@ function ClassRatingModal({ open, onClose, bookingId, className: classTitle, onS
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   if (!open) return null;
 
   const handleSubmit = async () => {
     if (rating === 0) return;
     setSubmitting(true);
-    await supabase
+    setError('');
+    const { error: updErr } = await supabase
       .from('gym_class_bookings')
       .update({ rating, notes: notes.trim() || null })
       .eq('id', bookingId);
     setSubmitting(false);
+    if (updErr) {
+      // Keep the modal open so the member can retry — don't fire onSubmitted
+      // (which reloads and hides the rate button as if it succeeded).
+      setError(t('classes.rateError', "Couldn't save your rating. Try again."));
+      return;
+    }
     onSubmitted?.();
     onClose();
   };
@@ -122,6 +130,11 @@ function ClassRatingModal({ open, onClose, bookingId, className: classTitle, onS
           }}
         />
 
+        {/* Error */}
+        {error && (
+          <p className="text-[12px] text-center" style={{ color: 'var(--color-danger)' }}>{error}</p>
+        )}
+
         {/* Submit */}
         <button
           onClick={handleSubmit}
@@ -129,7 +142,7 @@ function ClassRatingModal({ open, onClose, bookingId, className: classTitle, onS
           className="w-full py-3 rounded-xl text-[14px] font-bold transition-all active:scale-[0.97] min-h-[44px] disabled:opacity-40"
           style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
         >
-          {submitting ? '...' : t('classes.submit')}
+          {submitting ? t('classes.submitting', 'Submitting…') : t('classes.submit')}
         </button>
       </div>
     </div>

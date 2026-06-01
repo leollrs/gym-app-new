@@ -22,7 +22,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { X, Flame, Zap, Leaf, Moon, AlertTriangle, ChevronRight, ChevronDown, Heart, Activity, Dumbbell, Plus, Sparkles } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useRecentSessionsWithSets } from '../hooks/useSupabaseQuery';
+import { useRecentSessionsWithSets, useRecentSessionDates } from '../hooks/useSupabaseQuery';
+import { getMesocyclePosition } from '../lib/mesocycle';
 import { supabase } from '../lib/supabase';
 import WellnessCheckinModal from './WellnessCheckinModal';
 import { getMuscleAssets } from '../lib/musclePolygons';
@@ -43,6 +44,7 @@ import {
 } from '../lib/healthSync';
 import { useToast } from '../contexts/ToastContext';
 import { rankExercisesForRegions } from '../lib/untrainedSuggestions';
+import WeeklyVolumeSection from './WeeklyVolumeSection';
 import AppendToRoutineModal from './AppendToRoutineModal';
 
 const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
@@ -1340,6 +1342,12 @@ export default function ReadinessModal({ open, onClose }) {
   const healthConnected = (profile?.health_sync_enabled === true)
     || (typeof window !== 'undefined' && window.localStorage?.getItem('tugympr_health_connected') === 'true');
   const { data: sessions = [] } = useRecentSessionsWithSets(userId, 14);
+  // Longer, lightweight date pull for mesocycle week-counting (#4).
+  const { data: mesoDates = [] } = useRecentSessionDates(userId, 70);
+  const meso = useMemo(
+    () => getMesocyclePosition(mesoDates, { level: profile?.fitness_level }),
+    [mesoDates, profile?.fitness_level],
+  );
 
   const [view, setView] = useState('front');
   const [selected, setSelected] = useState(null);
@@ -2042,6 +2050,9 @@ export default function ReadinessModal({ open, onClose }) {
               </div>
             </div>
           )}
+
+          {/* Weekly volume vs MEV/MAV/MRV landmarks (#3) */}
+          <WeeklyVolumeSection sessions={sessions} level={profile?.fitness_level} meso={meso} t={t} />
 
           {/* Recovery factor cards — Sleep, HRV/RHR, Training Load */}
           {(recovery || healthAvailable === false || healthDenied) && (

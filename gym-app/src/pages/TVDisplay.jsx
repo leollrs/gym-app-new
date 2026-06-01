@@ -503,107 +503,6 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated, lang = 'en'
   );
 }
 
-// ── Metric leaderboard slide ─────────────────────────────────────────────
-// IMPORTANT: this slide is rendered inside a `flex-1 min-h-0` parent. All
-// vertical sizing here uses flex distribution (flex-1, flex-basis-0) instead
-// of fixed pixel heights so that whether the gym has 3 rows or 10 rows, on
-// a 720p TV or 4K screen, everything fits in the viewport with no scroll.
-function MetricSlide({ slide, accent }) {
-  const fmt = (score) => {
-    if (slide.key === 'improved') return `+${score}%`;
-    if (slide.key === 'consistency') return `${score}%`;
-    if (slide.key === 'volume') {
-      if (score >= 1_000_000) return `${(score / 1_000_000).toFixed(2)}M`;
-      if (score >= 1000) return `${(score / 1000).toFixed(1)}K`;
-      return Number(score).toLocaleString();
-    }
-    return Number(score).toLocaleString();
-  };
-  const maxScore = slide.entries[0]?.score || 1;
-
-  return (
-    <>
-      <div className="px-8 lg:px-12 pt-5 lg:pt-7 pb-3 flex-shrink-0">
-        <div className="flex items-baseline gap-4">
-          <h1 className="text-[48px] lg:text-[64px] xl:text-[72px] font-black leading-none tracking-tight" style={{ color: accent }}>
-            {slide.label}
-          </h1>
-          <p className="text-[22px] font-bold tracking-widest uppercase text-white/70 pb-2">
-            {slide.period}
-          </p>
-        </div>
-      </div>
-
-      {/* min-h-0 = critical for the flex-1 inside to shrink properly.
-          flex-col + flex-1 children below give each row a proportional
-          share of the available height; no fixed pixel sizes. */}
-      <div className="flex-1 min-h-0 px-8 lg:px-12 pb-5 lg:pb-7 overflow-hidden">
-        {slide.entries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full">
-            <p className="text-[28px] font-bold text-white/60">No activity yet</p>
-            <p className="text-[16px] text-white/20 mt-2">Start training to appear on the board</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2 h-full">
-            {slide.entries.map((e, i) => {
-              const barWidth = Math.round((Number(e.score) / Number(maxScore)) * 100);
-              const isTop3 = i < 3;
-              // Top row gets 1.4x the share so the leader stands out;
-              // everyone else gets equal flex distribution.
-              const flexBasis = i === 0 ? '1.4 1 0' : '1 1 0';
-              return (
-                <div
-                  key={`${e.id || e.profile_id || i}`}
-                  className="relative flex items-center gap-4 lg:gap-6 rounded-xl lg:rounded-2xl overflow-hidden min-h-0"
-                  style={{
-                    flex: flexBasis,
-                    background: isTop3 ? `${accent}10` : 'rgba(255,255,255,0.03)',
-                    border: isTop3 ? `1px solid ${accent}33` : '1px solid rgba(255,255,255,0.05)',
-                  }}
-                >
-                  <div
-                    className="absolute inset-0 opacity-20 rounded-xl lg:rounded-2xl transition-all duration-1000"
-                    style={{ width: `${barWidth}%`, background: `linear-gradient(90deg, ${accent}55, transparent)` }}
-                  />
-                  <div className="flex-shrink-0 w-12 lg:w-16 flex items-center justify-center relative z-10">
-                    {i < 3 ? (
-                      <span className={i === 0 ? 'text-[34px] lg:text-[40px]' : 'text-[26px] lg:text-[30px]'}>{['🥇', '🥈', '🥉'][i]}</span>
-                    ) : (
-                      <span className="text-[20px] lg:text-[24px] font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{i + 1}</span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0 relative z-10 pr-3">
-                    <p
-                      className={`font-black truncate ${i === 0 ? 'text-[26px] lg:text-[32px]' : 'text-[18px] lg:text-[22px]'}`}
-                      style={{
-                        color: i === 0 ? accent : 'rgba(255,255,255,0.9)',
-                        letterSpacing: '-0.02em',
-                      }}
-                    >
-                      {e.name}
-                    </p>
-                  </div>
-                  <div className="flex-shrink-0 text-right pr-4 lg:pr-6 relative z-10">
-                    <p
-                      className={`font-black tabular-nums leading-none ${i === 0 ? 'text-[28px] lg:text-[36px]' : 'text-[20px] lg:text-[26px]'}`}
-                      style={{ color: i === 0 ? accent : 'rgba(255,255,255,0.75)' }}
-                    >
-                      {fmt(e.score)}
-                    </p>
-                    <p className="text-[10px] lg:text-[11px] font-bold uppercase tracking-widest mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                      {slide.unit}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
 // ── Challenge slide ──────────────────────────────────────────────────────
 // Left: challenge name, type, time remaining, top-5 leaderboard.
 // Right: large QR code that links into the app's challenges page so a
@@ -646,7 +545,7 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
   const topFive = participants.slice(0, 5);
 
   return (
-    // Same no-scroll discipline as MetricSlide: grid + min-h-0 + flex-1
+    // Same no-scroll discipline as the metric leaderboard slides: grid + min-h-0 + flex-1
     // inside each column lets the rows distribute across whatever height
     // is left after the header, not push past it.
     <div className="flex-1 min-h-0 grid grid-cols-[1fr_360px] xl:grid-cols-[1fr_420px] gap-8 lg:gap-12 px-8 lg:px-12 pt-5 lg:pt-7 pb-5 lg:pb-7 overflow-hidden">

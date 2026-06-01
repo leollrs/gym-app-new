@@ -374,11 +374,19 @@ export default function BodyMetrics() {
 
   const handleDeletePhoto = async (photo) => {
     setDeletingId(photo.id);
-    await supabase.storage.from('progress-photos').remove([photo.storage_path]);
-    await supabase.from('progress_photos').delete().eq('id', photo.id);
-    setViewingPhoto(null);
-    setDeletingId(null);
-    loadData();
+    try {
+      // Storage first, then the DB row. Wrapped so a throw on either leg can't
+      // strand the spinner (deletingId never reset) or leave the viewer open.
+      await supabase.storage.from('progress-photos').remove([photo.storage_path]);
+      const { error } = await supabase.from('progress_photos').delete().eq('id', photo.id);
+      if (error) throw error;
+      setViewingPhoto(null);
+      loadData();
+    } catch (err) {
+      showToast(t('bodyMetrics.photoDeleteError', "Couldn't delete the photo. Try again."), 'error');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   // ── Derived stats ──────────────────────────────────────────────────────────
@@ -407,13 +415,21 @@ export default function BodyMetrics() {
       ? (parseInt(personalDraft.height_feet || 0) * 12) + parseInt(personalDraft.height_inches_part || 0)
       : personalInfo.height_inches || null;
 
-    await supabase.from('member_onboarding').upsert({
+    // height/sex/age seed the macro calculator — a silent write failure here
+    // would desync those downstream targets, so surface it and keep the form open.
+    const { error } = await supabase.from('member_onboarding').upsert({
       profile_id: user.id,
       gym_id: profile.gym_id,
       sex: personalDraft.sex || personalInfo.sex || 'male',
       age: personalDraft.age ? parseInt(personalDraft.age) : personalInfo.age || null,
       height_inches: heightTotal,
     }, { onConflict: 'profile_id' });
+
+    if (error) {
+      setSavingPersonal(false);
+      showToast(t('bodyMetrics.personalInfoError', "Couldn't save your info. Try again."), 'error');
+      return;
+    }
 
     setPersonalInfo({
       sex: personalDraft.sex || personalInfo.sex,

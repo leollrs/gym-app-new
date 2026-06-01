@@ -126,7 +126,9 @@
     "logPastWorkoutHint": "Backfill a missed session — doesn't count toward streak",
     "unavailable": "Dashboard unavailable",
     "loadError": "We could not load your dashboard right now. Pull to refresh or try again in a moment.",
-    "qrError": "Could not open QR"
+    "qrError": "Could not open QR",
+    "scheduleSaveError": "Couldn't save your schedule. Check your connection and try again.",
+    "scheduleClearError": "Couldn't clear that day. Check your connection and try again."
   },
   "workoutHeroCard": {
     "startWorkout": "Start Workout",
@@ -1144,7 +1146,26 @@
       "shareWorkout": "Share this workout"
     }
   },
+  "workoutLog": {
+    "title": "Workout Log",
+    "workoutsCompleted": "{{count}} workout completed",
+    "workoutsCompleted_plural": "{{count}} workouts completed",
+    "back": "Back",
+    "edit": "Edit",
+    "editAria": "Edit workout",
+    "prBadge": "PR",
+    "prCount": "{{count}} PR",
+    "prCount_plural": "{{count}} PRs",
+    "exercisesCount": "{{count}} exercise",
+    "exercisesCount_plural": "{{count}} exercises",
+    "setLabel": "Set {{number}}",
+    "emptyTitle": "No workouts yet",
+    "emptyDescription": "Complete your first session to see it here",
+    "emptyAction": "Go to Workouts",
+    "loadMore": "Load more ({{count}} remaining)"
+  },
   "activeSession": {
+    "customExerciseError": "Couldn't create that exercise. Try again.",
     "drop": "Drop",
     "addDrop": "Add drop",
     "removeDrop": "Remove drop",
@@ -1301,6 +1322,9 @@
     "suggestionFirstTime": "First time tracking this — pick a comfortable starting weight.",
     "suggestionBump": "You crushed last session — add weight or reps.",
     "suggestionOverload": "Same weight, push for one more rep.",
+    "suggestionReadiness": "Lighter today — this muscle is still recovering.",
+    "suggestionRpeHold": "Tough last session — repeat it before adding load.",
+    "suggestionMesoDeload": "Deload week — go lighter to recover, then come back stronger.",
     "gotIt": "Got it",
     "pauseTitle": "Workout paused",
     "pauseSubtitle": "What would you like to do?",
@@ -7129,6 +7153,10 @@
       "assign": "Assign"
     },
     "nutrition": {
+      "logFailed": "Couldn't log that food. Try again.",
+      "deleteFailed": "Couldn't remove that entry. Try again.",
+      "updateFailed": "Couldn't update that entry. Try again.",
+      "targetsFailed": "Couldn't save your targets. Try again.",
       "mealPlan": "Assigned Meal Plan",
       "editPlan": "Edit Plan",
       "assignPlan": "Assign Plan",
@@ -7205,6 +7233,7 @@
     "notAuthenticated": "Not authenticated",
     "walletNotConfigured": "Wallet passes not yet configured for this gym",
     "walletFailed": "Failed to generate wallet pass",
+    "codeError": "Couldn't generate your referral code. Pull to refresh or try again later.",
     "statusLabel": "STATUS",
     "statusActive": "ACTIVE",
     "memberPass": "MEMBER PASS",
@@ -8586,6 +8615,8 @@
     "rateTitle": "How was the class?",
     "addNote": "Add a note (optional)",
     "submit": "Submit",
+    "submitting": "Submitting…",
+    "rateError": "Couldn't save your rating. Try again.",
     "rated": "Rated",
     "attended": "Attended",
     "workoutLogged": "Workout logged",
@@ -9397,7 +9428,8 @@
       "overview": "Overview",
       "history": "History",
       "body": "Body",
-      "notes": "Notes"
+      "notes": "Notes",
+      "coaching": "Check-ins"
     },
     "snapshot": {
       "title": "Snapshot",
@@ -9862,6 +9894,69 @@
     "decrease": "Decrease",
     "increase": "Increase"
   },
+  "coaching": {
+    "title": "From your trainer",
+    "dueThisWeek": "Due this week",
+    "doneThisWeek": "Done this week — tap to edit",
+    "submit": "Submit check-in",
+    "saving": "Saving…",
+    "saveError": "Couldn't save your check-in. Try again.",
+    "habitError": "Couldn't update that habit.",
+    "yes": "Yes",
+    "no": "No",
+    "close": "Close"
+  },
+  "trainerAutomations": {
+    "title": "Automations",
+    "subtitle": "Get pinged when a client needs a nudge — so no one slips away unnoticed.",
+    "descInactivityAlert": "Alert me when a client goes {{count}} days without a workout",
+    "descInactivityNudge": "Nudge a client after {{count}} days without a workout",
+    "descCheckinAlert": "Alert me when a client misses their weekly check-in",
+    "descCheckinNudge": "Remind a client who misses their weekly check-in",
+    "saveError": "Couldn't update the automation.",
+    "addRule": "Add automation",
+    "when": "When",
+    "triggerInactivity": "A client stops training",
+    "triggerMissedCheckin": "A client misses their check-in",
+    "afterDays": "After how many days?",
+    "days": "{{count}} days",
+    "then": "Then",
+    "actionNotify": "Alert me",
+    "actionNudge": "Nudge the member",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "trainerCoaching": {
+    "checkinsTitle": "Check-ins",
+    "noCheckins": "No check-ins yet. Create one to track how this member is doing each week.",
+    "newCheckin": "New check-in",
+    "titlePlaceholder": "Title (e.g. Weekly check-in)",
+    "weekly": "Weekly",
+    "biweekly": "Every 2 weeks",
+    "monthly": "Monthly",
+    "addQuestions": "Add questions",
+    "preset": {
+      "weight": "Body weight",
+      "energy": "Energy",
+      "sleep": "Sleep quality",
+      "adherence": "Plan adherence",
+      "notes": "Notes"
+    },
+    "saving": "Saving…",
+    "saveAssign": "Save & assign",
+    "cancel": "Cancel",
+    "needTitleQuestions": "Add a title and at least one question.",
+    "saveError": "Couldn't save the check-in.",
+    "assignError": "Saved, but assigning to the client failed.",
+    "assigned": "Check-in assigned.",
+    "lastResponse": "Week of {{date}}",
+    "noResponseYet": "No response yet.",
+    "habitsTitle": "Habits",
+    "habitError": "Couldn't update the habit.",
+    "habitPlaceholder": "New habit",
+    "perWeek": "{{count}}/wk",
+    "add": "Add"
+  },
   "readinessModal": {
     "title": "Recovery",
     "ready": "ready",
@@ -9903,6 +9998,38 @@
       "moderate": "Recovering",
       "fresh": "Fresh",
       "rest": "Untrained"
+    },
+    "mesoAccumulation": "Week {{week}} of {{weeks}} · Accumulation",
+    "mesoAccumulationHint": "Build week — nudge volume or load up and push toward your max.",
+    "mesoDeload": "Deload week",
+    "mesoDeloadHint": "Pull back ~40% and let your body supercompensate before the next block.",
+    "volumeTitle": "Weekly volume",
+    "volumeSubtitle": "Sets per muscle this week vs. the productive range",
+    "volumeEmpty": "Log a workout this week to see your volume balance.",
+    "volumeStatus": {
+      "under": "Add volume",
+      "optimal": "Optimal",
+      "high": "High",
+      "over": "Too much"
+    },
+    "volumeRec": {
+      "under": "Add {{count}} set to reach your minimum",
+      "under_plural": "Add {{count}} sets to reach your minimum",
+      "optimal": "In the productive range",
+      "high": "Productive but near your limit — hold here",
+      "over": "Cut {{count}} set — above your recoverable max",
+      "over_plural": "Above your recoverable max — cut {{count}} sets"
+    },
+    "volumeGroups": {
+      "Chest": "Chest",
+      "Back": "Back",
+      "Shoulders": "Shoulders",
+      "Biceps": "Biceps",
+      "Triceps": "Triceps",
+      "Legs": "Legs",
+      "Glutes": "Glutes",
+      "Calves": "Calves",
+      "Core": "Core"
     },
     "factorsTitle": "Recovery breakdown",
     "sleep": "Sleep",
@@ -11066,7 +11193,9 @@
     "delete": "Delete",
     "closePhotoViewer": "Close photo viewer",
     "pleaseSelectPhoto": "Please select a photo",
-    "personalInfoUpdated": "Personal info updated"
+    "personalInfoUpdated": "Personal info updated",
+    "photoDeleteError": "Couldn't delete the photo. Try again.",
+    "personalInfoError": "Couldn't save your info. Try again."
   },
   "personalInfo": {
     "title": "Personal info",

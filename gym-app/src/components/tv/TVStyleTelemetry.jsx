@@ -129,7 +129,7 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
             {slide?.label?.toUpperCase() || ''}<span style={{ color: t.teal }}>_</span>
           </div>
           <div className="text-[12px] mt-2 tracking-wide" style={{ color: t.dim }}>
-            DESC ▸ {leaderboardDescription(metricKey)}
+            DESC ▸ {leaderboardDescription(metricKey, tStr)}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -275,14 +275,9 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
   );
 }
 
-function leaderboardDescription(key) {
-  switch (key) {
-    case 'volume':      return 'Total weight (lbs) moved across logged sets, 30d window';
-    case 'workouts':    return 'Count of completed workout sessions, 30d window';
-    case 'prs':         return 'Estimated 1RM from logged personal records, all-time';
-    case 'improved':    return 'Volume gain vs prior month, %';
-    case 'consistency': return 'Distinct workout days ÷ days elapsed in month, %';
-    case 'checkins':    return 'Door check-ins logged, 30d window';
-    default: return '';
-  }
+// Human-readable metric blurb for the telemetry DESC line. Text lives in the
+// TV string dictionary (lib/tv/strings.js) so it localizes with ?lang=; the
+// surrounding terminal chrome (NODE-01, rankings.tsv, etc.) stays EN by design.
+function leaderboardDescription(key, tStr) {
+  return tStr?.[`metricDesc_${key}`] || '';
 }

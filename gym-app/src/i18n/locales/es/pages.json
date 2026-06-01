@@ -126,7 +126,9 @@
     "logPastWorkoutHint": "Registra una sesión pasada — no cuenta para tu racha",
     "unavailable": "Inicio no disponible",
     "loadError": "No pudimos cargar tu inicio ahora mismo. Desliza para recargar o inténtalo de nuevo en un momento.",
-    "qrError": "No se pudo abrir el QR"
+    "qrError": "No se pudo abrir el QR",
+    "scheduleSaveError": "No se pudo guardar tu rutina. Revisa tu conexión e inténtalo de nuevo.",
+    "scheduleClearError": "No se pudo limpiar ese día. Revisa tu conexión e inténtalo de nuevo."
   },
   "workoutHeroCard": {
     "startWorkout": "Empezar Entrenamiento",
@@ -1144,7 +1146,26 @@
       "shareWorkout": "Compartir este entrenamiento"
     }
   },
+  "workoutLog": {
+    "title": "Historial de Entrenamientos",
+    "workoutsCompleted": "{{count}} entrenamiento completado",
+    "workoutsCompleted_plural": "{{count}} entrenamientos completados",
+    "back": "Atrás",
+    "edit": "Editar",
+    "editAria": "Editar entrenamiento",
+    "prBadge": "RP",
+    "prCount": "{{count}} RP",
+    "prCount_plural": "{{count}} RP",
+    "exercisesCount": "{{count}} ejercicio",
+    "exercisesCount_plural": "{{count}} ejercicios",
+    "setLabel": "Serie {{number}}",
+    "emptyTitle": "Aún no hay entrenamientos",
+    "emptyDescription": "Completa tu primera sesión para verla aquí",
+    "emptyAction": "Ir a Entrenamientos",
+    "loadMore": "Cargar más ({{count}} restantes)"
+  },
   "activeSession": {
+    "customExerciseError": "No se pudo crear ese ejercicio. Inténtalo de nuevo.",
     "drop": "Drop",
     "addDrop": "Añadir drop",
     "removeDrop": "Eliminar drop",
@@ -1301,6 +1322,9 @@
     "suggestionFirstTime": "Es la primera vez con este ejercicio — elige un peso cómodo para empezar.",
     "suggestionBump": "Aplastaste la sesión pasada — sube peso o repeticiones.",
     "suggestionOverload": "Mismo peso, intenta una repetición más.",
+    "suggestionReadiness": "Más ligero hoy — este músculo aún se está recuperando.",
+    "suggestionRpeHold": "Sesión difícil — repítela antes de subir la carga.",
+    "suggestionMesoDeload": "Semana de descarga — más ligero para recuperar y volver más fuerte.",
     "gotIt": "Entendido",
     "pauseTitle": "Entrenamiento en pausa",
     "pauseSubtitle": "¿Qué quieres hacer?",
@@ -7264,6 +7288,10 @@
       "assign": "Asignar"
     },
     "nutrition": {
+      "logFailed": "No se pudo registrar ese alimento. Inténtalo de nuevo.",
+      "deleteFailed": "No se pudo eliminar esa entrada. Inténtalo de nuevo.",
+      "updateFailed": "No se pudo actualizar esa entrada. Inténtalo de nuevo.",
+      "targetsFailed": "No se pudieron guardar tus metas. Inténtalo de nuevo.",
       "mealPlan": "Plan Nutricional Asignado",
       "editPlan": "Editar Plan",
       "assignPlan": "Asignar Plan",
@@ -7340,6 +7368,7 @@
     "notAuthenticated": "No autenticado",
     "walletNotConfigured": "Los pases de wallet aún no están configurados para este gym",
     "walletFailed": "Error al generar el pase de wallet",
+    "codeError": "No se pudo generar tu código de referido. Desliza para recargar o inténtalo más tarde.",
     "statusLabel": "ESTADO",
     "statusActive": "ACTIVO",
     "memberPass": "PASE DE MIEMBRO",
@@ -8721,6 +8750,8 @@
     "rateTitle": "¿Qué tal la clase?",
     "addNote": "Añade una nota (opcional)",
     "submit": "Enviar",
+    "submitting": "Enviando…",
+    "rateError": "No se pudo guardar tu calificación. Inténtalo de nuevo.",
     "rated": "Calificado",
     "attended": "Asistido",
     "workoutLogged": "Entreno registrado",
@@ -9531,7 +9562,8 @@
       "overview": "Resumen",
       "history": "Historial",
       "body": "Cuerpo",
-      "notes": "Notas"
+      "notes": "Notas",
+      "coaching": "Check-ins"
     },
     "snapshot": {
       "title": "Resumen rápido",
@@ -9996,6 +10028,69 @@
     "decrease": "Disminuir",
     "increase": "Aumentar"
   },
+  "coaching": {
+    "title": "De tu entrenador",
+    "dueThisWeek": "Pendiente esta semana",
+    "doneThisWeek": "Hecho esta semana — toca para editar",
+    "submit": "Enviar check-in",
+    "saving": "Guardando…",
+    "saveError": "No se pudo guardar tu check-in. Inténtalo de nuevo.",
+    "habitError": "No se pudo actualizar el hábito.",
+    "yes": "Sí",
+    "no": "No",
+    "close": "Cerrar"
+  },
+  "trainerAutomations": {
+    "title": "Automatizaciones",
+    "subtitle": "Recibe un aviso cuando un cliente necesita un empujón — para que nadie se pierda sin que lo notes.",
+    "descInactivityAlert": "Avísame cuando un cliente pase {{count}} días sin entrenar",
+    "descInactivityNudge": "Dale un empujón al cliente tras {{count}} días sin entrenar",
+    "descCheckinAlert": "Avísame cuando un cliente no haga su check-in semanal",
+    "descCheckinNudge": "Recuérdale al cliente que no hizo su check-in semanal",
+    "saveError": "No se pudo actualizar la automatización.",
+    "addRule": "Agregar automatización",
+    "when": "Cuándo",
+    "triggerInactivity": "Un cliente deja de entrenar",
+    "triggerMissedCheckin": "Un cliente no hace su check-in",
+    "afterDays": "¿Después de cuántos días?",
+    "days": "{{count}} días",
+    "then": "Entonces",
+    "actionNotify": "Avísame",
+    "actionNudge": "Dale un empujón al miembro",
+    "save": "Guardar",
+    "cancel": "Cancelar"
+  },
+  "trainerCoaching": {
+    "checkinsTitle": "Check-ins",
+    "noCheckins": "Aún no hay check-ins. Crea uno para seguir cómo va este miembro cada semana.",
+    "newCheckin": "Nuevo check-in",
+    "titlePlaceholder": "Título (p. ej. Check-in semanal)",
+    "weekly": "Semanal",
+    "biweekly": "Cada 2 semanas",
+    "monthly": "Mensual",
+    "addQuestions": "Agregar preguntas",
+    "preset": {
+      "weight": "Peso corporal",
+      "energy": "Energía",
+      "sleep": "Calidad del sueño",
+      "adherence": "Adherencia al plan",
+      "notes": "Notas"
+    },
+    "saving": "Guardando…",
+    "saveAssign": "Guardar y asignar",
+    "cancel": "Cancelar",
+    "needTitleQuestions": "Agrega un título y al menos una pregunta.",
+    "saveError": "No se pudo guardar el check-in.",
+    "assignError": "Guardado, pero falló la asignación al cliente.",
+    "assigned": "Check-in asignado.",
+    "lastResponse": "Semana del {{date}}",
+    "noResponseYet": "Sin respuesta aún.",
+    "habitsTitle": "Hábitos",
+    "habitError": "No se pudo actualizar el hábito.",
+    "habitPlaceholder": "Nuevo hábito",
+    "perWeek": "{{count}}/sem",
+    "add": "Agregar"
+  },
   "readinessModal": {
     "title": "Recuperación",
     "ready": "listo",
@@ -10037,6 +10132,38 @@
       "moderate": "Recuperando",
       "fresh": "Fresco",
       "rest": "Sin entrenar"
+    },
+    "mesoAccumulation": "Semana {{week}} de {{weeks}} · Acumulación",
+    "mesoAccumulationHint": "Semana de construcción — sube un poco el volumen o la carga hacia tu máximo.",
+    "mesoDeload": "Semana de descarga",
+    "mesoDeloadHint": "Baja ~40% y deja que tu cuerpo supercompense antes del próximo bloque.",
+    "volumeTitle": "Volumen semanal",
+    "volumeSubtitle": "Series por músculo esta semana vs. el rango productivo",
+    "volumeEmpty": "Registra un entrenamiento esta semana para ver tu balance de volumen.",
+    "volumeStatus": {
+      "under": "Falta volumen",
+      "optimal": "Óptimo",
+      "high": "Alto",
+      "over": "Demasiado"
+    },
+    "volumeRec": {
+      "under": "Agrega {{count}} serie para llegar a tu mínimo",
+      "under_plural": "Agrega {{count}} series para llegar a tu mínimo",
+      "optimal": "Dentro del rango productivo",
+      "high": "Productivo pero cerca de tu límite — mantén aquí",
+      "over": "Recorta {{count}} serie — por encima de tu máximo recuperable",
+      "over_plural": "Por encima de tu máximo recuperable — recorta {{count}} series"
+    },
+    "volumeGroups": {
+      "Chest": "Pecho",
+      "Back": "Espalda",
+      "Shoulders": "Hombros",
+      "Biceps": "Bíceps",
+      "Triceps": "Tríceps",
+      "Legs": "Piernas",
+      "Glutes": "Glúteos",
+      "Calves": "Pantorrillas",
+      "Core": "Core"
     },
     "factorsTitle": "Desglose de recuperación",
     "sleep": "Sueño",
@@ -11116,7 +11243,9 @@
     "delete": "Eliminar",
     "closePhotoViewer": "Cerrar visor de fotos",
     "pleaseSelectPhoto": "Selecciona una foto",
-    "personalInfoUpdated": "Información personal actualizada"
+    "personalInfoUpdated": "Información personal actualizada",
+    "photoDeleteError": "No se pudo eliminar la foto. Inténtalo de nuevo.",
+    "personalInfoError": "No se pudo guardar tu información. Inténtalo de nuevo."
   },
   "personalInfo": {
     "title": "Información personal",

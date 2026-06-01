@@ -254,6 +254,39 @@ export function bucketCounts(readinessMap, buckets) {
   return out;
 }
 
+/**
+ * Readiness for a SINGLE exercise, aggregated across the muscle regions it
+ * trains hardest. This is the bridge that lets the overload engine soften a
+ * prescription when the target muscle is still fatigued — the per-muscle
+ * recovery signal was previously computed only for the body diagram.
+ *
+ * Region selection, in priority order:
+ *   1. regions the exercise hits at >= 50 muscleScore (its prime movers)
+ *   2. explicit primaryRegions
+ *   3. secondaryRegions
+ * Returns null for unknown / custom exercises (→ engine leaves the suggestion
+ * untouched, a safe no-op).
+ *
+ * @param {Map} readinessMap - output of computeReadiness
+ * @param {string} exerciseId
+ * @returns {{ recovery:number, state:string, sets:number, daysSince:number } | null}
+ */
+export function exerciseReadiness(readinessMap, exerciseId) {
+  if (!readinessMap || !exerciseId) return null;
+  const ex = EXERCISE_LOOKUP.get(exerciseId);
+  if (!ex) return null;
+
+  const scores = ex.muscleScores || {};
+  let regionIds = Object.entries(scores)
+    .filter(([, s]) => typeof s === 'number' && s >= 50)
+    .map(([r]) => r);
+  if (regionIds.length === 0 && Array.isArray(ex.primaryRegions)) regionIds = ex.primaryRegions;
+  if (regionIds.length === 0 && Array.isArray(ex.secondaryRegions)) regionIds = ex.secondaryRegions;
+  if (regionIds.length === 0) return null;
+
+  return aggregateRegions(readinessMap, regionIds);
+}
+
 // ── Recovery score (sleep + HRV + RHR) ────────────────────────────────────────
 //
 // This layer is independent of training-load recovery above. It scores the

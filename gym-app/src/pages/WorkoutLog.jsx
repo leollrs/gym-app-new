@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { format } from 'date-fns';
+import { es as esLocale, enUS } from 'date-fns/locale';
 import { ChevronLeft, ChevronDown, ChevronRight, Trophy, Dumbbell, Clock, Zap, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,18 +21,18 @@ const formatDuration = (seconds) => {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 };
 
-const formatDate = (iso) => {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const formatDate = (iso, locale) => {
+  return format(new Date(iso), 'EEE, MMM d', { locale });
 };
 
-const formatMonthYear = (iso) => {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const formatMonthYear = (iso, locale) => {
+  return format(new Date(iso), 'LLLL yyyy', { locale });
 };
 
 // ── Session Card ──────────────────────────────────────────────────────────────
 const SessionCard = ({ session, onEdit }) => {
+  const { t, i18n } = useTranslation('pages');
+  const dfLocale = i18n.language === 'es' ? esLocale : enUS;
   const [expanded, setExpanded] = useState(false);
 
   const exercises  = session.session_exercises ?? [];
@@ -57,7 +60,7 @@ const SessionCard = ({ session, onEdit }) => {
         {/* Date block */}
         <div className="flex-shrink-0 w-10 text-center pt-0.5">
           <p className="text-[11px] font-bold uppercase tracking-wider text-[#D4AF37]">
-            {new Date(session.completed_at).toLocaleDateString('en-US', { month: 'short' })}
+            {format(new Date(session.completed_at), 'LLL', { locale: dfLocale })}
           </p>
           <p className="text-[24px] font-black leading-none" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-primary)' }}>
             {new Date(session.completed_at).getDate()}
@@ -77,11 +80,11 @@ const SessionCard = ({ session, onEdit }) => {
               <Zap size={11} /> {volumeStr}
             </span>
             <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-              <Dumbbell size={11} /> {exercises.length} exercise{exercises.length !== 1 ? 's' : ''}
+              <Dumbbell size={11} /> {t('workoutLog.exercisesCount', { count: exercises.length })}
             </span>
             {prSets.length > 0 && (
               <span className="flex items-center gap-1 text-[12px] font-semibold text-[#D4AF37]">
-                <Trophy size={11} /> {prSets.length} PR{prSets.length !== 1 ? 's' : ''}
+                <Trophy size={11} /> {t('workoutLog.prCount', { count: prSets.length })}
               </span>
             )}
           </div>
@@ -113,10 +116,10 @@ const SessionCard = ({ session, onEdit }) => {
                 fontWeight: 700,
                 letterSpacing: 0.2,
               }}
-              aria-label="Edit workout"
+              aria-label={t('workoutLog.editAria')}
             >
               <Pencil size={11} strokeWidth={2.4} />
-              Edit
+              {t('workoutLog.edit')}
             </button>
           </div>
           <div className="pt-3 flex flex-col gap-3">
@@ -150,7 +153,7 @@ const SessionCard = ({ session, onEdit }) => {
                                 }
                               >
                                 <span>{set.weight_lbs} × {set.reps}</span>
-                                {set.is_pr && <span>PR</span>}
+                                {set.is_pr && <span>{t('workoutLog.prBadge')}</span>}
                                 {set.rpe && (
                                   <span
                                     className="text-[10px] font-bold rounded px-1 py-px ml-0.5"
@@ -188,7 +191,7 @@ const SessionCard = ({ session, onEdit }) => {
                             .filter(s => s.notes)
                             .map(set => (
                               <p key={`note-${set.set_number}`} className="text-[11px] italic truncate" style={{ color: 'var(--color-text-subtle)' }}>
-                                Set {set.set_number}: {set.notes}
+                                {t('workoutLog.setLabel', { number: set.set_number })}: {set.notes}
                               </p>
                             ))
                           }
@@ -210,6 +213,8 @@ const SessionCard = ({ session, onEdit }) => {
 const WorkoutLog = ({ embedded = false }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t, i18n } = useTranslation('pages');
+  const dfLocale = i18n.language === 'es' ? esLocale : enUS;
 
   const logCacheKey = `workout-log-${user?.id}`;
   const [sessions, setSessions] = useCachedState(logCacheKey, []);
@@ -252,7 +257,7 @@ const WorkoutLog = ({ embedded = false }) => {
       .then(({ data }) => setSessions(data ?? []));
   };
 
-  useEffect(() => { document.title = `Workout Log | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
+  useEffect(() => { document.title = `${t('workoutLog.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   useEffect(() => {
     if (!user) return;
@@ -287,7 +292,7 @@ const WorkoutLog = ({ embedded = false }) => {
 
   // Group visible sessions by month
   const grouped = visibleSessions.reduce((acc, s) => {
-    const key = formatMonthYear(s.completed_at);
+    const key = formatMonthYear(s.completed_at, dfLocale);
     if (!acc[key]) acc[key] = [];
     acc[key].push(s);
     return acc;
@@ -308,7 +313,7 @@ const WorkoutLog = ({ embedded = false }) => {
       <div className="flex items-center gap-3 mb-8">
         <button
           onClick={() => navigate(-1)}
-          aria-label="Back"
+          aria-label={t('workoutLog.back')}
           className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors hover:opacity-70 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-muted)' }}
         >
@@ -316,11 +321,11 @@ const WorkoutLog = ({ embedded = false }) => {
         </button>
         <div className="min-w-0 flex-1">
           <h1 className="font-bold text-[22px] leading-tight truncate" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
-            Workout Log
+            {t('workoutLog.title')}
           </h1>
           {!loading && (
             <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-              {sessions.length} workout{sessions.length !== 1 ? 's' : ''} completed
+              {t('workoutLog.workoutsCompleted', { count: sessions.length })}
             </p>
           )}
         </div>
@@ -336,9 +341,9 @@ const WorkoutLog = ({ embedded = false }) => {
       {!loading && sessions.length === 0 && (
         <EmptyState
           icon={Dumbbell}
-          title="No workouts yet"
-          description="Complete your first session to see it here"
-          actionLabel="Go to Workouts"
+          title={t('workoutLog.emptyTitle')}
+          description={t('workoutLog.emptyDescription')}
+          actionLabel={t('workoutLog.emptyAction')}
           onAction={() => navigate('/workouts')}
         />
       )}
@@ -384,7 +389,7 @@ const WorkoutLog = ({ embedded = false }) => {
           className="w-full py-3 mt-4 rounded-2xl bg-white/[0.04] text-[13px] font-semibold hover:bg-white/[0.06] transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{ color: 'var(--color-text-muted)' }}
         >
-          Load more ({sessions.length - visibleCount} remaining)
+          {t('workoutLog.loadMore', { count: sessions.length - visibleCount })}
         </button>
       )}
 

@@ -81,6 +81,29 @@ export function useRecentSessionsWithSets(userId, daysBack = 14) {
   });
 }
 
+// ── Recent session DATES only (for mesocycle week-counting) ─────────────────
+// Light: pulls just completed_at over a longer window so periodization (#4) can
+// count consecutive training weeks without the cost of fetching every set.
+export function useRecentSessionDates(userId, daysBack = 70) {
+  return useQuery({
+    queryKey: ['recent-session-dates', userId, daysBack],
+    enabled: !!userId,
+    staleTime: 30 * 60_000,
+    queryFn: async () => {
+      const since = new Date(Date.now() - daysBack * 86400000).toISOString();
+      const { data, error } = await supabase
+        .from('workout_sessions')
+        .select('completed_at')
+        .eq('profile_id', userId)
+        .eq('status', 'completed')
+        .gte('completed_at', since)
+        .order('completed_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+}
+
 export function useRoutines(userId) {
   return useSupabaseQuery(
     ['routines', userId],

@@ -27,11 +27,12 @@ import TrainerClientRecovery from './components/TrainerClientRecovery';
 import TrainerClientPayment from './components/TrainerClientPayment';
 import TrainerClientSchedule from './components/TrainerClientSchedule';
 import TrainerClientAttendance from './components/TrainerClientAttendance';
+import TrainerClientCoaching from './components/TrainerClientCoaching';
 import { TT, TFont, avatarIdx, avatarGradient } from './components/designTokens';
 import { TCard, TPill, TPrimaryButton } from './components/designPrimitives';
 import CheckinPhotoEditor from '../../components/CheckinPhotoEditor';
 
-const TAB_KEYS = ['overview', 'history', 'body', 'notesFollowUp', 'programNutrition'];
+const TAB_KEYS = ['overview', 'history', 'body', 'notesFollowUp', 'programNutrition', 'coaching'];
 
 // --- Reducer ---
 const initialState = {
@@ -1220,6 +1221,7 @@ export default function TrainerClientNotes() {
             { l: t('trainerClientDetail.tabs.history', 'History'), tab: 'history' },
             { l: t('trainerClientDetail.tabs.notes', 'Notes'), tab: 'notesFollowUp' },
             { l: t('trainerClientDetail.tabs.body', 'Body'), tab: 'body' },
+            { l: t('trainerClientDetail.tabs.coaching', 'Check-ins'), tab: 'coaching' },
           ].map((t2) => {
             const isActive = activeTab === t2.tab;
             return (
@@ -2454,6 +2456,11 @@ export default function TrainerClientNotes() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ===================== TAB: CHECK-INS & HABITS (#6) ===================== */}
+      {activeTab === 'coaching' && (
+        <TrainerClientCoaching clientId={clientId} gymId={profile?.gym_id} trainerId={profile?.id} />
       )}
 
       {/* ===================== TAB 3: PROGRAM & NUTRITION ===================== */}

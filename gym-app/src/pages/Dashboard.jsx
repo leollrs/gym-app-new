@@ -36,6 +36,7 @@ import { getTodayChallenge } from '../lib/dailyChallenges';
 
 import DayStrip from '../components/DayStrip';
 import WorkoutHeroCard from '../components/WorkoutHeroCard';
+import CoachingSection from '../components/CoachingSection';
 import ReadinessModal from '../components/ReadinessModal';
 import { useRecentSessionsWithSets } from '../hooks/useSupabaseQuery';
 import { computeDashboardReadiness } from '../lib/readinessEngine';
@@ -932,13 +933,10 @@ const Dashboard = () => {
     if (!user || !profile) return;
     const dow = pickerDay;
 
-    await supabase
-      .from('workout_schedule')
-      .upsert(
-        { profile_id: user.id, gym_id: profile.gym_id, day_of_week: dow, routine_id: routineId, updated_at: new Date().toISOString() },
-        { onConflict: 'profile_id,day_of_week' }
-      )
-      .then(() => {}).catch(() => {});
+    // Snapshot for rollback — this drives the member's whole training week,
+    // so a silently-dropped write (RLS/network) must not leave the UI showing
+    // a schedule that isn't actually saved.
+    const prevSchedule = schedule;
 
     const routine = allRoutines.find(r => r.id === routineId);
     const newSchedule = {
@@ -958,18 +956,26 @@ const Dashboard = () => {
         payload: { routine, exercises, lastSession: null },
       });
     }
-  }, [user, profile, pickerDay, allRoutines, schedule, selectedDate]);
+
+    const { error } = await supabase
+      .from('workout_schedule')
+      .upsert(
+        { profile_id: user.id, gym_id: profile.gym_id, day_of_week: dow, routine_id: routineId, updated_at: new Date().toISOString() },
+        { onConflict: 'profile_id,day_of_week' }
+      );
+    if (error) {
+      dispatch({ type: 'SET_SCHEDULE', payload: prevSchedule });
+      showToast(t('dashboard.scheduleSaveError', "Couldn't save your schedule. Check your connection and try again."), 'error');
+    }
+  }, [user, profile, pickerDay, allRoutines, schedule, selectedDate, showToast, t]);
 
   const handleClearDay = useCallback(async () => {
     if (!user) return;
     const dow = pickerDay;
 
-    await supabase
-      .from('workout_schedule')
-      .delete()
-      .eq('profile_id', user.id)
-      .eq('day_of_week', dow)
-      .then(() => {}).catch(() => {});
+    // Snapshot for rollback (see handleAssignRoutine).
+    const prevSchedule = schedule;
+    const prevSelected = selectedRoutinePayload;
 
     const newSchedule = { ...schedule };
     delete newSchedule[dow];
@@ -981,7 +987,20 @@ const Dashboard = () => {
         payload: { routine: null, exercises: [], lastSession: null },
       });
     }
-  }, [user, pickerDay, schedule, selectedDate]);
+
+    const { error } = await supabase
+      .from('workout_schedule')
+      .delete()
+      .eq('profile_id', user.id)
+      .eq('day_of_week', dow);
+    if (error) {
+      dispatch({ type: 'SET_SCHEDULE', payload: prevSchedule });
+      if (selectedDate.getDay() === dow && prevSelected) {
+        dispatch({ type: 'SET_SELECTED_ROUTINE', payload: prevSelected });
+      }
+      showToast(t('dashboard.scheduleClearError', "Couldn't clear that day. Check your connection and try again."), 'error');
+    }
+  }, [user, pickerDay, schedule, selectedDate, selectedRoutinePayload, showToast, t]);
 
   const handleAssignDay = useCallback((dayOfWeek) => {
     setPickerDay(dayOfWeek);
@@ -1379,6 +1398,14 @@ const Dashboard = () => {
                   programStart={activeProgram?.program_start}
                 />
               </section>
+
+              {/* From your trainer — assigned check-ins + daily habits (#6).
+                  Renders nothing unless a trainer has assigned something. */}
+              {isToday && (
+                <section className="mb-3">
+                  <CoachingSection />
+                </section>
+              )}
 
               {/* ════════════════════════════════════════════════
                   1a. BIRTHDAY BANNER (today only)

@@ -114,7 +114,7 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
           </div>
           <div className="text-right pb-3">
             <div className="text-[12px] lg:text-[13px] font-bold tracking-widest uppercase" style={{ color: palette.textDim }}>
-              Gym total · top {entries.length || 0}
+              {t.gymTotal} · {t.top} {entries.length || 0}
             </div>
             <div className="text-[40px] lg:text-[56px] xl:text-[64px] font-black leading-none tabular-nums mt-1" style={{ letterSpacing: '-2px' }}>
               {fmt(total)} <span className="text-[16px] lg:text-[22px]" style={{ color: palette.teal }}>{slide?.unit || ''}</span>
@@ -153,7 +153,7 @@ export default function TVStyleStadium({ slide, palette, gymName, logoUrl, clock
                   {t.rank} 04 – {String(3 + restRows.length).padStart(2, '0')}
                 </div>
                 <div className="text-[11px] font-mono" style={{ color: palette.textFaint }}>
-                  scale: 0 → {fmt(maxVal)} {slide?.unit?.toLowerCase() || ''}
+                  {t.scale}: 0 → {fmt(maxVal)} {slide?.unit?.toLowerCase() || ''}
                 </div>
               </div>
               <div className="grid grid-cols-5 gap-3">

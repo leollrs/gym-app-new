@@ -98,6 +98,11 @@ export default function Referrals() {
           if (!rpcErr && generated) {
             setReferralCode(generated);
             posthog?.capture('referral_code_generated');
+          } else if (rpcErr) {
+            // Without a code the member can't share at all — surface it instead
+            // of leaving the placeholder dashes sitting there silently.
+            setReferralCode('');
+            showToast(t('referrals.codeError', "Couldn't generate your referral code. Pull to refresh or try again later."), 'error');
           }
         }
       }
@@ -152,7 +157,7 @@ export default function Referrals() {
     } finally {
       setLoading(false);
     }
-  }, [user, profile?.gym_id, posthog]);
+  }, [user, profile?.gym_id, posthog, showToast, t]);
 
   useEffect(() => { load(); }, [load]);
 

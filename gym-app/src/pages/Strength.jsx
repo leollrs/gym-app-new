@@ -211,8 +211,7 @@ const PRRow = ({ pr, history }) => {
           </p>
           <ChevronDown
             size={15}
-            style={{ color: 'var(--color-text-muted)' }}
-            style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+            style={{ color: 'var(--color-text-muted)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
           />
         </div>
       </button>
