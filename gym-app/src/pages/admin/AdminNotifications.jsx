@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Bell, AlertTriangle, UserPlus, Calendar, MessageCircle,
   Star, ShieldAlert, TrendingDown, Gift, Lock, Award, Megaphone,
-  Server, CheckCheck, Trash2, X, Filter, Settings as SettingsIcon, Inbox, SlidersHorizontal, ArrowLeft,
+  Server, CheckCheck, Trash2, X, Filter, Inbox, SlidersHorizontal, ArrowLeft,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -19,6 +19,7 @@ import {
   FadeIn, SectionLabel, AdminTabs,
 } from '../../components/admin';
 import AdminNotificationPrefs from './AdminNotificationPrefs';
+import { loadGymChurnScores } from '../../lib/churnScore';
 
 // ── Admin-specific type metadata ────────────────────────────────────
 const TYPE_META = {
@@ -89,6 +90,27 @@ export default function AdminNotifications() {
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('all');
   const [marking, setMarking] = useState(false);
+
+  // At-risk headcount (same source as the Churn page) — turns an empty
+  // inbox from a dead-end into a pointer toward today's retention work.
+  const [atRiskCount, setAtRiskCount] = useState(0);
+
+  useEffect(() => {
+    const gid = profile?.gym_id;
+    if (!gid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const scored = await loadGymChurnScores(gid, supabase);
+        if (!cancelled) {
+          setAtRiskCount((scored || []).filter(m => (m.churnScore ?? 0) >= 55).length);
+        }
+      } catch (err) {
+        logger.error('AdminNotifications: at-risk count failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [profile?.gym_id]);
 
   // Keep URL in sync when user changes tab from inside the page.
   useEffect(() => {
@@ -275,16 +297,6 @@ export default function AdminNotifications() {
                   {t('admin.settings.title', 'Configuración')}
                 </Link>
               )}
-              <button
-                type="button"
-                onClick={() => setTab('preferences')}
-                aria-label={t('admin.notifications.openPreferences', 'Notification preferences')}
-                className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap"
-                style={{ color: 'var(--color-text-muted)', borderColor: 'var(--color-border-subtle)' }}
-              >
-                <SettingsIcon size={13} />
-                {t('admin.notifications.preferencesShort', 'Preferences')}
-              </button>
               {unreadCount > 0 && (
                 <button
                   type="button"
@@ -413,22 +425,45 @@ export default function AdminNotifications() {
             </p>
           </AdminCard>
         ) : filtered.length === 0 ? (
-          <AdminCard padding="p-12" className="text-center">
-            <div className="w-12 h-12 mx-auto mb-3 rounded-2xl flex items-center justify-center"
-              style={{ background: 'var(--color-bg-hover)' }}>
-              <Bell size={20} style={{ color: 'var(--color-text-subtle)' }} />
-            </div>
-            <p className="text-[15px] font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>
-              {filter === 'all'
-                ? t('adminNotifications.empty.title', 'You\'re all caught up')
-                : t('adminNotifications.emptyFilter.title', 'Nothing in this category')}
-            </p>
-            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
-              {filter === 'all'
-                ? t('adminNotifications.empty.body', 'Churn risks, NPS responses, moderation flags, and gym alerts will appear here.')
-                : t('adminNotifications.emptyFilter.body', 'Switch tabs to see other notifications.')}
-            </p>
-          </AdminCard>
+          filter === 'all' && atRiskCount > 0 ? (
+            <AdminCard padding="p-8" className="text-center" borderLeft={TONE_BORDER.critical}>
+              <div className="w-12 h-12 mx-auto mb-3 rounded-2xl flex items-center justify-center"
+                style={{ background: TONE_BG.critical, color: TONE_TEXT.critical }}>
+                <TrendingDown size={22} />
+              </div>
+              <p className="text-[15px] font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                {t('adminNotifications.atRiskPointer.title', 'No new alerts')}
+              </p>
+              <p className="text-[13px] mb-4 max-w-sm mx-auto leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+                {t('adminNotifications.atRiskPointer.body', { count: atRiskCount, defaultValue: '{{count}} members are at risk of churning. Review and reach out from the Churn page.' })}
+              </p>
+              <Link
+                to="/admin/churn"
+                className="admin-pill inline-flex items-center gap-1.5 whitespace-nowrap"
+                style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)', borderColor: 'transparent' }}
+              >
+                <TrendingDown size={14} />
+                {t('adminNotifications.atRiskPointer.cta', 'Review at-risk members')}
+              </Link>
+            </AdminCard>
+          ) : (
+            <AdminCard padding="p-12" className="text-center">
+              <div className="w-12 h-12 mx-auto mb-3 rounded-2xl flex items-center justify-center"
+                style={{ background: 'var(--color-bg-hover)' }}>
+                <Bell size={20} style={{ color: 'var(--color-text-subtle)' }} />
+              </div>
+              <p className="text-[15px] font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                {filter === 'all'
+                  ? t('adminNotifications.empty.title', 'You\'re all caught up')
+                  : t('adminNotifications.emptyFilter.title', 'Nothing in this category')}
+              </p>
+              <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+                {filter === 'all'
+                  ? t('adminNotifications.empty.body', 'Churn risks, NPS responses, moderation flags, and gym alerts will appear here.')
+                  : t('adminNotifications.emptyFilter.body', 'Switch tabs to see other notifications.')}
+              </p>
+            </AdminCard>
+          )
         ) : (
           <div className="space-y-2">
             <SectionLabel>{t('adminNotifications.recent', 'Recent')}</SectionLabel>

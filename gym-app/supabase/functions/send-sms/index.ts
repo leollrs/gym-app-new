@@ -149,23 +149,14 @@ Deno.serve(async (req) => {
       return jsonResp({ error: 'Member not in your gym' }, 403);
     }
 
-    // ── GYM USAGE CAP CHECK (must run BEFORE any expensive call) ──
-    if (effectiveGymId) {
-      const { data: cap } = await supabase
-        .from('gym_usage_caps').select('*').eq('gym_id', effectiveGymId).maybeSingle();
-      const limit = cap?.sms_daily_cap ?? 100;
-      const { data: ok } = await supabase.rpc('check_and_increment_gym_usage', {
-        p_gym_id: effectiveGymId,
-        p_endpoint: 'send-sms',
-        p_profile_id: callerId,
-        p_window: '1 day',
-        p_limit: limit,
-      });
-      if (!ok) {
-        return jsonResp({ error: 'gym_monthly_cap_exceeded' }, 429);
-      }
-    }
-    // ── END GYM USAGE CAP CHECK ─────────────────────────────────
+    // ── GYM DAILY USAGE CAP CHECK — DISABLED ────────────────────
+    // The `check_and_increment_gym_usage` RPC is buggy: it ignores p_limit and
+    // returns !ok on the very FIRST request of the day, which fail-closes every
+    // send to a 429 (the exact same issue documented in send-admin-email, where
+    // this gate was already disabled). Until that RPC is fixed, the daily gym
+    // cap is off here — SMS is still bounded by the per-admin 50/hour limit and
+    // the monthly increment_sms_usage cap further below.
+    // ── END (DISABLED) ──────────────────────────────────────────
 
     // Determine recipient phone — admin can override (e.g. testing with own
     // phone, or member doesn't have one on file). Normalize to E.164 first.

@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  AlertTriangle, KeyRound, Flag, UserPlus, MessageSquare,
+  KeyRound, Flag, UserPlus, MessageSquare,
   ShieldAlert, ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
@@ -24,7 +24,6 @@ import { AdminCard, FadeIn } from '../../../components/admin';
  */
 export default function NeedsAttentionCard({
   gymId,
-  atRiskCount = 0,
   pendingResetsCount = 0,
   onboardingCount = 0,
   firstPendingResetId = null,
@@ -75,15 +74,10 @@ export default function NeedsAttentionCard({
     });
   }
 
-  if (atRiskCount > 0) {
-    items.push({
-      icon: AlertTriangle,
-      color: 'var(--color-danger)',
-      text: t(plural('admin.overview.attentionAtRisk', atRiskCount), { count: atRiskCount }),
-      action: t('admin.overview.sendOutreach', 'Send win-back'),
-      onClick: () => navigate('/admin/outreach?audience=critical'),
-    });
-  }
+  // Churn/at-risk intentionally NOT surfaced here — it lives in the Morning
+  // Queue ("Conversaciones de hoy") + the Watchlist, so this card stays a pure
+  // operational-chores inbox (resets, reports, referrals, onboarding) and the
+  // three sections stop pointing at the same retention destination.
 
   if (extra.reports > 0) {
     items.push({

@@ -4,6 +4,7 @@ import {
   Users, AlertTriangle, ChevronRight, Activity,
   UserPlus, Clock, RefreshCw, CalendarCheck, Dumbbell,
   CheckCircle, KeyRound, MessageSquare, BookOpen,
+  CreditCard, Trophy,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
@@ -22,13 +23,15 @@ import { FadeIn, StatCard, AdminCard, Avatar, AdminPageShell, PageHeader, AdminM
 // Sub-components
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
 import {
-  OverviewSkeleton, AlertBanner, ActivityItem, WatchlistRow,
+  OverviewSkeleton, AlertBanner, ActivityItem,
   formatDelta, DeltaSub, QuickActionButton,
 } from './components/OverviewSubcomponents';
 import { fetchOverviewData } from '../../lib/admin/overviewQuery';
 import NeedsAttentionCard from './components/NeedsAttentionCard';
-import AdminFirstRunChecklist from './components/AdminFirstRunChecklist';
 import MorningQueuePanel from './components/MorningQueuePanel';
+import WeeklyPulse from './components/WeeklyPulse';
+import RetentionHealth from './components/RetentionHealth';
+import GrowthChart from './components/GrowthChart';
 import AdminWelcomeModal from './components/AdminWelcomeModal';
 
 
@@ -64,6 +67,12 @@ export default function AdminOverview() {
   const [resetApprovalId, setResetApprovalId] = useState(null);
   const [activityDetail, setActivityDetail] = useState(null);
   const [watchlistDetail, setWatchlistDetail] = useState(null);
+  // Measure the right rail so the retention queue (left) can match its exact
+  // combined height on desktop. railH = rail's live height; isLg gates it so
+  // the match only applies when the two sit side-by-side.
+  const railRef = useRef(null);
+  const [railH, setRailH] = useState(0);
+  const [isLg, setIsLg] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 1024px)').matches);
 
   // Fetch pending password reset requests
   const { data: pendingResets = [], refetch: refetchResets } = useQuery({
@@ -108,6 +117,27 @@ export default function AdminOverview() {
     }
   }, [gymId, data?._dbScoreCount, data?._totalMembers]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Track the lg breakpoint (queue↔rail height-match only applies side-by-side).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onMq = () => setIsLg(mq.matches);
+    mq.addEventListener?.('change', onMq);
+    return () => mq.removeEventListener?.('change', onMq);
+  }, []);
+
+  // Observe the right rail's height; re-attach once it mounts after data loads.
+  useEffect(() => {
+    const el = railRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect?.height;
+      if (h) setRailH(Math.round(h));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isLoading, data]);
+
   // Guard: only admins/super_admins with a valid gym_id
   if (!isAuthorized) {
     return (
@@ -143,25 +173,9 @@ export default function AdminOverview() {
 
   if (isLoading || !data) return <OverviewSkeleton />;
 
-  const { stats, atRisk, recentActivity, onboardingCount } = data;
+  const { stats, pulse, recentActivity, onboardingCount, retention, growthSeries } = data;
   const classesEnabled = gymConfig?.classesEnabled ?? false;
 
-  // Determine if today's check-ins are unusually low
-  const checkInsBelowAvg = stats.avgDailyCheckins > 0 && stats.checkInsToday < stats.avgDailyCheckins * 0.5;
-
-  // Anomaly alerts that don't fit "needs your attention" (which is for
-  // explicit pending tasks). A drop in check-ins is more of an FYI banner
-  // than a to-do.
-  const alerts = [];
-  if (checkInsBelowAvg) {
-    alerts.push({
-      icon: Activity,
-      text: t('admin.overview.unusualActivityDesc', { avg: stats.avgDailyCheckins, today: stats.checkInsToday }),
-      actionLabel: t('admin.overview.viewAction'),
-      color: 'var(--color-danger)',
-      onClick: () => navigate('/admin/attendance'),
-    });
-  }
 
   return (
     <AdminPageShell>
@@ -193,7 +207,7 @@ export default function AdminOverview() {
       <FadeIn>
         <PageHeader
           title={t('admin.overview.title')}
-          subtitle={`${format(new Date(), 'EEEE, MMMM d, yyyy', dateFnsLocale)} · ${stats.checkInsToday} ${t('admin.overview.glanceCheckins').toLowerCase()}`}
+          subtitle={format(new Date(), 'EEEE, MMMM d, yyyy', dateFnsLocale)}
           actions={
             <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap pb-1 md:pb-0">
               <QuickActionButton icon={Users} label={t('admin.overview.navMembers')} onClick={() => navigate('/admin/members')} />
@@ -208,10 +222,6 @@ export default function AdminOverview() {
         />
       </FadeIn>
 
-      {/* First-run setup checklist for new gyms — auto-hides when complete.
-          Stays at the very top because nothing else on this page makes sense
-          until the gym is configured. */}
-      <AdminFirstRunChecklist gymId={gymId} />
 
       {/* ════════════════════════════════════════════════════
            SECTION 2 -- HERO KPI STRIP ("Today at a Glance")
@@ -223,188 +233,133 @@ export default function AdminOverview() {
           {t('admin.overview.todayGlance', 'Today at a Glance')}
         </span>
       </FadeIn>
-      <div className={`grid gap-2.5 md:gap-4 mb-8 grid-cols-2 md:grid-cols-3 ${classesEnabled ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+      {/* Four north-star KPIs mapped to retention levers: weekly activity, size,
+          card delivery, and live challenges. Check-ins (today) live in "Check-ins
+          esta semana" and new-members in the Crecimiento chart, so they're not
+          repeated here. */}
+      <div className="grid gap-2.5 md:gap-4 mb-8 grid-cols-2 md:grid-cols-4">
         <FadeIn delay={60}>
           <StatCard
-            label={t('admin.overview.glanceCheckins')}
-            value={stats.checkInsToday}
-            icon={CalendarCheck}
-            borderColor="var(--color-coach)"
-            sub={<DeltaSub delta={formatDelta(stats.checkInsToday, stats.checkInsYesterday, t('admin.overview.vsYesterday', 'vs yesterday'))} />}
-            benchmark={t('admin.overview.benchmarkCheckins', {
-              avg: stats.avgDailyCheckins || 0,
-              defaultValue: 'Healthy gym: ~30–40% of members check in on any given day. Your gym\'s avg/day: {{avg}}.',
-            })}
-            onClick={() => navigate('/admin/attendance')}
+            label={t('admin.overview.glanceActiveRate', 'Active rate')}
+            value={`${stats.activeRate}%`}
+            icon={Activity}
+            borderColor="var(--color-accent)"
+            sub={t('admin.overview.activeOfTotal', { active: stats.activeThisWeek, total: stats.totalMembers, defaultValue: '{{active}} of {{total}} active' })}
+            benchmark={t('admin.overview.benchmarkActiveRate', { defaultValue: 'Healthy gyms keep 30–40%+ of members active each week. Below 25%? Lean on the retention queue.' })}
+            onClick={() => navigate('/admin/churn')}
           />
         </FadeIn>
-        {classesEnabled && (
-          <FadeIn delay={80}>
-            <StatCard
-              label={t('admin.overview.glanceClasses')}
-              value={stats.classesToday}
-              icon={BookOpen}
-              borderColor="var(--color-accent)"
-              benchmark={t('admin.overview.benchmarkClasses', {
-                defaultValue: 'Strong gyms run 3–6 classes/day. Empty days = under-utilized real estate.',
-              })}
-              onClick={() => navigate('/admin/classes')}
-            />
-          </FadeIn>
-        )}
-        <FadeIn delay={100}>
-          <StatCard
-            label={t('admin.overview.glanceNewMonth')}
-            value={stats.newMembersMonth}
-            icon={UserPlus}
-            borderColor="var(--color-success)"
-            sub={<DeltaSub delta={formatDelta(stats.newMembersMonth, stats.newMembersPrevMonth, t('admin.overview.vsLastMonth', 'vs last month'))} />}
-            benchmark={t('admin.overview.benchmarkNewMonth', {
-              defaultValue: 'A growing PR gym signs 3–5% of its base in new members each month. Below 2%? Look at referrals + signage.',
-            })}
-            onClick={() => navigate('/admin/members')}
-          />
-        </FadeIn>
-        <FadeIn delay={120}>
+        <FadeIn delay={80}>
           <StatCard
             label={t('admin.overview.glanceTotal')}
             value={stats.totalMembers}
             icon={Users}
             borderColor="var(--color-coach)"
+            sub={<DeltaSub delta={formatDelta(stats.totalMembers, stats.totalMembers - stats.newMembersMonth, t('admin.overview.vsLastMonth', 'vs last month'))} />}
             benchmark={t('admin.overview.benchmarkTotal', {
               defaultValue: 'Total active members. Doesn\'t include archived imports or cancelled accounts — only live, payable members.',
             })}
             onClick={() => navigate('/admin/members')}
           />
         </FadeIn>
+        <FadeIn delay={100}>
+          <StatCard
+            label={t('admin.overview.glanceCardsPending', 'Cards to deliver')}
+            value={stats.cardsPending}
+            icon={CreditCard}
+            borderColor="var(--color-warning)"
+            sub={t('admin.overview.cardsDeliveredSub', { count: stats.cardsDelivered, defaultValue: '{{count}} delivered' })}
+            benchmark={t('admin.overview.benchmarkCards', { defaultValue: 'Membership cards waiting to be printed or handed over. Clear these — a member without their card feels half-onboarded.' })}
+            onClick={() => navigate('/admin/print-cards')}
+          />
+        </FadeIn>
+        <FadeIn delay={120}>
+          <StatCard
+            label={t('admin.overview.glanceActiveChallenges', 'Active challenges')}
+            value={stats.activeChallenges}
+            icon={Trophy}
+            borderColor="var(--color-success)"
+            sub={<DeltaSub delta={formatDelta(stats.activeChallenges, stats.activeChallengesPrev, t('admin.overview.vsLastMonth', 'vs last month'))} />}
+            benchmark={t('admin.overview.benchmarkChallenges', { defaultValue: 'Challenges live right now. Running at least one keeps the gym competitive and gives members a reason to show up.' })}
+            onClick={() => navigate('/admin/challenges')}
+          />
+        </FadeIn>
       </div>
 
-      {/* Transient anomaly alert — drops in only when check-ins are unusually low. */}
-      {alerts.length > 0 && (
-        <FadeIn delay={120}>
-          <div className="space-y-2 mb-5">
-            {alerts.map((a, i) => (
-              <AlertBanner key={i} icon={a.icon} text={a.text} actionLabel={a.actionLabel} color={a.color} onClick={a.onClick} />
-            ))}
-          </div>
+      {/* ════════════════════════════════════════════════════
+           RETENTION HEALTH + GROWTH — the two questions the KPIs + queue don't
+           answer: aggregate retention (% at risk + tier mix) and the 10-week
+           growth trend. Both from data already fetched.
+         ════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <FadeIn delay={140}>
+          <RetentionHealth retention={retention} onOpen={() => navigate('/admin/churn')} t={t} />
         </FadeIn>
-      )}
+        <FadeIn delay={160}>
+          <GrowthChart series={growthSeries || []} t={t} />
+        </FadeIn>
+      </div>
 
       {/* ════════════════════════════════════════════════════
-           SECTION 3 -- "NEEDS ATTENTION NOW"
-           Unified inbox: pending resets, churn risk, moderation reports,
-           referral approvals, onboarding gaps. Action items follow the
-           daily pulse so the owner reads the situation before acting.
+           COMMAND SPLIT (design: DirectionA "Centro de Mando")
+           Left (1.6fr): the retention queue — the hero / daily action.
+           Right rail (1fr): chores (vanish when empty) → week pulse →
+           recent activity. Stacks to one column below lg.
          ════════════════════════════════════════════════════ */}
-      <NeedsAttentionCard
-        gymId={gymId}
-        atRiskCount={stats.criticalCount}
-        pendingResetsCount={pendingResets.length}
-        onboardingCount={onboardingCount}
-        firstPendingResetId={pendingResets[0]?.id}
-        onResetClick={setResetApprovalId}
-      />
+      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
+        {/* Left — the daily retention loop (matches the right rail's height) */}
+        <FadeIn delay={20}>
+          <MorningQueuePanel gymId={gymId} cardHeight={isLg ? railH : 0} />
+        </FadeIn>
 
-      {/* ════════════════════════════════════════════════════
-           SECTION 4 -- MORNING RETENTION QUEUE
-           "Today's conversations" — produced by the daily orchestrator
-           cron. The longer-form follow-up list, after the inbox.
-         ════════════════════════════════════════════════════ */}
-      <FadeIn delay={20}>
-        <div className="mb-8">
-          <MorningQueuePanel gymId={gymId} />
-        </div>
-      </FadeIn>
+        {/* Right rail */}
+        <div ref={railRef} className="flex flex-col gap-4">
+          <NeedsAttentionCard
+            gymId={gymId}
+            pendingResetsCount={pendingResets.length}
+            onboardingCount={onboardingCount}
+            firstPendingResetId={pendingResets[0]?.id}
+            onResetClick={setResetApprovalId}
+          />
 
-      {/* ════════════════════════════════════════════════════
-           SECTION 5 -- RECENT ACTIVITY + FULL WATCHLIST
-           Two-column operational view
-         ════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-3 md:gap-5">
-        {/* Recent Activity Feed */}
-        <FadeIn delay={200}>
-          <AdminCard hover padding="p-3 sm:p-4 md:p-5">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-                style={{ background: 'var(--color-admin-panel)' }}>
-                <Activity size={13} style={{ color: 'var(--color-admin-text-sub)' }} />
-              </div>
-              <p className="text-[13.5px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>
-                {t('admin.overview.recentActivity')}
-              </p>
-              {recentActivity.length > 0 && (
-                <span className="admin-eyebrow ml-auto">
-                  {t('admin.overview.lastNCount', 'LAST {{count}}', { count: recentActivity.length })}
-                </span>
-              )}
-            </div>
-            {recentActivity.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+          <FadeIn delay={130}>
+            <WeeklyPulse pulse={pulse} t={t} dateFnsLocale={dateFnsLocale} />
+          </FadeIn>
+
+          <FadeIn delay={200}>
+            <AdminCard hover padding="p-3 sm:p-4 md:p-5">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center"
                   style={{ background: 'var(--color-admin-panel)' }}>
-                  <Clock size={18} style={{ color: 'var(--color-admin-text-faint)' }} />
+                  <Activity size={13} style={{ color: 'var(--color-admin-text-sub)' }} />
                 </div>
-                <p className="text-[12.5px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.overview.noActivity')}</p>
-              </div>
-            ) : (
-              <div className="divide-y" style={{ borderColor: 'var(--color-admin-border)' }}>
-                {recentActivity.map((item, i) => (
-                  <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} t={t} onClick={setActivityDetail} />
-                ))}
-              </div>
-            )}
-          </AdminCard>
-        </FadeIn>
-
-        {/* Full Watchlist */}
-        <FadeIn delay={240}>
-          <AdminCard hover padding="p-3 sm:p-4 md:p-5">
-            {/* Watchlist header. The Spanish heading "Lista de Seguimiento"
-                used to wrap to 3 lines at 340px because the pill + "Ver todo"
-                link were eating the row width. Layout now: title truncates,
-                pill + link sit on a single shrink-0 cluster. */}
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: 'var(--color-warning-soft)' }}>
-                  <AlertTriangle size={13} style={{ color: 'var(--color-warning)' }} />
-                </div>
-                <p className="text-[13.5px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>
-                  {t('admin.overview.watchlist')}
+                <p className="text-[13.5px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>
+                  {t('admin.overview.recentActivity')}
                 </p>
+                {recentActivity.length > 0 && (
+                  <span className="admin-eyebrow ml-auto">
+                    {t('admin.overview.lastNCount', 'LAST {{count}}', { count: recentActivity.length })}
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="admin-pill admin-pill--hot whitespace-nowrap">
-                  {t('admin.overview.atRiskPill', 'AT RISK · {{count}}', { count: stats.atRiskCount })}
-                </span>
-                <button
-                  onClick={() => navigate('/admin/churn')}
-                  className="flex-shrink-0 text-[11px] flex items-center gap-0.5 whitespace-nowrap transition-colors duration-200"
-                  style={{ color: 'var(--color-accent)' }}
-                >
-                  {t('admin.overview.viewAll')} <ChevronRight size={12} />
-                </button>
-              </div>
-            </div>
-
-            {atRisk.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
-                  style={{ background: 'var(--color-success-soft)' }}>
-                  <CheckCircle size={18} style={{ color: 'var(--color-success)' }} />
+              {recentActivity.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+                    style={{ background: 'var(--color-admin-panel)' }}>
+                    <Clock size={18} style={{ color: 'var(--color-admin-text-faint)' }} />
+                  </div>
+                  <p className="text-[12.5px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.overview.noActivity')}</p>
                 </div>
-                <p className="text-[12.5px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.overview.noAtRisk')}</p>
-                <p className="text-[11px] mt-1" style={{ color: 'var(--color-admin-text-faint)' }}>{t('admin.overview.everyoneActive')}</p>
-              </div>
-            ) : (
-              <div className="divide-y" style={{ borderColor: 'var(--color-admin-border)' }}>
-                {atRisk.map(m => (
-                  <WatchlistRow key={m.id} member={m} t={t} onMessage={() => navigate('/admin/churn')} onClick={setWatchlistDetail} />
-                ))}
-              </div>
-            )}
-          </AdminCard>
-        </FadeIn>
+              ) : (
+                <div className="divide-y" style={{ borderColor: 'var(--color-admin-border)' }}>
+                  {recentActivity.map((item, i) => (
+                    <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} t={t} onClick={setActivityDetail} />
+                  ))}
+                </div>
+              )}
+            </AdminCard>
+          </FadeIn>
+        </div>
       </div>
 
       {/* ── Activity detail modal ─────────────────────────── */}

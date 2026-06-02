@@ -1092,6 +1092,7 @@ button {
   background: var(--color-bg-card);
   border: 1px solid var(--color-admin-border);
   border-radius: 14px;
+  min-height: 88px;            /* design reference: ~86px KPI card */
   box-shadow: var(--shadow-card);
   transition: box-shadow 0.35s ease, border-color 0.35s ease, background-color 0.35s ease, transform 0.35s ease;
 }

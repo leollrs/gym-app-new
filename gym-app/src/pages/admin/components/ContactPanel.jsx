@@ -90,6 +90,31 @@ export default function ContactPanel({
       });
   }, [gymId]);
 
+  // Contact history (date · channel · what was sent) for this member, newest
+  // first. Optimistically prepended on each successful send so the admin sees
+  // exactly what they sent and when — and the member reads as contacted.
+  const [history, setHistory] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('admin_contact_log')
+      .select('id, method, note, created_at')
+      .eq('member_id', member.id)
+      .eq('gym_id', gymId)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) => { if (!cancelled && Array.isArray(data)) setHistory(data); });
+    return () => { cancelled = true; };
+  }, [member.id, gymId]);
+  const recordLocal = (method, note) =>
+    setHistory(prev => [{ id: `local-${Date.now()}`, method, note: note || null, created_at: new Date().toISOString() }, ...prev]);
+  const methodLabel = (m) => ({
+    message: t('admin.churn.contactMessage', 'Message'),
+    sms: t('admin.churn.contactSms', 'SMS'),
+    email: t('admin.churn.contactEmail', 'Email'),
+    manual: t('admin.churn.contactManual', 'Marked contacted'),
+  }[m] || m);
+
   const riskTier = member.churnScore >= 80 ? 'critical' : member.churnScore >= 55 ? 'high' : 'medium';
 
   const handleSendMessage = async () => {
@@ -113,22 +138,35 @@ export default function ContactPanel({
       });
       await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
 
-      // Also send push notification so phone buzzes
-      const { data: { session } } = await supabase.auth.getSession();
-      supabase.functions.invoke('send-push-user', {
-        body: {
-          profile_id: member.id,
-          gym_id: gymId,
-          title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }),
-          body: notifMsg.trim().substring(0, 100),
-          data: { type: 'direct_message', conversation_id: convoId },
-        },
-        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
-      }).catch(err => logger.warn('ContactPanel: push failed:', err));
+      // Also fire a push so the member's phone buzzes. AWAIT it and surface the
+      // outcome — a silent miss (no device, push off, quiet hours, 20/hr rate
+      // limit, auth) was being swallowed, so it looked like "push doesn't work".
+      // Let supabase-js attach the auth header automatically (matches Messages.jsx).
+      try {
+        const { data: pushRes, error: pushErr } = await supabase.functions.invoke('send-push-user', {
+          body: {
+            profile_id: member.id,
+            gym_id: gymId,
+            title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }),
+            body: notifMsg.trim().substring(0, 100),
+            data: { type: 'direct_message', conversation_id: convoId },
+          },
+        });
+        if (pushErr) {
+          logger.warn('ContactPanel: push invoke failed:', pushErr);
+          showToast(t('admin.churn.pushFailed', 'Message sent, but the push could not be delivered'), 'info');
+        } else if (pushRes && (pushRes.sent ?? 0) === 0) {
+          logger.warn('ContactPanel: push not delivered:', pushRes);
+          showToast(t('admin.churn.pushNotDelivered', { reason: pushRes.suppressed || pushRes.message || 'no device', defaultValue: 'Message sent — push not delivered ({{reason}})' }), 'info');
+        }
+      } catch (err) {
+        logger.warn('ContactPanel: push failed:', err);
+      }
 
       logAdminAction('send_message', 'member', member.id);
       setNotifSent(true);
       onMarkContacted(member.id, 'message', notifMsg);
+      recordLocal('message', notifMsg.trim());
       setTimeout(() => { setNotifSent(false); setActiveChannel(null); }, 1500);
       setNotifMsg('');
       showToast(t('admin.churn.messageSent', 'Message sent!'), 'success');
@@ -172,6 +210,7 @@ export default function ContactPanel({
       if (data?.usage) setSmsUsage(data.usage);
       showToast(t('admin.churn.smsSent', 'SMS sent!'), 'success');
       onMarkContacted(member.id, 'sms', smsBody.trim());
+      recordLocal('sms', smsBody.trim());
       setTimeout(() => { setSmsSent(false); setActiveChannel(null); setSmsBody(''); }, 1500);
     } catch (err) {
       logger.error('ContactPanel: send SMS failed:', err);
@@ -245,6 +284,7 @@ export default function ContactPanel({
       setEmailSent(true);
       showToast(t('admin.churn.emailSentSuccess', 'Email sent successfully'), 'success');
       onMarkContacted(member.id, 'email', `${emailSubject.trim()}\n---\n${emailBody.trim()}`);
+      recordLocal('email', `${emailSubject.trim()}\n---\n${emailBody.trim()}`);
       setTimeout(() => { setEmailSent(false); setActiveChannel(null); setEmailSubject(''); setEmailBody(''); setRewardType('none'); }, 1500);
     } catch (err) {
       logger.error('ContactPanel: send email failed:', err);
@@ -254,8 +294,11 @@ export default function ContactPanel({
     }
   };
 
-  const contactedLabel = contactedAt
-    ? t('admin.churn.contactedOn', { date: new Date(contactedAt).toLocaleDateString(i18n.language?.startsWith('es') ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' }), defaultValue: 'Contacted {{date}}' })
+  // "Contacted" = explicit prop OR any logged contact (incl. one just sent).
+  const effectiveContacted = isContacted || history.length > 0;
+  const effectiveContactedAt = contactedAt || history[0]?.created_at || null;
+  const contactedLabel = effectiveContactedAt
+    ? t('admin.churn.contactedOn', { date: new Date(effectiveContactedAt).toLocaleDateString(i18n.language?.startsWith('es') ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' }), defaultValue: 'Contacted {{date}}' })
     : null;
 
   return (
@@ -479,23 +522,26 @@ export default function ContactPanel({
         <div className="flex items-center justify-between gap-3 p-3 bg-[#111827] border border-white/6 rounded-xl overflow-hidden">
           <div className="min-w-0 flex-1">
             <p className="text-[12px] font-semibold text-[#E5E7EB] truncate">
-              {isContacted ? t('admin.churn.markedContacted', 'Marked as Contacted') : t('admin.churn.notYetContacted', 'Not yet contacted')}
+              {effectiveContacted ? t('admin.churn.markedContacted', 'Marked as Contacted') : t('admin.churn.notYetContacted', 'Not yet contacted')}
             </p>
             {contactedLabel && (
               <p className="text-[10px] text-[#6B7280] mt-0.5">{contactedLabel}</p>
             )}
           </div>
           <button
-            onClick={() => isContacted ? onUnmarkContacted(member.id) : onMarkContacted(member.id, 'manual')}
+            onClick={() => {
+              if (effectiveContacted) { onUnmarkContacted(member.id); setHistory([]); }
+              else { onMarkContacted(member.id, 'manual'); recordLocal('manual', null); }
+            }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors flex-shrink-0 whitespace-nowrap ${
-              isContacted
+              effectiveContacted
                 ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20 hover:bg-[#EF4444]/10 hover:text-[#EF4444] hover:border-[#EF4444]/20'
                 : 'bg-white/4 text-[#9CA3AF] border-white/8 hover:text-[#E5E7EB]'
             }`}>
-            {isContacted ? (
+            {effectiveContacted ? (
               <>
                 <CheckCircle size={12} />
-                <span className="group-hover:hidden">{t('admin.churn.contacted', 'Contacted')}</span>
+                <span>{t('admin.churn.contacted', 'Contacted')}</span>
               </>
             ) : (
               <>
@@ -504,6 +550,26 @@ export default function ContactPanel({
             )}
           </button>
         </div>
+
+        {/* Contact history — what was sent, when, and via which channel */}
+        {history.length > 0 && (
+          <div>
+            <SectionLabel className="mb-2">{t('admin.churn.contactHistory', 'Contact history')}</SectionLabel>
+            <div className="space-y-1.5 max-h-44 overflow-y-auto">
+              {history.map((h) => (
+                <div key={h.id} className="px-3 py-2 bg-[#111827] border border-white/6 rounded-lg">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-[#E5E7EB]">{methodLabel(h.method)}</span>
+                    <span className="text-[10px] text-[#6B7280] flex-shrink-0">
+                      {new Date(h.created_at).toLocaleString(i18n.language?.startsWith('es') ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  {h.note && <p className="text-[11px] text-[#9CA3AF] mt-1 whitespace-pre-wrap line-clamp-3">{h.note}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Quick message compose (in-app + push) */}
         {messageMode && (

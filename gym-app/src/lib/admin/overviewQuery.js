@@ -64,6 +64,28 @@ export async function fetchOverviewData(gymId) {
   );
   if (classSchedulesErr) logger.error('AdminOverview classSchedules:', classSchedulesErr);
 
+  // KPI extras — card-delivery backlog + active-challenge count (two retention
+  // levers surfaced on the strip). Cheap head counts; non-critical, so any
+  // failure just leaves them at 0 rather than failing the whole overview.
+  let cardsPending = 0, cardsDelivered = 0, activeChallenges = 0, activeChallengesPrev = 0;
+  try {
+    const nowIso = now.toISOString();
+    const monthAgoIso = subDays(now, 30).toISOString();
+    const [pendingCardsRes, deliveredCardsRes, activeChallengesRes, activeChallengesPrevRes] = await withQueryTimeout(Promise.all([
+      supabase.from('print_cards').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).in('status', ['pending', 'printed']),
+      supabase.from('print_cards').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('status', 'delivered'),
+      supabase.from('challenges').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).lte('start_date', nowIso).gte('end_date', nowIso),
+      // Challenges that were live ~30 days ago → the "vs last month" baseline.
+      supabase.from('challenges').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).lte('start_date', monthAgoIso).gte('end_date', monthAgoIso),
+    ]), 10_000, 'fetchOverviewData:kpiExtras');
+    cardsPending = pendingCardsRes?.count ?? 0;
+    cardsDelivered = deliveredCardsRes?.count ?? 0;
+    activeChallenges = activeChallengesRes?.count ?? 0;
+    activeChallengesPrev = activeChallengesPrevRes?.count ?? 0;
+  } catch (err) {
+    logger.error('AdminOverview kpiExtras:', err);
+  }
+
   [membersRes, sessionsRes, churnScoresRes, notOnboardedRes, checkInsRes]
     .forEach((res, i) => { if (res.error) logger.error(`AdminOverview fetch ${i}:`, res.error); });
 
@@ -143,6 +165,37 @@ export async function fetchOverviewData(gymId) {
 
   const total = members.length;
 
+  // ── Real retention (NOT churn-risk). "Churned" = explicitly left (membership
+  // cancelled/deactivated) OR activity too stale to assume they're still around
+  // (≥30 days inactive, 7-day grace for brand-new joins) — the same activity
+  // rule as AdminChurn's "Churned" tab. Critical RISK ≠ churned: an at-risk
+  // member is still here, just trending out. Among retained members we still
+  // count how many are at risk so the card can show the full health split.
+  const CHURN_STALE_DAYS = 30;
+  const NEW_JOIN_GRACE_DAYS = 7;
+  const isChurnedMember = (m) => {
+    // Explicitly left: any status that isn't active or frozen (frozen = paused,
+    // still a member). Catches cancelled / deactivated / expired / etc.
+    const st = m.membership_status;
+    if (st && st !== 'active' && st !== 'frozen') return true;
+    if (daysSince(m.created_at) < NEW_JOIN_GRACE_DAYS) return false; // too new to judge
+    return (m.daysInactive ?? 0) >= CHURN_STALE_DAYS;
+  };
+  let churnedCount = 0, retainedAtRisk = 0, retainedHealthy = 0;
+  allMemberScores.forEach((m) => {
+    if (isChurnedMember(m)) { churnedCount++; return; }
+    if (m.risk_tier === 'critical' || m.risk_tier === 'high') retainedAtRisk++;
+    else retainedHealthy++;
+  });
+  const retention = {
+    total,
+    churned: churnedCount,
+    retained: total - churnedCount,
+    atRisk: retainedAtRisk,
+    healthy: retainedHealthy,
+    retentionPct: total > 0 ? Math.round(((total - churnedCount) / total) * 100) : 0,
+  };
+
   const monthStart = startOfMonth(now).toISOString();
   const newMembersMonth = members.filter(m => m.created_at >= monthStart).length;
 
@@ -198,7 +251,86 @@ export async function fetchOverviewData(gymId) {
   const prevMonthEnd = startOfMonth(now).toISOString();
   const newMembersPrevMonth = members.filter(m => m.created_at >= prevMonthStart && m.created_at < prevMonthEnd).length;
 
+  // ── Weekly pulse — this week vs the prior week, derived entirely from data
+  // already fetched above (no extra queries). Powers "Pulso de la semana" so
+  // the overview reads as a business dashboard, not just a churn list.
+  let ciThis = 0, ciPrev = 0;
+  checkIns.forEach(c => {
+    if (c.checked_in_at >= sevenDaysAgo) ciThis++;
+    else if (c.checked_in_at >= fourteenDaysAgo) ciPrev++;
+  });
+  let woThis = 0, woPrev = 0;
+  const activePrevWeekIds = new Set();
+  sessions.forEach(s => {
+    if (s.started_at >= sevenDaysAgo) woThis++;
+    else if (s.started_at >= fourteenDaysAgo) { woPrev++; activePrevWeekIds.add(s.profile_id); }
+  });
+  let nmThis = 0, nmPrev = 0;
+  members.forEach(m => {
+    if (m.created_at >= sevenDaysAgo) nmThis++;
+    else if (m.created_at >= fourteenDaysAgo) nmPrev++;
+  });
+  // 14-day check-in sparkline (oldest → newest).
+  const series14 = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = subDays(now, i);
+    series14.push({ count: checkInDayCounts[format(d, 'yyyy-MM-dd')] || 0, label: format(d, 'd'), dow: d.getDay(), iso: format(d, 'yyyy-MM-dd') });
+  }
+  // Re-derive this-week / last-week check-in totals from the SAME 14 calendar
+  // days the sparkline draws (last 7 bars = this week, first 7 = last week), so
+  // the pulse headline always equals the sum of the highlighted bars exactly.
+  ciThis = series14.slice(7).reduce((a, d) => a + d.count, 0);
+  ciPrev = series14.slice(0, 7).reduce((a, d) => a + d.count, 0);
+  const pulse = {
+    checkins:   { current: ciThis, prev: ciPrev },
+    workouts:   { current: woThis, prev: woPrev },
+    newMembers: { current: nmThis, prev: nmPrev },
+    active:     { current: activeThisWeekIds.size, prev: activePrevWeekIds.size,
+                 pct: total > 0 ? Math.round((activeThisWeekIds.size / total) * 100) : 0 },
+    series14,
+  };
+
+  // New members per MONTH across the current calendar year (Jan–Dec), derived
+  // from the already-fetched members list (no extra query). Months that haven't
+  // started yet are flagged isFuture so the chart greys them out — the year's
+  // growth shape, and any drop-off, reads at a glance.
+  const growthYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  // Per-day join counts for this year → lets us build per-month weekly buckets
+  // (powering the Crecimiento hover tooltip: joins per week + date range) cheaply.
+  const joinDayCounts = {};
+  members.forEach((mem) => {
+    const c = new Date(mem.created_at);
+    if (c.getFullYear() === growthYear) {
+      const key = format(c, 'yyyy-MM-dd');
+      joinDayCounts[key] = (joinDayCounts[key] || 0) + 1;
+    }
+  });
+  const growthSeries = [];
+  for (let m = 0; m < 12; m++) {
+    const isFuture = m > currentMonth;
+    const daysInMonth = new Date(growthYear, m + 1, 0).getDate();
+    const weeks = [];
+    let monthCount = 0;
+    if (!isFuture) {
+      // 7-day buckets from the 1st (last bucket may be partial), each with its
+      // day range + join count.
+      for (let startDay = 1; startDay <= daysInMonth; startDay += 7) {
+        const endDay = Math.min(startDay + 6, daysInMonth);
+        let wkCount = 0;
+        for (let d = startDay; d <= endDay; d++) {
+          wkCount += joinDayCounts[format(new Date(growthYear, m, d), 'yyyy-MM-dd')] || 0;
+        }
+        weeks.push({ startDay, endDay, count: wkCount });
+        monthCount += wkCount;
+      }
+    }
+    growthSeries.push({ count: monthCount, month: m, isFuture, isCurrent: m === currentMonth, weeks });
+  }
+
   return {
+    pulse,
+    growthSeries,
     stats: {
       totalMembers: total,
       // Mutually exclusive counts: atRiskCount = 'high' only, criticalCount =
@@ -211,10 +343,12 @@ export async function fetchOverviewData(gymId) {
       newMembersMonth,
       newMembersPrevMonth,
       activeThisWeek: activeThisWeekIds.size,
+      activeRate: total > 0 ? Math.round((activeThisWeekIds.size / total) * 100) : 0,
       classesToday: new Set((classSchedules || []).map(s => s.gym_class?.id).filter(Boolean)).size,
       avgDailyCheckins,
+      cardsPending, cardsDelivered, activeChallenges, activeChallengesPrev,
     },
-    riskTiers, atRisk, recentActivity,
+    retention, riskTiers, atRisk, recentActivity,
     onboardingCount: onboardingGaps.length,
     _dbScoreCount: churnScores.length, _totalMembers: total,
   };

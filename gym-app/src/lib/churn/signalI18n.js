@@ -79,10 +79,41 @@ const SIGNAL_I18N = {
   'Never completed onboarding':    'admin.churnSignals.neverOnboarded',
 };
 
-/** Translate a churn signal string using i18n. Falls back to the raw string. */
+// Snake_case signal CODES emitted by the retention orchestrator
+// (0398_retention_orchestrator.sql) — top_signal / member_outreach_state.
+// These leak into owner_queue_items.reason whenever the signals JSON has no
+// human 'label' for the code (see line 264 of 0398), so they must be mapped
+// here too or they render raw (e.g. "low_attendance") on the Spanish side.
+const SIGNAL_CODE_I18N = {
+  low_attendance: 'admin.churnSignals.codeLowAttendance',
+  absent:         'admin.churnSignals.codeAbsent',
+  cooling:        'admin.churnSignals.codeCooling',
+  recency:        'admin.churnSignals.codeRecency',
+  frequency_drop: 'admin.churnSignals.codeFrequencyDrop',
+  streak_broken:  'admin.churnSignals.codeStreakBroken',
+};
+
+/**
+ * Translate a churn signal — handles three shapes so nothing leaks raw:
+ *   1. a known human label  ("Zero visits in last 30 days")  → mapped
+ *   2. a known snake_case code ("low_attendance")            → mapped
+ *   3. an unknown snake_case code                            → humanized
+ *      ("frequency_drop" → "Frequency Drop") rather than shown raw
+ * Leading bullets/dashes the SQL may have joined on are stripped first.
+ */
 export function translateSignal(t, sig) {
-  const key = SIGNAL_I18N[sig];
-  return key ? t(key) : sig;
+  if (!sig) return '';
+  const raw = String(sig).trim();
+  if (SIGNAL_I18N[raw]) return t(SIGNAL_I18N[raw]);
+
+  const code = raw.replace(/^[-•·\s]+/, '').toLowerCase();
+  if (SIGNAL_CODE_I18N[code]) return t(SIGNAL_CODE_I18N[code]);
+
+  // Unknown snake_case code → humanize so we never surface a raw enum value.
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(code)) {
+    return code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return raw;
 }
 
 /** Maps signal keys (from riskScoring.js) to i18n display name keys. */

@@ -67,10 +67,10 @@ export default function StatCard({
     : {};
 
   return (
-    <FadeIn delay={delay} className={isHero ? 'md:col-span-2 xl:col-span-3' : ''}>
+    <FadeIn delay={delay} className={`h-full ${isHero ? 'md:col-span-2 xl:col-span-3' : ''}`}>
       <Wrapper
         {...wrapperProps}
-        className={`admin-stat-card border-l-2 group w-full text-left ${
+        className={`admin-stat-card border-l-2 group w-full h-full text-left ${
           isHero ? 'p-5' : 'p-3 md:p-4'
         } ${clickable ? 'cursor-pointer transition-all hover:brightness-110 hover:-translate-y-px active:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]' : ''}`}
         style={{ borderLeftColor: borderColor }}
@@ -79,7 +79,7 @@ export default function StatCard({
           <div className="min-w-0 flex-1">
             <p
               className={`admin-kpi truncate ${
-                isHero ? 'text-[26px] md:text-[32px]' : 'text-[20px] md:text-[26px]'
+                isHero ? 'text-[32px] md:text-[40px]' : 'text-[24px] md:text-[32px]'
               }`}
             >
               {displayVal}

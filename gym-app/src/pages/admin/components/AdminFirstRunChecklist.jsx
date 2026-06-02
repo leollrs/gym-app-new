@@ -37,7 +37,7 @@ export default function AdminFirstRunChecklist({ gymId }) {
     queryFn: async () => {
       const [
         gymRes, brandingRes, hoursRes, invitesRes,
-        programsRes, announcementsRes,
+        programsRes, announcementsRes, membersRes,
       ] = await Promise.all([
         supabase.from('gyms').select('name, registration_mode').eq('id', gymId).single(),
         supabase.from('gym_branding').select('primary_color, logo_url, welcome_message').eq('gym_id', gymId).maybeSingle(),
@@ -45,12 +45,18 @@ export default function AdminFirstRunChecklist({ gymId }) {
         supabase.from('gym_invites').select('id', { count: 'exact', head: true }).eq('gym_id', gymId),
         supabase.from('gym_programs').select('id', { count: 'exact', head: true }).eq('gym_id', gymId),
         supabase.from('announcements').select('id', { count: 'exact', head: true }).eq('gym_id', gymId),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('role', 'member'),
       ]);
       return {
-        hasBranding: !!(brandingRes.data?.logo_url && brandingRes.data?.primary_color),
+        // Done once colors OR a logo are set. The colors/palette save writes
+        // primary_color but NOT logo_url (that's a separate upload), so requiring
+        // BOTH left this stuck "incomplete" for any gym on a preset palette.
+        hasBranding: !!(brandingRes.data?.logo_url || brandingRes.data?.primary_color),
         hasWelcomeMessage: !!brandingRes.data?.welcome_message?.trim(),
         hasHours: (hoursRes.count ?? 0) > 0,
-        hasInvites: (invitesRes.count ?? 0) > 0,
+        // Satisfied by having any member — members usually join via the gym code,
+        // not a pending gym_invite, so counting only invites under-reported.
+        hasInvites: (membersRes.count ?? 0) > 0 || (invitesRes.count ?? 0) > 0,
         hasPrograms: (programsRes.count ?? 0) > 0,
         hasAnnouncements: (announcementsRes.count ?? 0) > 0,
       };

@@ -206,7 +206,16 @@ window.addEventListener('error', (event) => {
   trackError('js_error', event.error || event.message, { filename: event.filename, lineno: event.lineno, colno: event.colno });
 });
 window.addEventListener('unhandledrejection', (event) => {
-  trackError('promise_rejection', event.reason);
+  // Swallow benign Supabase auth Web-Locks contention ("Lock was stolen by
+  // another request") — recovered automatically (and now avoided via the
+  // in-memory lock in lib/supabase.js). Don't surface it or log it as an error.
+  const reason = event.reason;
+  const msg = String(reason?.message || reason || '');
+  if ((reason?.name === 'AbortError' || /Lock/i.test(msg)) && /lock/i.test(msg)) {
+    event.preventDefault();
+    return;
+  }
+  trackError('promise_rejection', reason);
 });
 // Track when app goes offline/online
 window.addEventListener('offline', () => {
