@@ -1,0 +1,6 @@
+full_name,status,phone,email,join_date,cancellation_date,plan_name,birthday,external_id
+María Rodríguez Vega,active,+17875550101,maria.rodriguez@example.com,2024-03-15,,Mensualidad,1992-06-12,10001
+José Luis Torres Marrero,active,+17875550102,jose.torres@example.com,2023-11-02,,Anual,1988-01-25,10002
+Carmen Ortiz Díaz,active,+19395550103,carmen.ortiz@example.com,2024-06-20,,Mensualidad,1995-09-30,10003
+Ángel Rivera Santos,active,+17875550104,angel.rivera@example.com,2024-01-08,,Trimestral,1990-12-03,10004
+Wanda Colón Pérez,active,+19395550105,wanda.colon@example.com,2022-09-14,,Anual,1985-04-18,10005

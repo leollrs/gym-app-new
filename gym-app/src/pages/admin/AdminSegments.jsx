@@ -1,7 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Filter, Plus, Pin, PinOff, Pencil, Trash2, Users, Search,
-  RefreshCw, Download, MessageSquare, ChevronLeft, Sparkles,
+  RefreshCw, Download, MessageSquare, ChevronLeft, ChevronRight, Sparkles,
   Shield, AlertTriangle, Zap, Clock, UserPlus, Target,
   Activity, Flame, Heart, Star, Eye, Send,
 } from 'lucide-react';
@@ -255,8 +255,8 @@ export default function AdminSegments() {
       {/* ── Stats row ────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-2.5 md:gap-3 mt-5">
         <StatCard label={t('admin.segments.totalSegments', 'Segments')} value={segments.length} icon={Filter} borderColor="var(--color-accent)" delay={0} />
-        <StatCard label={t('admin.segments.pinned', 'Pinned')} value={pinnedCount} icon={Pin} borderColor="var(--color-info)" delay={50} />
-        <StatCard label={t('admin.segments.statAvgSize', 'Avg segment size')} value={avgSegmentSize ?? '—'} icon={Users} borderColor="var(--color-success)" delay={100} />
+        <StatCard label={t('admin.segments.pinned', 'Pinned')} value={pinnedCount} icon={Pin} borderColor="var(--color-admin-text-faint)" delay={50} />
+        <StatCard label={t('admin.segments.statAvgSize', 'Avg segment size')} value={avgSegmentSize ?? '—'} icon={Users} borderColor="var(--color-coach)" delay={100} />
       </div>
 
       {/* ── Main layout: segment list + detail ───────────── */}
@@ -333,7 +333,8 @@ export default function AdminSegments() {
         {segments.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
             {/* Left: segment list */}
-            <div className="space-y-2 lg:max-h-[calc(100vh-280px)] lg:overflow-y-auto lg:pr-1">
+            <div className="space-y-2 lg:max-h-[calc(100vh-250px)] lg:overflow-y-auto lg:pr-1">
+              <SectionLabel className="px-0.5 mb-0.5">{t('admin.segments.yourSegments', 'Your segments')} · {segments.length}</SectionLabel>
               {segments.map((seg, i) => (
                 <FadeIn key={seg.id} delay={i * 30}>
                   <SegmentListItem
@@ -347,6 +348,21 @@ export default function AdminSegments() {
                   />
                 </FadeIn>
               ))}
+              <button
+                onClick={() => setEditModal('new')}
+                className="w-full flex items-center justify-center gap-2 transition-colors"
+                style={{
+                  padding: 13, borderRadius: 13, cursor: 'pointer',
+                  border: '1.5px dashed var(--color-border-strong)',
+                  background: 'transparent', color: 'var(--color-admin-text-sub)',
+                  fontFamily: 'var(--admin-font-body)', fontSize: 12.5, fontWeight: 700,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.color = 'var(--color-accent)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--color-border-strong)'; e.currentTarget.style.color = 'var(--color-admin-text-sub)'; }}
+              >
+                <Plus size={15} />
+                {t('admin.segments.newSegment', 'New segment')}
+              </button>
             </div>
 
             {/* Right: detail / members preview */}
@@ -402,71 +418,79 @@ export default function AdminSegments() {
 // ── Segment List Item ──────────────────────────────────────
 function SegmentListItem({ segment, isActive, onSelect, onEdit, onDelete, onTogglePin, t }) {
   const IconComp = ICON_MAP[segment.icon] || Users;
+  const tone = segment.color || 'var(--color-accent)';
 
   return (
     <div
       onClick={onSelect}
-      className={`cursor-pointer rounded-[14px] border p-3.5 transition-all ${
-        isActive
-          ? 'bg-[#0F172A] border-[#D4AF37]/30 ring-1 ring-[#D4AF37]/15'
-          : 'bg-[#0F172A] border-white/6 hover:border-white/10'
-      }`}
+      className="relative cursor-pointer overflow-hidden transition-all"
+      style={{
+        background: isActive ? 'var(--color-admin-panel)' : 'var(--color-bg-card)',
+        border: `1px solid ${isActive ? 'transparent' : 'var(--color-admin-border)'}`,
+        boxShadow: isActive
+          ? `0 0 0 1.5px ${tone}, 0 1px 2px rgba(15,20,25,0.04), 0 8px 22px rgba(15,20,25,0.06)`
+          : 'none',
+        borderRadius: 14,
+        padding: '14px 15px 12px',
+      }}
     >
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: `${segment.color}18` }}
-          >
-            <IconComp size={15} style={{ color: segment.color }} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-bold text-[#E5E7EB] truncate">{segment.name}</p>
-            {segment.description && (
-              <p className="text-[11px] text-[#6B7280] truncate">{segment.description}</p>
-            )}
-          </div>
+      {/* active accent bar */}
+      <div style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 3, borderRadius: 3, background: isActive ? tone : 'transparent' }} />
+
+      <div className="flex items-start gap-[11px]">
+        <div
+          className="flex items-center justify-center flex-shrink-0"
+          style={{ width: 34, height: 34, borderRadius: 11, background: `color-mix(in srgb, ${tone} 16%, transparent)` }}
+        >
+          <IconComp size={17} style={{ color: tone }} />
         </div>
-        {segment.is_pinned && <Pin size={12} className="text-[#D4AF37] flex-shrink-0 mt-1" />}
+        <div className="min-w-0 flex-1">
+          <div style={{ fontFamily: 'var(--admin-font-display)', fontSize: 13.5, fontWeight: 800, color: 'var(--color-admin-text)', letterSpacing: -0.2, lineHeight: 1.25 }}>{segment.name}</div>
+          {segment.description && (
+            <div style={{ fontSize: 11.5, color: 'var(--color-admin-text-muted)', marginTop: 3, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{segment.description}</div>
+          )}
+        </div>
+        {segment.is_pinned && <Pin size={12} style={{ color: tone, flexShrink: 0, marginTop: 2 }} />}
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <Users size={12} className="text-[#6B7280]" />
-          <span className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
-            {segment._count ?? '\u2014'}
-          </span>
-          <span className="text-[11px] text-[#6B7280]">{t('admin.segments.members', 'members')}</span>
+      <div className="flex items-center justify-between" style={{ marginTop: 12, paddingTop: 11, borderTop: '1px solid var(--color-admin-border)' }}>
+        <div className="inline-flex items-center gap-1.5">
+          <Users size={13} style={{ color: 'var(--color-admin-text-muted)' }} />
+          <span style={{ fontFamily: 'var(--admin-font-mono)', fontSize: 12.5, fontWeight: 700, color: 'var(--color-admin-text)' }}>{segment._count ?? '\u2014'}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--color-admin-text-muted)' }}>{t('admin.segments.members', 'members')}</span>
         </div>
 
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 sm:opacity-100" onClick={e => e.stopPropagation()}>
-          <button
-            onClick={onTogglePin}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#D4AF37] hover:bg-white/[0.04] transition-all"
-            title={segment.is_pinned ? t('admin.segments.unpin', 'Unpin') : t('admin.segments.pin', 'Pin')}
-            aria-label={segment.is_pinned ? t('admin.segments.unpin', 'Unpin') : t('admin.segments.pin', 'Pin')}
-          >
-            {segment.is_pinned ? <PinOff size={13} /> : <Pin size={13} />}
-          </button>
-          <button
-            onClick={onEdit}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#3B82F6] hover:bg-white/[0.04] transition-all"
-            title={t('admin.segments.edit', 'Edit')}
-            aria-label={t('admin.segments.edit', 'Edit')}
-          >
-            <Pencil size={13} />
-          </button>
-          <button
-            onClick={onDelete}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#EF4444] hover:bg-white/[0.04] transition-all"
-            title={t('admin.segments.delete', 'Delete')}
-            aria-label={t('admin.segments.delete', 'Delete')}
-          >
-            <Trash2 size={13} />
-          </button>
+        <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+          <SegIconBtn icon={segment.is_pinned ? PinOff : Pin} tone="soft" size={28} onClick={onTogglePin} hoverColor="var(--color-accent)" title={segment.is_pinned ? t('admin.segments.unpin', 'Unpin') : t('admin.segments.pin', 'Pin')} />
+          <SegIconBtn icon={Pencil} tone="soft" size={28} onClick={onEdit} hoverColor="var(--color-info)" title={t('admin.segments.edit', 'Edit')} />
+          <SegIconBtn icon={Trash2} tone="soft" size={28} onClick={onDelete} hoverColor="var(--color-danger)" title={t('admin.segments.delete', 'Delete')} />
         </div>
       </div>
     </div>
+  );
+}
+
+// \u2500\u2500 Small square icon button (token-styled) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function SegIconBtn({ icon: Icon, onClick, title, tone = 'ghost', size = 32, hoverColor = 'var(--color-accent)', disabled = false }) {
+  const tones = {
+    ghost: { background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' },
+    soft:  { background: 'var(--color-bg-subtle)',   border: '1px solid transparent' },
+  };
+  const ts = tones[tone] || tones.ghost;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      className="flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{ width: size, height: size, borderRadius: 9, color: 'var(--color-admin-text-sub)', cursor: disabled ? 'not-allowed' : 'pointer', ...ts }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.color = hoverColor; }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-admin-text-sub)'; }}
+    >
+      <Icon size={Math.round(size * 0.47)} />
+    </button>
   );
 }
 
@@ -520,6 +544,27 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
       (m.username || '').toLowerCase().includes(q)
     );
   }, [members, search]);
+
+  // Paginate the member list: 10 per page, no internal scroll. Reset to
+  // page 1 whenever the result set changes (segment switch, search, refresh).
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [search, segment.id, refreshKey]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const pageItems = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+  const pageWindow = useMemo(() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const out = [1];
+    const lo = Math.max(2, safePage - 1);
+    const hi = Math.min(totalPages - 1, safePage + 1);
+    if (lo > 2) out.push('…');
+    for (let p = lo; p <= hi; p++) out.push(p);
+    if (hi < totalPages - 1) out.push('…');
+    out.push(totalPages);
+    return out;
+  }, [totalPages, safePage]);
 
   const IconComp = ICON_MAP[segment.icon] || Users;
 
@@ -599,43 +644,43 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
   return (
     <AdminCard padding="p-0" className="overflow-hidden">
       {/* Panel header */}
-      <div className="px-5 py-4 border-b border-white/[0.04]">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${segment.color}18` }}>
-            <IconComp size={18} style={{ color: segment.color }} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[16px] font-bold text-[#E5E7EB] truncate">{segment.name}</p>
-            {segment.description && <p className="text-[12px] text-[#6B7280] truncate">{segment.description}</p>}
-          </div>
-          <span className="text-[22px] font-bold text-[#E5E7EB] tabular-nums flex-shrink-0">{members.length}</span>
+      <div className="flex items-center gap-3" style={{ padding: '16px 20px', borderBottom: '1px solid var(--color-admin-border)' }}>
+        <div className="flex items-center justify-center flex-shrink-0" style={{ width: 40, height: 40, borderRadius: 11, background: `color-mix(in srgb, ${segment.color || 'var(--color-accent)'} 16%, transparent)` }}>
+          <IconComp size={20} style={{ color: segment.color || 'var(--color-accent)' }} />
         </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate" style={{ fontFamily: 'var(--admin-font-display)', fontSize: 16, fontWeight: 800, color: 'var(--color-admin-text)', letterSpacing: -0.3 }}>{segment.name}</div>
+          {segment.description && <div className="truncate" style={{ fontSize: 12, color: 'var(--color-admin-text-muted)', marginTop: 2 }}>{segment.description}</div>}
+        </div>
+        <div className="text-right flex-shrink-0">
+          <div style={{ fontFamily: 'var(--admin-font-display)', fontSize: 30, fontWeight: 800, color: 'var(--color-admin-text)', letterSpacing: -1, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{members.length}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--color-admin-text-muted)', marginTop: 3 }}>{t('admin.segments.members', 'members')}</div>
+        </div>
+      </div>
 
-        {/* Actions bar */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[180px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4B5563]" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={t('admin.segments.searchMembers', 'Search members...')}
-              aria-label={t('admin.segments.searchMembers', 'Search members')}
-              className="w-full bg-white/[0.04] border border-white/6 rounded-lg pl-9 pr-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/40"
-            />
-          </div>
-          <button onClick={() => setRefreshKey(k => k + 1)} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all" title={t('admin.segments.refresh', 'Refresh')} aria-label={t('admin.segments.refresh', 'Refresh')}>
-            <RefreshCw size={13} />
-          </button>
-          <button onClick={() => setMsgModalOpen(true)} disabled={!filtered.length} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all disabled:opacity-40" title={t('admin.segments.sendMessage', 'Message All')} aria-label={t('admin.segments.sendMessage', 'Message All')}>
-            <Send size={13} />
-          </button>
-          <button onClick={handleExport} disabled={!filtered.length} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all disabled:opacity-40" title={t('admin.segments.export', 'Export CSV')} aria-label={t('admin.segments.export', 'Export CSV')}>
-            <Download size={13} />
-          </button>
-          <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37]/18 rounded-lg transition-colors">
-            <Pencil size={13} /> {t('admin.segments.edit', 'Edit')}
-          </button>
+      {/* Toolbar */}
+      <div className="flex items-center gap-2.5" style={{ padding: '14px 18px', borderBottom: '1px solid var(--color-admin-border)', background: 'var(--color-bg-subtle)' }}>
+        <div className="flex items-center gap-2.5 flex-1 min-w-0" style={{ height: 38, padding: '0 13px', background: 'var(--color-admin-panel)', borderRadius: 10, border: '1px solid var(--color-admin-border)' }}>
+          <Search size={15} className="flex-shrink-0" style={{ color: 'var(--color-admin-text-muted)' }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={t('admin.segments.searchMembers', 'Search members...')}
+            aria-label={t('admin.segments.searchMembers', 'Search members')}
+            className="w-full bg-transparent outline-none"
+            style={{ fontSize: 13, color: 'var(--color-admin-text)' }}
+          />
         </div>
+        <SegIconBtn icon={RefreshCw} size={38} onClick={() => setRefreshKey(k => k + 1)} title={t('admin.segments.refresh', 'Refresh')} />
+        <SegIconBtn icon={Send} size={38} disabled={!filtered.length} onClick={() => setMsgModalOpen(true)} title={t('admin.segments.sendMessage', 'Message All')} />
+        <SegIconBtn icon={Download} size={38} disabled={!filtered.length} onClick={handleExport} title={t('admin.segments.export', 'Export CSV')} />
+        <button
+          onClick={onEdit}
+          className="flex items-center gap-1.5 flex-shrink-0 transition-opacity hover:opacity-90"
+          style={{ height: 38, padding: '0 14px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, background: 'var(--color-accent)', color: '#fff', border: 'none', cursor: 'pointer' }}
+        >
+          <Pencil size={14} /> {t('admin.segments.edit', 'Edit')}
+        </button>
       </div>
 
       {/* Message-all modal (replaces window.prompt — native-safe) */}
@@ -686,7 +731,7 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
       )}
 
       {/* Member list */}
-      <div className="lg:max-h-[calc(100vh-420px)] overflow-y-auto">
+      <div>
         {isLoading ? (
           <div className="p-5 space-y-3">
             {[...Array(5)].map((_, i) => (
@@ -705,32 +750,32 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
             <p className="text-[13px] text-[#6B7280]">{t('admin.segments.noMembers', 'No members match these filters')}</p>
           </div>
         ) : (
-          <div className="divide-y divide-white/[0.04]">
-            {filtered.map(member => {
+          <div>
+            {pageItems.map((member, i) => {
               const churn = churnData[member.id];
-              const riskColor = churn ? RISK_COLORS[churn.risk_tier] : null;
+              const tier = churn?.risk_tier;
+              const riskColor = tier ? RISK_COLORS[tier] : null;
+              const avatarTone = (tier === 'critical' || tier === 'high') ? 'hot' : tier === 'medium' ? 'warn' : undefined;
               return (
-                <div key={member.id} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors">
-                  <Avatar name={member.full_name || member.username} size="md" />
+                <div
+                  key={member.id}
+                  className="flex items-center gap-3 transition-colors hover:bg-[var(--color-bg-hover)]"
+                  style={{ padding: '11px 18px', borderTop: i === 0 ? 'none' : '1px solid var(--color-admin-border)' }}
+                >
+                  <Avatar name={member.full_name || member.username} size="md" tone={avatarTone} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{member.full_name || member.username || t('admin.segments.unknown', 'Unknown')}</p>
-                    <p className="text-[11px] text-[#6B7280] truncate">
+                    <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-admin-text)', letterSpacing: -0.1 }}>{member.full_name || member.username || t('admin.segments.unknown', 'Unknown')}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--color-admin-text-muted)', marginTop: 1 }}>
                       {t('admin.segments.joined', 'Joined')} {member.created_at ? format(new Date(member.created_at), 'MMM d, yyyy', dateFnsLocale) : '\u2014'}
-                      {member._lastWorkoutAt && (
-                        <> &middot; {t('admin.segments.lastWorkout', 'Last workout')} {format(new Date(member._lastWorkoutAt), 'MMM d', dateFnsLocale)}</>
-                      )}
-                    </p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {member._currentStreak > 0 && (
-                      <span className="text-[11px] text-[#F59E0B] font-medium">{t('admin.segments.streakDays', '{{count}}d', { count: member._currentStreak })}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-warning-ink, var(--color-warning))' }}>{t('admin.segments.streakDays', '{{count}}d', { count: member._currentStreak })}</span>
                     )}
-                    {churn && (
-                      <span
-                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full border"
-                        style={{ color: riskColor, background: `${riskColor}15`, borderColor: `${riskColor}30` }}
-                      >
-                        {t(`admin.riskLabels.${churn.risk_tier}`, churn.risk_tier)}
+                    {churn && riskColor && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 999, color: riskColor, background: `color-mix(in srgb, ${riskColor} 15%, transparent)` }}>
+                        {t(`admin.riskLabels.${tier}`, tier)}
                       </span>
                     )}
                   </div>
@@ -740,6 +785,40 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
           </div>
         )}
       </div>
+
+      {/* Pagination — 10 per page */}
+      {filtered.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between gap-3 flex-wrap" style={{ padding: '12px 18px', borderTop: '1px solid var(--color-admin-border)', background: 'var(--color-bg-subtle)' }}>
+          <span style={{ fontSize: 11.5, color: 'var(--color-admin-text-muted)' }}>
+            {t('admin.segments.showingRange', { start: pageStart + 1, end: pageStart + pageItems.length, total: filtered.length, defaultValue: '{{start}}–{{end}} of {{total}}' })}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <SegIconBtn icon={ChevronLeft} size={30} disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} title={t('admin.segments.prevPage', 'Previous')} />
+            {pageWindow.map((p, i) => (
+              p === '…' ? (
+                <span key={`e${i}`} style={{ fontSize: 12, color: 'var(--color-admin-text-faint)', padding: '0 2px' }}>…</span>
+              ) : (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPage(p)}
+                  className="transition-colors"
+                  style={{
+                    minWidth: 30, height: 30, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                    fontFamily: 'var(--admin-font-mono)',
+                    background: p === safePage ? 'var(--color-accent)' : 'var(--color-admin-panel)',
+                    color: p === safePage ? '#fff' : 'var(--color-admin-text-sub)',
+                    border: `1px solid ${p === safePage ? 'transparent' : 'var(--color-admin-border)'}`,
+                  }}
+                >
+                  {p}
+                </button>
+              )
+            ))}
+            <SegIconBtn icon={ChevronRight} size={30} disabled={safePage >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title={t('admin.segments.nextPage', 'Next')} />
+          </div>
+        </div>
+      )}
     </AdminCard>
   );
 }

@@ -6,6 +6,7 @@
 // sparkline. All data is derived in overviewQuery (no extra fetch).
 // -----------------------------------------------------------------------------
 
+import { useState } from 'react';
 import { TrendingUp, TrendingDown, Minus, CalendarCheck } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { AdminCard } from '../../../components/admin';
@@ -39,26 +40,54 @@ function dowLetters(t) {
 // color; the prior 7 are muted, so the week-over-week shape reads instantly.
 // Bottom axis = weekday letters (not day-of-month, which read like counts).
 function Sparkline({ data, t, dateFnsLocale }) {
+  const [hovered, setHovered] = useState(null);
   const max = Math.max(...data.map((d) => d.count), 1);
   const n = data.length;
   const letters = dowLetters(t);
+  const displayFont = "var(--admin-font-display, 'Archivo', sans-serif)";
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', gap: 3 }}>
       {data.map((d, i) => {
         const isThisWeek = i >= n - 7;
         const h = d.count === 0 ? 2 : Math.max(6, (d.count / max) * 40);
         const axis = Number.isInteger(d.dow) ? letters[d.dow] : d.label;
-        // Hover tooltip: locale-formatted date + labeled count — ES renders
-        // "20 jun: 2 check-ins", EN "20 Jun: 2 check-ins".
         const dateStr = d.iso ? format(parseISO(d.iso), 'd MMM', dateFnsLocale) : String(d.label);
-        const title = t('admin.overview.pulseSparkTooltip', { date: dateStr, count: d.count, defaultValue: '{{date}}: {{count}} check-ins' });
+        const isHovered = hovered === i;
+        // Edge-clamp the tooltip so the first/last days don't shoot off the card.
+        const tx = i <= 1 ? 'translateX(-12%)' : i >= n - 2 ? 'translateX(-88%)' : 'translateX(-50%)';
         return (
-          <div key={i} title={title} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
+          <div
+            key={i}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered((h2) => (h2 === i ? null : h2))}
+            onClick={() => setHovered((h2) => (h2 === i ? null : i))}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0, position: 'relative', cursor: 'default' }}
+          >
+            {/* Hover tooltip — styled to match GrowthChart (Crecimiento) */}
+            {isHovered && (
+              <div
+                role="tooltip"
+                style={{
+                  position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%', transform: tx,
+                  zIndex: 30, minWidth: 110, background: '#fff', whiteSpace: 'nowrap',
+                  border: '1px solid var(--color-admin-border)', borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '9px 11px', pointerEvents: 'none',
+                }}
+              >
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--color-admin-text)', fontFamily: displayFont, letterSpacing: -0.2 }}>
+                  {dateStr} · {d.count}
+                </div>
+                <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--color-admin-text-faint)', marginTop: 2 }}>
+                  {t('admin.overview.pulseSparkUnit', 'check-ins')}
+                </div>
+              </div>
+            )}
+
             <span style={{ height: 12, lineHeight: '12px', fontSize: 9, fontWeight: 700, color: 'var(--color-admin-text)', fontVariantNumeric: 'tabular-nums' }}>
               {d.count > 0 ? d.count : ''}
             </span>
             <div style={{ height: 40, width: '100%', display: 'flex', alignItems: 'flex-end' }}>
-              <div style={{ width: '100%', height: h, borderRadius: 3, background: isThisWeek ? 'var(--color-accent)' : 'var(--color-admin-text-faint)', opacity: isThisWeek ? 0.95 : 0.45 }} />
+              <div style={{ width: '100%', height: h, borderRadius: 3, background: isThisWeek ? 'var(--color-accent)' : 'var(--color-admin-text-faint)', opacity: isHovered ? 1 : (isThisWeek ? 0.95 : 0.45), transition: 'opacity 120ms' }} />
             </div>
             {/* Weekday letter (top) + calendar date (under) — the letter says
                 which weekday, the number says which date, neither reads as a count. */}
@@ -79,7 +108,7 @@ export default function WeeklyPulse({ pulse, t, dateFnsLocale }) {
   const { checkins, series14 } = pulse;
   const displayFont = "var(--admin-font-display, 'Archivo', sans-serif)";
   return (
-    <AdminCard hover padding="p-3 sm:p-4 md:p-5">
+    <AdminCard hover clipContent={false} padding="p-3 sm:p-4 md:p-5">
       <div className="flex items-center gap-2.5 mb-4">
         <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}>
           <CalendarCheck size={13} style={{ color: 'var(--color-accent)' }} />

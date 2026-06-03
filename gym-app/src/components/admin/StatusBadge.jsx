@@ -53,6 +53,24 @@ export function StatusBadge({ status }) {
   );
 }
 
+/**
+ * Compact status dot — color-coded by membership status (active=green,
+ * frozen=blue, deactivated=amber, cancelled=neutral, banned=red). Used in the
+ * members directory table where a clean liveness dot beats a text pill; the
+ * exact status stays available on hover (title) and to screen readers.
+ */
+export function StatusDot({ status, size = 9 }) {
+  const { t } = useTranslation('pages');
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
+  const tone = TONE_VARS[cfg.tone] ?? TONE_VARS.neutral;
+  const label = t(`admin.statusLabels.${(status || 'active').toLowerCase()}`);
+  return (
+    <span className="inline-flex items-center justify-center" title={label} aria-label={label} role="img">
+      <span className="rounded-full flex-shrink-0" style={{ width: size, height: size, background: tone.dot, boxShadow: `0 0 0 3px color-mix(in srgb, ${tone.dot} 16%, transparent)` }} />
+    </span>
+  );
+}
+
 export function RiskBadge({ tier, score }) {
   const { t } = useTranslation('pages');
   const cfg = RISK_CONFIG[tier] ?? RISK_CONFIG.low;

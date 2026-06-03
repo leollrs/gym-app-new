@@ -407,7 +407,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
         </button>
         <button onClick={handleTranslateAndPreview} disabled={saving || translating || !form.name.trim()}
           className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-50 transition-opacity"
-          style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-bg-base)' }}>
+          style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent)' }}>
           {translating ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
           {translating ? t('admin.classes.translating') : tc('save')}
         </button>

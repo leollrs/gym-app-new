@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Mail, Lock, AlertCircle, ChevronLeft, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, AlertCircle, ChevronLeft, CheckCircle, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -62,6 +62,13 @@ const Login = () => {
   const [resetError,   setResetError]   = useState('');
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  // "I have a reset code" sub-flow — consumes admin-issued / emailed 6-digit
+  // codes via the reset-password edge function (front-desk / no-email members).
+  const [codeMode,     setCodeMode]     = useState(false);
+  const [resetCode,    setResetCode]    = useState('');
+  const [newPw,        setNewPw]        = useState('');
+  const [confirmPw,    setConfirmPw]    = useState('');
+  const [showNewPw,    setShowNewPw]    = useState(false);
 
   // ── Persist lockout / failCount in localStorage so it survives refresh ──
   useEffect(() => {
@@ -157,17 +164,68 @@ const Login = () => {
     }
   };
 
+  // Consume a 6-digit reset code (admin-issued or emailed) and set a new
+  // password via the public reset-password edge function. No auth required —
+  // the code + email are the proof of identity.
+  const handleResetWithCode = async (e) => {
+    e.preventDefault();
+    setResetError('');
+    setResetSuccess(false);
+    if (!/^\d{6}$/.test(resetCode.trim())) {
+      setResetError(t('resetCodeInvalid', { defaultValue: 'Enter the 6-digit code.' }));
+      return;
+    }
+    if (newPw.length < 8) {
+      setResetError(t('resetPasswordTooShort', { defaultValue: 'Password must be at least 8 characters.' }));
+      return;
+    }
+    if (newPw !== confirmPw) {
+      setResetError(t('resetPasswordMismatch', { defaultValue: 'Passwords do not match.' }));
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke('reset-password', {
+        body: { email_code: resetCode.trim(), email: resetEmail.trim().toLowerCase(), new_password: newPw },
+      });
+      if (fnErr) {
+        // supabase-js wraps non-2xx as FunctionsHttpError with a generic
+        // message; the real reason is in the response body. Surface it.
+        let serverMsg = '';
+        try { const ctx = await fnErr.context?.json?.(); serverMsg = ctx?.error || ''; } catch { /* ignore */ }
+        throw new Error(serverMsg || t('resetCodeFailed', { defaultValue: 'Invalid or expired code. Please check it and try again.' }));
+      }
+      if (data?.error) throw new Error(data.error);
+      setResetSuccess(true);
+      setResetCode(''); setNewPw(''); setConfirmPw('');
+    } catch (err) {
+      setResetError(err.message || t('resetFailed'));
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const enterForgotMode = () => {
     setForgotMode(true);
+    setCodeMode(false);
     setResetEmail(email);
+    setResetError('');
+    setResetSuccess(false);
+  };
+
+  const enterCodeMode = () => {
+    setCodeMode(true);
     setResetError('');
     setResetSuccess(false);
   };
 
   const exitForgotMode = () => {
     setForgotMode(false);
+    setCodeMode(false);
+    setResetCode(''); setNewPw(''); setConfirmPw('');
     setResetError('');
     setResetSuccess(false);
+    if (resetEmail) setEmail(resetEmail);
   };
 
   // ── Shared field styles ─────────────────────────────────────
@@ -247,10 +305,10 @@ const Login = () => {
             margin: 0,
           }}
         >
-          {forgotMode ? t('resetPassword') : t('welcomeBack')}
+          {forgotMode ? (codeMode ? t('resetWithCodeTitle', { defaultValue: 'Enter reset code' }) : t('resetPassword')) : t('welcomeBack')}
         </h1>
         <p style={{ fontSize: 15, color: OB.sub, marginTop: 6 }}>
-          {forgotMode ? t('resetSubtitle') : t('signInSubtitle')}
+          {forgotMode ? (codeMode ? t('resetWithCodeSubtitle', { defaultValue: 'Enter the 6-digit code from your gym, then set a new password.' }) : t('resetSubtitle')) : t('signInSubtitle')}
         </p>
 
         {/* Card */}
@@ -273,7 +331,7 @@ const Login = () => {
                 >
                   <CheckCircle size={15} color="#3E7A3E" />
                   <p style={{ fontSize: 13, color: '#2d5a2d', margin: 0 }}>
-                    {t('resetSuccess')}
+                    {codeMode ? t('resetCodeSuccess', { defaultValue: 'Password updated — you can sign in now.' }) : t('resetSuccess')}
                   </p>
                 </div>
               )}
@@ -297,31 +355,85 @@ const Login = () => {
                 </div>
               )}
 
-              <form onSubmit={handleResetPassword} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <div>
-                  <label htmlFor="reset-email" style={labelStyle}>{t('email')}</label>
-                  <div style={inputWrap}>
-                    <Mail size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
-                    <input
-                      id="reset-email"
-                      type="email"
-                      value={resetEmail}
-                      onChange={e => setResetEmail(e.target.value)}
-                      required
-                      placeholder={t('emailPlaceholder', { defaultValue: 'you@example.com' })}
-                      style={inputStyle}
-                    />
-                  </div>
-                </div>
+              {codeMode ? (
+                !resetSuccess && (
+                  <form onSubmit={handleResetWithCode} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div>
+                      <label htmlFor="reset-email-code" style={labelStyle}>{t('email')}</label>
+                      <div style={inputWrap}>
+                        <Mail size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                        <input id="reset-email-code" type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} required placeholder={t('emailPlaceholder', { defaultValue: 'you@example.com' })} style={inputStyle} />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="reset-code" style={labelStyle}>{t('resetCodeLabel', { defaultValue: 'Reset code' })}</label>
+                      <div style={inputWrap}>
+                        <KeyRound size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                        <input id="reset-code" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={resetCode} onChange={e => setResetCode(e.target.value.replace(/\D/g, ''))} required placeholder={t('resetCodePlaceholder', { defaultValue: '6-digit code' })} style={{ ...inputStyle, letterSpacing: '0.3em', fontWeight: 700 }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="reset-newpw" style={labelStyle}>{t('newPasswordLabel', { defaultValue: 'New password' })}</label>
+                      <div style={inputWrap}>
+                        <Lock size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                        <input id="reset-newpw" type={showNewPw ? 'text' : 'password'} value={newPw} onChange={e => setNewPw(e.target.value)} required placeholder={t('newPasswordLabel', { defaultValue: 'New password' })} style={inputStyle} />
+                        <button type="button" onClick={() => setShowNewPw(v => !v)} aria-label={showNewPw ? t('hidePassword', { defaultValue: 'Hide password' }) : t('showPassword', { defaultValue: 'Show password' })} style={{ position: 'absolute', right: 14, background: 'transparent', border: 'none', color: OB.mute, cursor: 'pointer', display: 'flex' }}>
+                          {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="reset-confirmpw" style={labelStyle}>{t('confirmPasswordLabel', { defaultValue: 'Confirm password' })}</label>
+                      <div style={inputWrap}>
+                        <Lock size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                        <input id="reset-confirmpw" type={showNewPw ? 'text' : 'password'} value={confirmPw} onChange={e => setConfirmPw(e.target.value)} required placeholder={t('confirmPasswordLabel', { defaultValue: 'Confirm password' })} style={inputStyle} />
+                      </div>
+                    </div>
+                    <button type="submit" disabled={resetLoading} style={primaryBtn(resetLoading)}>
+                      {resetLoading ? t('updatingPassword', { defaultValue: 'Updating…' }) : t('updatePassword', { defaultValue: 'Update password' })}
+                    </button>
+                  </form>
+                )
+              ) : (
+                !resetSuccess && (
+                  <>
+                    <form onSubmit={handleResetPassword} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                      <div>
+                        <label htmlFor="reset-email" style={labelStyle}>{t('email')}</label>
+                        <div style={inputWrap}>
+                          <Mail size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                          <input
+                            id="reset-email"
+                            type="email"
+                            value={resetEmail}
+                            onChange={e => setResetEmail(e.target.value)}
+                            required
+                            placeholder={t('emailPlaceholder', { defaultValue: 'you@example.com' })}
+                            style={inputStyle}
+                          />
+                        </div>
+                      </div>
 
-                <button type="submit" disabled={resetLoading} style={primaryBtn(resetLoading)}>
-                  {resetLoading ? t('sendingReset') : t('sendResetLink')}
-                </button>
-              </form>
+                      <button type="submit" disabled={resetLoading} style={primaryBtn(resetLoading)}>
+                        {resetLoading ? t('sendingReset') : t('sendResetLink')}
+                      </button>
+                    </form>
+
+                    <button
+                      type="button"
+                      onClick={enterCodeMode}
+                      style={{ marginTop: 14, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'transparent', border: 'none', color: OB.tealDeep, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                    >
+                      <KeyRound size={14} />
+                      {t('haveCodeCta', { defaultValue: 'Have a code from your gym? Enter it' })}
+                    </button>
+                  </>
+                )
+              )}
 
               <button
                 type="button"
-                onClick={exitForgotMode}
+                onClick={codeMode && !resetSuccess ? () => { setCodeMode(false); setResetError(''); } : exitForgotMode}
                 style={{
                   marginTop: 16,
                   width: '100%',
@@ -339,7 +451,7 @@ const Login = () => {
                 }}
               >
                 <ChevronLeft size={14} />
-                {t('backToLogin')}
+                {codeMode && !resetSuccess ? t('back', { defaultValue: 'Back' }) : t('backToLogin')}
               </button>
             </>
           ) : (

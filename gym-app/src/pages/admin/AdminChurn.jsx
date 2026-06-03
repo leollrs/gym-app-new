@@ -5,7 +5,7 @@ import {
   AlertTriangle, Search, Phone, Filter, Users, Clock, RotateCcw,
   CheckCircle, MessageSquare, Download, Square, CheckSquare, Send,
   UserPlus, X, Sparkles, FlaskConical, Trophy, StopCircle, Plus, ChevronDown, MoreHorizontal, Trash2,
-  RefreshCw,
+  RefreshCw, Target, Activity, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus,
 } from 'lucide-react';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale';
@@ -128,6 +128,24 @@ async function fetchChurnData(gymId) {
   };
 }
 
+const CHURN_PAGE_SIZE = 7;
+const CHURN_SORT_VALUES = {
+  full_name: (m) => (m.full_name || '').toLowerCase(),
+  churnScore: (m) => m.churnScore ?? 0,
+  daysInactive: (m) => ((m.daysSinceLastCheckIn ?? m.daysSinceLastActivity) ?? 9999),
+};
+function getChurnPageWindow(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out = [1];
+  const lo = Math.max(2, current - 1);
+  const hi = Math.min(total - 1, current + 1);
+  if (lo > 2) out.push('…');
+  for (let p = lo; p <= hi; p++) out.push(p);
+  if (hi < total - 1) out.push('…');
+  out.push(total);
+  return out;
+}
+
 export default function AdminChurn() {
   const { profile, availableRoles } = useAuth();
   const { showToast } = useToast();
@@ -144,6 +162,8 @@ export default function AdminChurn() {
   const [tab, setTab] = useState('task-board');
   const [search, setSearch] = useState('');
   const [riskFilter, setRiskFilter] = useState('needs-action');
+  const [tableSort, setTableSort] = useState({ key: null, dir: 'asc' });
+  const [churnPage, setChurnPage] = useState(1);
   const [msgModal, setMsgModal] = useState(null);
   const [winBackModal, setWinBackModal] = useState(null);
   const [contactPanel, setContactPanel] = useState(null);
@@ -197,16 +217,11 @@ export default function AdminChurn() {
     staleTime: 30_000,
   });
 
-  const churnComputeTriggered = useRef(false);
-  useEffect(() => {
-    if (!gymId || churnComputeTriggered.current) return;
-    churnComputeTriggered.current = true;
-    supabase.rpc('compute_churn_scores', { p_gym_id: gymId })
-      .then(({ error }) => {
-        if (error) logger.error('Auto compute_churn_scores:', error);
-        else refetch();
-      });
-  }, [gymId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Scores come from the v3 engine: loadGymChurnScores reads the nightly
+  // precompute (compute-churn-scores edge fn) or recomputes live (retention.js)
+  // via the useQuery above. We intentionally DON'T call the legacy
+  // compute_churn_scores SQL RPC anymore — it wrote a v1/v2 model that flagged
+  // every never-active member 95 ("never logged a workout"), conflicting with v3.
 
   // Manual refresh scores
   const [refreshingScores, setRefreshingScores] = useState(false);
@@ -214,12 +229,12 @@ export default function AdminChurn() {
     if (!gymId || refreshingScores) return;
     setRefreshingScores(true);
     try {
-      const { error } = await supabase.rpc('compute_churn_scores', { p_gym_id: gymId });
-      if (error) throw error;
+      // Recompute live via the v3 engine (the nightly edge fn persists the
+      // precompute; this button just re-resolves fresh).
       await refetch();
       showToast(t('admin.churn.scoresRefreshed', 'Scores refreshed'), 'success');
     } catch (err) {
-      logger.error('Manual compute_churn_scores:', err);
+      logger.error('Refresh churn scores:', err);
       showToast(err.message || 'Error refreshing scores', 'error');
     } finally {
       setRefreshingScores(false);
@@ -311,7 +326,8 @@ export default function AdminChurn() {
   };
 
   const atRiskMembers = useMemo(() => {
-    let list = members.filter(m => m.churnScore >= 30);
+    // Exclude churned (60d+ → "lost" tab) and paused (vacation/hold) from the action queue.
+    let list = members.filter(m => m.churnScore >= 30 && m.state !== 'churned' && m.state !== 'paused');
     if (riskFilter === 'needs-action') list = list.filter(m => !contactedIds.has(m.id));
     else if (riskFilter === 'critical') list = list.filter(m => m.churnScore >= 80);
     else if (riskFilter === 'high') list = list.filter(m => m.churnScore >= 55 && m.churnScore < 80);
@@ -331,20 +347,38 @@ export default function AdminChurn() {
     return list;
   }, [members, riskFilter, search, contactedIds, winBackAttempts]);
 
-  const churnedMembers = useMemo(() => {
-    const MS_PER_DAY = 86400000;
-    return members.filter((m) => {
-      const joinDays = (Date.now() - new Date(m.created_at)) / MS_PER_DAY;
-      if (joinDays < 7) return false;
-      const d = m.daysSinceLastActivity;
-      if (d != null) return d >= 30;
-      return joinDays >= 30;
+  // Controlled sort lifted to the page so sorting spans every page, then we
+  // paginate (7/row, no internal scroll). AdminTable renders data as-is when
+  // onSortChange is provided.
+  const handleTableSort = useCallback((key) => {
+    setTableSort(prev => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+  }, []);
+  const sortedAtRisk = useMemo(() => {
+    const fn = tableSort.key ? CHURN_SORT_VALUES[tableSort.key] : null;
+    if (!fn) return atRiskMembers;
+    return [...atRiskMembers].sort((a, b) => {
+      const av = fn(a), bv = fn(b);
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return tableSort.dir === 'asc' ? cmp : -cmp;
     });
-  }, [members]);
+  }, [atRiskMembers, tableSort]);
+  const churnTotalPages = Math.max(1, Math.ceil(sortedAtRisk.length / CHURN_PAGE_SIZE));
+  const churnSafePage = Math.min(churnPage, churnTotalPages);
+  const churnPageStart = (churnSafePage - 1) * CHURN_PAGE_SIZE;
+  const churnPageItems = sortedAtRisk.slice(churnPageStart, churnPageStart + CHURN_PAGE_SIZE);
+  const churnPageWindow = useMemo(() => getChurnPageWindow(churnSafePage, churnTotalPages), [churnSafePage, churnTotalPages]);
+  useEffect(() => { setChurnPage(1); }, [riskFilter, search, tab, tableSort]);
+
+  // "Churned"/"Lost" = v3 churned state (60d+ dark). Dormant members (30–60d) stay
+  // in the actionable at-risk queue per the ghost-threshold refinement.
+  const churnedMembers = useMemo(() => (
+    members.filter((m) => m.state === 'churned')
+  ), [members]);
 
   const { criticalCount, highRiskCount, medRiskCount } = useMemo(() => {
     let critical = 0, high = 0, med = 0;
     for (const m of members) {
+      if (m.state === 'churned' || m.state === 'paused') continue;
       if (m.churnScore >= 80) critical++;
       else if (m.churnScore >= 55) high++;
       else if (m.churnScore >= 30) med++;
@@ -356,12 +390,12 @@ export default function AdminChurn() {
 
   // "Needs Action" = at-risk members who have NOT been contacted
   const needsActionMembers = useMemo(() => {
-    return members.filter(m => m.churnScore >= 30 && !contactedIds.has(m.id));
+    return members.filter(m => m.churnScore >= 30 && !contactedIds.has(m.id) && m.state !== 'churned' && m.state !== 'paused');
   }, [members, contactedIds]);
 
   // "Recently Contacted" = at-risk members who HAVE been contacted
   const recentlyContactedMembers = useMemo(() => {
-    return members.filter(m => m.churnScore >= 30 && contactedIds.has(m.id));
+    return members.filter(m => m.churnScore >= 30 && contactedIds.has(m.id) && m.state !== 'churned' && m.state !== 'paused');
   }, [members, contactedIds]);
 
   // "Returned" = members with a returned win-back outcome
@@ -369,6 +403,11 @@ export default function AdminChurn() {
     const returnedUserIds = new Set(winBackAttempts.filter(a => a.outcome === 'returned').map(a => a.user_id));
     return members.filter(m => returnedUserIds.has(m.id));
   }, [members, winBackAttempts]);
+
+  // Single highest-risk member still needing action — drives the priority banner.
+  const topRiskMember = useMemo(() => (
+    needsActionMembers.reduce((top, m) => (m.churnScore > (top?.churnScore ?? -1) ? m : top), null)
+  ), [needsActionMembers]);
 
   // Attribution breakdown for win-back tab
   const attributionStats = useMemo(() => {
@@ -385,6 +424,21 @@ export default function AdminChurn() {
     }
     return stats;
   }, [winBackAttempts, contactLogs]);
+
+  // Pause / resume churn alerts (vacation hold) — prevents the recency-decay
+  // false positive for a loyal member who's just traveling.
+  const handlePauseToggle = useCallback(async (member) => {
+    const pausedByHold = member.churn_pause_until && new Date(member.churn_pause_until) > new Date();
+    const until = pausedByHold ? null : new Date(Date.now() + 30 * 86400000).toISOString();
+    try {
+      const { error } = await supabase.from('profiles').update({ churn_pause_until: until }).eq('id', member.id).eq('gym_id', gymId);
+      if (error) throw error;
+      showToast(pausedByHold ? t('admin.churn.alertsResumed', 'Alerts resumed') : t('admin.churn.alertsPaused', 'Paused 30 days (vacation)'), 'success');
+      refetch();
+    } catch {
+      showToast(t('admin.churn.pauseFailed', 'Could not update'), 'error');
+    }
+  }, [gymId, refetch, showToast, t]);
 
   // Bulk action helpers
   const selectedCount = selectedIds.size;
@@ -559,7 +613,10 @@ export default function AdminChurn() {
 
   // Helper: get top N signals for a member as { name, label } pairs
   const getTopSignals = (m, count = 2) => {
-    if (m.signals) {
+    // NB: dormant/churned/insufficient/paused members carry signals = {} (empty
+    // but truthy). Guard on length, otherwise we'd take this branch, find nothing,
+    // and never fall through to keySignals — rendering "--" for a 95% dormant row.
+    if (m.signals && Object.keys(m.signals).length > 0) {
       return Object.entries(m.signals)
         .filter(([, s]) => s.score > 0)
         .sort((a, b) => (b[1].weightedScore ?? b[1].score) - (a[1].weightedScore ?? a[1].score))
@@ -585,7 +642,7 @@ export default function AdminChurn() {
     {
       key: 'select',
       label: '',
-      width: '40px',
+      width: '44px',
       render: (m) => (
         <button onClick={(e) => { e.stopPropagation(); toggleSelected(m.id); }} aria-label={selectedIds.has(m.id) ? t('admin.churn.deselectMember', 'Deselect member') : t('admin.churn.selectMember', 'Select member')} className="text-[#6B7280] hover:text-[#D4AF37] transition-colors">
           {selectedIds.has(m.id) ? <CheckSquare size={16} className="text-[#D4AF37]" /> : <Square size={16} />}
@@ -606,23 +663,38 @@ export default function AdminChurn() {
     },
     {
       key: 'churnScore',
-      label: t('admin.churn.score', 'Score'),
+      label: t('admin.churn.retentionRisk', 'Retention Risk'),
       sortable: true,
       sortValue: (m) => m.churnScore ?? 0,
-      width: '140px',
-      render: (m) => <ScoreBar score={m.churnScore} />,
+      width: '128px',
+      render: (m) => {
+        const s = Math.round(m.churnScore || 0);
+        const color = s >= 80 ? 'var(--color-danger)' : s >= 55 ? 'var(--color-warning)' : 'var(--color-success)';
+        const TrendIcon = m.trend === 'declining' ? TrendingUp : m.trend === 'improving' ? TrendingDown : null;
+        const trendColor = m.trend === 'declining' ? 'var(--color-danger)' : 'var(--color-success)';
+        return (
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 rounded-full overflow-hidden flex-shrink-0" style={{ width: 46, background: 'var(--color-admin-panel)' }}>
+              <div className="h-full rounded-full" style={{ width: `${Math.min(100, s)}%`, background: color }} />
+            </div>
+            <span className="admin-mono text-[11px] font-bold flex-shrink-0" style={{ color }}>{s}%</span>
+            {TrendIcon && <TrendIcon size={12} style={{ color: trendColor, flexShrink: 0 }} aria-label={m.trend} />}
+          </div>
+        );
+      },
     },
     {
       key: 'signals',
       label: t('admin.churn.colSignals', 'Top Signals'),
+      width: '160px',
       render: (m) => {
         const pills = getTopSignals(m, 2);
         return (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1" style={{ maxWidth: 230 }}>
             {pills.map((p, i) => {
               const toneClass = p.pct >= 70 ? 'admin-pill--hot' : p.pct >= 40 ? 'admin-pill--warn' : 'admin-pill--outline';
               return (
-                <span key={i} className={`admin-pill ${toneClass} truncate max-w-[140px]`}>
+                <span key={i} className={`admin-pill ${toneClass}`} style={{ whiteSpace: 'normal', textAlign: 'left', lineHeight: 1.3, maxWidth: '100%' }}>
                   {p.name}
                 </span>
               );
@@ -636,11 +708,12 @@ export default function AdminChurn() {
       key: 'daysInactive',
       label: t('admin.churn.daysInactive', 'Days Inactive'),
       sortable: true,
-      numeric: true,
-      width: '100px',
-      sortValue: (m) => m.daysSinceLastCheckIn ?? 9999,
+      align: 'center',
+      width: '76px',
+      sortValue: (m) => (m.daysSinceLastCheckIn ?? m.daysSinceLastActivity) ?? 9999,
       render: (m) => {
-        const days = m.daysSinceLastCheckIn != null ? Math.round(m.daysSinceLastCheckIn) : null;
+        const rawDays = m.daysSinceLastCheckIn ?? m.daysSinceLastActivity;
+        const days = rawDays != null ? Math.round(rawDays) : null;
         const color = days === null ? 'var(--color-admin-text-muted)' : days < 7 ? 'var(--color-success)' : days < 14 ? 'var(--color-warning)' : 'var(--color-danger)';
         return (
           <span className="admin-mono text-[13px] font-bold" style={{ color }}>
@@ -652,13 +725,13 @@ export default function AdminChurn() {
     {
       key: 'actions',
       label: '',
-      width: '200px',
+      width: '124px',
       render: (m) => {
         const isContacted = contactedIds.has(m.id);
         const contactCount = contactCountMap[m.id] || 0;
         const hasReturned = returnedUserIds.has(m.id);
         return (
-          <div className="flex items-center gap-1.5 justify-end" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-center gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
             {hasReturned && (
               <span className="admin-pill admin-pill--good whitespace-nowrap">
                 {t('admin.churn.returnedBadge', 'Returned')}
@@ -669,17 +742,11 @@ export default function AdminChurn() {
                 {contactCount > 1 ? t('admin.churn.contactCountBadge', { count: contactCount, defaultValue: '{{count}} contacts' }) : t('admin.churn.contacted', 'Contacted')}
               </span>
             )}
-            <button onClick={() => setMsgModal(m)} title={t('admin.churn.message', 'Message')}
-              aria-label={t('admin.churn.message', 'Message')}
-              className="p-1.5 rounded-lg transition-colors"
-              style={{ color: 'var(--color-accent)' }}>
-              <MessageSquare size={15} />
-            </button>
             <button onClick={() => setContactPanel(m)} title={t('admin.churn.contact', 'Contact')}
               aria-label={t('admin.churn.contact', 'Contact')}
-              className="p-1.5 rounded-lg transition-colors"
-              style={{ color: 'var(--color-admin-text-sub)' }}>
-              <Phone size={15} />
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity hover:opacity-90"
+              style={{ background: 'var(--color-accent)', color: '#fff' }}>
+              <Phone size={13} /> {t('admin.churn.contact', 'Contact')}
             </button>
           </div>
         );
@@ -717,23 +784,61 @@ export default function AdminChurn() {
         }
       />
 
-      {/* Staleness indicator */}
+      {/* Scores freshness strip */}
       {!loading && lastComputedAt && (
-        <div
-          className="flex items-center gap-2 mt-2 px-3 py-2 rounded-xl text-[12px] flex-wrap"
-          style={{
-            background: isStale ? 'var(--color-warning-soft)' : 'var(--color-admin-panel)',
-            border: `1px dashed ${isStale ? 'color-mix(in srgb, var(--color-warning) 20%, transparent)' : 'var(--color-admin-border)'}`,
-          }}>
-          <Clock size={13} style={{ color: isStale ? 'var(--color-warning)' : 'var(--color-admin-text-muted)' }} />
-          <span className="admin-mono text-[11px] md:text-[12px]" style={{ color: isStale ? 'var(--color-warning)' : 'var(--color-admin-text-muted)' }}>
+        <div className="flex items-center gap-2.5 mt-2" style={{ padding: '10px 14px', borderRadius: 12, background: 'var(--color-bg-subtle)', border: `1px solid ${isStale ? 'color-mix(in srgb, var(--color-warning) 30%, transparent)' : 'var(--color-admin-border)'}` }}>
+          <div className="grid place-items-center flex-shrink-0" style={{ width: 26, height: 26, borderRadius: 8, background: isStale ? 'var(--color-warning-soft)' : 'var(--color-accent-soft)' }}>
+            <Clock size={14} style={{ color: isStale ? 'var(--color-warning)' : 'var(--color-accent-dark, var(--color-accent))' }} />
+          </div>
+          <span className="admin-mono flex-1 text-[11px] md:text-[12.5px]" style={{ color: 'var(--color-admin-text-sub)', fontWeight: 600 }}>
             {t('admin.churn.lastUpdated', 'Scores last updated')}: {formatDistanceToNow(new Date(lastComputedAt), { addSuffix: true, ...dateFnsLocaleOpt })}
           </span>
-          {isStale && (
-            <span className="admin-pill admin-pill--warn ml-1">
-              {t('admin.churn.scoresOutdated', 'Scores may be outdated')}
+          {isStale ? (
+            <span className="admin-pill admin-pill--warn flex-shrink-0">{t('admin.churn.scoresOutdated', 'Scores may be outdated')}</span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 flex-shrink-0 text-[11.5px] font-bold" style={{ color: 'var(--color-success)' }}>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--color-success)' }} /> {t('admin.churn.live', 'Live')}
             </span>
           )}
+        </div>
+      )}
+
+      {/* Acción prioritaria de hoy — single most-urgent follow-up */}
+      {!loading && topRiskMember && (
+        <div className="flex items-center gap-3 md:gap-4 flex-wrap mt-3" style={{ padding: '16px 18px', borderRadius: 16, background: 'linear-gradient(100deg, var(--color-danger-soft), color-mix(in srgb, var(--color-warning-soft) 55%, transparent))', border: '1px solid var(--color-danger-soft)' }}>
+          <div className="grid place-items-center flex-shrink-0" style={{ width: 46, height: 46, borderRadius: 13, background: 'var(--color-admin-panel)' }}>
+            <Target size={22} style={{ color: 'var(--color-danger)' }} />
+          </div>
+          <div className="flex-1" style={{ minWidth: 220 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, color: 'var(--color-danger)', textTransform: 'uppercase', marginBottom: 3 }}>{t('admin.churn.priorityEyebrow', "Today's priority action")}</div>
+            <div style={{ fontSize: 14, color: 'var(--color-admin-text)', fontWeight: 600, lineHeight: 1.4 }}>
+              {t('admin.churn.priorityBanner', {
+                count: needsActionMembers.length,
+                name: topRiskMember.full_name,
+                score: Math.round(topRiskMember.churnScore),
+                days: topRiskMember.daysSinceLastCheckIn != null ? Math.round(topRiskMember.daysSinceLastCheckIn) : 0,
+                defaultValue: '{{count}} members need follow-up. Highest risk is {{name}} — score {{score}}, {{days}}d without check-in.',
+              })}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={() => setContactPanel(topRiskMember)} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12.5px] font-bold transition-opacity hover:opacity-90" style={{ background: 'var(--color-danger)', color: '#fff' }}>
+              <Phone size={14} /> {t('admin.churn.callMember', { name: (topRiskMember.full_name || '').split(' ')[0], defaultValue: 'Call {{name}}' })}
+            </button>
+            <button onClick={() => { const ids = needsActionMembers.map(m => m.id).slice(0, 500).join(','); if (ids) navigate(`/admin/outreach?audience=member&ids=${ids}`); }} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12.5px] font-semibold transition-colors" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-sub)' }}>
+              <Send size={14} /> {t('admin.churn.bulkMessage', 'Batch message')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* KPI row */}
+      {!loading && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 mt-3">
+          <StatCard label={t('admin.churn.filterCritical', 'Critical')} value={criticalCount} sub={t('admin.churn.kpiCriticalSub', 'score ≥ 80')} borderColor="var(--color-danger)" icon={AlertTriangle} delay={0} onClick={() => { setTab('task-board'); setRiskFilter('critical'); }} />
+          <StatCard label={t('admin.churn.filterHigh', 'High')} value={highRiskCount} sub={t('admin.churn.kpiHighSub', 'score 55–79')} borderColor="var(--color-warning)" icon={Activity} delay={50} onClick={() => { setTab('task-board'); setRiskFilter('high'); }} />
+          <StatCard label={t('admin.churn.contacted', 'Contacted')} value={contactedCount} sub={t('admin.churn.kpiContactedSub', 'follow-up done')} borderColor="var(--color-coach)" icon={MessageSquare} delay={100} onClick={() => { setTab('task-board'); setRiskFilter('contacted'); }} />
+          <StatCard label={t('admin.churn.filterReturned', 'Returned')} value={returnedCount} sub={t('admin.churn.kpiReturnedSub', 'came back')} borderColor="var(--color-success)" icon={CheckCircle} delay={150} onClick={() => { setTab('task-board'); setRiskFilter('returned'); }} />
         </div>
       )}
 
@@ -754,14 +859,23 @@ export default function AdminChurn() {
             <div className="flex overflow-x-auto scrollbar-hide gap-1.5 px-3 py-1.5">
               {QUEUE_FILTERS.map(f => {
                 const active = riskFilter === f.key;
+                const dot = { accent: 'var(--color-accent)', hot: 'var(--color-danger)', warn: 'var(--color-warning)', info: 'var(--color-info)', good: 'var(--color-success)' }[f.tone] || 'var(--color-admin-text-faint)';
+                const ink = { accent: 'var(--color-accent-dark, var(--color-accent))', hot: 'var(--color-danger)', warn: 'var(--color-warning-ink, var(--color-warning))', info: 'var(--color-info)', good: 'var(--color-success)' }[f.tone] || 'var(--color-admin-text-sub)';
                 return (
                   <button
                     key={f.key}
                     onClick={() => setRiskFilter(f.key)}
-                    className={`admin-pill admin-pill--${f.tone} flex items-center gap-1.5 whitespace-nowrap flex-shrink-0`}
-                    style={active ? { boxShadow: '0 0 0 1.5px var(--color-admin-text)' } : undefined}
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 transition-colors"
+                    style={{
+                      padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: -0.1,
+                      background: active ? 'var(--color-admin-text)' : 'var(--color-admin-panel)',
+                      border: `1px solid ${active ? 'transparent' : 'var(--color-admin-border)'}`,
+                      color: active ? '#fff' : ink,
+                    }}
                   >
-                    {f.label} · {f.count}
+                    <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? '#fff' : dot }} />
+                    {f.label}
+                    <span className="admin-mono" style={{ fontWeight: 700, color: active ? 'rgba(255,255,255,0.85)' : 'var(--color-admin-text-muted)' }}>{f.count}</span>
                   </button>
                 );
               })}
@@ -849,7 +963,31 @@ export default function AdminChurn() {
               {/* Desktop table */}
               <div className="hidden md:flex gap-4 items-start">
                 <div className="w-full lg:w-[60%] lg:flex-shrink-0">
-                  <AdminTable columns={atRiskTableColumns} data={atRiskMembers} stickyHeader onRowClick={(m) => setSelectedMember(m)} activeRowId={selectedMember?.id} />
+                  <AdminTable columns={atRiskTableColumns} data={churnPageItems} sort={tableSort} onSortChange={handleTableSort} onRowClick={(m) => setSelectedMember(m)} activeRowId={selectedMember?.id} fixedLayout />
+                  {sortedAtRisk.length > CHURN_PAGE_SIZE && (
+                    <div className="flex items-center justify-between gap-3 flex-wrap mt-3 px-1">
+                      <span style={{ fontSize: 11.5, color: 'var(--color-admin-text-muted)' }}>
+                        {t('admin.churn.showingRange', { start: churnPageStart + 1, end: churnPageStart + churnPageItems.length, total: sortedAtRisk.length, defaultValue: '{{start}}–{{end}} of {{total}}' })}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button type="button" onClick={() => setChurnPage(p => Math.max(1, p - 1))} disabled={churnSafePage <= 1} aria-label={t('admin.churn.prevPage', 'Previous')} className="grid place-items-center disabled:opacity-40 disabled:cursor-not-allowed" style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-sub)' }}>
+                          <ChevronLeft size={15} />
+                        </button>
+                        {churnPageWindow.map((p, i) => (
+                          p === '…' ? (
+                            <span key={`e${i}`} style={{ fontSize: 12, color: 'var(--color-admin-text-faint)', padding: '0 2px' }}>…</span>
+                          ) : (
+                            <button key={p} type="button" onClick={() => setChurnPage(p)} className="grid place-items-center admin-mono" style={{ minWidth: 30, height: 30, borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: p === churnSafePage ? 'var(--color-admin-text)' : 'var(--color-admin-panel)', color: p === churnSafePage ? '#fff' : 'var(--color-admin-text-sub)', border: `1px solid ${p === churnSafePage ? 'transparent' : 'var(--color-admin-border)'}` }}>
+                              {p}
+                            </button>
+                          )
+                        ))}
+                        <button type="button" onClick={() => setChurnPage(p => Math.min(churnTotalPages, p + 1))} disabled={churnSafePage >= churnTotalPages} aria-label={t('admin.churn.nextPage', 'Next')} className="grid place-items-center disabled:opacity-40 disabled:cursor-not-allowed" style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-sub)' }}>
+                          <ChevronRight size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="hidden lg:block flex-1 min-w-0 sticky top-4">
                   <div className="w-full bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
@@ -861,6 +999,7 @@ export default function AdminChurn() {
                       onMessage={(m) => setMsgModal(m)}
                       onContact={(m) => setContactPanel(m)}
                       onWinBack={(m) => setWinBackModal(m)}
+                      onPause={handlePauseToggle}
                       t={t}
                       dateFnsLocaleOpt={dateFnsLocaleOpt}
                     />
@@ -875,7 +1014,7 @@ export default function AdminChurn() {
                   const isSelected = selectedIds.has(m.id);
                   const hasReturned = returnedUserIds.has(m.id);
                   const pills = getTopSignals(m, 2);
-                  const daysInactive = m.daysSinceLastCheckIn != null ? Math.round(m.daysSinceLastCheckIn) : null;
+                  const daysInactive = (m.daysSinceLastCheckIn ?? m.daysSinceLastActivity) != null ? Math.round(m.daysSinceLastCheckIn ?? m.daysSinceLastActivity) : null;
                   const daysColor = daysInactive === null ? 'var(--color-text-muted)' : daysInactive < 7 ? 'var(--color-success, #10B981)' : daysInactive < 14 ? 'var(--color-warning)' : 'var(--color-danger, #EF4444)';
                   return (
                     <div key={m.id} onClick={() => { setSelectedMember(m); setMobileDetailOpen(true); }}
@@ -1252,6 +1391,7 @@ export default function AdminChurn() {
               onMessage={(m) => { setMobileDetailOpen(false); setMsgModal(m); }}
               onContact={(m) => { setMobileDetailOpen(false); setContactPanel(m); }}
               onWinBack={(m) => { setMobileDetailOpen(false); setWinBackModal(m); }}
+              onPause={(m) => { setMobileDetailOpen(false); handlePauseToggle(m); }}
               t={t}
               dateFnsLocaleOpt={dateFnsLocaleOpt}
             />

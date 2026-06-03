@@ -1,27 +1,19 @@
 /**
  * Compute Churn Scores — Supabase Edge Function
  * ───────────────────────────────────────────────
- * Runs on a schedule (daily recommended) via cron or manual trigger.
- * Computes churn risk scores for ALL active members across ALL gyms
- * and persists them to the churn_risk_scores table for historical
- * trend analysis and velocity tracking.
+ * Runs daily (cron). Computes the v3 "Attendance-First Behavioral Retention
+ * Model" for ALL active members across ALL gyms and persists to
+ * churn_risk_scores. Mirrors the client engine in src/lib/churn/* —
+ * see src/lib/churn/MODEL_V3_SPEC.md.
  *
- * Research-backed signal weights (v2 — 12 signals, 100-point budget):
- *   1. Visit frequency        (22 pts)
- *   2. Attendance trend        (14 pts)
- *   3. Tenure risk             (12 pts)
- *   4. Social & group          (10 pts)
- *   5. Anchor day adherence     (8 pts)  ← NEW
- *   6. Session gap pattern      (7 pts)
- *   7. Goal progress            (7 pts)
- *   8. Engagement depth         (5 pts)
- *   9. App engagement           (5 pts)  ← NEW
- *  10. Comms responsiveness     (4 pts)  ← NEW
- *  11. Referral activity        (3 pts)  ← NEW
- *  12. Workout type shift       (3 pts)  ← NEW
+ *   Layer A attendance core (≤70)  +  Layer B engagement decline (≤30)
+ *   × tenure multiplier  →  attendance gate  →  + protective bonus (≥−20)  →  0–100
  *
- * Also triggers automated follow-up notifications for gyms that
- * have enabled churn_followup_settings.
+ * State machine: insufficient-data grace (new/imported → never Critical),
+ * dormant override (≥30d dark → Critical), both baked into the persisted score.
+ *
+ * Also drives the automated multi-channel follow-up drip and labels churn
+ * outcomes for the calibration model.
  */
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -29,7 +21,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
 
 const corsHeaders = ALLOWED_ORIGIN
@@ -40,995 +31,560 @@ const corsHeaders = ALLOWED_ORIGIN
   : null;
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
-// ── Signal calculators (v2 — 12 signals, rebalanced to 100-point budget) ──
-
-function signalVisitFrequency(avgWeekly: number, goal: number) {
-  const MAX = 22;
-  const target = Math.max(goal || 3, 2);
-  const ratio = target > 0 ? avgWeekly / target : 0;
-
-  if (avgWeekly === 0)   return { score: MAX, maxPts: MAX, label: 'Zero visits in last 30 days' };
-  if (ratio < 0.25)      return { score: Math.round(MAX * 0.85), maxPts: MAX, label: `Only ${avgWeekly.toFixed(1)}x/week` };
-  if (ratio < 0.5)       return { score: Math.round(MAX * 0.65), maxPts: MAX, label: `Visiting ${avgWeekly.toFixed(1)}x/week (50% below goal)` };
-  if (ratio < 0.75)      return { score: Math.round(MAX * 0.35), maxPts: MAX, label: `Below visit goal` };
-  if (ratio < 1.0)       return { score: Math.round(MAX * 0.15), maxPts: MAX, label: `Nearly hitting visit goal` };
-  return { score: ratio >= 1.25 ? -3 : 0, maxPts: MAX, label: 'Meeting visit goal' };
-}
-
-function signalAttendanceTrend(avg: number, prev: number) {
-  const MAX = 14;
-  if (prev <= 0.2) return { score: avg === 0 ? 8 : 0, maxPts: MAX, label: avg === 0 ? 'No visit pattern' : 'Building baseline' };
-  const drop = (prev - avg) / prev;
-  if (drop >= 0.75)  return { score: MAX, maxPts: MAX, label: `Visits crashed ${Math.round(drop * 100)}%` };
-  if (drop >= 0.5)   return { score: Math.round(MAX * 0.75), maxPts: MAX, label: `Visits dropped ${Math.round(drop * 100)}%` };
-  if (drop >= 0.3)   return { score: Math.round(MAX * 0.5), maxPts: MAX, label: `Visits declined ${Math.round(drop * 100)}%` };
-  if (drop >= 0.15)  return { score: Math.round(MAX * 0.25), maxPts: MAX, label: `Slight dip` };
-  if (drop < -0.15)  return { score: -3, maxPts: MAX, label: 'Attendance trending up' };
-  return { score: 0, maxPts: MAX, label: 'Stable' };
-}
-
-function signalTenureRisk(months: number, first90Sessions: number | null) {
-  const MAX = 12;
-  if (months < 1)        return { score: Math.round(MAX * 0.55), maxPts: MAX, label: 'Brand new (< 1 month)' };
-  if (months <= 3) {
-    if (first90Sessions !== null && first90Sessions >= 24)
-      return { score: Math.round(MAX * 0.25), maxPts: MAX, label: '90-day window — hit milestone' };
-    return { score: MAX, maxPts: MAX, label: 'Critical 90-day dropout window' };
-  }
-  if (months <= 6)       return { score: Math.round(MAX * 0.55), maxPts: MAX, label: 'Early risk (3-6mo)' };
-  if (months <= 12)      return { score: Math.round(MAX * 0.25), maxPts: MAX, label: 'Established (6-12mo)' };
-  return { score: Math.round(MAX * 0.07), maxPts: MAX, label: 'Long-tenure' };
-}
-
-function signalSocial(friends: number, inChallenge: boolean, hasTrainer: boolean) {
-  const MAX = 10;
-  let score = 0;
-  const parts: string[] = [];
-  if (friends === 0) { score += 4; parts.push('No connections'); }
-  else if (friends === 1) { score += 2; parts.push('1 connection'); }
-  if (!inChallenge) { score += 4; parts.push('No challenges'); }
-  if (!hasTrainer) { score += 2; parts.push('No trainer'); }
-  return { score: Math.min(MAX, score), maxPts: MAX, label: parts.length ? parts.join('; ') : 'Socially engaged' };
-}
-
-function signalSessionGaps(gaps: number[]) {
-  const MAX = 7;
-  if (!gaps || gaps.length < 4) return { score: 0, maxPts: MAX, label: 'Not enough gap data' };
-  const mid = Math.floor(gaps.length / 2);
-  const recentAvg = gaps.slice(0, mid).reduce((a, b) => a + b, 0) / mid;
-  const olderAvg = gaps.slice(mid).reduce((a, b) => a + b, 0) / (gaps.length - mid);
-  if (olderAvg <= 0.5) return { score: 0, maxPts: MAX, label: 'Consistent timing' };
-  const accel = (recentAvg - olderAvg) / olderAvg;
-  if (accel >= 1.0)  return { score: MAX, maxPts: MAX, label: 'Session gaps doubled' };
-  if (accel >= 0.5)  return { score: Math.round(MAX * 0.7), maxPts: MAX, label: 'Gaps growing fast' };
-  if (accel >= 0.25) return { score: Math.round(MAX * 0.4), maxPts: MAX, label: 'Gaps widening' };
-  if (accel < -0.15) return { score: -2, maxPts: MAX, label: 'Gaps shrinking' };
-  return { score: 0, maxPts: MAX, label: 'Consistent spacing' };
-}
-
-function signalGoalProgress(hasPRs: boolean, hasBody: boolean, tenureMonths: number) {
-  const MAX = 7;
-  if (tenureMonths > 6) {
-    return (!hasPRs && !hasBody)
-      ? { score: 3, maxPts: MAX, label: 'No recent milestones' }
-      : { score: 0, maxPts: MAX, label: 'Hitting milestones' };
-  }
-  let score = 0;
-  const parts: string[] = [];
-  if (!hasPRs) { score += 3; parts.push('No recent PRs'); }
-  if (!hasBody) { score += 2; parts.push('No body tracking'); }
-  return { score: Math.min(MAX, score), maxPts: MAX, label: parts.length ? parts.join('; ') : 'On track' };
-}
-
-function signalEngagement(completed: number, abandoned: number, durLast: number, durPrior: number) {
-  const MAX = 5;
-  let score = 0;
-  const parts: string[] = [];
-  const total = completed + abandoned;
-  if (total >= 3) {
-    const rate = abandoned / total;
-    if (rate >= 0.4) { score += 3; parts.push(`${Math.round(rate * 100)}% abandoned`); }
-    else if (rate >= 0.2) { score += 1; parts.push('Some incomplete'); }
-  }
-  if (durPrior > 0 && durLast > 0) {
-    const change = (durLast - durPrior) / durPrior;
-    if (change <= -0.35) { score += 2; parts.push('Sessions much shorter'); }
-    else if (change <= -0.2) { score += 1; parts.push('Sessions slightly shorter'); }
-  }
-  return { score: Math.min(MAX, score), maxPts: MAX, label: parts.length ? parts.join('; ') : 'Good depth' };
-}
-
-// ── NEW SIGNAL: Anchor Day Adherence ──────────────────────────
-// Check if member misses their habitual workout day(s).
-// Compare workout_schedule preferred days to actual sessions in last 3 weeks.
-// Missing anchor day 3 consecutive weeks = max risk.
-function signalAnchorDay(
-  scheduledDays: number[],          // 0=Sun..6=Sat from workout_schedule
-  recentSessionDays: number[][],    // array of 3 arrays (one per week), each containing day_of_week values
-) {
-  const MAX = 8;
-  if (!scheduledDays.length) return { score: 0, maxPts: MAX, label: 'No schedule set' };
-
-  // For each scheduled day, check how many of the last 3 weeks it was missed
-  let totalMissedWeeks = 0;
-  let totalChecked = 0;
-  let consecutiveMissAll = true; // all anchor days missed all 3 weeks
-
-  for (const day of scheduledDays) {
-    let missedConsecutive = 0;
-    for (let w = 0; w < recentSessionDays.length; w++) {
-      if (!recentSessionDays[w].includes(day)) {
-        missedConsecutive++;
-        totalMissedWeeks++;
-      }
-    }
-    totalChecked += recentSessionDays.length;
-    if (missedConsecutive < 3) consecutiveMissAll = false;
-  }
-
-  if (totalChecked === 0) return { score: 0, maxPts: MAX, label: 'Insufficient data' };
-
-  const missRate = totalMissedWeeks / totalChecked;
-
-  if (consecutiveMissAll && scheduledDays.length >= 2)
-    return { score: MAX, maxPts: MAX, label: 'Missed ALL anchor days 3 weeks straight' };
-  if (missRate >= 0.8)
-    return { score: Math.round(MAX * 0.85), maxPts: MAX, label: 'Missed most anchor days recently' };
-  if (missRate >= 0.5)
-    return { score: Math.round(MAX * 0.5), maxPts: MAX, label: 'Missing anchor days frequently' };
-  if (missRate >= 0.3)
-    return { score: Math.round(MAX * 0.25), maxPts: MAX, label: 'Occasionally missing anchor days' };
-  return { score: 0, maxPts: MAX, label: 'Hitting anchor days' };
-}
-
-// ── NEW SIGNAL: App Engagement ────────────────────────────────
-// Notification open rate + days since last app-driven action.
-function signalAppEngagement(
-  notifTotal: number,
-  notifRead: number,
-  daysSinceLastAction: number,
-) {
-  const MAX = 5;
-  let score = 0;
-  const parts: string[] = [];
-
-  // Notification open rate (last 30 days)
-  if (notifTotal >= 5) {
-    const openRate = notifRead / notifTotal;
-    if (openRate < 0.1) { score += 3; parts.push(`${Math.round(openRate * 100)}% notif open rate`); }
-    else if (openRate < 0.2) { score += 2; parts.push('Low notification engagement'); }
-    else if (openRate < 0.35) { score += 1; parts.push('Below-avg notification engagement'); }
-  }
-
-  // Days since last app-driven action
-  if (daysSinceLastAction >= 14) { score += 2; parts.push(`${daysSinceLastAction}d since last action`); }
-  else if (daysSinceLastAction >= 7) { score += 1; parts.push('Quiet in app recently'); }
-
-  return { score: Math.min(MAX, score), maxPts: MAX, label: parts.length ? parts.join('; ') : 'Engaged with app' };
-}
-
-// ── NEW SIGNAL: Comms Responsiveness ──────────────────────────
-// After receiving a churn_followup / admin_message / win_back notification,
-// did the member have any activity within 7 days?
-function signalCommsResponsiveness(
-  outreachCount: number,         // total churn_followup/admin_message/win_back notifications received
-  respondedCount: number,        // how many had activity within 7 days after
-) {
-  const MAX = 4;
-  if (outreachCount === 0) return { score: 0, maxPts: MAX, label: 'No outreach sent' };
-
-  const responseRate = respondedCount / outreachCount;
-  const unresponsive = outreachCount - respondedCount;
-
-  if (unresponsive >= 3)
-    return { score: MAX, maxPts: MAX, label: `Ignored ${unresponsive} outreach attempts` };
-  if (unresponsive >= 2)
-    return { score: Math.round(MAX * 0.75), maxPts: MAX, label: 'No response to 2+ outreach' };
-  if (responseRate < 0.5)
-    return { score: Math.round(MAX * 0.5), maxPts: MAX, label: 'Low outreach response rate' };
-  return { score: 0, maxPts: MAX, label: 'Responsive to outreach' };
-}
-
-// ── NEW SIGNAL: Referral Activity ─────────────────────────────
-// Members who refer others are invested and less likely to churn.
-function signalReferralActivity(referralCount: number) {
-  const MAX = 3;
-  if (referralCount >= 2)  return { score: 0, maxPts: MAX, label: 'Active referrer' };
-  if (referralCount === 1) return { score: 0, maxPts: MAX, label: '1 referral — engaged' };
-  return { score: MAX, maxPts: MAX, label: 'No referrals' };
-}
-
-// ── NEW SIGNAL: Workout Type Shift ────────────────────────────
-// Detect if exercise variety is declining. Compare distinct muscle groups
-// in last 30 days vs previous 30 days. Significant narrowing = disengagement.
-function signalWorkoutTypeShift(
-  muscleGroupsLast30: number,
-  muscleGroupsPrev30: number,
-) {
-  const MAX = 3;
-  if (muscleGroupsPrev30 <= 1) return { score: 0, maxPts: MAX, label: 'Not enough history' };
-
-  const drop = (muscleGroupsPrev30 - muscleGroupsLast30) / muscleGroupsPrev30;
-
-  if (muscleGroupsLast30 === 0)
-    return { score: MAX, maxPts: MAX, label: 'No exercises logged recently' };
-  if (drop >= 0.5)
-    return { score: MAX, maxPts: MAX, label: `Training variety dropped ${Math.round(drop * 100)}%` };
-  if (drop >= 0.3)
-    return { score: Math.round(MAX * 0.6), maxPts: MAX, label: 'Narrowing exercise variety' };
-  if (drop < -0.2)
-    return { score: -1, maxPts: MAX, label: 'Expanding variety' };
-  return { score: 0, maxPts: MAX, label: 'Stable variety' };
-}
+// ── Model parameters (mirror riskScoring.js) ──
+const ONBOARDING_DAYS = 75;
+const GRACE_DAYS = 14;
+const GRACE_MIN_EVENTS = 4;
+const DORMANT_DAYS = 30;
+const CHURNED_DAYS = 60;
+const GATE_THRESHOLD = 18;
+const MEDIUM_CAP = 54;
+const ACTIVATION_DEADLINE_DAYS = 21;   // enrolled ≥ this (since created_at) with ZERO footprint → failed activation
 
 const DEFAULT_WEIGHTS: Record<string, number> = {
-  visit_frequency: 1.0, attendance_trend: 1.0, tenure_risk: 1.0,
-  social_engagement: 1.0, session_gaps: 1.0, goal_progress: 1.0, engagement_depth: 1.0,
-  anchor_day: 1.0, app_engagement: 1.0, comms_responsiveness: 1.0,
-  referral_activity: 1.0, workout_type_shift: 1.0,
+  recency: 1.0, frequency: 1.0, trend: 1.0, streak: 1.0,
+  habit_formation: 1.0, activation: 1.0,
+  app_decline: 1.0, challenge_decline: 1.0, logging_decline: 1.0,
+  rewards_decline: 1.0, social_decline: 1.0, goals_decline: 1.0,
 };
 
-function computeScore(
-  signals: Record<string, { score: number; maxPts: number; label: string }>,
-  weights: Record<string, number> = DEFAULT_WEIGHTS,
-) {
-  let weightedSum = 0;
-  let weightedMax = 0;
-  for (const [key, sig] of Object.entries(signals)) {
-    const m = weights[key] ?? 1.0;
-    weightedSum += sig.score * m;
-    weightedMax += sig.maxPts * m;
+type Sig = { score: number; maxPts: number; label: string; dir?: string };
+
+// ── Layer A ──
+function sigRecency(d: number | null, MAX = 25, tau = 18): Sig {
+  if (d == null) return { score: MAX, maxPts: MAX, label: 'No recent activity' };
+  const dd = Math.max(0, d);
+  return { score: round1(MAX * (1 - Math.exp(-dd / tau))), maxPts: MAX, label: dd < 4 ? 'Active recently' : `${Math.round(dd)} days since last visit` };
+}
+function sigFrequency(avgWeekly: number, goal: number, cohortPct: number | null, MAX = 18): Sig {
+  const anchor = Math.max(goal || 3, 3);
+  const r = anchor > 0 ? avgWeekly / anchor : 0;
+  let base: number;
+  if (r >= 1.0) base = 0;
+  else if (r >= 0.66) base = Math.round(MAX * 0.22);
+  else if (r >= 0.5) base = Math.round(MAX * 0.39);
+  else if (r >= 0.33) base = Math.round(MAX * 0.61);
+  else if (r >= 0.16) base = Math.round(MAX * 0.78);
+  else base = MAX;
+  if (cohortPct != null) {
+    if (cohortPct <= 0.25) base = Math.min(MAX, base + 2);
+    else if (cohortPct >= 0.75) base = Math.max(0, base - 2);
   }
-  const pct = weightedMax > 0 ? (Math.max(0, weightedSum) / weightedMax) * 100 : 0;
-  return Math.min(100, Math.round(pct * 10) / 10);
+  return { score: base, maxPts: MAX, label: base === 0 ? 'Meeting visit goal' : `Visiting ${avgWeekly.toFixed(1)}×/week` };
+}
+function sigTrend(recentRate: number, baselineRate: number | null, MAX = 17): Sig {
+  if (baselineRate == null || baselineRate < 0.25) return { score: 0, maxPts: MAX, label: 'Not enough history', dir: 'stable' };
+  const v = baselineRate > 0 ? recentRate / baselineRate : 1;
+  let score: number, dir: string;
+  if (v >= 1.0) { score = 0; dir = recentRate > baselineRate * 1.1 ? 'up' : 'stable'; }
+  else if (v >= 0.75) { score = Math.round(MAX * 0.24); dir = 'down'; }
+  else if (v >= 0.5) { score = Math.round(MAX * 0.53); dir = 'down'; }
+  else if (v >= 0.25) { score = Math.round(MAX * 0.76); dir = 'down'; }
+  else { score = MAX; dir = 'down'; }
+  const pct = Math.round((1 - v) * 100);
+  return { score, maxPts: MAX, label: score === 0 ? (dir === 'up' ? 'Attendance trending up' : 'Attendance stable') : `Visits down ${pct}% vs usual`, dir };
+}
+function sigStreak(active: boolean, brokenLen: number, MAX = 10): Sig {
+  if (active) return { score: 0, maxPts: MAX, label: 'Streak active' };
+  if (!brokenLen || brokenLen < 7) return { score: 0, maxPts: MAX, label: 'No active streak' };
+  return { score: round1(MAX * Math.min(brokenLen / 30, 1)), maxPts: MAX, label: `Broke a ${Math.round(brokenLen)}-day streak` };
+}
+function sigHabitFormation(visits: number, tenureDays: number, MAX = 30): Sig {
+  const weeks = Math.max(tenureDays / 7, 0.5);
+  const expected = Math.min(weeks * 3, 18);
+  if (expected <= 0) return { score: 0, maxPts: MAX, label: 'Too early to tell' };
+  const gap = Math.max(0, Math.min((expected - (visits || 0)) / expected, 1));
+  return { score: round1(MAX * gap), maxPts: MAX, label: gap <= 0.15 ? 'Building a routine' : `Not building a routine (${visits || 0} visits in ${Math.round(weeks)}w)` };
+}
+function sigActivation(firstLogged: boolean, tenureDays: number, MAX = 12): Sig {
+  if (firstLogged) return { score: 0, maxPts: MAX, label: 'Completed first workout' };
+  if (tenureDays < 7) return { score: Math.round(MAX * 0.4), maxPts: MAX, label: 'No first workout yet' };
+  return { score: MAX, maxPts: MAX, label: 'No workout in first week' };
+}
+// ── Layer B (signed decline) ──
+function declineScore(baseline: number | null, recent: number, MAX: number, minBaseline: number): number {
+  if (baseline == null || baseline < minBaseline) return 0;
+  if ((recent || 0) >= baseline) return 0;
+  return round1(MAX * Math.min((baseline - (recent || 0)) / baseline, 1));
+}
+const sigAppDecline = (b: number | null, r: number, MAX = 8): Sig => ({ score: declineScore(b, r, MAX, 4), maxPts: MAX, label: declineScore(b, r, MAX, 4) > 0 ? 'App activity dropped off' : 'Active in app' });
+const sigChallengeDecline = (b: number | null, r: number, MAX = 6): Sig => ({ score: declineScore(b, r, MAX, 1), maxPts: MAX, label: declineScore(b, r, MAX, 1) > 0 ? 'Stopped joining challenges' : 'Challenge engagement ok' });
+const sigLoggingDecline = (b: number | null, r: number, MAX = 6): Sig => ({ score: declineScore(b, r, MAX, 3), maxPts: MAX, label: declineScore(b, r, MAX, 3) > 0 ? 'Stopped logging workouts' : 'Logging workouts' });
+const sigRewardsDecline = (b: number | null, r: number, MAX = 4): Sig => ({ score: declineScore(b, r, MAX, 2), maxPts: MAX, label: declineScore(b, r, MAX, 2) > 0 ? 'Stopped using rewards' : 'Rewards engaged' });
+const sigSocialDecline = (b: number | null, r: number, MAX = 3): Sig => ({ score: declineScore(b, r, MAX, 2), maxPts: MAX, label: declineScore(b, r, MAX, 2) > 0 ? 'Pulled back socially' : 'Socially engaged' });
+const sigGoalsDecline = (b: number | null, r: number, MAX = 3): Sig => ({ score: declineScore(b, r, MAX, 1), maxPts: MAX, label: declineScore(b, r, MAX, 1) > 0 ? 'Goal/PR activity stalled' : 'Hitting milestones' });
+
+function bonusProtective(f: { activeReferrer: boolean; activeChallenge: boolean; recentPRs: boolean; strongAppCard: boolean; activeSocial: boolean }): number {
+  let bonus = 0;
+  if (f.activeReferrer) bonus -= 5;
+  if (f.activeChallenge) bonus -= 5;
+  if (f.recentPRs) bonus -= 4;
+  if (f.strongAppCard) bonus -= 4;
+  if (f.activeSocial) bonus -= 2;
+  return Math.max(-20, bonus);
 }
 
+function tenureMultiplier(m: number): number {
+  if (m < 2.5) return 1.0;
+  if (m <= 3) return 1.15;
+  if (m <= 6) return 1.05;
+  if (m <= 12) return 0.95;
+  return 0.85;
+}
 function getRiskTier(score: number): string {
   if (score >= 80) return 'critical';
   if (score >= 55) return 'high';
   if (score >= 30) return 'medium';
   return 'low';
 }
+function classifyDriver(attRisk: number, engRisk: number, score: number, isOnboarding: boolean): string {
+  if (score < 30) return 'healthy';
+  if (isOnboarding) return 'onboarding';
+  if (attRisk >= 30 && engRisk >= 12) return 'both';
+  if (attRisk >= 25) return 'attendance';
+  if (engRisk >= 12) return 'engagement';
+  return 'attendance';
+}
+function explainEN(driver: string, days: number | null, freq: number, accountAge: number | null = null): string {
+  switch (driver) {
+    case 'healthy': return 'Showing up consistently — looks healthy.';
+    case 'engagement': return 'Attendance is stable, but engagement dropped sharply from previous behavior.';
+    case 'both': return 'Attendance is falling and app engagement has dropped.';
+    case 'onboarding': return 'New member — not yet building a routine.';
+    case 'dormant': return days != null ? `No activity for ${days}+ days.` : 'No workouts or check-ins on record.';
+    case 'new': return 'New member — not enough data yet to score.';
+    case 'never_activated': return accountAge != null
+      ? `Enrolled ${Math.round(accountAge)} days ago but never checked in or logged a workout.`
+      : 'Never checked in or logged a workout.';
+    case 'paused': return 'On a membership hold — churn alerts paused.';
+    case 'churned': return days != null ? `Likely lost — no activity for ${days}+ days.` : 'Likely lost — no activity on record.';
+    case 'attendance':
+    default:
+      if (days != null && freq > 0) return `Hasn't checked in for ${days} days (was ${freq.toFixed(1)}×/week).`;
+      if (days != null) return `Hasn't checked in for ${days} days.`;
+      return 'Attendance has dropped off.';
+  }
+}
 
-// ── Helper: get day_of_week (0=Sun..6=Sat) for a date string ──
-function getDayOfWeek(dateStr: string): number {
-  return new Date(dateStr).getUTCDay();
+type V3Input = {
+  tenureMonths: number; accountAgeDays: number | null; totalSessions: number; observedCheckIns: number;
+  daysSinceLastActivity: number | null; daysSinceLastCheckIn: number | null;
+  avgWeeklyVisits: number; trainingFrequency: number; cohortPercentile: number | null;
+  recentWeeklyRate: number; baselineWeeklyRate: number | null;
+  streakActive: boolean; brokenStreakLen: number;
+  visitsSoFar: number; firstWorkoutLogged: boolean;
+  logging: { baseline: number | null; recent: number };
+  app: { baseline: number | null; recent: number };
+  social: { baseline: number | null; recent: number };
+  goalsPRs: { baseline: number | null; recent: number };
+  challenge: { baseline: number | null; recent: number };
+  rewards: { baseline: number | null; recent: number };
+  activeReferrer: boolean; activeChallenge: boolean; recentPRs: boolean; strongAppCard: boolean; activeSocial: boolean;
+  isPaused: boolean;
+};
+
+function computeV3(m: V3Input, weights: Record<string, number>) {
+  const w = { ...DEFAULT_WEIGHTS, ...weights };
+  const tenureDays = (m.tenureMonths || 0) * 30.44;
+  const isOnboarding = tenureDays < ONBOARDING_DAYS;
+  const dsa = m.daysSinceLastActivity;
+  const hasFootprint = m.totalSessions > 0 || m.observedCheckIns > 0; // real attendance, NOT last_active_at
+  const accountAgeDays = m.accountAgeDays ?? tenureDays; // observation window (created_at), import-safe
+  const freq = m.avgWeeklyVisits || 0;
+  const days = m.daysSinceLastCheckIn != null ? Math.round(m.daysSinceLastCheckIn) : (dsa != null ? Math.round(dsa) : null);
+
+  // State 0: paused (vacation / membership hold)
+  if (m.isPaused) {
+    return { score: 0, risk_tier: 'low', state: 'paused', primary_driver: 'paused', explanation: explainEN('paused', days, freq), trend: 'stable', key_signals: ['On hold'], signals: {} };
+  }
+  // State 1: insufficient data — gate on real attendance footprint, not dsa
+  // (last_active_at is set at signup/import so never-attended accounts still have
+  // a non-null dsa; they must NOT fall through to the dormant 95 override).
+  // State 1a: failed activation — zero check-ins AND zero workouts EVER, past the
+  // activation window (gated on accountAgeDays so freshly-imported rosters aren't
+  // flagged on day one). A real churn risk, not "insufficient data". Flagged High,
+  // scaling with how long they've been a no-show, kept below the dormant band.
+  if (!hasFootprint && tenureDays >= GRACE_DAYS && accountAgeDays >= ACTIVATION_DEADLINE_DAYS) {
+    const weeksOverdue = Math.max(0, Math.floor((accountAgeDays - ACTIVATION_DEADLINE_DAYS) / 7));
+    const score = Math.min(78, 60 + weeksOverdue * 4);
+    const sig = 'Never activated';
+    return { score, risk_tier: getRiskTier(score), state: 'scored', primary_driver: 'never_activated', explanation: explainEN('never_activated', days, freq, accountAgeDays), trend: 'declining', key_signals: [sig], signals: {} };
+  }
+  if (tenureDays < GRACE_DAYS || !hasFootprint) {
+    return { score: 0, risk_tier: 'low', state: 'insufficient_data', primary_driver: 'new', explanation: explainEN('new', days, freq), trend: 'stable', key_signals: ['New member — not enough data yet'], signals: {} };
+  }
+  // State 2: churned (mathematically gone — out of the primary action queue)
+  if (dsa != null && dsa >= CHURNED_DAYS) {
+    const sig = `No activity in ${Math.round(dsa)}+ days`;
+    return { score: 100, risk_tier: 'critical', state: 'churned', primary_driver: 'churned', explanation: explainEN('churned', days, freq), trend: 'declining', key_signals: [sig], signals: {} };
+  }
+  // State 3: dormant (gone dark, still winnable)
+  if (dsa == null || dsa >= DORMANT_DAYS) {
+    const sig = dsa == null ? 'No recent activity' : `No activity in ${Math.round(dsa)}+ days`;
+    return { score: 95, risk_tier: 'critical', state: 'dormant', primary_driver: 'dormant', explanation: explainEN('dormant', days, freq), trend: 'declining', key_signals: [sig], signals: {} };
+  }
+
+  const layerA: Record<string, Sig> = isOnboarding
+    ? {
+        habit_formation: sigHabitFormation(m.visitsSoFar, tenureDays),
+        recency: sigRecency(dsa, 28, 10),
+        activation: sigActivation(m.firstWorkoutLogged, tenureDays),
+      }
+    : {
+        recency: sigRecency(dsa, 25, 18),
+        frequency: sigFrequency(m.avgWeeklyVisits, m.trainingFrequency, m.cohortPercentile),
+        trend: sigTrend(m.recentWeeklyRate, m.baselineWeeklyRate),
+        streak: sigStreak(m.streakActive, m.brokenStreakLen),
+      };
+  // Low-frequency baseline guard (mirror riskScoring.js): dampen the absolute
+  // frequency penalty for members stable at their own cadence.
+  if (!isOnboarding && layerA.frequency && layerA.trend && layerA.trend.score === 0
+      && layerA.trend.dir !== 'down' && (m.baselineWeeklyRate ?? 0) >= 0.25) {
+    layerA.frequency = { ...layerA.frequency, score: round1(layerA.frequency.score * 0.55) };
+  }
+  const layerB: Record<string, Sig> = isOnboarding ? {} : {
+    app_decline: sigAppDecline(m.app.baseline, m.app.recent),
+    challenge_decline: sigChallengeDecline(m.challenge.baseline, m.challenge.recent),
+    logging_decline: sigLoggingDecline(m.logging.baseline, m.logging.recent),
+    rewards_decline: sigRewardsDecline(m.rewards.baseline, m.rewards.recent),
+    social_decline: sigSocialDecline(m.social.baseline, m.social.recent),
+    goals_decline: sigGoalsDecline(m.goalsPRs.baseline, m.goalsPRs.recent),
+  };
+
+  const sumLayer = (layer: Record<string, Sig>) =>
+    Object.entries(layer).reduce((acc, [k, s]) => acc + s.score * (w[k] ?? 1), 0);
+  const attRisk = Math.max(0, sumLayer(layerA));
+  const engRisk = Math.max(0, sumLayer(layerB));
+  const bonus = bonusProtective(m);
+
+  let risk = (attRisk + engRisk) * tenureMultiplier(m.tenureMonths);
+  if (attRisk <= GATE_THRESHOLD) risk = Math.min(risk, MEDIUM_CAP);
+  risk = Math.max(0, Math.min(100, risk + bonus));
+  const score = round1(risk);
+
+  const signals = { ...layerA, ...layerB };
+  const driver = classifyDriver(attRisk, engRisk, score, isOnboarding);
+  const keySignals = Object.values(signals).filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, 3).map((s) => s.label);
+  if (keySignals.length === 0) keySignals.push('Engagement looks healthy');
+  const trend = layerA.trend?.dir === 'down' ? 'declining' : layerA.trend?.dir === 'up' ? 'improving' : 'stable';
+
+  return { score, risk_tier: getRiskTier(score), state: 'scored', primary_driver: driver, explanation: explainEN(driver, days, freq), trend, key_signals: keySignals, signals };
 }
 
 // ── Main handler ─────────────────────────────────────────────
-
 serve(async (req) => {
   if (!corsHeaders) return new Response('Server misconfiguration: ALLOWED_ORIGIN not set', { status: 500 });
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
 
   try {
-    // ── Auth: only allow calls with a valid cron secret or service-role token ──
-    // Timing-safe comparison to prevent timing-based secret extraction
     function timingSafeEqual(a: string, b: string): boolean {
       if (a.length !== b.length) return false;
-      const encoder = new TextEncoder();
-      const bufA = encoder.encode(a);
-      const bufB = encoder.encode(b);
+      const enc = new TextEncoder();
+      const bufA = enc.encode(a), bufB = enc.encode(b);
       let result = 0;
-      for (let i = 0; i < bufA.length; i++) {
-        result |= bufA[i] ^ bufB[i];
-      }
+      for (let i = 0; i < bufA.length; i++) result |= bufA[i] ^ bufB[i];
       return result === 0;
     }
 
     const cronSecret = Deno.env.get('CRON_SECRET');
     const authHeader = req.headers.get('Authorization') ?? '';
     const incomingSecret = req.headers.get('X-Cron-Secret') ?? '';
-
     const isCronAuth = cronSecret && incomingSecret && timingSafeEqual(cronSecret, incomingSecret);
-
     if (!isCronAuth) {
-      // Fallback: check if caller is using the actual service_role key
       const token = authHeader.replace('Bearer ', '');
       const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
       if (!token || !serviceKey || !timingSafeEqual(token, serviceKey)) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const now = new Date();
-    const ninetyDaysAgo = new Date(now.getTime() - 90 * MS_PER_DAY).toISOString();
-    const sixtyDaysAgo = new Date(now.getTime() - 60 * MS_PER_DAY).toISOString();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * MS_PER_DAY).toISOString();
-    const twentyOneDaysAgo = new Date(now.getTime() - 21 * MS_PER_DAY).toISOString();
+    const nowMs = now.getTime();
+    const ninetyDaysAgo = new Date(nowMs - 90 * MS_PER_DAY).toISOString();
+    const sixtyDaysAgo = new Date(nowMs - 60 * MS_PER_DAY).toISOString();
+    const thirtyDaysAgo = new Date(nowMs - 30 * MS_PER_DAY).toISOString();
+    const fourteenDaysAgo = new Date(nowMs - 14 * MS_PER_DAY).toISOString();
 
-    // Get all gyms
     const { data: gyms } = await supabase.from('gyms').select('id');
-    if (!gyms?.length) {
-      return new Response(JSON.stringify({ message: 'No gyms found' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    if (!gyms?.length) return new Response(JSON.stringify({ message: 'No gyms found' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    let totalScored = 0;
-    let totalFollowups = 0;
-    let highRiskCount = 0;
+    let totalScored = 0, totalFollowups = 0, highRiskCount = 0;
 
     for (const gym of gyms) {
       const gymId = gym.id;
 
-      // Load per-gym adaptive weights (blended with defaults via confidence)
+      // Per-gym adaptive weights (blended with defaults via confidence)
       let gymWeights = { ...DEFAULT_WEIGHTS };
       try {
-        const { data: wRow } = await supabase
-          .from('gym_churn_weights')
-          .select('*')
-          .eq('gym_id', gymId)
-          .single();
-
+        const { data: wRow } = await supabase.from('gym_churn_weights').select('*').eq('gym_id', gymId).single();
         if (wRow && wRow.confidence > 0) {
           const c = wRow.confidence;
           for (const key of Object.keys(DEFAULT_WEIGHTS)) {
             const col = `w_${key}`;
-            if (wRow[col] != null) {
-              gymWeights[key] = wRow[col] * c + DEFAULT_WEIGHTS[key] * (1 - c);
-            }
+            if (wRow[col] != null) gymWeights[key] = wRow[col] * c + DEFAULT_WEIGHTS[key] * (1 - c);
           }
         }
-      } catch (_) {
-        // Table may not exist yet — use defaults
-      }
+      } catch (_) { /* defaults */ }
 
-      // Fetch all active members
       const { data: members } = await supabase
         .from('profiles')
-        .select('id, created_at, training_frequency, membership_status, assigned_program_id, phone_number')
+        .select('id, created_at, membership_started_at, last_active_at, preferred_training_days, training_frequency, membership_status, phone_number, churn_pause_until')
         .eq('gym_id', gymId)
         .eq('role', 'member')
+        .eq('imported_archived', false)
         .in('membership_status', ['active', 'frozen']);
-
       if (!members?.length) continue;
 
       const memberIds = members.map((m: any) => m.id);
 
-      // Parallel data fetches (original + new signal queries)
-      const [
-        checkInsRes, sessionsRes, allSessionsRes, friendsRes,
-        challengesRes, bodyRes, trainerRes, prsRes,
-        // New signal data fetches
-        scheduleRes, recentSessionDaysRes, notificationsRes,
-        outreachNotifsRes, referralsRes,
-        sessionIdsLast30Res, sessionIdsPrev30Res,
-        socialActionsRes,
-      ] = await Promise.all([
-        // ── Original queries ──
-        supabase.from('check_ins').select('profile_id, checked_in_at')
-          .eq('gym_id', gymId).gte('checked_in_at', sixtyDaysAgo).in('profile_id', memberIds)
-          .limit(5000),
-        supabase.from('workout_sessions').select('profile_id, status, started_at, duration_seconds')
-          .eq('gym_id', gymId).gte('started_at', ninetyDaysAgo).in('profile_id', memberIds)
-          .order('started_at', { ascending: false })
-          .limit(5000),
-        supabase.from('workout_sessions').select('profile_id, started_at')
-          .eq('gym_id', gymId).eq('status', 'completed').in('profile_id', memberIds)
-          .limit(10000),
-        supabase.from('friendships').select('requester_id, addressee_id')
-          .eq('status', 'accepted').or(
-            memberIds.map((id: string) => `requester_id.eq.${id}`).join(',') + ',' +
-            memberIds.map((id: string) => `addressee_id.eq.${id}`).join(',')
-          )
-          .limit(5000),
-        supabase.from('challenge_participants').select('profile_id').in('profile_id', memberIds)
-          .limit(2000),
-        supabase.from('body_weight_logs').select('profile_id')
-          .eq('gym_id', gymId).gte('logged_at', sixtyDaysAgo).in('profile_id', memberIds)
-          .limit(5000),
-        supabase.from('trainer_clients').select('client_id')
-          .eq('gym_id', gymId).in('client_id', memberIds)
-          .limit(1000),
-        supabase.from('activity_feed_items').select('actor_id')
-          .eq('gym_id', gymId).eq('type', 'pr_hit').gte('created_at', thirtyDaysAgo)
-          .in('actor_id', memberIds)
-          .limit(2000),
-
-        // ── New signal queries ──
-
-        // Anchor Day: member workout schedules
-        supabase.from('workout_schedule').select('profile_id, day_of_week')
-          .in('profile_id', memberIds)
-          .limit(5000),
-
-        // Anchor Day: actual sessions in last 3 weeks (for day_of_week comparison)
-        supabase.from('workout_sessions').select('profile_id, started_at')
-          .eq('gym_id', gymId).eq('status', 'completed')
-          .gte('started_at', twentyOneDaysAgo).in('profile_id', memberIds)
-          .limit(5000),
-
-        // App Engagement: notifications (total + read) in last 30 days
-        supabase.from('notifications').select('profile_id, read_at, created_at')
-          .gte('created_at', thirtyDaysAgo).in('profile_id', memberIds)
-          .limit(10000),
-
-        // Comms Responsiveness: outreach notifications (all time, recent ones)
-        supabase.from('notifications').select('profile_id, created_at, type')
-          .in('type', ['churn_followup', 'admin_message', 'win_back'])
-          .in('profile_id', memberIds)
-          .limit(5000),
-
-        // Referral Activity: referrals per member
-        supabase.from('referrals').select('referrer_id')
-          .in('referrer_id', memberIds)
-          .limit(5000),
-
-        // Workout Type Shift: session IDs for last 30 days (needed for muscle group fetch)
-        supabase.from('workout_sessions').select('id, profile_id')
-          .eq('gym_id', gymId).eq('status', 'completed')
-          .gte('started_at', thirtyDaysAgo)
-          .in('profile_id', memberIds)
-          .limit(5000),
-
-        // Workout Type Shift: session IDs for previous 30 days
-        supabase.from('workout_sessions').select('id, profile_id')
-          .eq('gym_id', gymId).eq('status', 'completed')
-          .gte('started_at', sixtyDaysAgo).lt('started_at', thirtyDaysAgo)
-          .in('profile_id', memberIds)
-          .limit(5000),
-
-        // App Engagement: social actions (likes, comments) — days since last action
-        supabase.from('activity_feed_items').select('actor_id, created_at')
-          .eq('gym_id', gymId).gte('created_at', thirtyDaysAgo)
-          .in('actor_id', memberIds)
-          .order('created_at', { ascending: false })
-          .limit(5000),
+      const [checkInsRes, sessions90Res, allSessionsRes, feedRes, notifRes, challengeRes, referralsRes, bodyRes] = await Promise.all([
+        supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', sixtyDaysAgo).in('profile_id', memberIds).limit(20000),
+        supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', ninetyDaysAgo).in('profile_id', memberIds).limit(20000),
+        supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').in('profile_id', memberIds).limit(50000),
+        supabase.from('activity_feed_items').select('actor_id, created_at, type').eq('gym_id', gymId).gte('created_at', ninetyDaysAgo).in('actor_id', memberIds).limit(20000),
+        supabase.from('notifications').select('profile_id, read_at, created_at').gte('created_at', ninetyDaysAgo).in('profile_id', memberIds).limit(30000),
+        supabase.from('challenge_participants').select('profile_id, created_at').in('profile_id', memberIds).limit(20000),
+        supabase.from('referrals').select('referrer_id').in('referrer_id', memberIds).limit(10000),
+        supabase.from('body_weight_logs').select('profile_id, logged_at').eq('gym_id', gymId).gte('logged_at', ninetyDaysAgo).in('profile_id', memberIds).limit(20000),
       ]);
 
-      // ── Workout Type Shift: fetch session_exercises via session IDs ──
-      // Session IDs already fetched in the parallel batch above
-      const sessionIdsLast30 = sessionIdsLast30Res.data || [];
-      const sessionIdsPrev30 = sessionIdsPrev30Res.data || [];
-
-      // Map session IDs to profiles
-      const allSessionIdsLast30 = sessionIdsLast30.map((s: any) => s.id);
-      const allSessionIdsPrev30 = sessionIdsPrev30.map((s: any) => s.id);
-      const sessionToProfile: Record<string, string> = {};
-      sessionIdsLast30.forEach((s: any) => { sessionToProfile[s.id] = s.profile_id; });
-      sessionIdsPrev30.forEach((s: any) => { sessionToProfile[s.id] = s.profile_id; });
-
-      // Fetch session_exercises for muscle groups in parallel (batch in chunks if needed)
-      const [muscleGroupLast30Res, muscleGroupPrev30Res] = await Promise.all([
-        allSessionIdsLast30.length > 0
-          ? supabase.from('session_exercises')
-              .select('session_id, muscle_group')
-              .in('session_id', allSessionIdsLast30.slice(0, 2000))
-              .limit(10000)
-          : Promise.resolve({ data: [] }),
-        allSessionIdsPrev30.length > 0
-          ? supabase.from('session_exercises')
-              .select('session_id, muscle_group')
-              .in('session_id', allSessionIdsPrev30.slice(0, 2000))
-              .limit(10000)
-          : Promise.resolve({ data: [] }),
-      ]);
-      const muscleGroupDataLast30 = muscleGroupLast30Res.data || [];
-      const muscleGroupDataPrev30 = muscleGroupPrev30Res.data || [];
-
-      // Build muscle group counts per member
-      const muscleGroupsL30: Record<string, Set<string>> = {};
-      const muscleGroupsP30: Record<string, Set<string>> = {};
-
-      muscleGroupDataLast30.forEach((r: any) => {
-        const pid = sessionToProfile[r.session_id];
-        if (!pid || !r.muscle_group) return;
-        if (!muscleGroupsL30[pid]) muscleGroupsL30[pid] = new Set();
-        muscleGroupsL30[pid].add(r.muscle_group);
-      });
-
-      muscleGroupDataPrev30.forEach((r: any) => {
-        const pid = sessionToProfile[r.session_id];
-        if (!pid || !r.muscle_group) return;
-        if (!muscleGroupsP30[pid]) muscleGroupsP30[pid] = new Set();
-        muscleGroupsP30[pid].add(r.muscle_group);
-      });
-
-      // Build lookup maps (original)
       const checkIns = checkInsRes.data || [];
-      const sessions = sessionsRes.data || [];
+      const sessions90 = sessions90Res.data || [];
       const allSessions = allSessionsRes.data || [];
+      const feed = feedRes.data || [];
+      const notifs = notifRes.data || [];
+      const challenges = challengeRes.data || [];
+      const referrals = referralsRes.data || [];
+      const bodyLogs = bodyRes.data || [];
 
-      const checkInsLast30: Record<string, number> = {};
-      const checkInsPrior30: Record<string, number> = {};
+      const blank = () => ({ recent: 0, base: 0 });
+      const ensure = (map: Record<string, any>, id: string) => (map[id] || (map[id] = blank()));
+
+      const lastCheckIn: Record<string, string> = {};
+      const ci30: Record<string, number> = {}, ci14: Record<string, number> = {}, ci14to60: Record<string, number> = {}, ciTotal: Record<string, number> = {};
       checkIns.forEach((r: any) => {
-        if (r.checked_in_at >= thirtyDaysAgo) checkInsLast30[r.profile_id] = (checkInsLast30[r.profile_id] || 0) + 1;
-        else checkInsPrior30[r.profile_id] = (checkInsPrior30[r.profile_id] || 0) + 1;
+        const id = r.profile_id, t = r.checked_in_at;
+        if (!lastCheckIn[id]) lastCheckIn[id] = t;
+        ciTotal[id] = (ciTotal[id] || 0) + 1;
+        if (t >= thirtyDaysAgo) ci30[id] = (ci30[id] || 0) + 1;
+        if (t >= fourteenDaysAgo) ci14[id] = (ci14[id] || 0) + 1;
+        if (t >= sixtyDaysAgo && t < fourteenDaysAgo) ci14to60[id] = (ci14to60[id] || 0) + 1;
       });
 
-      const sessionData: Record<string, any> = {};
-      sessions.forEach((r: any) => {
-        if (!sessionData[r.profile_id]) sessionData[r.profile_id] = {
-          compL30: 0, abL30: 0, compP: 0, abP: 0, durL30: [] as number[], durP30: [] as number[], dates: [] as Date[],
-        };
-        const sd = sessionData[r.profile_id];
-        const recent = r.started_at >= thirtyDaysAgo;
-        if (r.status === 'completed') {
-          if (recent) { sd.compL30++; if (r.duration_seconds) sd.durL30.push(r.duration_seconds); }
-          else { sd.compP++; if (r.duration_seconds) sd.durP30.push(r.duration_seconds); }
-        } else if (r.status === 'abandoned') {
-          if (recent) sd.abL30++; else sd.abP++;
-        }
-        if (r.started_at) sd.dates.push(new Date(r.started_at));
+      const lastSession: Record<string, string> = {};
+      const logging: Record<string, any> = {};
+      sessions90.forEach((r: any) => {
+        const id = r.profile_id, t = r.started_at;
+        if (!lastSession[id]) lastSession[id] = t;
+        const b = ensure(logging, id);
+        if (t >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
       });
 
-      // Compute gaps
-      Object.values(sessionData).forEach((sd: any) => {
-        sd.dates.sort((a: Date, b: Date) => b.getTime() - a.getTime());
-        sd.gaps = [];
-        for (let i = 0; i < sd.dates.length - 1; i++) {
-          sd.gaps.push((sd.dates[i].getTime() - sd.dates[i + 1].getTime()) / MS_PER_DAY);
-        }
+      const totalSessionsMap: Record<string, number> = {};
+      allSessions.forEach((r: any) => { totalSessionsMap[r.profile_id] = (totalSessionsMap[r.profile_id] || 0) + 1; });
+
+      const social: Record<string, any> = {}, prs: Record<string, any> = {}, lastSocialAt: Record<string, string> = {};
+      feed.forEach((r: any) => {
+        const id = r.actor_id, t = r.created_at, isPR = r.type === 'pr_hit';
+        if (!isPR && !lastSocialAt[id]) lastSocialAt[id] = t;
+        const b = isPR ? ensure(prs, id) : ensure(social, id);
+        if (t >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
       });
 
-      const friendCount: Record<string, number> = {};
-      (friendsRes.data || []).forEach((r: any) => {
-        friendCount[r.requester_id] = (friendCount[r.requester_id] || 0) + 1;
-        friendCount[r.addressee_id] = (friendCount[r.addressee_id] || 0) + 1;
+      const appReads: Record<string, any> = {};
+      notifs.forEach((r: any) => {
+        if (!r.read_at) return;
+        const b = ensure(appReads, r.profile_id);
+        if (r.created_at >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
       });
 
-      const challengeSet = new Set((challengesRes.data || []).map((r: any) => r.profile_id));
-      const trainerSet = new Set((trainerRes.data || []).map((r: any) => r.client_id));
-      const bodySet = new Set((bodyRes.data || []).map((r: any) => r.profile_id));
-      const prSet = new Set((prsRes.data || []).map((r: any) => r.actor_id));
-
-      // First-90-day sessions
-      const first90: Record<string, number> = {};
-      members.forEach((m: any) => {
-        const cutoff = new Date(new Date(m.created_at).getTime() + 90 * MS_PER_DAY);
-        first90[m.id] = allSessions.filter(
-          (s: any) => s.profile_id === m.id && new Date(s.started_at) <= cutoff
-        ).length;
+      const body: Record<string, any> = {};
+      bodyLogs.forEach((r: any) => {
+        const b = ensure(body, r.profile_id);
+        if (r.logged_at >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
       });
 
-      // ── Build new signal lookup maps ──
-
-      // Anchor Day: scheduled days per member
-      const scheduledDays: Record<string, number[]> = {};
-      (scheduleRes.data || []).forEach((r: any) => {
-        if (!scheduledDays[r.profile_id]) scheduledDays[r.profile_id] = [];
-        if (!scheduledDays[r.profile_id].includes(r.day_of_week)) {
-          scheduledDays[r.profile_id].push(r.day_of_week);
-        }
+      const challenge: Record<string, any> = {};
+      challenges.forEach((r: any) => {
+        const b = ensure(challenge, r.profile_id);
+        if (r.created_at && r.created_at >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
       });
 
-      // Anchor Day: actual session days per week for last 3 weeks
-      const recentSessionWeeks: Record<string, number[][]> = {};
-      const nowTime = now.getTime();
-      (recentSessionDaysRes.data || []).forEach((r: any) => {
-        if (!recentSessionWeeks[r.profile_id]) recentSessionWeeks[r.profile_id] = [[], [], []];
-        const daysAgo = (nowTime - new Date(r.started_at).getTime()) / MS_PER_DAY;
-        const weekIdx = Math.min(2, Math.floor(daysAgo / 7)); // 0=this week, 1=last week, 2=two weeks ago
-        const dow = getDayOfWeek(r.started_at);
-        if (!recentSessionWeeks[r.profile_id][weekIdx].includes(dow)) {
-          recentSessionWeeks[r.profile_id][weekIdx].push(dow);
-        }
-      });
-
-      // App Engagement: notification counts per member
-      const notifTotal: Record<string, number> = {};
-      const notifRead: Record<string, number> = {};
-      (notificationsRes.data || []).forEach((r: any) => {
-        notifTotal[r.profile_id] = (notifTotal[r.profile_id] || 0) + 1;
-        if (r.read_at) notifRead[r.profile_id] = (notifRead[r.profile_id] || 0) + 1;
-      });
-
-      // App Engagement: days since last app action (session, check-in, social)
-      const lastActionDate: Record<string, Date> = {};
-      // From check-ins
-      checkIns.forEach((r: any) => {
-        const d = new Date(r.checked_in_at);
-        if (!lastActionDate[r.profile_id] || d > lastActionDate[r.profile_id]) {
-          lastActionDate[r.profile_id] = d;
-        }
-      });
-      // From sessions
-      sessions.forEach((r: any) => {
-        const d = new Date(r.started_at);
-        if (!lastActionDate[r.profile_id] || d > lastActionDate[r.profile_id]) {
-          lastActionDate[r.profile_id] = d;
-        }
-      });
-      // From social actions
-      (socialActionsRes.data || []).forEach((r: any) => {
-        const d = new Date(r.created_at);
-        if (!lastActionDate[r.actor_id] || d > lastActionDate[r.actor_id]) {
-          lastActionDate[r.actor_id] = d;
-        }
-      });
-
-      // Comms Responsiveness: outreach notifications and activity response
-      const outreachByMember: Record<string, { created_at: string }[]> = {};
-      (outreachNotifsRes.data || []).forEach((r: any) => {
-        if (!outreachByMember[r.profile_id]) outreachByMember[r.profile_id] = [];
-        outreachByMember[r.profile_id].push({ created_at: r.created_at });
-      });
-
-      // Pre-compute member activity dates for responsiveness check
-      const memberActivityDates: Record<string, Date[]> = {};
-      sessions.forEach((r: any) => {
-        if (!memberActivityDates[r.profile_id]) memberActivityDates[r.profile_id] = [];
-        memberActivityDates[r.profile_id].push(new Date(r.started_at));
-      });
-      checkIns.forEach((r: any) => {
-        if (!memberActivityDates[r.profile_id]) memberActivityDates[r.profile_id] = [];
-        memberActivityDates[r.profile_id].push(new Date(r.checked_in_at));
-      });
-
-      // Referral Activity: count per member
       const referralCount: Record<string, number> = {};
-      (referralsRes.data || []).forEach((r: any) => {
-        referralCount[r.referrer_id] = (referralCount[r.referrer_id] || 0) + 1;
-      });
+      referrals.forEach((r: any) => { referralCount[r.referrer_id] = (referralCount[r.referrer_id] || 0) + 1; });
 
-      // Score each member
+      // Cohort frequency percentile
+      const allFreq = members.map((m: any) => (ci30[m.id] || 0) / 4.33).sort((a: number, b: number) => a - b);
+      const cohortPct = (f: number): number | null => {
+        if (!allFreq.length) return null;
+        let lo = 0; for (const v of allFreq) { if (v < f) lo++; else break; }
+        return lo / allFreq.length;
+      };
+
       const rows: any[] = [];
-      const memberSignals: Record<string, Record<string, { score: number; maxPts: number; label: string }>> = {};
+      const memberSignals: Record<string, any> = {};
 
       for (const m of members) {
-        const tenure = (now.getTime() - new Date(m.created_at).getTime()) / (MS_PER_DAY * 30.44);
-        const avgWeekly = (checkInsLast30[m.id] || 0) / 4.33;
-        const prevWeekly = (checkInsPrior30[m.id] || 0) / 4.33;
-        const sd = sessionData[m.id] || { compL30: 0, abL30: 0, durL30: [], durP30: [], gaps: [] };
-        const avgDurL = sd.durL30.length ? sd.durL30.reduce((a: number, b: number) => a + b, 0) / sd.durL30.length : 0;
-        const avgDurP = sd.durP30.length ? sd.durP30.reduce((a: number, b: number) => a + b, 0) / sd.durP30.length : 0;
+        const tenureAnchor = m.membership_started_at ? new Date(m.membership_started_at) : new Date(m.created_at);
+        const tenureMonths = (nowMs - tenureAnchor.getTime()) / (MS_PER_DAY * 30.44);
 
-        // Comms responsiveness: check each outreach for activity within 7 days
-        const outreach = outreachByMember[m.id] || [];
-        let respondedCount = 0;
-        const activityDates = memberActivityDates[m.id] || [];
-        for (const o of outreach) {
-          const outreachDate = new Date(o.created_at);
-          const sevenDaysAfter = new Date(outreachDate.getTime() + 7 * MS_PER_DAY);
-          const hadResponse = activityDates.some(
-            (d: Date) => d > outreachDate && d <= sevenDaysAfter
-          );
-          if (hadResponse) respondedCount++;
-        }
+        // Recency = gym ATTENDANCE only (check-in / logged workout), NOT last_active_at (app-open).
+        const cands = [lastCheckIn[m.id], lastSession[m.id]].filter(Boolean).map((t: string) => new Date(t).getTime());
+        const lastSeenMs = cands.length ? Math.max(...cands) : 0;
+        const daysSinceLastActivity = lastSeenMs > 0 ? (nowMs - lastSeenMs) / MS_PER_DAY : null;
+        const daysSinceLastCheckIn = lastCheckIn[m.id] ? (nowMs - new Date(lastCheckIn[m.id]).getTime()) / MS_PER_DAY : null;
 
-        // Days since last app action
-        const lastAction = lastActionDate[m.id];
-        const daysSinceLastAction = lastAction
-          ? Math.floor((nowTime - lastAction.getTime()) / MS_PER_DAY)
-          : 999;
+        const lg = logging[m.id] || blank(), sc = social[m.id] || blank(), pr = prs[m.id] || blank();
+        const ap = appReads[m.id] || blank(), bd = body[m.id] || blank(), ch = challenge[m.id] || blank();
+        const avgWeeklyVisits = (ci30[m.id] || 0) / 4.33;
+        const totalSessions = totalSessionsMap[m.id] || 0;
+        const observedCheckIns = ciTotal[m.id] || 0;
 
-        const signals = {
-          visit_frequency: signalVisitFrequency(avgWeekly, m.training_frequency || 3),
-          attendance_trend: signalAttendanceTrend(avgWeekly, prevWeekly),
-          tenure_risk: signalTenureRisk(tenure, tenure <= 4 ? first90[m.id] : null),
-          social_engagement: signalSocial(friendCount[m.id] || 0, challengeSet.has(m.id), trainerSet.has(m.id)),
-          session_gaps: signalSessionGaps(sd.gaps),
-          goal_progress: signalGoalProgress(prSet.has(m.id), bodySet.has(m.id), tenure),
-          engagement_depth: signalEngagement(sd.compL30, sd.abL30, avgDurL, avgDurP),
-          // New v2 signals
-          anchor_day: signalAnchorDay(
-            scheduledDays[m.id] || [],
-            recentSessionWeeks[m.id] || [[], [], []],
-          ),
-          app_engagement: signalAppEngagement(
-            notifTotal[m.id] || 0,
-            notifRead[m.id] || 0,
-            daysSinceLastAction,
-          ),
-          comms_responsiveness: signalCommsResponsiveness(outreach.length, respondedCount),
-          referral_activity: signalReferralActivity(referralCount[m.id] || 0),
-          workout_type_shift: signalWorkoutTypeShift(
-            muscleGroupsL30[m.id]?.size || 0,
-            muscleGroupsP30[m.id]?.size || 0,
-          ),
+        const input: V3Input = {
+          tenureMonths,
+          accountAgeDays: (nowMs - new Date(m.created_at).getTime()) / MS_PER_DAY,
+          totalSessions, observedCheckIns, daysSinceLastActivity, daysSinceLastCheckIn,
+          avgWeeklyVisits,
+          trainingFrequency: m.preferred_training_days?.length ?? m.training_frequency ?? 3,
+          cohortPercentile: cohortPct(avgWeeklyVisits),
+          recentWeeklyRate: (ci14[m.id] || 0) / 2,
+          baselineWeeklyRate: (ci14to60[m.id] || 0) / ((60 - 14) / 7),
+          streakActive: false, brokenStreakLen: 0,
+          visitsSoFar: observedCheckIns, firstWorkoutLogged: totalSessions > 0,
+          logging: { baseline: lg.base / 2, recent: lg.recent },
+          app: { baseline: ap.base / 2, recent: ap.recent },
+          social: { baseline: sc.base / 2, recent: sc.recent },
+          goalsPRs: { baseline: (pr.base + bd.base) / 2, recent: pr.recent + bd.recent },
+          challenge: { baseline: ch.base / 2, recent: ch.recent },
+          rewards: { baseline: null, recent: 0 },
+          activeReferrer: (referralCount[m.id] || 0) >= 1,
+          activeChallenge: ch.recent > 0,
+          recentPRs: pr.recent > 0,
+          strongAppCard: (ap.recent >= 3) || (sc.recent >= 3),
+          activeSocial: sc.recent > 0,
+          isPaused: m.membership_status === 'frozen' || (m.churn_pause_until != null && new Date(m.churn_pause_until).getTime() > nowMs),
         };
 
-        // Store full signals in memory for calibration, not in DB rows
-        memberSignals[m.id] = signals;
-
-        const score = computeScore(signals, gymWeights);
-        const tier = getRiskTier(score);
-        if (tier === 'high' || tier === 'critical') highRiskCount++;
-
-        const keySignals = Object.entries(signals)
-          .filter(([, s]) => s.score > 0)
-          .sort((a, b) => (b[1].score * (gymWeights[b[0]] ?? 1)) - (a[1].score * (gymWeights[a[0]] ?? 1)))
-          .slice(0, 3)
-          .map(([, s]) => s.label);
+        const result = computeV3(input, gymWeights);
+        memberSignals[m.id] = result.signals;
+        if (result.risk_tier === 'high' || result.risk_tier === 'critical') highRiskCount++;
 
         rows.push({
           profile_id: m.id,
           gym_id: gymId,
-          score,
-          risk_tier: tier,
-          signal_count: Object.keys(signals).length,
-          key_signals: keySignals,
-          velocity: 0, // will be updated after insert from history
-          metrics: { avgWeekly, prevWeekly, tenure, friends: friendCount[m.id] || 0 },
+          score: result.score,
+          risk_tier: result.risk_tier,
+          state: result.state,
+          primary_driver: result.primary_driver,
+          explanation: result.explanation,
+          trend: result.trend,
+          signal_count: Object.keys(result.signals).length,
+          key_signals: result.key_signals,
+          velocity: 0,
+          metrics: { avgWeeklyVisits, tenureMonths, daysSinceLastActivity, attendance: true },
           computed_at: now.toISOString(),
         });
       }
 
-      // Batch insert scores (delete today's existing scores first for idempotent re-runs)
       if (rows.length > 0) {
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
         const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
-
-        await supabase
-          .from('churn_risk_scores')
-          .delete()
-          .eq('gym_id', gymId)
-          .gte('computed_at', todayStart)
-          .lt('computed_at', tomorrowStart);
-
-        const { error: insertError } = await supabase
-          .from('churn_risk_scores')
-          .insert(rows);
-
-        if (insertError) {
-          console.error(`Insert error for gym ${gymId}:`, insertError);
-        }
-
+        await supabase.from('churn_risk_scores').delete().eq('gym_id', gymId).gte('computed_at', todayStart).lt('computed_at', tomorrowStart);
+        const { error: insertError } = await supabase.from('churn_risk_scores').insert(rows);
+        if (insertError) console.error(`Insert error for gym ${gymId}:`, insertError);
         totalScored += rows.length;
       }
 
-      // ── Automated follow-ups (multi-channel drip) ─────────
-      const { data: settings } = await supabase
-        .from('churn_followup_settings')
-        .select('*')
-        .eq('gym_id', gymId)
-        .single();
-
+      // ── Automated follow-ups (multi-channel drip) — unchanged ──
+      const { data: settings } = await supabase.from('churn_followup_settings').select('*').eq('gym_id', gymId).single();
       if (settings?.enabled) {
         const threshold = settings.threshold || 61;
         const cooldownDays = settings.cooldown_days || 7;
-        const cooldownDate = new Date(now.getTime() - cooldownDays * MS_PER_DAY).toISOString();
-
-        // Fetch drip campaign steps (ordered by step_number)
-        const { data: dripSteps } = await supabase
-          .from('drip_campaign_steps')
-          .select('step_number, delay_days, message_template, message_b, channel')
-          .eq('gym_id', gymId)
-          .order('step_number', { ascending: true });
-
+        const cooldownDate = new Date(nowMs - cooldownDays * MS_PER_DAY).toISOString();
+        const { data: dripSteps } = await supabase.from('drip_campaign_steps')
+          .select('step_number, delay_days, message_template, message_b, channel').eq('gym_id', gymId).order('step_number', { ascending: true });
         const stepsToUse = dripSteps?.length ? dripSteps : [{ step_number: 1, delay_days: 0, message_template: settings.message_template, message_b: null, channel: 'notification' }];
 
-        // Get members above threshold
-        const atRisk = rows.filter(r => r.score >= threshold);
-        const atRiskIds = atRisk.map(r => r.profile_id);
-
-        // Get existing win_back_attempts to determine which step each member is on
+        const atRisk = rows.filter((r) => r.score >= threshold);
+        const atRiskIds = atRisk.map((r) => r.profile_id);
         let existingAttempts: any[] = [];
         if (atRiskIds.length) {
-          const { data: attempts } = await supabase
-            .from('win_back_attempts')
-            .select('user_id, step_number, created_at')
-            .eq('gym_id', gymId)
-            .in('user_id', atRiskIds)
-            .order('step_number', { ascending: false });
+          const { data: attempts } = await supabase.from('win_back_attempts').select('user_id, step_number, created_at').eq('gym_id', gymId).in('user_id', atRiskIds).order('step_number', { ascending: false });
           existingAttempts = attempts || [];
         }
-
-        // Build map: member -> highest step completed
         const memberStepMap: Record<string, { step: number; created_at: string }> = {};
         existingAttempts.forEach((a: any) => {
-          if (!memberStepMap[a.user_id] || a.step_number > memberStepMap[a.user_id].step) {
-            memberStepMap[a.user_id] = { step: a.step_number, created_at: a.created_at };
-          }
+          if (!memberStepMap[a.user_id] || a.step_number > memberStepMap[a.user_id].step) memberStepMap[a.user_id] = { step: a.step_number, created_at: a.created_at };
         });
-
-        // Build phone lookup from members array
         const phoneMap: Record<string, string> = {};
         members!.forEach((m: any) => { if (m.phone_number) phoneMap[m.id] = m.phone_number; });
 
         for (const member of atRisk) {
           const lastAttempt = memberStepMap[member.profile_id];
           let nextStepNum: number;
-
-          if (!lastAttempt) {
-            nextStepNum = 1; // First contact
-          } else {
-            // Check delay since last step
-            const lastStepDef = stepsToUse.find(s => s.step_number === lastAttempt.step);
-            const nextStep = stepsToUse.find(s => s.step_number === lastAttempt.step + 1);
-            if (!nextStep) continue; // All steps completed for this member
-
-            const daysSinceLastStep = (now.getTime() - new Date(lastAttempt.created_at).getTime()) / MS_PER_DAY;
-            if (daysSinceLastStep < nextStep.delay_days) continue; // Not time yet
+          if (!lastAttempt) nextStepNum = 1;
+          else {
+            const nextStep = stepsToUse.find((s) => s.step_number === lastAttempt.step + 1);
+            if (!nextStep) continue;
+            const daysSinceLastStep = (nowMs - new Date(lastAttempt.created_at).getTime()) / MS_PER_DAY;
+            if (daysSinceLastStep < nextStep.delay_days) continue;
             nextStepNum = nextStep.step_number;
           }
-
-          const step = stepsToUse.find(s => s.step_number === nextStepNum);
+          const step = stepsToUse.find((s) => s.step_number === nextStepNum);
           if (!step) continue;
-
-          // Check cooldown (prevent spam regardless of step)
-          const { data: recent } = await supabase
-            .from('notifications')
-            .select('id')
-            .eq('profile_id', member.profile_id)
-            .eq('type', 'churn_followup')
-            .gte('created_at', cooldownDate)
-            .limit(1);
+          const { data: recent } = await supabase.from('notifications').select('id').eq('profile_id', member.profile_id).eq('type', 'churn_followup').gte('created_at', cooldownDate).limit(1);
           if (recent && recent.length > 0) continue;
-
-          // Pick message (A/B if variant B exists)
           const useVariantB = step.message_b && (parseInt(member.profile_id.slice(-1), 16) % 2 === 1);
           const template = useVariantB ? step.message_b! : step.message_template;
           const channel = step.channel || 'notification';
-
-          // Send via the appropriate channel
           if (channel === 'notification') {
-            await supabase.from('notifications').insert({
-              profile_id: member.profile_id,
-              gym_id: gymId,
-              type: 'churn_followup',
-              title: 'We miss you!',
-              body: template,
-              data: { source: 'churn_auto', score: member.score, tier: member.risk_tier, step: nextStepNum },
-            });
+            await supabase.from('notifications').insert({ profile_id: member.profile_id, gym_id: gymId, type: 'churn_followup', title: 'We miss you!', body: template, data: { source: 'churn_auto', score: member.score, tier: member.risk_tier, step: nextStepNum } });
           } else if (channel === 'email') {
-            try {
-              await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  memberId: member.profile_id,
-                  subject: 'We miss you!',
-                  body: template,
-                  lang: 'en',
-                }),
-              });
-            } catch (emailErr) {
-              console.error('Drip email failed:', emailErr);
-            }
+            try { await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, { method: 'POST', headers: { 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ memberId: member.profile_id, subject: 'We miss you!', body: template, lang: 'en' }) }); } catch (e) { console.error('Drip email failed:', e); }
           } else if (channel === 'sms') {
-            // Only send if member has a phone number
             if (phoneMap[member.profile_id]) {
-              try {
-                await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    memberId: member.profile_id,
-                    body: template.slice(0, 320),
-                    source: 'automated',
-                    gymId,
-                  }),
-                });
-              } catch (smsErr) {
-                console.error('Drip SMS failed:', smsErr);
-              }
+              try { await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, { method: 'POST', headers: { 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ memberId: member.profile_id, body: template.slice(0, 320), source: 'automated', gymId }) }); } catch (e) { console.error('Drip SMS failed:', e); }
             }
           }
-
-          // Track in win_back_attempts
           try {
-            await supabase.from('win_back_attempts').insert({
-              user_id: member.profile_id,
-              gym_id: gymId,
-              admin_id: '00000000-0000-0000-0000-000000000000', // system
-              message: template,
-              outcome: 'no_response',
-              step_number: nextStepNum,
-              variant: useVariantB ? 'B' : 'A',
-              created_at: now.toISOString(),
-            });
+            await supabase.from('win_back_attempts').insert({ user_id: member.profile_id, gym_id: gymId, admin_id: '00000000-0000-0000-0000-000000000000', message: template, outcome: 'no_response', step_number: nextStepNum, variant: useVariantB ? 'B' : 'A', created_at: now.toISOString() });
           } catch (_) {}
-
           totalFollowups++;
         }
-
-        // Update last run
-        await supabase
-          .from('churn_followup_settings')
-          .update({ last_run_at: now.toISOString(), last_run_count: atRisk.length })
-          .eq('gym_id', gymId);
+        await supabase.from('churn_followup_settings').update({ last_run_at: now.toISOString(), last_run_count: atRisk.length }).eq('gym_id', gymId);
       }
 
-      // ── Auto-label churn outcomes (feeds calibration model) ──
-      // Use in-memory signals (not persisted in DB rows) for calibration labeling
-      const signalMap: Record<string, any> = memberSignals;
-
+      // ── Auto-label churn outcomes (feeds calibration) ──
       const outcomeInserts: any[] = [];
-
       for (const m of members) {
-        const memberScore = rows.find(r => r.profile_id === m.id);
+        const memberScore = rows.find((r) => r.profile_id === m.id);
         if (!memberScore) continue;
-
-        const tenure = (now.getTime() - new Date(m.created_at).getTime()) / (MS_PER_DAY * 30.44);
-
-        // Label: inactive 30+ days → churned
-        const lastCI = checkIns.find((c: any) => c.profile_id === m.id);
-        const lastSession = sessions.find((s: any) => s.profile_id === m.id);
-        const lastActivity = lastCI?.checked_in_at || lastSession?.started_at;
-        const daysSinceActivity = lastActivity
-          ? (now.getTime() - new Date(lastActivity).getTime()) / MS_PER_DAY
-          : 999;
-
-        if (daysSinceActivity >= 60) {
-          outcomeInserts.push({
-            profile_id: m.id, gym_id: gymId, churned: true,
-            reason: 'inactive_60d',
-            signal_snapshot: signalMap[m.id] || {},
-            score_at_label: memberScore.score,
-          });
-        } else if (daysSinceActivity >= 30) {
-          outcomeInserts.push({
-            profile_id: m.id, gym_id: gymId, churned: true,
-            reason: 'inactive_30d',
-            signal_snapshot: signalMap[m.id] || {},
-            score_at_label: memberScore.score,
-          });
-        }
-
-        // Label: membership cancelled or frozen → churned
-        if (m.membership_status === 'cancelled') {
-          outcomeInserts.push({
-            profile_id: m.id, gym_id: gymId, churned: true,
-            reason: 'cancelled',
-            signal_snapshot: signalMap[m.id] || {},
-            score_at_label: memberScore.score,
-          });
-        } else if (m.membership_status === 'frozen') {
-          outcomeInserts.push({
-            profile_id: m.id, gym_id: gymId, churned: true,
-            reason: 'frozen',
-            signal_snapshot: signalMap[m.id] || {},
-            score_at_label: memberScore.score,
-          });
-        }
-
-        // Label: active 6+ months with no 14-day gap → retained (negative label)
-        if (tenure >= 6 && daysSinceActivity < 14 && m.membership_status === 'active') {
-          outcomeInserts.push({
-            profile_id: m.id, gym_id: gymId, churned: false,
-            reason: 'retained_6m',
-            signal_snapshot: signalMap[m.id] || {},
-            score_at_label: memberScore.score,
-          });
-        }
+        const tenure = (nowMs - new Date(m.membership_started_at || m.created_at).getTime()) / (MS_PER_DAY * 30.44);
+        const lastCI = lastCheckIn[m.id];
+        const lastSess = lastSession[m.id];
+        const lastActivity = [m.last_active_at, lastCI, lastSess].filter(Boolean).map((t: string) => new Date(t).getTime());
+        const daysSinceActivity = lastActivity.length ? (nowMs - Math.max(...lastActivity)) / MS_PER_DAY : 999;
+        const snap = memberSignals[m.id] || {};
+        if (daysSinceActivity >= 60) outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: true, reason: 'inactive_60d', signal_snapshot: snap, score_at_label: memberScore.score });
+        else if (daysSinceActivity >= 30) outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: true, reason: 'inactive_30d', signal_snapshot: snap, score_at_label: memberScore.score });
+        if (m.membership_status === 'cancelled') outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: true, reason: 'cancelled', signal_snapshot: snap, score_at_label: memberScore.score });
+        else if (m.membership_status === 'frozen') outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: true, reason: 'frozen', signal_snapshot: snap, score_at_label: memberScore.score });
+        if (tenure >= 6 && daysSinceActivity < 14 && m.membership_status === 'active') outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: false, reason: 'retained_6m', signal_snapshot: snap, score_at_label: memberScore.score });
       }
-
-      // Batch insert outcomes (duplicates within same day will be
-      // rejected by the unique index — that's fine, we just ignore errors)
       if (outcomeInserts.length > 0) {
         for (const outcome of outcomeInserts) {
-          await supabase
-            .from('churn_outcomes')
-            .insert(outcome)
-            .then(() => {}); // ignore duplicate key errors
+          await supabase.from('churn_outcomes').insert(outcome).then(() => {});
         }
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        scored: totalScored,
-        highRiskCount,
-        followups_sent: totalFollowups,
-        computed_at: now.toISOString(),
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: true, scored: totalScored, highRiskCount, followups_sent: totalFollowups, computed_at: now.toISOString() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('compute-churn-scores error:', err);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

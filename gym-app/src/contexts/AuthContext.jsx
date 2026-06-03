@@ -824,20 +824,45 @@ export const AuthProvider = ({ children }) => {
     fullName,
     username,
     gymSlug,
+    gymId,
     dateOfBirth,
     termsAcceptedAt,
     privacyAcceptedAt,
     ageVerifiedAt,
   }) => {
-    // 1. Look up the gym by slug
+    // 1. Resolve the gym.
     // Use gyms_public (security-barrier view granted to anon, see migration 0110)
     // instead of raw gyms table — raw gyms relies on RLS policy traversal which
     // can 401 if a stale auth token is leaking through from a prior session.
-    const { data: gym, error: gymError } = await supabase
-      .from('gyms_public')
-      .select('id')
-      .eq('slug', gymSlug.toLowerCase().trim())
-      .maybeSingle();
+    //
+    // Prefer the gym_id already resolved during invite validation over
+    // re-deriving from the slug. The slug round-trip silently fails when the
+    // stored slug has uppercase characters (we query .eq('slug', lowercased))
+    // or any other normalization drift — which surfaced as "Gym code not
+    // found" on create-account even though the invite validated fine. The
+    // id is the exact key we already have, so trust it; the slug path remains
+    // for the manual (no-invite) gym entry flow. Either way gyms_public still
+    // enforces is_active, so paused/cancelled gyms can't accept new signups.
+    let gym = null;
+    let gymError = null;
+    if (gymId) {
+      const { data, error } = await supabase
+        .from('gyms_public')
+        .select('id')
+        .eq('id', gymId)
+        .maybeSingle();
+      gym = data;
+      gymError = error;
+    }
+    if (!gym && gymSlug) {
+      const { data, error } = await supabase
+        .from('gyms_public')
+        .select('id')
+        .eq('slug', gymSlug.toLowerCase().trim())
+        .maybeSingle();
+      gym = data;
+      gymError = error;
+    }
 
     if (gymError || !gym) {
       throw new Error('Gym code not found. Ask your gym for the correct code.');

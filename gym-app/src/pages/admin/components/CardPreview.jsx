@@ -50,6 +50,7 @@ export default function CardPreview({
   rewardQrCode,
   rewardLabel,
   size = 'sm',
+  width,
   gym: gymOverride,
 }) {
   const { gymName, gymLogoUrl } = useAuth();
@@ -80,19 +81,22 @@ export default function CardPreview({
 
   const paperType = getCardPaperType(cardRow.occasion);
   const natural = paperType === 'folded' ? { w: 1056, h: 408 } : { w: 384, h: 576 };
-  const targetW = TARGET_WIDTH[size] ?? TARGET_WIDTH.sm;
+  const targetW = width ?? TARGET_WIDTH[size] ?? TARGET_WIDTH.sm;
   const scale = targetW / natural.w;
   const targetH = natural.h * scale;
 
+  // Clean editorial frame: subtle hairline + soft lift, matching the physical
+  // cardstock the design calls for (not a placeholder dashed outline).
   return (
     <div
       style={{
         width: targetW,
         height: targetH,
         overflow: 'hidden',
-        borderRadius: 4,
-        border: '1px dashed rgba(212,175,55,0.5)',
+        borderRadius: 8,
+        border: '1px solid var(--color-admin-border)',
         background: '#fff',
+        boxShadow: '0 1px 2px rgba(20,17,13,0.05), 0 12px 28px -18px rgba(20,17,13,0.35)',
         flexShrink: 0,
       }}
     >

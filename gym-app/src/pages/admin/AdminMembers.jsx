@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, RefreshCw, MessageSquare, Send, QrCode } from 'lucide-react';
+import { Search, ChevronRight, ChevronLeft, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, RefreshCw, MessageSquare, Send, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
@@ -20,7 +20,7 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 // Shared components
 import { PageHeader, FilterBar, Avatar, TableSkeleton, AdminPageShell, AdminTable, StatCard, AdminTabs } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
-import { StatusBadge } from '../../components/admin/StatusBadge';
+import { StatusBadge, StatusDot } from '../../components/admin/StatusBadge';
 
 // Sub-components
 import InviteModal from './components/InviteModal';
@@ -31,6 +31,32 @@ import PasswordResetApprovalModal from './components/PasswordResetApprovalModal'
 import { translateSignal as translateChurnSignal } from '../../lib/churn/signalI18n';
 import { fetchMembers, fetchAllInvites, getInviteStatus, MEMBERS_PAGE_SIZE } from '../../lib/admin/memberQueries';
 export { translateChurnSignal };
+
+// Members directory page size for the numbered pagination. 7 rows render in full
+// with no scrolling inside the table.
+const PAGE_SIZE = 7;
+
+// Sort accessors for the directory columns — used to sort the FULL filtered set
+// before paginating (so column-header sort spans every page, not just the
+// current one). Keyed by the AdminTable column `key`.
+const MEMBER_SORTS = {
+  full_name: (m) => (m.full_name || '').toLowerCase(),
+  membership_status: (m) => m.membership_status || '',
+  last_seen: (m) => new Date(m.last_active_at ?? m.lastSessionAt ?? m.created_at).getTime(),
+};
+
+// Windowed page-number list: 1 … (cur-1) cur (cur+1) … N, collapsing long runs.
+function getPageWindow(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out = [1];
+  const left = Math.max(2, current - 1);
+  const right = Math.min(total - 1, current + 1);
+  if (left > 2) out.push('ellipsis-l');
+  for (let i = left; i <= right; i++) out.push(i);
+  if (right < total - 1) out.push('ellipsis-r');
+  out.push(total);
+  return out;
+}
 
 export default function AdminMembers() {
   const { profile, availableRoles } = useAuth();
@@ -248,6 +274,12 @@ export default function AdminMembers() {
   // stays neutral about retention signals.
   const activeCount = members.filter(m => m.membership_status === 'active').length;
   const frozenCount = members.filter(m => m.membership_status === 'frozen').length;
+
+  // When every selected member is already frozen, the bulk "Freeze" button flips
+  // to "Unfreeze" (freezing a frozen member is a no-op — e.g. selecting rows
+  // under the Congelados filter). Defined after `members` to avoid a TDZ.
+  const selectedAllFrozen = selectedIds.size > 0
+    && members.filter(m => selectedIds.has(m.id)).every(m => m.membership_status === 'frozen');
   const unonboardedCount = members.filter(m => m.is_onboarded === false).length;
 
   const filtered = useMemo(() => {
@@ -266,13 +298,32 @@ export default function AdminMembers() {
     return list;
   }, [members, debouncedSearch, filter]);
 
-  // Local pagination on top of server pagination: render in chunks of 10 from the
-  // already-loaded `filtered` set; when the user runs out of locally-cached rows,
-  // the same "Load more" button falls through to handleLoadMore to fetch the next
-  // server page.
-  const [visibleCount, setVisibleCount] = useState(10);
-  useEffect(() => { setVisibleCount(10); }, [debouncedSearch, filter]);
-  const visibleMembers = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  // Numbered page pagination over the loaded+filtered set. Column-header sort is
+  // controlled here (sort the full set, THEN slice the page) so it spans every
+  // page, not just the current one. When the local cache is exhausted and the
+  // server has more, the Next control falls through to handleLoadMore().
+  const [page, setPage] = useState(1);
+  const [tableSort, setTableSort] = useState({ key: null, dir: 'asc' });
+  const handleTableSort = (key) =>
+    setTableSort(prev => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+
+  const sortedFiltered = useMemo(() => {
+    const fn = tableSort.key && MEMBER_SORTS[tableSort.key];
+    if (!fn) return filtered;
+    return [...filtered].sort((a, b) => {
+      const av = fn(a), bv = fn(b);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return tableSort.dir === 'asc' ? cmp : -cmp;
+    });
+  }, [filtered, tableSort]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / PAGE_SIZE));
+  useEffect(() => { setPage(1); }, [debouncedSearch, filter, tab]);
+  useEffect(() => { setPage(p => Math.min(p, totalPages)); }, [totalPages]);
+  const pageItems = useMemo(() => sortedFiltered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [sortedFiltered, page]);
 
   const handleBulkFreeze = async () => {
     const ids = [...selectedIds];
@@ -307,6 +358,35 @@ export default function AdminMembers() {
     } catch (err) {
       logger.error('Bulk freeze failed', err);
       showToast(t('admin.members.bulkFreezeError', { defaultValue: 'Failed to freeze members. Please try again.' }), 'error');
+    }
+  };
+
+  const handleBulkUnfreeze = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) { setBulkAction(null); return; }
+    try {
+      // Direct update gated by RLS + explicit gym_id; only flips rows that are
+      // actually frozen → active, and stamps the status timestamp.
+      const { error } = await supabase
+        .from('profiles')
+        .update({ membership_status: 'active', membership_status_updated_at: new Date().toISOString() })
+        .in('id', ids)
+        .eq('gym_id', gymId)
+        .eq('membership_status', 'frozen');
+      if (error) {
+        logger.error('Bulk unfreeze failed', error);
+        showToast(t('admin.members.bulkUnfreezeError', { defaultValue: 'Failed to unfreeze members. Please try again.' }), 'error');
+        return;
+      }
+      ids.forEach(id => logAdminAction('bulk_unfreeze', 'member', id));
+      posthog?.capture('admin_member_unfrozen', { bulk: true, count: ids.length });
+      showToast(t('admin.members.bulkUnfreezeSuccess', { count: ids.length, defaultValue: '{{count}} members unfrozen' }), 'success');
+      refetch();
+      clearSelection();
+      setBulkAction(null);
+    } catch (err) {
+      logger.error('Bulk unfreeze failed', err);
+      showToast(t('admin.members.bulkUnfreezeError', { defaultValue: 'Failed to unfreeze members. Please try again.' }), 'error');
     }
   };
 
@@ -424,8 +504,8 @@ export default function AdminMembers() {
           <div className="min-w-0">
             <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>{m.full_name}</p>
             <p className="text-[12px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
-              {(m.last_active_at || m.lastSessionAt)
-                ? t('admin.members.activeAgo', { time: formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true, ...dateFnsLocale }), defaultValue: 'Active {{time}}' })
+              {m.lastActivityAt
+                ? t('admin.members.activeAgo', { time: formatDistanceToNow(new Date(m.lastActivityAt), { addSuffix: true, ...dateFnsLocale }), defaultValue: 'Active {{time}}' })
                 : t('admin.members.neverActive', 'Never active')}
             </p>
           </div>
@@ -436,7 +516,7 @@ export default function AdminMembers() {
       key: 'membership_status',
       label: t('admin.members.colStatus', 'Status'),
       sortable: true,
-      render: (m) => <StatusBadge status={m.membership_status} />,
+      render: (m) => <StatusDot status={m.membership_status} />,
       className: 'text-center',
       headerClassName: 'text-center',
     },
@@ -444,11 +524,11 @@ export default function AdminMembers() {
       key: 'last_seen',
       label: t('admin.members.colLastActive', 'Last Active'),
       sortable: true,
-      sortValue: (m) => new Date(m.last_active_at ?? m.lastSessionAt ?? m.created_at).getTime(),
+      sortValue: (m) => new Date(m.lastActivityAt ?? m.created_at).getTime(),
       render: (m) => (
         <span className="text-[12px]" style={{ color: 'var(--color-admin-text-sub)' }}>
-          {(m.last_active_at || m.lastSessionAt)
-            ? formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true, ...dateFnsLocale })
+          {m.lastActivityAt
+            ? formatDistanceToNow(new Date(m.lastActivityAt), { addSuffix: true, ...dateFnsLocale })
             : t('admin.members.never', 'Never')}
         </span>
       ),
@@ -578,7 +658,7 @@ export default function AdminMembers() {
           )}
           {/* Search + filter */}
           <div className="lg:sticky lg:top-0 lg:z-20 lg:backdrop-blur-xl lg:py-3 flex flex-col lg:flex-row gap-3 mb-4"
-            style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-base) 95%, transparent)' }}>
+            style={{ backgroundColor: 'color-mix(in srgb, var(--color-admin-panel) 95%, transparent)' }}>
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-muted)' }} />
               <input type="text" placeholder={t('admin.members.searchPlaceholder')} aria-label={t('admin.members.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
@@ -643,10 +723,12 @@ export default function AdminMembers() {
               style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
               <Mail size={12} /> {t('admin.members.message', 'Message')}
             </button>
-            <button onClick={() => setBulkAction('freeze')} disabled={selectedIds.size === 0}
+            <button onClick={() => setBulkAction(selectedAllFrozen ? 'unfreeze' : 'freeze')} disabled={selectedIds.size === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold flex-shrink-0 whitespace-nowrap transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
-              style={{ backgroundColor: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', color: 'var(--color-danger)' }}>
-              {t('admin.members.freeze', 'Freeze')}
+              style={selectedAllFrozen
+                ? { backgroundColor: 'color-mix(in srgb, var(--color-info) 12%, transparent)', color: 'var(--color-info)' }
+                : { backgroundColor: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', color: 'var(--color-danger)' }}>
+              {selectedAllFrozen ? t('admin.members.unfreeze', 'Unfreeze') : t('admin.members.freeze', 'Freeze')}
             </button>
             {selectedIds.size > 0 && (
               <button onClick={clearSelection}
@@ -668,24 +750,19 @@ export default function AdminMembers() {
             </div>
           ) : (
             <div>
-              {/* Showing X of Y */}
-              <div className="flex items-center justify-between mb-3 px-1">
-                <p className="text-[12px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.members.showingCount', { shown: visibleMembers.length, total: filtered.length, defaultValue: 'Showing {{shown}} of {{total}}' })}
-                </p>
-              </div>
               {/* Desktop table */}
               <div className="hidden md:block">
                 <AdminTable
                   columns={memberTableColumns}
-                  data={visibleMembers}
+                  data={pageItems}
                   onRowClick={(m) => setSelected(m)}
-                  stickyHeader
+                  sort={tableSort}
+                  onSortChange={handleTableSort}
                 />
               </div>
               {/* Mobile card list */}
               <div className="md:hidden space-y-2">
-                {visibleMembers.map(m => (
+                {pageItems.map(m => (
                   <div key={m.id} role="button" tabIndex={0} onClick={() => setSelected(m)}
                     onKeyDown={e => { if (e.key === 'Enter') setSelected(m); }}
                     className="admin-card p-3 flex items-center gap-3 cursor-pointer group">
@@ -710,8 +787,8 @@ export default function AdminMembers() {
                         <p className="text-[11px] truncate" style={{ color: 'var(--color-text-faint)' }}>@{m.username}</p>
                       )}
                       <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                        {(m.last_active_at || m.lastSessionAt)
-                          ? t('admin.members.activeAgo', { time: formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true, ...dateFnsLocale }), defaultValue: 'Active {{time}}' })
+                        {m.lastActivityAt
+                          ? t('admin.members.activeAgo', { time: formatDistanceToNow(new Date(m.lastActivityAt), { addSuffix: true, ...dateFnsLocale }), defaultValue: 'Active {{time}}' })
                           : t('admin.members.neverActive', 'Never active')}
                       </p>
                     </div>
@@ -733,35 +810,66 @@ export default function AdminMembers() {
             </div>
           )}
 
-          {/* Load More — reveals next 10 locally, falls through to server fetch when local cache is exhausted */}
-          {!isLoading && filtered.length > 0 && (visibleCount < filtered.length || hasMoreMembers) && (
-            <div className="flex justify-center mt-4 mb-2">
-              <button
-                onClick={() => {
-                  if (visibleCount < filtered.length) {
-                    setVisibleCount(v => v + 10);
-                  } else if (hasMoreMembers) {
-                    handleLoadMore();
-                  }
-                }}
-                disabled={loadingMore}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 hover:scale-[1.02] disabled:opacity-50"
-                style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}
-              >
-                {loadingMore ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin" />
-                    {t('admin.members.loadingMore', 'Loading...')}
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown size={14} />
-                    {t('admin.members.showMore', { count: Math.min(10, Math.max(0, filtered.length - visibleCount)) || 10, defaultValue: 'Show {{count}} more' })}
-                  </>
+          {/* Numbered page pagination — range on the left, page numbers + prev/next
+              on the right. On the last loaded page, Next falls through to a server
+              fetch when the gym has more than the loaded set (200 rows per fetch). */}
+          {!isLoading && filtered.length > 0 && (() => {
+            const total = sortedFiltered.length;
+            const startIdx = (page - 1) * PAGE_SIZE;
+            const endIdx = Math.min(startIdx + PAGE_SIZE, total);
+            const showNav = totalPages > 1 || hasMoreMembers;
+            const nextDisabled = (page >= totalPages && !hasMoreMembers) || loadingMore;
+            const goNext = async () => {
+              if (page < totalPages) { setPage(p => p + 1); }
+              else if (hasMoreMembers) { await handleLoadMore(); setPage(p => p + 1); }
+            };
+            return (
+              <div className="flex items-center justify-between gap-3 flex-wrap mt-4 pt-3"
+                style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                <span className="text-[12px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.members.showingRange', {
+                    from: total === 0 ? 0 : startIdx + 1,
+                    to: endIdx,
+                    total: hasMoreMembers ? `${total}+` : total,
+                    defaultValue: '{{from}}–{{to}} of {{total}}',
+                  })}
+                </span>
+                {showNav && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      aria-label={t('admin.members.pagePrev', 'Previous page')}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                      style={{ border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+                      <ChevronLeft size={15} />
+                    </button>
+                    {getPageWindow(page, totalPages).map(n => (
+                      typeof n === 'string' ? (
+                        <span key={n} className="w-7 h-8 flex items-center justify-center text-[12px]" style={{ color: 'var(--color-text-faint)' }}>…</span>
+                      ) : (
+                        <button key={n} onClick={() => setPage(n)} aria-current={n === page ? 'page' : undefined}
+                          className="min-w-[32px] h-8 px-2 flex items-center justify-center rounded-lg text-[12px] font-semibold transition-colors"
+                          style={n === page
+                            ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)', border: '1px solid var(--color-accent)' }
+                            : { border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}>
+                          {n}
+                        </button>
+                      )
+                    ))}
+                    <button
+                      onClick={goNext}
+                      disabled={nextDisabled}
+                      aria-label={t('admin.members.pageNext', 'Next page')}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                      style={{ border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+                      {loadingMore ? <RefreshCw size={14} className="animate-spin" /> : <ChevronRight size={15} />}
+                    </button>
+                  </div>
                 )}
-              </button>
-            </div>
-          )}
+              </div>
+            );
+          })()}
         </>
           );
           if (tabKey === 'invites') return (
@@ -983,14 +1091,14 @@ export default function AdminMembers() {
             <h3 className="text-[16px] font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>{t('admin.members.messageCount', { count: selectedIds.size })}</h3>
             <textarea id="bulk-msg" rows={4} placeholder={t('admin.members.typeMessage')}
               className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none resize-none mb-4 transition-colors"
-              style={{ backgroundColor: 'var(--color-bg-base)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+              style={{ backgroundColor: 'var(--color-bg-input)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
             <div className="flex gap-2">
               <button onClick={() => setBulkAction(null)}
                 className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-                style={{ backgroundColor: 'var(--color-bg-base)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>{t('admin.members.cancel')}</button>
+                style={{ backgroundColor: 'var(--color-bg-input)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>{t('admin.members.cancel')}</button>
               <button onClick={() => { const msg = document.getElementById('bulk-msg').value; if (msg.trim()) handleBulkMessage(msg); }}
                 className="flex-1 py-2.5 rounded-xl font-bold text-[13px] transition-all hover:scale-[1.02]"
-                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}>{t('admin.members.send')}</button>
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>{t('admin.members.send')}</button>
             </div>
           </div>
         </div>
@@ -1005,10 +1113,28 @@ export default function AdminMembers() {
             <div className="flex gap-2">
               <button onClick={() => setBulkAction(null)}
                 className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-                style={{ backgroundColor: 'var(--color-bg-base)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>{t('admin.members.cancel')}</button>
+                style={{ backgroundColor: 'var(--color-bg-input)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>{t('admin.members.cancel')}</button>
               <button onClick={handleBulkFreeze}
                 className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-white transition-all hover:scale-[1.02]"
                 style={{ backgroundColor: 'var(--color-danger, #EF4444)' }}>{t('admin.members.freezeAll')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkAction === 'unfreeze' && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4 pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:p-6">
+          <div className="w-full max-w-md mx-4 p-6 rounded-2xl shadow-2xl"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+            <h3 className="text-[16px] font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>{t('admin.members.unfreezeConfirmTitle', { count: selectedIds.size, defaultValue: 'Unfreeze {{count}} members?' })}</h3>
+            <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.members.unfreezeConfirmDesc', 'This reactivates their membership.')}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setBulkAction(null)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+                style={{ backgroundColor: 'var(--color-bg-input)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>{t('admin.members.cancel')}</button>
+              <button onClick={handleBulkUnfreeze}
+                className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-white transition-all hover:scale-[1.02]"
+                style={{ backgroundColor: 'var(--color-info, #4A7AE6)' }}>{t('admin.members.unfreezeAll', 'Unfreeze all')}</button>
             </div>
           </div>
         </div>
@@ -1034,14 +1160,14 @@ export default function AdminMembers() {
               </div>
               <textarea id="quick-msg" rows={3} autoFocus placeholder={t('admin.members.typeMessage')}
                 className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none resize-none mb-4 transition-colors"
-                style={{ backgroundColor: 'var(--color-bg-base)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                style={{ backgroundColor: 'var(--color-bg-input)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
               <div className="flex gap-2">
                 <button onClick={() => setQuickMsgMemberId(null)}
                   className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-                  style={{ backgroundColor: 'var(--color-bg-base)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>{t('admin.members.cancel')}</button>
+                  style={{ backgroundColor: 'var(--color-bg-input)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>{t('admin.members.cancel')}</button>
                 <button onClick={() => { const msg = document.getElementById('quick-msg').value; if (msg.trim()) handleQuickMessage(quickMsgMemberId, msg); }}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-[13px] transition-all hover:scale-[1.02]"
-                  style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}>
+                  style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
                   <Send size={13} /> {t('admin.members.send')}
                 </button>
               </div>

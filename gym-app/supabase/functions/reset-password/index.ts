@@ -171,11 +171,13 @@ Deno.serve(async (req) => {
         console.warn(`Password reset blocked (locked): request_id=${data.id}, ip=${req.headers.get('x-forwarded-for') || 'unknown'}`);
         return jsonResp({ error: 'This reset request has been locked due to too many failed attempts' }, 429);
       }
-      // Verify the code matches the expected status for this flow
-      if (data.status !== 'pending') {
-        await recordFailedAttempt(data.id);
-        return jsonResp({ error: 'Invalid or expired code' }, 400);
-      }
+      // Accept BOTH 'pending' (member self-requested via send-reset-email — the
+      // emailed code proves email ownership) AND 'approved' (admin-generated via
+      // admin_generate_password_reset — an admin verified the member in person
+      // and handed them the code). The query above already restricts to those
+      // two statuses + unused + unexpired, and the per-row lockout + the
+      // per-email hourly guess cap above bound brute force. (Previously this
+      // rejected 'approved', stranding every admin-issued reset code.)
       request = data;
     } else {
       // Token flow: requires admin approval

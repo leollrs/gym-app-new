@@ -418,7 +418,7 @@ export default function AdminClasses() {
         actions={
           <button onClick={() => setFormModal('new')}
             className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold transition-all duration-200 hover:scale-[1.03] hover:shadow-lg w-full sm:w-auto"
-            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}>
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
             <Plus size={15} /> {t('admin.classes.addClass')}
           </button>
         }
@@ -499,7 +499,7 @@ export default function AdminClasses() {
               <button
                 onClick={() => setFormModal('new')}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
-                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
               >
                 <Plus size={15} /> {t('admin.classes.addClass')}
               </button>

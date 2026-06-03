@@ -128,7 +128,6 @@ const TrainerPayments      = lazy(() => import('./pages/trainer/TrainerPayments'
 const AdminLayout        = lazy(() => import('./layouts/AdminLayout'));
 const AdminOverview      = lazy(() => import('./pages/admin/AdminOverview'));
 const AdminMembers       = lazy(() => import('./pages/admin/AdminMembers'));
-const AdminMemberCodes   = lazy(() => import('./pages/admin/AdminMemberCodes'));
 const AdminTVDisplay     = lazy(() => import('./pages/admin/AdminTVDisplay'));
 const AdminAttendance    = lazy(() => import('./pages/admin/AdminAttendance'));
 const AdminChallenges    = lazy(() => import('./pages/admin/AdminChallenges'));
@@ -1633,7 +1632,6 @@ function App() {
               <Routes>
                 <Route path="/"             element={<AdminOverview />} />
                 <Route path="/members"      element={<AdminMembers />} />
-                <Route path="/member-codes" element={<AdminMemberCodes />} />
                 <Route path="/tv-setup"     element={<AdminTVDisplay />} />
                 <Route path="/churn"        element={<AdminChurn />} />
                 <Route path="/attendance"   element={<AdminAttendance />} />

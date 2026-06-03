@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { takePhoto } from '../lib/takePhoto';
 import {
   signCheckinPhoto,
@@ -6,6 +7,7 @@ import {
   persistCheckinPhoto,
   removeCheckinPhoto,
 } from '../lib/checkinPhoto';
+import { useToast } from '../contexts/ToastContext';
 import logger from '../lib/logger';
 
 /**
@@ -28,6 +30,8 @@ export default function useCheckinPhoto({ subjectId, path: initialPath = null, e
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const pathRef = useRef(initialPath);
+  const { showToast } = useToast();
+  const { t } = useTranslation('pages');
 
   // Re-sync if the parent supplies a new path (e.g. after a refetch).
   useEffect(() => {
@@ -65,13 +69,15 @@ export default function useCheckinPhoto({ subjectId, path: initialPath = null, e
       const newPath = await uploadCheckinPhoto({ subjectId, file, previousPath: pathRef.current });
       await persistCheckinPhoto(subjectId, newPath);
       apply(newPath);
+      showToast(t('checkinPhoto.saved', { defaultValue: 'Check-in photo saved' }), 'success');
     } catch (e) {
       logger.error('useCheckinPhoto.pick:', e);
       setError(e.message || 'Upload failed');
+      showToast(t('checkinPhoto.saveFailed', { defaultValue: 'Could not save the photo. Please try again.' }), 'error');
     } finally {
       setBusy(false);
     }
-  }, [subjectId, busy, apply]);
+  }, [subjectId, busy, apply, showToast, t]);
 
   const remove = useCallback(async () => {
     if (!subjectId || busy || !pathRef.current) return;
@@ -80,13 +86,15 @@ export default function useCheckinPhoto({ subjectId, path: initialPath = null, e
     try {
       await removeCheckinPhoto(subjectId, pathRef.current);
       apply(null);
+      showToast(t('checkinPhoto.removed', { defaultValue: 'Check-in photo removed' }), 'success');
     } catch (e) {
       logger.error('useCheckinPhoto.remove:', e);
       setError(e.message || 'Remove failed');
+      showToast(t('checkinPhoto.removeFailed', { defaultValue: 'Could not remove the photo. Please try again.' }), 'error');
     } finally {
       setBusy(false);
     }
-  }, [subjectId, busy, apply]);
+  }, [subjectId, busy, apply, showToast, t]);
 
   return { url, path, loading, busy, error, pick, remove };
 }

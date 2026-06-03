@@ -16,7 +16,7 @@ import logger from '../../lib/logger';
 import { sanitize } from '../../lib/sanitize';
 import {
   AdminPageShell, PageHeader, AdminCard, StatCard,
-  FadeIn, SectionLabel, AdminTabs,
+  FadeIn, SectionLabel, AdminModal,
 } from '../../components/admin';
 import AdminNotificationPrefs from './AdminNotificationPrefs';
 import { loadGymChurnScores } from '../../lib/churnScore';
@@ -37,6 +37,7 @@ const TYPE_META = {
   system_alert:           { icon: Server,        tone: 'critical', cat: 'system',   labelKey: 'system',        label: 'System' },
   system:                 { icon: Server,        tone: 'info',     cat: 'system',   labelKey: 'system',        label: 'System' },
   churn_followup:         { icon: MessageCircle, tone: 'warn',     cat: 'risk',     labelKey: 'follow_up',     label: 'Follow-up' },
+  admin_message:          { icon: Inbox,         tone: 'info',     cat: 'system',   labelKey: 'reminder',      label: 'Reminder' },
 };
 
 const TONE_BORDER = {
@@ -78,6 +79,7 @@ const metaFor = (type) => TYPE_META[type] || {
 export default function AdminNotifications() {
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
+  const { t: tc } = useTranslation('common');
   const { user, profile, refreshNotifications } = useAuth();
   const { showToast } = useToast();
   const { data: queryItems, isLoading } = useNotifications(user?.id, 'admin');
@@ -90,6 +92,7 @@ export default function AdminNotifications() {
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('all');
   const [marking, setMarking] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // At-risk headcount (same source as the Churn page) — turns an empty
   // inbox from a dead-end into a pointer toward today's retention work.
@@ -266,11 +269,6 @@ export default function AdminNotifications() {
     if (route) navigate(route);
   };
 
-  const TABS = [
-    { key: 'inbox',       label: t('admin.notifications.tabs.inbox', 'Inbox'),             icon: Inbox },
-    { key: 'preferences', label: t('admin.notifications.tabs.preferences', 'Preferences'), icon: SlidersHorizontal },
-  ];
-
   const subtitle = tab === 'preferences'
     ? t('admin.notifications.preferencesSubtitle', 'Choose which alerts you want to receive and how.')
     : t('adminNotifications.subtitle', 'Real-time alerts about your gym, members, classes, and system health.');
@@ -312,7 +310,7 @@ export default function AdminNotifications() {
               {items.length > 0 && (
                 <button
                   type="button"
-                  onClick={clearAll}
+                  onClick={() => setShowClearConfirm(true)}
                   className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap"
                   style={{ color: 'var(--color-danger)', borderColor: 'color-mix(in srgb, var(--color-danger) 25%, transparent)' }}
                 >
@@ -320,6 +318,15 @@ export default function AdminNotifications() {
                   {t('notifications.clearAll', 'Clear all')}
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => setTab('preferences')}
+                className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap"
+                style={{ color: 'var(--color-text-muted)', borderColor: 'var(--color-border-subtle)' }}
+              >
+                <SlidersHorizontal size={13} />
+                {t('admin.notifications.tabs.preferences', 'Preferences')}
+              </button>
             </div>
           ) : (
             // Preferences tab — always show a back link to the inbox; if we
@@ -342,11 +349,6 @@ export default function AdminNotifications() {
         }
       />
 
-      {/* Tab strip */}
-      <div className="mt-4">
-        <AdminTabs tabs={TABS} active={tab} onChange={setTab} idPrefix="admin-notif-tab" />
-      </div>
-
       {tab === 'preferences' ? (
         <FadeIn delay={0.1} className="mt-4">
           <AdminNotificationPrefs />
@@ -356,34 +358,34 @@ export default function AdminNotifications() {
       {/* Stat strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mt-6 mb-6">
         <StatCard
-          label={t('adminNotifications.stats.unread', 'Unread')}
-          value={unreadCount}
-          icon={Bell}
-          borderColor="var(--color-accent)"
-          delay={0}
-        />
-        <StatCard
-          label={t('adminNotifications.stats.critical', 'Critical alerts')}
-          value={criticalCount}
-          icon={AlertTriangle}
-          borderColor="var(--color-danger)"
-          delay={0.05}
-          onClick={() => setFilter('risk')}
-        />
-        <StatCard
           label={t('adminNotifications.stats.today', 'Today')}
           value={todayCount}
           icon={Calendar}
           borderColor="var(--color-success)"
-          delay={0.1}
+          delay={0}
+        />
+        <StatCard
+          label={t('adminNotifications.stats.unread', 'Unread')}
+          value={unreadCount}
+          icon={Bell}
+          borderColor="var(--color-accent)"
+          delay={0.05}
         />
         <StatCard
           label={t('adminNotifications.stats.total', 'Total')}
           value={items.length}
           icon={Filter}
           borderColor="var(--color-text-subtle)"
-          delay={0.15}
+          delay={0.1}
           onClick={() => setFilter('all')}
+        />
+        <StatCard
+          label={t('adminNotifications.stats.atRisk', 'At risk')}
+          value={counts.risk}
+          icon={AlertTriangle}
+          borderColor="var(--color-danger)"
+          delay={0.15}
+          onClick={() => setFilter('risk')}
         />
       </div>
 
@@ -543,6 +545,37 @@ export default function AdminNotifications() {
       </FadeIn>
         </>
       )}
+
+      {/* Clear-all confirmation */}
+      <AdminModal
+        isOpen={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        title={t('adminNotifications.clearConfirmTitle', 'Clear all notifications?')}
+        titleIcon={Trash2}
+        size="sm"
+        footer={
+          <>
+            <button
+              onClick={() => setShowClearConfirm(false)}
+              className="flex-1 py-2 rounded-lg text-[12px] font-medium transition-colors whitespace-nowrap"
+              style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
+            >
+              {tc('cancel', 'Cancel')}
+            </button>
+            <button
+              onClick={() => { setShowClearConfirm(false); clearAll(); }}
+              className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap"
+              style={{ backgroundColor: 'var(--color-danger)', color: 'var(--color-text-on-accent, #fff)' }}
+            >
+              {t('notifications.clearAll', 'Clear all')}
+            </button>
+          </>
+        }
+      >
+        <p className="text-[12px] text-center" style={{ color: 'var(--color-text-muted)' }}>
+          {t('adminNotifications.clearConfirmMessage', 'This permanently dismisses every notification in your inbox. This can\'t be undone.')}
+        </p>
+      </AdminModal>
     </AdminPageShell>
   );
 }

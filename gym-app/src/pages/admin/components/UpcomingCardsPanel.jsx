@@ -3,42 +3,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
-import {
-  Calendar, Award, Cake, Sparkles, Loader2, Eye, Printer, Check,
-} from 'lucide-react';
+import { Loader2, Eye, Printer, Check } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
-import { AdminCard, Avatar } from '../../../components/admin';
+import { AdminCard } from '../../../components/admin';
 import usePagedVisible from '../../../hooks/usePagedVisible';
 import PaginationFooter from '../../../components/admin/PaginationFooter';
 import PrintPreviewModal from '../../../components/admin/PrintPreviewModal';
 import CardPreview from './CardPreview';
+import { occasionMeta, toneStyle, CardAvatar, OccasionPill } from './cardOccasions';
 
-// Same occasion → icon mapping as CardsToPrintPanel so the visual
-// language stays consistent across "to print" and "upcoming".
-const OCCASION_ICON = {
-  habit_9in6:    Sparkles,
-  tenure_30:     Calendar,
-  tenure_90:     Calendar,
-  tenure_365:    Calendar,
-  milestone_100: Award,
-  milestone_250: Award,
-  milestone_500: Award,
-  birthday:      Cake,
-};
-
-const OCCASION_TONE = {
-  habit_9in6:    { bg: 'bg-[#10B981]/10',  border: 'border-[#10B981]/20',  text: 'text-[#10B981]' },
-  tenure_30:     { bg: 'bg-[#3B82F6]/10',  border: 'border-[#3B82F6]/20',  text: 'text-[#3B82F6]' },
-  tenure_90:     { bg: 'bg-[#3B82F6]/10',  border: 'border-[#3B82F6]/20',  text: 'text-[#3B82F6]' },
-  tenure_365:    { bg: 'bg-[#3B82F6]/10',  border: 'border-[#3B82F6]/20',  text: 'text-[#3B82F6]' },
-  milestone_100: { bg: 'bg-[#D4AF37]/10',  border: 'border-[#D4AF37]/20',  text: 'text-[#D4AF37]' },
-  milestone_250: { bg: 'bg-[#D4AF37]/10',  border: 'border-[#D4AF37]/20',  text: 'text-[#D4AF37]' },
-  milestone_500: { bg: 'bg-[#D4AF37]/10',  border: 'border-[#D4AF37]/20',  text: 'text-[#D4AF37]' },
-  birthday:      { bg: 'bg-[#EC4899]/10',  border: 'border-[#EC4899]/20',  text: 'text-[#EC4899]' },
-};
+const DISPLAY_FONT = "var(--admin-font-display, 'Archivo', 'Barlow', sans-serif)";
 
 // get_upcoming_print_cards returns only the projected headline/subline —
 // no occasion_data. Synthesize the small per-occasion data fields a
@@ -65,16 +42,17 @@ function buildOccasionData(row) {
 }
 
 /**
- * Predictive print-card panel. Lists cards the daily cron will queue
- * in the next few workouts / days (from get_upcoming_print_cards).
+ * Predictive print-card panel — the hero of the page.
  *
- * Each row has a "Print early" action that materializes the row into
- * print_cards now (status='pending') and opens the print preview.
- * That turns the upcoming panel from read-only nag into actual work
- * the owner can finish before the moment lands.
+ * Lists cards the daily cron will queue in the next few workouts / days
+ * (from get_upcoming_print_cards) as a tight grid: member header + the
+ * real card preview + a print action stacked in one cell, so the cards
+ * (the valuable, retention-driving artifact) lead the page.
  *
- * After the owner prints and returns, the standard CardsToPrintPanel
- * flow takes over (pending → printed → delivered).
+ * Each cell's "Print early" action materializes the row into print_cards
+ * now (status='pending') and opens the print preview. After the owner
+ * prints and returns, the CardsToPrintPanel flow takes over
+ * (pending → printed → delivered).
  */
 export default function UpcomingCardsPanel({ gymId }) {
   const queryClient = useQueryClient();
@@ -82,7 +60,7 @@ export default function UpcomingCardsPanel({ gymId }) {
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
   const dateLocale = isEs ? { locale: esLocale } : undefined;
-  const pager = usePagedVisible({ initial: 10, step: 10 });
+  const pager = usePagedVisible({ initial: 6, step: 6 });
   // ids currently open in the print preview modal — null when modal closed
   const [previewIds, setPreviewIds] = useState(null);
 
@@ -125,8 +103,7 @@ export default function UpcomingCardsPanel({ gymId }) {
       queryClient.invalidateQueries({ queryKey: ['upcoming_print_cards', gymId] });
       queryClient.invalidateQueries({ queryKey: adminKeys.printCards(gymId) });
       // Open the preview modal with the freshly-materialized card so the
-      // owner can hit Print right away (modal iframe carries the @page
-      // Letter/margin presets through to the browser dialog).
+      // owner can hit Print right away.
       setPreviewIds([cardId]);
       showToast(
         t('admin.upcomingCards.toastQueued', { defaultValue: 'Card queued — preview opened. Mark printed after printing.' }),
@@ -148,54 +125,62 @@ export default function UpcomingCardsPanel({ gymId }) {
     return null;
   }
 
+  // Hide the whole hero when nothing is coming up + not loading — keeps the
+  // page focused on the queue rather than showing an empty hero band.
+  if (!isLoading && upcoming.length === 0) return null;
+
+  const visible = upcoming.slice(0, pager.visibleCount);
+
   return (
-    <AdminCard className="mb-4">
-      {/* Print preview modal — opens after materialize succeeds, iframe
-          carries the @page Letter/margin presets to the print dialog. */}
+    <AdminCard className="mb-5" clipContent={false}>
+      {/* Print preview modal — opens after materialize succeeds. */}
       {previewIds && (
         <PrintPreviewModal ids={previewIds} onClose={() => setPreviewIds(null)} />
       )}
 
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-[#8B5CF6]/10 flex items-center justify-center flex-shrink-0">
-            <Eye size={16} className="text-[#8B5CF6]" />
+      {/* Header — eye icon, title, subtitle, "N coming" pill */}
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: toneStyle('coach').soft }}
+          >
+            <Eye size={15} style={{ color: toneStyle('coach').ink }} />
           </div>
-          <div>
-            <p className="text-[14px] font-bold text-[#E5E7EB]">
+          <div className="min-w-0">
+            <p className="text-[14.5px] font-extrabold" style={{ color: 'var(--color-admin-text)', fontFamily: DISPLAY_FONT, letterSpacing: -0.2 }}>
               {t('admin.upcomingCards.title', 'Coming up next')}
             </p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5">
-              {t('admin.upcomingCards.subtitle', 'Pre-print + pre-sign so the card is waiting on the member\'s next visit')}
+            <p className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>
+              {t('admin.upcomingCards.subtitle', "Pre-print + pre-sign so the card is waiting on the member's next visit")}
             </p>
           </div>
         </div>
         {!isLoading && upcoming.length > 0 && (
-          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/20">
+          <span
+            className="admin-pill admin-pill--coach"
+            style={{ flexShrink: 0 }}
+          >
             {t('admin.upcomingCards.countBadge', { count: upcoming.length, defaultValue: '{{count}} coming' })}
           </span>
         )}
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 size={20} className="animate-spin text-[#6B7280]" />
-        </div>
-      ) : upcoming.length === 0 ? (
-        <div className="text-center py-8">
-          <Sparkles size={22} className="mx-auto text-[#4B5563] mb-2" />
-          <p className="text-[12.5px] text-[#9CA3AF]">
-            {t('admin.upcomingCards.empty', 'No milestones or birthdays in the next 7 days.')}
-          </p>
+        <div className="flex items-center justify-center py-10">
+          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--color-admin-text-muted)' }} />
         </div>
       ) : (
         <>
-          <ul className="divide-y divide-white/[0.06]">
-            {upcoming.slice(0, pager.visibleCount).map((row) => {
-              const Icon = OCCASION_ICON[row.occasion] || Award;
-              const tone = OCCASION_TONE[row.occasion] || OCCASION_TONE.milestone_100;
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {visible.map((row) => {
+              const { tone } = occasionMeta(row.occasion);
+              const ink = toneStyle('coach').ink;
               const rowKey = `${row.profile_id}-${row.occasion}`;
-              const isPending = materializeMutation.isPending && materializeMutation.variables?.profile_id === row.profile_id && materializeMutation.variables?.occasion === row.occasion;
+              const isPending = materializeMutation.isPending
+                && materializeMutation.variables?.profile_id === row.profile_id
+                && materializeMutation.variables?.occasion === row.occasion;
+
               // Explicit `_plural` key selection — i18next's auto-pluralization
               // isn't reliable across this app, so we pick the variant by hand.
               const whenLabel =
@@ -207,96 +192,92 @@ export default function UpcomingCardsPanel({ gymId }) {
                       ? t('admin.upcomingCards.tomorrow', 'tomorrow')
                       : t('admin.upcomingCards.inDays_plural', { count: row.units_away, defaultValue: 'in {{count}} days' });
 
+              const dateLabel = row.unit_type === 'days' && row.predicted_at
+                ? format(new Date(row.predicted_at), 'EEEE, MMM d', dateLocale)
+                : row.unit_type === 'workouts' && row.current_value != null
+                  ? t(row.current_value === 1 ? 'admin.upcomingCards.currentWorkouts' : 'admin.upcomingCards.currentWorkouts_plural', { count: row.current_value, defaultValue: row.current_value === 1 ? 'Currently {{count}} workout' : 'Currently {{count}} workouts' })
+                  : null;
+
               return (
-                <li key={rowKey} className="py-4 first:pt-0 last:pb-0">
-                  <div className="flex items-start gap-4 flex-wrap md:flex-nowrap">
-                    {/* Member info column */}
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <Avatar name={row.full_name} src={row.avatar_url} size="sm" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[13px] font-semibold text-[#E5E7EB] truncate">
-                            {row.full_name || t('admin.upcomingCards.unknownMember', 'Unknown member')}
-                          </span>
-                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${tone.bg} ${tone.border} ${tone.text}`}>
-                            <Icon size={11} />
-                            {t(`admin.printCards.occasions.${row.occasion}`, row.occasion)}
-                          </span>
-                        </div>
-                        <p className="text-[12px] font-bold text-[#8B5CF6] mt-1">
-                          {whenLabel}
-                        </p>
-                        {/* Metric line — workout count for milestones, date for birthdays */}
-                        <p className="text-[11px] text-[#6B7280] mt-0.5 flex items-center gap-1.5 flex-wrap">
-                          {row.unit_type === 'workouts' && row.current_value != null && (
-                            <span>
-                              {t(row.current_value === 1 ? 'admin.upcomingCards.currentWorkouts' : 'admin.upcomingCards.currentWorkouts_plural', { count: row.current_value, defaultValue: row.current_value === 1 ? 'Currently {{count}} workout' : 'Currently {{count}} workouts' })}
-                            </span>
-                          )}
-                          {row.unit_type === 'days' && row.predicted_at && (
-                            <>
-                              <Calendar size={10} />
-                              <span>{format(new Date(row.predicted_at), 'EEEE, MMM d', dateLocale)}</span>
-                            </>
-                          )}
-                        </p>
+                <div
+                  key={rowKey}
+                  className="flex flex-col gap-3"
+                  style={{
+                    border: '1px solid var(--color-admin-border)',
+                    borderRadius: 14,
+                    background: 'var(--color-admin-sidebar)',
+                    padding: 14,
+                  }}
+                >
+                  {/* Member header */}
+                  <div className="flex items-center gap-2.5">
+                    <CardAvatar name={row.full_name} src={row.avatar_url} tone={tone} size={34} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[13.5px] font-bold truncate" style={{ color: 'var(--color-admin-text)' }}>
+                          {row.full_name || t('admin.upcomingCards.unknownMember', 'Unknown member')}
+                        </span>
+                        <OccasionPill occasion={row.occasion} label={t(`admin.printCards.occasions.${row.occasion}`, row.occasion)} />
+                      </div>
+                      <div className="text-[11.5px] mt-0.5 truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
+                        <span style={{ color: ink, fontWeight: 700 }}>{whenLabel}</span>
+                        {dateLabel ? <> · {dateLabel}</> : null}
                       </div>
                     </div>
-                    {/* Card visual preview */}
-                    <div className="flex-shrink-0">
-                      <CardPreview
-                        occasion={row.occasion}
-                        headline={row.headline}
-                        subline={row.subline}
-                        memberName={row.full_name}
-                        size="sm"
-                      />
-                    </div>
                   </div>
-                  {/* Action row. The card stays listed all week even after
-                      it's queued/printed (the milestone is still upcoming) —
-                      so if a card already exists for this occasion we show its
-                      status + a "Ver" action instead of letting the owner
-                      double-queue it (the materialize RPC rejects duplicates
-                      anyway). Otherwise "Print early" materializes it. */}
-                  <div className="mt-3 flex items-center justify-end gap-2">
-                    {row.card_status && (
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold border ${
-                          row.card_status === 'printed'
-                            ? 'bg-[#10B981]/10 border-[#10B981]/25 text-[#10B981]'
-                            : 'bg-[#D4AF37]/10 border-[#D4AF37]/25 text-[#D4AF37]'
-                        }`}
-                      >
-                        <Check size={11} />
-                        {row.card_status === 'printed'
-                          ? t('admin.upcomingCards.statusPrinted', { defaultValue: 'Printed' })
-                          : t('admin.upcomingCards.statusQueued', { defaultValue: 'Queued' })}
-                      </span>
-                    )}
-                    {row.card_id ? (
+
+                  {/* The card — hero of the cell, centered */}
+                  <div className="flex justify-center py-1">
+                    <CardPreview
+                      occasion={row.occasion}
+                      headline={row.headline}
+                      subline={row.subline}
+                      memberName={row.full_name}
+                      width={236}
+                    />
+                  </div>
+
+                  {/* Action — materialize ("print early") or view if already queued */}
+                  {row.card_id ? (
+                    <div className="flex items-center gap-2">
+                      {row.card_status && (
+                        <span
+                          className={`admin-pill ${row.card_status === 'printed' ? 'admin-pill--good' : 'admin-pill--warn'}`}
+                        >
+                          <Check size={11} />
+                          {row.card_status === 'printed'
+                            ? t('admin.upcomingCards.statusPrinted', { defaultValue: 'Printed' })
+                            : t('admin.upcomingCards.statusQueued', { defaultValue: 'Queued' })}
+                        </span>
+                      )}
                       <button
                         onClick={() => setPreviewIds([row.card_id])}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#1E293B] text-[#E5E7EB] border border-white/10 hover:brightness-110 transition"
+                        className="ml-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11.5px] font-bold transition active:scale-[0.98]"
+                        style={{
+                          background: 'var(--color-bg-card)',
+                          color: 'var(--color-admin-text)',
+                          border: '1px solid var(--color-admin-border)',
+                        }}
                       >
                         <Eye size={12} />
                         {t('admin.upcomingCards.viewBtn', { defaultValue: 'View' })}
                       </button>
-                    ) : (
-                      <button
-                        onClick={() => materializeMutation.mutate(row)}
-                        disabled={materializeMutation.isPending}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#8B5CF6] text-white hover:brightness-110 transition disabled:opacity-50"
-                      >
-                        {isPending ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
-                        {t('admin.upcomingCards.printNow', { defaultValue: 'Print early' })}
-                      </button>
-                    )}
-                  </div>
-                </li>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => materializeMutation.mutate(row)}
+                      disabled={materializeMutation.isPending}
+                      className="inline-flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-lg text-[12px] font-bold transition active:scale-[0.98] disabled:opacity-50"
+                      style={{ background: 'var(--color-coach)', color: '#fff' }}
+                    >
+                      {isPending ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
+                      {t('admin.upcomingCards.printNow', { defaultValue: 'Print early' })}
+                    </button>
+                  )}
+                </div>
               );
             })}
-          </ul>
+          </div>
           <PaginationFooter pager={pager} total={upcoming.length} />
         </>
       )}

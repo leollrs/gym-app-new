@@ -183,7 +183,7 @@ export default function AdminABTesting() {
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold transition-colors hover:brightness-110 active:scale-[0.98]"
             style={{
               background: 'var(--color-accent)',
-              color: 'var(--color-bg-base)',
+              color: 'var(--color-text-on-accent)',
             }}
           >
             <Plus size={14} />
@@ -412,7 +412,7 @@ export default function AdminABTesting() {
               className="flex-1 px-4 py-2 rounded-xl text-[13px] font-bold transition-colors hover:brightness-110"
               style={{
                 background: 'var(--color-accent)',
-                color: 'var(--color-bg-base)',
+                color: 'var(--color-text-on-accent)',
               }}
             >
               {t('admin.abTesting.reactivate', 'Reactivate')}

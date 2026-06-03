@@ -1,28 +1,33 @@
 import { useState, useCallback } from 'react';
-import { UserPlus, Copy, Check, Loader2, Share2, ScanLine, X, Users, ChevronDown } from 'lucide-react';
+import { UserPlus, Copy, Check, Loader2, Share2, ScanLine, X, Mail, Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
 import PhoneInput from '../../../components/admin/PhoneInput';
+import NameFields from './NameFields';
+import { composeFullName, areNamePartsValid } from '../../../lib/admin/memberName';
 import logger from '../../../lib/logger';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { useToast } from '../../../contexts/ToastContext';
 import posthog from 'posthog-js';
 import useScanClaim from '../../../hooks/useScanClaim';
 import { parseQRContent } from '../../../lib/scanRouter';
 
 /**
  * CreateInviteModal — "Add Member" (Agregar Miembro)
- * Directly creates a member profile + generates a link code
- * so the member can set their password on first app open.
+ * Directly creates a member profile + generates a link code, then delivers that
+ * access code to the member via our own providers (Resend email / Twilio SMS)
+ * through the existing send-admin-email / send-sms edge functions (memberId path).
  */
 export default function CreateInviteModal({ gymId, onClose, onCreated }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const { showToast } = useToast();
   const k = (key) => t(`admin.createInvite.${key}`);
 
   const [phase, setPhase] = useState('form'); // 'form' | 'result'
-  const [name, setName] = useState('');
+  const [nameParts, setNameParts] = useState({ first: '', middle: '', last: '', second: '' });
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,23 +41,23 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const [referralLoading, setReferralLoading] = useState(false);
   const [referralError, setReferralError] = useState(null);
 
-  // Optional profile info (gym admin can fill on member's behalf)
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [age, setAge] = useState('');
-  const [sex, setSex] = useState('');
-  const [heightFeet, setHeightFeet] = useState('');
-  const [heightInches, setHeightInches] = useState('');
-  const [weightLbs, setWeightLbs] = useState('');
-  const [fitnessLevel, setFitnessLevel] = useState('');
-  const [primaryGoal, setPrimaryGoal] = useState('');
-  const [trainingDaysPerWeek, setTrainingDaysPerWeek] = useState('');
+  // Gym membership ID (optional) — the code from the gym's existing system
+  // (keypad / barcode). Promoted to a primary field; no longer mandatory.
   const [externalId, setExternalId] = useState('');
-  const [adminNote, setAdminNote] = useState('');
+
   // Optional admin override for the member's actual gym join date.
   // When set, the churn engine uses this for tenure calculations
   // instead of the app signup date — important for members who
   // pre-date the app, otherwise they get flagged as 90-day-risk.
   const [membershipStartedAt, setMembershipStartedAt] = useState('');
+
+  // Credential delivery — which channel(s) to auto-send the access code on.
+  const [sendMethod, setSendMethod] = useState('both'); // 'email' | 'sms' | 'both'
+  const [delivering, setDelivering] = useState(false);
+  const [sentVia, setSentVia] = useState([]); // channels that succeeded
+
+  const fullName = composeFullName(nameParts);
+  const namesOk = areNamePartsValid(nameParts);
 
   // Generate a random 6-char alphanumeric code (excludes ambiguous chars)
   const generateCode = () => {
@@ -132,40 +137,84 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   // Claim scanner while form phase is active
   useScanClaim(handleReferralScan, phase === 'form');
 
+  // Deliver the access code to the new member via our providers (Resend / Twilio)
+  // through the member-aware edge functions (they resolve the stored email/phone
+  // from the member record). Best-effort — failures fall back to manual share.
+  const deliverAccess = async (memberId, code) => {
+    const channels = sendMethod === 'both' ? ['email', 'sms'] : [sendMethod];
+    const lang = i18n.language?.startsWith('es') ? 'es' : 'en';
+    const firstName = (nameParts.first || '').trim();
+    const inviteUrl = `https://tugympr.app/invite/${code}`;
+    const succeeded = [];
+    setDelivering(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const authHeaders = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      for (const ch of channels) {
+        try {
+          if (ch === 'email') {
+            const subject = k('accessEmailSubject') || 'Your gym access code';
+            const body = [
+              t('admin.createInvite.accessGreeting', { name: firstName, defaultValue: 'Hi {{name}}, your account is ready.' }),
+              t('admin.createInvite.accessCodeLine', { code, defaultValue: 'Your access code: {{code}}' }),
+              t('admin.createInvite.accessOpenLink', { url: inviteUrl, defaultValue: 'Tap to get started and set your password: {{url}}' }),
+            ].join('\n');
+            const { data, error: fnErr } = await supabase.functions.invoke('send-admin-email', {
+              headers: authHeaders,
+              body: { memberId, subject, body, lang },
+            });
+            if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message || 'email_failed');
+            succeeded.push('email');
+          } else {
+            const body = t('admin.createInvite.accessSmsBody', { code, url: inviteUrl, defaultValue: 'Your account is ready! Access code: {{code}}. Set your password: {{url}}' });
+            const { data, error: fnErr } = await supabase.functions.invoke('send-sms', {
+              headers: authHeaders,
+              body: { memberId, body, source: 'member_add' },
+            });
+            if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message || 'sms_failed');
+            succeeded.push('sms');
+          }
+        } catch (err) {
+          logger.warn(`deliverAccess ${ch} failed:`, err);
+        }
+      }
+    } finally {
+      setDelivering(false);
+    }
+    setSentVia(succeeded);
+    if (succeeded.length === channels.length) {
+      showToast(k('accessSent') || 'Access code sent', 'success');
+    } else if (succeeded.length > 0) {
+      showToast(k('accessSentPartial') || 'Sent on some channels — share the rest manually.', 'warning');
+    } else {
+      showToast(k('accessSendFailed') || "Couldn't send automatically — copy or share the code.", 'error');
+    }
+  };
+
   const handleCreate = async () => {
-    if (!name.trim() || !email.trim() || !phone.trim()) return;
+    if (!fullName || !namesOk || !email.trim() || !phone.trim()) return;
     setLoading(true);
     setError(null);
 
     try {
-      const ageNum = age ? Math.max(0, Math.min(120, parseInt(age, 10))) : null;
-      const heightInchesTotal = (heightFeet || heightInches)
-        ? (parseInt(heightFeet || '0', 10) * 12) + parseInt(heightInches || '0', 10)
-        : null;
-      const weightNum = weightLbs ? Math.max(0, parseFloat(weightLbs)) : null;
-      const trainingDays = trainingDaysPerWeek ? Math.max(1, Math.min(7, parseInt(trainingDaysPerWeek, 10))) : null;
-
       // 1. Create the member via RPC. A direct profiles insert can't work:
-      //    profiles.id is an FK to auth.users with no default, and
-      //    email / initial_weight_lbs / fitness_level / primary_goal /
-      //    training_days_per_week are NOT profiles columns. The RPC
-      //    provisions a real auth user + profile and routes the fitness
-      //    fields to member_onboarding.
+      //    profiles.id is an FK to auth.users with no default, and email is not
+      //    a profiles column. The RPC provisions a real auth user + profile.
       const { data: created, error: rpcError } = await supabase.rpc('admin_create_member', {
         p_gym_id: gymId,
-        p_full_name: name.trim(),
+        p_full_name: fullName,
         p_email: email.trim().toLowerCase(),
         p_phone: phone.trim() || null,
         p_membership_started_at: membershipStartedAt || null,
         p_external_id: externalId.trim() || null,
-        p_admin_note: adminNote.trim() || null,
-        p_age: (ageNum !== null && !Number.isNaN(ageNum)) ? ageNum : null,
-        p_sex: sex || null,
-        p_height_inches: (heightInchesTotal !== null && !Number.isNaN(heightInchesTotal) && heightInchesTotal > 0) ? heightInchesTotal : null,
-        p_weight_lbs: (weightNum !== null && !Number.isNaN(weightNum) && weightNum > 0) ? weightNum : null,
-        p_fitness_level: fitnessLevel || null,
-        p_primary_goal: primaryGoal || null,
-        p_training_days: (trainingDays !== null && !Number.isNaN(trainingDays)) ? trainingDays : null,
+        p_admin_note: null,
+        p_age: null,
+        p_sex: null,
+        p_height_inches: null,
+        p_weight_lbs: null,
+        p_fitness_level: null,
+        p_primary_goal: null,
+        p_training_days: null,
       });
 
       if (rpcError) throw rpcError;
@@ -183,7 +232,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
           gym_id: gymId,
           created_by: user.id,
           invite_code: linkCode,
-          member_name: name.trim(),
+          member_name: fullName,
           email: email.trim().toLowerCase(),
           phone: phone.trim() || null,
           role: 'member',
@@ -196,15 +245,18 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
 
       // 3. Log admin action
       logAdminAction('add_member', 'member', newMemberId, {
-        name: name.trim(),
+        name: fullName,
         email: email.trim(),
         has_referral: !!referrerInfo,
       });
       posthog?.capture('admin_member_invited', { method: 'direct_add' });
 
-      setResult({ profileId: newMemberId, code: linkCode, name: name.trim() });
+      setResult({ profileId: newMemberId, code: linkCode, name: fullName });
       setPhase('result');
       if (onCreated) onCreated();
+
+      // 4. Auto-deliver the access code via our providers (best-effort).
+      deliverAccess(newMemberId, linkCode);
     } catch (err) {
       logger.error('CreateInviteModal: create failed:', err);
       setError(err.message || k('somethingWentWrong'));
@@ -253,7 +305,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
 
   const handleAddAnother = () => {
     setPhase('form');
-    setName('');
+    setNameParts({ first: '', middle: '', last: '', second: '' });
     setEmail('');
     setPhone('');
     setResult(null);
@@ -262,41 +314,28 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     setReferrerInfo(null);
     setReferralCode('');
     setReferralError(null);
-    setMoreOpen(false);
-    setAge('');
-    setSex('');
-    setHeightFeet('');
-    setHeightInches('');
-    setWeightLbs('');
-    setFitnessLevel('');
-    setPrimaryGoal('');
-    setTrainingDaysPerWeek('');
     setExternalId('');
-    setAdminNote('');
+    setMembershipStartedAt('');
+    setSentVia([]);
+    setDelivering(false);
   };
+
+  const inputStyle = {
+    background: 'var(--color-bg-input, var(--color-bg-elevated))',
+    border: '1px solid var(--color-border-subtle)',
+    color: 'var(--color-text-primary)',
+  };
+
+  const channelBtnStyle = (active, tone) => active
+    ? { background: `color-mix(in srgb, ${tone} 14%, transparent)`, color: tone, border: `1px solid color-mix(in srgb, ${tone} 32%, transparent)` }
+    : { background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' };
 
   return (
     <AdminModal isOpen onClose={onClose} title={k('addMemberTitle') || k('title')} titleIcon={UserPlus} size="sm">
       {phase === 'form' ? (
         <div className="space-y-4">
-          {/* Name */}
-          <div>
-            <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {k('memberName')} <span style={{ color: 'var(--color-danger)' }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={k('memberNamePlaceholder')}
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{
-                background: 'var(--color-bg-input, var(--color-bg-elevated))',
-                border: '1px solid var(--color-border-subtle)',
-                color: 'var(--color-text-primary)',
-              }}
-            />
-          </div>
+          {/* Name — structured (first / middle / last / second last) */}
+          <NameFields value={nameParts} onChange={setNameParts} />
 
           {/* Email (required) */}
           <div>
@@ -309,11 +348,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder={k('emailPlaceholder')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{
-                background: 'var(--color-bg-input, var(--color-bg-elevated))',
-                border: '1px solid var(--color-border-subtle)',
-                color: 'var(--color-text-primary)',
-              }}
+              style={inputStyle}
             />
           </div>
 
@@ -330,8 +365,23 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
             />
           </div>
 
-          {/* Gym join date — primary field. Overrides 90-day onboarding
-              risk window so members who pre-date the app aren't flagged. */}
+          {/* Gym membership ID — promoted primary field, optional. */}
+          <div>
+            <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+              {t('admin.createInvite.externalId', 'Gym membership ID (keypad / system code)')}
+            </label>
+            <input
+              type="text"
+              value={externalId}
+              onChange={e => setExternalId(e.target.value)}
+              placeholder={t('admin.createInvite.externalIdPlaceholder', 'e.g. 1234, A001')}
+              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Gym join date — overrides 90-day onboarding risk window so members
+              who pre-date the app aren't flagged. */}
           <div>
             <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
               {k('membershipStartedAt')}
@@ -342,7 +392,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
               onChange={e => setMembershipStartedAt(e.target.value)}
               max={new Date().toISOString().slice(0, 10)}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+              style={inputStyle}
             />
             <p className="text-[10px] mt-1.5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
               {k('membershipStartedAtHelp')}
@@ -399,11 +449,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
                   placeholder={t('admin.createInvite.referralPlaceholder', 'Scan QR or type referral code')}
                   aria-label={t('admin.createInvite.referralPlaceholder', 'Scan QR or type referral code')}
                   className="w-full rounded-xl px-3 py-2.5 pr-10 text-[13px] outline-none transition-colors"
-                  style={{
-                    background: 'var(--color-bg-input, var(--color-bg-elevated))',
-                    border: '1px solid var(--color-border-subtle)',
-                    color: 'var(--color-text-primary)',
-                  }}
+                  style={inputStyle}
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
                   {referralLoading ? (
@@ -422,167 +468,35 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
             )}
           </div>
 
-          {/* More information toggle */}
-          <button
-            type="button"
-            onClick={() => setMoreOpen(o => !o)}
-            className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-colors"
-            style={{
-              background: 'var(--color-bg-input, var(--color-bg-elevated))',
-              border: '1px solid var(--color-border-subtle)',
-              color: 'var(--color-text-muted)',
-            }}
-          >
-            <span>{t('admin.createInvite.moreInfo', 'More information (optional)')}</span>
-            <ChevronDown size={14} className={`transition-transform ${moreOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          {moreOpen && (
-            <div className="space-y-3 pt-1">
-              {/* External ID (gym keypad / membership #) */}
-              <div>
-                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.createInvite.externalId', 'Gym membership ID (keypad / system code)')}
-                </label>
-                <input
-                  type="text"
-                  value={externalId}
-                  onChange={e => setExternalId(e.target.value)}
-                  placeholder={t('admin.createInvite.externalIdPlaceholder', 'e.g. 1234, A001')}
-                  className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-                  style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-                />
-              </div>
-
-
-              {/* Age + Sex */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {t('admin.createInvite.age', 'Age')}
-                  </label>
-                  <input
-                    type="number"
-                    value={age}
-                    onChange={e => setAge(e.target.value)}
-                    min="0" max="120"
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {t('admin.createInvite.sex', 'Sex')}
-                  </label>
-                  <select
-                    value={sex}
-                    onChange={e => setSex(e.target.value)}
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-                  >
-                    <option value="">{t('admin.createInvite.selectOption', '—')}</option>
-                    <option value="male">{t('admin.createInvite.male', 'Male')}</option>
-                    <option value="female">{t('admin.createInvite.female', 'Female')}</option>
-                    <option value="other">{t('admin.createInvite.other', 'Other')}</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Height + Weight */}
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {t('admin.createInvite.heightFt', 'Height (ft)')}
-                  </label>
-                  <input type="number" value={heightFeet} onChange={e => setHeightFeet(e.target.value)} min="0" max="9"
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                </div>
-                <div>
-                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {t('admin.createInvite.heightIn', 'Height (in)')}
-                  </label>
-                  <input type="number" value={heightInches} onChange={e => setHeightInches(e.target.value)} min="0" max="11"
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                </div>
-                <div>
-                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {t('admin.createInvite.weightLbs', 'Weight (lbs)')}
-                  </label>
-                  <input type="number" value={weightLbs} onChange={e => setWeightLbs(e.target.value)} min="0" step="0.1"
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                </div>
-              </div>
-
-              {/* Fitness level + Goal */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {t('admin.createInvite.fitnessLevel', 'Level')}
-                  </label>
-                  <select value={fitnessLevel} onChange={e => setFitnessLevel(e.target.value)}
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
-                    <option value="">{t('admin.createInvite.selectOption', '—')}</option>
-                    <option value="beginner">{t('admin.createInvite.lvlBeginner', 'Beginner')}</option>
-                    <option value="intermediate">{t('admin.createInvite.lvlIntermediate', 'Intermediate')}</option>
-                    <option value="advanced">{t('admin.createInvite.lvlAdvanced', 'Advanced')}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {t('admin.createInvite.primaryGoal', 'Goal')}
-                  </label>
-                  <select value={primaryGoal} onChange={e => setPrimaryGoal(e.target.value)}
-                    className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-                    style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
-                    <option value="">{t('admin.createInvite.selectOption', '—')}</option>
-                    <option value="muscle_gain">{t('admin.createInvite.goalMuscle', 'Muscle gain')}</option>
-                    <option value="fat_loss">{t('admin.createInvite.goalFat', 'Fat loss')}</option>
-                    <option value="strength">{t('admin.createInvite.goalStrength', 'Strength')}</option>
-                    <option value="endurance">{t('admin.createInvite.goalEndurance', 'Endurance')}</option>
-                    <option value="general_fitness">{t('admin.createInvite.goalGeneral', 'General fitness')}</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Training frequency */}
-              <div>
-                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.createInvite.trainingDays', 'Training days per week')}
-                </label>
-                <select value={trainingDaysPerWeek} onChange={e => setTrainingDaysPerWeek(e.target.value)}
-                  className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-                  style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
-                  <option value="">{t('admin.createInvite.selectOption', '—')}</option>
-                  {[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
-
-              {/* Admin note */}
-              <div>
-                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.createInvite.adminNote', 'Admin notes (private)')}
-                </label>
-                <textarea
-                  value={adminNote}
-                  onChange={e => setAdminNote(e.target.value)}
-                  rows={3}
-                  placeholder={t('admin.createInvite.adminNotePlaceholder', 'Injuries, history, preferences…')}
-                  className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors resize-none"
-                  style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-                />
-              </div>
+          {/* Credential delivery channel */}
+          <div>
+            <label className="block text-[12px] font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>
+              {t('admin.createInvite.sendVia', 'Send access code via')}
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button type="button" onClick={() => setSendMethod('email')}
+                className="flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
+                style={channelBtnStyle(sendMethod === 'email', 'var(--color-info)')}>
+                <Mail size={13} /> {t('admin.createInvite.channelEmail', 'Email')}
+              </button>
+              <button type="button" onClick={() => setSendMethod('sms')}
+                className="flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
+                style={channelBtnStyle(sendMethod === 'sms', 'var(--color-success)')}>
+                <Smartphone size={13} /> {t('admin.createInvite.channelSms', 'SMS')}
+              </button>
+              <button type="button" onClick={() => setSendMethod('both')}
+                className="flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
+                style={channelBtnStyle(sendMethod === 'both', 'var(--color-accent)')}>
+                {t('admin.createInvite.channelBoth', 'Both')}
+              </button>
             </div>
-          )}
+          </div>
 
           {error && <p className="text-[12px]" style={{ color: 'var(--color-danger)' }}>{error}</p>}
 
           <button
             onClick={handleCreate}
-            disabled={!name.trim() || !email.trim() || !phone.trim() || loading}
+            disabled={!fullName || !namesOk || !email.trim() || !phone.trim() || loading}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
             style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
           >
@@ -615,6 +529,28 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
             <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
               {result?.name}
             </p>
+          </div>
+
+          {/* Delivery status */}
+          <div
+            className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-medium"
+            style={delivering
+              ? { background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
+              : sentVia.length > 0
+                ? { background: 'color-mix(in srgb, var(--color-success) 10%, transparent)', color: 'var(--color-success)', border: '1px solid color-mix(in srgb, var(--color-success) 20%, transparent)' }
+                : { background: 'color-mix(in srgb, var(--color-warning) 10%, transparent)', color: 'var(--color-warning)', border: '1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)' }}
+          >
+            {delivering ? (
+              <><Loader2 size={13} className="animate-spin" /> {t('admin.createInvite.deliveringAccess', 'Sending access code…')}</>
+            ) : sentVia.length > 0 ? (
+              <><Check size={13} /> {sentVia.includes('email') && sentVia.includes('sms')
+                ? t('admin.createInvite.accessSentBoth', 'Access code sent by email + SMS')
+                : sentVia.includes('email')
+                  ? t('admin.createInvite.accessSentEmail', 'Access code emailed')
+                  : t('admin.createInvite.accessSentSms', 'Access code texted')}</>
+            ) : (
+              <>{t('admin.createInvite.accessSendFailed', "Couldn't send automatically — copy or share the code.")}</>
+            )}
           </div>
 
           {/* Prominent code display */}

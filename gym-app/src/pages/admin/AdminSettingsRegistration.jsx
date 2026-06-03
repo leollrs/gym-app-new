@@ -261,7 +261,7 @@ export default function AdminSettingsRegistration() {
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
             style={{
               backgroundColor: saved ? 'var(--color-success)' : 'var(--color-accent)',
-              color: saved ? '#fff' : 'var(--color-bg-base)',
+              color: saved ? '#fff' : 'var(--color-text-on-accent)',
             }}
           >
             <Save size={16} />

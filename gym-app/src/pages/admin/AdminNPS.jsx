@@ -251,7 +251,7 @@ export default function AdminNPS() {
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:brightness-110 active:scale-[0.98]"
             style={{
               background: GOLD,
-              color: 'var(--color-bg-base)',
+              color: 'var(--color-text-on-accent)',
               border: '1px solid var(--color-accent)',
               boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
             }}
@@ -288,7 +288,7 @@ export default function AdminNPS() {
               className="text-[11.5px] font-bold px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
               style={{
                 background: 'var(--color-accent)',
-                color: 'var(--color-bg-base)',
+                color: 'var(--color-text-on-accent)',
               }}
             >
               {t('admin.nps.manage', 'Manage')}
@@ -537,7 +537,7 @@ export default function AdminNPS() {
             <button
               onClick={() => setShowSurveyModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors hover:brightness-110"
-              style={{ background: GOLD, color: 'var(--color-bg-base)' }}
+              style={{ background: GOLD, color: 'var(--color-text-on-accent)' }}
             >
               <Send size={14} /> {t('admin.nps.sendFirstSurvey', 'Send your first survey')}
             </button>

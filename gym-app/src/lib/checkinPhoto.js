@@ -54,12 +54,14 @@ export async function signCheckinPhotos(paths, ttl = SIGNED_TTL) {
 export async function uploadCheckinPhoto({ subjectId, file, previousPath = null }) {
   if (!subjectId || !file) throw new Error('Missing subject or file');
 
-  const check = await validateImageFile(file, { maxSizeMB: 8 });
-  if (!check.valid) throw new Error(check.error || 'Invalid image');
-
-  // Re-encode to a clean, downscaled JPEG (strips EXIF/GPS). A face for ID
-  // recognition needs no more than ~1024px.
+  // Re-encode FIRST to a clean, downscaled JPEG (strips EXIF/GPS, and transcodes
+  // HEIC→JPEG via createImageBitmap). iPhone camera files are HEIC, which the
+  // magic-byte validator rejects — so we must normalize before validating, not
+  // after. A face for ID recognition needs no more than ~1024px.
   const clean = await stripExif(file, { maxDimension: 1024, quality: 0.85 });
+
+  const check = await validateImageFile(clean, { maxSizeMB: 8 });
+  if (!check.valid) throw new Error(check.error || 'Invalid image');
 
   const path = `${subjectId}/${Date.now()}.jpg`;
   const { error: upErr } = await supabase.storage
@@ -68,7 +70,11 @@ export async function uploadCheckinPhoto({ subjectId, file, previousPath = null 
   if (upErr) throw upErr;
 
   if (previousPath && previousPath !== path) {
-    supabase.storage.from(CHECKIN_BUCKET).remove([previousPath]).catch(() => {});
+    // Best-effort: drop the old object on replace so the private bucket doesn't
+    // accumulate orphans. Log (don't throw) so a failed cleanup is visible.
+    supabase.storage.from(CHECKIN_BUCKET).remove([previousPath])
+      .then(({ error }) => { if (error) logger.warn('checkin previous-photo delete failed:', error.message); })
+      .catch((e) => logger.warn('checkin previous-photo delete error:', e?.message));
   }
   return path;
 }
@@ -82,5 +88,9 @@ export async function persistCheckinPhoto(subjectId, path) {
 /** Clear the photo: drop the profile pointer + best-effort delete the object. */
 export async function removeCheckinPhoto(subjectId, path) {
   await persistCheckinPhoto(subjectId, null);
-  if (path) supabase.storage.from(CHECKIN_BUCKET).remove([path]).catch(() => {});
+  if (path) {
+    supabase.storage.from(CHECKIN_BUCKET).remove([path])
+      .then(({ error }) => { if (error) logger.warn('checkin photo delete failed:', error.message); })
+      .catch((e) => logger.warn('checkin photo delete error:', e?.message));
+  }
 }

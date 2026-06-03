@@ -6,7 +6,7 @@ import { encryptMessage } from '../../../lib/messageEncryption';
 import i18n from 'i18next';
 import logger from '../../../lib/logger';
 import { useToast } from '../../../contexts/ToastContext';
-import { AdminModal, Avatar, SectionLabel } from '../../../components/admin';
+import { AdminModal, Avatar, SectionLabel, PhoneInput } from '../../../components/admin';
 import { RiskBadge, ScoreBar } from '../../../components/admin/StatusBadge';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { getEmailTemplates, getSmsTemplates } from '../../../lib/adminMessageTemplates';
@@ -309,10 +309,14 @@ export default function ContactPanel({
           <Avatar name={member.full_name} size="lg" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <p className="text-[14px] font-bold text-[#E5E7EB] truncate">{member.full_name}</p>
-              <RiskBadge tier={riskTier} />
+              <p className="text-[14px] font-bold text-[var(--color-admin-text)] truncate">{member.full_name}</p>
+              {typeof member.churnScore === 'number' && <RiskBadge tier={riskTier} />}
             </div>
-            <ScoreBar score={member.churnScore} />
+            {/* Churn header only applies to members. For staff (e.g. trainers, no churn
+                score) show the handle instead, so the panel doubles as a generic contact tool. */}
+            {typeof member.churnScore === 'number'
+              ? <ScoreBar score={member.churnScore} />
+              : (member.username ? <p className="text-[12px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>@{member.username}</p> : null)}
           </div>
         </div>
 
@@ -322,37 +326,37 @@ export default function ContactPanel({
           <div className="grid grid-cols-3 gap-2.5">
             {/* In-App Message (also pushes to app) */}
             <button onClick={() => openChannel('message')}
-              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group ${messageMode ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-white/6 hover:border-[#D4AF37]/30 hover:bg-[#D4AF37]/5'}`}>
+              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[var(--color-bg-subtle)] border rounded-xl transition-all group ${messageMode ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-[var(--color-admin-border)] hover:border-[#D4AF37]/30 hover:bg-[#D4AF37]/5'}`}>
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center group-hover:bg-[#D4AF37]/20 transition-colors">
                 <MessageSquare size={18} className="text-[#D4AF37]" />
               </div>
               <div className="text-center min-w-0 w-full">
-                <p className="text-[11px] sm:text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactMessage', 'Message')}</p>
-                <p className="text-[10px] text-[#6B7280] truncate">{t('admin.churn.contactInAppPush', 'In-app + push')}</p>
+                <p className="text-[11px] sm:text-[12px] font-semibold text-[var(--color-admin-text)]">{t('admin.churn.contactMessage', 'Message')}</p>
+                <p className="text-[10px] text-[var(--color-admin-text-muted)] truncate">{t('admin.churn.contactInAppPush', 'In-app + push')}</p>
               </div>
             </button>
 
             {/* Email */}
             <button onClick={() => openChannel('email')} disabled={!email}
-              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/6 disabled:hover:bg-[#111827] ${emailMode ? 'border-[#60A5FA]/40 bg-[#60A5FA]/5' : 'border-white/6 hover:border-[#60A5FA]/30 hover:bg-[#60A5FA]/5'}`}>
+              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[var(--color-bg-subtle)] border rounded-xl transition-all group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-[var(--color-admin-border)] disabled:hover:bg-[var(--color-bg-subtle)] ${emailMode ? 'border-[#60A5FA]/40 bg-[#60A5FA]/5' : 'border-[var(--color-admin-border)] hover:border-[#60A5FA]/30 hover:bg-[#60A5FA]/5'}`}>
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#60A5FA]/10 flex items-center justify-center group-hover:bg-[#60A5FA]/20 transition-colors">
                 <Mail size={18} className="text-[#60A5FA]" />
               </div>
               <div className="text-center min-w-0 w-full">
-                <p className="text-[11px] sm:text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactEmail', 'Email')}</p>
-                <p className="text-[10px] text-[#6B7280] truncate">{email || t('admin.churn.notOnFile', 'Not on file')}</p>
+                <p className="text-[11px] sm:text-[12px] font-semibold text-[var(--color-admin-text)]">{t('admin.churn.contactEmail', 'Email')}</p>
+                <p className="text-[10px] text-[var(--color-admin-text-muted)] truncate">{email || t('admin.churn.notOnFile', 'Not on file')}</p>
               </div>
             </button>
 
             {/* SMS — always enabled; admin can type any number if none on file */}
             <button onClick={() => openChannel('sms')}
-              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group ${smsMode ? 'border-[#F59E0B]/40 bg-[#F59E0B]/5' : 'border-white/6 hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5'}`}>
+              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[var(--color-bg-subtle)] border rounded-xl transition-all group ${smsMode ? 'border-[#F59E0B]/40 bg-[#F59E0B]/5' : 'border-[var(--color-admin-border)] hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5'}`}>
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center group-hover:bg-[#F59E0B]/20 transition-colors">
                 <Smartphone size={18} className="text-[#F59E0B]" />
               </div>
               <div className="text-center min-w-0 w-full">
-                <p className="text-[11px] sm:text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactSms', 'SMS')}</p>
-                <p className="text-[10px] text-[#6B7280] truncate">{memberPhone || t('admin.churn.noPhone', 'No phone')}</p>
+                <p className="text-[11px] sm:text-[12px] font-semibold text-[var(--color-admin-text)]">{t('admin.churn.contactSms', 'SMS')}</p>
+                <p className="text-[10px] text-[var(--color-admin-text-muted)] truncate">{memberPhone || t('admin.churn.noPhone', 'No phone')}</p>
               </div>
             </button>
 
@@ -364,13 +368,13 @@ export default function ContactPanel({
           <div>
             <SectionLabel icon={Mail} className="mb-2">{t('admin.churn.composeEmail', 'Send Email')}</SectionLabel>
             <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-[10px] text-[#6B7280] flex-shrink-0">{t('admin.churn.sendingTo', 'To:')}</span>
+              <span className="text-[10px] text-[var(--color-admin-text-muted)] flex-shrink-0">{t('admin.churn.sendingTo', 'To:')}</span>
               <input
                 type="email"
                 value={emailTo}
                 onChange={e => setEmailTo(e.target.value)}
                 aria-label={t('admin.churn.emailTo', 'Email recipient')}
-                className={`flex-1 bg-[#111827] border rounded-lg px-2 py-1 text-[12px] text-[#E5E7EB] outline-none transition-colors ${emailTo && !isValidEmail(emailTo) ? 'border-[#EF4444]/50 focus:border-[#EF4444]/70' : 'border-white/6 focus:border-[#60A5FA]/40'}`}
+                className={`flex-1 bg-[var(--color-bg-subtle)] border rounded-lg px-2 py-1 text-[12px] text-[var(--color-admin-text)] outline-none transition-colors ${emailTo && !isValidEmail(emailTo) ? 'border-[#EF4444]/50 focus:border-[#EF4444]/70' : 'border-[var(--color-admin-border)] focus:border-[#60A5FA]/40'}`}
               />
               {emailTo && !isValidEmail(emailTo) && (
                 <span className="text-[10px] text-[#EF4444] flex-shrink-0">{t('admin.churn.invalidEmail', 'Invalid email')}</span>
@@ -380,13 +384,13 @@ export default function ContactPanel({
             {/* Quick template suggestions */}
             {!emailSubject && !emailBody && (
               <div className="mb-3">
-                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
+                <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
                 <div className="flex flex-col gap-1.5">
                   {getEmailTemplates(t, member.full_name.split(' ')[0]).map((tpl) => (
                     <button key={tpl.key} onClick={() => { setEmailSubject(tpl.subject); setEmailBody(tpl.body); }}
-                      className="flex items-center gap-2 px-3 py-2 bg-[#111827] border border-white/6 rounded-lg text-left hover:border-[#60A5FA]/30 hover:bg-[#60A5FA]/5 transition-all">
+                      className="flex items-center gap-2 px-3 py-2 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-lg text-left hover:border-[#60A5FA]/30 hover:bg-[#60A5FA]/5 transition-all">
                       <Mail size={12} className="text-[#60A5FA] flex-shrink-0" />
-                      <span className="text-[12px] font-medium text-[#E5E7EB]">{tpl.label}</span>
+                      <span className="text-[12px] font-medium text-[var(--color-admin-text)]">{tpl.label}</span>
                     </button>
                   ))}
                 </div>
@@ -400,23 +404,23 @@ export default function ContactPanel({
                 onChange={e => setEmailSubject(e.target.value)}
                 placeholder={t('admin.churn.emailSubjectPlaceholder', 'Subject...')}
                 aria-label={t('admin.churn.emailSubject', 'Email subject')}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#60A5FA]/40 transition-colors"
+                className="w-full bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder-[#4B5563] outline-none focus:border-[#60A5FA]/40 transition-colors"
               />
               <textarea
                 value={emailBody}
                 onChange={e => setEmailBody(e.target.value)}
                 rows={5}
                 placeholder={t('admin.churn.emailBodyPlaceholder', { name: member.full_name.split(' ')[0], defaultValue: `Hi ${member.full_name.split(' ')[0]}, we noticed you haven't visited in a while...` })}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#60A5FA]/40 transition-colors resize-none"
+                className="w-full bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder-[#4B5563] outline-none focus:border-[#60A5FA]/40 transition-colors resize-none"
               />
               {/* Reward selector */}
               <div className="flex items-center gap-2 px-1">
                 <Gift size={14} className="text-[#D4AF37] flex-shrink-0" />
-                <span className="text-[11px] font-semibold text-[#9CA3AF] flex-shrink-0">{t('admin.churn.attachReward', 'Attach Reward')}</span>
+                <span className="text-[11px] font-semibold text-[var(--color-admin-text-sub)] flex-shrink-0">{t('admin.churn.attachReward', 'Attach Reward')}</span>
                 <select
                   value={rewardType}
                   onChange={e => setRewardType(e.target.value)}
-                  className="flex-1 bg-[#111827] border border-white/6 rounded-lg px-2 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 transition-colors appearance-none cursor-pointer"
+                  className="flex-1 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-lg px-2 py-1.5 text-[12px] text-[var(--color-admin-text)] outline-none focus:border-[#D4AF37]/40 transition-colors appearance-none cursor-pointer"
                 >
                   {rewardOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -431,7 +435,7 @@ export default function ContactPanel({
                   {emailSent ? <><CheckCircle size={14} /> {t('admin.churn.emailSent', 'Sent!')}</> : emailSending ? '...' : <><Send size={14} /> {t('admin.churn.sendEmail', 'Send Email')}</>}
                 </button>
                 <button onClick={() => { setActiveChannel(null); setEmailSubject(''); setEmailBody(''); setRewardType('none'); }}
-                  className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/4 border border-white/6 transition-colors">
+                  className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] transition-colors">
                   {t('common:cancel', 'Cancel')}
                 </button>
               </div>
@@ -443,31 +447,30 @@ export default function ContactPanel({
         {smsMode && (
           <div>
             <SectionLabel icon={Smartphone} className="mb-2">{t('admin.churn.composeSms', 'Send SMS')}</SectionLabel>
-            <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-[10px] text-[#6B7280] flex-shrink-0">{t('admin.churn.sendingTo', 'To:')}</span>
-              <input
-                type="tel"
+            <div className="mb-2.5">
+              <span className="text-[10px] block mb-1.5" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.churn.sendingTo', 'To:')}</span>
+              {/* Dial code (+1) stays fixed aside; admin just types area code + number. */}
+              <PhoneInput
                 value={smsTo}
-                onChange={e => setSmsTo(e.target.value)}
-                placeholder="+1234567890"
-                aria-label={t('admin.churn.smsTo', 'SMS recipient')}
-                className={`flex-1 bg-[#111827] border rounded-lg px-2 py-1 text-[12px] text-[#E5E7EB] font-mono outline-none transition-colors ${smsTo && !isValidPhone(smsTo) ? 'border-[#EF4444]/50 focus:border-[#EF4444]/70' : 'border-white/6 focus:border-[#F59E0B]/40'}`}
+                onChange={setSmsTo}
+                placeholder="787 555 1234"
+                ariaLabel={t('admin.churn.smsTo', 'SMS recipient')}
               />
               {smsTo && !isValidPhone(smsTo) && (
-                <span className="text-[10px] text-[#EF4444] flex-shrink-0">{t('admin.churn.invalidPhone', 'Invalid')}</span>
+                <span className="text-[10px] mt-1 block" style={{ color: 'var(--color-danger)' }}>{t('admin.churn.invalidPhone', 'Invalid')}</span>
               )}
             </div>
 
             {/* Quick SMS templates */}
             {!smsBody && (
               <div className="mb-3">
-                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
+                <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
                 <div className="flex flex-col gap-1.5">
                   {getSmsTemplates(t, member.full_name.split(' ')[0]).map((tpl) => (
                     <button key={tpl.key} onClick={() => setSmsBody(tpl.body)}
-                      className="flex items-center gap-2 px-3 py-2 bg-[#111827] border border-white/6 rounded-lg text-left hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5 transition-all">
+                      className="flex items-center gap-2 px-3 py-2 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-lg text-left hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5 transition-all">
                       <Smartphone size={12} className="text-[#F59E0B] flex-shrink-0" />
-                      <span className="text-[12px] font-medium text-[#E5E7EB]">{tpl.label}</span>
+                      <span className="text-[12px] font-medium text-[var(--color-admin-text)]">{tpl.label}</span>
                     </button>
                   ))}
                 </div>
@@ -481,15 +484,15 @@ export default function ContactPanel({
                   onChange={e => { if (e.target.value.length <= 320) setSmsBody(e.target.value); }}
                   rows={3}
                   placeholder={t('admin.churn.smsBodyPlaceholder', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you at the gym...` })}
-                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#F59E0B]/40 transition-colors resize-none"
+                  className="w-full bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder-[#4B5563] outline-none focus:border-[#F59E0B]/40 transition-colors resize-none"
                 />
                 <div className="flex items-center justify-between mt-1 px-1">
-                  <span className={`text-[10px] ${smsBody.length > 160 ? 'text-[#F59E0B]' : 'text-[#4B5563]'}`}>
+                  <span className={`text-[10px] ${smsBody.length > 160 ? 'text-[#F59E0B]' : 'text-[var(--color-admin-text-faint)]'}`}>
                     {smsSegments === 1
                       ? t('admin.churn.smsOneSegment', '1 segment')
                       : t('admin.churn.smsTwoSegments', '2 segments')}
                   </span>
-                  <span className={`text-[10px] ${smsBody.length > 300 ? 'text-[#EF4444]' : 'text-[#4B5563]'}`}>
+                  <span className={`text-[10px] ${smsBody.length > 300 ? 'text-[#EF4444]' : 'text-[var(--color-admin-text-faint)]'}`}>
                     {smsBody.length}/320
                   </span>
                 </div>
@@ -497,7 +500,7 @@ export default function ContactPanel({
 
               {smsUsage && (
                 <div className="flex items-center gap-2 px-1">
-                  <span className="text-[10px] text-[#6B7280]">
+                  <span className="text-[10px] text-[var(--color-admin-text-muted)]">
                     {t('admin.churn.smsUsage', { used: smsUsage.used, limit: smsUsage.limit, defaultValue: '{{used}}/{{limit}} SMS this month' })}
                   </span>
                 </div>
@@ -510,7 +513,7 @@ export default function ContactPanel({
                   {smsSent ? <><CheckCircle size={14} /> {t('admin.churn.smsSent', 'Sent!')}</> : smsSending ? '...' : <><Send size={14} /> {t('admin.churn.sendSms', 'Send SMS')}</>}
                 </button>
                 <button onClick={() => { setActiveChannel(null); setSmsBody(''); }}
-                  className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/4 border border-white/6 transition-colors">
+                  className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] transition-colors">
                   {t('common:cancel', 'Cancel')}
                 </button>
               </div>
@@ -519,13 +522,13 @@ export default function ContactPanel({
         )}
 
         {/* Contacted status toggle */}
-        <div className="flex items-center justify-between gap-3 p-3 bg-[#111827] border border-white/6 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between gap-3 p-3 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-xl overflow-hidden">
           <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-semibold text-[#E5E7EB] truncate">
+            <p className="text-[12px] font-semibold text-[var(--color-admin-text)] truncate">
               {effectiveContacted ? t('admin.churn.markedContacted', 'Marked as Contacted') : t('admin.churn.notYetContacted', 'Not yet contacted')}
             </p>
             {contactedLabel && (
-              <p className="text-[10px] text-[#6B7280] mt-0.5">{contactedLabel}</p>
+              <p className="text-[10px] text-[var(--color-admin-text-muted)] mt-0.5">{contactedLabel}</p>
             )}
           </div>
           <button
@@ -536,7 +539,7 @@ export default function ContactPanel({
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors flex-shrink-0 whitespace-nowrap ${
               effectiveContacted
                 ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20 hover:bg-[#EF4444]/10 hover:text-[#EF4444] hover:border-[#EF4444]/20'
-                : 'bg-white/4 text-[#9CA3AF] border-white/8 hover:text-[#E5E7EB]'
+                : 'bg-[var(--color-bg-subtle)] text-[var(--color-admin-text-sub)] border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)]'
             }`}>
             {effectiveContacted ? (
               <>
@@ -557,14 +560,14 @@ export default function ContactPanel({
             <SectionLabel className="mb-2">{t('admin.churn.contactHistory', 'Contact history')}</SectionLabel>
             <div className="space-y-1.5 max-h-44 overflow-y-auto">
               {history.map((h) => (
-                <div key={h.id} className="px-3 py-2 bg-[#111827] border border-white/6 rounded-lg">
+                <div key={h.id} className="px-3 py-2 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-lg">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold text-[#E5E7EB]">{methodLabel(h.method)}</span>
-                    <span className="text-[10px] text-[#6B7280] flex-shrink-0">
+                    <span className="text-[11px] font-semibold text-[var(--color-admin-text)]">{methodLabel(h.method)}</span>
+                    <span className="text-[10px] text-[var(--color-admin-text-muted)] flex-shrink-0">
                       {new Date(h.created_at).toLocaleString(i18n.language?.startsWith('es') ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
                   </div>
-                  {h.note && <p className="text-[11px] text-[#9CA3AF] mt-1 whitespace-pre-wrap line-clamp-3">{h.note}</p>}
+                  {h.note && <p className="text-[11px] text-[var(--color-admin-text-sub)] mt-1 whitespace-pre-wrap line-clamp-3">{h.note}</p>}
                 </div>
               ))}
             </div>
@@ -580,7 +583,7 @@ export default function ContactPanel({
                 placeholder={t('admin.churn.msgPlaceholder', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you!` })}
                 aria-label={t('admin.churn.quickMessage', 'Send Message')}
                 onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
+                className="flex-1 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
               <button onClick={handleSendMessage} disabled={notifSending || !notifMsg.trim() || notifSent}
                 className="px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors disabled:opacity-40"
                 style={{
@@ -591,11 +594,11 @@ export default function ContactPanel({
                 {notifSent ? <CheckCircle size={14} /> : notifSending ? '...' : <Send size={14} />}
               </button>
               <button onClick={() => { setActiveChannel(null); setNotifMsg(''); }}
-                className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/4 border border-white/6 transition-colors">
+                className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] transition-colors">
                 {t('common:cancel', 'Cancel')}
               </button>
             </div>
-            <p className="text-[10px] text-[#4B5563] mt-1.5 px-1">{t('admin.churn.msgNote', "Shows in member's Messages page + sends push notification")}</p>
+            <p className="text-[10px] text-[var(--color-admin-text-faint)] mt-1.5 px-1">{t('admin.churn.msgNote', "Shows in member's Messages page + sends push notification")}</p>
           </div>
         )}
       </div>

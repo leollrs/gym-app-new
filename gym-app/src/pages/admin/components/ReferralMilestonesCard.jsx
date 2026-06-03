@@ -202,7 +202,7 @@ export default function ReferralMilestonesCard({ gymId, t, isEs }) {
               || (newReward.type === 'gym_reward' ? !newReward.reward_id : !(parseInt(newReward.value, 10) > 0))
             }
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
           >
             <Plus size={14} />
             {t('admin.referrals.addMilestone', 'Add')}
@@ -250,7 +250,7 @@ export default function ReferralMilestonesCard({ gymId, t, isEs }) {
                           onClick={() => updateMutation.mutate()}
                           disabled={updateMutation.isPending}
                           className="px-3 py-2 rounded-xl text-[12px] font-semibold disabled:opacity-50"
-                          style={{ background: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+                          style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
                         >
                           <Save size={12} className="inline mr-1" />
                           {t('admin.referrals.save', 'Save')}

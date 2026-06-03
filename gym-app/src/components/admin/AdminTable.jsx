@@ -21,12 +21,23 @@ export default function AdminTable({
   keyField = 'id',
   stickyHeader = false,
   skeletonRows = 5,
+  sort: sortProp,
+  onSortChange,
+  fixedLayout = false,
 }) {
-  const [sort, setSort] = useState({ key: null, dir: 'asc' });
+  const [internalSort, setInternalSort] = useState({ key: null, dir: 'asc' });
+  // Controlled-sort mode: when the parent passes `onSortChange`, it owns the
+  // sort state and sorts the FULL dataset itself (e.g. so it can sort-then-
+  // paginate). We then render `data` as-is and only surface the indicator +
+  // forward header clicks. Uncontrolled (no onSortChange) keeps the original
+  // self-sorting behavior so existing callers are unaffected.
+  const controlled = typeof onSortChange === 'function';
+  const sort = controlled ? (sortProp || { key: null, dir: 'asc' }) : internalSort;
 
   const handleSort = (key) => {
     if (!key) return;
-    setSort((prev) =>
+    if (controlled) { onSortChange(key); return; }
+    setInternalSort((prev) =>
       prev.key === key
         ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
         : { key, dir: 'asc' }
@@ -34,6 +45,7 @@ export default function AdminTable({
   };
 
   const sortedData = (() => {
+    if (controlled) return data || [];
     if (!sort.key || !data?.length) return data || [];
     const col = columns.find((c) => c.key === sort.key);
     if (!col?.sortable) return data;
@@ -63,7 +75,7 @@ export default function AdminTable({
   return (
     <div className="bg-[#0F172A] border border-white/[0.06] rounded-[14px] overflow-hidden">
       <div className={`overflow-x-auto ${stickyHeader ? 'max-h-[600px] overflow-y-auto' : ''}`}>
-        <table className="w-full border-collapse">
+        <table className="w-full border-collapse" style={fixedLayout ? { tableLayout: 'fixed' } : undefined}>
 
           {/* ── Header ──────────────────────────────────────────────── */}
           <thead>
@@ -83,13 +95,15 @@ export default function AdminTable({
                   <th
                     key={col.key}
                     className={[
-                      'px-5 py-3.5 text-[11px] font-bold uppercase tracking-[0.06em] whitespace-nowrap',
+                      fixedLayout ? 'px-3 py-3.5' : 'px-5 py-3.5',
+                      'text-[11px] font-bold uppercase tracking-[0.06em]',
+                      fixedLayout ? 'align-bottom' : 'whitespace-nowrap',
                       'transition-colors duration-200',
                       isSorted ? 'text-[#E5E7EB]' : 'text-[#6B7280]',
                       col.sortable
                         ? 'cursor-pointer select-none hover:text-[#E5E7EB]'
                         : '',
-                      col.numeric ? 'text-right' : 'text-left',
+                      col.align === 'center' ? 'text-center' : col.numeric ? 'text-right' : 'text-left',
                       col.headerClassName || '',
                     ]
                       .filter(Boolean)
@@ -99,7 +113,7 @@ export default function AdminTable({
                   >
                     <div
                       className={`flex items-center gap-1.5 ${
-                        col.numeric ? 'justify-end' : ''
+                        col.align === 'center' ? 'justify-center' : col.numeric ? 'justify-end' : ''
                       }`}
                     >
                       {col.label}
@@ -177,8 +191,10 @@ export default function AdminTable({
                     <td
                       key={col.key}
                       className={[
-                        'px-5 py-3.5 text-[13px] leading-relaxed',
-                        col.numeric
+                        fixedLayout ? 'px-3 py-3.5 text-[13px] leading-relaxed align-middle' : 'px-5 py-3.5 text-[13px] leading-relaxed',
+                        col.align === 'center'
+                          ? 'text-center'
+                          : col.numeric
                           ? 'text-right tabular-nums font-medium'
                           : '',
                         col.className || 'text-[#E5E7EB]',

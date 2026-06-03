@@ -58,7 +58,7 @@ export default function TranslationPreviewModal({ preview, onConfirm, onCancel, 
         </button>
         <button onClick={onConfirm} disabled={saving}
           className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-50 transition-opacity"
-          style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-bg-base)' }}>
+          style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent)' }}>
           <Check size={14} /> {saving ? tc('saving') : t('admin.classes.confirmSave')}
         </button>
       </div>

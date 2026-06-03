@@ -669,7 +669,7 @@ const EarnedRewardsBanner = ({ rewards, onClaim, onShowQr, t, isEs, claiming }) 
                       <button
                         onClick={() => onClaim(er)}
                         disabled={claiming === er.id}
-                        className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-[12px] font-bold text-[var(--color-bg-base)] bg-[var(--color-accent)] hover:opacity-90 transition-all disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-[12px] font-bold text-[var(--color-text-on-accent)] bg-[var(--color-accent)] hover:opacity-90 transition-all disabled:opacity-50"
                       >
                         <Gift size={13} />
                         {claiming === er.id ? t('rewards.claiming', 'Claiming…') : t('rewards.claim', 'Claim')}

@@ -58,7 +58,7 @@ export async function fetchChurnFallback(gymId, supabase) {
     const tenureMonths = (nowMs - new Date(m.created_at)) / (MS_PER_DAY * 30.44);
     const daysSinceLastCheckIn = lastCheckIn ? (nowMs - new Date(lastCheckIn)) / MS_PER_DAY : null;
 
-    const fb = estimateChurnScoreFallback(daysInactive, recentWorkouts, neverActive);
+    const fb = estimateChurnScoreFallback(daysInactive, recentWorkouts, neverActive, tenureMonths * 30.44);
     // AdminChurn surfaces a per-member status string in the list view, so we
     // backfill a "healthy" signal when the engine produces no key signals.
     const keySignals = fb.key_signals.length ? fb.key_signals : ['Engagement looks healthy'];

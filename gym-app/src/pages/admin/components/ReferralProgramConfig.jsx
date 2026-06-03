@@ -198,7 +198,7 @@ export default function ReferralProgramConfig({ gymId, config, t, isEs }) {
             onClick={handleSave}
             disabled={saving}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
           >
             <Save size={14} />
             {saving ? t('admin.settings.saving', 'Saving...') : t('admin.settings.save', 'Save')}

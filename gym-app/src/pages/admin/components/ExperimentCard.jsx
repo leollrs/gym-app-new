@@ -198,7 +198,7 @@ export default function ExperimentCard({ campaign, attempts, onEnd, onReactivate
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-colors hover:brightness-110 active:scale-[0.98]"
                 style={{
                   background: 'var(--color-accent)',
-                  color: 'var(--color-bg-base)',
+                  color: 'var(--color-text-on-accent)',
                 }}
               >
                 <Send size={12} />

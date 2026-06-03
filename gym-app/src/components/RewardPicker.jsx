@@ -197,7 +197,7 @@ export default function RewardPicker({ rewardId, gymId, onChosen, onSkip, classN
           onClick={handleChoose}
           disabled={!selected || submitting}
           className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-bold transition-all disabled:opacity-40"
-          style={{ background: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+          style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
         >
           {submitting ? <Loader2 size={16} className="animate-spin" /> : <Gift size={16} />}
           {submitting ? t('rewards.claiming', 'Claiming...') : t('rewards.claimReward', 'Claim Reward')}

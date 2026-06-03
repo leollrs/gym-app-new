@@ -55,21 +55,42 @@ export async function fetchMembers(gymId, page = 0) {
   const nowMs = Date.now();
   const rows = (membersRes.data || []).map(m => {
     const scored = scoredMap[m.id];
-    const effectiveLast = m.last_active_at ?? lastSessionAt[m.id] ?? m.created_at;
     const recentWorkouts = sessionsLast14[m.id] ?? 0;
-    const daysInactive = Math.floor((nowMs - new Date(effectiveLast)) / 86400000);
-    const neverActive = !m.last_active_at && !lastSessionAt[m.id];
+    const lastSessAt = lastSessionAt[m.id] ?? null;
 
-    const fallback = !scored ? estimateChurnScoreFallback(daysInactive, recentWorkouts, neverActive) : null;
+    // Recency reflects REAL gym activity (last check-in / workout) from the churn
+    // engine — NEVER last_active_at, an app-open timestamp set at signup/import that
+    // made never-attended members read "active 28d ago / Low Risk". When the member
+    // was never scored (cold start) fall back to the 14-day session window only.
+    const lastActivityAt = scored?.lastActivityAt ?? lastSessAt;
+    const daysInactive = scored && scored.daysSinceLastActivity != null
+      ? Math.floor(scored.daysSinceLastActivity)
+      : (lastActivityAt ? Math.floor((nowMs - new Date(lastActivityAt)) / 86400000) : null);
+    // "Never active" = no attendance footprint at all (no check-in, no workout) —
+    // whether that reads as insufficient_data or the flagged never_activated risk.
+    const neverActive = scored
+      ? (scored.state === 'insufficient_data' || scored.primaryDriver === 'never_activated')
+      : !lastSessAt;
+
+    const fallback = !scored ? estimateChurnScoreFallback(daysInactive ?? 0, recentWorkouts, neverActive) : null;
     const follow = followupMap[m.id];
 
     return {
       ...m,
       recentWorkouts,
-      lastSessionAt: lastSessionAt[m.id] ?? null,
+      lastSessionAt: lastSessAt,
+      lastActivityAt,
       score: scored?.churnScore ?? fallback.score,
       risk_tier: scored?.riskTier?.tier ?? fallback.risk_tier,
+      // state drives the honest badge (insufficient_data / paused / churned vs scored).
+      // Dropping it here is what made the modal render score-0 as "Low Risk".
+      state: scored?.state ?? fallback?.state ?? 'scored',
       key_signals: scored?.keySignals ?? fallback.key_signals,
+      explanation: scored?.explanation ?? null,
+      primaryDriver: scored?.primaryDriver ?? null,
+      trend: scored?.trend ?? 'stable',
+      daysSinceLastActivity: scored?.daysSinceLastActivity ?? null,
+      daysSinceLastCheckIn: scored?.daysSinceLastCheckIn ?? null,
       followup_sent_at: follow?.followup_sent_at ?? null,
       membership_status: m.membership_status ?? 'active',
       daysInactive,

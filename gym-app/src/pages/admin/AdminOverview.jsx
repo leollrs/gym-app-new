@@ -103,19 +103,10 @@ export default function AdminOverview() {
     staleTime: 30_000,
   });
 
-  // Auto-trigger server-side churn scoring once when most members lack DB scores
-  const churnComputeTriggered = useRef(false);
-  useEffect(() => {
-    if (!gymId || !data || data._totalMembers === 0 || churnComputeTriggered.current) return;
-    if (data._dbScoreCount < data._totalMembers * 0.5) {
-      churnComputeTriggered.current = true;
-      supabase.rpc('compute_churn_scores', { p_gym_id: gymId })
-        .then(({ error }) => {
-          if (error) logger.error('Auto compute_churn_scores:', error);
-          else refetch();
-        });
-    }
-  }, [gymId, data?._dbScoreCount, data?._totalMembers]); // eslint-disable-line react-hooks/exhaustive-deps
+  // v3: churn scores come from loadGymChurnScores (nightly precompute or live
+  // recompute) via the query above. We no longer auto-run the legacy
+  // compute_churn_scores SQL RPC — it wrote a v1/v2 model that flagged every
+  // never-active member 95 ("never logged a workout"), conflicting with v3.
 
   // Track the lg breakpoint (queue↔rail height-match only applies side-by-side).
   useEffect(() => {

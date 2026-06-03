@@ -10,7 +10,17 @@ const SIZES = {
   lg: 'w-11 h-11 text-[15px]',
 };
 
-export default function Avatar({ name, size = 'md', src, ring, variant = 'neutral' }) {
+// Token-based tonal fills (cream-theme aware). Used via the `tone` prop, e.g.
+// risk-tinted member avatars. Additive — `variant` remains the default path.
+const TONE_STYLES = {
+  hot:     { background: 'color-mix(in srgb, var(--color-danger) 16%, transparent)',  color: 'var(--color-danger)' },
+  warn:    { background: 'color-mix(in srgb, var(--color-warning) 18%, transparent)', color: 'var(--color-warning-ink, var(--color-warning))' },
+  success: { background: 'color-mix(in srgb, var(--color-success) 16%, transparent)', color: 'var(--color-success)' },
+  info:    { background: 'color-mix(in srgb, var(--color-info) 16%, transparent)',    color: 'var(--color-info)' },
+  coach:   { background: 'color-mix(in srgb, var(--color-coach) 16%, transparent)',   color: 'var(--color-coach)' },
+};
+
+export default function Avatar({ name, size = 'md', src, ring, variant = 'neutral', tone }) {
   const sizeClass = SIZES[size] || SIZES.md;
   const initial = (name || '?')[0].toUpperCase();
 
@@ -18,6 +28,8 @@ export default function Avatar({ name, size = 'md', src, ring, variant = 'neutra
     neutral: 'bg-[#1E293B] text-[#9CA3AF]',
     accent:  'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25',
   };
+
+  const toneStyle = tone ? TONE_STYLES[tone] : null;
 
   if (src) {
     return (
@@ -30,10 +42,12 @@ export default function Avatar({ name, size = 'md', src, ring, variant = 'neutra
     );
   }
 
+  const inlineStyle = { ...(toneStyle || {}), ...(ring ? { boxShadow: `0 0 0 2px ${ring}` } : {}) };
+
   return (
     <div
-      className={`${sizeClass} rounded-full flex items-center justify-center flex-shrink-0 font-bold ${variantStyles[variant] || variantStyles.neutral}`}
-      style={ring ? { boxShadow: `0 0 0 2px ${ring}` } : undefined}
+      className={`${sizeClass} rounded-full flex items-center justify-center flex-shrink-0 font-bold ${toneStyle ? '' : (variantStyles[variant] || variantStyles.neutral)}`}
+      style={Object.keys(inlineStyle).length ? inlineStyle : undefined}
     >
       {initial}
     </div>

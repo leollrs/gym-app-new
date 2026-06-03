@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Users, ChevronDown, Phone, RotateCcw } from 'lucide-react';
+import { Users, ChevronDown, Phone, RotateCcw, TrendingUp, TrendingDown, Minus, Pause, Play } from 'lucide-react';
 import { format } from 'date-fns';
 import { Avatar } from '../../../components/admin';
 import { RiskBadge, ScoreBar } from '../../../components/admin/StatusBadge';
@@ -14,7 +14,7 @@ import { outcomeConfig, METHOD_I18N } from './churnDisplay';
  * the i18n `t` function via prop so it stays a pure presentational component
  * — no internal data fetching, all data sources passed down by the parent.
  */
-export default function MemberDetailPanel({ member, contactLogs, contactedIds, winBackAttempts, onMessage, onContact, onWinBack, t, dateFnsLocaleOpt = {} }) {
+export default function MemberDetailPanel({ member, contactLogs, contactedIds, winBackAttempts, onMessage, onContact, onWinBack, onPause, t, dateFnsLocaleOpt = {} }) {
   const [showHealthy, setShowHealthy] = useState(false);
 
   if (!member) {
@@ -30,9 +30,19 @@ export default function MemberDetailPanel({ member, contactLogs, contactedIds, w
   }
 
   const riskTier = member.churnScore >= 80 ? 'critical' : member.churnScore >= 55 ? 'high' : 'medium';
+  const tierColor = riskTier === 'critical' ? 'var(--color-danger)' : riskTier === 'high' ? 'var(--color-warning)' : 'var(--color-info)';
+  const avatarTone = riskTier === 'critical' ? 'hot' : riskTier === 'high' ? 'warn' : 'info';
   const daysInactive = member.daysSinceLastCheckIn != null ? Math.round(member.daysSinceLastCheckIn) : member.daysSinceLastActivity != null ? Math.round(member.daysSinceLastActivity) : null;
   const tenureMonths = member.tenureMonths != null ? Math.round(member.tenureMonths) : null;
   const isContacted = contactedIds.has(member.id);
+  const pausedByHold = member.churn_pause_until && new Date(member.churn_pause_until) > new Date();
+
+  // Attendance trajectory chip (declining = risk worsening). Mirrors v3 `trend`.
+  const trendCfg = {
+    declining: { Icon: TrendingUp, color: 'var(--color-danger)', label: t('admin.churn.trendWorsening', 'Worsening') },
+    improving: { Icon: TrendingDown, color: 'var(--color-success)', label: t('admin.churn.trendImproving', 'Improving') },
+    stable: { Icon: Minus, color: 'var(--color-admin-text-muted)', label: t('admin.churn.trendStable', 'Stable') },
+  }[member.trend || 'stable'];
 
   const activityStatus = daysInactive === null
     ? t('admin.churn.neverActive', 'Never active')
@@ -60,24 +70,40 @@ export default function MemberDetailPanel({ member, contactLogs, contactedIds, w
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* Header: Avatar + Name + Badge + Score */}
-      <div className="px-4 pt-4 pb-3 border-b border-white/6">
-        <div className="flex items-center gap-2.5">
-          <Avatar name={member.full_name} />
+      {/* Header: gradient tier wash + big risk score */}
+      <div className="px-4 pt-4 pb-3.5" style={{ borderBottom: '1px solid var(--color-admin-border)', background: `linear-gradient(180deg, color-mix(in srgb, ${tierColor} 12%, transparent), transparent)` }}>
+        <div className="flex items-center gap-3">
+          <Avatar name={member.full_name} size="lg" tone={avatarTone} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-[14px] font-bold text-[#E5E7EB] truncate">{member.full_name}</p>
+            <div style={{ fontFamily: 'var(--admin-font-display)', fontSize: 16, fontWeight: 800, color: 'var(--color-admin-text)', letterSpacing: -0.3, lineHeight: 1.15 }} className="truncate">{member.full_name}</div>
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <RiskBadge tier={riskTier} />
+              {trendCfg && (
+                <span className="inline-flex items-center gap-1" style={{ fontSize: 10.5, fontWeight: 700, color: trendCfg.color }}>
+                  <trendCfg.Icon size={12} /> {trendCfg.label}
+                </span>
+              )}
+              <span style={{ fontSize: 11.5, color: 'var(--color-admin-text-muted)' }}>
+                {daysInactive != null ? t('admin.churn.daysInactiveShort', { days: daysInactive, defaultValue: '{{days}}d inactive' }) : t('admin.churn.neverActive', 'Never active')}
+              </span>
             </div>
-            {member.username && member.username !== member.full_name && (
-              <p className="text-[11px] text-[#6B7280] truncate">@{member.username}</p>
-            )}
+          </div>
+          <div className="text-right flex-shrink-0">
+            <div style={{ fontFamily: 'var(--admin-font-display)', fontSize: 32, fontWeight: 800, color: tierColor, letterSpacing: -1.5, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{Math.round(member.churnScore)}</div>
+            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, color: 'var(--color-admin-text-muted)', textTransform: 'uppercase', marginTop: 2 }}>{t('admin.churn.retentionRiskShort', 'Retention Risk')}</div>
           </div>
         </div>
-        <div className="mt-2.5">
-          <ScoreBar score={member.churnScore} />
-        </div>
       </div>
+
+      {/* Why flagged — the human reason (REQUIRED for owner trust) */}
+      {member.explanation && (
+        <div className="px-4 py-2.5" style={{ borderBottom: '1px solid var(--color-admin-border)', background: `color-mix(in srgb, ${tierColor} 6%, transparent)` }}>
+          <p style={{ fontSize: 11.5, lineHeight: 1.45, color: 'var(--color-admin-text-sub)' }}>
+            <span style={{ color: tierColor, fontWeight: 700 }}>{t('admin.churn.whyFlagged', 'Why flagged')}: </span>
+            {member.explanation}
+          </p>
+        </div>
+      )}
 
       {/* Inline Stats */}
       <div className="px-4 py-3 border-b border-white/6">
@@ -229,6 +255,15 @@ export default function MemberDetailPanel({ member, contactLogs, contactedIds, w
             </button>
           )}
         </div>
+        {onPause && (
+          <button onClick={() => onPause(member)}
+            className="w-full mt-2 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[11px] font-semibold border transition-colors"
+            style={{ color: 'var(--color-admin-text-sub)', borderColor: 'var(--color-admin-border)', background: 'var(--color-bg-subtle)' }}>
+            {pausedByHold
+              ? <><Play size={11} /> {t('admin.churn.resumeAlerts', 'Resume alerts')}</>
+              : <><Pause size={11} /> {t('admin.churn.pauseVacation', 'Pause alerts (on vacation)')}</>}
+          </button>
+        )}
       </div>
     </div>
   );

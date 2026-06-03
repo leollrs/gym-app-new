@@ -16,6 +16,22 @@
  * (e.g. a friendship whose two members fall in different chunks).
  */
 
+/**
+ * True when a PostgREST error is "this column doesn't exist" — i.e. the DB is
+ * behind the frontend (a migration that adds a column hasn't been applied yet).
+ * Lets read paths retry with a reduced column set instead of hard-failing the
+ * whole query (which would otherwise drop the page to a legacy fallback).
+ */
+export function isMissingColumnError(error) {
+  if (!error) return false;
+  const code = String(error.code || '').toLowerCase();
+  const msg = String(error.message || '').toLowerCase();
+  return code === '42703' || code === 'pgrst204'
+    || msg.includes('does not exist')
+    || msg.includes('schema cache')
+    || msg.includes('could not find');
+}
+
 // 200 uuids * ~39 bytes ≈ 7.8 KB of querystring — ~2x margin under the limit.
 const DEFAULT_CHUNK_SIZE = 200;
 

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Send, Loader2, Sparkles, Eye, Mail } from 'lucide-react';
+import { Send, Loader2, Sparkles, Eye, Mail, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
@@ -101,6 +101,7 @@ export default function AdminOutreach() {
   // email (with the {{first_name}} merge token still inside) that gets sent as
   // the email body verbatim. The body textarea then only feeds push/SMS/in-app.
   const [designer, setDesigner] = useState(null); // { id, html, subject }
+  const [showRecipients, setShowRecipients] = useState(false);
 
   useEffect(() => { document.title = `${t('admin.outreach.pageTitle', 'Outreach')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -207,18 +208,17 @@ export default function AdminOutreach() {
     return '';
   }, [audience, t]);
 
-  // Live recipient count — re-resolves whenever the audience selector
-  // changes. Keyed by the serialized audience so identical selectors dedupe
-  // through React Query's cache instead of re-running the resolver.
-  const { data: recipientCount, isFetching: countLoading } = useQuery({
-    queryKey: ['admin', 'outreach', gymId, 'recipientCount', JSON.stringify(audience)],
-    queryFn: async () => {
-      const r = await resolveOutreachAudience(gymId, audience);
-      return r.length;
-    },
+  // Live recipient resolution — re-resolves whenever the audience selector
+  // changes. Drives both the count and the "who will receive this" preview so
+  // the admin can verify the exact audience before sending. Keyed by the
+  // serialized audience so identical selectors dedupe through the cache.
+  const { data: recipients = [], isFetching: recipientsLoading } = useQuery({
+    queryKey: ['admin', 'outreach', gymId, 'recipients', JSON.stringify(audience)],
+    queryFn: () => resolveOutreachAudience(gymId, audience),
     enabled: !!gymId,
     staleTime: 30_000,
   });
+  const recipientCount = recipients.length;
 
   // Recent sends — pulled from admin_audit_log so admins see what went out.
   const { data: recent = [], refetch: refetchRecent } = useQuery({
@@ -405,13 +405,11 @@ export default function AdminOutreach() {
                           key={tpl.key}
                           type="button"
                           onClick={() => handleTemplate(tpl.key)}
-                          className="px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors border"
+                          className="px-3 py-1.5 rounded-[9px] text-[11.5px] font-semibold transition-colors border"
                           style={{
-                            background: templateKey === tpl.key
-                              ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
-                              : 'var(--color-bg-deep)',
-                            color: templateKey === tpl.key ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                            borderColor: templateKey === tpl.key ? 'var(--color-accent)' : 'var(--color-border-subtle)',
+                            background: templateKey === tpl.key ? 'var(--color-text-primary)' : 'var(--color-bg-deep)',
+                            color: templateKey === tpl.key ? 'var(--color-bg-card)' : 'var(--color-text-secondary)',
+                            borderColor: templateKey === tpl.key ? 'transparent' : 'var(--color-border-subtle)',
                           }}
                         >
                           {tpl.label}
@@ -448,41 +446,29 @@ export default function AdminOutreach() {
                     className={`${inputClass} resize-y min-h-[140px]`}
                     style={inputStyle}
                   />
-                  <p className="text-[10.5px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {t('admin.outreach.bodyHint', 'Variables: {{first_name}}, {{name}} — replaced per recipient.')}
-                  </p>
+                  <div className="flex items-center flex-wrap gap-1.5 mt-2">
+                    {['{{first_name}}', '{{name}}'].map(v => (
+                      <span
+                        key={v}
+                        className="font-mono text-[10.5px] px-1.5 py-0.5 rounded-md"
+                        style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', color: 'var(--color-accent)' }}
+                      >
+                        {v}
+                      </span>
+                    ))}
+                    <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                      {t('admin.outreach.varsHint', 'are replaced per recipient.')}
+                    </span>
+                  </div>
                 </div>
               </div>
             </AdminCard>
           </FadeIn>
 
-          {/* ── Send button + result summary ────────────────── */}
-          <div className="flex items-center justify-end gap-3 pt-2 pb-8">
-            {lastResult && (
-              <div className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                {t('admin.outreach.lastSent', { count: lastResult.recipients, defaultValue: 'Last sent to {{count}} recipient(s)' })}
-              </div>
-            )}
-            <button
-              onClick={handleSend}
-              disabled={!canSend}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-[13.5px] transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110 active:scale-[0.98]"
-              style={{
-                background: 'var(--color-accent)',
-                color: 'var(--color-bg-base)',
-                boxShadow: '0 2px 8px color-mix(in srgb, var(--color-accent) 30%, transparent)',
-              }}
-            >
-              {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-              {sending
-                ? t('admin.outreach.sending', 'Sending…')
-                : t('admin.outreach.send', 'Send message')}
-            </button>
-          </div>
         </div>
 
-        {/* ── Right column: summary + recent sends ─────────── */}
-        <div className="space-y-4">
+        {/* ── Right column: summary + recent sends (sticky) ─── */}
+        <div className="space-y-4 lg:sticky lg:top-6 self-start">
           <FadeIn>
             <AdminCard padding="p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -499,17 +485,17 @@ export default function AdminOutreach() {
                 <div className="flex items-start justify-between gap-3">
                   <dt style={{ color: 'var(--color-text-muted)' }}>{t('admin.outreach.recipientsLabel', 'Recipients')}</dt>
                   <dd className="text-right font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                    {countLoading && recipientCount === undefined
+                    {recipientsLoading && recipients.length === 0
                       ? <Loader2 size={12} className="inline animate-spin" />
                       : (
                         <span
-                          className="inline-flex items-center px-2 py-0.5 rounded-full text-[11.5px] font-bold"
+                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-bold tabular-nums"
                           style={{
-                            background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',
-                            color: 'var(--color-accent)',
+                            background: 'var(--color-accent)',
+                            color: 'var(--color-text-on-accent)',
                           }}
                         >
-                          {recipientCount ?? 0}
+                          {recipientCount}
                         </span>
                       )}
                   </dd>
@@ -521,6 +507,63 @@ export default function AdminOutreach() {
                   </dd>
                 </div>
               </dl>
+
+              {/* Who will receive this — resolved recipient preview */}
+              {recipientCount > 0 && (
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowRecipients(s => !s)}
+                    className="flex items-center justify-between w-full text-[12px] font-semibold transition-colors"
+                    style={{ color: 'var(--color-accent)' }}
+                  >
+                    <span>{showRecipients ? t('admin.outreach.hideRecipients', 'Hide recipients') : t('admin.outreach.viewRecipients', 'View recipients')}</span>
+                    <ChevronDown size={14} className="transition-transform" style={{ transform: showRecipients ? 'rotate(180deg)' : 'none' }} />
+                  </button>
+                  {showRecipients && (
+                    <div className="mt-2 max-h-64 overflow-y-auto space-y-1">
+                      {recipients.slice(0, 100).map(r => (
+                        <div key={r.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: 'var(--color-bg-deep)' }}>
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-muted)' }}>
+                            {(r.full_name || '?')[0].toUpperCase()}
+                          </div>
+                          <span className="text-[12px] truncate" style={{ color: 'var(--color-text-secondary)' }}>{r.full_name || t('admin.outreach.unnamed', 'Unnamed')}</span>
+                        </div>
+                      ))}
+                      {recipients.length > 100 && (
+                        <p className="text-[11px] text-center py-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                          {t('admin.outreach.andMore', { count: recipients.length - 100, defaultValue: '+{{count}} more' })}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Send action lives in the summary so the CTA sits with the count it acts on. */}
+              <button
+                onClick={handleSend}
+                disabled={!canSend}
+                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-[14px] transition-all disabled:cursor-not-allowed hover:brightness-[1.04] active:scale-[0.99]"
+                style={{
+                  background: canSend ? 'var(--color-accent)' : 'var(--color-bg-hover)',
+                  color: canSend ? 'var(--color-text-on-accent)' : 'var(--color-text-muted)',
+                  boxShadow: canSend ? '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' : 'none',
+                }}
+              >
+                {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                {sending ? t('admin.outreach.sending', 'Sending…') : t('admin.outreach.send', 'Send message')}
+              </button>
+              {recipientCount > 0 && (
+                <p className="text-[11.5px] text-center mt-2" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.outreach.willReceive', { count: recipientCount, defaultValue: '{{count}} people will receive this message' })}
+                </p>
+              )}
+              {lastResult && (
+                <p className="text-[11px] text-center mt-1" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('admin.outreach.lastSent', { count: lastResult.recipients, defaultValue: 'Last sent to {{count}} recipient(s)' })}
+                </p>
+              )}
             </AdminCard>
           </FadeIn>
 

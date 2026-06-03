@@ -452,7 +452,7 @@ export default function AdminSettingsBranding() {
                     {selectedPalette === 'custom' && (
                       <span
                         className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                        style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+                        style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
                       >
                         {t('admin.settings.active', 'Active')}
                       </span>
@@ -535,7 +535,7 @@ export default function AdminSettingsBranding() {
                         className="flex-1 py-2 rounded-xl text-[12px] font-semibold transition-all disabled:opacity-40 border"
                         style={{
                           backgroundColor: 'var(--color-accent)',
-                          color: 'var(--color-bg-base)',
+                          color: 'var(--color-text-on-accent)',
                           borderColor: 'transparent',
                           opacity: (!isValidHex(customPrimary) || !isValidHex(customSecondary)) ? 0.4 : 1,
                         }}
@@ -632,7 +632,7 @@ export default function AdminSettingsBranding() {
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
             style={{
               backgroundColor: paletteSaved ? 'var(--color-success)' : 'var(--color-accent)',
-              color: paletteSaved ? '#fff' : 'var(--color-bg-base)',
+              color: paletteSaved ? '#fff' : 'var(--color-text-on-accent)',
             }}
           >
             <Save size={16} />

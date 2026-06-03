@@ -345,6 +345,7 @@ const Signup = () => {
         setInviteStatus('valid');
         setInviteData({
           invite_id: null,
+          gym_id: lookupResult.gym_id || gym?.id || null,
           gym_name: gym?.name || '',
           gym_slug: gym?.slug || '',
           member_name: lookupResult.full_name || '',
@@ -376,6 +377,7 @@ const Signup = () => {
         setInviteStatus('valid');
         setInviteData({
           invite_id: gymLookup.id,
+          gym_id: gymLookup.gym_id || gym?.id || null,
           gym_name: gym?.name || '',
           gym_slug: gym?.slug || '',
           member_name: gymLookup.full_name || '',
@@ -614,6 +616,7 @@ const Signup = () => {
         fullName: form.fullName,
         username: form.username,
         gymSlug,
+        gymId: inviteData?.gym_id || null,
         dateOfBirth,
         termsAcceptedAt: nowIso,
         privacyAcceptedAt: nowIso,

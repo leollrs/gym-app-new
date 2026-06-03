@@ -7,8 +7,11 @@ import { Share } from '@capacitor/share';
 import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
 import PhoneInput from '../../../components/admin/PhoneInput';
+import NameFields from './NameFields';
+import { composeFullName, areNamePartsValid } from '../../../lib/admin/memberName';
 import logger from '../../../lib/logger';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { useToast } from '../../../contexts/ToastContext';
 import posthog from 'posthog-js';
 
 /**
@@ -18,10 +21,11 @@ import posthog from 'posthog-js';
  * (email, WhatsApp, SMS, native share, QR code).
  */
 export default function InviteModal({ gymId, onClose }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const { showToast } = useToast();
   const k = (key) => t(`admin.inviteModal.${key}`);
 
-  const [name, setName] = useState('');
+  const [nameParts, setNameParts] = useState({ first: '', middle: '', last: '', second: '' });
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,12 +33,50 @@ export default function InviteModal({ gymId, onClose }) {
   const [result, setResult] = useState(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [sending, setSending] = useState(null); // 'email' | 'phone'
+  const [sentVia, setSentVia] = useState(null);  // 'email' | 'phone'
 
   const inviteCode = result?.invite_code || '';
   const inviteUrl = inviteCode ? `https://tugympr.app/invite/${inviteCode}` : '';
 
   const [sendMethod, setSendMethod] = useState('email'); // 'email' | 'phone'
-  const canSubmit = name.trim() && (email.trim() || phone.trim());
+  const fullName = composeFullName(nameParts);
+  const namesOk = areNamePartsValid(nameParts);
+  const canSubmit = namesOk && (email.trim() || phone.trim());
+
+  // Deliver the invite through our own providers — Resend (email) / Twilio (SMS)
+  // — via the admin-gated send-invite edge function, instead of opening the
+  // device's mailto:/sms: composer. Falls back to a toast on failure so the
+  // admin can still copy/share the code manually.
+  const sendInvite = async (channel, codeArg, urlArg) => {
+    const code = codeArg ?? inviteCode;
+    const url = urlArg ?? inviteUrl;
+    const target = channel === 'email' ? email.trim() : phone.trim();
+    if (!code || !target) return;
+    setSending(channel);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error: fnError } = await supabase.functions.invoke('send-invite', {
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        body: {
+          channel: channel === 'phone' ? 'sms' : 'email',
+          to: target,
+          memberName: fullName,
+          inviteCode: code,
+          inviteUrl: url,
+          lang: i18n.language?.startsWith('es') ? 'es' : 'en',
+        },
+      });
+      if (fnError || data?.error) throw new Error(data?.error || fnError?.message || 'send_failed');
+      setSentVia(channel);
+      showToast(channel === 'email' ? k('emailSent') : k('smsSent'), 'success');
+    } catch (err) {
+      logger.error('send-invite failed:', err);
+      showToast(k('sendFailed'), 'error');
+    } finally {
+      setSending(null);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!canSubmit) return;
@@ -43,7 +85,7 @@ export default function InviteModal({ gymId, onClose }) {
     try {
       const { data, error: rpcError } = await supabase.rpc('admin_create_invite_code', {
         p_gym_id: gymId,
-        p_member_name: name.trim(),
+        p_member_name: fullName,
         p_email: email.trim() || null,
         p_phone: phone.trim() || null,
       });
@@ -51,27 +93,22 @@ export default function InviteModal({ gymId, onClose }) {
       setResult(data);
 
       logAdminAction('invite_member', 'member', data?.id, {
-        name: name.trim(),
+        name: fullName,
         has_email: !!email.trim(),
         has_phone: !!phone.trim(),
         send_method: sendMethod,
       });
       posthog?.capture('admin_member_invited', { method: sendMethod || 'invite_link' });
 
-      // Auto-send via selected method after code is generated
+      // Auto-deliver via our own provider (Resend / Twilio), using the freshly-
+      // generated code (state isn't updated yet). Prefer the chosen channel, but
+      // fall back to whichever contact was actually provided.
       const code = data?.invite_code || '';
       const url = code ? `https://tugympr.app/invite/${code}` : '';
-      setTimeout(() => {
-        if (sendMethod === 'email' && email.trim()) {
-          const subject = encodeURIComponent(k('emailSubject') || "You're invited to join the gym!");
-          const body = encodeURIComponent(`${k('emailBody') || 'Use this code to join'}: ${code}\n\n${url}`);
-          window.open(`mailto:${email.trim()}?subject=${subject}&body=${body}`, '_self');
-        } else if (sendMethod === 'phone' && phone.trim()) {
-          const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-          const body = encodeURIComponent(`${k('smsText') || k('shareText') || "You're invited to join the gym! Use this code"}: ${code} ${url}`);
-          window.open(`sms:${phone.trim()}${isIOS ? '&' : '?'}body=${body}`, '_self');
-        }
-      }, 500); // slight delay to let the result render first
+      const autoChannel = (sendMethod === 'email' && email.trim()) || (sendMethod === 'phone' && phone.trim())
+        ? sendMethod
+        : (email.trim() ? 'email' : (phone.trim() ? 'phone' : null));
+      if (autoChannel) sendInvite(autoChannel, code, url);
     } catch (err) {
       logger.error('InviteModal: generate failed:', err);
       setError(err.message || t('common:somethingWentWrong', 'Something went wrong'));
@@ -110,36 +147,21 @@ export default function InviteModal({ gymId, onClose }) {
     }
   };
 
-  const handleEmail = () => {
-    const subject = encodeURIComponent(k('emailSubject') || "You're invited to join the gym!");
-    const body = encodeURIComponent(
-      `${k('emailBody') || 'Use this code to join'}: ${inviteCode}\n\n${inviteUrl}`
-    );
-    const mailto = email.trim()
-      ? `mailto:${email.trim()}?subject=${subject}&body=${body}`
-      : `mailto:?subject=${subject}&body=${body}`;
-    window.open(mailto, '_blank');
-  };
-
-  const handleSMS = () => {
-    const cleanPhone = phone.trim();
-    const body = encodeURIComponent(
-      `${k('smsText') || k('shareText') || 'You\'re invited to join the gym! Use this code'}: ${inviteCode} ${inviteUrl}`
-    );
-    // iOS uses &body= separator, Android uses ?body=
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    window.open(`sms:${cleanPhone}${isIOS ? '&' : '?'}body=${body}`, '_self');
-  };
+  // Re-send via our providers (email = Resend, SMS = Twilio).
+  const handleEmail = () => sendInvite('email');
+  const handleSMS = () => sendInvite('phone');
 
   const handleAnother = () => {
-    setName('');
+    setNameParts({ first: '', middle: '', last: '', second: '' });
     setEmail('');
     setPhone('');
     setResult(null);
     setError(null);
     setCopiedCode(false);
     setCopiedLink(false);
-    setSendMethod(null);
+    setSendMethod('email');
+    setSending(null);
+    setSentVia(null);
   };
 
   const expiryDate = result?.expires_at
@@ -154,20 +176,8 @@ export default function InviteModal({ gymId, onClose }) {
     <AdminModal isOpen onClose={onClose} title={t('admin.inviteModal.inviteTitle', 'Invite Member')} titleIcon={Mail} size="sm">
       {!result ? (
         <div className="space-y-4">
-          {/* Name */}
-          <div>
-            <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.inviteModal.memberName', 'Name')} <span style={{ color: 'var(--color-danger)' }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('admin.inviteModal.memberNamePlaceholder', 'Full name')}
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{ background: 'var(--color-bg-input, var(--color-bg-elevated))', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-            />
-          </div>
+          {/* Name — structured (first / middle / last / second last) */}
+          <NameFields value={nameParts} onChange={setNameParts} />
 
           {/* Email */}
           <div>
@@ -256,7 +266,7 @@ export default function InviteModal({ gymId, onClose }) {
             >
               {inviteCode}
             </p>
-            <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>{name}</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>{fullName}</p>
           </div>
 
           {/* QR Code */}
@@ -280,22 +290,32 @@ export default function InviteModal({ gymId, onClose }) {
             <p className="text-[12px] font-mono break-all select-all" style={{ color: 'var(--color-accent)' }}>{inviteUrl}</p>
           </div>
 
-          {/* Send actions */}
+          {/* Send actions — delivered via our own providers (Resend / Twilio) */}
           <div className="space-y-2">
             <p className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
               {t('admin.inviteModal.sendVia', 'Send invitation via')}
             </p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={handleEmail}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
-                style={{ background: 'color-mix(in srgb, #3B82F6 12%, transparent)', color: 'var(--color-info)', border: '1px solid color-mix(in srgb, #3B82F6 25%, transparent)' }}>
-                <Mail size={13} /> {t('admin.inviteModal.channelEmail', 'Email')}
-              </button>
-              <button onClick={handleSMS}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
-                style={{ background: 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
-                <Smartphone size={13} /> {t('admin.inviteModal.channelSms', 'SMS')}
-              </button>
+              {email.trim() && (
+                <button onClick={handleEmail} disabled={sending === 'email'}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors disabled:opacity-60"
+                  style={sentVia === 'email'
+                    ? { background: 'color-mix(in srgb, var(--color-success) 12%, transparent)', color: 'var(--color-success)', border: '1px solid color-mix(in srgb, var(--color-success) 25%, transparent)' }
+                    : { background: 'color-mix(in srgb, #3B82F6 12%, transparent)', color: 'var(--color-info)', border: '1px solid color-mix(in srgb, #3B82F6 25%, transparent)' }}>
+                  {sending === 'email' ? <Loader2 size={13} className="animate-spin" /> : sentVia === 'email' ? <Check size={13} /> : <Mail size={13} />}
+                  {sentVia === 'email' ? t('admin.inviteModal.sent', 'Sent') : t('admin.inviteModal.channelEmail', 'Email')}
+                </button>
+              )}
+              {phone.trim() && (
+                <button onClick={handleSMS} disabled={sending === 'phone'}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors disabled:opacity-60"
+                  style={sentVia === 'phone'
+                    ? { background: 'color-mix(in srgb, var(--color-success) 12%, transparent)', color: 'var(--color-success)', border: '1px solid color-mix(in srgb, var(--color-success) 25%, transparent)' }
+                    : { background: 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
+                  {sending === 'phone' ? <Loader2 size={13} className="animate-spin" /> : sentVia === 'phone' ? <Check size={13} /> : <Smartphone size={13} />}
+                  {sentVia === 'phone' ? t('admin.inviteModal.sent', 'Sent') : t('admin.inviteModal.channelSms', 'SMS')}
+                </button>
+              )}
               <button onClick={handleShare}
                 className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors"
                 style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>

@@ -746,8 +746,10 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
                         className="flex-1 flex items-center gap-3 px-3 py-3 text-left min-w-0">
                         <UserAvatar user={member || {}} size={36} />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 min-w-0">
+                          {/* Row 1: name (+ role) and the "time since" — kept alone so the
+                              timestamp can never collide with status chips. */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
                               <p className={`text-[13px] font-semibold truncate ${isActive ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
                                 {member?.full_name || member?.username || t('admin.messaging.unknown')}
                               </p>
@@ -766,6 +768,17 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
                                       : t('admin.messaging.roleTrainer', 'Trainer')}
                                 </span>
                               )}
+                            </div>
+                            {c.last_message_at && (
+                              <p className="text-[10px] text-[#6B7280] flex-shrink-0">
+                                {formatDistanceToNow(new Date(c.last_message_at), { addSuffix: false, ...dateFnsLocale })}
+                              </p>
+                            )}
+                          </div>
+                          {/* Row 2: status chips (blocked / archived) live here, prefixing the
+                              preview — they no longer share the timestamp's row. */}
+                          <div className="flex items-center justify-between gap-2 mt-0.5">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
                               {isMemberBlocked && (
                                 <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-500/10 text-red-400">
                                   {t('admin.messaging.blocked', 'Bloqueado')}
@@ -776,17 +789,10 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
                                   {t('admin.messaging.archived', 'Archivado')}
                                 </span>
                               )}
+                              <p className="text-[11px] text-[#6B7280] truncate">{previewText}</p>
                             </div>
-                            {c.last_message_at && (
-                              <p className="text-[10px] text-[#6B7280] flex-shrink-0 ml-2">
-                                {formatDistanceToNow(new Date(c.last_message_at), { addSuffix: false, ...dateFnsLocale })}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between mt-0.5">
-                            <p className="text-[11px] text-[#6B7280] truncate">{previewText}</p>
                             {c.unread_count > 0 && (
-                              <span className="flex-shrink-0 ml-2 w-5 h-5 rounded-full bg-[#D4AF37] text-[#05070B] text-[10px] font-bold flex items-center justify-center">
+                              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#D4AF37] text-[#05070B] text-[10px] font-bold flex items-center justify-center">
                                 {c.unread_count}
                               </span>
                             )}

@@ -4,6 +4,17 @@ import logger from '../logger';
 import { logAdminAction } from '../adminAudit';
 import { fetchMemberStats, tokensNeeded } from './outreachPersonalization';
 
+// ── Batch dispatch tuning ──────────────────────────────────────────────────
+// Email/SMS each go out as one edge-function invoke per recipient. Firing the
+// whole audience at once (the old `Promise.allSettled(recipients.map(…))`) bursts
+// past the email/SMS providers' concurrency + the edge runtime's limits, so a
+// large batch sends to the first few then 502/500s the rest — even though every
+// call works on its own. We cap in-flight recipients and pace each worker so the
+// blast behaves like a steady stream of the known-good individual sends.
+const OUTREACH_CONCURRENCY = 4;   // max recipients processed simultaneously
+const OUTREACH_PACE_MS = 150;     // gap between sends within a single worker
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Single send pipeline used by the unified Outreach composer. Given a resolved
  * recipient list and per-channel content, fans out to each enabled channel
@@ -88,7 +99,7 @@ export async function sendOutreach({
       .replace(/\{\{days_inactive\}\}/g, v(s.days_inactive ?? '—'));
   };
 
-  const tasks = recipients.map(async (r) => {
+  const processRecipient = async (r) => {
     const personalizedBody = renderTokens(r, body);
     const personalizedSubject = renderTokens(r, subject);
     const personalizedHtml = html ? renderTokens(r, html, { escape: true }) : null;
@@ -125,52 +136,75 @@ export async function sendOutreach({
       }
     }
 
+    // Each channel is independent. (Previously a missing email did an early
+    // `return`, which also skipped this recipient's SMS when both were enabled.)
     if (channels.email) {
-      if (!r.email) { results.skipped.noEmail++; return; }
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        // The edge function requires `memberId` (it looks up the member, verifies
-        // they belong to the caller's gym, resolves the stored email, audits, and
-        // rate-limits). When a designer template is attached we pass the
-        // pre-rendered, token-substituted `html`; otherwise we send `body` and the
-        // function wraps it in the gym's branded template.
-        const { error } = await supabase.functions.invoke('send-admin-email', {
-          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
-          body: {
-            memberId: r.id,
-            subject: personalizedSubject || 'Message from your gym',
-            body: personalizedBody || personalizedSubject || ' ',
-            ...(personalizedHtml ? { html: personalizedHtml } : {}),
-          },
-        });
-        if (error) throw error;
-        results.email.sent++;
-      } catch (err) {
-        logger.warn('outreach email failed', r.id, err);
-        results.email.failed++;
+      if (!r.email) {
+        results.skipped.noEmail++;
+      } else {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          // The edge function requires `memberId` (it looks up the member, verifies
+          // they belong to the caller's gym, resolves the stored email, audits, and
+          // rate-limits). When a designer template is attached we pass the
+          // pre-rendered, token-substituted `html`; otherwise we send `body` and the
+          // function wraps it in the gym's branded template.
+          const { error } = await supabase.functions.invoke('send-admin-email', {
+            headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+            body: {
+              memberId: r.id,
+              subject: personalizedSubject || 'Message from your gym',
+              body: personalizedBody || personalizedSubject || ' ',
+              ...(personalizedHtml ? { html: personalizedHtml } : {}),
+            },
+          });
+          if (error) throw error;
+          results.email.sent++;
+        } catch (err) {
+          logger.warn('outreach email failed', r.id, err);
+          results.email.failed++;
+        }
       }
     }
 
     if (channels.sms) {
-      if (!r.phone) { results.skipped.noPhone++; return; }
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        // send-sms derives the recipient phone + gym from the member record
-        // server-side; it requires `{ memberId, body }` (a raw `to` is ignored).
-        const { error } = await supabase.functions.invoke('send-sms', {
-          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
-          body: { memberId: r.id, body: personalizedBody },
-        });
-        if (error) throw error;
-        results.sms.sent++;
-      } catch (err) {
-        logger.warn('outreach sms failed', r.id, err);
-        results.sms.failed++;
+      if (!r.phone) {
+        results.skipped.noPhone++;
+      } else {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          // send-sms derives the recipient phone + gym from the member record
+          // server-side; it requires `{ memberId, body }` (a raw `to` is ignored).
+          const { error } = await supabase.functions.invoke('send-sms', {
+            headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+            body: { memberId: r.id, body: personalizedBody },
+          });
+          if (error) throw error;
+          results.sms.sent++;
+        } catch (err) {
+          logger.warn('outreach sms failed', r.id, err);
+          results.sms.failed++;
+        }
       }
     }
-  });
+  };
 
-  await Promise.allSettled(tasks);
+  // Bounded-concurrency pool: at most OUTREACH_CONCURRENCY recipients are ever
+  // in flight, each worker pacing itself between sends. This is the fix for the
+  // batch breaking after the first few — it never creates the burst that trips
+  // the providers / edge runtime. A failed recipient never kills the pool.
+  const queue = recipients.slice();
+  const runWorker = async () => {
+    while (queue.length) {
+      const r = queue.shift();
+      try { await processRecipient(r); }
+      catch (err) { logger.warn('outreach recipient failed', r?.id, err); }
+      if (queue.length) await sleep(OUTREACH_PACE_MS);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(OUTREACH_CONCURRENCY, recipients.length) }, runWorker),
+  );
 
   // Single audit-log row covering the whole batch.
   await logAdminAction('outreach_send', 'outreach', null, {

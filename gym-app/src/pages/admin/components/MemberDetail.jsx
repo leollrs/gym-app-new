@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle, User, Camera, Trash2 } from 'lucide-react';
+import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle, User, Trash2, Shield, Activity, Download, Dumbbell, Link2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
@@ -12,8 +12,10 @@ import { useToast } from '../../../contexts/ToastContext';
 import logger from '../../../lib/logger';
 import { getRiskTier } from '../../../lib/churnScore';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { exportSelectedMembersCSV } from '../../../lib/exportData';
+import { composeFullName, areNamePartsValid, isValidNamePart, splitFullName } from '../../../lib/admin/memberName';
 import posthog from 'posthog-js';
-import { Avatar, SectionLabel, AdminModal, PhoneInput } from '../../../components/admin';
+import { Avatar, AdminModal, PhoneInput } from '../../../components/admin';
 import { StatusBadge } from '../../../components/admin/StatusBadge';
 import CheckinPhotoEditor from '../../../components/CheckinPhotoEditor';
 import { signCheckinPhoto } from '../../../lib/checkinPhoto';
@@ -21,18 +23,18 @@ import CancellationSurveyModal from './CancellationSurveyModal';
 import CancellationSaveStep from './CancellationSaveStep';
 
 const statusActionMap = {
-  freeze:     { next: 'frozen',      labelKey: 'freeze',      label: 'Freeze Account',      btnColor: 'text-[#60A5FA]',  btnBg: 'bg-[#60A5FA]/10 border-[#60A5FA]/20' },
-  deactivate: { next: 'deactivated', labelKey: 'deactivate',  label: 'Deactivate Account',  btnColor: 'text-[#F97316]',  btnBg: 'bg-[#F97316]/10 border-[#F97316]/20' },
-  cancel:     { next: 'cancelled',   labelKey: 'cancel',      label: 'Cancel Membership',   btnColor: 'text-[#9CA3AF]',  btnBg: 'bg-white/6 border-white/10' },
-  ban:        { next: 'banned',      labelKey: 'ban',         label: 'Ban Member',          btnColor: 'text-[#EF4444]',  btnBg: 'bg-[#EF4444]/10 border-[#EF4444]/20' },
-  reactivate: { next: 'active',      labelKey: 'reactivate',  label: 'Reactivate',          btnColor: 'text-[#10B981]',  btnBg: 'bg-[#10B981]/10 border-[#10B981]/20' },
-  unban:      { next: 'active',      labelKey: 'unban',       label: 'Unban',               btnColor: 'text-[#10B981]',  btnBg: 'bg-[#10B981]/10 border-[#10B981]/20' },
+  freeze:     { next: 'frozen',      labelKey: 'freeze',      label: 'Freeze Account',      tone: 'blue' },
+  deactivate: { next: 'deactivated', labelKey: 'deactivate',  label: 'Deactivate Account',  tone: 'warn' },
+  cancel:     { next: 'cancelled',   labelKey: 'cancel',      label: 'Cancel Membership',   tone: 'ghost' },
+  ban:        { next: 'banned',      labelKey: 'ban',         label: 'Ban Member',          tone: 'danger' },
+  reactivate: { next: 'active',      labelKey: 'reactivate',  label: 'Reactivate',          tone: 'good' },
+  unban:      { next: 'active',      labelKey: 'unban',       label: 'Unban',               tone: 'good' },
 };
 
 const outcomeConfig = {
-  returned:    { labelKey: 'admin.memberDetail.outcomeReturned', label: 'Member returned', color: 'text-[#10B981]', bg: 'bg-[#10B981]/10 border-[#10B981]/20' },
-  no_response: { labelKey: 'admin.memberDetail.outcomeNoResponse', label: 'No response',     color: 'text-[#9CA3AF]', bg: 'bg-white/6 border-white/10' },
-  cancelled:   { labelKey: 'admin.memberDetail.outcomeCancelled', label: 'Cancelled',       color: 'text-[#EF4444]', bg: 'bg-[#EF4444]/10 border-[#EF4444]/20' },
+  returned:    { labelKey: 'admin.memberDetail.outcomeReturned', label: 'Member returned', tone: 'good' },
+  no_response: { labelKey: 'admin.memberDetail.outcomeNoResponse', label: 'No response',    tone: 'ghost' },
+  cancelled:   { labelKey: 'admin.memberDetail.outcomeCancelled', label: 'Cancelled',       tone: 'danger' },
 };
 
 function getStatusActions(status) {
@@ -51,6 +53,97 @@ function getStatusActions(status) {
   }
 }
 
+// ── Style A presentational primitives (cream/coral admin language) ───────────
+// Tonal button styles keyed by intent — mirror the design's MBtn tones.
+function btnTone(tone) {
+  switch (tone) {
+    case 'primary':     return { background: 'var(--color-accent)', color: 'var(--color-text-on-accent)', border: '1px solid var(--color-accent)' };
+    case 'soft':        return { background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' };
+    case 'blue':        return { background: 'var(--color-info-soft)', color: '#2A5FCA', border: '1px solid transparent' };
+    case 'good':        return { background: 'var(--color-success-soft)', color: 'var(--color-success-ink)', border: '1px solid transparent' };
+    case 'warn':        return { background: 'var(--color-warning-soft)', color: 'var(--color-warning-ink)', border: '1px solid transparent' };
+    case 'danger':      return { background: 'var(--color-danger-soft)', color: 'var(--color-danger-ink)', border: '1px solid transparent' };
+    case 'dangerSolid': return { background: 'var(--color-danger)', color: '#fff', border: '1px solid var(--color-danger)' };
+    case 'ghost':
+    default:            return { background: 'var(--color-admin-sidebar)', color: 'var(--color-admin-text-sub)', border: '1px solid var(--color-admin-border)' };
+  }
+}
+
+// Risk block tint by churn tier (critical/high → danger, medium → warn, low → good).
+function riskTone(tier) {
+  if (tier === 'critical' || tier === 'high') return { soft: 'var(--color-danger-soft)', ink: 'var(--color-danger-ink)', bar: 'var(--color-danger)' };
+  if (tier === 'medium') return { soft: 'var(--color-warning-soft)', ink: 'var(--color-warning-ink)', bar: 'var(--color-warning)' };
+  // Non-scored states (not enough data / paused / lost) are neutral — never green,
+  // so a never-attended member isn't painted as a "healthy" Low Risk.
+  if (tier === 'insufficient_data' || tier === 'paused' || tier === 'churned')
+    return { soft: 'var(--color-admin-panel)', ink: 'var(--color-admin-text-sub)', bar: 'var(--color-admin-text-muted)' };
+  return { soft: 'var(--color-success-soft)', ink: 'var(--color-success-ink)', bar: 'var(--color-success)' };
+}
+
+// Membership state banner tint by status — mirrors the design's MembershipState
+// block (a colored "Cuenta activa" banner) without inventing billing data.
+const STATUS_BANNER = {
+  active:      { soft: 'var(--color-success-soft)', ink: 'var(--color-success-ink)',  dot: 'var(--color-success)' },
+  frozen:      { soft: 'var(--color-info-soft)',    ink: '#2A5FCA',                    dot: 'var(--color-info)' },
+  deactivated: { soft: 'var(--color-warning-soft)', ink: 'var(--color-warning-ink)',  dot: 'var(--color-warning)' },
+  cancelled:   { soft: 'var(--color-admin-panel)',  ink: 'var(--color-admin-text-sub)', dot: 'var(--color-admin-text-muted)' },
+  banned:      { soft: 'var(--color-danger-soft)',  ink: 'var(--color-danger-ink)',   dot: 'var(--color-danger)' },
+};
+
+// Uppercase section label with leading icon + divider rule.
+function MSecLabel({ icon: Icon, children, tone }) {
+  const c = tone === 'danger' ? 'var(--color-danger-ink)' : 'var(--color-admin-text-muted)';
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      {Icon && <Icon size={13} style={{ color: c }} />}
+      <span className="text-[10.5px] font-extrabold uppercase tracking-[0.09em] whitespace-nowrap" style={{ color: c, fontFamily: 'var(--admin-font-display)' }}>{children}</span>
+      <div className="flex-1 h-px" style={{ background: 'var(--color-admin-border)' }} />
+    </div>
+  );
+}
+
+// Labelled field shell.
+function MField({ label, hint, action, children }) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <label className="text-[11.5px] font-bold" style={{ color: 'var(--color-admin-text-sub)' }}>{label}</label>
+        {action}
+      </div>
+      {children}
+      {hint && <p className="text-[10.5px] mt-1.5 leading-relaxed" style={{ color: 'var(--color-admin-text-muted)' }}>{hint}</p>}
+    </div>
+  );
+}
+
+// Text input with focus-accent border.
+function MInput({ value, onChange, placeholder, type = 'text', prefix, mono = false, readOnly = false, maxLength, autoComplete, invalid = false }) {
+  const [focus, setFocus] = useState(false);
+  const borderColor = invalid ? 'var(--color-danger)' : (focus ? 'var(--color-accent)' : 'var(--color-admin-border)');
+  return (
+    <div className="flex items-center gap-2 rounded-lg px-3" style={{ height: 38, background: readOnly ? 'var(--color-admin-panel)' : 'var(--color-admin-sidebar)', border: `1px solid ${borderColor}`, transition: 'border-color .15s' }}>
+      {prefix && <span className="text-[12.5px] font-semibold flex-shrink-0" style={{ color: 'var(--color-admin-text-muted)' }}>{prefix}</span>}
+      <input
+        type={type} value={value} onChange={onChange} placeholder={placeholder} readOnly={readOnly}
+        maxLength={maxLength} autoComplete={autoComplete}
+        onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+        className="flex-1 min-w-0 bg-transparent outline-none text-[13px]"
+        style={{ color: 'var(--color-admin-text)', fontFamily: mono ? 'var(--admin-font-mono)' : 'var(--admin-font-body)', fontWeight: mono ? 600 : 500 }}
+      />
+    </div>
+  );
+}
+
+// Centered stat pip for the risk strip.
+function MStatPip({ value, label }) {
+  return (
+    <div className="flex-1 text-center px-1">
+      <div className="font-extrabold text-[17px] leading-none" style={{ color: 'var(--color-admin-text)', fontFamily: 'var(--admin-font-display)' }}>{value}</div>
+      <div className="text-[9.5px] mt-1.5 font-semibold leading-tight" style={{ color: 'var(--color-admin-text-muted)' }}>{label}</div>
+    </div>
+  );
+}
+
 export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onStatusChanged }) {
   const { user: authUser } = useAuth();
   const adminId = authUser?.id;
@@ -65,7 +158,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [note, setNote] = useState(member.admin_note ?? '');
   const [noteSaving, setNoteSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('info');
+  const [tab, setTab] = useState('perfil');
   const [showStatusConfirm, setShowStatusConfirm] = useState(false);
   const [saveStepOpen, setSaveStepOpen] = useState(false);
 
@@ -118,8 +211,12 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
   const [externalId, setExternalId] = useState(member.qr_external_id ?? '');
   const [externalIdSaving, setExternalIdSaving] = useState(false);
+  const [externalIdSaved, setExternalIdSaved] = useState(false);
+  // Local baseline so the Save button settles (disables) after a successful
+  // save — the parent doesn't refresh the `member` prop.
+  const originalExternalIdRef = useRef(member.qr_external_id ?? '');
 
-  const [memberName, setMemberName] = useState(member.full_name ?? '');
+  const [nameParts, setNameParts] = useState(() => splitFullName(member.full_name ?? ''));
   const [memberUsername, setMemberUsername] = useState(member.username ?? '');
   const [memberEmail, setMemberEmail] = useState(member.email ?? '');
   // Staff check-in reference photo. Seed the signed URL from the list row
@@ -143,6 +240,11 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   );
   const originalStartedAtRef = useRef(member.membership_started_at ?? '');
   const originalEmailRef = useRef(member.email ?? '');
+  // Local edit baselines for name/username — the parent doesn't refresh the
+  // `member` prop after a profile save, so comparing against it would keep the
+  // SaveBar "dirty" forever. Refs let the unified save settle cleanly.
+  const originalNameRef = useRef(member.full_name ?? '');
+  const originalUsernameRef = useRef(member.username ?? '');
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailSaved, setEmailSaved] = useState(false);
   const [memberPhone, setMemberPhone] = useState('');
@@ -152,6 +254,9 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
   // Workouts "see more" toggle
   const [showAllWorkouts, setShowAllWorkouts] = useState(false);
+
+  // Per-member data export (Avanzado tab)
+  const [exportingMember, setExportingMember] = useState(false);
 
   // Password reset state
   const [resetCode, setResetCode] = useState(null);
@@ -168,8 +273,11 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [outcomeSaving, setOutcomeSaving] = useState(false);
   const [churnRowId, setChurnRowId] = useState(null);
 
-  const isFollowupCandidate = member.score >= 31;
-  const risk = getRiskTier(member.score);
+  // Pass state so insufficient_data / paused / churned render their own label
+  // (was getRiskTier(score) alone → a never-attended score-0 member showed "Low Risk").
+  const risk = getRiskTier(member.score, member.state);
+  const isScoredState = !member.state || member.state === 'scored' || member.state === 'dormant';
+  const isFollowupCandidate = isScoredState && member.score >= 31;
 
   useEffect(() => {
     const load = async () => {
@@ -288,6 +396,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
   const handleSaveExternalId = async () => {
     setExternalIdSaving(true);
+    setExternalIdSaved(false);
     const payload = externalId.trim() || null;
     const { error } = await supabase.from('profiles').update({
       qr_external_id: payload,
@@ -297,7 +406,13 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     if (error) {
       logger.error('Failed to save external ID', error);
       showToast?.(t('admin.memberDetail.externalIdSaveFailed', { defaultValue: 'Failed to save external ID.' }), 'error');
+      return;
     }
+    logAdminAction('update_external_id', 'member', member.id);
+    originalExternalIdRef.current = payload ?? '';
+    setExternalIdSaved(true);
+    setTimeout(() => setExternalIdSaved(false), 2000);
+    showToast?.(t('admin.memberDetail.externalIdSaved', { defaultValue: 'External ID saved' }), 'success');
   };
 
   // Normalize phone for comparison so cosmetic-only differences (spaces/dashes/parens)
@@ -310,8 +425,9 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     setInfoSaving(true);
     setInfoSaved(false);
     const updates = {};
-    if (memberName.trim() && memberName !== member.full_name) updates.full_name = memberName.trim();
-    if (memberUsername.trim() && memberUsername !== member.username) updates.username = memberUsername.trim();
+    const composed = composeFullName(nameParts);
+    if (composed && composed !== originalNameRef.current) updates.full_name = composed;
+    if (memberUsername.trim() && memberUsername !== originalUsernameRef.current) updates.username = memberUsername.trim();
     const phoneVal = memberPhone.trim() || null;
     if (normalizePhone(phoneVal) !== normalizePhone(originalPhoneRef.current)) {
       updates.phone_number = phoneVal;
@@ -326,6 +442,11 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       if (updates.membership_started_at !== undefined) {
         originalStartedAtRef.current = updates.membership_started_at ?? '';
       }
+      if (updates.phone_number !== undefined) {
+        originalPhoneRef.current = updates.phone_number ?? '';
+      }
+      if (updates.full_name !== undefined) originalNameRef.current = updates.full_name;
+      if (updates.username !== undefined) originalUsernameRef.current = updates.username;
     }
     setInfoSaving(false);
     setInfoSaved(true);
@@ -352,6 +473,46 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       showToast?.(err?.message || t('admin.members.emailUpdateFailed', 'Failed to update email'), 'error');
     }
     setEmailSaving(false);
+  };
+
+  // Unified Perfil save — replaces the three scattered save buttons with one
+  // "Guardar cambios". Each underlying handler guards internally, so calling
+  // both is safe even when only one group of fields changed.
+  const composedName = composeFullName(nameParts);
+  const namesOk = areNamePartsValid(nameParts);
+  const emailDirty = !!(memberEmail.trim() && memberEmail !== originalEmailRef.current);
+  const infoDirty = (
+    composedName !== originalNameRef.current ||
+    (memberUsername.trim() && memberUsername !== originalUsernameRef.current) ||
+    normalizePhone(memberPhone) !== normalizePhone(originalPhoneRef.current) ||
+    (memberStartedAt || '') !== (originalStartedAtRef.current || '')
+  );
+  const profileDirty = emailDirty || infoDirty;
+  const profileSaving = infoSaving || emailSaving;
+
+  const handleSaveProfile = async () => {
+    if (infoDirty) await handleSaveInfo();
+    if (emailDirty) await handleSaveEmail();
+  };
+
+  const resetProfileEdits = () => {
+    setNameParts(splitFullName(originalNameRef.current || ''));
+    setMemberUsername(originalUsernameRef.current || '');
+    setMemberEmail(originalEmailRef.current || '');
+    setMemberPhone(originalPhoneRef.current || '');
+    setMemberStartedAt(originalStartedAtRef.current || '');
+  };
+
+  const handleExportMember = async () => {
+    setExportingMember(true);
+    try {
+      await exportSelectedMembersCSV([member.id]);
+      logAdminAction('export_member', 'member', member.id);
+    } catch (err) {
+      logger.error('Member export failed:', err);
+      showToast?.(t('admin.members.bulkExportError', { defaultValue: 'Failed to export members. Please try again.' }), 'error');
+    }
+    setExportingMember(false);
   };
 
   const handleGenerateResetCode = async () => {
@@ -537,519 +698,546 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     setOutcomeSaving(false);
   };
 
-  const daysInactive = member.daysInactive ?? 0;
+  const daysInactive = member.daysInactive ?? null; // null = no gym activity on record
   const neverActive = member.neverActive ?? false;
+  const tone = riskTone(risk.tier);
+
+  const TABS = [
+    { key: 'perfil',    label: t('admin.memberDetail.tabPerfil', { defaultValue: 'Profile' }),  icon: User },
+    { key: 'cuenta',    label: t('admin.memberDetail.tabCuenta', { defaultValue: 'Account' }),   icon: Shield },
+    { key: 'actividad', label: t('admin.memberDetail.tabActivity', 'Activity'),                  icon: Activity },
+    { key: 'referidos', label: t('admin.referral.memberReferrals'),                              icon: Share2 },
+    { key: 'avanzado',  label: t('admin.memberDetail.tabAvanzado', { defaultValue: 'Advanced' }), icon: AlertTriangle, danger: true },
+  ];
+
+  // Save-button label/state shared by the Perfil SaveBar.
+  const profileSaved = infoSaved || emailSaved;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm overflow-y-auto pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:py-6" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="member-detail-title" className="bg-[#0F172A] border border-white/8 rounded-[14px] w-full max-w-lg md:max-w-2xl max-h-[min(88vh,100%)] flex flex-col overflow-hidden my-auto"
+    <div className="fixed inset-0 z-[120] flex items-start justify-center px-4 overflow-y-auto pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:py-6"
+      style={{ background: 'rgba(24,22,18,0.46)', backdropFilter: 'blur(3px)' }}
+      onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="member-detail-title"
+        className="w-full max-w-[540px] max-h-[min(90vh,100%)] flex flex-col overflow-hidden my-auto rounded-2xl"
+        style={{ background: 'var(--color-admin-sidebar)', border: '1px solid var(--color-admin-border)', boxShadow: 'var(--shadow-lg)' }}
         onClick={e => e.stopPropagation()}>
 
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <Avatar name={member.full_name} size="lg" src={checkinUrl} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p id="member-detail-title" className="text-[14px] font-bold text-[#E5E7EB] truncate">{member.full_name}</p>
-                <StatusBadge status={memberStatus} />
-              </div>
-              <p className="text-[11px] text-[#6B7280] truncate">@{member.username} · {t('admin.members.joined', 'joined')} {format(new Date(member.created_at), 'MMM yyyy', dateFnsLocale)}</p>
+        {/* ── Header ─────────────────────────────────────────── */}
+        <div className="flex items-start gap-3 px-4 py-3.5 flex-shrink-0" style={{ borderBottom: '1px solid var(--color-admin-border)' }}>
+          <Avatar name={member.full_name} size="lg" src={checkinUrl} />
+          <div className="min-w-0 flex-1 pt-0.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span id="member-detail-title" className="font-bold text-[16px] truncate" style={{ fontFamily: 'var(--admin-font-display)', color: 'var(--color-admin-text)' }}>{member.full_name}</span>
+              <StatusBadge status={memberStatus} />
             </div>
+            <p className="text-[11.5px] mt-0.5 truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
+              {member.username ? `@${member.username} · ` : ''}{t('admin.members.joined', 'joined')} {format(new Date(member.created_at), 'MMM yyyy', dateFnsLocale)}
+            </p>
           </div>
-          <button onClick={onClose} aria-label={t('admin.memberDetail.closeAria', 'Close member detail')} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"><X size={20} /></button>
+          <button onClick={onClose} aria-label={t('admin.memberDetail.closeAria', 'Close member detail')}
+            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors"
+            style={{ background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)', border: '1px solid var(--color-admin-border)' }}>
+            <X size={15} />
+          </button>
         </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-4 border-b border-white/6 flex-shrink-0">
-          {[
-            { label: t('admin.memberDetail.risk', 'Risk'), value: <span className={risk.textClass}>{t(`admin.members.riskTier.${risk.tier}`, risk.label)}</span>, sub: `${t('admin.memberDetail.score', 'score')} ${member.score}%` },
-            { label: t('admin.memberDetail.inactive', 'Inactive'), value: `${daysInactive}d`, sub: neverActive ? t('admin.memberDetail.neverLogged', 'never logged') : t('admin.memberDetail.days', 'days') },
-            { label: t('admin.memberDetail.workouts', 'Workouts'), value: member.recentWorkouts ?? 0, sub: t('admin.memberDetail.last14d', 'last 14d') },
-            { label: t('admin.memberDetail.challenges', 'Challenges'), value: challenges, sub: t('admin.memberDetail.joinedChallenges', 'joined') },
-          ].map(({ label, value, sub }) => (
-            <div key={label} className="py-3 px-2 text-center border-r border-white/4 last:border-0">
-              <p className="text-[15px] font-bold text-[#E5E7EB] leading-none">{value}</p>
-              <p className="text-[10px] text-[#6B7280] mt-0.5">{label}</p>
-              <p className="text-[10px] text-[#6B7280]">{sub}</p>
+        {/* ── Risk strip (actionable) ────────────────────────── */}
+        <div className="flex items-stretch gap-3 px-4 py-3 flex-shrink-0" style={{ background: 'var(--color-admin-panel)', borderBottom: '1px solid var(--color-admin-border)' }}>
+          <div className="flex flex-col justify-center gap-1.5 px-3 py-2 rounded-xl flex-shrink-0" style={{ background: tone.soft, minWidth: 156 }}>
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <AlertTriangle size={13} style={{ color: tone.ink }} />
+              <span className="font-bold text-[12px]" style={{ color: tone.ink, fontFamily: 'var(--admin-font-display)' }}>
+                {t(`admin.members.riskTier.${risk.tier}`, risk.label)}
+              </span>
+              {member.state !== 'insufficient_data' && member.state !== 'paused' && (
+                <span className="ml-auto font-extrabold text-[13px]" style={{ color: tone.ink }}>{member.score}%</span>
+              )}
             </div>
-          ))}
+            <div className="h-1 rounded-full overflow-hidden" style={{ background: `color-mix(in srgb, ${tone.bar} 22%, transparent)` }}>
+              <div style={{ width: `${Math.min(100, Math.max(0, member.score))}%`, height: '100%', background: tone.bar }} />
+            </div>
+            {isFollowupCandidate && (
+              <button onClick={() => setTab('actividad')}
+                className="mt-0.5 inline-flex items-center justify-center gap-1.5 rounded-lg text-[10.5px] font-bold transition-colors"
+                style={{ height: 25, background: 'var(--color-admin-sidebar)', border: '1px solid var(--color-admin-border)', color: tone.ink }}>
+                <Send size={11} /> {t('admin.memberDetail.sendFollowup', 'Send Follow-up')}
+              </button>
+            )}
+          </div>
+          <div className="flex-1 flex items-center min-w-0">
+            <MStatPip value={daysInactive == null ? '—' : `${daysInactive}d`} label={neverActive ? t('admin.memberDetail.noActivity', 'No visits') : t('admin.memberDetail.inactive', 'Inactive')} />
+            <div className="w-px self-stretch my-1.5" style={{ background: 'var(--color-admin-border)' }} />
+            <MStatPip value={member.recentWorkouts ?? 0} label={t('admin.memberDetail.workouts14d', { defaultValue: 'Workouts · 14d' })} />
+            <div className="w-px self-stretch my-1.5" style={{ background: 'var(--color-admin-border)' }} />
+            <MStatPip value={challenges} label={t('admin.memberDetail.challenges', 'Challenges')} />
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-white/6 flex-shrink-0">
-          {[{ key: 'info', label: t('admin.memberDetail.tabInfo', 'Info') }, { key: 'activity', label: t('admin.memberDetail.tabActivity', 'Activity') }, { key: 'referrals', label: t('admin.referral.memberReferrals') }].map(tb => (
-            <button key={tb.key} onClick={() => setTab(tb.key)}
-              className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${tab === tb.key ? 'text-[#D4AF37] border-b-2 border-[#D4AF37] -mb-px' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}>
-              {tb.label}
-            </button>
-          ))}
+        {/* ── Tab bar ────────────────────────────────────────── */}
+        <div className="flex gap-1 px-3 flex-shrink-0 overflow-x-auto scrollbar-hide" style={{ borderBottom: '1px solid var(--color-admin-border)' }} role="tablist">
+          {TABS.map(tb => {
+            const on = tb.key === tab;
+            const Icon = tb.icon;
+            return (
+              <button key={tb.key} role="tab" aria-selected={on} onClick={() => setTab(tb.key)}
+                className="relative inline-flex items-center gap-1.5 px-2.5 py-3 text-[12.5px] font-semibold whitespace-nowrap transition-colors"
+                style={{ color: on ? 'var(--color-accent)' : 'var(--color-admin-text-sub)', fontWeight: on ? 800 : 600 }}>
+                {Icon && <Icon size={14} style={{ color: on ? 'var(--color-accent)' : 'var(--color-admin-text-muted)' }} />}
+                {tb.label}
+                {tb.danger && <span className="w-[5px] h-[5px] rounded-full" style={{ background: 'var(--color-danger)' }} />}
+                {on && <span className="absolute left-2 right-2 -bottom-px h-[2.5px] rounded-full" style={{ background: 'var(--color-accent)' }} />}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        {/* ── Body ───────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto px-4 py-4">
           {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+            <div className="flex justify-center py-10">
+              <div className="w-6 h-6 rounded-full animate-spin" style={{ border: '2px solid color-mix(in srgb, var(--color-accent) 30%, transparent)', borderTopColor: 'var(--color-accent)' }} />
             </div>
-          ) : tab === 'activity' ? (
-            (sessions.length === 0 && prs.length === 0) ? (
-              <p className="text-[13px] text-[#6B7280] text-center py-6">{t('admin.memberDetail.noActivity', 'No activity yet')}</p>
-            ) : (
-              <div className="space-y-5">
-                {/* Recent workouts */}
-                <div>
-                  <SectionLabel className="mb-2">{t('admin.memberDetail.tabWorkouts', 'Workouts')}</SectionLabel>
-                  {sessions.length === 0 ? (
-                    <p className="text-[12px] text-[#6B7280] text-center py-3">{t('admin.memberDetail.noWorkouts', 'No workouts logged')}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {(showAllWorkouts ? sessions : sessions.slice(0, 3)).map(s => (
-                        <div key={s.id} className="flex items-center justify-between gap-3 p-3 bg-[#111827] rounded-xl overflow-hidden">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{s.name || t('admin.memberDetail.workout', 'Workout')}</p>
-                            <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, yyyy', dateFnsLocale)}</p>
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            {s.total_volume_lbs > 0 && <p className="text-[12px] font-semibold text-[#9CA3AF]">{Math.round(s.total_volume_lbs).toLocaleString()} lbs</p>}
-                            {s.duration_seconds > 0 && <p className="text-[11px] text-[#6B7280]">{Math.floor(s.duration_seconds / 60)}m</p>}
-                          </div>
-                        </div>
-                      ))}
-                      {sessions.length > 3 && !showAllWorkouts && (
-                        <button onClick={() => setShowAllWorkouts(true)}
-                          className="w-full py-2 text-[12px] font-semibold rounded-xl transition-colors"
-                          style={{ color: 'var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
-                          {t('admin.memberDetail.seeMore', { count: sessions.length - 3, defaultValue: 'See {{count}} more' })}
-                        </button>
+          ) : (
+            <>
+              {/* ════════ PERFIL ════════ */}
+              {tab === 'perfil' && (
+                <div className="space-y-5">
+                  <div>
+                    <MSecLabel icon={User}>{t('admin.memberDetail.contactInfo', { defaultValue: 'Contact information' })}</MSecLabel>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <MField label={<>{t('admin.nameFields.firstName', 'First name')} <span style={{ color: 'var(--color-danger)' }}>*</span></>}>
+                          <MInput value={nameParts.first} onChange={e => setNameParts(p => ({ ...p, first: e.target.value }))} maxLength={40}
+                            invalid={!!(nameParts.first || '').trim() && !isValidNamePart(nameParts.first)} />
+                        </MField>
+                        <MField label={t('admin.nameFields.middleName', 'Middle name')}>
+                          <MInput value={nameParts.middle} onChange={e => setNameParts(p => ({ ...p, middle: e.target.value }))} maxLength={40}
+                            invalid={!!(nameParts.middle || '').trim() && !isValidNamePart(nameParts.middle)} />
+                        </MField>
+                        <MField label={<>{t('admin.nameFields.lastName', 'Last name')} <span style={{ color: 'var(--color-danger)' }}>*</span></>}>
+                          <MInput value={nameParts.last} onChange={e => setNameParts(p => ({ ...p, last: e.target.value }))} maxLength={40}
+                            invalid={!!(nameParts.last || '').trim() && !isValidNamePart(nameParts.last)} />
+                        </MField>
+                        <MField label={t('admin.nameFields.secondLastName', 'Second last name')}>
+                          <MInput value={nameParts.second} onChange={e => setNameParts(p => ({ ...p, second: e.target.value }))} maxLength={40}
+                            invalid={!!(nameParts.second || '').trim() && !isValidNamePart(nameParts.second)} />
+                        </MField>
+                      </div>
+                      {!namesOk && (
+                        <p className="text-[10.5px] -mt-1" style={{ color: 'var(--color-danger-ink)' }}>
+                          {t('admin.nameFields.nameInvalid', 'Names can only contain letters, spaces, hyphens and apostrophes.')}
+                        </p>
                       )}
-                      {sessions.length > 3 && showAllWorkouts && (
-                        <button onClick={() => setShowAllWorkouts(false)}
-                          className="w-full py-2 text-[12px] font-semibold rounded-xl transition-colors"
-                          style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                          {t('admin.memberDetail.showLess', 'Show less')}
-                        </button>
-                      )}
+                      <MField label={t('admin.memberDetail.username', 'Username')}>
+                        <MInput value={memberUsername} onChange={e => setMemberUsername(e.target.value)} prefix="@" maxLength={40} />
+                      </MField>
+                      <MField label={t('admin.memberDetail.email', 'Email')}>
+                        <MInput type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)} autoComplete="off" />
+                      </MField>
+                      <div className="grid grid-cols-2 gap-3">
+                        <MField label={t('admin.memberDetail.phoneNumber', 'Phone Number')}>
+                          <PhoneInput value={memberPhone} onChange={setMemberPhone} placeholder="555 123 4567" ariaLabel={t('admin.memberDetail.phoneNumber', 'Phone Number')} />
+                        </MField>
+                        <MField label={t('admin.memberDetail.membershipStartedAt', 'Gym join date')}>
+                          <input type="date" value={memberStartedAt} onChange={e => setMemberStartedAt(e.target.value)} max={new Date().toISOString().slice(0, 10)}
+                            className="w-full rounded-lg px-3 text-[13px] outline-none"
+                            style={{ height: 38, background: 'var(--color-admin-sidebar)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                        </MField>
+                      </div>
+                      <p className="text-[10.5px] leading-relaxed" style={{ color: 'var(--color-admin-text-muted)' }}>
+                        {t('admin.memberDetail.membershipStartedAtHelp', 'Set this to the member\'s actual gym join date if they joined before installing the app. Overrides the 90-day onboarding risk window for tenure-based churn scoring.')}
+                      </p>
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Personal records */}
-                <div>
-                  <SectionLabel icon={Trophy} className="mb-2">{t('admin.memberDetail.tabPRs', 'PRs')}</SectionLabel>
-                  {prs.length === 0 ? (
-                    <p className="text-[12px] text-[#6B7280] text-center py-3">{t('admin.memberDetail.noPRs', 'No PRs recorded yet')}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {prs.map((pr, i) => (
-                        <div key={`${pr.exercise_id}-${pr.achieved_at || i}`} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${i < 3 ? 'bg-[#D4AF37]/12' : 'bg-white/4'}`}>
-                            <Trophy size={13} className={i < 3 ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
+                  {/* Origin / invite */}
+                  <div>
+                    <MSecLabel icon={Link2}>{t('admin.memberDetail.origin', { defaultValue: 'Origin' })}</MSecLabel>
+                    {(() => {
+                      const hasLoggedIn = !!member.is_onboarded;
+                      const pill = hasLoggedIn
+                        ? { cls: 'admin-pill--good', label: t('admin.memberDetail.alreadyRegistered', 'Already Registered') }
+                        : { cls: 'admin-pill--warn', label: memberInvite ? t('admin.memberDetail.pendingRegistration', 'Pending — Not yet logged in') : t('admin.memberDetail.notRegistered', 'Not Registered') };
+                      return (
+                        <div className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                          <div className="min-w-0 flex-1">
+                            {memberInvite ? (
+                              <>
+                                <p className="text-[13px] font-mono font-bold" style={{ color: 'var(--color-accent)' }}>{memberInvite.invite_code}</p>
+                                <p className="text-[10.5px] mt-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>
+                                  {memberInvite.used_at
+                                    ? `${t('admin.memberDetail.registeredOn', 'Registered')} ${format(new Date(memberInvite.used_at), 'MMM d, yyyy', dateFnsLocale)}`
+                                    : `${t('admin.memberDetail.createdOn', 'Created')} ${format(new Date(memberInvite.created_at), 'MMM d, yyyy', dateFnsLocale)}`}
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-[12.5px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>
+                                  {hasLoggedIn ? t('admin.memberDetail.directSignup', 'Direct signup') : t('admin.memberDetail.profileCreated', 'Profile created by admin')}
+                                </p>
+                                <p className="text-[10.5px] mt-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.memberDetail.noInviteUsed', 'No invite code was used')}</p>
+                              </>
+                            )}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{pr.exercises?.name ?? pr.exercise_id}</p>
-                            {pr.achieved_at && <p className="text-[11px] text-[#6B7280]">{format(new Date(pr.achieved_at), 'MMM d, yyyy', dateFnsLocale)}</p>}
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <p className="text-[13px] font-bold text-[#E5E7EB]">{pr.weight_lbs} lbs × {pr.reps}</p>
-                            {pr.estimated_1rm > 0 && <p className="text-[10px] text-[#6B7280]">{Math.round(pr.estimated_1rm)} lbs {t('admin.memberDetail.est1RM', 'est. 1RM')}</p>}
-                          </div>
+                          {memberInvite && (
+                            <button onClick={() => { navigator.clipboard.writeText(memberInvite.invite_code).catch(() => {}); setInviteCopied(true); setTimeout(() => setInviteCopied(false), 2000); }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex-shrink-0"
+                              style={btnTone('ghost')}>
+                              {inviteCopied ? <Check size={12} style={{ color: 'var(--color-success)' }} /> : <Copy size={12} />}
+                              {inviteCopied ? t('admin.memberDetail.copied', 'Copied') : t('admin.memberDetail.copy', 'Copy')}
+                            </button>
+                          )}
+                          <span className={`admin-pill ${pill.cls} flex-shrink-0`}>{pill.label}</span>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          ) : tab === 'referrals' ? (
-            <div className="space-y-4">
-              {/* Referral code */}
-              {referralCode && (
-                <div className="bg-[#111827] border border-white/6 rounded-xl p-3">
-                  <p className="text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.referral.referralCode')}</p>
-                  <p className="text-[14px] font-mono font-bold text-[#D4AF37]">{referralCode}</p>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#111827] border border-white/6 rounded-xl p-3 text-center">
-                  <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{referralCount}</p>
-                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.peopleReferred')}</p>
-                </div>
-                <div className="bg-[#111827] border border-white/6 rounded-xl p-3 text-center">
-                  <p className="text-[18px] font-bold text-[#10B981] tabular-nums">{referrals.filter(r => r.status === 'completed').length}</p>
-                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.completed')}</p>
-                </div>
-              </div>
-
-              {/* Referred members list */}
-              <div>
-                <SectionLabel icon={Share2} className="mb-3">{t('admin.referral.referredList')}</SectionLabel>
-                {referrals.length === 0 ? (
-                  <p className="text-[13px] text-[#6B7280] text-center py-6">{t('admin.referral.noReferralsMember')}</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {referrals.map(ref => {
-                      const statusColors = {
-                        pending: 'text-[#F59E0B] bg-[#F59E0B]/10 border-[#F59E0B]/20',
-                        completed: 'text-[#10B981] bg-[#10B981]/10 border-[#10B981]/20',
-                        expired: 'text-[#6B7280] bg-white/6 border-white/10',
-                      };
-                      const statusLabel = {
-                        pending: t('admin.referral.statusPending'),
-                        completed: t('admin.referral.statusCompleted'),
-                        expired: t('admin.referral.statusExpired'),
-                      };
+              {/* ════════ CUENTA ════════ */}
+              {tab === 'cuenta' && (
+                <div className="space-y-5">
+                  {/* Membership */}
+                  <div>
+                    <MSecLabel icon={UserCheck}>{t('admin.memberDetail.membership', 'Membership')}</MSecLabel>
+                    {(() => {
+                      const b = STATUS_BANNER[memberStatus] ?? STATUS_BANNER.active;
                       return (
-                        <div key={ref.id} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
+                        <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 mb-3" style={{ background: b.soft }}>
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: b.dot }} />
                           <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{ref.profiles?.full_name || t('admin.memberDetail.unknownReferrer', 'Unknown')}</p>
-                            <p className="text-[11px] text-[#6B7280]">{format(new Date(ref.created_at), 'MMM d, yyyy', dateFnsLocale)}</p>
+                            <p className="text-[12.5px] font-bold" style={{ color: b.ink }}>{t(`admin.statusLabels.${memberStatus}`, memberStatus)}</p>
+                            {memberStatusUpdatedAt && (
+                              <p className="text-[10.5px] mt-0.5" style={{ color: b.ink, opacity: 0.75 }}>
+                                {t('admin.memberDetail.sinceDate', { date: format(new Date(memberStatusUpdatedAt), 'MMM d, yyyy', dateFnsLocale), defaultValue: 'Since {{date}}' })}
+                              </p>
+                            )}
                           </div>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColors[ref.status] || statusColors.pending}`}>
-                            {statusLabel[ref.status] || ref.status}
-                          </span>
                         </div>
                       );
-                    })}
+                    })()}
+                    <div className="flex flex-wrap gap-2">
+                      {getStatusActions(memberStatus).map(action => {
+                        const cfg = statusActionMap[action];
+                        return (
+                          <button key={action} onClick={() => {
+                            setPendingAction(action);
+                            setStatusConflict(false);
+                            if (action === 'cancel') { setSaveStepOpen(true); } else { setShowStatusConfirm(true); }
+                          }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold whitespace-nowrap transition-colors"
+                            style={btnTone(cfg.tone)}>
+                            {action === 'ban' || action === 'cancel' ? <UserX size={12} /> : action === 'freeze' ? <Ban size={12} /> : <UserCheck size={12} />}
+                            {t(`admin.memberDetail.statusActions.${action}`, { defaultValue: cfg.label })}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
-          ) : null}
 
-          {/* ── INFO TAB ─────────────────────────────────────── */}
-          {!loading && tab === 'info' && (<>
-          {/* Check-in reference photo (staff-managed) */}
-          <div>
-            <SectionLabel icon={Camera} className="mb-3">{t('checkinPhoto.title', 'Check-in photo')}</SectionLabel>
-            <div className="bg-[#111827] border border-white/6 rounded-xl p-3">
-              <CheckinPhotoEditor
-                subjectId={member.id}
-                path={checkinPath}
-                onChange={setCheckinPath}
-                theme={{ accent: 'var(--color-accent)', surface: '#0F172A', border: 'rgba(255,255,255,0.08)', text: '#E5E7EB', textSub: '#9CA3AF', danger: 'var(--color-danger)', badgeBorder: '#111827' }}
-                labels={{ photo: t('checkinPhoto.title', 'Check-in photo'), hint: t('checkinPhoto.hint', 'Staff only — used to verify identity at check-in.'), add: t('checkinPhoto.add', 'Add photo'), replace: t('checkinPhoto.replace', 'Replace'), remove: t('checkinPhoto.remove', 'Remove') }}
-              />
-            </div>
-          </div>
-          {/* Member Info */}
-          <div>
-            <SectionLabel icon={User} className="mb-3">{t('admin.memberDetail.memberInfo', 'Member Info')}</SectionLabel>
-            <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
-              <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.fullName', 'Full Name')}</label>
-                <input type="text" value={memberName} onChange={e => setMemberName(e.target.value)}
-                  className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.username', 'Username')}</label>
-                <input type="text" value={memberUsername} onChange={e => setMemberUsername(e.target.value)}
-                  className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.email', 'Email')}</label>
-                <div className="flex gap-2">
-                  <input type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)}
-                    className="flex-1 bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40" />
-                  <button onClick={handleSaveEmail}
-                    disabled={emailSaving || !memberEmail.trim() || memberEmail === originalEmailRef.current}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-                    style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-                    <Save size={12} />
-                    {emailSaving ? t('admin.memberDetail.saving', 'Saving...') : emailSaved ? t('admin.memberDetail.saved', 'Saved!') : t('admin.memberDetail.save', 'Save')}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.phoneNumber', 'Phone Number')}</label>
-                <PhoneInput
-                  value={memberPhone}
-                  onChange={setMemberPhone}
-                  placeholder="555 123 4567"
-                  ariaLabel={t('admin.memberDetail.phoneNumber', 'Phone Number')}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">
-                  {t('admin.memberDetail.membershipStartedAt', 'Gym join date')}
-                </label>
-                <input
-                  type="date"
-                  value={memberStartedAt}
-                  onChange={e => setMemberStartedAt(e.target.value)}
-                  max={new Date().toISOString().slice(0, 10)}
-                  className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40"
-                />
-                <p className="text-[10px] text-[#6B7280] mt-1.5 leading-relaxed">
-                  {t('admin.memberDetail.membershipStartedAtHelp', 'Set this to the member\'s actual gym join date if they joined before installing the app. Overrides the 90-day onboarding risk window for tenure-based churn scoring.')}
-                </p>
-              </div>
-              <button onClick={handleSaveInfo}
-                disabled={infoSaving || (memberName === (member.full_name ?? '') && memberUsername === (member.username ?? '') && memberPhone === originalPhoneRef.current && (memberStartedAt || '') === (originalStartedAtRef.current || ''))}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-                style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-                <Save size={12} />
-                {infoSaving ? t('admin.memberDetail.saving', 'Saving…') : infoSaved ? t('admin.memberDetail.saved', 'Saved!') : t('admin.memberDetail.saveInfo', 'Save Info')}
-              </button>
-
-              {/* Invite / Registration info */}
-              {(() => {
-                const hasLoggedIn = !!member.is_onboarded;
-                return (
-                  <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3 mt-3">
-                    <p className="text-[11px] font-medium text-[#6B7280] mb-1.5">{t('admin.memberDetail.inviteCode', 'Invite Code')}</p>
-                    {memberInvite ? (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-[14px] font-mono font-bold text-[#D4AF37]">{memberInvite.invite_code}</p>
-                            <p className="text-[10px] text-[#6B7280] mt-0.5">
-                              {memberInvite.used_at
-                                ? `${t('admin.memberDetail.registeredOn', 'Registered')} ${format(new Date(memberInvite.used_at), 'MMM d, yyyy', dateFnsLocale)}`
-                                : `${t('admin.memberDetail.createdOn', 'Created')} ${format(new Date(memberInvite.created_at), 'MMM d, yyyy', dateFnsLocale)}`}
-                            </p>
+                  {/* Access & check-in — photo + external ID + QR grouped */}
+                  <div>
+                    <MSecLabel icon={QrCode}>{t('admin.memberDetail.accessCheckin', { defaultValue: 'Access & check-in' })}</MSecLabel>
+                    <div className="space-y-3">
+                      <div className="rounded-xl p-3" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                        <CheckinPhotoEditor
+                          subjectId={member.id}
+                          path={checkinPath}
+                          onChange={setCheckinPath}
+                          theme={{ accent: 'var(--color-accent)', surface: 'var(--color-admin-sidebar)', border: 'var(--color-admin-border)', text: 'var(--color-admin-text)', textSub: 'var(--color-admin-text-sub)', danger: 'var(--color-danger)', badgeBorder: 'var(--color-admin-sidebar)' }}
+                          labels={{ photo: t('checkinPhoto.title', 'Check-in photo'), hint: t('checkinPhoto.hint', 'Staff only — used to verify identity at check-in.'), add: t('checkinPhoto.add', 'Add photo'), replace: t('checkinPhoto.replace', 'Replace'), remove: t('checkinPhoto.remove', 'Remove') }}
+                        />
+                      </div>
+                      <MField label={t('admin.memberDetail.externalId', 'External ID')} hint={t('admin.memberDetail.externalIdDesc', "The code from your gym's existing system (e.g. keypad code, barcode number)")}
+                        action={
+                          <button onClick={handleSaveExternalId} disabled={externalIdSaving || externalId === originalExternalIdRef.current}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold disabled:opacity-40" style={{ color: externalIdSaved ? 'var(--color-success)' : 'var(--color-accent)' }}>
+                            {externalIdSaved ? <Check size={11} /> : <Save size={11} />} {externalIdSaving ? t('admin.memberDetail.saving', 'Saving...') : externalIdSaved ? t('admin.memberDetail.saved', 'Saved!') : t('admin.memberDetail.save', 'Save')}
+                          </button>
+                        }>
+                        <MInput value={externalId} onChange={e => setExternalId(e.target.value)} placeholder={t('admin.memberDetail.externalIdPlaceholder', 'e.g. 4821 or MBR-0042')} mono />
+                      </MField>
+                      {member.qr_code_payload && (
+                        <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-admin-text)' }}>
+                          <QrCode size={18} style={{ color: '#fff' }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.55)' }}>{t('admin.memberDetail.currentQrPayload', 'Current QR payload')}</p>
+                            <p className="text-[14px] font-mono font-bold truncate" style={{ color: '#fff', letterSpacing: '0.08em' }}>{member.qr_code_payload}</p>
                           </div>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(memberInvite.invite_code).catch(() => {});
-                              setInviteCopied(true);
-                              setTimeout(() => setInviteCopied(false), 2000);
-                            }}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors">
-                            {inviteCopied ? <Check size={12} className="text-[#10B981]" /> : <Copy size={12} />}
-                            {inviteCopied ? t('admin.memberDetail.copied', 'Copied') : t('admin.memberDetail.copy', 'Copy')}
+                          <button onClick={() => navigator.clipboard.writeText(member.qr_code_payload).catch(() => {})}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)' }}>
+                            <Copy size={14} style={{ color: '#fff' }} />
                           </button>
                         </div>
-                        <span className={`inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          hasLoggedIn
-                            ? 'bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/25'
-                            : 'bg-[#F59E0B]/12 text-[#F59E0B] border border-[#F59E0B]/25'
-                        }`}>
-                          {hasLoggedIn
-                            ? t('admin.memberDetail.alreadyRegistered', 'Already Registered')
-                            : t('admin.memberDetail.pendingRegistration', 'Pending — Not yet logged in')}
-                        </span>
-                      </>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-                            {hasLoggedIn
-                              ? t('admin.memberDetail.directSignup', 'Direct signup')
-                              : t('admin.memberDetail.profileCreated', 'Profile created by admin')}
-                          </p>
-                          <p className="text-[10px] text-[#6B7280] mt-0.5">
-                            {t('admin.memberDetail.noInviteUsed', 'No invite code was used')}
-                          </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Security — password reset */}
+                  <div>
+                    <MSecLabel icon={KeyRound}>{t('admin.memberDetail.security', { defaultValue: 'Security' })}</MSecLabel>
+                    <div className="rounded-xl p-3 space-y-3" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                      {resetCode ? (
+                        <>
+                          <p className="text-[12px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.memberDetail.showCode', 'Show this code to the member:')}</p>
+                          <div className="flex items-center justify-center py-3">
+                            <span className="text-[34px] font-mono font-bold tracking-[0.3em] select-all" style={{ color: 'var(--color-accent)' }}>{String(resetCode).padStart(6, '0')}</span>
+                          </div>
+                          <p className="text-[11px] text-center" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.memberDetail.codeExpires', 'Code expires in 30 minutes')}</p>
+                          <p className="text-[11px] text-center leading-snug" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.memberDetail.resetCodeHowto', { defaultValue: 'Member: open the app → “Forgot password” → “Have a code?” → enter it with a new password.' })}</p>
+                          <div className="flex gap-2">
+                            <button onClick={handleCopyCode} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-semibold" style={btnTone('soft')}>
+                              {codeCopied ? <><Check size={12} /> {t('admin.memberDetail.copied', 'Copied!')}</> : <><Copy size={12} /> {t('admin.memberDetail.copyCode', 'Copy Code')}</>}
+                            </button>
+                            <button onClick={() => { setResetCode(null); setResetError(''); }} className="flex-1 py-2 rounded-lg text-[12px] font-semibold" style={btnTone('ghost')}>
+                              {t('admin.memberDetail.done', 'Done')}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}>
+                            <KeyRound size={16} style={{ color: 'var(--color-accent)' }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12.5px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>{t('admin.memberDetail.passwordReset', 'Password Reset')}</p>
+                            <p className="text-[10.5px] mt-0.5 leading-snug" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.memberDetail.generateResetDesc', 'Generate a one-time 6-digit code the member can use to set a new password.')}</p>
+                          </div>
+                          <button onClick={handleGenerateResetCode} disabled={resetLoading}
+                            className="px-3 py-1.5 rounded-lg text-[11.5px] font-semibold flex-shrink-0 disabled:opacity-40" style={btnTone('soft')}>
+                            {resetLoading ? t('admin.memberDetail.generating', 'Generating…') : t('admin.memberDetail.generate', { defaultValue: 'Generate' })}
+                          </button>
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          hasLoggedIn
-                            ? 'bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/25'
-                            : 'bg-[#F59E0B]/12 text-[#F59E0B] border border-[#F59E0B]/25'
-                        }`}>
-                          {hasLoggedIn
-                            ? t('admin.memberDetail.alreadyRegistered', 'Already Registered')
-                            : t('admin.memberDetail.notRegistered', 'Not Registered')}
-                        </span>
+                      )}
+                      {resetError && (
+                        <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--color-danger-soft)' }}>
+                          <p className="text-[11px]" style={{ color: 'var(--color-danger-ink)' }}>{resetError}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ════════ ACTIVIDAD ════════ */}
+              {tab === 'actividad' && (
+                <div className="space-y-5">
+                  <div>
+                    <MSecLabel icon={Activity}>{t('admin.memberDetail.recentActivity', { defaultValue: 'Recent activity' })}</MSecLabel>
+                    {(sessions.length === 0 && prs.length === 0) ? (
+                      <p className="text-[13px] text-center py-6" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.memberDetail.noActivity', 'No activity yet')}</p>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Workouts */}
+                        {sessions.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-bold mb-2 flex items-center gap-1.5" style={{ color: 'var(--color-admin-text-sub)' }}><Dumbbell size={12} /> {t('admin.memberDetail.tabWorkouts', 'Workouts')}</p>
+                            <div className="space-y-2">
+                              {(showAllWorkouts ? sessions : sessions.slice(0, 3)).map(s => (
+                                <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-xl" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[13px] font-medium truncate" style={{ color: 'var(--color-admin-text)' }}>{s.name || t('admin.memberDetail.workout', 'Workout')}</p>
+                                    <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>{format(new Date(s.started_at), 'MMM d, yyyy', dateFnsLocale)}</p>
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    {s.total_volume_lbs > 0 && <p className="text-[12px] font-semibold" style={{ color: 'var(--color-admin-text-sub)' }}>{Math.round(s.total_volume_lbs).toLocaleString()} lbs</p>}
+                                    {s.duration_seconds > 0 && <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>{Math.floor(s.duration_seconds / 60)}m</p>}
+                                  </div>
+                                </div>
+                              ))}
+                              {sessions.length > 3 && (
+                                <button onClick={() => setShowAllWorkouts(v => !v)}
+                                  className="w-full py-2 text-[12px] font-semibold rounded-xl" style={showAllWorkouts ? btnTone('ghost') : btnTone('soft')}>
+                                  {showAllWorkouts ? t('admin.memberDetail.showLess', 'Show less') : t('admin.memberDetail.seeMore', { count: sessions.length - 3, defaultValue: 'See {{count}} more' })}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {/* PRs */}
+                        {prs.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-bold mb-2 flex items-center gap-1.5" style={{ color: 'var(--color-admin-text-sub)' }}><Trophy size={12} /> {t('admin.memberDetail.tabPRs', 'PRs')}</p>
+                            <div className="space-y-2">
+                              {prs.map((pr, i) => (
+                                <div key={`${pr.exercise_id}-${pr.achieved_at || i}`} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: i < 3 ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'var(--color-admin-sidebar)' }}>
+                                    <Trophy size={13} style={{ color: i < 3 ? 'var(--color-accent)' : 'var(--color-admin-text-muted)' }} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[13px] font-medium truncate" style={{ color: 'var(--color-admin-text)' }}>{pr.exercises?.name ?? pr.exercise_id}</p>
+                                    {pr.achieved_at && <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>{format(new Date(pr.achieved_at), 'MMM d, yyyy', dateFnsLocale)}</p>}
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    <p className="text-[13px] font-bold" style={{ color: 'var(--color-admin-text)' }}>{pr.weight_lbs} lbs × {pr.reps}</p>
+                                    {pr.estimated_1rm > 0 && <p className="text-[10px]" style={{ color: 'var(--color-admin-text-muted)' }}>{Math.round(pr.estimated_1rm)} lbs {t('admin.memberDetail.est1RM', 'est. 1RM')}</p>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                );
-              })()}
-            </div>
-          </div>
 
-          {/* Membership */}
-          <div>
-            <SectionLabel icon={UserCheck} className="mb-3">{t('admin.memberDetail.membership', 'Membership')}</SectionLabel>
-            <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-[12px] text-[#6B7280]">{t('admin.memberDetail.status', 'Status')}</p>
-                <StatusBadge status={memberStatus} />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {getStatusActions(memberStatus).map(action => {
-                  const cfg = statusActionMap[action];
-                  return (
-                    <button key={action} onClick={() => {
-                      setPendingAction(action);
-                      setStatusConflict(false);
-                      if (action === 'cancel') {
-                        // Hormozi save step first — captures retention attempts
-                        // before recording the cancellation.
-                        setSaveStepOpen(true);
-                      } else {
-                        setShowStatusConfirm(true);
-                      }
-                    }}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors whitespace-nowrap ${cfg.btnColor} ${cfg.btnBg}`}>
-                      {action === 'ban' || action === 'cancel' ? <UserX size={12} /> : action === 'freeze' ? <Ban size={12} /> : <UserCheck size={12} />}
-                      {t(`admin.memberDetail.statusActions.${action}`, { defaultValue: cfg.label })}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="pt-3 mt-1 border-t border-white/6">
-                <p className="text-[10px] uppercase tracking-wide text-[#6B7280] mb-2">
-                  {t('admin.memberDetail.dangerZone', { defaultValue: 'Danger Zone' })}
-                </p>
-                <button
-                  onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(''); setDeleteError(''); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors whitespace-nowrap text-[#EF4444] bg-[#EF4444]/10 border-[#EF4444]/20 hover:bg-[#EF4444]/15">
-                  <Trash2 size={12} />
-                  {t('admin.memberDetail.deleteAccount', { defaultValue: 'Delete Account' })}
-                </button>
-                <p className="text-[10px] text-[#6B7280] mt-2">
-                  {t('admin.memberDetail.deleteAccountHint', { defaultValue: 'Permanently removes this member and all their workouts, PRs, photos, and messages from your gym. Cannot be undone.' })}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Admin note */}
-          <div>
-            <SectionLabel icon={FileText} className="mb-2">{t('admin.memberDetail.adminNote', 'Admin Note')}</SectionLabel>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder={t('admin.memberDetail.adminNotePlaceholder', 'e.g. Reached out Jan 5 \u2014 no response. At risk of churning.')}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
-            <button onClick={handleSaveNote} disabled={noteSaving || note === (member.admin_note ?? '')}
-              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-              <Save size={12} /> {noteSaving ? t('admin.memberDetail.saving', 'Saving\u2026') : t('admin.memberDetail.saveNote', 'Save Note')}
-            </button>
-          </div>
-
-          {/* QR / External ID */}
-          <div>
-            <SectionLabel icon={QrCode} className="mb-3">{t('admin.memberDetail.qrTitle', 'QR Code / External ID')}</SectionLabel>
-            <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
-              <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.externalId', 'External ID')}</label>
-                <p className="text-[11px] text-[#6B7280] mb-1.5">{t('admin.memberDetail.externalIdDesc', "The code from your gym's existing system (e.g. keypad code, barcode number)")}</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={externalId}
-                    onChange={e => setExternalId(e.target.value)}
-                    placeholder={t('admin.memberDetail.externalIdPlaceholder', 'e.g. 4821 or MBR-0042')}
-                    className="flex-1 bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 font-mono"
-                  />
-                  <button
-                    onClick={handleSaveExternalId}
-                    disabled={externalIdSaving || externalId === (member.qr_external_id ?? '')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-                    style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
-                  >
-                    <Save size={12} />
-                    {externalIdSaving ? t('admin.memberDetail.saving', 'Saving...') : t('admin.memberDetail.save', 'Save')}
-                  </button>
-                </div>
-              </div>
-              {member.qr_code_payload && (
-                <div className="flex items-center justify-between pt-2 border-t border-white/4">
-                  <p className="text-[11px] text-[#6B7280]">{t('admin.memberDetail.currentQrPayload', 'Current QR payload')}</p>
-                  <p className="text-[12px] font-mono font-semibold text-[#D4AF37]">{member.qr_code_payload}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Password Reset */}
-          <div>
-            <SectionLabel icon={KeyRound} className="mb-3">{t('admin.memberDetail.passwordReset', 'Password Reset')}</SectionLabel>
-            <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
-              {resetCode ? (
-                <div className="space-y-3">
-                  <p className="text-[12px] text-[#6B7280]">{t('admin.memberDetail.showCode', 'Show this code to the member:')}</p>
-                  <div className="flex items-center justify-center py-4">
-                    <span className="text-[36px] font-mono font-bold text-[#D4AF37] tracking-[0.3em] select-all">
-                      {String(resetCode).padStart(6, '0')}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[#6B7280] text-center">{t('admin.memberDetail.codeExpires', 'Code expires in 15 minutes')}</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleCopyCode}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-semibold transition-colors"
-                      style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
-                    >
-                      {codeCopied ? <><Check size={12} /> {t('admin.memberDetail.copied', 'Copied!')}</> : <><Copy size={12} /> {t('admin.memberDetail.copyCode', 'Copy Code')}</>}
-                    </button>
-                    <button
-                      onClick={() => { setResetCode(null); setResetError(''); }}
-                      className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors"
-                    >
-                      {t('admin.memberDetail.done', 'Done')}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {resetError && (
-                    <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                      <p className="text-[11px] text-red-400">{resetError}</p>
+                  {/* Churn follow-up */}
+                  {isFollowupCandidate && (
+                    <div>
+                      <MSecLabel icon={Send}>{t('admin.memberDetail.sendFollowup', 'Send Follow-up')}</MSecLabel>
+                      <div className="rounded-xl p-3 space-y-3" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                        {followupSentAt ? (
+                          <div className="space-y-3">
+                            <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.memberDetail.followupSent', 'Follow-up sent')} <span className="font-medium" style={{ color: 'var(--color-admin-text-sub)' }}>{format(new Date(followupSentAt), 'MMM d, yyyy', dateFnsLocale)}</span></p>
+                            <div>
+                              <p className="text-[11px] mb-2" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.memberDetail.outcome', 'Outcome')}</p>
+                              {followupOutcome ? (
+                                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={btnTone(outcomeConfig[followupOutcome]?.tone)}>
+                                  {t(outcomeConfig[followupOutcome]?.labelKey, outcomeConfig[followupOutcome]?.label)}
+                                </span>
+                              ) : (
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(outcomeConfig).map(([key, cfg]) => (
+                                    <button key={key} onClick={() => handleSetOutcome(key)} disabled={outcomeSaving}
+                                      className="text-[11px] font-semibold px-2.5 py-1 rounded-full disabled:opacity-40" style={btnTone(cfg.tone)}>
+                                      {t(cfg.labelKey, cfg.label)}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <textarea value={followupMsg} onChange={e => setFollowupMsg(e.target.value)} rows={3}
+                              className="w-full rounded-lg px-3 py-2.5 text-[13px] outline-none resize-none"
+                              style={{ background: 'var(--color-admin-sidebar)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)', lineHeight: 1.5 }} />
+                            <button onClick={handleSendFollowup} disabled={followupSending || !followupMsg.trim()}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg disabled:opacity-40" style={btnTone('soft')}>
+                              <Send size={12} /> {followupSending ? t('admin.memberDetail.sendingFollowup', 'Sending…') : t('admin.memberDetail.sendFollowup', 'Send Follow-up')}
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )}
-                  <p className="text-[12px] text-[#6B7280]">{t('admin.memberDetail.generateResetDesc', 'Generate a one-time 6-digit code the member can use to set a new password.')}</p>
-                  <button
-                    onClick={handleGenerateResetCode}
-                    disabled={resetLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-                    style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
-                  >
-                    <KeyRound size={12} />
-                    {resetLoading ? t('admin.memberDetail.generating', 'Generating\u2026') : t('admin.memberDetail.generateResetCode', 'Generate Reset Code')}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
 
-          {/* Churn follow-up */}
-          {isFollowupCandidate && (
-            <div>
-              <SectionLabel icon={Send} className="mb-3">{t('admin.memberDetail.sendFollowup', 'Send Follow-up')}</SectionLabel>
-              <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
-                {followupSentAt ? (
-                  <div className="space-y-3">
-                    <p className="text-[12px] text-[#6B7280]">{t('admin.memberDetail.followupSent', 'Follow-up sent')} <span className="text-[#9CA3AF] font-medium">{format(new Date(followupSentAt), 'MMM d, yyyy', dateFnsLocale)}</span></p>
-                    <div>
-                      <p className="text-[11px] text-[#6B7280] mb-2">{t('admin.memberDetail.outcome', 'Outcome')}</p>
-                      {followupOutcome ? (
-                        <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${outcomeConfig[followupOutcome]?.color} ${outcomeConfig[followupOutcome]?.bg}`}>
-                          {t(outcomeConfig[followupOutcome]?.labelKey, outcomeConfig[followupOutcome]?.label)}
-                        </span>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {Object.entries(outcomeConfig).map(([key, cfg]) => (
-                            <button key={key} onClick={() => handleSetOutcome(key)} disabled={outcomeSaving}
-                              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors disabled:opacity-40 ${cfg.color} ${cfg.bg}`}>
-                              {t(cfg.labelKey, cfg.label)}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                  {/* Admin note */}
+                  <div>
+                    <MSecLabel icon={FileText}>{t('admin.memberDetail.adminNote', 'Admin Note')}</MSecLabel>
+                    <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder={t('admin.memberDetail.adminNotePlaceholder', 'e.g. Reached out Jan 5 — no response. At risk of churning.')}
+                      className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none resize-none"
+                      style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                    <div className="flex justify-end mt-2">
+                      <button onClick={handleSaveNote} disabled={noteSaving || note === (member.admin_note ?? '')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg disabled:opacity-40" style={btnTone('soft')}>
+                        <Save size={12} /> {noteSaving ? t('admin.memberDetail.saving', 'Saving…') : t('admin.memberDetail.saveNote', 'Save Note')}
+                      </button>
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <textarea value={followupMsg} onChange={e => setFollowupMsg(e.target.value)} rows={3}
-                      className="w-full bg-[#0F172A] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
-                    <button onClick={handleSendFollowup} disabled={followupSending || !followupMsg.trim()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-                      style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-                      <Send size={12} /> {followupSending ? t('admin.memberDetail.sendingFollowup', 'Sending\u2026') : t('admin.memberDetail.sendFollowup', 'Send Follow-up')}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-          </>)}
-          {/* \u2500\u2500 END INFO TAB \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+                </div>
+              )}
 
+              {/* ════════ REFERIDOS ════════ */}
+              {tab === 'referidos' && (
+                <div className="space-y-4">
+                  {referralCode && (
+                    <div className="rounded-xl p-3" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                      <p className="text-[11px] font-medium mb-1" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.referral.referralCode')}</p>
+                      <p className="text-[14px] font-mono font-bold" style={{ color: 'var(--color-accent)' }}>{referralCode}</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl p-3 text-center" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                      <p className="text-[18px] font-bold tabular-nums" style={{ color: 'var(--color-admin-text)' }}>{referralCount}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.referral.peopleReferred')}</p>
+                    </div>
+                    <div className="rounded-xl p-3 text-center" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                      <p className="text-[18px] font-bold tabular-nums" style={{ color: 'var(--color-success)' }}>{referrals.filter(r => r.status === 'completed').length}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.referral.completed')}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <MSecLabel icon={Share2}>{t('admin.referral.referredList')}</MSecLabel>
+                    {referrals.length === 0 ? (
+                      <p className="text-[13px] text-center py-6" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.referral.noReferralsMember')}</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {referrals.map(ref => {
+                          const tones = { pending: 'warn', completed: 'good', expired: 'ghost' };
+                          const labels = { pending: t('admin.referral.statusPending'), completed: t('admin.referral.statusCompleted'), expired: t('admin.referral.statusExpired') };
+                          return (
+                            <div key={ref.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-medium truncate" style={{ color: 'var(--color-admin-text)' }}>{ref.profiles?.full_name || t('admin.memberDetail.unknownReferrer', 'Unknown')}</p>
+                                <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>{format(new Date(ref.created_at), 'MMM d, yyyy', dateFnsLocale)}</p>
+                              </div>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={btnTone(tones[ref.status] || 'warn')}>
+                                {labels[ref.status] || ref.status}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ════════ AVANZADO ════════ */}
+              {tab === 'avanzado' && (
+                <div className="space-y-4">
+                  {/* Export */}
+                  <div className="flex items-center gap-3 rounded-xl px-3 py-3" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                    <Download size={16} style={{ color: 'var(--color-admin-text-sub)' }} />
+                    <p className="flex-1 text-[11.5px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.memberDetail.exportMemberData', { defaultValue: 'Export all of this member\'s data' })}</p>
+                    <button onClick={handleExportMember} disabled={exportingMember} className="px-3 py-1.5 rounded-lg text-[11.5px] font-semibold flex-shrink-0 disabled:opacity-40" style={btnTone('ghost')}>
+                      {exportingMember ? t('admin.members.exporting', 'Exporting…') : t('admin.members.export', 'Export')}
+                    </button>
+                  </div>
+
+                  {/* Danger zone */}
+                  <div className="rounded-xl overflow-hidden" style={{ border: '1px solid color-mix(in srgb, var(--color-danger) 30%, var(--color-admin-border))' }}>
+                    <div className="flex items-center gap-2 px-3 py-2.5" style={{ background: 'var(--color-danger-soft)' }}>
+                      <AlertTriangle size={13} style={{ color: 'var(--color-danger-ink)' }} />
+                      <span className="text-[10.5px] font-extrabold uppercase tracking-[0.09em]" style={{ color: 'var(--color-danger-ink)', fontFamily: 'var(--admin-font-display)' }}>{t('admin.memberDetail.dangerZone', { defaultValue: 'Danger Zone' })}</span>
+                    </div>
+                    <div className="p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12.5px] font-semibold" style={{ color: 'var(--color-danger)' }}>{t('admin.memberDetail.deleteAccount', { defaultValue: 'Delete Account' })}</p>
+                          <p className="text-[10.5px] mt-0.5 leading-snug" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.memberDetail.deleteAccountHint', { defaultValue: 'Permanently removes this member and all their workouts, PRs, photos, and messages from your gym. Cannot be undone.' })}</p>
+                        </div>
+                        <button onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(''); setDeleteError(''); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold flex-shrink-0" style={btnTone('dangerSolid')}>
+                          <Trash2 size={12} /> {t('admin.memberDetail.delete', { defaultValue: 'Delete' })}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
+
+        {/* ── Perfil SaveBar (footer) ────────────────────────── */}
+        {!loading && tab === 'perfil' && (
+          <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ borderTop: '1px solid var(--color-admin-border)', background: 'var(--color-admin-sidebar)' }}>
+            <span className="text-[11px]" style={{ color: profileSaved ? 'var(--color-success-ink)' : 'var(--color-admin-text-muted)' }}>
+              {profileSaved ? t('admin.memberDetail.saved', 'Saved!') : (profileDirty ? t('admin.memberDetail.unsavedChanges', { defaultValue: 'Unsaved changes' }) : '')}
+            </span>
+            <div className="flex-1" />
+            <button onClick={resetProfileEdits} disabled={!profileDirty || profileSaving} className="px-3.5 py-2 rounded-lg text-[12px] font-semibold disabled:opacity-40" style={btnTone('ghost')}>
+              {tc('cancel')}
+            </button>
+            <button onClick={handleSaveProfile} disabled={!profileDirty || profileSaving || !namesOk} className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-bold disabled:opacity-40" style={btnTone('primary')}>
+              <Check size={13} /> {profileSaving ? t('admin.memberDetail.saving', 'Saving…') : t('admin.memberDetail.saveChanges', { defaultValue: 'Save changes' })}
+            </button>
+          </div>
+        )}
 
         {/* Save-step modal — opens BEFORE the cancellation survey so the
             owner has a real save conversation first. */}
@@ -1093,14 +1281,14 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             <>
               <button
                 onClick={() => { setShowStatusConfirm(false); setPendingAction(null); setStatusReason(''); setStatusConflict(false); }}
-                className="flex-1 py-2 rounded-lg text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
+                className="flex-1 py-2 rounded-lg text-[12px] font-semibold whitespace-nowrap" style={btnTone('ghost')}
               >
                 {tc('cancel')}
               </button>
               <button
                 onClick={handleConfirmStatusAction}
                 disabled={statusSaving}
-                className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#EF4444] text-white hover:bg-[#DC2626] transition-colors whitespace-nowrap disabled:opacity-40"
+                className="flex-1 py-2 rounded-lg text-[12px] font-semibold whitespace-nowrap disabled:opacity-40" style={btnTone('dangerSolid')}
               >
                 {statusSaving ? tc('saving', { defaultValue: 'Saving...' }) : tc('confirm')}
               </button>
@@ -1108,7 +1296,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
           }
         >
           <div className="space-y-3">
-            <p className="text-[12px] text-[#9CA3AF] text-center">
+            <p className="text-[12px] text-center" style={{ color: 'var(--color-admin-text-sub)' }}>
               {t('admin.memberDetail.confirmStatusMessage', {
                 action: pendingAction ? t(`admin.memberDetail.statusActions.${pendingAction}`, { defaultValue: statusActionMap[pendingAction]?.label }).toLowerCase() : '',
                 name: member.full_name,
@@ -1121,12 +1309,13 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               onChange={e => setStatusReason(e.target.value)}
               placeholder={t('admin.memberDetail.reasonPlaceholder', { defaultValue: 'Reason (optional)' })}
               aria-label={t('admin.memberDetail.reasonPlaceholder', { defaultValue: 'Reason (optional)' })}
-              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="w-full rounded-lg px-3 py-2 text-[12px] outline-none"
+              style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
             />
             {statusConflict && (
-              <div className="flex items-center gap-2 p-2.5 bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-lg">
-                <AlertTriangle size={14} className="text-[#F59E0B] flex-shrink-0" />
-                <p className="text-[11px] text-[#F59E0B]">
+              <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: 'var(--color-warning-soft)' }}>
+                <AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} className="flex-shrink-0" />
+                <p className="text-[11px]" style={{ color: 'var(--color-warning-ink)' }}>
                   {t('admin.memberDetail.statusConflict', { defaultValue: 'This member was modified by another admin. The status has been refreshed. Please review and try again.' })}
                 </p>
               </div>
@@ -1146,14 +1335,14 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               <button
                 onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); setDeleteError(''); }}
                 disabled={deleting}
-                className="flex-1 py-2 rounded-lg text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap disabled:opacity-40"
+                className="flex-1 py-2 rounded-lg text-[12px] font-semibold whitespace-nowrap disabled:opacity-40" style={btnTone('ghost')}
               >
                 {tc('cancel')}
               </button>
               <button
                 onClick={handleConfirmDelete}
                 disabled={deleting || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
-                className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#EF4444] text-white hover:bg-[#DC2626] transition-colors whitespace-nowrap disabled:opacity-40"
+                className="flex-1 py-2 rounded-lg text-[12px] font-semibold whitespace-nowrap disabled:opacity-40" style={btnTone('dangerSolid')}
               >
                 {deleting
                   ? t('admin.memberDetail.deleting', { defaultValue: 'Deleting…' })
@@ -1163,16 +1352,16 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
           }
         >
           <div className="space-y-3">
-            <div className="flex items-start gap-2 p-2.5 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-lg">
-              <AlertTriangle size={14} className="text-[#EF4444] flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-[#FCA5A5] leading-relaxed">
+            <div className="flex items-start gap-2 p-2.5 rounded-lg" style={{ background: 'var(--color-danger-soft)' }}>
+              <AlertTriangle size={14} style={{ color: 'var(--color-danger-ink)' }} className="flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] leading-relaxed" style={{ color: 'var(--color-danger-ink)' }}>
                 {t('admin.memberDetail.deleteWarning', {
                   name: member.full_name,
                   defaultValue: 'This permanently deletes {{name}} and all their workouts, PRs, body metrics, photos, messages, check-ins, and activity. This action cannot be undone.',
                 })}
               </p>
             </div>
-            <p className="text-[12px] text-[#9CA3AF] text-center">
+            <p className="text-[12px] text-center" style={{ color: 'var(--color-admin-text-sub)' }}>
               {t('admin.memberDetail.deleteTypePrompt', { defaultValue: 'Type DELETE to confirm.' })}
             </p>
             <input
@@ -1183,12 +1372,13 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               autoComplete="off"
               placeholder="DELETE"
               aria-label={t('admin.memberDetail.deleteTypePrompt', { defaultValue: 'Type DELETE to confirm.' })}
-              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#EF4444]/40 focus:ring-2 focus:ring-[#EF4444] focus:outline-none font-mono tracking-widest text-center"
+              className="w-full rounded-lg px-3 py-2 text-[12px] outline-none font-mono tracking-widest text-center"
+              style={{ background: 'var(--color-admin-panel)', border: '1px solid color-mix(in srgb, var(--color-danger) 40%, var(--color-admin-border))', color: 'var(--color-admin-text)' }}
             />
             {deleteError && (
-              <div className="flex items-center gap-2 p-2.5 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-lg">
-                <AlertTriangle size={14} className="text-[#EF4444] flex-shrink-0" />
-                <p className="text-[11px] text-[#FCA5A5]">{deleteError}</p>
+              <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: 'var(--color-danger-soft)' }}>
+                <AlertTriangle size={14} style={{ color: 'var(--color-danger-ink)' }} className="flex-shrink-0" />
+                <p className="text-[11px]" style={{ color: 'var(--color-danger-ink)' }}>{deleteError}</p>
               </div>
             )}
           </div>

@@ -7,6 +7,30 @@
 // If you add a new `label:` value in the edge function, add it here too —
 // otherwise it'll render raw English on the Spanish side.
 const SIGNAL_I18N = {
+  // ── v3 model labels (churnSignalsV3.js + compute-churn-scores edge fn) ──
+  'No recent activity':            'admin.churnSignals.noRecentActivity',
+  'Active recently':               'admin.churnSignals.recentlyActive',
+  'Attendance stable':             'admin.churnSignals.stable',
+  'Streak active':                 'admin.churnSignals.streakActive',
+  'No active streak':              'admin.churnSignals.noStreak',
+  'Building a routine':            'admin.churnSignals.buildingHabit',
+  'Too early to tell':             'admin.churnSignals.tooEarly',
+  'Completed first workout':       'admin.churnSignals.activated',
+  'No first workout yet':          'admin.churnSignals.notActivatedYet',
+  'No workout in first week':      'admin.churnSignals.noFirstWorkout',
+  'App activity dropped off':      'admin.churnSignals.appActivityDropped',
+  'Active in app':                 'admin.churnSignals.appActive',
+  'Stopped joining challenges':    'admin.churnSignals.challengeStopped',
+  'Challenge engagement ok':       'admin.churnSignals.challengeOk',
+  'Stopped logging workouts':      'admin.churnSignals.loggingStopped',
+  'Logging workouts':              'admin.churnSignals.loggingOk',
+  'Stopped using rewards':         'admin.churnSignals.rewardsDormant',
+  'Rewards engaged':               'admin.churnSignals.rewardsOk',
+  'Pulled back socially':          'admin.churnSignals.socialWithdrew',
+  'Goal/PR activity stalled':      'admin.churnSignals.goalsDormant',
+  'New member — not enough data yet': 'admin.churnSignals.newMemberNoData',
+  'Never activated':                  'admin.churnSignals.neverActivated',
+
   // ── Client-side fallback strings (lib/churn/riskScoring.js) ──
   'Never logged a workout':        'admin.churnSignals.neverLogged',
   'No activity in 30+ days':       'admin.churnSignals.noActivity30',
@@ -106,6 +130,25 @@ export function translateSignal(t, sig) {
   const raw = String(sig).trim();
   if (SIGNAL_I18N[raw]) return t(SIGNAL_I18N[raw]);
 
+  // Dynamic day-count strings emitted by loadScores.js / retention.js
+  // (e.g. "No activity in 47+ days") — the day count varies per member, so
+  // they can't be static map keys. Match the shape and interpolate.
+  const dm = raw.match(/^No activity in (\d+)\+ days$/i);
+  if (dm) return t('admin.churnSignals.noActivityNDays', { n: Number(dm[1]), defaultValue: `No activity in ${dm[1]}+ days` });
+
+  // v3 dynamic labels (numbers vary per member → can't be static map keys).
+  let m2;
+  if ((m2 = raw.match(/^(\d+) days since last visit$/i)))
+    return t('admin.churnSignals.daysSinceVisit', { d: Number(m2[1]), defaultValue: raw });
+  if ((m2 = raw.match(/^Visiting ([\d.]+)[×x]\/week$/i)))
+    return t('admin.churnSignals.visitingXWeek', { n: m2[1], defaultValue: raw });
+  if ((m2 = raw.match(/^Visits down (\d+)% vs usual$/i)))
+    return t('admin.churnSignals.visitsDownPct', { pct: Number(m2[1]), defaultValue: raw });
+  if ((m2 = raw.match(/^Broke a (\d+)-day streak$/i)))
+    return t('admin.churnSignals.streakBroken', { n: Number(m2[1]), defaultValue: raw });
+  if ((m2 = raw.match(/^Not building a routine \((\d+) visits in (\d+)w\)$/i)))
+    return t('admin.churnSignals.notBuildingHabit', { v: Number(m2[1]), w: Number(m2[2]), defaultValue: raw });
+
   const code = raw.replace(/^[-•·\s]+/, '').toLowerCase();
   if (SIGNAL_CODE_I18N[code]) return t(SIGNAL_CODE_I18N[code]);
 
@@ -118,6 +161,20 @@ export function translateSignal(t, sig) {
 
 /** Maps signal keys (from riskScoring.js) to i18n display name keys. */
 const SIGNAL_NAME_I18N = {
+  // ── v3 signal keys ──
+  recency:              'admin.churnSignals.nameRecency',
+  frequency:            'admin.churnSignals.nameFrequency',
+  trend:                'admin.churnSignals.nameTrend',
+  streak:               'admin.churnSignals.nameStreak',
+  habit_formation:      'admin.churnSignals.nameHabitFormation',
+  activation:           'admin.churnSignals.nameActivation',
+  app_decline:          'admin.churnSignals.nameAppDecline',
+  challenge_decline:    'admin.churnSignals.nameChallengeDecline',
+  logging_decline:      'admin.churnSignals.nameLoggingDecline',
+  rewards_decline:      'admin.churnSignals.nameRewardsDecline',
+  social_decline:       'admin.churnSignals.nameSocialDecline',
+  goals_decline:        'admin.churnSignals.nameGoalsDecline',
+  // ── v2 legacy keys (still mapped for old persisted rows) ──
   visit_frequency:      'admin.churnSignals.nameVisitFrequency',
   attendance_trend:     'admin.churnSignals.nameAttendanceTrend',
   tenure_risk:          'admin.churnSignals.nameTenureRisk',

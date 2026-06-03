@@ -39,7 +39,7 @@ export function SendSurveyModal({ isOpen, onClose, onSend, activeSurveys, isPend
             className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
             style={{
               background: GOLD,
-              color: 'var(--color-bg-base)',
+              color: 'var(--color-text-on-accent)',
               boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
             }}
           >
@@ -130,7 +130,7 @@ export function EditSurveyModal({
             className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
             style={{
               background: GOLD,
-              color: 'var(--color-bg-base)',
+              color: 'var(--color-text-on-accent)',
               boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
             }}
           >
