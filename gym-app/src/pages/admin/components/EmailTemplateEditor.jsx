@@ -11,16 +11,23 @@ import { supabase } from '../../../lib/supabase';
 import { AdminCard, Toggle } from '../../../components/admin';
 import { generateEmailHtml } from '../../../lib/admin/emailTemplateRenderer';
 import { TEMPLATE_TYPES, TEMPLATE_VARIABLES } from './emailTemplatePrebuilts';
+import { kindMeta, toneStyles } from './emailTemplateKinds';
 import EmailLivePreview from './EmailLivePreview';
 
-const inputClass = 'w-full bg-[#111827] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/40 transition-colors';
+const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
+const inputClass = 'w-full rounded-[10px] px-3 py-2.5 text-[13.5px] outline-none transition-colors bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] text-[var(--color-admin-text)] placeholder:text-[var(--color-admin-text-faint)] focus:border-[var(--color-accent)]';
 
 // Inline UI helpers — only used inside this editor.
 function VariablePill({ label, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/20 transition-colors"
+      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[7px] text-[11px] font-semibold transition-colors"
+      style={{
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        color: 'var(--color-accent)',
+        background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+      }}
     >
       <span>{label}</span>
     </button>
@@ -28,24 +35,31 @@ function VariablePill({ label, onClick }) {
 }
 
 function SectionBlock({ title, icon: Icon, enabled, onToggle, children, toggleAriaLabel }) {
+  const open = onToggle ? enabled : true;
   return (
-    <div className="border border-white/6 rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 bg-white/[0.02]">
-        <div className="flex items-center gap-2.5">
-          <Icon size={15} className="text-[#D4AF37]" />
-          <span className="text-[13px] font-semibold text-[#E5E7EB]">{title}</span>
+    <AdminCard padding="p-0">
+      <div
+        className="flex items-center gap-3 px-4 py-3.5"
+        style={{ background: 'var(--color-bg-deep)', borderBottom: open ? '1px solid var(--color-border-subtle)' : 'none' }}
+      >
+        <div
+          className="grid place-items-center flex-shrink-0"
+          style={{ width: 30, height: 30, borderRadius: 9, background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}
+        >
+          <Icon size={15} strokeWidth={2} style={{ color: 'var(--color-accent)' }} />
         </div>
+        <span className="flex-1" style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 14, color: 'var(--color-admin-text)', letterSpacing: '-0.2px' }}>{title}</span>
         {onToggle && <Toggle value={enabled} onChange={onToggle} label={toggleAriaLabel || title} />}
       </div>
-      {enabled && <div className="px-4 py-4 space-y-3">{children}</div>}
-    </div>
+      {open && <div className="p-[18px] space-y-3">{children}</div>}
+    </AdminCard>
   );
 }
 
 function Field({ label, children }) {
   return (
     <div>
-      <label className="block text-[11px] font-medium text-[#9CA3AF] mb-1.5">{label}</label>
+      <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{label}</label>
       {children}
     </div>
   );
@@ -174,23 +188,26 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
   return (
     <div className="flex flex-col lg:flex-row gap-0 h-full min-h-[calc(100vh-120px)]">
       {/* Left: Editor */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="mx-auto w-full max-w-[780px] space-y-4">
         {/* Top bar */}
         <div className="flex items-center gap-3 mb-2">
           <button
             onClick={onCancel}
-            className="p-2 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.04] transition-colors"
+            className="p-2 rounded-lg transition-colors hover:bg-[var(--color-bg-hover)]"
+            style={{ color: 'var(--color-admin-text-sub)' }}
             aria-label={t('admin.emailTemplates.back')}
           >
             <ArrowLeft size={18} />
           </button>
-          <h2 className="text-[16px] font-bold text-[#E5E7EB] flex-1">
+          <h2 className="flex-1" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 18, color: 'var(--color-admin-text)', letterSpacing: '-0.3px' }}>
             {initial.name ? t('admin.emailTemplates.editTemplate') : t('admin.emailTemplates.newTemplate')}
           </h2>
           {/* Mobile-only preview trigger — desktop has the side panel. */}
           <button
             onClick={() => setMobilePreviewOpen(true)}
-            className="lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 min-h-[44px]"
+            className="lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold min-h-[44px]"
+            style={{ color: 'var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
           >
             <Eye size={14} /> {t('admin.emailTemplates.preview', 'Preview')}
           </button>
@@ -208,20 +225,27 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
               />
             </Field>
             <Field label={t('admin.emailTemplates.templateType')}>
-              <div className="flex flex-wrap gap-1.5">
-                {TEMPLATE_TYPES.map(({ key, icon }) => (
-                  <button
-                    key={key}
-                    onClick={() => set('type', key)}
-                    className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors ${
-                      template.type === key
-                        ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25'
-                        : 'bg-[#111827] text-[#6B7280] border border-white/6'
-                    }`}
-                  >
-                    {icon} {t(`admin.emailTemplates.types.${key}`)}
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-2">
+                {TEMPLATE_TYPES.map(({ key }) => {
+                  const { Icon, tone } = kindMeta(key);
+                  const c = toneStyles(tone);
+                  const on = template.type === key;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => set('type', key)}
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[12.5px] font-bold transition-colors"
+                      style={{
+                        color: on ? c.ink : 'var(--color-admin-text-sub)',
+                        background: on ? c.bg : 'var(--color-admin-panel)',
+                        border: `1px solid ${on ? 'transparent' : 'var(--color-admin-border)'}`,
+                      }}
+                    >
+                      <Icon size={14} strokeWidth={2} style={{ color: on ? c.fg : 'var(--color-admin-text-muted)' }} />
+                      {t(`admin.emailTemplates.types.${key}`)}
+                    </button>
+                  );
+                })}
               </div>
             </Field>
           </div>
@@ -235,7 +259,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           onToggle={v => set('header.enabled', v)}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[12px] text-[#9CA3AF]">{t('admin.emailTemplates.showLogo')}</span>
+            <span className="text-[12px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.emailTemplates.showLogo')}</span>
             <Toggle value={template.header.showLogo} onChange={v => set('header.showLogo', v)} label={t('admin.emailTemplates.showLogo')} />
           </div>
           <Field label={t('admin.emailTemplates.headerText')}>
@@ -284,7 +308,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
         {/* Body Section */}
         <SectionBlock title={t('admin.emailTemplates.bodySection')} icon={FileText} enabled={true}>
           <div className="flex flex-wrap gap-1.5 mb-2">
-            <span className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-wider mr-1 self-center">
+            <span className="text-[10px] font-semibold text-[var(--color-admin-text-muted)] uppercase tracking-wider mr-1 self-center">
               {t('admin.emailTemplates.insertVariable')}
             </span>
             {TEMPLATE_VARIABLES.map(v => (
@@ -303,7 +327,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
             placeholder={t('admin.emailTemplates.bodyPlaceholder')}
             className={`${inputClass} resize-y min-h-[160px]`}
           />
-          <p className="text-[10px] text-[#6B7280]">{t('admin.emailTemplates.bodyHint')}</p>
+          <p className="text-[10px] text-[var(--color-admin-text-muted)]">{t('admin.emailTemplates.bodyHint')}</p>
         </SectionBlock>
 
         {/* CTA Section */}
@@ -356,7 +380,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
                 type="color"
                 value={template.cta.color}
                 onChange={e => set('cta.color', e.target.value)}
-                className="w-8 h-8 rounded-lg border border-white/8 cursor-pointer bg-transparent"
+                className="w-8 h-8 rounded-lg border border-[var(--color-admin-border)] cursor-pointer bg-transparent"
               />
               <input
                 value={template.cta.color}
@@ -447,7 +471,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
 
         {/* Typography & Layout */}
         <AdminCard>
-          <p className="text-[12px] font-semibold text-[#6B7280] uppercase tracking-wider mb-3">
+          <p className="text-[12px] font-semibold text-[var(--color-admin-text-muted)] uppercase tracking-wider mb-3">
             {t('admin.emailTemplates.typography', 'Typography & Layout')}
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -528,7 +552,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
 
         {/* Color Scheme */}
         <AdminCard>
-          <p className="text-[12px] font-semibold text-[#6B7280] uppercase tracking-wider mb-3">
+          <p className="text-[12px] font-semibold text-[var(--color-admin-text-muted)] uppercase tracking-wider mb-3">
             {t('admin.emailTemplates.colorScheme')}
           </p>
           <div className="grid grid-cols-3 gap-3">
@@ -539,7 +563,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
                     type="color"
                     value={template.colors[key]}
                     onChange={e => set(`colors.${key}`, e.target.value)}
-                    className="w-7 h-7 rounded border border-white/8 cursor-pointer bg-transparent flex-shrink-0"
+                    className="w-7 h-7 rounded border border-[var(--color-admin-border)] cursor-pointer bg-transparent flex-shrink-0"
                   />
                   <input
                     value={template.colors[key]}
@@ -554,7 +578,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
 
         {/* Send Test Email */}
         <AdminCard>
-          <p className="text-[12px] font-semibold text-[#6B7280] uppercase tracking-wider mb-3">
+          <p className="text-[12px] font-semibold text-[var(--color-admin-text-muted)] uppercase tracking-wider mb-3">
             {t('admin.emailTemplates.sendTestTitle')}
           </p>
           <div className="flex items-center gap-2">
@@ -568,7 +592,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
             <button
               onClick={handleSendTest}
               disabled={sendingTest}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-[13px] text-[#E5E7EB] bg-white/[0.04] border border-white/8 hover:bg-white/[0.08] transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-[13px] text-[var(--color-admin-text)] bg-[var(--color-admin-panel)] border border-[var(--color-admin-border)] hover:bg-[var(--color-bg-hover)] transition-colors disabled:opacity-50"
             >
               {sendingTest ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
               {t('admin.emailTemplates.sendTest')}
@@ -589,21 +613,22 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           </button>
           <button
             onClick={handleExportHtml}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-[13px] text-[#E5E7EB] bg-white/[0.04] border border-white/8 hover:bg-white/[0.08] transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-[13px] text-[var(--color-admin-text)] bg-[var(--color-admin-panel)] border border-[var(--color-admin-border)] hover:bg-[var(--color-bg-hover)] transition-colors"
           >
             <Copy size={15} /> {t('admin.emailTemplates.exportHtml')}
           </button>
         </div>
+        </div>
       </div>
 
-      {/* Right: Live Preview (desktop) */}
-      <div className="hidden lg:flex flex-col w-[480px] flex-shrink-0 border-l border-white/6 bg-[#0a0a1a]">
+      {/* Right: Live Preview (desktop) — dark "stage" backdrop, per the design */}
+      <div className="hidden lg:flex flex-col w-[460px] flex-shrink-0" style={{ borderLeft: '1px solid var(--color-admin-border)', background: '#0b0b12' }}>
         <EmailLivePreview template={template} gymName={gymName} gymLogoUrl={gymLogoUrl} />
       </div>
 
       {/* Mobile preview overlay — fullscreen drawer slides in from the right */}
       {mobilePreviewOpen && (
-        <div className="lg:hidden fixed inset-0 z-[120] flex flex-col bg-[#0a0a1a]" role="dialog" aria-modal="true">
+        <div className="lg:hidden fixed inset-0 z-[120] flex flex-col bg-[#0b0b12]" role="dialog" aria-modal="true">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-white/6 flex-shrink-0"
             style={{ paddingTop: 'calc(12px + env(safe-area-inset-top))' }}>
             <button

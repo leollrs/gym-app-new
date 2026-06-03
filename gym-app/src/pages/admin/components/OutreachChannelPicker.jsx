@@ -1,4 +1,4 @@
-import { Bell, Mail, MessageSquare, Smartphone } from 'lucide-react';
+import { Bell, Lock, Mail, MessageSquare, Smartphone } from 'lucide-react';
 
 /**
  * Multi-channel toggle row for the Outreach composer. Each channel is
@@ -45,7 +45,7 @@ function PillToggle({ on, disabled }) {
   );
 }
 
-export default function OutreachChannelPicker({ value, onChange, t }) {
+export default function OutreachChannelPicker({ value, onChange, t, lockedToEmail = false }) {
   const set = (key, on) => onChange({ ...value, [key]: on });
 
   const channels = [
@@ -54,29 +54,36 @@ export default function OutreachChannelPicker({ value, onChange, t }) {
       icon: Bell,
       label: t('admin.outreach.channelPush', 'Push notification'),
       desc: t('admin.outreach.channelPushDesc', 'Members who have push enabled'),
+      disabled: lockedToEmail,
     },
     {
       key: 'inApp',
       icon: Smartphone,
       label: t('admin.outreach.channelInApp', 'In-app only'),
       desc: t('admin.outreach.channelInAppDesc', 'Notification inside the app, no push'),
-      disabled: value.push,
+      disabled: lockedToEmail || value.push,
     },
     {
       key: 'email',
       icon: Mail,
       label: t('admin.outreach.channelEmail', 'Email'),
       desc: t('admin.outreach.channelEmailDesc', 'Members with email on file'),
+      // While a designer email is attached, email is the only valid channel:
+      // force it on and lock it (can't be toggled off either).
+      disabled: lockedToEmail,
+      forceOn: lockedToEmail,
     },
     {
       key: 'sms',
       icon: MessageSquare,
       label: t('admin.outreach.channelSms', 'SMS'),
       desc: t('admin.outreach.channelSmsDesc', 'Members with phone — costs per message'),
+      disabled: lockedToEmail,
     },
   ];
 
-  const activeCount = channels.filter(ch => value[ch.key] && !ch.disabled).length;
+  const isOn = (ch) => (ch.forceOn ? true : (!!value[ch.key] && !ch.disabled));
+  const activeCount = channels.filter(isOn).length;
 
   return (
     <div className="space-y-3">
@@ -92,18 +99,23 @@ export default function OutreachChannelPicker({ value, onChange, t }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {channels.map(ch => {
           const Icon = ch.icon;
-          const on = !!value[ch.key] && !ch.disabled;
+          const on = isOn(ch);
+          // Dim only genuinely-unavailable channels — not the locked-on email,
+          // which should still read as the active selection.
+          const dim = ch.disabled && !ch.forceOn;
           return (
             <button
               key={ch.key}
               type="button"
               onClick={() => !ch.disabled && set(ch.key, !on)}
               disabled={ch.disabled}
-              className="flex items-center gap-3 p-3 rounded-xl text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-3 p-3 rounded-xl text-left transition-all"
               style={{
                 background: on ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'var(--color-bg-deep)',
                 border: `${on ? 1.5 : 1}px solid ${on ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                 boxShadow: on ? '0 0 0 3px color-mix(in srgb, var(--color-accent) 11%, transparent)' : 'none',
+                opacity: dim ? 0.5 : 1,
+                cursor: ch.disabled ? 'not-allowed' : 'pointer',
               }}
             >
               <div
@@ -120,11 +132,18 @@ export default function OutreachChannelPicker({ value, onChange, t }) {
                   {ch.desc}
                 </p>
               </div>
-              <PillToggle on={on} disabled={ch.disabled} />
+              <PillToggle on={on} disabled={ch.disabled && !ch.forceOn} />
             </button>
           );
         })}
       </div>
+
+      {lockedToEmail && (
+        <div className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+          <Lock size={11} className="flex-shrink-0" />
+          <span>{t('admin.outreach.emailLockedHint', 'Email design attached — sends as email only. Remove it to use other channels.')}</span>
+        </div>
+      )}
     </div>
   );
 }

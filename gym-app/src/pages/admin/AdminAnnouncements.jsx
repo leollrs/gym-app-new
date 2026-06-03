@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, Megaphone, Trash2, Calendar, Pencil, Repeat, ChevronDown } from 'lucide-react';
+import { Plus, Megaphone, Trash2, Calendar, Pencil, Repeat, ChevronDown, Clock, Check, Users, Inbox } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -31,6 +31,61 @@ const TYPE_OPTS = [
   { value: 'challenge',   labelKey: 'challenge',   pill: 'admin-pill--coach', selectedStyle: { color: 'var(--color-coach)',   background: 'color-mix(in srgb, var(--color-coach) 12%, transparent)' } },
   { value: 'maintenance', labelKey: 'maintenance', pill: 'admin-pill--hot',   selectedStyle: { color: 'var(--color-warning)', background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)' } },
 ];
+
+const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
+
+// Tone → theme-aware colors (the Restyle design's TONE map, pointed at the admin's
+// existing semantic CSS vars so every pill/chip is dark-mode + white-label safe).
+function toneStyles(tone) {
+  switch (tone) {
+    case 'teal': return { bg: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', fg: 'var(--color-accent)', ink: 'var(--color-accent)' };
+    case 'coach': return { bg: 'var(--color-coach-soft)', fg: 'var(--color-coach)', ink: 'var(--color-coach-ink)' };
+    case 'warn': return { bg: 'var(--color-warning-soft)', fg: 'var(--color-warning)', ink: 'var(--color-warning-ink)' };
+    case 'hot': return { bg: 'var(--color-danger-soft)', fg: 'var(--color-danger)', ink: 'var(--color-danger-ink)' };
+    case 'good': return { bg: 'var(--color-success-soft)', fg: 'var(--color-success)', ink: 'var(--color-success-ink)' };
+    default: return { bg: 'var(--color-admin-panel)', fg: 'var(--color-admin-text-sub)', ink: 'var(--color-admin-text-sub)' };
+  }
+}
+
+// announcement type → category tone (matches the design's CATS taxonomy).
+const TYPE_TONE = { news: 'coach', event: 'teal', challenge: 'good', maintenance: 'warn' };
+
+// Rounded tinted icon chip.
+function ToneChip({ icon: Icon, tone = 'neutral', size = 46, radius = 12 }) {
+  const c = toneStyles(tone);
+  return (
+    <div className="grid place-items-center flex-shrink-0" style={{ width: size, height: size, borderRadius: radius, background: c.bg }}>
+      <Icon size={Math.round(size * 0.5)} strokeWidth={2} style={{ color: c.fg }} />
+    </div>
+  );
+}
+
+// Uppercase tone pill, optional leading icon (icon inherits the pill's ink color).
+function TonePill({ children, tone = 'neutral', icon: Icon }) {
+  const c = toneStyles(tone);
+  return (
+    <span className="inline-flex items-center gap-1" style={{ fontSize: 10.5, fontWeight: 800, color: c.ink, background: c.bg, padding: '3px 9px', borderRadius: 999, letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+      {Icon && <Icon size={11} strokeWidth={2.4} />}
+      {children}
+    </span>
+  );
+}
+
+// Square ghost action button (edit / delete). danger → red icon.
+function GhostBtn({ icon: Icon, onClick, label, danger = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="grid place-items-center rounded-[10px] border transition-colors hover:bg-[var(--color-bg-hover)]"
+      style={{ width: 34, height: 34, borderColor: 'var(--color-admin-border)', background: 'var(--color-bg-card)' }}
+    >
+      <Icon size={15} strokeWidth={2} style={{ color: danger ? 'var(--color-danger)' : 'var(--color-admin-text-sub)' }} />
+    </button>
+  );
+}
 
 const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
   const { t, i18n } = useTranslation('pages');
@@ -124,33 +179,33 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
     <AdminModal isOpen={isOpen} onClose={onClose} title={t('admin.announcements.newAnnouncement', 'New Announcement')} titleIcon={Megaphone}
       footer={
         <button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}
-          className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] disabled:opacity-50">
+          className="w-full py-3 rounded-xl font-bold text-[14px] text-[var(--color-text-on-accent)] bg-[var(--color-accent)] disabled:opacity-50">
           {createMutation.isPending ? t('admin.announcements.publishing', 'Publishing...') : form.scheduled_for ? t('admin.announcements.schedule', 'Schedule') : t('admin.announcements.publishNow', 'Publish Now')}
         </button>
       }
     >
       <div className="space-y-4">
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.titleLabel', 'Title')}</label>
+          <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">{t('admin.announcements.titleLabel', 'Title')}</label>
           <input value={form.title} onChange={e => set('title', e.target.value)}
             placeholder={t('admin.announcements.titlePlaceholder')}
             maxLength={TITLE_MAX}
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
+            className="w-full bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder:text-[var(--color-admin-text-faint)] outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
         </div>
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.messageLabel')}</label>
+          <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">{t('admin.announcements.messageLabel')}</label>
           <textarea value={form.message} onChange={e => set('message', e.target.value)} rows={3}
             placeholder={t('admin.announcements.messagePlaceholder')}
             maxLength={BODY_MAX}
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
+            className="w-full bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder:text-[var(--color-admin-text-faint)] outline-none focus:border-[var(--color-accent)] resize-none" />
         </div>
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.typeLabel', 'Type')}</label>
+          <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">{t('admin.announcements.typeLabel', 'Type')}</label>
           <div className="flex gap-2 flex-wrap">
             {TYPE_OPTS.map(opt => (
               <button key={opt.value} onClick={() => set('type', opt.value)}
                 className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                  form.type === opt.value ? '' : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
+                  form.type === opt.value ? '' : 'bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] text-[var(--color-admin-text-sub)]'
                 }`}
                 style={form.type === opt.value ? opt.selectedStyle : undefined}>
                 {t(`admin.announcementTypes.${opt.labelKey}`)}
@@ -163,35 +218,35 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+            className="flex items-center gap-2 text-[12px] font-medium text-[var(--color-admin-text-sub)] hover:text-[var(--color-admin-text)] transition-colors"
           >
             <ChevronDown size={14} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
             {t('admin.announcements.advancedOptions', 'Advanced Options')}
             {(form.scheduled_for || form.is_recurring) && (
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]" />
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-accent)' }} />
             )}
           </button>
           {showAdvanced && (
             <div className="mt-3 space-y-4">
               <div>
-                <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">
+                <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">
                   {t('admin.announcements.scheduleLabel', 'Schedule (optional -- leave blank to publish now)')}
                 </label>
                 <input type="datetime-local" value={form.scheduled_for} onChange={e => set('scheduled_for', e.target.value)}
                   className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none"
                   style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                <p className="text-[10px] text-[#6B7280] mt-1">
+                <p className="text-[10px] text-[var(--color-admin-text-muted)] mt-1">
                   {t('admin.announcements.timezoneHint', 'Times are in your device\'s local timezone')}
                 </p>
               </div>
               {/* Recurring toggle */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-[12px] font-medium text-[#9CA3AF]">{t('admin.announcements.recurring', 'Recurring')}</label>
+                  <label className="text-[12px] font-medium text-[var(--color-admin-text-sub)]">{t('admin.announcements.recurring', 'Recurring')}</label>
                   <button
                     onClick={() => set('is_recurring', !form.is_recurring)}
                     className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-                    style={{ backgroundColor: form.is_recurring ? '#D4AF37' : 'var(--color-admin-text-sub)' }}
+                    style={{ backgroundColor: form.is_recurring ? 'var(--color-accent)' : 'var(--color-admin-text-sub)' }}
                   >
                     <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
                       style={{ left: form.is_recurring ? 'calc(100% - 18px)' : '2px' }} />
@@ -200,31 +255,35 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
                 {form.is_recurring && (
                   <div className="space-y-3 rounded-xl p-3" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
                     <div>
-                      <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.frequency', 'Frequency')}</label>
+                      <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.frequency', 'Frequency')}</label>
                       <div className="flex gap-2">
                         {['daily', 'weekly', 'biweekly', 'monthly'].map(r => (
                           <button key={r} onClick={() => set('recurrence_rule', r)}
-                            className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold capitalize transition-colors ${
-                              form.recurrence_rule === r ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25' : 'bg-white/4 text-[#6B7280] border border-white/6'
-                            }`}>{t(`admin.announcements.recurrence.${r}`, r)}</button>
+                            className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold capitalize transition-colors"
+                            style={form.recurrence_rule === r
+                              ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }
+                              : { background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)', border: '1px solid var(--color-admin-border)' }}>
+                            {t(`admin.announcements.recurrence.${r}`, r)}
+                          </button>
                         ))}
                       </div>
                     </div>
                     {form.recurrence_rule === 'weekly' || form.recurrence_rule === 'biweekly' ? (
                       <div>
-                        <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.dayOfWeek', 'Day of week')}</label>
+                        <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.dayOfWeek', 'Day of week')}</label>
                         <div className="flex gap-1.5">
                           {DAY_LABELS.map((d, i) => (
                             <button key={d} onClick={() => set('recurrence_day', i)}
-                              className={`flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-colors ${
-                                form.recurrence_day === i ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'bg-white/4 text-[#6B7280]'
-                              }`}>{d}</button>
+                              className="flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-colors"
+                              style={form.recurrence_day === i
+                                ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }
+                                : { background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)' }}>{d}</button>
                           ))}
                         </div>
                       </div>
                     ) : form.recurrence_rule === 'monthly' ? (
                       <div>
-                        <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.dayOfMonth', 'Day of month')}</label>
+                        <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.dayOfMonth', 'Day of month')}</label>
                         <input type="number" min="1" max="28" value={form.recurrence_day || 1}
                           onChange={e => set('recurrence_day', parseInt(e.target.value) || 1)}
                           className="w-20 rounded-xl px-3 py-2 text-[13px] outline-none"
@@ -232,7 +291,7 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
                       </div>
                     ) : null}
                     <div>
-                      <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.endDate', 'End date (optional)')}</label>
+                      <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.endDate', 'End date (optional)')}</label>
                       <input type="date" value={form.recurrence_end} onChange={e => set('recurrence_end', e.target.value)}
                         className="w-full rounded-xl px-3 py-2 text-[13px] outline-none"
                         style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
@@ -243,7 +302,7 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
             </div>
           )}
         </div>
-        {error && <p className="text-[12px] text-red-400">{error}</p>}
+        {error && <p className="text-[12px] text-[var(--color-danger)]">{error}</p>}
       </div>
     </AdminModal>
   );
@@ -370,9 +429,6 @@ export default function AdminAnnouncements() {
     return { all: announcements.length, scheduled, sent, recurring };
   }, [announcements]);
 
-  const typeStyle = (type) =>
-    TYPE_OPTS.find(opt => opt.value === type)?.color ?? 'text-[#9CA3AF] bg-white/6';
-
   return (
     <div className="px-3 sm:px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
@@ -380,7 +436,8 @@ export default function AdminAnnouncements() {
         subtitle={t('admin.announcements.subtitle', 'Messages broadcast to all members')}
         actions={
           <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] md:text-[14px] rounded-xl hover:bg-[#C4A030] transition-colors whitespace-nowrap flex-shrink-0">
+            className="flex items-center gap-2 px-4 py-2.5 font-bold text-[13px] md:text-[14px] rounded-xl transition-colors whitespace-nowrap flex-shrink-0 hover:brightness-[1.04]"
+            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)', boxShadow: '0 2px 8px color-mix(in srgb, var(--color-accent) 35%, transparent)' }}>
             <Plus size={15} /> {t('admin.announcements.newAnnouncement', 'New Announcement')}
           </button>
         }
@@ -407,17 +464,26 @@ export default function AdminAnnouncements() {
           {[0, 1, 2].map(i => <CardSkeleton key={i} h="h-[80px]" />)}
         </div>
       ) : announcements.length === 0 ? (
-        <div className="text-center py-20">
-          <Megaphone size={32} className="text-[#6B7280] mx-auto mb-3" />
-          <p className="text-[14px] text-[#6B7280] mb-4">{t('admin.announcements.noAnnouncements', 'No announcements yet')}</p>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold hover:bg-[#C4A030] transition-colors"
-            style={{ backgroundColor: '#D4AF37', color: '#000' }}
-          >
-            <Plus size={14} /> {t('admin.announcements.createFirst', 'Create your first announcement')}
-          </button>
-        </div>
+        <AdminCard>
+          <div className="flex flex-col items-center text-center gap-3.5 py-14 px-6">
+            <ToneChip icon={Inbox} tone="neutral" size={52} />
+            <div>
+              <p style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 17, color: 'var(--color-admin-text)', letterSpacing: '-0.3px' }}>
+                {t('admin.announcements.emptyTitle', 'Nothing here yet')}
+              </p>
+              <p className="text-[13px] mt-1.5 mx-auto" style={{ color: 'var(--color-admin-text-muted)', maxWidth: 340 }}>
+                {t('admin.announcements.noAnnouncements', 'No announcements yet')}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] text-[13px] font-bold transition-colors"
+              style={{ color: 'var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 22%, transparent)' }}
+            >
+              <Plus size={14} /> {t('admin.announcements.createFirst', 'Create your first announcement')}
+            </button>
+          </div>
+        </AdminCard>
       ) : (
         <SwipeableTabContent
           tabs={[
@@ -439,10 +505,12 @@ export default function AdminAnnouncements() {
               return true;
             });
             return filtered.length === 0 ? (
-              <div className="text-center py-12">
-                <Megaphone size={28} className="text-[#6B7280] mx-auto mb-2" />
-                <p className="text-[13px] text-[#6B7280]">{t('admin.announcements.noMatchingAnnouncements', 'No announcements match this filter')}</p>
-              </div>
+              <AdminCard>
+                <div className="flex flex-col items-center text-center gap-2 py-12 px-6">
+                  <ToneChip icon={Inbox} tone="neutral" size={46} />
+                  <p className="text-[13px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.announcements.noMatchingAnnouncements', 'No announcements match this filter')}</p>
+                </div>
+              </AdminCard>
             ) : (
               <div className="space-y-3">
                 {filtered.map((a, idx) => {
@@ -454,24 +522,24 @@ export default function AdminAnnouncements() {
                         {isEditing ? (
                           <div className="space-y-3">
                             <div>
-                              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.titleLabel', 'Title')}</label>
+                              <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">{t('admin.announcements.titleLabel', 'Title')}</label>
                               <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
                                 maxLength={TITLE_MAX}
-                                className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
+                                className="w-full bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder:text-[var(--color-admin-text-faint)] outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
                             </div>
                             <div>
-                              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.messageLabel')}</label>
+                              <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">{t('admin.announcements.messageLabel')}</label>
                               <textarea value={editForm.message} onChange={e => setEditForm(p => ({ ...p, message: e.target.value }))} rows={3}
                                 maxLength={BODY_MAX}
-                                className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
+                                className="w-full bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder:text-[var(--color-admin-text-faint)] outline-none focus:border-[var(--color-accent)] resize-none" />
                             </div>
                             <div>
-                              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.typeLabel', 'Type')}</label>
+                              <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">{t('admin.announcements.typeLabel', 'Type')}</label>
                               <div className="flex gap-2 flex-wrap">
                                 {TYPE_OPTS.map(opt => (
                                   <button key={opt.value} onClick={() => setEditForm(p => ({ ...p, type: opt.value }))}
                                     className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                                      editForm.type === opt.value ? '' : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
+                                      editForm.type === opt.value ? '' : 'bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] text-[var(--color-admin-text-sub)]'
                                     }`}
                                     style={editForm.type === opt.value ? opt.selectedStyle : undefined}>
                                     {t(`admin.announcementTypes.${opt.labelKey}`)}
@@ -484,7 +552,7 @@ export default function AdminAnnouncements() {
                               <button
                                 type="button"
                                 onClick={() => setEditShowAdvanced(!editShowAdvanced)}
-                                className="flex items-center gap-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+                                className="flex items-center gap-2 text-[12px] font-medium text-[var(--color-admin-text-sub)] hover:text-[var(--color-admin-text)] transition-colors"
                               >
                                 <ChevronDown size={14} className={`transition-transform ${editShowAdvanced ? 'rotate-180' : ''}`} />
                                 {t('admin.announcements.advancedOptions', 'Advanced Options')}
@@ -495,19 +563,19 @@ export default function AdminAnnouncements() {
                               {editShowAdvanced && (
                                 <div className="mt-3 space-y-4">
                                   <div>
-                                    <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">
+                                    <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">
                                       {t('admin.announcements.scheduleLabel', 'Schedule (optional -- leave blank to publish now)')}
                                     </label>
                                     <input type="datetime-local" value={editForm.scheduled_for} onChange={e => setEditForm(p => ({ ...p, scheduled_for: e.target.value }))}
                                       className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none"
                                       style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                                    <p className="text-[10px] text-[#6B7280] mt-1">
+                                    <p className="text-[10px] text-[var(--color-admin-text-muted)] mt-1">
                                       {t('admin.announcements.timezoneHint', 'Times are in your device\'s local timezone')}
                                     </p>
                                   </div>
                                   <div>
                                     <div className="flex items-center justify-between mb-2">
-                                      <label className="text-[12px] font-medium text-[#9CA3AF]">{t('admin.announcements.recurring', 'Recurring')}</label>
+                                      <label className="text-[12px] font-medium text-[var(--color-admin-text-sub)]">{t('admin.announcements.recurring', 'Recurring')}</label>
                                       <button
                                         onClick={() => setEditForm(p => ({ ...p, is_recurring: !p.is_recurring }))}
                                         className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
@@ -520,14 +588,14 @@ export default function AdminAnnouncements() {
                                     {editForm.is_recurring && (
                                       <div className="space-y-3 rounded-xl p-3" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
                                         <div>
-                                          <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.frequency', 'Frequency')}</label>
+                                          <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.frequency', 'Frequency')}</label>
                                           <div className="flex gap-2">
                                             {['daily', 'weekly', 'biweekly', 'monthly'].map(r => (
                                               <button key={r} onClick={() => setEditForm(p => ({ ...p, recurrence_rule: r }))}
                                                 className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold capitalize transition-colors"
                                                 style={editForm.recurrence_rule === r
                                                   ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }
-                                                  : { background: 'rgba(255,255,255,0.04)', color: '#6B7280', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                                  : { background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)', border: '1px solid var(--color-admin-border)' }}>
                                                 {t(`admin.announcements.recurrence.${r}`, r)}
                                               </button>
                                             ))}
@@ -535,20 +603,20 @@ export default function AdminAnnouncements() {
                                         </div>
                                         {editForm.recurrence_rule === 'weekly' || editForm.recurrence_rule === 'biweekly' ? (
                                           <div>
-                                            <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.dayOfWeek', 'Day of week')}</label>
+                                            <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.dayOfWeek', 'Day of week')}</label>
                                             <div className="flex gap-1.5">
                                               {EDIT_DAY_LABELS.map((d, i) => (
                                                 <button key={d} onClick={() => setEditForm(p => ({ ...p, recurrence_day: i }))}
                                                   className="flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-colors"
                                                   style={editForm.recurrence_day === i
                                                     ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }
-                                                    : { background: 'rgba(255,255,255,0.04)', color: '#6B7280' }}>{d}</button>
+                                                    : { background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)' }}>{d}</button>
                                               ))}
                                             </div>
                                           </div>
                                         ) : editForm.recurrence_rule === 'monthly' ? (
                                           <div>
-                                            <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.dayOfMonth', 'Day of month')}</label>
+                                            <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.dayOfMonth', 'Day of month')}</label>
                                             <input type="number" min="1" max="28" value={editForm.recurrence_day || 1}
                                               onChange={e => setEditForm(p => ({ ...p, recurrence_day: parseInt(e.target.value) || 1 }))}
                                               className="w-20 rounded-xl px-3 py-2 text-[13px] outline-none"
@@ -556,7 +624,7 @@ export default function AdminAnnouncements() {
                                           </div>
                                         ) : null}
                                         <div>
-                                          <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.endDate', 'End date (optional)')}</label>
+                                          <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.endDate', 'End date (optional)')}</label>
                                           <input type="date" value={editForm.recurrence_end} onChange={e => setEditForm(p => ({ ...p, recurrence_end: e.target.value }))}
                                             className="w-full rounded-xl px-3 py-2 text-[13px] outline-none"
                                             style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
@@ -569,73 +637,64 @@ export default function AdminAnnouncements() {
                             </div>
                             <div className="flex gap-2">
                               <button onClick={cancelEditing}
-                                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors">
+                                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-[var(--color-admin-panel)]text-[var(--color-admin-text-sub)] border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors">
                                 {t('admin.announcements.cancel', 'Cancel')}
                               </button>
                               <button onClick={() => editMutation.mutate()} disabled={editMutation.isPending || !editForm.title || !editForm.message}
-                                className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-black bg-[#D4AF37] disabled:opacity-50">
+                                className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-[var(--color-text-on-accent)] bg-[var(--color-accent)] disabled:opacity-50">
                                 {editMutation.isPending ? t('admin.announcements.saving', 'Saving...') : t('admin.announcements.save', 'Save')}
                               </button>
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-start justify-between gap-3">
-                            <div
-                              className="w-[38px] h-[38px] rounded-[10px] grid place-items-center flex-shrink-0"
-                              style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
-                              aria-hidden="true"
-                            >
-                              <Megaphone size={17} style={{ color: 'var(--color-accent)' }} />
-                            </div>
+                          <div className="flex items-center gap-4">
+                            <ToneChip icon={Megaphone} tone="hot" size={46} />
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                <p className="text-[14.5px] font-extrabold truncate" style={{ color: 'var(--color-admin-text)', letterSpacing: '-0.15px' }}>{sanitize(a.title)}</p>
-                                <span className={`admin-pill ${TYPE_OPTS.find(o => o.value === a.type)?.pill || ''} capitalize`}>
-                                  {t(`admin.announcementTypes.${a.type}`, a.type)}
-                                </span>
-                                {isScheduled && (
-                                  <span className="admin-pill admin-pill--warn">
-                                    {t('admin.announcements.scheduled', 'Scheduled')}
-                                  </span>
-                                )}
-                                {a.is_recurring && (
-                                  <span className="admin-pill admin-pill--info flex items-center gap-1">
-                                    <Repeat size={9} /> {t(`admin.announcements.recurrence.${a.recurrence_rule}`, a.recurrence_rule)}
-                                  </span>
-                                )}
+                              <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+                                <span className="truncate" style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 16, color: 'var(--color-admin-text)', letterSpacing: '-0.3px' }}>{sanitize(a.title)}</span>
+                                <TonePill tone={TYPE_TONE[a.type] || 'neutral'}>{t(`admin.announcementTypes.${a.type}`, a.type)}</TonePill>
+                                {(() => {
+                                  const st = a.is_recurring
+                                    ? { tone: 'coach', icon: Repeat, label: t('admin.announcements.filterRecurring', 'Recurring') }
+                                    : isScheduled
+                                      ? { tone: 'warn', icon: Clock, label: t('admin.announcements.scheduled', 'Scheduled') }
+                                      : { tone: 'good', icon: Check, label: t('admin.announcements.filterSent', 'Sent') };
+                                  return <TonePill tone={st.tone} icon={st.icon}>{st.label}</TonePill>;
+                                })()}
                               </div>
-                              <p className="text-[12.5px] leading-relaxed mb-2" style={{ color: 'var(--color-admin-text-sub)' }}>{sanitize(a.message)}</p>
-                              {a.published_at && (
-                                <div className="flex items-center gap-4 text-[11px] font-semibold" style={{ color: 'var(--color-admin-text-muted)' }}>
-                                  <span className="flex items-center gap-1">
-                                    <Calendar size={11} />
+                              <p className="truncate" style={{ fontSize: 13, color: 'var(--color-admin-text-sub)' }}>{sanitize(a.message)}</p>
+                              <div className="flex items-center gap-4 mt-2.5 flex-wrap">
+                                {a.published_at && (
+                                  <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: 'var(--color-admin-text-muted)', fontWeight: 500 }}>
+                                    <Calendar size={13} />
                                     {isScheduled ? t('admin.announcements.scheduledFor', 'Scheduled for') : t('admin.announcements.publishedOn', 'Published')}{' '}
                                     {format(new Date(a.published_at), 'MMM d, yyyy', dateFnsLocale)}
                                   </span>
-                                </div>
-                              )}
+                                )}
+                                <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: 'var(--color-admin-text-muted)', fontWeight: 500 }}>
+                                  <Users size={13} /> {t('admin.announcements.allMembers', 'All members')}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               {confirmDeleteId === a.id ? (
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-[11px] text-[#9CA3AF]">{t('admin.announcements.deleteConfirm')}</span>
+                                  <span className="text-[11px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.announcements.deleteConfirm')}</span>
                                   <button onClick={() => deleteMutation.mutate(a.id)}
-                                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
+                                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors"
+                                    style={{ color: 'var(--color-danger)', background: 'var(--color-danger-soft)' }}>
                                     {t('admin.announcements.confirm', 'Confirm')}
                                   </button>
                                   <button onClick={() => setConfirmDeleteId(null)}
-                                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors">
+                                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
+                                    style={{ color: 'var(--color-admin-text-sub)', background: 'var(--color-admin-panel)' }}>
                                     {t('admin.announcements.cancel', 'Cancel')}
                                   </button>
                                 </div>
                               ) : (
                                 <>
-                                  <button onClick={() => startEditing(a)} aria-label={t('admin.announcements.editAria', 'Edit announcement')} className="text-[#6B7280] hover:text-[#D4AF37] transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
-                                    <Pencil size={15} />
-                                  </button>
-                                  <button onClick={() => setConfirmDeleteId(a.id)} aria-label={t('admin.announcements.deleteAria', 'Delete announcement')} className="text-[#6B7280] hover:text-red-400 transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
-                                    <Trash2 size={15} />
-                                  </button>
+                                  <GhostBtn icon={Pencil} label={t('admin.announcements.editAria', 'Edit announcement')} onClick={() => startEditing(a)} />
+                                  <GhostBtn icon={Trash2} danger label={t('admin.announcements.deleteAria', 'Delete announcement')} onClick={() => setConfirmDeleteId(a.id)} />
                                 </>
                               )}
                             </div>

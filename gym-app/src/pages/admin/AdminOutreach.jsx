@@ -2,12 +2,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Send, Loader2, Sparkles, Eye, Mail, ChevronDown } from 'lucide-react';
+import { Send, Loader2, Sparkles, Eye, Mail, ChevronDown, History } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import {
-  PageHeader, AdminCard, AdminPageShell, FadeIn,
+  PageHeader, AdminCard, AdminPageShell, FadeIn, AdminModal,
 } from '../../components/admin';
 import { getEmailTemplates, getSmsTemplates } from '../../lib/adminMessageTemplates';
 import { resolveOutreachAudience } from '../../lib/admin/outreachAudience';
@@ -41,6 +41,45 @@ const inputStyle = {
   border: '1px solid var(--color-border-subtle)',
   color: 'var(--color-text-primary)',
 };
+
+// Group outreach-send audit rows (already sorted newest-first) into year → month
+// buckets for the history modal. Returns [{ year, months: [{ key, monthIdx, year, items }] }].
+function groupSendsByYearMonth(rows) {
+  const years = [];
+  const yearIdx = new Map();
+  for (const row of rows) {
+    const d = new Date(row.created_at);
+    if (Number.isNaN(d.getTime())) continue;
+    const year = d.getFullYear();
+    const monthIdx = d.getMonth();
+    let y = yearIdx.get(year);
+    if (!y) { y = { year, months: [], mIdx: new Map() }; yearIdx.set(year, y); years.push(y); }
+    let mo = y.mIdx.get(monthIdx);
+    if (!mo) { mo = { key: `${year}-${monthIdx}`, monthIdx, year, items: [] }; y.mIdx.set(monthIdx, mo); y.months.push(mo); }
+    mo.items.push(row);
+  }
+  return years;
+}
+
+// One outreach-send line — audience, recipients · channels, timestamp. Shared by
+// the "Recent sends" list and the grouped history modal.
+function SendRow({ row, t }) {
+  return (
+    <div>
+      <p className="font-semibold truncate text-[12px]" style={{ color: 'var(--color-text-primary)' }}>
+        {row.details?.audience || '—'}
+      </p>
+      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+        {row.details?.recipientCount ?? 0} {t('admin.outreach.recipients', 'recipients')}
+        {' · '}
+        {(row.details?.channels || []).join(', ')}
+      </p>
+      <p className="text-[10.5px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+        {new Date(row.created_at).toLocaleString()}
+      </p>
+    </div>
+  );
+}
 
 /**
  * Unified Outreach composer — one place to message members regardless of
@@ -102,8 +141,27 @@ export default function AdminOutreach() {
   // the email body verbatim. The body textarea then only feeds push/SMS/in-app.
   const [designer, setDesigner] = useState(null); // { id, html, subject }
   const [showRecipients, setShowRecipients] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  // null = default (most-recent month auto-expanded); otherwise an explicit Set of open month keys.
+  const [openMonths, setOpenMonths] = useState(null);
+
+  // A rich designer email is an EMAIL by nature — its HTML can't ride push/SMS/
+  // in-app (those only carry the plain `body`). So whenever one is attached we
+  // lock the composer to the email channel. Removing the design unlocks it.
+  const emailLocked = !!designer;
 
   useEffect(() => { document.title = `${t('admin.outreach.pageTitle', 'Outreach')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
+
+  // Clamp channels to email-only while a designer email is locked in, so a
+  // channel toggled on before the design was attached can't sneak through.
+  useEffect(() => {
+    if (!emailLocked) return;
+    setChannels(prev =>
+      prev.email && !prev.push && !prev.inApp && !prev.sms
+        ? prev
+        : { push: false, inApp: false, email: true, sms: false },
+    );
+  }, [emailLocked]);
 
   // ── Prefill from email template deep-link (?template=<id> or ?prebuilt=<key>)
   // Runs once on mount. If a saved template id is provided, we hydrate from the
@@ -231,10 +289,37 @@ export default function AdminOutreach() {
         .eq('gym_id', gymId)
         .eq('action', 'outreach_send')
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(5);
       return data || [];
     },
     enabled: !!gymId,
+  });
+
+  // Full send history for the "View history" modal — grouped by year → month.
+  // Lazy: only fetched once the admin opens the modal, so it never slows the page.
+  const { data: history = [], isFetching: historyLoading } = useQuery({
+    queryKey: ['admin', 'outreach', gymId, 'history'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('admin_audit_log')
+        .select('id, created_at, details')
+        .eq('gym_id', gymId)
+        .eq('action', 'outreach_send')
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      return data || [];
+    },
+    enabled: !!gymId && showHistory,
+    staleTime: 60_000,
+  });
+
+  const groupedHistory = useMemo(() => groupSendsByYearMonth(history), [history]);
+  const firstMonthKey = groupedHistory[0]?.months[0]?.key || null;
+  const isMonthOpen = (key) => (openMonths ?? new Set(firstMonthKey ? [firstMonthKey] : [])).has(key);
+  const toggleMonth = (key) => setOpenMonths((prev) => {
+    const next = new Set(prev ?? (firstMonthKey ? [firstMonthKey] : []));
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
   });
 
   const anyChannelOn = channels.push || channels.inApp || channels.email || channels.sms;
@@ -251,9 +336,13 @@ export default function AdminOutreach() {
       const html = designer.html.replace(/\{\{first_name\}\}/g, first);
       const subj = (subject || designer.subject || 'Message from your gym').replace(/\{\{first_name\}\}/g, first);
       const { data: { session } } = await supabase.auth.getSession();
+      // testMode=true is REQUIRED: it routes the edge fn down the self-send
+      // preview path (free-form `to` + raw `html`, no memberId). Without it the
+      // request falls through to the live-send branch, which 400s on the missing
+      // memberId — that was why "Send test" silently failed.
       const { error } = await supabase.functions.invoke('send-admin-email', {
         headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
-        body: { to: user.email, subject: `[TEST] ${subj}`, html, text: body || '' },
+        body: { testMode: true, to: user.email, subject: `[TEST] ${subj}`, html },
       });
       if (error) throw error;
       showToast(t('admin.outreach.testSent', { email: user.email, defaultValue: 'Test sent to {{email}}' }), 'success');
@@ -331,7 +420,7 @@ export default function AdminOutreach() {
 
           <FadeIn delay={40}>
             <AdminCard padding="p-4 sm:p-5">
-              <OutreachChannelPicker value={channels} onChange={setChannels} t={t} />
+              <OutreachChannelPicker value={channels} onChange={setChannels} t={t} lockedToEmail={emailLocked} />
             </AdminCard>
           </FadeIn>
 
@@ -577,28 +666,89 @@ export default function AdminOutreach() {
                   {t('admin.outreach.noRecent', 'No outreach sent yet.')}
                 </p>
               ) : (
-                <ul className="space-y-2.5">
-                  {recent.map(row => (
-                    <li key={row.id} className="text-[12px] pb-2.5 border-b last:border-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <p className="font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {row.details?.audience || '—'}
-                      </p>
-                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                        {row.details?.recipientCount ?? 0} {t('admin.outreach.recipients', 'recipients')}
-                        {' · '}
-                        {(row.details?.channels || []).join(', ')}
-                      </p>
-                      <p className="text-[10.5px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
-                        {new Date(row.created_at).toLocaleString()}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="space-y-2.5">
+                    {recent.map(row => (
+                      <li key={row.id} className="pb-2.5 border-b last:border-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <SendRow row={row} t={t} />
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setShowHistory(true)}
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 pt-3 text-[12px] font-semibold transition-colors hover:opacity-80"
+                    style={{ color: 'var(--color-accent)', borderTop: '1px solid var(--color-border-subtle)' }}
+                  >
+                    <History size={13} /> {t('admin.outreach.viewHistory', 'View history')}
+                  </button>
+                </>
               )}
             </AdminCard>
           </FadeIn>
         </div>
       </div>
+
+      {/* Send history — full log grouped by year → month, collapsible, lazy-loaded */}
+      <AdminModal
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        title={t('admin.outreach.historyTitle', 'Send history')}
+        titleIcon={History}
+        size="md"
+      >
+        {historyLoading && history.length === 0 ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 size={22} className="animate-spin" style={{ color: 'var(--color-text-muted)' }} />
+          </div>
+        ) : groupedHistory.length === 0 ? (
+          <p className="text-[13px] italic text-center py-8" style={{ color: 'var(--color-text-muted)' }}>
+            {t('admin.outreach.noRecent', 'No outreach sent yet.')}
+          </p>
+        ) : (
+          <div className="space-y-5">
+            {groupedHistory.map((y) => (
+              <div key={y.year}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[13px] font-extrabold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{y.year}</span>
+                  <span className="flex-1 h-px" style={{ background: 'var(--color-border-subtle)' }} />
+                </div>
+                <div className="space-y-2">
+                  {y.months.map((mo) => {
+                    const open = isMonthOpen(mo.key);
+                    const recipTotal = mo.items.reduce((s, r) => s + (r.details?.recipientCount || 0), 0);
+                    return (
+                      <div key={mo.key} className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border-subtle)' }}>
+                        <button
+                          type="button"
+                          onClick={() => toggleMonth(mo.key)}
+                          className="w-full flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--color-bg-hover)]"
+                          style={{ background: 'var(--color-bg-deep)' }}
+                        >
+                          <span className="text-[13px] font-bold capitalize" style={{ color: 'var(--color-text-primary)' }}>
+                            {new Date(mo.year, mo.monthIdx, 1).toLocaleDateString(i18n.language, { month: 'long' })}
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-[10.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                              {t('admin.outreach.historyMonthMeta', { sends: mo.items.length, recipients: recipTotal, defaultValue: '{{sends}} sends · {{recipients}} recipients' })}
+                            </span>
+                            <ChevronDown size={15} className="transition-transform" style={{ color: 'var(--color-text-muted)', transform: open ? 'rotate(180deg)' : 'none' }} />
+                          </span>
+                        </button>
+                        {open && (
+                          <div className="px-3 py-2.5 space-y-2.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                            {mo.items.map((row) => <SendRow key={row.id} row={row} t={t} />)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </AdminModal>
     </AdminPageShell>
   );
 }

@@ -104,7 +104,7 @@ export default function AdminTabs({ tabs, active, onChange, className = '', idPr
  *     <BookingsView />
  *   </SwipeableTabContent>
  */
-export function SwipeableTabContent({ tabs, active, onChange, children, className = '' }) {
+export function SwipeableTabContent({ tabs, active, onChange, children, className = '', minHeightClass = 'min-h-[50vh]' }) {
   const containerRef = useRef(null);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
@@ -207,7 +207,7 @@ export function SwipeableTabContent({ tabs, active, onChange, children, classNam
   return (
     <div
       ref={containerRef}
-      className={`overflow-hidden min-h-[50vh] ${className}`}
+      className={`overflow-hidden ${minHeightClass} ${className}`}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}

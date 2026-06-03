@@ -509,6 +509,19 @@ serve(async (req) => {
           .select('step_number, delay_days, message_template, message_b, channel').eq('gym_id', gymId).order('step_number', { ascending: true });
         const stepsToUse = dripSteps?.length ? dripSteps : [{ step_number: 1, delay_days: 0, message_template: settings.message_template, message_b: null, channel: 'notification' }];
 
+        // Active A/B win-back experiments for this gym. When one applies to a
+        // member we send its variant's message and tag the attempt with the
+        // campaign id, so the automated drip feeds the A/B Testing page (not just
+        // the manual Win-Back modal). Prefer a campaign whose target tier matches
+        // the member; otherwise fall back to the most recent active campaign.
+        const { data: activeCampaigns } = await supabase
+          .from('winback_campaigns')
+          .select('id, target_tier, variant_a, variant_b')
+          .eq('gym_id', gymId)
+          .eq('is_active', true)
+          .is('ended_at', null)
+          .order('created_at', { ascending: false });
+
         const atRisk = rows.filter((r) => r.score >= threshold);
         const atRiskIds = atRisk.map((r) => r.profile_id);
         let existingAttempts: any[] = [];
@@ -538,8 +551,27 @@ serve(async (req) => {
           if (!step) continue;
           const { data: recent } = await supabase.from('notifications').select('id').eq('profile_id', member.profile_id).eq('type', 'churn_followup').gte('created_at', cooldownDate).limit(1);
           if (recent && recent.length > 0) continue;
-          const useVariantB = step.message_b && (parseInt(member.profile_id.slice(-1), 16) % 2 === 1);
-          const template = useVariantB ? step.message_b! : step.message_template;
+          // Sticky variant assignment per member (id parity) so a member always
+          // sees the same arm across drip steps — clean A/B measurement.
+          const parityB = parseInt(member.profile_id.slice(-1), 16) % 2 === 1;
+          const memberTier = String(member.risk_tier || '').toLowerCase();
+          const campaign = (activeCampaigns || []).find((c: any) => String(c.target_tier || '').toLowerCase() === memberTier)
+            || (activeCampaigns || [])[0] || null;
+          let variant: 'A' | 'B';
+          let template: string;
+          let campaignId: string | null = null;
+          if (campaign) {
+            // Drive content from the experiment's variant; tag the attempt so it
+            // counts toward this campaign's results on the A/B Testing page.
+            variant = parityB ? 'B' : 'A';
+            const cv = variant === 'B' ? campaign.variant_b : campaign.variant_a;
+            template = (cv && cv.message) ? cv.message : (step.message_b && parityB ? step.message_b! : step.message_template);
+            campaignId = campaign.id;
+          } else {
+            // No active experiment — fall back to the drip step's own A/B.
+            variant = (step.message_b && parityB) ? 'B' : 'A';
+            template = (step.message_b && parityB) ? step.message_b! : step.message_template;
+          }
           const channel = step.channel || 'notification';
           if (channel === 'notification') {
             await supabase.from('notifications').insert({ profile_id: member.profile_id, gym_id: gymId, type: 'churn_followup', title: 'We miss you!', body: template, data: { source: 'churn_auto', score: member.score, tier: member.risk_tier, step: nextStepNum } });
@@ -551,7 +583,7 @@ serve(async (req) => {
             }
           }
           try {
-            await supabase.from('win_back_attempts').insert({ user_id: member.profile_id, gym_id: gymId, admin_id: '00000000-0000-0000-0000-000000000000', message: template, outcome: 'no_response', step_number: nextStepNum, variant: useVariantB ? 'B' : 'A', created_at: now.toISOString() });
+            await supabase.from('win_back_attempts').insert({ user_id: member.profile_id, gym_id: gymId, admin_id: '00000000-0000-0000-0000-000000000000', message: template, outcome: 'no_response', step_number: nextStepNum, variant, ...(campaignId ? { message_template: campaignId } : {}), created_at: now.toISOString() });
           } catch (_) {}
           totalFollowups++;
         }

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import {
-  FlaskConical, Plus, TrendingUp, Users, Award, Info,
+  FlaskConical, Plus, TrendingUp, Users, Award, Info, Bell, Route, Gift, ArrowRight,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +17,38 @@ import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import CreateCampaignModal from './components/CreateCampaignModal';
 import ExperimentCard from './components/ExperimentCard';
 import { fetchABTestingData, getExperimentType, calcVariantStats } from '../../lib/admin/abTestingHelpers';
+
+const IDEA_ARCHIVO = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
+
+// "Idea to try" card — dashed border that lights up on hover, neutral icon chip,
+// and a "use idea" arrow link that opens the create modal.
+function IdeaCard({ icon: Icon, title, desc, useLabel, onUse }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: hover ? 'var(--color-bg-card)' : 'transparent',
+        borderRadius: 14,
+        padding: '16px 18px',
+        border: `1.5px dashed ${hover ? 'var(--color-accent)' : 'var(--color-admin-border)'}`,
+        transition: 'all .14s',
+      }}
+    >
+      <div className="flex items-center gap-2.5 mb-2.5">
+        <div className="grid place-items-center flex-shrink-0" style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--color-admin-panel)' }}>
+          <Icon size={16} style={{ color: 'var(--color-admin-text-sub)' }} />
+        </div>
+        <span style={{ fontFamily: IDEA_ARCHIVO, fontWeight: 700, fontSize: 14.5, color: 'var(--color-admin-text)', letterSpacing: '-0.2px' }}>{title}</span>
+      </div>
+      <p className="text-[13px]" style={{ color: 'var(--color-admin-text-sub)', lineHeight: 1.5, minHeight: 36 }}>{desc}</p>
+      <button onClick={onUse} className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-bold" style={{ color: 'var(--color-accent)' }}>
+        {useLabel} <ArrowRight size={14} />
+      </button>
+    </div>
+  );
+}
 
 // ── Main Page ──────────────────────────────────────────────
 export default function AdminABTesting() {
@@ -183,7 +215,7 @@ export default function AdminABTesting() {
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold transition-colors hover:brightness-110 active:scale-[0.98]"
             style={{
               background: 'var(--color-accent)',
-              color: 'var(--color-text-on-accent)',
+              color: '#fff',
             }}
           >
             <Plus size={14} />
@@ -196,7 +228,7 @@ export default function AdminABTesting() {
           admins know what A/B testing is for without reading docs. */}
       <FadeIn delay={0}>
         <div
-          className="flex items-start gap-2.5 mb-4 px-3.5 py-2.5 rounded-xl"
+          className="flex items-start gap-2.5 mt-5 mb-4 px-3.5 py-2.5 rounded-xl"
           style={{
             background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
             border: '1px solid color-mix(in srgb, var(--color-accent) 18%, transparent)',
@@ -250,12 +282,12 @@ export default function AdminABTesting() {
         <FadeIn delay={0.06}>
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-28 bg-white/[0.02] rounded-xl animate-pulse border border-white/6" />
+              <div key={i} className="h-28 rounded-xl animate-pulse" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }} />
             ))}
           </div>
         </FadeIn>
       ) : (
-        <SwipeableTabContent tabs={tabOptions} active={activeTab} onChange={setActiveTab}>
+        <SwipeableTabContent tabs={tabOptions} active={activeTab} onChange={setActiveTab} minHeightClass="min-h-0">
           {(tabKey) => {
             const tabCampaigns = tabKey === 'active' ? activeCampaigns : tabKey === 'completed' ? completedCampaigns : campaigns;
             return tabCampaigns.length > 0 ? (
@@ -273,77 +305,53 @@ export default function AdminABTesting() {
                 ))}
               </div>
             ) : (
-              <>
-                <div className="admin-card text-center" style={{ padding: 30 }}>
-                  <div
-                    className="flex items-center justify-center mx-auto mb-3.5"
-                    style={{ width: 64, height: 64, borderRadius: 16, background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}
-                  >
-                    <FlaskConical size={28} style={{ color: 'var(--color-accent)' }} />
-                  </div>
-                  <div
-                    className="mb-1.5"
-                    style={{ fontFamily: 'Archivo, sans-serif', fontSize: 18, fontWeight: 800, color: 'var(--color-admin-text)' }}
-                  >
+              <div className="admin-card flex flex-col items-center text-center" style={{ padding: '52px 24px', gap: 16 }}>
+                <div
+                  className="grid place-items-center"
+                  style={{ width: 62, height: 62, borderRadius: 18, background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}
+                >
+                  <FlaskConical size={28} style={{ color: 'var(--color-accent)' }} />
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'Archivo, sans-serif', fontSize: 20, fontWeight: 800, color: 'var(--color-admin-text)', letterSpacing: '-0.5px' }}>
                     {tabKey === 'active'
                       ? t('admin.abTesting.noActive', 'No active experiments')
                       : tabKey === 'completed'
                       ? t('admin.abTesting.noCompleted', 'No completed experiments yet')
                       : t('admin.abTesting.noExperiments', 'No experiments yet')}
                   </div>
-                  <div className="text-[13px] mb-4" style={{ color: 'var(--color-admin-text-muted)' }}>
+                  <div className="text-[13.5px] mt-1.5 mx-auto" style={{ color: 'var(--color-admin-text-muted)', maxWidth: 380, lineHeight: 1.5 }}>
                     {t('admin.abTesting.emptyHint', 'Create your first A/B experiment to start optimizing')}
                   </div>
-                  <button
-                    onClick={() => setShowCreateModal(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold transition-colors"
-                    style={{ background: 'var(--color-accent)', color: '#fff' }}
-                  >
-                    <Plus size={14} />
-                    {t('admin.abTesting.createFirst', 'Create Experiment')}
-                  </button>
                 </div>
-
-                {/* Ideas to try — dashed-border idea cards */}
-                <div style={{ height: 20 }} />
-                <div className="mb-2.5">
-                  <span className="admin-eyebrow">{t('admin.abTesting.ideasToTry', 'Ideas to try')}</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {[
-                    { title: t('admin.abTesting.idea1Title', 'Push copy for inactives'), desc: t('admin.abTesting.idea1Desc', '"We miss you" vs "Your streak is waiting"') },
-                    { title: t('admin.abTesting.idea2Title', 'Onboarding length'), desc: t('admin.abTesting.idea2Desc', '3 steps vs 5 steps') },
-                    { title: t('admin.abTesting.idea3Title', 'Referral reward tier'), desc: t('admin.abTesting.idea3Desc', '250 pts vs 500 pts') },
-                  ].map((idea, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        background: 'var(--color-bg-card)',
-                        borderRadius: 12,
-                        border: '1px dashed var(--color-admin-border)',
-                        padding: 14,
-                      }}
-                    >
-                      <div className="mb-1" style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-admin-text)' }}>
-                        {idea.title}
-                      </div>
-                      <div className="mb-2.5 text-[11.5px]" style={{ color: 'var(--color-admin-text-muted)' }}>
-                        {idea.desc}
-                      </div>
-                      <button
-                        onClick={() => setShowCreateModal(true)}
-                        className="text-[11.5px] font-semibold transition-colors"
-                        style={{ color: 'var(--color-accent)' }}
-                      >
-                        {t('admin.abTesting.useIdea', 'Use idea')}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors hover:brightness-[1.04]"
+                  style={{ background: 'var(--color-accent)', color: '#fff' }}
+                >
+                  <Plus size={15} />
+                  {t('admin.abTesting.createFirst', 'Create Experiment')}
+                </button>
+              </div>
             );
           }}
         </SwipeableTabContent>
+      )}
+
+      {/* Ideas to try — always available below the list */}
+      {!isLoading && (
+        <FadeIn delay={0.06}>
+          <div className="mt-5">
+            <div className="mb-3.5">
+              <span className="admin-eyebrow">{t('admin.abTesting.ideasToTry', 'Ideas to try')}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <IdeaCard icon={Bell} title={t('admin.abTesting.idea1Title', 'Push copy for inactives')} desc={t('admin.abTesting.idea1Desc', '"We miss you" vs "Your streak is waiting"')} useLabel={t('admin.abTesting.useIdea', 'Use idea')} onUse={() => setShowCreateModal(true)} />
+              <IdeaCard icon={Route} title={t('admin.abTesting.idea2Title', 'Onboarding length')} desc={t('admin.abTesting.idea2Desc', '3 steps vs 5 steps')} useLabel={t('admin.abTesting.useIdea', 'Use idea')} onUse={() => setShowCreateModal(true)} />
+              <IdeaCard icon={Gift} title={t('admin.abTesting.idea3Title', 'Referral reward tier')} desc={t('admin.abTesting.idea3Desc', '250 pts vs 500 pts')} useLabel={t('admin.abTesting.useIdea', 'Use idea')} onUse={() => setShowCreateModal(true)} />
+            </div>
+          </div>
+        </FadeIn>
       )}
 
       {/* Create modal */}

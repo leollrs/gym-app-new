@@ -169,7 +169,12 @@ export default function AdminEmailTemplates() {
         actions={
           <button
             onClick={handleNewTemplate}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-colors" style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-bg-card, #000)' }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-colors hover:brightness-[1.04]"
+            style={{
+              backgroundColor: 'var(--color-accent)',
+              color: 'var(--color-text-on-accent)',
+              boxShadow: '0 2px 8px color-mix(in srgb, var(--color-accent) 35%, transparent)',
+            }}
           >
             <Plus size={16} /> {t('admin.emailTemplates.createNew')}
           </button>
@@ -189,41 +194,50 @@ export default function AdminEmailTemplates() {
               {isLoading ? (
                 <AdminCard>
                   <div className="flex items-center justify-center py-8">
-                    <Loader2 size={24} className="animate-spin text-[#6B7280]" />
+                    <Loader2 size={24} className="animate-spin" style={{ color: 'var(--color-admin-text-muted)' }} />
                   </div>
                 </AdminCard>
               ) : sortedTemplates.length === 0 ? (
                 <AdminCard>
                   <div className="text-center py-12">
-                    <Mail size={32} className="mx-auto text-[#6B7280] mb-3" />
-                    <p className="text-[14px] text-[#9CA3AF]">{t('admin.emailTemplates.noTemplates')}</p>
-                    <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.emailTemplates.noTemplatesHint')}</p>
+                    <Mail size={32} className="mx-auto mb-3" style={{ color: 'var(--color-admin-text-muted)' }} />
+                    <p className="text-[14px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.emailTemplates.noTemplates')}</p>
+                    <p className="text-[12px] mt-1" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.emailTemplates.noTemplatesHint')}</p>
                     <button onClick={handleNewTemplate}
-                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold hover:brightness-90 transition-colors"
-                      style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-bg-card, #000)' }}>
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold hover:brightness-[1.04] transition-colors"
+                      style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
                       <Plus size={14} /> {t('admin.emailTemplates.createNew')}
                     </button>
                   </div>
                 </AdminCard>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3">
-                  {sortedTemplates.map(tpl => (
-                    <EmailTemplateCard
-                      key={tpl.id}
-                      template={tpl}
-                      onEdit={setEditing}
-                      onDelete={id => setDeleteConfirm(id)}
-                      onDuplicate={handleDuplicate}
-                      t={t}
-                      lang={i18n.language}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {sortedTemplates.map(tpl => (
+                      <EmailTemplateCard
+                        key={tpl.id}
+                        template={tpl}
+                        onEdit={setEditing}
+                        onDelete={id => setDeleteConfirm(id)}
+                        onDuplicate={handleDuplicate}
+                        t={t}
+                        lang={i18n.language}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    onClick={handleNewTemplate}
+                    className="w-full mt-4 flex items-center justify-center gap-2 rounded-2xl transition-colors hover:bg-[var(--color-bg-hover)]"
+                    style={{ padding: 18, border: '1.5px dashed var(--color-admin-border)', background: 'transparent', color: 'var(--color-admin-text-sub)', fontWeight: 700, fontSize: 13 }}
+                  >
+                    <Plus size={16} strokeWidth={2.2} /> {t('admin.emailTemplates.createNewTemplate', 'Create a new template')}
+                  </button>
+                </>
               )}
             </>
           );
           if (tabKey === 'prebuilt') return (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {prebuiltTemplates.map(tpl => (
                 <PrebuiltCard key={tpl.id} template={tpl} onUse={handleUsePrebuilt} t={t} />
               ))}
@@ -239,16 +253,17 @@ export default function AdminEmailTemplates() {
             <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
               <Trash2 size={20} className="text-[#EF4444]" />
             </div>
-            <h3 className="text-[16px] font-bold text-[#E5E7EB] mb-2">
+            <h3 className="text-[16px] font-bold mb-2" style={{ color: 'var(--color-admin-text)' }}>
               {t('admin.emailTemplates.confirmDelete')}
             </h3>
-            <p className="text-[13px] text-[#9CA3AF] mb-6">
+            <p className="text-[13px] mb-6" style={{ color: 'var(--color-admin-text-sub)' }}>
               {t('admin.emailTemplates.confirmDeleteDesc')}
             </p>
             <div className="flex items-center justify-center gap-3">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 rounded-xl text-[13px] font-semibold text-[#9CA3AF] bg-white/[0.04] border border-white/8 hover:bg-white/[0.08] transition-colors"
+                className="px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[var(--color-bg-hover)]"
+                style={{ color: 'var(--color-admin-text-sub)', background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}
               >
                 {t('admin.emailTemplates.cancel')}
               </button>

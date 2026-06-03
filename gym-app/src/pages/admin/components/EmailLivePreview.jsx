@@ -28,13 +28,13 @@ export default function EmailLivePreview({ template, gymName, gymLogoUrl }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-white/6">
-        <Eye size={14} className="text-[#D4AF37]" />
-        <span className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider">
+      <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <Eye size={14} style={{ color: 'var(--color-accent)' }} />
+        <span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.7)', letterSpacing: '0.1em' }}>
           {t('admin.emailTemplates.preview')}
         </span>
       </div>
-      <div className="flex-1 overflow-y-auto p-4" style={{ background: '#1a1a2e' }}>
+      <div className="flex-1 overflow-y-auto p-4" style={{ background: '#0b0b12' }}>
         <div
           style={{
             maxWidth: 600,
@@ -135,7 +135,7 @@ export default function EmailLivePreview({ template, gymName, gymLogoUrl }) {
                   </p>
                 )}
                 {template.reward.expiry && (
-                  <p style={{ margin: '6px 0 0', fontSize: 10.5, color: 'var(--color-text-subtle, #9CA3AF)' }}>
+                  <p style={{ margin: '6px 0 0', fontSize: 10.5, color: '#9aa0a6' }}>
                     {template.reward.expiry}
                   </p>
                 )}
@@ -174,11 +174,11 @@ export default function EmailLivePreview({ template, gymName, gymLogoUrl }) {
             <>
               <div style={{ margin: '0 32px', height: 1, background: '#f0f0f0' }} />
               <div style={{ padding: '20px 32px 24px', textAlign: 'center' }}>
-                <p style={{ margin: '0 0 4px', fontSize: 11, color: 'var(--color-admin-text-muted)', lineHeight: 1.5 }}>
+                <p style={{ margin: '0 0 4px', fontSize: 11, color: '#9aa0a6', lineHeight: 1.5 }}>
                   {replaceVariables(template.footer.text, gymName)}
                 </p>
                 {template.footer.unsubscribeText && (
-                  <span style={{ fontSize: 10, color: 'var(--color-admin-text-sub)', textDecoration: 'underline' }}>
+                  <span style={{ fontSize: 10, color: '#9aa0a6', textDecoration: 'underline' }}>
                     {template.footer.unsubscribeText}
                   </span>
                 )}

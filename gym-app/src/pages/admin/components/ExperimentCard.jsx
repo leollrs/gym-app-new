@@ -1,12 +1,12 @@
 /**
- * Expandable card that renders a single A/B win-back campaign for the Admin
- * A/B Testing page. Owns its own expand/collapse state; receives campaign +
- * attempts + action handlers from the parent. Stats and significance come
- * from abTestingHelpers; badges from ABTestingBadges.
+ * A single A/B win-back experiment, restyled to the "Pruebas A/B" design:
+ * flask chip + name + type/status/winner pills + audience·date meta + a "Lift"
+ * readout, then the per-variant result grid (winner highlighted) with a
+ * significance note and the contextual actions (ship winner / end / reactivate).
+ * Theme-aware + white-label accent; stats/significance from abTestingHelpers.
  */
 
-import { useState } from 'react';
-import { Trophy, StopCircle, Play, ChevronDown, ChevronUp, Send } from 'lucide-react';
+import { Trophy, StopCircle, Play, Send, FlaskConical, Users, Calendar, TrendingUp, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { AdminCard } from '../../../components/admin';
 import {
@@ -16,216 +16,198 @@ import {
   getVariantSummary,
   getKeyMetric,
 } from '../../../lib/admin/abTestingHelpers';
-import { TierBadge, TypeBadge, VariantPill, ComparisonBar } from './ABTestingBadges';
+
+const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
+
+// experiment type → semantic tone (theme tokens, dark-mode + white-label safe).
+const TYPE_TONE = {
+  win_back: 'hot',
+  push_notification: 'good',
+  email: 'coach',
+  offer: 'warn',
+  challenge: 'coach',
+  class_promo: 'teal',
+};
+
+function toneStyles(tone) {
+  switch (tone) {
+    case 'teal': return { bg: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', fg: 'var(--color-accent)', ink: 'var(--color-accent)' };
+    case 'coach': return { bg: 'var(--color-coach-soft)', fg: 'var(--color-coach)', ink: 'var(--color-coach-ink)' };
+    case 'warn': return { bg: 'var(--color-warning-soft)', fg: 'var(--color-warning)', ink: 'var(--color-warning-ink)' };
+    case 'hot': return { bg: 'var(--color-danger-soft)', fg: 'var(--color-danger)', ink: 'var(--color-danger-ink)' };
+    case 'good': return { bg: 'var(--color-success-soft)', fg: 'var(--color-success)', ink: 'var(--color-success-ink)' };
+    default: return { bg: 'var(--color-admin-panel)', fg: 'var(--color-admin-text-sub)', ink: 'var(--color-admin-text-sub)' };
+  }
+}
+
+function TonePill({ children, tone = 'neutral', icon: Icon }) {
+  const c = toneStyles(tone);
+  return (
+    <span className="inline-flex items-center gap-1" style={{ fontSize: 10.5, fontWeight: 800, color: c.ink, background: c.bg, padding: '3px 9px', borderRadius: 999, letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+      {Icon && <Icon size={11} strokeWidth={2.4} />}
+      {children}
+    </span>
+  );
+}
+
+// One variant's result tile — letter chip, label, big % + sample, progress bar.
+// Winner tiles get the success wash + green bar.
+function VariantRow({ vKey, label, pct, sample, isWin, t }) {
+  const tone = vKey === 'A' ? 'teal' : 'coach';
+  const c = toneStyles(tone);
+  const num = parseFloat(pct) || 0;
+  return (
+    <div
+      style={{
+        padding: '14px 16px',
+        borderRadius: 13,
+        background: isWin ? 'var(--color-success-soft)' : 'var(--color-admin-panel)',
+        border: `1px solid ${isWin ? 'color-mix(in srgb, var(--color-success) 28%, transparent)' : 'var(--color-admin-border)'}`,
+      }}
+    >
+      <div className="flex items-center gap-2.5 mb-3">
+        <div className="grid place-items-center flex-shrink-0" style={{ width: 26, height: 26, borderRadius: 8, background: c.bg, color: c.ink, fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 13 }}>{vKey}</div>
+        <span className="flex-1 min-w-0 truncate" style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-admin-text)' }}>{label}</span>
+        {isWin && <TonePill tone="good" icon={Trophy}>{t('admin.abTesting.winner', 'Winner')}</TonePill>}
+      </div>
+      <div className="flex items-end gap-2 mb-2">
+        <span style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 26, letterSpacing: '-1px', lineHeight: 1, color: isWin ? 'var(--color-success-ink)' : 'var(--color-admin-text)' }}>{pct}%</span>
+        <span className="mb-0.5" style={{ fontSize: 12, color: 'var(--color-admin-text-muted)' }}>{sample} {t('admin.abTesting.sampled', 'sampled')}</span>
+      </div>
+      <div style={{ height: 7, borderRadius: 99, background: isWin ? 'color-mix(in srgb, var(--color-success) 18%, transparent)' : 'var(--color-admin-border)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${Math.min(num * 2.2, 100)}%`, borderRadius: 99, background: isWin ? 'var(--color-success)' : c.fg }} />
+      </div>
+    </div>
+  );
+}
 
 export default function ExperimentCard({ campaign, attempts, onEnd, onReactivate, onShipWinner, t }) {
-  const [expanded, setExpanded] = useState(false);
-
   const type = getExperimentType(campaign);
   const isActive = campaign.is_active && !campaign.ended_at;
   const statsA = calcVariantStats(attempts, campaign.id, 'A');
   const statsB = calcVariantStats(attempts, campaign.id, 'B');
   const totalAttempts = statsA.sent + statsB.sent;
-  const metric = getKeyMetric(type, statsA, statsB);
+  const metric = getKeyMetric(type, statsA, statsB); // { label, a, b }
+  const metricLabel = t(`admin.abTesting.${metric.label}`, metric.label);
 
-  // Statistical significance (two-proportion z-test, return-rate is the
-  // primary metric). Replaces the old "absolute diff > 5%" heuristic which
-  // was both noisy on small samples and overconfident on large ones.
   const sig = abSignificance(statsA, statsB, 'return');
-  // Only declare a winner when the test reaches significance AND the campaign
-  // is no longer active (so admins don't act on early peeks).
+  // Only declare a winner once the test is closed AND reaches (at least marginal)
+  // significance — keeps admins from acting on early noise.
   const showWinner = !isActive && (sig.significant || sig.marginal);
   const winnerVariant = showWinner ? sig.winner : null;
 
+  // Lift = winner vs loser on the key metric. Relative when the loser rate is
+  // non-zero, otherwise an absolute point delta.
+  const rateA = parseFloat(metric.a) || 0;
+  const rateB = parseFloat(metric.b) || 0;
+  const winRate = winnerVariant === 'A' ? rateA : rateB;
+  const loseRate = winnerVariant === 'A' ? rateB : rateA;
+  const lift = winnerVariant
+    ? (loseRate > 0 ? `+${Math.round(((winRate - loseRate) / loseRate) * 100)}%` : `+${(winRate - loseRate).toFixed(1)} pts`)
+    : null;
+
+  const audienceLabel = campaign.target_tier
+    ? t(`admin.abTesting.tier.${campaign.target_tier}`, campaign.target_tier)
+    : t('admin.abTesting.atRisk', 'At-risk members');
   const dateLabel = isActive
     ? `${t('admin.abTesting.runningSince', 'Running since')} ${format(new Date(campaign.started_at || campaign.created_at), 'MMM d, yyyy')}`
     : `${format(new Date(campaign.started_at || campaign.created_at), 'MMM d')} — ${campaign.ended_at ? format(new Date(campaign.ended_at), 'MMM d, yyyy') : '?'}`;
 
+  const hasMessage = campaign.variant_a?.message || campaign.variant_b?.message;
+
   return (
-    <AdminCard className="overflow-hidden">
-      {/* Compact header — always visible */}
-      <button
-        onClick={() => setExpanded((p) => !p)}
-        className="w-full flex items-start justify-between gap-3 p-4 text-left"
-      >
-        <div className="flex-1 min-w-0 space-y-2">
-          {/* Row 1: type badge + name + status */}
+    <AdminCard padding="p-5">
+      {/* Header */}
+      <div className="flex items-start gap-3.5">
+        <div className="grid place-items-center flex-shrink-0" style={{ width: 44, height: 44, borderRadius: 12, background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}>
+          <FlaskConical size={22} style={{ color: 'var(--color-accent)' }} />
+        </div>
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <TypeBadge type={type} t={t} />
-            <span className="text-[13px] font-semibold text-[#E5E7EB] truncate">
-              {campaign.name}
+            <span className="truncate" style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 16, color: 'var(--color-admin-text)', letterSpacing: '-0.3px' }}>{campaign.name}</span>
+            <TonePill tone={TYPE_TONE[type] || 'neutral'}>{t(`admin.abTesting.types.${type}`, type)}</TonePill>
+            {isActive
+              ? <TonePill tone="teal">{t('admin.abTesting.active', 'Active')}</TonePill>
+              : <TonePill tone="good" icon={Check}>{t('admin.abTesting.completed', 'Completed')}</TonePill>}
+            {winnerVariant && <TonePill tone="good" icon={Trophy}>{t('admin.abTesting.winner', 'Winner')} {winnerVariant}</TonePill>}
+          </div>
+          <div className="flex items-center gap-4 mt-2 flex-wrap">
+            <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: 'var(--color-admin-text-muted)', fontWeight: 500 }}>
+              <Users size={13} /> {audienceLabel}
             </span>
-            {isActive ? (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-500/12 text-emerald-400 border border-emerald-500/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {t('admin.abTesting.active', 'Active')}
-              </span>
-            ) : (
-              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-white/5 text-[#6B7280] border border-white/8">
-                {t('admin.abTesting.completed', 'Completed')}
-              </span>
-            )}
-            {winnerVariant && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/12 text-emerald-400 border border-emerald-500/20">
-                <Trophy size={9} />
-                {t('admin.abTesting.winner', 'Winner')}: {winnerVariant}
-              </span>
-            )}
+            <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: 'var(--color-admin-text-muted)', fontWeight: 500 }}>
+              <Calendar size={13} /> {dateLabel}
+            </span>
           </div>
-
-          {/* Row 2: date + tier + variant pills */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] text-[#6B7280]">{dateLabel}</span>
-            <TierBadge tier={campaign.target_tier} t={t} />
-          </div>
-
-          {/* Row 3: variant pills side by side */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <VariantPill label="A" summary={getVariantSummary(campaign.variant_a, t)} color="var(--color-accent)" />
-            <span className="text-[10px] text-[#4B5563] font-medium">vs</span>
-            <VariantPill label="B" summary={getVariantSummary(campaign.variant_b, t)} color="var(--color-coach)" />
-          </div>
-
-          {/* Row 4: key metric (only if data) */}
-          {totalAttempts > 0 && (
-            <div className="flex items-center gap-3 text-[11px]">
-              <span className="text-[#6B7280]">
-                {t(`admin.abTesting.${metric.label}`, metric.label)}:
-              </span>
-              <span className="text-[#D4AF37] font-semibold">A {metric.a}%</span>
-              <span className="text-[#4B5563]">|</span>
-              <span className="text-[#8B5CF6] font-semibold">B {metric.b}%</span>
-              <span className="text-[#6B7280]">({totalAttempts} {t('admin.abTesting.attempts', 'attempts')})</span>
-            </div>
-          )}
         </div>
-
-        <div className="shrink-0 pt-1">
-          {expanded
-            ? <ChevronUp size={14} className="text-[#6B7280]" />
-            : <ChevronDown size={14} className="text-[#6B7280]" />}
-        </div>
-      </button>
-
-      {/* Expandable detail */}
-      {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-white/6 pt-3">
-          {/* Full stats grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-            {['sent', 'responded', 'returned'].map((key) => (
-              <div key={key} className="bg-[#0F172A] rounded-lg px-3 py-2 border border-white/4">
-                <p className="text-[10px] text-[#6B7280] capitalize">{t(`admin.abTesting.${key}`, key)}</p>
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-[13px] font-bold text-[#D4AF37]">{statsA[key]}</span>
-                  <span className="text-[10px] text-[#4B5563]">vs</span>
-                  <span className="text-[13px] font-bold text-[#8B5CF6]">{statsB[key]}</span>
-                </div>
-              </div>
-            ))}
-            {(sig.requiresMoreData || totalAttempts > 0) && (
-              <div className="bg-[#0F172A] rounded-lg px-3 py-2 border border-white/4">
-                <p className="text-[10px] text-[#6B7280]">{t('admin.abTesting.significance', 'Significance')}</p>
-                {sig.requiresMoreData ? (
-                  <p className="text-[12px] font-semibold text-[#9CA3AF] mt-0.5">
-                    {t('admin.abTesting.moreDataNeeded', { min: sig.perArmSize.min, defaultValue: 'Need {{min}}+ per arm' })}
-                  </p>
-                ) : sig.significant ? (
-                  <p className="text-[13px] font-bold text-emerald-400 mt-0.5">
-                    {t('admin.abTesting.significantP05', 'Significant (p<0.05)')}
-                  </p>
-                ) : sig.marginal ? (
-                  <p className="text-[13px] font-bold text-amber-400 mt-0.5">
-                    {t('admin.abTesting.marginalP10', 'Marginal (p<0.10)')}
-                  </p>
-                ) : (
-                  <p className="text-[13px] font-bold text-[#6B7280] mt-0.5">
-                    {t('admin.abTesting.inconclusive', 'Inconclusive')}
-                  </p>
-                )}
-              </div>
-            )}
+        {lift && (
+          <div className="flex-shrink-0 text-right">
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.6px', textTransform: 'uppercase', color: 'var(--color-admin-text-muted)' }}>{t('admin.abTesting.lift', 'Lift')}</div>
+            <div className="inline-flex items-center gap-1 mt-1" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, letterSpacing: '-0.8px', color: 'var(--color-success-ink)' }}>
+              <TrendingUp size={17} style={{ color: 'var(--color-success)' }} /> {lift}
+            </div>
           </div>
+        )}
+      </div>
 
-          {/* Comparison bars */}
-          {totalAttempts > 0 && (
-            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3 space-y-2.5">
-              <ComparisonBar
-                valueA={statsA.responseRate}
-                valueB={statsB.responseRate}
-                label={t('admin.abTesting.responseRate', 'Response Rate')}
-              />
-              <ComparisonBar
-                valueA={statsA.returnRate}
-                valueB={statsB.returnRate}
-                label={t('admin.abTesting.returnRate', 'Return Rate')}
-              />
-            </div>
-          )}
-
-          {/* No data message */}
-          {totalAttempts === 0 && (
-            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3 text-center">
-              <p className="text-[11px] text-[#6B7280]">
-                {t('admin.abTesting.noData', 'No data yet. Results will appear as members are contacted.')}
-              </p>
-            </div>
-          )}
-
-          {/* Variant messages preview */}
-          {(campaign.variant_a?.message || campaign.variant_b?.message) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {['a', 'b'].map((v) => {
-                const variant = v === 'a' ? campaign.variant_a : campaign.variant_b;
-                const color = v === 'a' ? 'var(--color-accent)' : 'var(--color-coach)';
-                if (!variant?.message) return null;
-                return (
-                  <div key={v} className="bg-[#0F172A] border border-white/4 rounded-lg p-2.5">
-                    <p className="text-[10px] font-bold mb-1" style={{ color }}>
-                      {t('admin.abTesting.variant', 'Variant')} {v.toUpperCase()}
-                    </p>
-                    <p className="text-[11px] text-[#9CA3AF] line-clamp-3">{variant.message}</p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-1 flex-wrap">
-            {!isActive && onShipWinner && (campaign.variant_a?.message || campaign.variant_b?.message) && (
-              <button
-                onClick={() => onShipWinner(campaign)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-colors hover:brightness-110 active:scale-[0.98]"
-                style={{
-                  background: 'var(--color-accent)',
-                  color: 'var(--color-text-on-accent)',
-                }}
-              >
-                <Send size={12} />
-                {t('admin.abTesting.shipWinner', 'Ship winner to Outreach')}
-              </button>
-            )}
-            {isActive && onEnd && (
-              <button
-                onClick={() => onEnd(campaign.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-red-500/8 text-red-400 border border-red-500/15 hover:bg-red-500/15 transition-colors"
-              >
-                <StopCircle size={12} />
-                {t('admin.abTesting.endExperiment', 'End Experiment')}
-              </button>
-            )}
-            {!isActive && onReactivate && (
-              <button
-                onClick={() => onReactivate(campaign.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-500/8 text-emerald-400 border border-emerald-500/15 hover:bg-emerald-500/15 transition-colors"
-              >
-                <Play size={12} />
-                {t('admin.abTesting.reactivate', 'Reactivate')}
-              </button>
-            )}
+      {/* Per-variant results */}
+      {totalAttempts > 0 ? (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.6px', textTransform: 'uppercase', color: 'var(--color-admin-text-muted)', margin: '18px 0 10px' }}>
+            {t('admin.abTesting.metricPerVariant', { metric: metricLabel, defaultValue: '{{metric}} by variant' })}
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <VariantRow vKey="A" label={getVariantSummary(campaign.variant_a, t)} pct={metric.a} sample={statsA.sent} isWin={winnerVariant === 'A'} t={t} />
+            <VariantRow vKey="B" label={getVariantSummary(campaign.variant_b, t)} pct={metric.b} sample={statsB.sent} isWin={winnerVariant === 'B'} t={t} />
+          </div>
+          <p className="mt-3 text-[11.5px] font-medium" style={{ color: 'var(--color-admin-text-muted)' }}>
+            {sig.requiresMoreData
+              ? t('admin.abTesting.moreDataNeeded', { min: sig.perArmSize.min, defaultValue: 'Need {{min}}+ per arm' })
+              : sig.significant
+                ? t('admin.abTesting.significantP05', 'Significant (p<0.05)')
+                : sig.marginal
+                  ? t('admin.abTesting.marginalP10', 'Marginal (p<0.10)')
+                  : t('admin.abTesting.inconclusive', 'Inconclusive')}
+          </p>
+        </>
+      ) : (
+        <div className="mt-4 rounded-xl text-center" style={{ padding: 14, background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+          <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+            {t('admin.abTesting.noData', 'No data yet. Results will appear as members are contacted.')}
+          </p>
         </div>
       )}
+
+      {/* Actions */}
+      <div className="flex justify-end gap-2 mt-4 flex-wrap">
+        {!isActive && onShipWinner && hasMessage && (
+          <button
+            onClick={() => onShipWinner(campaign)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors hover:brightness-[1.04]"
+            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+          >
+            <Send size={13} /> {t('admin.abTesting.shipWinner', 'Ship winner to Outreach')}
+          </button>
+        )}
+        {isActive && onEnd && (
+          <button
+            onClick={() => onEnd(campaign.id)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors hover:brightness-[1.04]"
+            style={{ color: 'var(--color-danger)', background: 'var(--color-danger-soft)' }}
+          >
+            <StopCircle size={13} /> {t('admin.abTesting.endExperiment', 'End Experiment')}
+          </button>
+        )}
+        {!isActive && onReactivate && (
+          <button
+            onClick={() => onReactivate(campaign.id)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors hover:brightness-[1.04]"
+            style={{ color: 'var(--color-success)', background: 'var(--color-success-soft)' }}
+          >
+            <Play size={13} /> {t('admin.abTesting.reactivate', 'Reactivate')}
+          </button>
+        )}
+      </div>
     </AdminCard>
   );
 }

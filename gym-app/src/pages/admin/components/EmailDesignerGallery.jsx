@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Eye, Send, X, Mail, Loader2 } from 'lucide-react';
+import { Eye, Send, X, Mail, Loader2, Users, BarChart3, Activity, Flame, Trophy, CalendarDays } from 'lucide-react';
 import { AdminCard } from '../../../components/admin';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
@@ -10,6 +10,18 @@ import { supabase } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
 import { DESIGNER_CAMPAIGNS, renderDesignerEmail } from '../../../lib/admin/emailDesignerTemplates';
 import DesignerEmail from './designerEmailComponents';
+import { ToneIconChip } from './emailTemplateKinds';
+
+// Section header icon + tone per designer campaign (replaces the old emoji).
+// Tones resolve to theme tokens via ToneIconChip — dark-mode + white-label safe.
+const CAMPAIGN_META = {
+  welcome: { Icon: Users, tone: 'teal' },
+  recap: { Icon: BarChart3, tone: 'coach' },
+  winback: { Icon: Activity, tone: 'warn' },
+  streak: { Icon: Flame, tone: 'hot' },
+  pr: { Icon: Trophy, tone: 'good' },
+  class: { Icon: CalendarDays, tone: 'info' },
+};
 
 // Read the live brand colors injected by branding.js so the gallery previews
 // show each design in the gym's actual palette. Falls back to the editorial
@@ -70,16 +82,37 @@ const THUMB_PRESETS = {
 // HTML injection), the transform works reliably and Tailwind's resets can't
 // collapse the layout.
 function DesignerThumb({ id, lang, gymName, gymLogoUrl, primary, secondary }) {
-  const cardH = 320;
-  const scale = 0.42;
+  // The designed emails are authored at a fixed 640px width (real email width).
+  // To make each preview FILL its card — instead of floating tiny in the corner —
+  // we measure the card and scale the 640px render down to exactly that width
+  // (scale = cardWidth / 640). A ResizeObserver keeps it correct across the
+  // 1/2/3-column breakpoints and any window resize.
+  const DESIGN_W = 640;
+  const cardH = 300;
+  const ref = useRef(null);
+  const [scale, setScale] = useState(0.5);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setScale(w / DESIGN_W);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
     <div
+      ref={ref}
       className="relative w-full overflow-hidden rounded-lg border"
       style={{ height: cardH, borderColor: 'var(--color-border-subtle)', background: '#f0eee9' }}
     >
       <div
         style={{
-          width: 640,
+          width: DESIGN_W,
           transform: `scale(${scale})`,
           transformOrigin: 'top left',
           pointerEvents: 'none',
@@ -470,16 +503,18 @@ export default function EmailDesignerGallery({ gymName, gymLogoUrl }) {
         {t('admin.emailTemplates.designerIntro', 'Polished, ready-to-send designs. Your logo, name and each member’s first name are merged in automatically.')}
       </p>
 
-      {DESIGNER_CAMPAIGNS.map((campaign) => (
+      {DESIGNER_CAMPAIGNS.map((campaign) => {
+        const meta = CAMPAIGN_META[campaign.id] || { Icon: Mail, tone: 'neutral' };
+        return (
         <section key={campaign.id}>
-          <div className="mb-3 flex items-center gap-2.5">
-            <span className="text-lg">{campaign.icon}</span>
-            <h3 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+          <div className="mb-3.5 flex items-center gap-2.5">
+            <ToneIconChip icon={meta.Icon} tone={meta.tone} size={30} radius={9} />
+            <h3 style={{ fontFamily: 'var(--admin-font-display, "Archivo", system-ui, sans-serif)', fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-0.3px' }}>
               {campaign.title[lang]}
             </h3>
             <span
-              className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)' }}
+              className="rounded-full px-2 py-0.5 text-[11.5px] font-bold"
+              style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace', background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
             >
               {campaign.items.length}
             </span>
@@ -520,7 +555,8 @@ export default function EmailDesignerGallery({ gymName, gymLogoUrl }) {
             })}
           </div>
         </section>
-      ))}
+        );
+      })}
 
       <FullPreviewModal
         entry={active?.entry}
