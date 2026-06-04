@@ -7,7 +7,8 @@ import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import logger from '../../../../lib/logger';
-import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { TK, FK, Card } from './analyticsKit';
 
 async function fetchSummaryData(gymId, summaryMonth) {
   const now = new Date();
@@ -238,11 +239,11 @@ table tr:nth-child(even){background:#f8fafc}
 
   return (
     <>
-      <AdminCard hover className="mb-6 hover:border-white/10 transition-colors duration-300">
+      <Card style={{ padding: '22px 24px', marginBottom: 24 }}>
         <div className="flex items-center justify-between mb-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight truncate">{t('admin.analytics.summaryTitle', 'Monthly Summary')}</p>
-            <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-relaxed truncate">{t('admin.analytics.summarySubtitle', 'Key metrics at a glance')}</p>
+            <p style={{ fontFamily: FK.display, fontSize: 18, fontWeight: 800, letterSpacing: -0.4, color: TK.text, margin: 0 }}>{t('admin.analytics.summaryTitle', 'Monthly Summary')}</p>
+            <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, marginTop: 4 }}>{t('admin.analytics.summarySubtitle', 'Key metrics at a glance')}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button onClick={() => setSummaryMonth(m => m + 1)}
@@ -268,8 +269,8 @@ table tr:nth-child(even){background:#f8fafc}
 
         {/* Headline metric row */}
         <div className="flex items-baseline gap-3 mb-5">
-          <span className="text-[28px] font-bold text-[var(--color-accent)] leading-none tracking-tight">{s.activeRate}%</span>
-          <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.summaryActiveRate', { active: s.uniqueActive, total: s.totalMembers, defaultValue: 'active rate — {{active}} of {{total}} members' })}</span>
+          <span style={{ fontFamily: FK.display, fontSize: 24, fontWeight: 800, letterSpacing: -0.8, color: TK.accent }}>{s.activeRate}%</span>
+          <span style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute }}>{t('admin.analytics.summaryActiveRate', { active: s.uniqueActive, total: s.totalMembers, defaultValue: 'active rate — {{active}} of {{total}} members' })}</span>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -283,17 +284,17 @@ table tr:nth-child(even){background:#f8fafc}
             { icon: TrophyIcon, label: t('admin.analytics.summaryChallengeJoins', 'Challenge Joins'), value: s.challengeJoins, sub: t('admin.analytics.summaryNewParticipants', 'new participants'), color: STAT_COLORS.gold },
             { icon: Dumbbell, label: t('admin.analytics.summaryTotalTime', 'Total Time'), value: s.totalDuration >= 60 ? `${(s.totalDuration / 60).toFixed(0)}h` : `${s.totalDuration}m`, sub: t('admin.analytics.summaryTrainingTime', 'training time'), color: STAT_COLORS.teal },
           ].map((stat, i) => (
-            <div key={i} className="bg-[var(--color-bg-elevated,var(--color-bg-card))] rounded-xl p-3.5 border border-white/[0.04] overflow-hidden transition-colors hover:border-white/[0.08]">
-              <div className="flex items-center gap-2 mb-2.5">
-                <stat.icon size={13} style={{ color: stat.color }} className="flex-shrink-0 opacity-80" />
-                <span className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase tracking-wider truncate">{stat.label}</span>
+            <div key={i} style={{ background: TK.surface2, borderRadius: 14, padding: '16px 18px', border: `1px solid ${TK.borderSolid}`, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}>
+                <stat.icon size={14} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                <span style={{ fontFamily: FK.body, fontSize: 10.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: TK.textMute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stat.label}</span>
               </div>
-              <p className="text-[20px] font-bold text-[var(--color-text-primary)] leading-none tabular-nums truncate">{stat.value}</p>
-              <p className="text-[10px] text-[var(--color-text-subtle)] mt-1.5 truncate">{stat.sub}</p>
+              <p style={{ fontFamily: FK.display, fontSize: 26, fontWeight: 800, letterSpacing: -0.8, color: TK.text, margin: 0 }}>{stat.value}</p>
+              <p style={{ fontFamily: FK.body, fontSize: 12, color: TK.textFaint, marginTop: 4 }}>{stat.sub}</p>
             </div>
           ))}
         </div>
-      </AdminCard>
+      </Card>
 
       {/* Monthly Report Modal */}
       {showReport && (() => {

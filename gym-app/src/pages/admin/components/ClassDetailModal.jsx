@@ -74,7 +74,7 @@ export default function ClassDetailModal({ classItem, onClose, dayLabel, gymId, 
             )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                <h3 style={{ fontFamily: 'var(--admin-font-display, "Archivo", system-ui, sans-serif)', fontSize: 16, fontWeight: 800, letterSpacing: '-0.3px', color: 'var(--color-text-primary)' }}>
                   {(lang === 'es' && classItem.name_es) ? classItem.name_es : classItem.name}
                 </h3>
                 {!classItem.is_active && (
@@ -148,7 +148,7 @@ export default function ClassDetailModal({ classItem, onClose, dayLabel, gymId, 
 
       {/* Analytics tab */}
       {detailTab === 'analytics' && (
-        <ClassAnalytics classId={classItem.id} hasTemplate={!!classItem.workout_template_id} t={t} />
+        <ClassAnalytics classItem={classItem} t={t} lang={lang} />
       )}
 
       {/* Bookings tab */}

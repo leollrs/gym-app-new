@@ -1,25 +1,35 @@
 import { useState, useEffect } from 'react';
-import { Package, Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { logAdminAction } from '../../../lib/adminAudit';
-import { AdminCard, FadeIn, CardSkeleton } from '../../../components/admin';
+import { FadeIn, CardSkeleton } from '../../../components/admin';
 import { storeKeys, categoryLabel } from './storeConstants';
 import ProductCoverBadge from './ProductCoverBadge';
 import ProductModal from './ProductModal';
+import { TK, FK, TONE, Ico, ICON, Card, IconChip, Pill, PrimaryBtn } from './retosKit';
+
+const eyebrow = { fontFamily: FK.body, fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: TK.textFaint };
+const CAT_TONE = { supplement: 'info', drink: 'info', snack: 'warn', merchandise: 'coach', service: 'good', other: 'neutral' };
+
+// square switch (active = green)
+function ProductToggle({ active, onClick, title }) {
+  return (
+    <button type="button" onClick={onClick} title={title} aria-label={title} style={{
+      width: 42, height: 42, borderRadius: 11, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0,
+      background: active ? 'var(--color-success-soft)' : TK.surface,
+      border: `1px solid ${active ? 'color-mix(in srgb, var(--color-success) 35%, transparent)' : TK.borderSolid}`,
+    }}>
+      <span style={{ width: 26, height: 15, borderRadius: 99, background: active ? 'var(--color-success)' : TK.surface3, position: 'relative', display: 'inline-block' }}>
+        <span style={{ position: 'absolute', top: 1.5, left: active ? 12.5 : 1.5, width: 12, height: 12, borderRadius: 99, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.25)', transition: 'left .15s' }} />
+      </span>
+    </button>
+  );
+}
 
 /**
  * "Products" tab on AdminStore — CRUD for the gym's product catalog.
- *
- * Activates / deactivates rows via `is_active` toggle (members see only
- * active products). Delete uses an inline-confirm pattern (no extra
- * modal) because product deletion is rare and the confirm is small.
- *
- * "Add Product" can also be triggered from the page-level header, hence
- * the `addProductOpen` prop bridge — when the parent sets it true we
- * open the modal and immediately fire `onAddProductClose` to reset the
- * trigger.
+ * Toggle activates/deactivates (is_active); delete is inline-confirm.
  */
 export default function ProductsTab({ gymId, t, addProductOpen, onAddProductClose }) {
   const { showToast } = useToast();
@@ -28,7 +38,6 @@ export default function ProductsTab({ gymId, t, addProductOpen, onAddProductClos
   const [editProduct, setEditProduct] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  // Open "Add Product" modal when triggered from PageHeader
   useEffect(() => {
     if (addProductOpen) {
       setEditProduct(null);
@@ -77,148 +86,110 @@ export default function ProductsTab({ gymId, t, addProductOpen, onAddProductClos
     onError: (err) => showToast(err.message, 'error'),
   });
 
-  const openEdit = (p) => {
-    setEditProduct(p);
-    setShowModal(true);
-  };
-
-  const closeModal = () => {
-    setShowModal(false);
-    setEditProduct(null);
-  };
+  const openEdit = (p) => { setEditProduct(p); setShowModal(true); };
+  const closeModal = () => { setShowModal(false); setEditProduct(null); };
 
   if (isLoading) {
     return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {[0, 1, 2].map(i => <CardSkeleton key={i} h="h-[100px]" />)}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[18px]" style={{ marginTop: 22 }}>
+        {[0, 1, 2].map(i => <CardSkeleton key={i} h="h-[210px]" />)}
       </div>
     );
   }
 
   return (
     <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, margin: '26px 0 16px' }}>
+        <Ico ch={ICON.box} size={15} color={TK.textFaint} stroke={2} />
+        <span style={eyebrow}>{t('admin.store.productsInStore', 'Products in store')}</span>
+      </div>
+
       {products.length === 0 ? (
         <FadeIn>
-          <AdminCard>
-            <div className="text-center py-16">
-              <div className="w-14 h-14 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4">
-                <Package size={24} className="text-[#D4AF37]" />
-              </div>
-              <p className="text-[15px] font-bold text-[#E5E7EB] mb-1">{t('admin.store.emptyTitle', 'No products yet')}</p>
-              <p className="text-[13px] text-[#6B7280] mb-5">{t('admin.store.emptyDesc', 'Add your first product to start selling.')}</p>
-              <button
-                onClick={() => { setEditProduct(null); setShowModal(true); }}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C5A028] transition-colors"
-              >
-                <Plus size={15} /> {t('admin.store.addProduct', 'Add Product')}
-              </button>
+          <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
+            <Ico ch={ICON.box} size={40} color={TK.textMute} stroke={1.6} style={{ margin: '0 auto 12px' }} />
+            <p style={{ fontFamily: FK.display, fontSize: 16, fontWeight: 800, color: TK.text, margin: 0 }}>{t('admin.store.emptyTitle', 'No products yet')}</p>
+            <p style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textMute, margin: '4px 0 18px' }}>{t('admin.store.emptyDesc', 'Add your first product to start selling.')}</p>
+            <div style={{ display: 'inline-flex' }}>
+              <PrimaryBtn icon={ICON.plus} onClick={() => { setEditProduct(null); setShowModal(true); }}>{t('admin.store.addProduct', 'Add Product')}</PrimaryBtn>
             </div>
-          </AdminCard>
+          </Card>
         </FadeIn>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 md:gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[18px]">
           {products.map((p, idx) => {
-            // category tone for tint
-            const toneMap = {
-              supplement: 'info', drink: 'info', snack: 'warn',
-              merchandise: 'coach', service: 'good', other: 'info',
-            };
-            const tone = toneMap[p.category] || 'info';
-            const tintBg = tone === 'good' ? 'var(--color-success-soft)'
-              : tone === 'warn' ? 'var(--color-warning-soft)'
-              : tone === 'coach' ? 'var(--color-coach-soft)'
-              : 'var(--color-info-soft)';
+            const active = p.is_active !== false;
+            const tone = CAT_TONE[p.category] || 'accent';
             return (
-            <FadeIn key={p.id} delay={idx * 40}>
-              <div className={`admin-card p-3 sm:p-4 h-full flex flex-col ${p.is_active === false ? 'opacity-60' : ''}`}>
-                {/* Cover / Emoji */}
-                {p.cover_preset ? (
-                  <div className="mb-3">
-                    <ProductCoverBadge preset={p.cover_preset} size={44} iconSize={22} />
-                  </div>
-                ) : (
-                  <div className="w-11 h-11 rounded-[11px] grid place-items-center flex-shrink-0 text-[22px] mb-3"
-                    style={{ background: tintBg }}>
-                    📦
-                  </div>
-                )}
-
-                {/* Name + category pill */}
-                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                  <span className="admin-kpi text-[14.5px]" style={{ fontWeight: 800 }}>
-                    {p.name}
-                  </span>
-                  <span className={`admin-pill admin-pill--${tone === 'info' ? 'info' : tone}`} style={{ fontSize: '9.5px' }}>
-                    {categoryLabel(p.category, t)}
-                  </span>
-                  {p.is_active === false && (
-                    <span className="admin-pill admin-pill--hot" style={{ fontSize: '9.5px' }}>
-                      {t('admin.store.inactive', 'Inactive')}
+              <FadeIn key={p.id} delay={idx * 40}>
+                <Card style={{ overflow: 'hidden', opacity: active ? 1 : 0.6 }}>
+                  {/* chip + status */}
+                  <div style={{ padding: '18px 18px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                    {p.cover_preset
+                      ? <ProductCoverBadge preset={p.cover_preset} size={48} iconSize={24} />
+                      : <IconChip ch={ICON.box} tone={tone} size={48} r={15} strokeW={1.9} />}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: active ? 'var(--color-success-soft)' : TK.surface3, border: `1px solid ${active ? 'color-mix(in srgb, var(--color-success) 32%, transparent)' : TK.borderSolid}` }}>
+                      <span style={{ width: 6, height: 6, borderRadius: 99, background: active ? 'var(--color-success)' : TK.textFaint }} />
+                      <span style={{ fontFamily: FK.body, fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: active ? 'var(--color-success-ink, var(--color-success))' : TK.textMute }}>
+                        {active ? t('admin.store.activeLabel', 'Active') : t('admin.store.inactive', 'Inactive')}
+                      </span>
                     </span>
-                  )}
-                </div>
+                  </div>
 
-                {/* Price / points / punch meta */}
-                <div className="flex items-center gap-2.5 text-[11.5px] flex-wrap mb-2" style={{ color: 'var(--color-admin-text-muted)' }}>
-                  <span className="admin-mono font-bold" style={{ color: 'var(--color-admin-text)' }}>
-                    ${parseFloat(p.price).toFixed(2)}
-                  </span>
-                  <span>⭐ {p.points_per_purchase ?? 0} {t('admin.store.pts', 'pts')}</span>
-                  {p.punch_card_enabled && (
-                    <span>🎫 {t('admin.store.freeEvery', '1 free / {{count}}', { count: p.punch_card_target })}</span>
-                  )}
-                </div>
-
-                {/* Actions row */}
-                <div className="flex items-center justify-end gap-1 mt-auto pt-2 flex-nowrap">
-                  {confirmDeleteId === p.id ? (
-                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                      <span className="text-[11px] text-[#9CA3AF]">{t('admin.store.deleteConfirm', 'Delete?')}</span>
-                      <button
-                        onClick={() => deleteMutation.mutate(p.id)}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
-                      >
-                        {t('admin.store.confirm', 'Confirm')}
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors"
-                      >
-                        {t('admin.store.cancel', 'Cancel')}
-                      </button>
+                  {/* name + price + pts */}
+                  <div style={{ padding: '15px 18px 0' }}>
+                    <div style={{ fontFamily: FK.display, fontSize: 19, fontWeight: 800, color: TK.text, letterSpacing: -0.4 }}>{p.name}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 13, marginTop: 9, flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: FK.display, fontSize: 22, fontWeight: 800, color: TK.text, letterSpacing: -0.5 }}>${parseFloat(p.price).toFixed(2)}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px', borderRadius: 999, background: TK.accentSoft, border: `1px solid ${TK.accentLine}` }}>
+                        <Ico ch={ICON.star} size={13} color={TK.accent} stroke={2} />
+                        <span style={{ fontFamily: FK.mono, fontSize: 12, fontWeight: 700, color: TK.accentInk }}>+{p.points_per_purchase ?? 0} pts</span>
+                      </span>
                     </div>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => toggleMutation.mutate({ id: p.id, is_active: p.is_active !== false })}
-                        className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                          p.is_active !== false ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10' : 'text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.04]'
-                        }`}
-                        title={p.is_active !== false ? t('admin.store.deactivate', 'Deactivate') : t('admin.store.activate', 'Activate')}
-                        aria-label={p.is_active !== false ? t('admin.store.deactivate', 'Deactivate product') : t('admin.store.activate', 'Activate product')}
-                      >
-                        {p.is_active !== false ? <ToggleRight size={16} className="sm:w-[18px] sm:h-[18px]" /> : <ToggleLeft size={16} className="sm:w-[18px] sm:h-[18px]" />}
-                      </button>
-                      <button
-                        onClick={() => openEdit(p)}
-                        aria-label={t('admin.store.editProduct', 'Edit product')}
-                        className="p-1.5 sm:p-2 rounded-lg text-[#6B7280] hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none md:min-w-[44px] md:min-h-[44px]"
-                      >
-                        <Pencil size={14} className="sm:w-[15px] sm:h-[15px]" />
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(p.id)}
-                        aria-label={t('admin.store.deleteProduct', 'Delete product')}
-                        className="p-1.5 sm:p-2 rounded-lg text-[#6B7280] hover:text-red-400 hover:bg-red-500/10 transition-colors flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none md:min-w-[44px] md:min-h-[44px]"
-                      >
-                        <Trash2 size={14} className="sm:w-[15px] sm:h-[15px]" />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </FadeIn>
-          );
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 11, flexWrap: 'wrap' }}>
+                      <Pill tone={tone}>{categoryLabel(p.category, t)}</Pill>
+                      {p.punch_card_enabled && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: FK.body, fontSize: 11.5, fontWeight: 600, color: TK.textMute }}>
+                          <Ico ch={ICON.ticket} size={13} color={TK.textMute} stroke={1.9} />
+                          {t('admin.store.freeEvery', '1 free / {{count}}', { count: p.punch_card_target })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* footer */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '16px 18px 18px', marginTop: 4 }}>
+                    {confirmDeleteId === p.id ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', width: '100%' }}>
+                        <span style={{ fontFamily: FK.body, fontSize: 12.5, color: 'var(--color-danger)' }}>{t('admin.store.deleteConfirm', 'Delete?')}</span>
+                        <button type="button" onClick={() => deleteMutation.mutate(p.id)}
+                          style={{ padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5, fontWeight: 800, color: '#fff', background: 'var(--color-danger)' }}>
+                          {t('admin.store.confirm', 'Confirm')}
+                        </button>
+                        <button type="button" onClick={() => setConfirmDeleteId(null)}
+                          style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5, fontWeight: 700, color: TK.textSub, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                          {t('admin.store.cancel', 'Cancel')}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => openEdit(p)}
+                          style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 0', borderRadius: 11, cursor: 'pointer', background: TK.accentWash, border: `1px solid ${TK.accentLine}`, fontFamily: FK.body, fontSize: 13.5, fontWeight: 700, color: TK.accent }}>
+                          <Ico ch={ICON.edit} size={15} color={TK.accent} stroke={2.1} />{t('admin.store.edit', 'Edit')}
+                        </button>
+                        <ProductToggle active={active}
+                          title={active ? t('admin.store.deactivate', 'Deactivate') : t('admin.store.activate', 'Activate')}
+                          onClick={() => toggleMutation.mutate({ id: p.id, is_active: active })} />
+                        <button type="button" onClick={() => setConfirmDeleteId(p.id)} aria-label={t('admin.store.deleteProduct', 'Delete product')}
+                          style={{ width: 42, height: 42, borderRadius: 11, display: 'grid', placeItems: 'center', cursor: 'pointer', background: TK.surface, border: `1px solid ${TK.borderSolid}`, flexShrink: 0 }}>
+                          <Ico ch={ICON.trash} size={16} color="var(--color-danger)" stroke={2} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </Card>
+              </FadeIn>
+            );
           })}
         </div>
       )}

@@ -1,18 +1,32 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, ShoppingBag, DollarSign, Gift } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import {
-  PageHeader, FadeIn, AdminPageShell, AdminTabs, StatCard,
-} from '../../components/admin';
+import { FadeIn, AdminPageShell } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import ProductsTab from './components/ProductsTab';
-import RedemptionsTab from './components/RedemptionsTab';
 import MemberPurchasesTab from './components/MemberPurchasesTab';
+import { TK, FK, Ico, ICON, Card, PrimaryBtn } from './components/retosKit';
 
+// stat card with a colored left rail (mock StatCard)
+function StatCard({ value, label, icon, rail, tone }) {
+  return (
+    <Card style={{ position: 'relative', overflow: 'hidden', padding: '20px 22px' }}>
+      <span style={{ position: 'absolute', left: 0, top: 14, bottom: 14, width: 3.5, borderRadius: 99, background: rail }} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: FK.display, fontSize: 34, fontWeight: 800, letterSpacing: -1, lineHeight: 1, color: TK.text }}>{value}</div>
+          <div style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, marginTop: 8 }}>{label}</div>
+        </div>
+        <span style={{ width: 42, height: 42, borderRadius: 12, flexShrink: 0, display: 'grid', placeItems: 'center', background: tone.bg, border: `1px solid ${tone.line}` }}>
+          <Ico ch={icon} size={19} color={tone.ink} stroke={2} />
+        </span>
+      </div>
+    </Card>
+  );
+}
 
 // ── Main Page ──────────────────────────────────────────────
 export default function AdminStore() {
@@ -26,32 +40,16 @@ export default function AdminStore() {
   useEffect(() => { document.title = `${t('admin.store.pageTitle', 'Admin - Store')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // Page-level store stats: paid order count, total sales $, free-reward
-  // redemption count. Uses `count: 'exact', head: true` for cheap counts
-  // and a bounded `select('total_price')` for client-side sum (gyms with
-  // > 2000 paid orders will undercount; acceptable until a SQL aggregate
-  // RPC is added). Falls back to zero on error so the row never blanks.
+  // redemption count (cheap exact counts + a bounded client-side sum).
   const { data: storeStats } = useQuery({
     queryKey: ['admin', 'store', 'summary', gymId],
     enabled: !!gymId,
     staleTime: 60_000,
     queryFn: async () => {
       const [ordersRes, redemptionsRes, salesRes] = await Promise.all([
-        supabase
-          .from('member_purchases')
-          .select('id', { count: 'exact', head: true })
-          .eq('gym_id', gymId)
-          .eq('is_free_reward', false),
-        supabase
-          .from('member_purchases')
-          .select('id', { count: 'exact', head: true })
-          .eq('gym_id', gymId)
-          .eq('is_free_reward', true),
-        supabase
-          .from('member_purchases')
-          .select('total_price')
-          .eq('gym_id', gymId)
-          .eq('is_free_reward', false)
-          .limit(2000),
+        supabase.from('member_purchases').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('is_free_reward', false),
+        supabase.from('member_purchases').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('is_free_reward', true),
+        supabase.from('member_purchases').select('total_price').eq('gym_id', gymId).eq('is_free_reward', false).limit(2000),
       ]);
       const totalSales = (salesRes.data || []).reduce((sum, row) => {
         const n = parseFloat(row?.total_price);
@@ -70,76 +68,56 @@ export default function AdminStore() {
     return `$${v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
   };
 
+  // Two tabs only — "Transacciones" removed per product direction.
   const tabOptions = useMemo(() => [
     { key: 'products', label: t('admin.store.products', 'Products') },
-    // Renamed from "Orders / Redemptions" — the slash was a smell. The tab body
-    // already shows both paid and free-reward `member_purchases` rows.
-    { key: 'redemptions', label: t('admin.store.transactions', 'Transactions') },
     { key: 'purchases', label: t('admin.store.members', 'Purchase history') },
   ], [t]);
 
+  const openAddProduct = () => { setStoreTab('products'); setAddProductOpen(true); };
+
   return (
     <AdminPageShell>
-      <FadeIn>
-        <PageHeader
-          title={t('admin.store.title', 'Store')}
-          subtitle={t('admin.store.subtitle', 'Product and redemption management')}
-          actions={
-            storeTab === 'products' ? (
-              <button
-                onClick={() => setAddProductOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C5A028] transition-colors"
-              >
-                <Plus size={15} /> {t('admin.store.addProduct', 'Add Product')}
-              </button>
-            ) : null
-          }
-        />
-      </FadeIn>
-
-      {/* Stat row — Total Orders / Total Sales / Total Redemptions.
-          Wired to `storeStats` (member_purchases aggregate above). Cheap
-          server-side counts + bounded client-side sum. */}
-      <FadeIn delay={0.04}>
-        <div className="grid grid-cols-3 gap-2.5 md:gap-3 mt-5">
-          <StatCard
-            label={t('admin.store.totalOrders', 'Total Orders')}
-            value={storeStats?.totalOrders ?? 0}
-            icon={ShoppingBag}
-            borderColor="var(--color-accent)"
-            delay={0}
-          />
-          <StatCard
-            label={t('admin.store.totalSales', 'Total Sales')}
-            value={fmtCurrency(storeStats?.totalSales ?? 0)}
-            icon={DollarSign}
-            borderColor="var(--color-success)"
-            delay={0.04}
-          />
-          <StatCard
-            label={t('admin.store.totalRedemptions', 'Total Redemptions')}
-            value={storeStats?.totalRedemptions ?? 0}
-            icon={Gift}
-            borderColor="var(--color-info)"
-            delay={0.08}
-          />
+      {/* header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.store.title', 'Store')}</h1>
+          <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.store.subtitle', 'Product and redemption management')}</div>
         </div>
-      </FadeIn>
+        <PrimaryBtn icon={ICON.plus} onClick={openAddProduct}>{t('admin.store.addProduct', 'Add Product')}</PrimaryBtn>
+      </div>
 
-      {/* Sub-nav tabs */}
-      <FadeIn delay={0.05}>
-        <AdminTabs tabs={tabOptions} active={storeTab} onChange={setStoreTab} className="mt-5 mb-6" />
-      </FadeIn>
+      {/* stat row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-[18px]" style={{ marginTop: 24 }}>
+        <StatCard value={storeStats?.totalOrders ?? 0} label={t('admin.store.totalOrders', 'Total Orders')} icon={ICON.bag} rail={TK.accent} tone={{ bg: TK.accentSoft, line: TK.accentLine, ink: TK.accent }} />
+        <StatCard value={fmtCurrency(storeStats?.totalSales ?? 0)} label={t('admin.store.totalSales', 'Total Sales')} icon={ICON.dollar} rail="var(--color-success)" tone={{ bg: 'var(--color-success-soft)', line: 'color-mix(in srgb, var(--color-success) 32%, transparent)', ink: 'var(--color-success)' }} />
+        <StatCard value={storeStats?.totalRedemptions ?? 0} label={t('admin.store.totalRedemptions', 'Total Redemptions')} icon={ICON.gift} rail="var(--color-info)" tone={{ bg: 'var(--color-info-soft)', line: 'color-mix(in srgb, var(--color-info) 32%, transparent)', ink: 'var(--color-info)' }} />
+      </div>
 
-      {/* Tab Content */}
-      <SwipeableTabContent tabs={tabOptions} active={storeTab} onChange={setStoreTab}>
-        {(tabKey) => {
-          if (tabKey === 'products') return <ProductsTab gymId={gymId} t={t} addProductOpen={addProductOpen} onAddProductClose={() => setAddProductOpen(false)} />;
-          if (tabKey === 'redemptions') return <RedemptionsTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />;
-          if (tabKey === 'purchases') return <MemberPurchasesTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />;
-          return null;
-        }}
-      </SwipeableTabContent>
+      {/* tab bar */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', borderBottom: `1px solid ${TK.borderSolid}`, marginTop: 24 }}>
+        {tabOptions.map(tb => {
+          const on = storeTab === tb.key;
+          return (
+            <button key={tb.key} type="button" onClick={() => setStoreTab(tb.key)}
+              style={{ display: 'flex', justifyContent: 'center', padding: '14px 0 16px', position: 'relative', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+              <span style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: on ? 700 : 600, color: on ? TK.accent : TK.textMute }}>{tb.label}</span>
+              {on && <span style={{ position: 'absolute', left: '42%', right: '42%', bottom: -1, height: 2.5, borderRadius: 99, background: TK.accent }} />}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* tab content */}
+      <FadeIn>
+        <SwipeableTabContent tabs={tabOptions} active={storeTab} onChange={setStoreTab}>
+          {(tabKey) => {
+            if (tabKey === 'products') return <ProductsTab gymId={gymId} t={t} addProductOpen={addProductOpen} onAddProductClose={() => setAddProductOpen(false)} />;
+            if (tabKey === 'purchases') return <MemberPurchasesTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />;
+            return null;
+          }}
+        </SwipeableTabContent>
+      </FadeIn>
     </AdminPageShell>
   );
 }

@@ -1,4 +1,5 @@
 import { Users, BarChart3, Activity, Megaphone, Bell, Pencil } from 'lucide-react';
+import { toneStyles } from '../../../lib/admin/adminTones';
 
 /**
  * Shared template-kind → icon + tone taxonomy for the "Plantillas de Email"
@@ -27,30 +28,9 @@ export function kindMeta(type) {
   return KIND_META[type] || KIND_META.custom;
 }
 
-/** tone → { bg (soft fill), fg (icon), ink (text) } using theme tokens. */
-export function toneStyles(tone) {
-  switch (tone) {
-    case 'teal':
-      return {
-        bg: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',
-        fg: 'var(--color-accent)',
-        ink: 'var(--color-accent)',
-      };
-    case 'coach':
-      return { bg: 'var(--color-coach-soft)', fg: 'var(--color-coach)', ink: 'var(--color-coach-ink)' };
-    case 'warn':
-      return { bg: 'var(--color-warning-soft)', fg: 'var(--color-warning)', ink: 'var(--color-warning-ink)' };
-    case 'hot':
-      return { bg: 'var(--color-danger-soft)', fg: 'var(--color-danger)', ink: 'var(--color-danger-ink)' };
-    case 'good':
-      return { bg: 'var(--color-success-soft)', fg: 'var(--color-success)', ink: 'var(--color-success-ink)' };
-    case 'info':
-      // No --color-info-ink token exists; the saturated blue reads fine as text.
-      return { bg: 'var(--color-info-soft)', fg: 'var(--color-info)', ink: 'var(--color-info)' };
-    default:
-      return { bg: 'var(--color-admin-panel)', fg: 'var(--color-admin-text-sub)', ink: 'var(--color-admin-text-sub)' };
-  }
-}
+// toneStyles now lives in the shared admin tone module (src/lib/admin/adminTones);
+// re-exported here so the email files that import it from this module keep working.
+export { toneStyles };
 
 /** Generic tinted icon chip — explicit icon + tone (the design's IconChip). */
 export function ToneIconChip({ icon: Icon, tone = 'neutral', size = 40, radius = 11 }) {

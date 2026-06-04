@@ -72,11 +72,10 @@ const Pill = ({ selected, onClick, children }) => (
   <button
     type="button"
     onClick={onClick}
-    className={`px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors ${
-      selected
-        ? 'bg-[#D4AF37]/20 text-[#D4AF37] ring-1 ring-[#D4AF37]/40'
-        : 'bg-white/[0.04] text-[#9CA3AF] hover:bg-white/[0.06]'
-    }`}
+    className="px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors"
+    style={selected
+      ? { background: 'var(--color-accent)', color: '#fff' }
+      : { background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-sub)', border: '1px solid var(--color-admin-border)' }}
   >
     {children}
   </button>
@@ -84,18 +83,14 @@ const Pill = ({ selected, onClick, children }) => (
 
 // ── Checkbox component ──────────────────────────────────────────────────────
 const CheckItem = ({ checked, onChange, label }) => (
-  <label className="flex items-center gap-2 cursor-pointer group">
-    <span className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
-      checked
-        ? 'bg-[#D4AF37] border-[#D4AF37]'
-        : 'border-white/20 group-hover:border-white/30'
-    }`}>
+  <button type="button" onClick={onChange} className="flex items-center gap-2 cursor-pointer text-left">
+    <span className="w-4 h-4 rounded flex items-center justify-center transition-colors flex-shrink-0" style={{ border: '1px solid', borderColor: checked ? 'var(--color-accent)' : 'var(--color-admin-border)', background: checked ? 'var(--color-accent)' : 'transparent' }}>
       {checked && (
-        <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l2.5 2.5L9 1" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
       )}
     </span>
-    <span className="text-[12px] text-[#E5E7EB]">{label}</span>
-  </label>
+    <span className="text-[12px]" style={{ color: 'var(--color-admin-text)' }}>{label}</span>
+  </button>
 );
 
 // ── Preview Browser — browse all weeks/days/exercises ──────────────────
@@ -205,7 +200,9 @@ function PreviewBrowser({ preview, genDays, allExercises, estimateDuration, onUs
 }
 
 export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const tEn = i18n.getFixedT('en', 'pages');
+  const tEs = i18n.getFixedT('es', 'pages');
   const [tab, setTab] = useState('templates');
   const [templateCat, setTemplateCat] = useState('all');
 
@@ -363,20 +360,18 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
       allWeeks[w] = buildWeek(w);
     }
 
-    setPreview({
-      splitLabel: result.splitLabel,
-      goalLabel,
-      durationWeeks: genDuration,
-      routinesA: result.routinesA,
-      allWeeks,
-    });
-  }, [genGoal, genLevel, genDays, genDuration, genEquipment, genInjuries]);
+    // Open the editable builder immediately (prefilled) instead of a read-only
+    // preview — the admin can tweak exercises/sets/reps/supersets before saving.
+    const autoName = t('admin.programs.templates.autoNameFormat', '{{split}} - {{goal}} ({{weeks}} weeks)', { split: result.splitLabel, goal: goalLabel, weeks: genDuration });
+    const autoDesc = t('admin.programs.templates.autoDescFormat', '{{split}} program for {{goal}} — {{weeks}} weeks, {{days}} days/week.', { split: result.splitLabel, goal: goalLabel.toLowerCase(), weeks: genDuration, days: genDays });
+    onSelect({ name: autoName, description: autoDesc, durationWeeks: genDuration, weeks: allWeeks });
+  }, [genGoal, genLevel, genDays, genDuration, genEquipment, genInjuries, onSelect, t]);
 
   const handleUseProgram = () => {
     if (!preview) return;
     const goalLabel = preview.goalLabel;
     const name = t('admin.programs.templates.autoNameFormat', '{{split}} - {{goal}} ({{weeks}} weeks)', { split: preview.splitLabel, goal: goalLabel, weeks: preview.durationWeeks });
-    const description = t('admin.programs.templates.autoDescFormat', 'Auto-generated {{split}} program for {{goal}}. {{weeks}} weeks, {{days}} days/week.', { split: preview.splitLabel, goal: goalLabel.toLowerCase(), weeks: preview.durationWeeks, days: genDays });
+    const description = t('admin.programs.templates.autoDescFormat', '{{split}} program for {{goal}} — {{weeks}} weeks, {{days}} days/week.', { split: preview.splitLabel, goal: goalLabel.toLowerCase(), weeks: preview.durationWeeks, days: genDays });
 
     // Use allWeeks directly — already has the right days per week, periodization, deloads
     onSelect({
@@ -452,7 +447,13 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
             return (
               <div key={tpl.id} className="bg-[#111827] border border-white/6 rounded-2xl p-4 flex flex-col gap-3 overflow-hidden">
                 <div>
-                  <p className="text-[14px] font-bold text-[#E5E7EB] mb-2 truncate">{t(tpl.nameKey, tpl.name)}</p>
+                  <p className="text-[14px] font-bold text-[#E5E7EB] mb-1 truncate">{t(tpl.nameKey, tpl.name)}</p>
+                  {tEn(tpl.nameKey, tpl.name) !== tEs(tpl.nameKey, tpl.name) && (
+                    <p className="text-[10.5px] mb-2 leading-snug" style={{ color: 'var(--color-admin-text-muted)' }}>
+                      <span className="font-bold">EN</span> {tEn(tpl.nameKey, tpl.name)}<br />
+                      <span className="font-bold">ES</span> {tEs(tpl.nameKey, tpl.name)}
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${GOAL_BADGE[tpl.goal] ?? 'bg-white/8 text-[#9CA3AF]'}`}>
                       {GOAL_LABEL_KEYS[tpl.goal] ? t(GOAL_LABEL_KEYS[tpl.goal], tpl.goal) : tpl.goal}
@@ -573,7 +574,8 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
               <button
                 onClick={handleGenerate}
                 disabled={genEquipment.size === 0}
-                className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] disabled:opacity-40 transition-colors whitespace-nowrap"
+                className="w-full py-3 rounded-xl font-bold text-[14px] disabled:opacity-40 transition-all hover:brightness-[1.04] whitespace-nowrap"
+                style={{ background: 'var(--color-accent)', color: '#fff', boxShadow: '0 2px 12px color-mix(in srgb, var(--color-accent) 30%, transparent)' }}
               >
                 {t('admin.programs.generate.generateProgram', 'Generate Program')}
               </button>

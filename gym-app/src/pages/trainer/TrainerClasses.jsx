@@ -630,7 +630,7 @@ function AnalyticsTab({ classes, t, dateLocale }) {
         .from('gym_class_bookings')
         .select('id, attended, rating')
         .eq('class_id', selectedClassId)
-        .gte('created_at', since);
+        .gte('booked_at', since);
 
       const bookings = allBookings || [];
       const total = bookings.length;

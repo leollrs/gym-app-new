@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { BENCHMARKS } from '../../../../lib/benchmarks';
-import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { TK, FK, Card, Donut, Funnel } from './analyticsKit';
 
 const TOTAL_STEPS = 9;
 
@@ -17,11 +17,10 @@ async function fetchOnboardingData(gymId) {
     .eq('imported_archived', false);
   if (error) throw error;
 
-  const total     = (members || []).length;
+  const total = (members || []).length;
   const onboarded = (members || []).filter(m => m.is_onboarded).length;
-  const pct       = total > 0 ? Math.round((onboarded / total) * 100) : 0;
+  const pct = total > 0 ? Math.round((onboarded / total) * 100) : 0;
 
-  // Build step funnel: for each step, count how many users reached it or beyond
   const stepCounts = {};
   for (let i = 0; i <= TOTAL_STEPS; i++) stepCounts[i] = 0;
   (members || []).forEach(p => {
@@ -43,13 +42,6 @@ export default function OnboardingFunnel({ gymId }) {
   if (isLoading) return <CardSkeleton />;
   if (isError) return <ErrorCard message={t('admin.analytics.onboardingError', 'Failed to load onboarding data')} onRetry={refetch} />;
 
-  // Translatable donut slice labels — shown in tooltip + legend.
-  const donutData = [
-    { name: t('admin.analytics.onboardingOnboarded', 'Onboarded'),    value: stats.onboarded },
-    { name: t('admin.analytics.onboardingNotCompleted', 'Not Onboarded'), value: stats.total - stats.onboarded },
-  ];
-
-  // Step labels from i18n
   const stepLabels = [
     t('adminAnalytics.onboardingSteps.invite'),
     t('adminAnalytics.onboardingSteps.language'),
@@ -65,122 +57,54 @@ export default function OnboardingFunnel({ gymId }) {
 
   const { stepCounts } = stats;
   const hasStepData = Object.values(stepCounts).some(v => v > 0);
+  const steps = stepLabels.map((label, i) => {
+    const count = stepCounts[i] || 0;
+    const prevCount = i > 0 ? (stepCounts[i - 1] || 0) : count;
+    const dropOff = prevCount > 0 ? prevCount - count : 0;
+    const dropPct = prevCount > 0 && dropOff > 0 ? Math.round((dropOff / prevCount) * 100) : 0;
+    return { label, value: count, drop: dropPct > 0 ? `-${dropPct}%` : null };
+  });
+
+  const rowDot = (color) => <span style={{ width: 9, height: 9, borderRadius: 99, background: color, flexShrink: 0 }} />;
 
   return (
-    <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
-      <div className="flex items-center justify-between mb-1">
-        <div>
-          <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight">
-            {t('adminAnalytics.onboardingCompletion', { defaultValue: 'Onboarding Completion' })}
-          </p>
-          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-relaxed">
-            {t('admin.analytics.onboardingIndustryAvg', { value: BENCHMARKS.onboardingCompletion, defaultValue: 'Industry avg: {{value}}% onboarding completion' })}
-          </p>
-        </div>
+    <Card style={{ padding: '22px 24px' }}>
+      <div style={{ fontFamily: FK.display, fontSize: 18, fontWeight: 800, letterSpacing: -0.4, color: TK.text }}>
+        {t('adminAnalytics.onboardingCompletion', { defaultValue: 'Onboarding Completion' })}
+      </div>
+      <div style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, marginTop: 4 }}>
+        {t('admin.analytics.onboardingIndustryAvg', { value: BENCHMARKS.onboardingCompletion, defaultValue: 'Industry avg: {{value}}% onboarding completion' })}
       </div>
 
-      <div className="flex items-center gap-8 mt-4">
-
-        {/* Donut chart */}
-        <div className="flex-shrink-0 relative">
-          <ResponsiveContainer width={130} height={130}>
-            <PieChart>
-              <Pie
-                data={donutData}
-                cx="50%"
-                cy="50%"
-                innerRadius={40}
-                outerRadius={58}
-                startAngle={90}
-                endAngle={-270}
-                dataKey="value"
-                strokeWidth={0}
-              >
-                <Cell fill="var(--color-accent)" />
-                <Cell fill="rgba(255,255,255,0.05)" />
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          {/* Centered percentage inside donut */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="text-[20px] font-bold text-[var(--color-accent)] leading-none tracking-tight">{stats.pct}%</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 26, margin: '20px 0 4px', flexWrap: 'wrap' }}>
+        <Donut pct={stats.pct} size={150} color={TK.accent} />
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontFamily: FK.body, fontSize: 11.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: TK.textFaint, marginBottom: 12 }}>
+            {t('admin.analytics.onboardingCompletionRate', 'Completion rate')}
           </div>
-        </div>
-
-        {/* Stats */}
-        <div className="flex-1 min-w-0">
-          <p className="text-[13px] text-[var(--color-text-muted)] mt-1">{t('admin.analytics.onboardingCompletionRate', 'Completion rate')}</p>
-          <div className="mt-4 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
-                <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.onboardingOnboarded', 'Onboarded')}</span>
-              </div>
-              <span className="text-[12px] font-semibold text-[var(--color-text-primary)] tabular-nums">{stats.onboarded}</span>
+          {[[t('admin.analytics.onboardingOnboarded', 'Onboarded'), stats.onboarded, TK.accent],
+            [t('admin.analytics.onboardingNotCompleted', 'Not completed'), stats.total - stats.onboarded, TK.surface3]].map((r, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: `1px solid ${TK.divider}` }}>
+              {rowDot(r[2])}
+              <span style={{ flex: 1, fontFamily: FK.body, fontSize: 14, color: TK.textSub }}>{r[0]}</span>
+              <span style={{ fontFamily: FK.display, fontSize: 16, fontWeight: 800, color: TK.text }}>{r[1]}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full bg-white/8" />
-                <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.onboardingNotCompleted', 'Not completed')}</span>
-              </div>
-              <span className="text-[12px] font-semibold text-[var(--color-text-primary)] tabular-nums">
-                {stats.total - stats.onboarded}
-              </span>
-            </div>
-            <div className="h-px bg-white/[0.05] my-1" />
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.onboardingTotalMembers', 'Total members')}</span>
-              <span className="text-[12px] font-semibold text-[var(--color-text-primary)] tabular-nums">{stats.total}</span>
-            </div>
+          ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 11 }}>
+            <span style={{ flex: 1, fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text }}>{t('admin.analytics.onboardingTotalMembers', 'Total members')}</span>
+            <span style={{ fontFamily: FK.display, fontSize: 16, fontWeight: 800, color: TK.text }}>{stats.total}</span>
           </div>
         </div>
       </div>
 
-      {/* Step-by-step funnel */}
       {hasStepData && (
-        <div className="mt-6 pt-5 border-t border-white/[0.05]">
-          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4">
+        <>
+          <div style={{ fontFamily: FK.body, fontSize: 11.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: TK.textFaint, margin: '18px 0 14px' }}>
             {t('adminAnalytics.onboardingFunnelLabel', { defaultValue: 'Step-by-Step Funnel' })}
-          </p>
-          <div className="space-y-2">
-            {stepLabels.map((label, i) => {
-              const count = stepCounts[i] || 0;
-              const maxCount = stepCounts[0] || 1;
-              const pctOfTotal = maxCount > 0 ? Math.round((count / maxCount) * 100) : 0;
-              const prevCount = i > 0 ? (stepCounts[i - 1] || 0) : count;
-              const dropOff = prevCount > 0 ? prevCount - count : 0;
-              const dropPct = prevCount > 0 && dropOff > 0 ? Math.round((dropOff / prevCount) * 100) : 0;
-
-              return (
-                <div key={i} className="flex items-center gap-2.5">
-                  <span className="text-[10px] font-mono text-[var(--color-text-subtle)] w-4 text-right flex-shrink-0 opacity-60">{i}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[11px] text-[var(--color-text-muted)] truncate">{label}</span>
-                      <div className="flex items-center gap-2.5 flex-shrink-0">
-                        <span className="text-[11px] font-semibold text-[var(--color-text-primary)] tabular-nums">{count}</span>
-                        {dropPct > 0 && (
-                          <span className="text-[10px] text-red-400/80 tabular-nums">-{dropPct}%</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="h-[5px] rounded-full bg-white/[0.04] overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-700 ease-out"
-                        style={{
-                          width: `${pctOfTotal}%`,
-                          backgroundColor: i === TOTAL_STEPS ? 'var(--color-success)' : 'var(--color-accent)',
-                          opacity: 0.35 + (pctOfTotal / 100) * 0.65,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
           </div>
-        </div>
+          <Funnel steps={steps} color={TK.accent} />
+        </>
       )}
-    </AdminCard>
+    </Card>
   );
 }

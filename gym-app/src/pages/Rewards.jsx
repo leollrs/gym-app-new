@@ -15,6 +15,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
 import { signQRPayload } from '../lib/qrSecurity';
 import logger from '../lib/logger';
+import { RewardSymbol } from '../lib/rewardSymbols';
 import { useAuth } from '../contexts/AuthContext';
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
@@ -210,7 +211,7 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
           </div>
 
           <div className="text-center py-4">
-            <span className="text-[48px]">{reward.emoji_icon || '🎁'}</span>
+            <span className="text-[48px]" style={{ color: 'var(--color-accent)' }}><RewardSymbol value={reward.emoji_icon} size={48} color="var(--color-accent)" /></span>
             <p
               className="text-[17px] font-extrabold text-[var(--color-text-primary)] mt-3"
               style={{ fontFamily: FONT_DISPLAY, letterSpacing: '-0.3px' }}
@@ -325,7 +326,7 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
         </div>
 
         <div className="bg-[var(--color-bg-card)] flex flex-col items-center pt-5 pb-3">
-          <span className="text-[40px] mb-1">{reward.emoji_icon || '🎁'}</span>
+          <span className="text-[40px] mb-1" style={{ color: 'var(--color-accent)' }}><RewardSymbol value={reward.emoji_icon} size={40} color="var(--color-accent)" /></span>
           <p
             className="text-[18px] font-extrabold text-[var(--color-text-primary)]"
             style={{ fontFamily: FONT_DISPLAY, letterSpacing: '-0.4px' }}
@@ -861,7 +862,7 @@ const RewardsTab = ({ points, gymRewards, gymRewardsLoading, onRedeem, challenge
                   }}
                 >
                   <div className="absolute -top-5 -right-8 text-[140px] leading-none opacity-[0.13] select-none pointer-events-none">
-                    {featured.emoji_icon || '🎁'}
+                    <RewardSymbol value={featured.emoji_icon} size={140} color="currentColor" />
                   </div>
                   <div
                     className="text-[10px] font-extrabold opacity-90"
@@ -935,7 +936,7 @@ const RewardsTab = ({ points, gymRewards, gymRewardsLoading, onRedeem, challenge
                     className="w-11 h-11 rounded-[12px] flex items-center justify-center mb-2.5"
                     style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
                   >
-                    <span className="text-[22px]">{reward.emoji_icon || '🎁'}</span>
+                    <span className="text-[22px]" style={{ color: 'var(--color-accent)' }}><RewardSymbol value={reward.emoji_icon} size={22} color="var(--color-accent)" /></span>
                   </div>
                   <p
                     className="text-[14px] font-extrabold text-[var(--color-text-primary)] leading-tight"
@@ -2043,7 +2044,7 @@ export default function Rewards() {
               setSuccessReward({
                 reward: dbReward
                   ? { ...dbReward, name: r.reward_name }
-                  : { id: r.reward_id, name: r.reward_name, emoji_icon: '🎁' },
+                  : { id: r.reward_id, name: r.reward_name, emoji_icon: 'gift' },
                 redemptionId: r.id,
               });
             }}

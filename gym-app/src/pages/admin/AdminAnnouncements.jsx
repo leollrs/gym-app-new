@@ -14,6 +14,7 @@ import posthog from 'posthog-js';
 import { broadcastNotification } from '../../lib/notifications';
 import { PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton, AdminTabs } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
+import { ToneIconChip, TonePill } from '../../lib/admin/adminTones';
 
 // Hard caps on announcement copy. Keep these in sync with any server-side
 // validation you add later. Caps prevent the worst spam / abuse vectors and
@@ -34,42 +35,8 @@ const TYPE_OPTS = [
 
 const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
 
-// Tone → theme-aware colors (the Restyle design's TONE map, pointed at the admin's
-// existing semantic CSS vars so every pill/chip is dark-mode + white-label safe).
-function toneStyles(tone) {
-  switch (tone) {
-    case 'teal': return { bg: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', fg: 'var(--color-accent)', ink: 'var(--color-accent)' };
-    case 'coach': return { bg: 'var(--color-coach-soft)', fg: 'var(--color-coach)', ink: 'var(--color-coach-ink)' };
-    case 'warn': return { bg: 'var(--color-warning-soft)', fg: 'var(--color-warning)', ink: 'var(--color-warning-ink)' };
-    case 'hot': return { bg: 'var(--color-danger-soft)', fg: 'var(--color-danger)', ink: 'var(--color-danger-ink)' };
-    case 'good': return { bg: 'var(--color-success-soft)', fg: 'var(--color-success)', ink: 'var(--color-success-ink)' };
-    default: return { bg: 'var(--color-admin-panel)', fg: 'var(--color-admin-text-sub)', ink: 'var(--color-admin-text-sub)' };
-  }
-}
-
 // announcement type → category tone (matches the design's CATS taxonomy).
 const TYPE_TONE = { news: 'coach', event: 'teal', challenge: 'good', maintenance: 'warn' };
-
-// Rounded tinted icon chip.
-function ToneChip({ icon: Icon, tone = 'neutral', size = 46, radius = 12 }) {
-  const c = toneStyles(tone);
-  return (
-    <div className="grid place-items-center flex-shrink-0" style={{ width: size, height: size, borderRadius: radius, background: c.bg }}>
-      <Icon size={Math.round(size * 0.5)} strokeWidth={2} style={{ color: c.fg }} />
-    </div>
-  );
-}
-
-// Uppercase tone pill, optional leading icon (icon inherits the pill's ink color).
-function TonePill({ children, tone = 'neutral', icon: Icon }) {
-  const c = toneStyles(tone);
-  return (
-    <span className="inline-flex items-center gap-1" style={{ fontSize: 10.5, fontWeight: 800, color: c.ink, background: c.bg, padding: '3px 9px', borderRadius: 999, letterSpacing: '0.4px', textTransform: 'uppercase' }}>
-      {Icon && <Icon size={11} strokeWidth={2.4} />}
-      {children}
-    </span>
-  );
-}
 
 // Square ghost action button (edit / delete). danger → red icon.
 function GhostBtn({ icon: Icon, onClick, label, danger = false }) {
@@ -437,7 +404,7 @@ export default function AdminAnnouncements() {
         actions={
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2.5 font-bold text-[13px] md:text-[14px] rounded-xl transition-colors whitespace-nowrap flex-shrink-0 hover:brightness-[1.04]"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)', boxShadow: '0 2px 8px color-mix(in srgb, var(--color-accent) 35%, transparent)' }}>
+            style={{ background: 'var(--color-accent)', color: '#fff', boxShadow: '0 2px 8px color-mix(in srgb, var(--color-accent) 35%, transparent)' }}>
             <Plus size={15} /> {t('admin.announcements.newAnnouncement', 'New Announcement')}
           </button>
         }
@@ -466,7 +433,7 @@ export default function AdminAnnouncements() {
       ) : announcements.length === 0 ? (
         <AdminCard>
           <div className="flex flex-col items-center text-center gap-3.5 py-14 px-6">
-            <ToneChip icon={Inbox} tone="neutral" size={52} />
+            <ToneIconChip icon={Inbox} tone="neutral" size={52} />
             <div>
               <p style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 17, color: 'var(--color-admin-text)', letterSpacing: '-0.3px' }}>
                 {t('admin.announcements.emptyTitle', 'Nothing here yet')}
@@ -507,7 +474,7 @@ export default function AdminAnnouncements() {
             return filtered.length === 0 ? (
               <AdminCard>
                 <div className="flex flex-col items-center text-center gap-2 py-12 px-6">
-                  <ToneChip icon={Inbox} tone="neutral" size={46} />
+                  <ToneIconChip icon={Inbox} tone="neutral" size={46} />
                   <p className="text-[13px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.announcements.noMatchingAnnouncements', 'No announcements match this filter')}</p>
                 </div>
               </AdminCard>
@@ -648,7 +615,7 @@ export default function AdminAnnouncements() {
                           </div>
                         ) : (
                           <div className="flex items-center gap-4">
-                            <ToneChip icon={Megaphone} tone="hot" size={46} />
+                            <ToneIconChip icon={Megaphone} tone="hot" size={46} />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
                                 <span className="truncate" style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 16, color: 'var(--color-admin-text)', letterSpacing: '-0.3px' }}>{sanitize(a.title)}</span>

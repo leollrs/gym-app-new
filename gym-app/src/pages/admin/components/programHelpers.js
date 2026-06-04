@@ -4,10 +4,21 @@
 
 export const DEFAULT_SETS = 3;
 export const DEFAULT_REST = 60;
+export const DEFAULT_REPS = '8-12';
 
 export const normalizeExercise = (ex) => {
-  if (typeof ex === 'string') return { id: ex, sets: DEFAULT_SETS, rest_seconds: DEFAULT_REST };
-  return { id: ex.id, sets: ex.sets ?? DEFAULT_SETS, rest_seconds: ex.rest_seconds ?? DEFAULT_REST };
+  if (typeof ex === 'string') return { id: ex, sets: DEFAULT_SETS, reps: DEFAULT_REPS, rest_seconds: DEFAULT_REST };
+  return {
+    id: ex.id,
+    sets: ex.sets ?? DEFAULT_SETS,
+    // Preserve reps so admins can edit them and they reach the member's session.
+    reps: ex.reps ?? ex.target_reps ?? DEFAULT_REPS,
+    rest_seconds: ex.rest_seconds ?? DEFAULT_REST,
+    // Carry advanced techniques through (supersets/circuits + drop sets).
+    ...(ex.group_id ? { group_id: ex.group_id } : {}),
+    ...(ex.group_type ? { group_type: ex.group_type } : {}),
+    ...(ex.drop_set ? { drop_set: true } : {}),
+  };
 };
 
 export const normalizeWeeks = (raw) => {
@@ -64,6 +75,8 @@ export const TEMPLATE_CATEGORIES = [
   { key: 'sport', labelKey: 'admin.programs.categories.sport', label: 'Athletic' },
   { key: 'home', labelKey: 'admin.programs.categories.home', label: 'Home / Minimal' },
   { key: 'advanced', labelKey: 'admin.programs.categories.advanced', label: 'Advanced' },
+  { key: 'express', labelKey: 'admin.programs.categories.express', label: 'Quick Workouts' },
+  { key: 'cardio', labelKey: 'admin.programs.categories.cardio', label: 'Cardio' },
 ];
 
 // ── Program Templates ──
@@ -775,6 +788,130 @@ export const PROGRAM_TEMPLATES = [
         { id: 'ex_ibp', sets: 3, rest_seconds: 120 },
         { id: 'ex_lr',  sets: 3, rest_seconds: 60 },
         { id: 'ex_fr',  sets: 3, rest_seconds: 60 },
+      ]},
+    ],
+  },
+
+  // ── QUICK WORKOUTS (express) ───────────────────────
+  {
+    id: 'express_full_body', nameKey: 'admin.programs.tpl.express_full_body.name', descKey: 'admin.programs.tpl.express_full_body.desc',
+    name: 'Express Full Body', category: 'express',
+    description: 'Short, efficient full-body sessions in about 20 minutes, 3 days/week.',
+    goal: 'General Fitness', level: 'Beginner', daysPerWeek: 3, durationWeeks: 4,
+    weekPattern: [
+      { name: 'Quick A', exercises: [
+        { id: 'ex_gsq',   sets: 3, reps: '12',  rest_seconds: 45 },
+        { id: 'ex_pup',   sets: 3, reps: '15',  rest_seconds: 45 },
+        { id: 'ex_dbr',   sets: 3, reps: '12',  rest_seconds: 45 },
+        { id: 'ex_plank', sets: 3, reps: '45s', rest_seconds: 30 },
+      ]},
+      { name: 'Quick B', exercises: [
+        { id: 'ex_dbrdl', sets: 3, reps: '12', rest_seconds: 45 },
+        { id: 'ex_dbop',  sets: 3, reps: '12', rest_seconds: 45 },
+        { id: 'ex_lunge', sets: 3, reps: '12', rest_seconds: 45 },
+        { id: 'ex_bcr',   sets: 3, reps: '20', rest_seconds: 30 },
+      ]},
+      { name: 'Quick C', exercises: [
+        { id: 'ex_gsq',  sets: 3, reps: '15', rest_seconds: 45 },
+        { id: 'ex_dbp',  sets: 3, reps: '12', rest_seconds: 45 },
+        { id: 'ex_dbr',  sets: 3, reps: '12', rest_seconds: 45 },
+        { id: 'ex_rtwt', sets: 3, reps: '20', rest_seconds: 30 },
+      ]},
+    ],
+  },
+  {
+    id: 'express_db_blast', nameKey: 'admin.programs.tpl.express_db_blast.name', descKey: 'admin.programs.tpl.express_db_blast.desc',
+    name: '15-Minute Dumbbell Blast', category: 'express',
+    description: 'Fast dumbbell-only push/pull/legs sessions with minimal rest.',
+    goal: 'Muscle Gain', level: 'Intermediate', daysPerWeek: 3, durationWeeks: 6,
+    weekPattern: [
+      { name: 'Push', exercises: [
+        { id: 'ex_dbp',  sets: 3, reps: '12', rest_seconds: 45 },
+        { id: 'ex_dbop', sets: 3, reps: '12', rest_seconds: 45 },
+        { id: 'ex_oe',   sets: 3, reps: '15', rest_seconds: 30 },
+      ]},
+      { name: 'Pull', exercises: [
+        { id: 'ex_dbr',  sets: 3, reps: '12', rest_seconds: 45 },
+        { id: 'ex_hc',   sets: 3, reps: '12', rest_seconds: 30 },
+        { id: 'ex_rfly', sets: 3, reps: '15', rest_seconds: 30 },
+      ]},
+      { name: 'Legs', exercises: [
+        { id: 'ex_gsq',   sets: 3, reps: '15', rest_seconds: 45 },
+        { id: 'ex_lunge', sets: 3, reps: '12', rest_seconds: 45 },
+        { id: 'ex_scr',   sets: 3, reps: '20', rest_seconds: 30 },
+      ]},
+    ],
+  },
+  {
+    id: 'lunch_core', nameKey: 'admin.programs.tpl.lunch_core.name', descKey: 'admin.programs.tpl.lunch_core.desc',
+    name: 'Lunch-Break Core & Conditioning', category: 'express',
+    description: 'Quick bodyweight core conditioning, no setup needed.',
+    goal: 'General Fitness', level: 'Beginner', daysPerWeek: 3, durationWeeks: 4,
+    weekPattern: [
+      { name: 'Core A', exercises: [
+        { id: 'ex_plank', sets: 3, reps: '45s', rest_seconds: 30 },
+        { id: 'ex_bcr',   sets: 3, reps: '20',  rest_seconds: 30 },
+        { id: 'ex_vup',   sets: 3, reps: '15',  rest_seconds: 30 },
+        { id: 'ex_burp',  sets: 3, reps: '12',  rest_seconds: 30 },
+      ]},
+      { name: 'Core B', exercises: [
+        { id: 'ex_splk', sets: 3, reps: '30s', rest_seconds: 30 },
+        { id: 'ex_rtwt', sets: 3, reps: '20',  rest_seconds: 30 },
+        { id: 'ex_llr',  sets: 3, reps: '15',  rest_seconds: 30 },
+        { id: 'ex_hbh',  sets: 3, reps: '30s', rest_seconds: 30 },
+      ]},
+      { name: 'Core C', exercises: [
+        { id: 'ex_dbug',  sets: 3, reps: '10',  rest_seconds: 30 },
+        { id: 'ex_bcr',   sets: 3, reps: '20',  rest_seconds: 30 },
+        { id: 'ex_plank', sets: 3, reps: '45s', rest_seconds: 30 },
+        { id: 'ex_burp',  sets: 3, reps: '12',  rest_seconds: 30 },
+      ]},
+    ],
+  },
+
+  // ── CARDIO ─────────────────────────────────────────
+  {
+    id: 'cardio_kickstart', nameKey: 'admin.programs.tpl.cardio_kickstart.name', descKey: 'admin.programs.tpl.cardio_kickstart.desc',
+    name: 'Cardio Kickstart', category: 'cardio',
+    description: 'Beginner cardio mixing machines and brisk walking, 3 days/week.',
+    goal: 'General Fitness', level: 'Beginner', daysPerWeek: 3, durationWeeks: 6,
+    weekPattern: [
+      { name: 'Steady Cardio', exercises: [
+        { id: 'ex_cd_treadmill', sets: 1, reps: '20 min', rest_seconds: 0 },
+        { id: 'ex_cd_bike',      sets: 1, reps: '10 min', rest_seconds: 0 },
+      ]},
+      { name: 'Mixed Machines', exercises: [
+        { id: 'ex_cd_elliptical', sets: 1, reps: '15 min', rest_seconds: 0 },
+        { id: 'ex_cd_rower',      sets: 1, reps: '10 min', rest_seconds: 0 },
+      ]},
+      { name: 'Active Recovery', exercises: [
+        { id: 'ex_cd_walking', sets: 1, reps: '30 min', rest_seconds: 0 },
+        { id: 'ex_plank',      sets: 3, reps: '45s',    rest_seconds: 30 },
+      ]},
+    ],
+  },
+  {
+    id: 'hiit_shred', nameKey: 'admin.programs.tpl.hiit_shred.name', descKey: 'admin.programs.tpl.hiit_shred.desc',
+    name: 'HIIT Shred', category: 'cardio',
+    description: 'High-intensity intervals and conditioning circuits, 3 days/week.',
+    goal: 'General Fitness', level: 'Intermediate', daysPerWeek: 3, durationWeeks: 6,
+    weekPattern: [
+      { name: 'HIIT Circuit A', exercises: [
+        { id: 'ex_burp',        sets: 4, reps: '12',  rest_seconds: 30 },
+        { id: 'ex_cd_jumprope', sets: 3, reps: '60s', rest_seconds: 30 },
+        { id: 'ex_bxjp',        sets: 3, reps: '10',  rest_seconds: 45 },
+        { id: 'ex_plank',       sets: 3, reps: '45s', rest_seconds: 30 },
+      ]},
+      { name: 'HIIT Circuit B', exercises: [
+        { id: 'ex_dbth', sets: 4, reps: '12', rest_seconds: 45 },
+        { id: 'ex_kg',   sets: 4, reps: '20', rest_seconds: 30 },
+        { id: 'ex_pup',  sets: 3, reps: '15', rest_seconds: 30 },
+        { id: 'ex_rtwt', sets: 3, reps: '20', rest_seconds: 30 },
+      ]},
+      { name: 'Conditioning', exercises: [
+        { id: 'ex_cd_rower', sets: 1, reps: '15 min', rest_seconds: 0 },
+        { id: 'ex_brsl',     sets: 3, reps: '30s',    rest_seconds: 45 },
+        { id: 'ex_mnmk',     sets: 3, reps: '8',      rest_seconds: 60 },
       ]},
     ],
   },

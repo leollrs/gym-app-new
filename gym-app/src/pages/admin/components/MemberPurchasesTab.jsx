@@ -1,34 +1,29 @@
 import { useState, useMemo } from 'react';
-import {
-  DollarSign, ScanLine, Search, X, Package, Minus, Plus, Star,
-  Gift, Clock, ShoppingBag,
-} from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
-import { AdminCard, FadeIn, SectionLabel, CardSkeleton } from '../../../components/admin';
+import { FadeIn, CardSkeleton } from '../../../components/admin';
 import QRScannerModal from '../../../components/admin/QRScannerModal';
 import PasswordResetApprovalModal from './PasswordResetApprovalModal';
 import { storeKeys } from './storeConstants';
+import { TK, FK, Ico, ICON, Card, IconChip } from './retosKit';
+
+const eyebrow = { fontFamily: FK.body, fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: TK.textFaint };
+const fieldStyle = { width: '100%', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, borderRadius: 12, padding: '13px 15px', fontFamily: FK.body, fontSize: 14.5, color: TK.text, outline: 'none' };
+const smallSelect = { background: TK.surface, border: `1px solid ${TK.borderSolid}`, borderRadius: 10, padding: '8px 12px', fontFamily: FK.body, fontSize: 12.5, fontWeight: 600, color: TK.textSub, outline: 'none' };
+const Avatar = ({ name, size = 30 }) => (
+  <span style={{ width: size, height: size, borderRadius: 99, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'color-mix(in srgb, var(--color-accent) 16%, transparent)', color: TK.accent, fontFamily: FK.display, fontSize: size * 0.42, fontWeight: 800 }}>
+    {name?.[0]?.toUpperCase() ?? '?'}
+  </span>
+);
 
 /**
- * "Log Purchase" tab on AdminStore — the staff-facing checkout surface.
- *
- * Two halves:
- *   1. Log Purchase form: pick a member (search or QR scan), pick a
- *      product, choose quantity. Punch-card progress dots render in
- *      real time; if this purchase tips the card into reward territory
- *      we surface a "Free item will be earned" banner.
- *   2. Purchase History list: filter by product / date range, paginate
- *      at 100 most recent rows.
- *
- * QR scan accepts four types:
- *   - `purchase`: prefills member + product from the scanned payload
- *   - `password_reset`: routes to the PasswordResetApprovalModal
- *   - `checkin`: prefills the member only (admin then picks product)
- *   - `reward_redemption`: marks the redemption claimed + deducts points
+ * "Historial de compras" tab on AdminStore — staff checkout surface.
+ *   Left:  Registrar compra (POS) — pick member (search/QR), product, qty.
+ *   Right: Compras recientes — day-grouped purchase timeline w/ filters.
+ * QR scan handles purchase / password_reset / checkin / reward_redemption.
  */
 export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
   const { profile } = useAuth();
@@ -166,8 +161,8 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: storeKeys.all(gymId) });
-      const totalPoints = (selectedProduct.points_per_purchase ?? 0) * quantity;
-      let msg = t('admin.store.purchaseRecorded', 'Purchase recorded! {{points}} points earned.', { points: totalPoints });
+      const totalPointsAwarded = (selectedProduct.points_per_purchase ?? 0) * quantity;
+      let msg = t('admin.store.purchaseRecorded', 'Purchase recorded! {{points}} points earned.', { points: totalPointsAwarded });
       if (data?.free_earned) {
         msg += ` ${t('admin.store.freeItemEarned', 'Free {{name}} earned!', { name: selectedProduct.name })}`;
       }
@@ -263,10 +258,6 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
         return;
       }
 
-      // Mark claimed + deduct points atomically via the SECURITY DEFINER RPC
-      // (same path the member-app scanner uses). Replaces a client-side
-      // read-modify-write on reward_points that (a) raced/double-deducted and
-      // (b) no longer works now that reward_points is locked read-only.
       const { error: claimErr } = await supabase.rpc('claim_redemption', {
         p_redemption_id: parsed.redemptionId,
       });
@@ -282,95 +273,98 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
 
   const totalPrice = selectedProduct ? (parseFloat(selectedProduct.price) * quantity).toFixed(2) : '0.00';
   const totalPoints = selectedProduct ? (selectedProduct.points_per_purchase ?? 0) * quantity : 0;
+  const hasFilters = filterProduct !== 'all' || historyDateFrom || historyDateTo;
+
+  // group purchase history by day (purchaseHistory is created_at desc → day order desc)
+  const historyGroups = useMemo(() => {
+    const byDay = new Map();
+    purchaseHistory.forEach(p => {
+      const d = new Date(p.created_at);
+      const key = format(d, 'yyyy-MM-dd');
+      if (!byDay.has(key)) byDay.set(key, { label: format(d, 'd MMM yyyy', dateFnsLocale), items: [] });
+      byDay.get(key).items.push(p);
+    });
+    return [...byDay.values()];
+  }, [purchaseHistory, dateFnsLocale]);
 
   return (
-    <div className="space-y-6">
-      {/* ── Log Purchase section ── */}
-      <FadeIn>
-        <AdminCard borderLeft="var(--color-accent)">
-          <div className="flex items-center gap-2 mb-4">
-            <DollarSign size={14} className="text-[#D4AF37]" />
-            <SectionLabel>{t('admin.store.logPurchase', 'Log Purchase')}</SectionLabel>
-          </div>
-
-          <div className="max-w-lg space-y-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-6" style={{ marginTop: 26, alignItems: 'start' }}>
+      {/* ── LEFT · Registrar compra (POS) ── */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, margin: '0 0 16px' }}>
+          <Ico ch={ICON.dollar} size={15} color={TK.accent} stroke={2} />
+          <span style={{ ...eyebrow, color: TK.accent }}>{t('admin.store.logPurchase', 'Log Purchase')}</span>
+        </div>
+        <Card style={{ overflow: 'hidden', position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 0, top: 18, bottom: 18, width: 3.5, borderRadius: 99, background: TK.accent }} />
+          <div style={{ padding: '22px 24px 24px' }}>
             {/* Scan QR */}
-            <button
-              onClick={() => setShowScanner(true)}
-              className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl font-bold text-[13px] text-black bg-[#D4AF37] hover:bg-[#C5A028] active:scale-[0.98] transition-all"
-            >
-              <ScanLine size={16} />
-              {t('admin.store.scanQR', 'Scan Purchase QR')}
+            <button type="button" onClick={() => setShowScanner(true)}
+              style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 11, padding: '15px 0', borderRadius: 13, cursor: 'pointer', border: 'none', background: TK.accent, color: '#fff', fontFamily: FK.body, fontSize: 15.5, fontWeight: 700, boxShadow: '0 4px 14px color-mix(in srgb, var(--color-accent) 35%, transparent)' }}>
+              <Ico ch={ICON.qr} size={20} color="#fff" stroke={2.1} />{t('admin.store.scanQR', 'Scan Purchase QR')}
             </button>
 
             {showScanner && (
-              <QRScannerModal
-                isOpen={showScanner}
-                onClose={() => setShowScanner(false)}
-                onScan={handleQRScan}
-              />
+              <QRScannerModal isOpen={showScanner} onClose={() => setShowScanner(false)} onScan={handleQRScan} />
             )}
             {resetApprovalId && (
               <PasswordResetApprovalModal
                 requestId={resetApprovalId}
                 onClose={() => setResetApprovalId(null)}
-                onComplete={() => {
-                  setResetApprovalId(null);
-                  showToast(t('admin.store.resetHandled', 'Password reset handled'), 'success');
-                }}
+                onComplete={() => { setResetApprovalId(null); showToast(t('admin.store.resetHandled', 'Password reset handled'), 'success'); }}
               />
             )}
 
-            {/* Member search */}
-            <div className="relative">
-              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.store.member', 'Member')}</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0' }}>
+              <span style={{ flex: 1, height: 1, background: TK.divider }} />
+              <span style={{ fontFamily: FK.body, fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5, color: TK.textFaint }}>{t('admin.store.orManual', 'or record manually')}</span>
+              <span style={{ flex: 1, height: 1, background: TK.divider }} />
+            </div>
+
+            {/* Member */}
+            <div>
+              <div style={{ fontFamily: FK.body, fontSize: 12.5, fontWeight: 700, color: TK.textSub, marginBottom: 9 }}>{t('admin.store.member', 'Member')}</div>
               {selectedMember ? (
-                <div className="flex items-center gap-3 bg-white/[0.04] border border-white/8 rounded-xl px-4 py-2.5">
-                  <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[11px] font-bold text-[#D4AF37]">
-                      {selectedMember.full_name?.[0]?.toUpperCase() ?? '?'}
-                    </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px', borderRadius: 12, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                  <Avatar name={selectedMember.full_name} size={32} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontFamily: FK.body, fontSize: 13.5, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedMember.full_name}</p>
+                    <p style={{ margin: 0, fontFamily: FK.body, fontSize: 11.5, color: TK.textMute }}>@{selectedMember.username}</p>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{selectedMember.full_name}</p>
-                    <p className="text-[11px] text-[#6B7280] truncate">@{selectedMember.username}</p>
-                  </div>
-                  <button onClick={() => { setSelectedMember(null); setMemberSearch(''); }} aria-label={t('admin.store.removeMember', 'Remove selected member')} className="text-[#6B7280] hover:text-red-400 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
-                    <X size={16} />
+                  <button type="button" onClick={() => { setSelectedMember(null); setMemberSearch(''); }} aria-label={t('admin.store.removeMember', 'Remove selected member')}
+                    style={{ width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'transparent', border: `1px solid ${TK.borderSolid}` }}>
+                    <Ico ch={ICON.x} size={15} color={TK.textMute} stroke={2.2} />
                   </button>
                 </div>
               ) : (
-                <div className="relative">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                    <Ico ch={ICON.search} size={16} color={TK.textMute} stroke={2} />
+                  </span>
                   <input
                     value={memberSearch}
                     onChange={e => { setMemberSearch(e.target.value); setShowMemberDropdown(true); }}
                     onFocus={() => setShowMemberDropdown(true)}
                     placeholder={t('admin.store.searchMember', 'Search member by name...')}
                     aria-label={t('admin.store.searchMember', 'Search member by name')}
-                    className="w-full bg-white/[0.04] border border-white/8 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30 transition-all"
+                    style={{ ...fieldStyle, paddingLeft: 42 }}
                   />
                   {showMemberDropdown && memberSearch.trim().length > 0 && members.length > 0 && (
-                    <div className="absolute z-30 top-full left-0 right-0 mt-1 w-full bg-[#0F172A] border border-white/8 rounded-xl shadow-2xl max-h-48 overflow-y-auto">
+                    <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 6px)', left: 0, right: 0, background: TK.surface, border: `1px solid ${TK.borderSolid}`, borderRadius: 12, boxShadow: TK.shadowLg, maxHeight: 220, overflowY: 'auto', padding: 6 }}>
                       {members.map(m => (
-                        <button
-                          key={m.id}
-                          onClick={() => { setSelectedMember(m); setShowMemberDropdown(false); setMemberSearch(''); }}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.04] transition-colors text-left"
-                        >
-                          <div className="w-7 h-7 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[10px] font-bold text-[#D4AF37]">{m.full_name?.[0]?.toUpperCase() ?? '?'}</span>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-[13px] text-[#E5E7EB] truncate">{m.full_name}</p>
-                            <p className="text-[11px] text-[#6B7280] truncate">@{m.username}</p>
+                        <button key={m.id} type="button" onClick={() => { setSelectedMember(m); setShowMemberDropdown(false); setMemberSearch(''); }}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '9px 10px', borderRadius: 9, cursor: 'pointer', background: 'transparent', border: 'none', textAlign: 'left' }}>
+                          <Avatar name={m.full_name} size={28} />
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ margin: 0, fontFamily: FK.body, fontSize: 13.5, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name}</p>
+                            <p style={{ margin: 0, fontFamily: FK.body, fontSize: 11.5, color: TK.textMute }}>@{m.username}</p>
                           </div>
                         </button>
                       ))}
                     </div>
                   )}
                   {showMemberDropdown && memberSearch.trim().length > 0 && !membersLoading && members.length === 0 && (
-                    <div className="absolute z-30 top-full left-0 right-0 mt-1 w-full rounded-xl border border-white/8 bg-[#0F172A] px-4 py-3 text-[12px] text-[#6B7280]">
+                    <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 6px)', left: 0, right: 0, background: TK.surface, border: `1px solid ${TK.borderSolid}`, borderRadius: 12, padding: '12px 14px', fontFamily: FK.body, fontSize: 12.5, color: TK.textMute }}>
                       {allMembers.length === 0
                         ? t('admin.store.noMembersLoaded', 'No members loaded. Check connection or refresh.')
                         : t('admin.store.noMatch', 'No member matches that search.')}
@@ -380,56 +374,43 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
               )}
             </div>
 
-            {/* Product Selection */}
-            <div>
-              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2">{t('admin.store.product', 'Product')}</label>
+            {/* Product */}
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontFamily: FK.body, fontSize: 12.5, fontWeight: 700, color: TK.textSub, marginBottom: 9 }}>{t('admin.store.product', 'Product')}</div>
               {products.length === 0 ? (
-                <p className="text-[13px] text-[#6B7280]">{t('admin.store.noActiveProducts', 'No active products. Create products in the Products tab first.')}</p>
+                <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, margin: 0 }}>{t('admin.store.noActiveProducts', 'No active products. Create products in the Products tab first.')}</p>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {products.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => setSelectedProduct(p)}
-                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all ${
-                        selectedProduct?.id === p.id
-                          ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30 ring-1 ring-[#D4AF37]/20'
-                          : 'bg-white/[0.03] border border-white/6 hover:border-white/12'
-                      }`}
-                    >
-                      <Package size={18} className="text-[#6B7280]" />
-                      <div className="min-w-0 flex-1">
-                        <p className={`text-[12px] font-medium truncate ${selectedProduct?.id === p.id ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
-                          {p.name}
-                        </p>
-                        <p className="text-[11px] text-[#6B7280]">${parseFloat(p.price).toFixed(2)}</p>
-                      </div>
-                    </button>
-                  ))}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+                  {products.map(p => {
+                    const sel = selectedProduct?.id === p.id;
+                    return (
+                      <button key={p.id} type="button" onClick={() => setSelectedProduct(p)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', background: sel ? TK.accentWash : TK.surface2, border: `1.5px solid ${sel ? TK.accent : TK.borderSolid}` }}>
+                        <IconChip ch={ICON.box} tone={sel ? 'accent' : 'neutral'} size={36} r={10} strokeW={1.9} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                          <div style={{ fontFamily: FK.display, fontSize: 15, fontWeight: 800, color: sel ? TK.accent : TK.textSub, marginTop: 2 }}>${parseFloat(p.price).toFixed(2)}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
             {/* Quantity */}
             {selectedProduct && (
-              <div>
-                <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2">{t('admin.store.quantity', 'Quantity')}</label>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                    aria-label={t('admin.store.decreaseQuantity', 'Decrease quantity')}
-                    className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/6 flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/12 transition-colors"
-                  >
-                    <Minus size={16} />
+              <div style={{ marginTop: 18 }}>
+                <div style={{ fontFamily: FK.body, fontSize: 12.5, fontWeight: 700, color: TK.textSub, marginBottom: 9 }}>{t('admin.store.quantity', 'Quantity')}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button type="button" onClick={() => setQuantity(q => Math.max(1, q - 1))} aria-label={t('admin.store.decreaseQuantity', 'Decrease quantity')}
+                    style={{ width: 40, height: 40, borderRadius: 11, display: 'grid', placeItems: 'center', cursor: 'pointer', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                    <Ico ch={ICON.minus} size={16} color={TK.textSub} stroke={2.2} />
                   </button>
-                  <span className="text-[20px] font-bold text-[#E5E7EB] w-12 text-center tabular-nums">{quantity}</span>
-                  <button
-                    onClick={() => setQuantity(q => Math.min(1000, q + 1))}
-                    disabled={quantity >= 1000}
-                    aria-label={t('admin.store.increaseQuantity', 'Increase quantity')}
-                    className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/6 flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/12 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                  >
-                    <Plus size={16} />
+                  <span style={{ fontFamily: FK.display, fontSize: 20, fontWeight: 800, color: TK.text, width: 44, textAlign: 'center' }}>{quantity}</span>
+                  <button type="button" onClick={() => setQuantity(q => Math.min(1000, q + 1))} disabled={quantity >= 1000} aria-label={t('admin.store.increaseQuantity', 'Increase quantity')}
+                    style={{ width: 40, height: 40, borderRadius: 11, display: 'grid', placeItems: 'center', cursor: quantity >= 1000 ? 'default' : 'pointer', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, opacity: quantity >= 1000 ? 0.4 : 1 }}>
+                    <Ico ch={ICON.plus} size={16} color={TK.textSub} stroke={2.2} />
                   </button>
                 </div>
               </div>
@@ -437,167 +418,126 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
 
             {/* Summary */}
             {selectedProduct && selectedMember && (
-              <div className="bg-white/[0.02] border border-white/6 rounded-xl p-4 space-y-2">
-                <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wide">{t('admin.store.summary', 'Purchase Summary')}</p>
-                <div className="flex justify-between text-[13px]">
-                  <span className="text-[#9CA3AF]">{t('admin.store.totalPrice', 'Total Price')}</span>
-                  <span className="text-[#E5E7EB] font-semibold">${totalPrice}</span>
+              <div style={{ marginTop: 18, borderRadius: 12, background: TK.surface2, border: `1px solid ${TK.borderSolid}`, padding: '14px 16px' }}>
+                <p style={{ margin: '0 0 8px', ...eyebrow, fontSize: 11 }}>{t('admin.store.summary', 'Purchase Summary')}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: FK.body, fontSize: 13.5, marginBottom: 6 }}>
+                  <span style={{ color: TK.textMute }}>{t('admin.store.totalPrice', 'Total Price')}</span>
+                  <span style={{ color: TK.text, fontWeight: 700 }}>${totalPrice}</span>
                 </div>
-                <div className="flex justify-between text-[13px]">
-                  <span className="text-[#9CA3AF]">{t('admin.store.pointsEarned', 'Points Earned')}</span>
-                  <span className="text-[#D4AF37] font-semibold flex items-center gap-1">
-                    <Star size={12} /> +{totalPoints}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: FK.body, fontSize: 13.5 }}>
+                  <span style={{ color: TK.textMute }}>{t('admin.store.pointsEarned', 'Points Earned')}</span>
+                  <span style={{ color: TK.accent, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <Ico ch={ICON.star} size={13} color={TK.accent} stroke={2} /> +{totalPoints}
                   </span>
                 </div>
                 {selectedProduct.punch_card_enabled && (
-                  <div className="flex justify-between text-[13px] items-center">
-                    <span className="text-[#9CA3AF]">{t('admin.store.punchCard', 'Punch Card')}</span>
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-0.5">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontFamily: FK.body, fontSize: 13 }}>
+                    <span style={{ color: TK.textMute }}>{t('admin.store.punchCard', 'Punch Card')}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 3 }}>
                         {Array.from({ length: selectedProduct.punch_card_target }).map((_, i) => (
-                          <div
-                            key={i}
-                            className={`w-2.5 h-2.5 rounded-full ${
-                              i < ((punchCount % selectedProduct.punch_card_target) + quantity)
-                                ? 'bg-[#D4AF37]'
-                                : 'bg-white/10'
-                            }`}
-                          />
+                          <span key={i} style={{ width: 10, height: 10, borderRadius: 99, background: i < ((punchCount % selectedProduct.punch_card_target) + quantity) ? TK.accent : TK.surface3 }} />
                         ))}
                       </div>
-                      <span className="text-[11px] text-[#6B7280]">
+                      <span style={{ fontFamily: FK.mono, fontSize: 11, color: TK.textMute }}>
                         {Math.min((punchCount % selectedProduct.punch_card_target) + quantity, selectedProduct.punch_card_target)}/{selectedProduct.punch_card_target}
                       </span>
                     </div>
                   </div>
                 )}
-                {selectedProduct.punch_card_enabled &&
-                  (punchCount % selectedProduct.punch_card_target) + quantity >= selectedProduct.punch_card_target && (
-                  <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2 mt-1">
-                    <Gift size={16} className="text-emerald-400 flex-shrink-0" />
-                    <p className="text-[12px] text-emerald-400 font-medium">{t('admin.store.freeItemWillBeEarned', 'Free item will be earned with this purchase!')}</p>
+                {selectedProduct.punch_card_enabled && (punchCount % selectedProduct.punch_card_target) + quantity >= selectedProduct.punch_card_target && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '9px 12px', borderRadius: 11, background: 'var(--color-success-soft)', border: '1px solid color-mix(in srgb, var(--color-success) 32%, transparent)' }}>
+                    <Ico ch={ICON.gift} size={16} color="var(--color-success)" stroke={2} />
+                    <span style={{ fontFamily: FK.body, fontSize: 12.5, fontWeight: 600, color: 'var(--color-success-ink, var(--color-success))' }}>{t('admin.store.freeItemWillBeEarned', 'Free item will be earned with this purchase!')}</span>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Record Button */}
-            <button
-              onClick={() => recordMutation.mutate()}
-              disabled={!selectedMember || !selectedProduct || recordMutation.isPending}
-              className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#C5A028] transition-colors"
-            >
+            {/* Record */}
+            <button type="button" onClick={() => recordMutation.mutate()} disabled={!selectedMember || !selectedProduct || recordMutation.isPending}
+              style={{ width: '100%', marginTop: 20, padding: '14px 0', borderRadius: 13, cursor: (!selectedMember || !selectedProduct) ? 'default' : 'pointer', border: 'none', background: TK.accent, color: '#fff', fontFamily: FK.body, fontSize: 15, fontWeight: 700, boxShadow: '0 4px 14px color-mix(in srgb, var(--color-accent) 35%, transparent)', opacity: (!selectedMember || !selectedProduct || recordMutation.isPending) ? 0.45 : 1 }}>
               {recordMutation.isPending ? t('admin.store.recording', 'Recording...') : t('admin.store.recordPurchase', 'Record Purchase')}
             </button>
           </div>
-        </AdminCard>
-      </FadeIn>
+        </Card>
+      </div>
 
-      {/* ── Purchase History section ── */}
-      <FadeIn delay={0.1}>
-        <div className="flex items-center gap-2 mb-3">
-          <Clock size={14} className="text-[#D4AF37]" />
-          <SectionLabel>{t('admin.store.purchaseHistory', 'Purchase History')}</SectionLabel>
-        </div>
-
-        {/* Filters */}
-        <AdminCard padding="p-3" className="mb-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-[140px]">
-              <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.store.product', 'Product')}</label>
-              <select
-                value={filterProduct}
-                onChange={e => setFilterProduct(e.target.value)}
-                className="w-full bg-white/[0.04] border border-white/8 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30"
-              >
-                <option value="all">{t('admin.store.allProducts', 'All Products')}</option>
-                {allProducts.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="min-w-[130px]">
-              <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.store.from', 'From')}</label>
-              <input
-                type="date"
-                value={historyDateFrom}
-                onChange={e => setHistoryDateFrom(e.target.value)}
-                className="w-full bg-white/[0.04] border border-white/8 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30"
-              />
-            </div>
-            <div className="min-w-[130px]">
-              <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.store.to', 'To')}</label>
-              <input
-                type="date"
-                value={historyDateTo}
-                onChange={e => setHistoryDateTo(e.target.value)}
-                className="w-full bg-white/[0.04] border border-white/8 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30"
-              />
-            </div>
-            {(filterProduct !== 'all' || historyDateFrom || historyDateTo) && (
-              <button
-                onClick={() => { setFilterProduct('all'); setHistoryDateFrom(''); setHistoryDateTo(''); }}
-                className="px-3 py-2 rounded-xl text-[12px] font-medium text-[#9CA3AF] bg-white/5 hover:bg-white/8 transition-colors"
-              >
+      {/* ── RIGHT · Compras recientes ── */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '0 0 16px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <Ico ch={ICON.clock} size={15} color={TK.textFaint} stroke={2} />
+            <span style={eyebrow}>{t('admin.store.recentPurchases', 'Recent purchases')}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <select value={filterProduct} onChange={e => setFilterProduct(e.target.value)} style={smallSelect}>
+              <option value="all">{t('admin.store.allProducts', 'All Products')}</option>
+              {allProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <input type="date" value={historyDateFrom} onChange={e => setHistoryDateFrom(e.target.value)} aria-label={t('admin.store.from', 'From')} style={smallSelect} />
+            <input type="date" value={historyDateTo} onChange={e => setHistoryDateTo(e.target.value)} aria-label={t('admin.store.to', 'To')} style={smallSelect} />
+            {hasFilters && (
+              <button type="button" onClick={() => { setFilterProduct('all'); setHistoryDateFrom(''); setHistoryDateTo(''); }}
+                style={{ padding: '8px 12px', borderRadius: 10, cursor: 'pointer', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.body, fontSize: 12.5, fontWeight: 600, color: TK.textSub }}>
                 {t('admin.store.clear', 'Clear')}
               </button>
             )}
           </div>
-        </AdminCard>
+        </div>
 
-        {/* Purchase List */}
         {historyLoading ? (
-          <div className="space-y-2">
-            {[0, 1, 2, 3].map(i => <CardSkeleton key={i} h="h-[60px]" />)}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[0, 1, 2, 3].map(i => <CardSkeleton key={i} h="h-[56px]" />)}
           </div>
         ) : purchaseHistory.length === 0 ? (
-          <AdminCard>
-            <div className="text-center py-12">
-              <ShoppingBag size={28} className="text-[#6B7280]/40 mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.store.noPurchases', 'No purchases found')}</p>
-            </div>
-          </AdminCard>
+          <Card style={{ textAlign: 'center', padding: '48px 0' }}>
+            <Ico ch={ICON.bag} size={28} color={TK.textMute} stroke={1.6} style={{ margin: '0 auto 8px' }} />
+            <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, margin: 0 }}>{t('admin.store.noPurchases', 'No purchases found')}</p>
+          </Card>
         ) : (
-          <div className="space-y-2">
-            {purchaseHistory.map((p, idx) => (
-              <FadeIn key={p.id} delay={idx * 30}>
-                <AdminCard padding="p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/6 flex items-center justify-center flex-shrink-0">
-                      <Package size={18} className="text-[#6B7280]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-[13px] font-medium text-[#E5E7EB] truncate">
-                          {p.profiles?.full_name ?? t('admin.store.unknown', 'Unknown')}
-                        </p>
-                        <span className="text-[11px] text-[#6B7280]">{t('admin.store.bought', 'bought')}</span>
-                        <p className="text-[13px] font-medium text-[#E5E7EB] truncate">
-                          {p.quantity > 1 ? `${p.quantity}x ` : ''}{p.gym_products?.name ?? t('admin.store.unknown', 'Unknown')}
-                        </p>
+          <Card style={{ overflow: 'hidden' }}>
+            {historyGroups.map((g, gi) => (
+              <div key={gi}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', background: TK.surface2, borderTop: gi > 0 ? `1px solid ${TK.divider}` : 'none' }}>
+                  <Ico ch={ICON.cal} size={13} color={TK.textMute} stroke={2} />
+                  <span style={{ fontFamily: FK.mono, fontSize: 11.5, fontWeight: 700, letterSpacing: 0.4, color: TK.textMute }}>{g.label}</span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontFamily: FK.body, fontSize: 11.5, fontWeight: 600, color: TK.textFaint }}>
+                    {g.items.length === 1 ? t('admin.store.onePurchase', '1 purchase') : t('admin.store.manyPurchases', '{{count}} purchases', { count: g.items.length })}
+                  </span>
+                </div>
+                {g.items.map(p => (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderTop: `1px solid ${TK.divider}` }}>
+                    <Avatar name={p.profiles?.full_name} size={30} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: FK.body, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <b style={{ fontWeight: 700, color: TK.text }}>{p.profiles?.full_name ?? t('admin.store.unknown', 'Unknown')}</b>
+                        <span style={{ color: TK.textMute }}> · </span>
+                        <span style={{ color: TK.textSub }}>{p.quantity > 1 ? `${p.quantity}× ` : ''}{p.gym_products?.name ?? t('admin.store.unknown', 'Unknown')}</span>
                         {p.is_free_reward && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-emerald-400 bg-emerald-500/10 flex items-center gap-0.5">
-                            <Gift size={10} /> {t('admin.store.freeReward', 'FREE')}
+                          <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: 'var(--color-success-soft)', border: '1px solid color-mix(in srgb, var(--color-success) 32%, transparent)', fontFamily: FK.body, fontSize: 10, fontWeight: 800, color: 'var(--color-success-ink, var(--color-success))', verticalAlign: 'middle' }}>
+                            <Ico ch={ICON.gift} size={10} color="var(--color-success)" stroke={2} />{t('admin.store.freeReward', 'FREE')}
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 mt-0.5 text-[11px] text-[#6B7280]">
-                        <span>${parseFloat(p.total_price || 0).toFixed(2)}</span>
-                        {p.points_earned > 0 && (
-                          <span className="text-[#D4AF37] flex items-center gap-0.5">
-                            <Star size={10} /> +{p.points_earned}
-                          </span>
-                        )}
-                        <span>{format(new Date(p.created_at), 'MMM d, h:mm a', dateFnsLocale)}</span>
-                      </div>
+                      <span style={{ fontFamily: FK.mono, fontSize: 11.5, color: TK.textFaint }}>{format(new Date(p.created_at), 'h:mm a', dateFnsLocale)}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, whiteSpace: 'nowrap' }}>
+                      <span style={{ fontFamily: FK.display, fontSize: 15, fontWeight: 800, color: TK.text }}>${parseFloat(p.total_price || 0).toFixed(2)}</span>
+                      {p.points_earned > 0 && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 999, background: TK.accentSoft, border: `1px solid ${TK.accentLine}`, fontFamily: FK.mono, fontSize: 11, fontWeight: 700, color: TK.accentInk }}>
+                          <Ico ch={ICON.star} size={10} color={TK.accent} stroke={2} />+{p.points_earned}
+                        </span>
+                      )}
                     </div>
                   </div>
-                </AdminCard>
-              </FadeIn>
+                ))}
+              </div>
             ))}
-          </div>
+          </Card>
         )}
-      </FadeIn>
+      </div>
     </div>
   );
 }

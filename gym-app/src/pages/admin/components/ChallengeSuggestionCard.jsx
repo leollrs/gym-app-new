@@ -1,23 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Lightbulb, Sparkles, Dumbbell, Zap, Star, Users, Target, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { adminKeys } from '../../../lib/adminQueryKeys';
-import { AdminCard } from '../../../components/admin';
 import { useState, useMemo } from 'react';
 import { getISOWeek } from 'date-fns';
+import { Card, IconChip, Pill, OutPill, Confidence, Label, Ico, ICON, TYPE_ICON, PrimaryBtn, TK, FK } from './retosKit';
 
 const DISMISS_KEY = (gymId) => `suggestion_dismissed_${gymId}`;
 const norm = (s) => (s || '').trim().toLowerCase();
-
-const TYPE_ICONS = {
-  consistency: Dumbbell,
-  volume: Zap,
-  pr_count: Star,
-  specific_lift: Dumbbell,
-  team: Users,
-  milestone: Target,
-};
 
 export default function ChallengeSuggestionCard({ gymId, onCreateFromSuggestion }) {
   const { t, i18n } = useTranslation('pages');
@@ -35,16 +25,25 @@ export default function ChallengeSuggestionCard({ gymId, onCreateFromSuggestion 
     gcTime: 24 * 60 * 60 * 1000,
   });
 
-  // Existing challenges — used to skip suggestions whose name already exists for this gym.
-  const { data: existingNames = [] } = useQuery({
+  // Existing challenges — used to detect whether this week's suggestion has
+  // already been created so the card LOCKS (shows "Created") instead of
+  // allowing duplicates. Keyed under adminKeys.challenges so the parent's
+  // post-create invalidation refetches it by prefix.
+  const { data: existingRows = [] } = useQuery({
     queryKey: ['admin', 'challenges', gymId, 'names-only'],
     queryFn: async () => {
-      const { data } = await supabase.from('challenges').select('name').eq('gym_id', gymId);
-      return (data || []).map(c => norm(c.name));
+      const { data } = await supabase
+        .from('challenges')
+        .select('name, created_at')
+        .eq('gym_id', gymId)
+        .order('created_at', { ascending: false });
+      return data || [];
     },
     enabled: !!gymId,
     staleTime: 5 * 60 * 1000,
   });
+
+  const [creating, setCreating] = useState(false);
 
   // Locally dismissed suggestions (admin clicked the dismiss button).
   const [dismissed, setDismissed] = useState(() => {
@@ -63,10 +62,25 @@ export default function ChallengeSuggestionCard({ gymId, onCreateFromSuggestion 
     return norm(suggestion.suggested_name_en || suggestion.suggested_name_es);
   }, [suggestion]);
 
-  const alreadyExists = suggestionKey && existingNames.includes(suggestionKey);
+  // Match against BOTH localized names: the challenge is stored with the ES name
+  // when the app is in Spanish, but the suggestion's dedup key is EN-stable —
+  // checking only one let Spanish gyms create endless duplicates.
+  const existingMatch = useMemo(() => {
+    if (!suggestion) return null;
+    const en = norm(suggestion.suggested_name_en);
+    const es = norm(suggestion.suggested_name_es);
+    return existingRows.find(r => {
+      const n = norm(r.name);
+      return n && (n === en || n === es);
+    }) || null;
+  }, [existingRows, suggestion]);
+
+  const alreadyExists = !!existingMatch;
   const isDismissed = suggestionKey && dismissed.includes(suggestionKey);
 
-  if (isLoading || !suggestion || alreadyExists || isDismissed) return null;
+  // Note: alreadyExists no longer hides the card — it flips it to a locked
+  // "Created" state below.
+  if (isLoading || !suggestion || isDismissed) return null;
 
   const handleDismiss = () => {
     if (!suggestionKey) return;
@@ -77,80 +91,83 @@ export default function ChallengeSuggestionCard({ gymId, onCreateFromSuggestion 
 
   const name = isEs ? suggestion.suggested_name_es : suggestion.suggested_name_en;
   const reasoning = isEs ? suggestion.reasoning_es : suggestion.reasoning_en;
-  const description = isEs ? suggestion.description_es : suggestion.description_en;
-  const TypeIcon = TYPE_ICONS[suggestion.challenge_type] || Dumbbell;
+  const typeLabel = t(`admin.challengeTypes.${suggestion.challenge_type}`, suggestion.challenge_type);
+  const typeIcon = TYPE_ICON[suggestion.challenge_type] || ICON.bolt;
   const confidencePct = Math.round((suggestion.confidence || 0.5) * 100);
+  const lang = isEs ? 'es' : 'en';
+  const createdDate = existingMatch?.created_at
+    ? new Date(existingMatch.created_at).toLocaleDateString(lang, { day: 'numeric', month: 'short' })
+    : '';
 
-  const handleCreate = () => {
-    // Mark as seen
+  const handleCreate = async () => {
+    if (creating || alreadyExists) return; // guard against double-create
+    setCreating(true);
     setSeen(true);
     try { localStorage.setItem(storageKey, String(currentWeek)); } catch {}
-    onCreateFromSuggestion(suggestion);
+    try {
+      await onCreateFromSuggestion(suggestion);
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
-    <AdminCard className="mb-5 border-[#D4AF37]/20 bg-gradient-to-r from-[#D4AF37]/[0.04] to-transparent relative">
-      <button
-        type="button"
-        onClick={handleDismiss}
-        aria-label={t('admin.challenges.suggestion.dismiss', 'Dismiss suggestion')}
-        title={t('admin.challenges.suggestion.dismiss', 'Dismiss suggestion')}
-        className="absolute top-2 right-2 w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
-        style={{ color: 'var(--color-text-muted)' }}
-      >
-        <X size={16} />
-      </button>
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-          <Lightbulb size={20} className="text-[#D4AF37]" />
-        </div>
+    <Card style={{ overflow: 'hidden', marginTop: 22, position: 'relative' }}>
+      {/* faint watermark */}
+      <div style={{ position: 'absolute', top: -30, right: -26, opacity: 0.05, pointerEvents: 'none' }}>
+        <Ico ch={ICON.bolt} size={210} color={TK.accent} stroke={1.2} />
+      </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <p className="text-[12px] font-semibold text-[#D4AF37] uppercase tracking-wider">
-              {t('admin.challenges.suggestion.title', 'Suggested This Week')}
-            </p>
-            {!seen && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#D4AF37] text-black text-[9px] font-bold uppercase">
-                <Sparkles size={10} />
-                {t('admin.challenges.suggestion.new', 'NEW')}
+      {!alreadyExists && (
+        <button
+          type="button"
+          onClick={handleDismiss}
+          aria-label={t('admin.challenges.suggestion.dismiss', 'Dismiss suggestion')}
+          title={t('admin.challenges.suggestion.dismiss', 'Dismiss suggestion')}
+          style={{ position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'transparent', border: `1px solid ${TK.borderSolid}`, zIndex: 2 }}
+        >
+          <Ico ch={ICON.x} size={15} color={TK.textMute} stroke={2.2} />
+        </button>
+      )}
+
+      <div style={{ display: 'flex', gap: 18, padding: '22px 24px', position: 'relative' }}>
+        <IconChip ch={ICON.bulb} tone="accent" size={48} r={15} strokeW={2} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Label style={{ color: TK.accent, letterSpacing: 1.4 }}>{t('admin.challenges.suggestion.title', 'Suggested This Week')}</Label>
+            {!seen && !alreadyExists && <Pill tone="accent" icon={ICON.sparkle} solid>{t('admin.challenges.suggestion.new', 'NEW')}</Pill>}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginTop: 10, flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <Ico ch={typeIcon} size={18} color={TK.accent} stroke={2.2} />
+              <span style={{ fontFamily: FK.display, fontSize: 21, fontWeight: 800, letterSpacing: -0.5, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+            </span>
+            <Pill tone="neutral" icon={ICON.target}>{typeLabel}</Pill>
+          </div>
+
+          <p style={{ margin: '11px 0 0', fontFamily: FK.body, fontSize: 14.5, color: TK.textSub, lineHeight: 1.5, maxWidth: 560 }}>{reasoning}</p>
+
+          <div style={{ marginTop: 18, maxWidth: 440 }}>
+            <Confidence pct={confidencePct} label={t('admin.challenges.suggestion.confidence', 'Confidence')} />
+          </div>
+
+          {alreadyExists ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 18, flexWrap: 'wrap' }}>
+              <OutPill tone="good" dot>{t('admin.challenges.suggestion.created', 'Created')}{createdDate ? ` · ${createdDate}` : ''}</OutPill>
+              <span style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute }}>
+                {t('admin.challenges.suggestion.createdHint', "You've already created this week's suggestion — a fresh one comes next week.")}
               </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 mb-2">
-            <TypeIcon size={15} className="text-[#E5E7EB] flex-shrink-0" />
-            <p className="text-[16px] font-bold text-[#E5E7EB] truncate">{name}</p>
-            <span className="text-[10px] font-semibold text-[#9CA3AF] bg-white/5 px-2 py-0.5 rounded-full flex-shrink-0">
-              {t(`admin.challengeTypes.${suggestion.challenge_type}`, suggestion.challenge_type)}
-            </span>
-          </div>
-
-          <p className="text-[13px] text-[#9CA3AF] leading-relaxed mb-3">{reasoning}</p>
-
-          {/* Confidence bar */}
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wider">
-              {t('admin.challenges.suggestion.confidence', 'Confidence')}
-            </span>
-            <div className="flex-1 h-1.5 bg-white/5 rounded-full max-w-[120px]">
-              <div
-                className="h-full rounded-full bg-[#D4AF37] transition-all"
-                style={{ width: `${confidencePct}%` }}
-              />
             </div>
-            <span className="text-[10px] font-bold text-[#D4AF37] tabular-nums">{confidencePct}%</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleCreate}
-            className="px-5 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:bg-[#E6C766] active:scale-[0.97] transition-all"
-          >
-            {t('admin.challenges.suggestion.createButton', 'Create This Challenge')}
-          </button>
+          ) : (
+            <div style={{ marginTop: 18 }}>
+              <PrimaryBtn icon={ICON.sparkle} onClick={handleCreate} disabled={creating}>
+                {creating ? t('admin.challenges.creating', 'Creating...') : t('admin.challenges.suggestion.createButton', 'Create This Challenge')}
+              </PrimaryBtn>
+            </div>
+          )}
         </div>
       </div>
-    </AdminCard>
+    </Card>
   );
 }

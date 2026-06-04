@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from 'recharts';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { selectAllRows } from '../../../../lib/churn/batchedSelect.js';
 import { subMonths } from 'date-fns';
-import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { TK, FK, Card, BarChart } from './analyticsKit';
 
 const FILTERS = ['all', 'active', 'past'];
 
@@ -16,7 +14,6 @@ async function fetchChallengeData(gymId, filter) {
   const now = new Date();
   const from = subMonths(now, 6).toISOString();
 
-  // Use selectAllRows so gyms with >1 000 members get an accurate totalMembers count.
   const { data: allMembers, error: chalMemError } = await selectAllRows((rangeFrom, rangeTo) =>
     supabase
       .from('profiles')
@@ -40,15 +37,12 @@ async function fetchChallengeData(gymId, filter) {
   } else if (filter === 'past') {
     query = query.lt('end_date', now.toISOString());
   } else {
-    // "all" — last 6 months
     query = query.gte('start_date', from);
   }
-
   query = query.order('start_date', { ascending: false }).limit(8);
 
   const { data: challenges, error: chalError } = await query;
   if (chalError) throw chalError;
-
   if (!challenges || challenges.length === 0) return [];
 
   const { data: participants, error: partError } = await supabase
@@ -58,18 +52,16 @@ async function fetchChallengeData(gymId, filter) {
   if (partError) throw partError;
 
   const countMap = {};
-  (participants || []).forEach(p => {
-    countMap[p.challenge_id] = (countMap[p.challenge_id] || 0) + 1;
-  });
+  (participants || []).forEach(p => { countMap[p.challenge_id] = (countMap[p.challenge_id] || 0) + 1; });
 
   const data = challenges.map(c => ({
-    name:     c.name.length > 18 ? c.name.slice(0, 16) + '\u2026' : c.name,
+    name: c.name.length > 18 ? c.name.slice(0, 16) + '…' : c.name,
     fullName: c.name,
-    count:    countMap[c.id] || 0,
-    pct:      totalMembers > 0 ? Math.round(((countMap[c.id] || 0) / totalMembers) * 100) : 0,
+    count: countMap[c.id] || 0,
+    pct: totalMembers > 0 ? Math.round(((countMap[c.id] || 0) / totalMembers) * 100) : 0,
   }));
 
-  return data.reverse(); // chronological
+  return data.reverse();
 }
 
 export default function ChallengeStats({ gymId }) {
@@ -86,104 +78,48 @@ export default function ChallengeStats({ gymId }) {
   if (isError) return <ErrorCard message={t('admin.analytics.challengeError', 'Failed to load challenge data')} onRetry={refetch} />;
 
   const filterLabels = {
-    all:    t('admin.analytics.filterAll', 'All'),
+    all: t('admin.analytics.filterAll', 'All'),
     active: t('admin.analytics.filterActive', 'Active'),
-    past:   t('admin.analytics.filterPast', 'Past'),
+    past: t('admin.analytics.filterPast', 'Past'),
   };
 
-  // Headline: average participation rate
-  const avgPct = challengeData.length > 0
-    ? Math.round(challengeData.reduce((sum, d) => sum + d.pct, 0) / challengeData.length)
-    : 0;
+  const avgPct = challengeData.length > 0 ? Math.round(challengeData.reduce((sum, d) => sum + d.pct, 0) / challengeData.length) : 0;
   const totalParticipants = challengeData.reduce((sum, d) => sum + d.count, 0);
+  const bars = challengeData.map(d => ({ label: d.name, value: d.pct, label2: `${d.pct}%` }));
 
   return (
-    <AdminCard hover className="hover:border-white/10 transition-colors duration-300 min-h-[320px] flex flex-col">
-      <div className="flex items-center justify-between gap-2 mb-2 shrink-0">
-        <div className="min-w-0">
-          <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight truncate">{t('admin.analytics.challengeTitle', 'Challenge Participation')}</p>
-        </div>
-        <div className="flex gap-1 shrink-0">
-          {FILTERS.map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
-                filter === f
-                  ? 'bg-[var(--color-accent)] text-white'
-                  : 'bg-white/6 text-[var(--color-text-muted)] hover:bg-white/10'
-              }`}
-            >
-              {filterLabels[f]}
-            </button>
-          ))}
+    <Card style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', minHeight: 360 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontFamily: FK.display, fontSize: 18, fontWeight: 800, letterSpacing: -0.4, color: TK.text }}>{t('admin.analytics.challengeTitle', 'Challenge Participation')}</div>
+        <div style={{ display: 'inline-flex', gap: 4, background: TK.surface3, padding: 4, borderRadius: 999, border: `1px solid ${TK.borderSolid}` }}>
+          {FILTERS.map(f => {
+            const on = filter === f;
+            return (
+              <button key={f} type="button" onClick={() => setFilter(f)}
+                style={{ padding: '6px 13px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: FK.body, fontSize: 12, fontWeight: on ? 700 : 600, color: on ? '#fff' : TK.textSub, background: on ? TK.accent : 'transparent' }}>
+                {filterLabels[f]}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Headline metric */}
-      <div className="flex items-baseline gap-3 mb-4 shrink-0">
-        <span className="text-[28px] font-bold text-[var(--color-accent)] leading-none tracking-tight">{avgPct}%</span>
-        <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.challengeAvg', { count: totalParticipants, defaultValue: 'avg participation — {{count}} total joins' })}</span>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 11, marginTop: 14, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: FK.display, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, color: TK.accent }}>{avgPct}%</span>
+        <span style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute }}>{t('admin.analytics.challengeAvg', { count: totalParticipants, defaultValue: 'avg participation — {{count}} total joins' })}</span>
       </div>
 
       {challengeData.length === 0 ? (
-        <div className="flex flex-col items-center justify-center flex-1 text-center">
-          <p className="text-[13px] text-[var(--color-text-muted)]">{t('admin.analytics.challengeEmpty', 'No challenges in the last 6 months')}</p>
-          <p className="text-[10px] text-[var(--color-text-subtle)] mt-1">{t('admin.analytics.challengeEmptyHint', 'Create a challenge to see data here')}</p>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '24px 0' }}>
+          <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, margin: 0 }}>{t('admin.analytics.challengeEmpty', 'No challenges in the last 6 months')}</p>
+          <p style={{ fontFamily: FK.body, fontSize: 11, color: TK.textFaint, marginTop: 4 }}>{t('admin.analytics.challengeEmptyHint', 'Create a challenge to see data here')}</p>
         </div>
       ) : (
         <>
-          <div className="flex-1 min-h-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={challengeData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }} layout="horizontal">
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, rgba(255,255,255,0.04))" vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 9, fill: 'var(--color-text-muted)', fontWeight: 500 }}
-                  tickLine={false}
-                  axisLine={false}
-                  dy={6}
-                  interval={0}
-                  angle={-20}
-                  textAnchor="end"
-                  height={40}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: 'var(--color-text-muted)', fontWeight: 500 }}
-                  tickLine={false}
-                  axisLine={false}
-                  domain={[0, 100]}
-                  tickFormatter={v => `${v}%`}
-                  width={36}
-                />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0].payload;
-                    return (
-                      <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle,rgba(255,255,255,0.08))] rounded-2xl px-4 py-3 shadow-2xl shadow-black/50 backdrop-blur-sm text-[12px]">
-                        <p className="text-[var(--color-text-muted)] text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-70">{d.fullName}</p>
-                        <p className="font-semibold text-[var(--color-accent)]">{d.pct}% ({t('admin.analytics.challengeTooltipMembers', { count: d.count, defaultValue: '{{count}} members' })})</p>
-                      </div>
-                    );
-                  }}
-                  cursor={{ fill: 'var(--color-accent-glow)', radius: 4 }}
-                />
-                <Bar
-                  dataKey="pct"
-                  fill="var(--color-accent)"
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={32}
-                  animationDuration={1000}
-                  animationEasing="ease-out"
-                  fillOpacity={0.85}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="text-[10px] text-[var(--color-text-subtle)] mt-3 shrink-0">{t('admin.analytics.challengeFooter', '% of total members who joined each challenge')}</p>
+          <BarChart data={bars} height={250} color={TK.accent} />
+          <p style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textFaint, marginTop: 10 }}>{t('admin.analytics.challengeFooter', '% of total members who joined each challenge')}</p>
         </>
       )}
-    </AdminCard>
+    </Card>
   );
 }

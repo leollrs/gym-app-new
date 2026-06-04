@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Settings2, Save } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
-import { AdminCard, FadeIn } from '../../../components/admin';
+import { FadeIn } from '../../../components/admin';
 import RewardEditor from './RewardEditor';
+import { TK, FK, Ico, ICON, Card, IconChip, PrimaryBtn } from './retosKit';
 
 const DEFAULT_REFERRAL_CONFIG = {
   enabled: true,
@@ -28,11 +28,41 @@ function normalizeRewardShape(r) {
   return { type: 'points', value: Number(v) || 0 };
 }
 
+const fieldLabel = {
+  display: 'block', fontFamily: FK.body, fontSize: 11, fontWeight: 800,
+  letterSpacing: 1.1, textTransform: 'uppercase', color: TK.textMute, marginBottom: 9,
+};
+
+// enabled/disabled switch pill (mock header control) — functional toggle
+function TogglePill({ on, onClick, onLabel, offLabel }) {
+  return (
+    <button type="button" onClick={onClick} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px 6px 8px', borderRadius: 999, cursor: 'pointer',
+      background: on ? 'var(--color-success-soft)' : TK.surface3,
+      border: `1px solid ${on ? 'color-mix(in srgb, var(--color-success) 32%, transparent)' : TK.borderSolid}`,
+    }}>
+      <span style={{ width: 34, height: 19, borderRadius: 99, background: on ? 'var(--color-success)' : TK.textFaint, position: 'relative', transition: 'background .15s', flexShrink: 0 }}>
+        <span style={{ position: 'absolute', top: 2, left: on ? 17 : 2, width: 15, height: 15, borderRadius: 99, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.2)', transition: 'left .15s' }} />
+      </span>
+      <span style={{ fontFamily: FK.body, fontSize: 12.5, fontWeight: 800, color: on ? 'var(--color-success-ink, var(--color-success))' : TK.textMute }}>{on ? onLabel : offLabel}</span>
+    </button>
+  );
+}
+
+// colored-dot section header above each reward editor
+function RewardColHeader({ accent, children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
+      <span style={{ width: 8, height: 8, borderRadius: 99, background: accent ? TK.accent : 'var(--color-info)' }} />
+      <span style={{ fontFamily: FK.body, fontSize: 12, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: TK.textSub }}>{children}</span>
+    </div>
+  );
+}
+
 /**
  * Card editing the gym's referral program config (enabled flag, approval mode,
  * monthly cap, referrer/referred rewards). Persists to `gyms.referral_config`
- * as a JSONB column. Originally lived in AdminSettings; moved here so the
- * Referrals page is the single home for everything referral-related.
+ * as a JSONB column. Restyled onto the Referidos design system.
  */
 export default function ReferralProgramConfig({ gymId, config, t, isEs }) {
   const { showToast } = useToast();
@@ -132,79 +162,80 @@ export default function ReferralProgramConfig({ gymId, config, t, isEs }) {
 
   return (
     <FadeIn>
-      <AdminCard hover className="mt-6 p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2">
-            <Settings2 size={16} style={{ color: 'var(--color-accent)' }} />
-            <h3 className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+      <Card style={{ overflow: 'hidden' }}>
+        {/* header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '20px 24px', borderBottom: `1px solid ${TK.divider}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <IconChip ch={ICON.sliders} tone="accent" size={38} r={11} strokeW={2} />
+            <div style={{ fontFamily: FK.display, fontSize: 19, fontWeight: 800, letterSpacing: -0.4, color: TK.text }}>
               {t('admin.referral.sectionTitle', 'Referral program')}
-            </h3>
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-[12px] font-semibold cursor-pointer" style={{ color: draft.enabled ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
-            <input
-              type="checkbox" className="sr-only"
-              checked={!!draft.enabled}
-              onChange={e => set('enabled', e.target.checked)}
-            />
-            <span>{draft.enabled ? t('admin.settings.enabled', 'Enabled') : t('admin.settings.disabled', 'Disabled')}</span>
-          </label>
+          <TogglePill
+            on={!!draft.enabled}
+            onClick={() => set('enabled', !draft.enabled)}
+            onLabel={t('admin.settings.enabled', 'Enabled')}
+            offLabel={t('admin.settings.disabled', 'Disabled')}
+          />
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-3">
-          <RewardEditor
-            label={t('admin.referral.referrerReward', 'Referrer reward')}
-            reward={draft.referrer_reward}
-            onChange={(r) => setReward('referrer_reward', r)}
-            rewards={rewards}
-            rewardLabel={rewardLabel}
-            t={t}
-          />
-          <RewardEditor
-            label={t('admin.referral.referredReward', 'Referred friend reward')}
-            reward={draft.referred_reward}
-            onChange={(r) => setReward('referred_reward', r)}
-            rewards={rewards}
-            rewardLabel={rewardLabel}
-            t={t}
-          />
-          <div>
-            <label className="block text-[11px] uppercase mb-1.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.12em', fontWeight: 800 }}>
-              {t('admin.referral.maxPerMonth', 'Max referrals per member per month')}
-            </label>
-            <input
-              type="number" min="0"
-              value={draft.max_referrals_per_month ?? ''}
-              onChange={e => set('max_referrals_per_month', e.target.value || null)}
-              placeholder={t('admin.referral.unlimited', 'Unlimited')}
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none"
-              style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-            />
+        <div style={{ padding: '24px 24px 26px' }}>
+          {/* referrer / friend rewards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-7 md:gap-8">
+            <div>
+              <RewardColHeader accent>{t('admin.referral.referrerReward', 'Referrer reward')}</RewardColHeader>
+              <RewardEditor
+                reward={draft.referrer_reward}
+                onChange={(r) => setReward('referrer_reward', r)}
+                rewards={rewards}
+                rewardLabel={rewardLabel}
+                t={t}
+              />
+            </div>
+            <div>
+              <RewardColHeader>{t('admin.referral.referredReward', 'Referred friend reward')}</RewardColHeader>
+              <RewardEditor
+                reward={draft.referred_reward}
+                onChange={(r) => setReward('referred_reward', r)}
+                rewards={rewards}
+                rewardLabel={rewardLabel}
+                t={t}
+              />
+            </div>
           </div>
-          <div className="flex items-end">
-            <label className="flex items-center gap-2 text-[12px] font-medium cursor-pointer" style={{ color: 'var(--color-text-primary)' }}>
+
+          {/* monthly cap + approval */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-7 md:gap-8 md:items-end" style={{ marginTop: 22 }}>
+            <div>
+              <span style={fieldLabel}>{t('admin.referral.maxPerMonth', 'Max referrals per member per month')}</span>
+              <input
+                type="number" min="0"
+                value={draft.max_referrals_per_month ?? ''}
+                onChange={e => set('max_referrals_per_month', e.target.value || null)}
+                placeholder={t('admin.referral.unlimited', 'Unlimited')}
+                style={{ width: '100%', padding: '13px 15px', borderRadius: 12, background: TK.surface, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.body, fontSize: 14.5, fontWeight: 600, color: TK.text, outline: 'none' }}
+              />
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 0', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={!!draft.require_admin_approval}
                 onChange={e => set('require_admin_approval', e.target.checked)}
-                className="w-4 h-4 rounded"
+                style={{ width: 22, height: 22, borderRadius: 7, accentColor: 'var(--color-accent)', cursor: 'pointer', flexShrink: 0 }}
               />
-              {t('admin.referral.approvalRequired', 'Require admin approval before reward is granted')}
+              <span style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub }}>
+                {t('admin.referral.approvalRequired', 'Require admin approval before reward is granted')}
+              </span>
             </label>
           </div>
-        </div>
 
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
-          >
-            <Save size={14} />
-            {saving ? t('admin.settings.saving', 'Saving...') : t('admin.settings.save', 'Save')}
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
+            <PrimaryBtn icon={ICON.check} onClick={handleSave} disabled={saving}>
+              {saving ? t('admin.settings.saving', 'Saving...') : t('admin.settings.save', 'Save')}
+            </PrimaryBtn>
+          </div>
         </div>
-      </AdminCard>
+      </Card>
     </FadeIn>
   );
 }

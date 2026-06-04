@@ -21,13 +21,30 @@ import {
   calcDaySeconds,
   fmtTime,
   buildWeeksFromPattern,
+  PROGRAM_TEMPLATES,
 } from './components/programHelpers';
+import { CLASS_COVERS } from './components/CoverPreview';
+import { validateImageFile } from '../../lib/validateImage';
 import TemplatesModal from './components/TemplatesModal';
 import ProgramBuilderModal from './components/ProgramBuilderModal';
 import ProgramSuggestionCard from './components/ProgramSuggestionCard';
 import usePagedVisible from '../../hooks/usePagedVisible';
 import PaginationFooter from '../../components/admin/PaginationFooter';
 
+
+// Extended gym_programs columns (migration 0513). Frontend stays resilient
+// before the migration. Capability is detected from the list query (zero failed
+// writes when we already know the columns are absent) with a write-time retry as
+// a safety net. null = unknown, true = present, false = absent.
+let gymProgramsExtended = null;
+const PROGRAM_EXT_COLS = ['name_es', 'description_es', 'cover_preset', 'image_path'];
+const stripProgramExt = (p) => { const c = { ...p }; PROGRAM_EXT_COLS.forEach(k => delete c[k]); return c; };
+const isSchemaMiss = (err) => !!err && (err.code === 'PGRST204' || /could not find|does not exist|schema cache/i.test(err.message || ''));
+// Map a program category to a sensible cover preset; random otherwise.
+const pickCover = (category) => {
+  const MAP = { hypertrophy: 'strength', strength: 'strength', general: 'functional', sport: 'functional', home: 'functional', advanced: 'strength', express: 'crossfit', cardio: 'cardio' };
+  return MAP[category] || CLASS_COVERS[Math.floor(Math.random() * CLASS_COVERS.length)].key;
+};
 
 // ── Main ──────────────────────────────────────────────────
 export default function AdminPrograms() {
@@ -65,6 +82,8 @@ export default function AdminPrograms() {
         .eq('gym_id', gymId)
         .order('created_at', { ascending: false });
       if (error) throw error;
+      // Detect whether the 0513 columns exist, so writes never send them blindly.
+      if (data && data.length) gymProgramsExtended = ('cover_preset' in data[0]) || ('name_es' in data[0]);
       return data || [];
     },
     enabled: !!gymId,
@@ -111,22 +130,47 @@ export default function AdminPrograms() {
   // ── Mutations ────────────────────────────────────────────
 
   const saveMutation = useMutation({
-    mutationFn: async ({ programId, payload }) => {
-      if (programId) {
-        const { error } = await supabase.from('gym_programs').update(payload).eq('id', programId).eq('gym_id', gymId);
-        if (error) throw error;
-        logAdminAction('update_program', 'program', programId);
-      } else {
-        const { data: inserted, error } = await supabase.from('gym_programs').insert(payload).select('id').single();
-        if (error) throw error;
-        logAdminAction('create_program', 'program', inserted.id, { name: payload.name });
+    mutationFn: async ({ programId, payload, imageFile, imagePath }) => {
+      const wantExt = gymProgramsExtended !== false;
+      const body = { ...payload };
+      if (wantExt) {
+        // Resolve the cover photo (reuses the public, admin-writable class-images bucket).
+        let finalPath = imagePath ?? null;
+        if (imageFile) {
+          const validation = await validateImageFile(imageFile);
+          if (!validation.valid) throw new Error(validation.error);
+          const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[validation.mime] || 'jpg';
+          const path = `${gymId}/programs/${Date.now()}.${ext}`;
+          const { error: upErr } = await supabase.storage.from('class-images').upload(path, imageFile, { cacheControl: '3600', upsert: false });
+          if (upErr) throw upErr;
+          finalPath = path;
+        }
+        body.image_path = finalPath;
       }
+      const run = (b) => programId
+        ? supabase.from('gym_programs').update(b).eq('id', programId).eq('gym_id', gymId)
+        : supabase.from('gym_programs').insert(b).select('id').single();
+      // Send extended columns unless we've detected they're absent; on a schema
+      // miss (unknown case, e.g. brand-new gym), drop them, remember, and retry.
+      let res = await run(wantExt ? body : stripProgramExt(body));
+      if (res.error && wantExt && isSchemaMiss(res.error)) {
+        gymProgramsExtended = false;
+        res = await run(stripProgramExt(body));
+      }
+      if (res.error) throw res.error;
+      if (programId) logAdminAction('update_program', 'program', programId);
+      else logAdminAction('create_program', 'program', res.data.id, { name: payload.name });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.programs(gymId) });
+      queryClient.invalidateQueries({ queryKey: ['program-suggestion', gymId] });
       setShowCreate(false);
       setPrefillProgram(null);
       setEditing(null);
+      showToast(t('admin.programs.saved', { defaultValue: 'Program saved' }), 'success');
+    },
+    onError: (err) => {
+      showToast(err?.message || t('admin.programs.saveFailed', { defaultValue: 'Could not save program' }), 'error');
     },
   });
 
@@ -142,9 +186,20 @@ export default function AdminPrograms() {
     },
   });
 
+  // Quick publish / unpublish toggle from a program row.
+  const togglePublishMutation = useMutation({
+    mutationFn: async ({ id, next }) => {
+      const { error } = await supabase.from('gym_programs').update({ is_published: next }).eq('id', id).eq('gym_id', gymId);
+      if (error) throw error;
+      logAdminAction(next ? 'publish_program' : 'unpublish_program', 'program', id);
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: adminKeys.programs(gymId) }); },
+    onError: (err) => { showToast(err?.message || t('admin.programs.saveFailed', { defaultValue: 'Could not save program' }), 'error'); },
+  });
+
   // ── Handlers ─────────────────────────────────────────────
 
-  const handleSaveProgram = ({ name, description, durationWeeks, weeks }) => {
+  const handleSaveProgram = ({ name, nameEs, description, descriptionEs, durationWeeks, weeks, coverPreset, imageFile, imagePath, isPublished }) => {
     // Validation
     if (!name?.trim()) {
       showToast(t('admin.programs.nameRequired', { defaultValue: 'Program name is required' }), 'error');
@@ -189,25 +244,81 @@ export default function AdminPrograms() {
       gym_id: gymId,
       created_by: user.id,
       name: name.trim(),
+      name_es: nameEs?.trim() || null,
       description,
+      description_es: descriptionEs?.trim() || null,
       duration_weeks: durationWeeks,
       weeks,
-      is_published: true,
+      cover_preset: coverPreset || pickCover(),
+      is_published: isPublished ?? true,
     };
     saveMutation.mutate({
       programId: editing?.id || null,
       payload,
+      imageFile,
+      imagePath,
+    });
+  };
+
+  // "Create This Program" on the monthly suggestion → create it immediately,
+  // using the mapped template's structure but the suggestion's own name/desc.
+  const handleSuggestionCreate = (suggestion) => {
+    const tpl = suggestion?.template && PROGRAM_TEMPLATES.find(p => p.id === suggestion.template);
+    if (!tpl) { setPrefillProgram(null); setShowTemplates(true); return; }
+    const tEn = i18n.getFixedT('en', 'pages');
+    const tEs = i18n.getFixedT('es', 'pages');
+    const nameKey = `admin.programs.suggestion.${suggestion.nameKey}.name`;
+    const descKey = `admin.programs.suggestion.${suggestion.descKey}.desc`;
+    saveMutation.mutate({
+      programId: null,
+      payload: {
+        gym_id: gymId,
+        created_by: user.id,
+        name: tEn(nameKey, suggestion.nameDefault),
+        name_es: tEs(nameKey, suggestion.nameDefault),
+        description: tEn(descKey, suggestion.descDefault),
+        description_es: tEs(descKey, suggestion.descDefault),
+        duration_weeks: tpl.durationWeeks,
+        weeks: buildWeeksFromPattern(tpl.weekPattern, tpl.durationWeeks),
+        cover_preset: pickCover(tpl.category),
+        is_published: true,
+      },
     });
   };
 
   const handleTemplateSelect = (template) => {
-    // Auto-generated programs pass weeks directly; manual templates use weekPattern
-    const builtWeeks = template.weeks || buildWeeksFromPattern(template.weekPattern, template.durationWeeks);
+    // Manual templates carry a `weekPattern` → create the program immediately
+    // (bilingual, EN + ES resolved from the template keys). The admin can edit
+    // it afterward from the list. This is what "Use Template" implies.
+    if (template.weekPattern && !template.weeks) {
+      const tEn = i18n.getFixedT('en', 'pages');
+      const tEs = i18n.getFixedT('es', 'pages');
+      saveMutation.mutate({
+        programId: null,
+        payload: {
+          gym_id: gymId,
+          created_by: user.id,
+          name: tEn(template.nameKey, template.name),
+          name_es: tEs(template.nameKey, template.name),
+          description: tEn(template.descKey, template.description),
+          description_es: tEs(template.descKey, template.description),
+          duration_weeks: template.durationWeeks,
+          weeks: buildWeeksFromPattern(template.weekPattern, template.durationWeeks),
+          cover_preset: pickCover(template.category),
+          is_published: true,
+        },
+      });
+      setShowTemplates(false);
+      return;
+    }
+    // Auto-generated result (carries `weeks`) → open the builder prefilled so
+    // the admin can remove/swap exercises, edit reps/sets, add supersets, etc.
     setPrefillProgram({
       name: template.name,
       description: template.description,
       duration_weeks: template.durationWeeks,
-      weeks: builtWeeks,
+      weeks: template.weeks || buildWeeksFromPattern(template.weekPattern, template.durationWeeks),
+      cover_preset: template.cover_preset || pickCover(template.category),
     });
     setShowTemplates(false);
   };
@@ -280,7 +391,7 @@ export default function AdminPrograms() {
           <button
             onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}
             className="flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-[13px] rounded-xl transition-colors w-full sm:w-auto"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}
+            style={{ background: 'var(--color-accent)', color: '#fff' }}
           >
             <Plus size={15} /> {t('admin.programs.newProgram', 'New Program')}
           </button>
@@ -293,7 +404,7 @@ export default function AdminPrograms() {
         gymId={gymId}
         t={t}
         isEs={isEs}
-        onCreateProgram={() => { setPrefillProgram(null); setShowTemplates(true); }}
+        onCreateProgram={handleSuggestionCreate}
       />
 
       {/* Program Analytics Summary */}
@@ -390,7 +501,7 @@ export default function AdminPrograms() {
             <button
               onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
-              style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}
+              style={{ background: 'var(--color-accent)', color: '#fff' }}
             >
               <Plus size={14} /> {t('admin.programs.createFirst', 'Create your first program')}
             </button>
@@ -442,9 +553,13 @@ export default function AdminPrograms() {
                         </p>
                       </div>
 
-                      <span className={`admin-pill ${p.is_published ? 'admin-pill--good' : 'admin-pill--outline'} flex-shrink-0`}>
+                      <button
+                        onClick={() => togglePublishMutation.mutate({ id: p.id, next: !p.is_published })}
+                        title={p.is_published ? t('admin.programs.unpublishHint', 'Click to unpublish — hide from members') : t('admin.programs.publishHint', 'Click to publish — show to members')}
+                        className={`admin-pill ${p.is_published ? 'admin-pill--good' : 'admin-pill--outline'} flex-shrink-0 cursor-pointer transition-opacity hover:opacity-75`}
+                      >
                         {p.is_published ? t('admin.programs.published', 'Published') : t('admin.programs.draft', 'Draft')}
-                      </span>
+                      </button>
 
                       {/* Desktop-only inline edit/delete */}
                       <div className="hidden md:flex items-center gap-1.5 flex-shrink-0">

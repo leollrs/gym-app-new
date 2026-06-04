@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Target, Check, X, Pencil, TrendingUp, TrendingDown, Minus, LayoutDashboard, Sprout, Zap, Microscope, HeartHandshake, AlertTriangle, Sparkles } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -9,11 +8,12 @@ import { useInsightsRange } from '../../contexts/InsightsRangeContext';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
-import { FadeIn, PageHeader, AdminPageShell, AdminTabs } from '../../components/admin';
+import { FadeIn, AdminPageShell } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { suggestTarget, checkRealism } from '../../lib/admin/realisticTargets';
 import { fetchCurrentKPIs } from '../../lib/admin/currentKPIs';
+import { TK, FK, Ico, Card, AICON, SectionLabel } from './components/analytics/analyticsKit';
 
 import GrowthChart from './components/analytics/GrowthChart';
 import RetentionChart from './components/analytics/RetentionChart';
@@ -29,39 +29,22 @@ import WhyLeftPanel from './components/WhyLeftPanel';
 import RetentionEffectivenessPanel from './components/RetentionEffectivenessPanel';
 
 const KPI_METRICS = [
-  { key: 'retention_rate', labelKey: 'admin.analytics.retentionRate', unit: '%', icon: '📊' },
-  { key: 'new_members', labelKey: 'admin.analytics.newMembers', unit: '', icon: '👥' },
-  { key: 'active_rate', labelKey: 'admin.analytics.activeRate', unit: '%', icon: '🔥' },
-  { key: 'avg_workouts', labelKey: 'admin.analytics.avgWorkouts', unit: '', icon: '💪' },
-  { key: 'checkin_rate', labelKey: 'admin.analytics.checkinRate', unit: '%', icon: '📍' },
-  { key: 'churn_rate', labelKey: 'admin.analytics.churnRate', unit: '%', icon: '⚠️', invertColor: true },
+  { key: 'retention_rate', labelKey: 'admin.analytics.retentionRate', unit: '%', icon: AICON.chart },
+  { key: 'new_members', labelKey: 'admin.analytics.newMembers', unit: '', icon: AICON.users },
+  { key: 'active_rate', labelKey: 'admin.analytics.activeRate', unit: '%', icon: AICON.flame },
+  { key: 'avg_workouts', labelKey: 'admin.analytics.avgWorkouts', unit: '', icon: AICON.dumbbell },
+  { key: 'checkin_rate', labelKey: 'admin.analytics.checkinRate', unit: '%', icon: AICON.pin },
+  { key: 'churn_rate', labelKey: 'admin.analytics.churnRate', unit: '%', icon: AICON.warn, invertColor: true },
 ];
 
-function getStatusColor(current, target, invert) {
-  if (current == null || target == null) return 'bg-white/10';
+// status → semantic tone (used for value text + progress bar)
+function kpiTone(current, target, invert) {
+  if (current == null || target == null) return null;
   const ratio = current / target;
-  if (invert) {
-    if (ratio <= 1) return 'bg-emerald-500';
-    if (ratio <= 1.25) return 'bg-amber-500';
-    return 'bg-red-500';
-  }
-  if (ratio >= 1) return 'bg-emerald-500';
-  if (ratio >= 0.8) return 'bg-amber-500';
-  return 'bg-red-500';
+  if (invert) return ratio <= 1 ? 'success' : ratio <= 1.25 ? 'warning' : 'danger';
+  return ratio >= 1 ? 'success' : ratio >= 0.8 ? 'warning' : 'danger';
 }
-
-function getTextColor(current, target, invert) {
-  if (current == null || target == null) return 'text-white/70';
-  const ratio = current / target;
-  if (invert) {
-    if (ratio <= 1) return 'text-emerald-400';
-    if (ratio <= 1.25) return 'text-amber-400';
-    return 'text-red-400';
-  }
-  if (ratio >= 1) return 'text-emerald-400';
-  if (ratio >= 0.8) return 'text-amber-400';
-  return 'text-red-400';
-}
+const toneColor = (tone) => (tone ? `var(--color-${tone})` : TK.text);
 
 function KPITargets({ gymId }) {
   const { t, i18n } = useTranslation('pages');
@@ -89,10 +72,7 @@ function KPITargets({ gymId }) {
   });
 
   // Current KPI values, derived live from profiles/sessions/check_ins. Feeds
-  // both the "current vs target" display and the realistic-target advisor
-  // so suggestions are anchored on this gym's actual performance instead of
-  // floating in space. 5-min staleTime — these don't change minute-to-minute
-  // and the queries scan a few thousand rows.
+  // both the "current vs target" display and the realistic-target advisor.
   const { data: currentKPIs = {} } = useQuery({
     queryKey: [...adminKeys.analytics.all(gymId), 'kpi-current'],
     queryFn: () => fetchCurrentKPIs(gymId),
@@ -121,199 +101,113 @@ function KPITargets({ gymId }) {
     upsert.mutate({ metric, value: val });
   };
 
+  const inputStyle = {
+    flex: 1, minWidth: 0, padding: '9px 12px', borderRadius: 10, background: TK.surface,
+    border: `1px solid ${TK.borderSolid}`, fontFamily: FK.display, fontSize: 15, fontWeight: 800, color: TK.text, outline: 'none',
+  };
+  const sqBtn = (bg, line) => ({ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0, background: bg, border: `1px solid ${line}` });
+
   return (
-    <div className="mb-5">
-      {/* Section header */}
-      <div className="flex items-center gap-2 mb-3">
-        <Target size={14} style={{ color: 'var(--color-accent)' }} />
-        <span
-          className="text-[14px] font-extrabold"
-          style={{ color: 'var(--color-admin-text)' }}
-        >
-          {t('admin.analytics.kpiTargets', 'KPI Targets')}
-        </span>
-        <div className="flex-1" />
-        <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--color-admin-text-muted)' }}>
-          {format(new Date(), 'MMMM yyyy', dateFnsLocale)}
-        </span>
+    <div>
+      {/* section header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Ico ch={AICON.target} size={18} color={TK.accent} stroke={2} />
+          <span style={{ fontFamily: FK.display, fontSize: 18, fontWeight: 800, letterSpacing: -0.3, color: TK.text }}>{t('admin.analytics.kpiTargets', 'KPI Targets')}</span>
+        </div>
+        <span style={{ fontFamily: FK.mono, fontSize: 12.5, color: TK.textFaint }}>{format(new Date(), 'MMMM yyyy', dateFnsLocale)}</span>
       </div>
 
-      {/* KPI Grid — 3 cols */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 md:gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-[14px] md:gap-[18px]">
         {KPI_METRICS.map((m) => {
           const row = targets[m.key];
           const current = currentKPIs?.[m.key] ?? null;
           const target = row?.target_value;
-          const pct = target ? Math.min(((current ?? 0) / target) * 100, 120) : 0;
+          const pct = target ? Math.min(((current ?? 0) / target) * 100, 100) : 0;
           const isEditing = editing === m.key;
-          // Suggestion anchored on this gym's current performance (or the
-          // industry default when no baseline exists). Drives both the
-          // tap-to-apply chip and the soft warning below the input.
           const suggested = suggestTarget(m.key, current);
           const draftNum = parseFloat(draft);
-          const realism = isEditing && Number.isFinite(draftNum)
-            ? checkRealism(m.key, current, draftNum)
-            : null;
+          const realism = isEditing && Number.isFinite(draftNum) ? checkRealism(m.key, current, draftNum) : null;
+          const tone = kpiTone(current, target, m.invertColor);
 
           return (
-            <div
-              key={m.key}
-              className="admin-card p-3 sm:p-4 transition-all duration-200 group overflow-hidden"
-            >
-              {/* Label row */}
-              <div className="flex items-center gap-2 mb-2.5">
-                <span className="text-base leading-none">{m.icon}</span>
-                <span
-                  className="admin-eyebrow"
-                  style={{ fontSize: '10.5px' }}
-                >
-                  {t(m.labelKey)}
+            <Card key={m.key} style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* label row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                <span style={{ width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center', background: TK.accentSoft, border: `1px solid ${TK.accentLine}`, flexShrink: 0 }}>
+                  <Ico ch={m.icon} size={16} color={TK.accent} stroke={2} />
                 </span>
+                <span style={{ fontFamily: FK.body, fontSize: 11, fontWeight: 800, letterSpacing: 0.9, textTransform: 'uppercase', color: TK.textSub }}>{t(m.labelKey)}</span>
               </div>
 
-              {/* Current value + delta indicator */}
-              <div className="flex items-baseline gap-2 mb-3">
-                <span
-                  className={`admin-kpi text-[22px] md:text-[28px] leading-none tabular-nums ${getTextColor(current, target, m.invertColor)}`}
-                  style={{ letterSpacing: '-0.8px' }}
-                >
-                  {current != null ? `${current}${m.unit}` : '——'}
-                </span>
-                {current != null && target != null && (() => {
-                  const diff = current - target;
-                  const meetingTarget = m.invertColor ? diff <= 0 : diff >= 0;
-                  const atTarget = Math.abs(diff) < 0.01;
-                  if (atTarget) return (
-                    <span className="flex items-center gap-0.5 text-[11px] font-semibold text-emerald-400">
-                      <Minus className="w-3 h-3" /> {t('admin.analytics.onTarget', 'On target')}
-                    </span>
-                  );
-                  return (
-                    <span className={`flex items-center gap-0.5 text-[11px] font-semibold ${meetingTarget ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {meetingTarget
-                        ? <TrendingUp className="w-3 h-3" />
-                        : <TrendingDown className="w-3 h-3" />
-                      }
-                      {Math.abs(diff).toFixed(m.unit === '%' ? 1 : 0)}{m.unit} {meetingTarget ? (m.invertColor ? t('admin.analytics.below', 'below') : t('admin.analytics.above', 'above')) : (m.invertColor ? t('admin.analytics.above', 'above') : t('admin.analytics.below', 'below'))}
-                    </span>
-                  );
-                })()}
+              {/* value */}
+              <div style={{ fontFamily: FK.display, fontSize: 38, fontWeight: 800, letterSpacing: -1.4, lineHeight: 1, margin: '16px 0 12px', color: toneColor(tone) }}>
+                {current != null ? `${current}${m.unit}` : '——'}
               </div>
 
-              {/* Progress bar */}
-              <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: 'var(--color-admin-panel)' }}>
-                <div
-                  className={`h-full rounded-full transition-all duration-700 ease-out ${getStatusColor(current, target, m.invertColor)}`}
-                  style={{ width: `${Math.min(pct, 100)}%` }}
-                />
+              {/* progress bar */}
+              <div style={{ height: 6, borderRadius: 99, background: TK.surface3, overflow: 'hidden', marginBottom: 12 }}>
+                <div style={{ height: '100%', borderRadius: 99, width: `${pct}%`, background: toneColor(tone) === TK.text ? TK.accent : toneColor(tone), transition: 'width .6s ease' }} />
               </div>
 
-              {/* Target row */}
+              <div style={{ height: 1, background: TK.divider }} />
+
+              {/* footer */}
               {isEditing ? (
-                <>
-                  <div className="flex items-center gap-1.5">
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
-                      type="number"
-                      min="0"
-                      max="100000"
+                      type="number" min="0" max="100000" autoFocus
                       aria-label={t('admin.analytics.targetInput', { metric: t(m.labelKey), defaultValue: 'Target value for {{metric}}' })}
-                      className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-2.5 py-1.5
-                        text-sm text-white outline-none
-                        focus:border-[color:var(--color-accent)] focus:ring-1 focus:ring-[color:var(--color-accent)]/20
-                        transition-all duration-200"
                       value={draft}
                       onChange={(e) => setDraft(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && save(m.key)}
-                      autoFocus
+                      style={inputStyle}
                     />
-                    <button
-                      onClick={() => save(m.key)}
-                      aria-label={t('admin.analytics.saveTarget', 'Save target')}
-                      className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400
-                        hover:bg-emerald-500/30 active:scale-95 transition-all duration-150"
-                    >
-                      <Check className="w-3.5 h-3.5" />
+                    <button type="button" onClick={() => save(m.key)} aria-label={t('admin.analytics.saveTarget', 'Save target')}
+                      style={sqBtn('var(--color-success-soft)', 'color-mix(in srgb, var(--color-success) 32%, transparent)')}>
+                      <Ico ch={AICON.check} size={16} color="var(--color-success)" stroke={2.2} />
                     </button>
-                    <button
-                      onClick={() => setEditing(null)}
-                      aria-label={t('admin.analytics.cancelEdit', 'Cancel editing')}
-                      className="p-1.5 rounded-lg bg-white/[0.06] text-white/70
-                        hover:bg-white/10 active:scale-95 transition-all duration-150"
-                    >
-                      <X className="w-3.5 h-3.5" />
+                    <button type="button" onClick={() => setEditing(null)} aria-label={t('admin.analytics.cancelEdit', 'Cancel editing')}
+                      style={sqBtn(TK.surface2, TK.borderSolid)}>
+                      <Ico ch={AICON.x} size={15} color={TK.textMute} stroke={2.2} />
                     </button>
                   </div>
-                  {/* Suggestion chip — tap to populate the input. Sourced
-                      from realisticTargets.js using this gym's current
-                      baseline (or the industry default when no data). */}
                   {suggested != null && (
-                    <button
-                      onClick={() => setDraft(String(suggested))}
-                      className="mt-2 inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-md px-1.5 py-1 transition-colors"
-                      style={{
-                        background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
-                        color: 'var(--color-accent)',
-                      }}
-                    >
-                      <Sparkles className="w-2.5 h-2.5" />
+                    <button type="button" onClick={() => setDraft(String(suggested))}
+                      style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 999, background: TK.accentWash, border: `1px solid ${TK.accentLine}`, fontFamily: FK.body, fontSize: 11.5, fontWeight: 700, color: TK.accent, cursor: 'pointer' }}>
+                      <Ico ch={AICON.sparkle} size={12} color={TK.accent} stroke={2} />
                       {t('admin.analytics.suggestedTarget', { value: suggested, unit: m.unit, defaultValue: 'Suggested: {{value}}{{unit}}' })}
                     </button>
                   )}
-                  {/* Soft warning when the typed value is well outside what
-                      this gym can plausibly hit in a month. Doesn't block
-                      save — the owner can still commit aggressive goals. */}
                   {realism && (
-                    <div
-                      className="mt-2 flex items-start gap-1.5 text-[10.5px] leading-snug rounded-md px-2 py-1.5"
-                      style={{
-                        background: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
-                        color: 'var(--color-warning)',
-                      }}
-                    >
-                      <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                      <span>
-                        {t('admin.analytics.unrealisticWarning', {
-                          baseline: realism.baseline,
-                          delta: realism.monthlyDelta,
-                          suggested: realism.suggested,
-                          unit: realism.unit,
-                          defaultValue: 'From {{baseline}}{{unit}} baseline, gyms typically improve ~{{delta}}{{unit}}/month. Suggested: {{suggested}}{{unit}}.',
-                        })}
+                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 10, background: 'var(--color-warning-soft)', border: '1px solid color-mix(in srgb, var(--color-warning) 28%, transparent)' }}>
+                      <Ico ch={AICON.warn} size={13} color="var(--color-warning)" stroke={2} style={{ marginTop: 1, flexShrink: 0 }} />
+                      <span style={{ fontFamily: FK.body, fontSize: 11, lineHeight: 1.4, color: 'var(--color-warning-ink, var(--color-warning))' }}>
+                        {t('admin.analytics.unrealisticWarning', { baseline: realism.baseline, delta: realism.monthlyDelta, suggested: realism.suggested, unit: realism.unit, defaultValue: 'From {{baseline}}{{unit}} baseline, gyms typically improve ~{{delta}}{{unit}}/month. Suggested: {{suggested}}{{unit}}.' })}
                       </span>
                     </div>
                   )}
-                </>
+                </div>
               ) : (
-                <>
-                  <button
-                    onClick={() => { setEditing(m.key); setDraft(target ?? ''); }}
-                    className="flex items-center gap-1.5 text-[11.5px] text-white/60 hover:text-[color:var(--color-accent)]
-                      transition-colors duration-200 text-left group/edit"
-                  >
-                    <Pencil className="w-3 h-3 opacity-0 group-hover/edit:opacity-100 transition-opacity duration-200" />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => { setEditing(m.key); setDraft(target ?? ''); }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: FK.body, fontSize: 12.5, fontWeight: 600, color: TK.textMute, cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                    <Ico ch={AICON.plus} size={13} color={TK.textMute} stroke={2.2} />
                     {target != null
                       ? t('admin.analytics.targetLabel', { value: target, unit: m.unit, defaultValue: 'Target: {{value}}{{unit}}' })
-                      : t('admin.analytics.setTarget', '+ Set Target')}
+                      : t('admin.analytics.setTarget', 'Set Target')}
                   </button>
-                  {/* When no target has been set yet, surface the suggested
-                      value inline so the owner has a one-tap starting point
-                      instead of staring at a blank field. */}
-                  {target == null && suggested != null && (
-                    <button
-                      onClick={() => { setEditing(m.key); setDraft(String(suggested)); }}
-                      className="mt-1.5 inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-md px-1.5 py-1 transition-colors"
-                      style={{
-                        background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
-                        color: 'var(--color-accent)',
-                      }}
-                    >
-                      <Sparkles className="w-2.5 h-2.5" />
+                  {suggested != null && (
+                    <button type="button" onClick={() => { setEditing(m.key); setDraft(String(target ?? suggested)); }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: TK.accentWash, border: `1px solid ${TK.accentLine}`, fontFamily: FK.body, fontSize: 12, fontWeight: 700, color: TK.accent, cursor: 'pointer' }}>
+                      <Ico ch={AICON.sparkle} size={12} color={TK.accent} stroke={2} />
                       {t('admin.analytics.suggestedTarget', { value: suggested, unit: m.unit, defaultValue: 'Suggested: {{value}}{{unit}}' })}
                     </button>
                   )}
-                </>
+                </div>
               )}
-            </div>
+            </Card>
           );
         })}
       </div>
@@ -321,28 +215,8 @@ function KPITargets({ gymId }) {
   );
 }
 
-// ── Section Divider ──────────────────────────────────────
-function SectionDivider({ label }) {
-  return (
-    <div className="flex items-center justify-center mb-3 mt-2">
-      {label && (
-        <span
-          className="admin-eyebrow text-center"
-          style={{ fontSize: '10.5px', letterSpacing: '1.1px' }}
-        >
-          {label}
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ── Period Selector Pills ────────────────────────────────
-// Every chart on this page is a MONTHLY trend (growth / retention curve /
-// engagement / cohort), so the selector is month-spans, not day windows — a
-// "7 day" window of a monthly chart is meaningless. `months` drives the trend
-// charts; `days` is kept only so the shared InsightsRangeContext still
-// interoperates with the day-based sibling pages (Attendance/Revenue/NPS).
+// Month-span selector. months drives the trend charts; days keeps the shared
+// InsightsRangeContext interoperable with day-based sibling pages.
 const PERIODS = [
   { key: '3m', labelKey: 'admin.analytics.period3m', fallback: '3M', days: 90, months: 3 },
   { key: '6m', labelKey: 'admin.analytics.period6m', fallback: '6M', days: 180, months: 6 },
@@ -350,33 +224,12 @@ const PERIODS = [
   { key: 'all', labelKey: 'admin.analytics.periodAll', fallback: 'All', days: null, months: null },
 ];
 
-function PeriodSelector({ value, onChange }) {
-  const { t } = useTranslation('pages');
-  return (
-    <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1 sm:mx-0 sm:px-0 sm:flex-wrap">
-      {PERIODS.map((p) => (
-        <button
-          key={p.key}
-          onClick={() => onChange(p.key)}
-          className={`admin-pill flex-shrink-0 inline-flex items-center justify-center min-h-[44px] ${value === p.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
-          style={{ padding: '0 16px', fontSize: 12 }}
-        >
-          {t(p.labelKey, p.fallback)}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ── Tab definitions ──────────────────────────────────────
 const ANALYTICS_TAB_KEYS = [
-  // Tab key stays 'overview' for stable URLs; the user-facing label is now
-  // "This Month" / "Este mes" to disambiguate from the AdminOverview page.
-  { key: 'overview', labelKey: 'admin.analytics.tabThisMonth', fallback: 'This Month', icon: LayoutDashboard },
-  { key: 'growth', labelKey: 'admin.analytics.tabGrowth', fallback: 'Growth', icon: Sprout },
-  { key: 'engagement', labelKey: 'admin.analytics.tabEngagement', fallback: 'Engagement', icon: Zap },
-  { key: 'retention',  labelKey: 'admin.analytics.tabRetention',  fallback: 'Retention',  icon: HeartHandshake },
-  { key: 'deep-dives', labelKey: 'admin.analytics.tabDeepDives', fallback: 'Deep Dives', icon: Microscope },
+  { key: 'overview', labelKey: 'admin.analytics.tabThisMonth', fallback: 'This Month', icon: AICON.grid },
+  { key: 'growth', labelKey: 'admin.analytics.tabGrowth', fallback: 'Growth', icon: AICON.sprout },
+  { key: 'engagement', labelKey: 'admin.analytics.tabEngagement', fallback: 'Engagement', icon: AICON.bolt },
+  { key: 'retention', labelKey: 'admin.analytics.tabRetention', fallback: 'Retention', icon: AICON.heart },
+  { key: 'deep-dives', labelKey: 'admin.analytics.tabDeepDives', fallback: 'Deep Dives', icon: AICON.scope },
 ];
 
 export default function AdminAnalytics() {
@@ -386,178 +239,122 @@ export default function AdminAnalytics() {
   const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'overview';
-  const setActiveTab = useCallback((tab) => {
-    setSearchParams({ tab }, { replace: true });
-  }, [setSearchParams]);
-  // Period is shared across Insights pages via InsightsRangeContext.
-  // If the context's value isn't one of this page's PERIODS choices
-  // (e.g. NPS set 180d which Analytics doesn't offer), fall back to '30d'
-  // for display + queries without overwriting the shared state.
+  const setActiveTab = useCallback((tab) => { setSearchParams({ tab }, { replace: true }); }, [setSearchParams]);
+
   const { periodDays: ctxPeriodDays, setPeriodDays } = useInsightsRange();
   const matchedPeriod = PERIODS.find((p) => p.days === ctxPeriodDays) ?? PERIODS.find((p) => p.key === '6m');
   const period = matchedPeriod.key;
   const setPeriod = (key) => setPeriodDays((PERIODS.find((p) => p.key === key) || {}).days ?? null);
 
-  const ANALYTICS_TABS = ANALYTICS_TAB_KEYS.map(tab => ({
-    ...tab,
-    label: t(tab.labelKey, tab.fallback),
-  }));
+  const ANALYTICS_TABS = ANALYTICS_TAB_KEYS.map(tab => ({ ...tab, label: t(tab.labelKey, tab.fallback) }));
 
   useEffect(() => { document.title = t('admin.analytics.title', 'Analytics') + ' | ' + (window.__APP_NAME || 'TuGymPR'); }, [t]);
 
   if (!isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[#EF4444] text-[14px] font-semibold">
-          {t('admin.overview.accessDenied')}
-        </p>
+        <p style={{ color: 'var(--color-danger)', fontFamily: FK.body, fontSize: 14, fontWeight: 600 }}>{t('admin.overview.accessDenied')}</p>
       </div>
     );
   }
 
+  const selectedPeriod = PERIODS.find((p) => p.key === period) || {};
+  const monthsBack = selectedPeriod.months ?? null;
+
   return (
     <AdminPageShell>
-
-      {/* ── 1. Header + Period Selector ── */}
+      {/* header + range pills */}
       <FadeIn>
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-          <PageHeader
-            title={t('admin.analytics.title', 'Analytics')}
-            subtitle={t('admin.analytics.subtitle', 'Retention, growth, and engagement metrics')}
-            className="mb-0"
-          />
-          <PeriodSelector value={period} onChange={setPeriod} />
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.analytics.title', 'Analytics')}</h1>
+            <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.analytics.subtitle', 'Retention, growth, and engagement metrics')}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {PERIODS.map((p) => {
+              const on = period === p.key;
+              return (
+                <button key={p.key} type="button" onClick={() => setPeriod(p.key)}
+                  style={{ padding: '9px 16px', borderRadius: 999, cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5, fontWeight: on ? 700 : 600, color: on ? '#fff' : TK.textSub, background: on ? TK.accent : TK.surface, border: `1px solid ${on ? TK.accent : TK.borderSolid}`, whiteSpace: 'nowrap' }}>
+                  {t(p.labelKey, p.fallback)}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </FadeIn>
 
-      {/* ── 2. Tab Bar ── */}
+      {/* icon tab nav */}
       <FadeIn delay={20}>
-        <AdminTabs tabs={ANALYTICS_TABS} active={activeTab} onChange={setActiveTab} className="mb-6" />
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ANALYTICS_TABS.length},1fr)`, borderBottom: `1px solid ${TK.borderSolid}`, margin: '22px 0 4px' }}>
+          {ANALYTICS_TABS.map((tab) => {
+            const on = tab.key === activeTab;
+            return (
+              <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '14px 4px 16px', position: 'relative', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                <Ico ch={tab.icon} size={19} color={on ? TK.accent : TK.textMute} stroke={on ? 2.1 : 1.9} />
+                <span style={{ fontFamily: FK.body, fontSize: 13, fontWeight: on ? 700 : 600, color: on ? TK.accent : TK.textMute, textAlign: 'center', lineHeight: 1.1 }}>{tab.label}</span>
+                {on && <span style={{ position: 'absolute', left: '30%', right: '30%', bottom: -1, height: 2.5, borderRadius: 99, background: TK.accent }} />}
+              </button>
+            );
+          })}
+        </div>
       </FadeIn>
 
-      {/* ── Tab Content ── */}
-      {/* Each child receives the selected period so its query window matches what
-          the admin picked. PERIODS map: 7d/30d/90d → days; 'all' → null (component
-          interprets null as "no upper bound"). */}
-      {(() => {
-        const selectedPeriod = PERIODS.find((p) => p.key === period) || {};
-        // monthsBack drives the monthly trend charts (Growth / Retention curve /
-        // Engagement / Cohort). null = "All" → each chart applies its own bounded
-        // cap. Snapshot cards (KPIs, LTV, Lifecycle, Onboarding, Trainer,
-        // MonthlySummary) intentionally ignore it — they're point-in-time or have
-        // their own range control.
-        const monthsBack = selectedPeriod.months ?? null;
-        return (
-          <SwipeableTabContent tabs={ANALYTICS_TABS} active={activeTab} onChange={setActiveTab}>
-            {(tabKey) => {
-              if (tabKey === 'overview') return (
-                <>
-                  <FadeIn delay={30}>
-                    {/* KPI targets are monthly / 30d by design — period N/A. */}
-                    <KPITargets gymId={gymId} />
-                  </FadeIn>
-                  <FadeIn delay={50}>
-                    <SectionDivider label={t('admin.analytics.sectionLifecycle', 'Lifecycle')} />
-                  </FadeIn>
-                  <FadeIn delay={60}>
-                    <div className="mb-8">
-                      {/* Snapshot — current lifecycle mix; period N/A by design. */}
-                      <LifecycleStages gymId={gymId} />
-                    </div>
-                  </FadeIn>
-                </>
-              );
-              if (tabKey === 'growth') return (
-                <>
-                  <FadeIn delay={30}>
-                    <div className="mb-5">
-                      <LTVCard gymId={gymId} />
-                    </div>
-                  </FadeIn>
-                  <FadeIn delay={40}>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-                      <GrowthChart gymId={gymId} monthsBack={monthsBack} />
-                      <RetentionChart gymId={gymId} monthsBack={monthsBack} />
-                    </div>
-                  </FadeIn>
-                </>
-              );
-              if (tabKey === 'engagement') return (
-                <>
-                  <FadeIn delay={30}>
-                    <SectionDivider label={t('admin.analytics.sectionOnboarding', 'Onboarding & Challenges')} />
-                  </FadeIn>
-                  <FadeIn delay={40}>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-                      {/* Snapshots / own filters — period N/A by design. */}
-                      <OnboardingFunnel gymId={gymId} />
-                      <ChallengeStats gymId={gymId} />
-                    </div>
-                  </FadeIn>
-                  <FadeIn delay={60}>
-                    <SectionDivider label={t('admin.analytics.sectionActivity', 'Activity')} />
-                  </FadeIn>
-                  <FadeIn delay={70}>
-                    <div className="mb-8">
-                      <ActivityChart gymId={gymId} monthsBack={monthsBack} />
-                    </div>
-                  </FadeIn>
-                </>
-              );
-              if (tabKey === 'retention') return (
-                <>
-                  <FadeIn delay={30}>
-                    <SectionDivider label={t('admin.analytics.sectionWhyLeft', 'Why members leave')} />
-                  </FadeIn>
-                  <FadeIn delay={40}>
-                    <div className="mb-8">
-                      <WhyLeftPanel gymId={gymId} />
-                    </div>
-                  </FadeIn>
-                  <FadeIn delay={60}>
-                    <SectionDivider label={t('admin.analytics.sectionEffectiveness', 'Retention machine effectiveness')} />
-                  </FadeIn>
-                  <FadeIn delay={70}>
-                    <div className="mb-8">
-                      <RetentionEffectivenessPanel gymId={gymId} />
-                    </div>
-                  </FadeIn>
-                </>
-              );
-              if (tabKey === 'deep-dives') return (
-                <>
-                  <FadeIn delay={30}>
-                    <SectionDivider label={t('admin.analytics.sectionCohortRetention', 'Cohort Retention')} />
-                  </FadeIn>
-                  <FadeIn delay={40}>
-                    <div className="mb-8">
-                      <CohortTable gymId={gymId} monthsBack={monthsBack} />
-                    </div>
-                  </FadeIn>
-                  <FadeIn delay={60}>
-                    <SectionDivider label={t('admin.analytics.sectionTrainerPerformance', 'Trainer Performance')} />
-                  </FadeIn>
-                  <FadeIn delay={70}>
-                    <div className="mb-8">
-                      {/* 30-day performance snapshot — own fixed window by design. */}
-                      <TrainerPerformance gymId={gymId} />
-                    </div>
-                  </FadeIn>
-                  <FadeIn delay={90}>
-                    <SectionDivider label={t('admin.analytics.sectionMonthlySummary', 'Monthly Summary')} />
-                  </FadeIn>
-                  <FadeIn delay={100}>
-                    {/* Has its own month navigator — period selector N/A. */}
-                    <MonthlySummary gymId={gymId} />
-                  </FadeIn>
-                </>
-              );
-              return null;
-            }}
-          </SwipeableTabContent>
-        );
-      })()}
-
+      <SwipeableTabContent tabs={ANALYTICS_TABS} active={activeTab} onChange={setActiveTab}>
+        {(tabKey) => {
+          if (tabKey === 'overview') return (
+            <div style={{ paddingTop: 24 }}>
+              <FadeIn delay={30}><KPITargets gymId={gymId} /></FadeIn>
+              <FadeIn delay={50}><SectionLabel>{t('admin.analytics.sectionLifecycle', 'Lifecycle')}</SectionLabel></FadeIn>
+              <FadeIn delay={60}><LifecycleStages gymId={gymId} /></FadeIn>
+            </div>
+          );
+          if (tabKey === 'growth') return (
+            <div style={{ paddingTop: 24 }}>
+              <FadeIn delay={30}><LTVCard gymId={gymId} /></FadeIn>
+              <FadeIn delay={40}>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]" style={{ marginTop: 18 }}>
+                  <GrowthChart gymId={gymId} monthsBack={monthsBack} />
+                  <RetentionChart gymId={gymId} monthsBack={monthsBack} />
+                </div>
+              </FadeIn>
+            </div>
+          );
+          if (tabKey === 'engagement') return (
+            <div style={{ paddingTop: 8 }}>
+              <FadeIn delay={30}><SectionLabel>{t('admin.analytics.sectionOnboarding', 'Onboarding & Challenges')}</SectionLabel></FadeIn>
+              <FadeIn delay={40}>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px] items-start">
+                  <OnboardingFunnel gymId={gymId} />
+                  <ChallengeStats gymId={gymId} />
+                </div>
+              </FadeIn>
+              <FadeIn delay={60}><SectionLabel>{t('admin.analytics.sectionActivity', 'Activity')}</SectionLabel></FadeIn>
+              <FadeIn delay={70}><ActivityChart gymId={gymId} monthsBack={monthsBack} /></FadeIn>
+            </div>
+          );
+          if (tabKey === 'retention') return (
+            <div style={{ paddingTop: 8 }}>
+              <FadeIn delay={30}><SectionLabel>{t('admin.analytics.sectionWhyLeft', 'Why members leave')}</SectionLabel></FadeIn>
+              <FadeIn delay={40}><WhyLeftPanel gymId={gymId} /></FadeIn>
+              <FadeIn delay={60}><SectionLabel>{t('admin.analytics.sectionEffectiveness', 'Retention machine effectiveness')}</SectionLabel></FadeIn>
+              <FadeIn delay={70}><RetentionEffectivenessPanel gymId={gymId} /></FadeIn>
+            </div>
+          );
+          if (tabKey === 'deep-dives') return (
+            <div style={{ paddingTop: 8 }}>
+              <FadeIn delay={30}><SectionLabel>{t('admin.analytics.sectionCohortRetention', 'Cohort Retention')}</SectionLabel></FadeIn>
+              <FadeIn delay={40}><CohortTable gymId={gymId} monthsBack={monthsBack} /></FadeIn>
+              <FadeIn delay={60}><SectionLabel>{t('admin.analytics.sectionTrainerPerformance', 'Trainer Performance')}</SectionLabel></FadeIn>
+              <FadeIn delay={70}><TrainerPerformance gymId={gymId} /></FadeIn>
+              <FadeIn delay={90}><SectionLabel>{t('admin.analytics.sectionMonthlySummary', 'Monthly Summary')}</SectionLabel></FadeIn>
+              <FadeIn delay={100}><MonthlySummary gymId={gymId} /></FadeIn>
+            </div>
+          );
+          return null;
+        }}
+      </SwipeableTabContent>
     </AdminPageShell>
   );
 }

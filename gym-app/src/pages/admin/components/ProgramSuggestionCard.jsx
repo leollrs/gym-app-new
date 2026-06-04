@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Dumbbell, Lightbulb } from 'lucide-react';
+import { Dumbbell, Lightbulb, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 /**
@@ -41,6 +41,22 @@ export default function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram 
       };
 
       const s = SUGGESTIONS[topGoal[0]] || SUGGESTIONS.general_fitness;
+
+      // Has this period's pick already been created? We store the program's
+      // English name (s.nameDefault) on create, so match on that within ~60 days.
+      let createdAt = null;
+      try {
+        const since = new Date();
+        since.setDate(since.getDate() - 60);
+        const { data: recent } = await supabase
+          .from('gym_programs')
+          .select('name, created_at')
+          .eq('gym_id', gymId)
+          .gte('created_at', since.toISOString())
+          .order('created_at', { ascending: false });
+        createdAt = (recent || []).find(p => p.name === s.nameDefault)?.created_at || null;
+      } catch { /* non-fatal: treat as not created */ }
+
       return {
         ...s,
         topGoal: topGoal[0],
@@ -48,6 +64,7 @@ export default function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram 
         totalMembers: onboardings.length,
         topLevel: topLevel?.[0],
         pct: Math.round((topGoal[1] / onboardings.length) * 100),
+        createdAt,
       };
     },
     staleTime: 24 * 60 * 60 * 1000,
@@ -58,6 +75,11 @@ export default function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram 
 
   const name = t(`admin.programs.suggestion.${suggestion.nameKey}.name`, suggestion.nameDefault);
   const desc = t(`admin.programs.suggestion.${suggestion.descKey}.desc`, suggestion.descDefault);
+
+  const lang = isEs ? 'es' : 'en';
+  const periodLabel = new Date().toLocaleDateString(lang, { month: 'long', year: 'numeric' });
+  const created = !!suggestion.createdAt;
+  const createdDate = created ? new Date(suggestion.createdAt).toLocaleDateString(lang, { day: 'numeric', month: 'short' }) : '';
 
   return (
     <div
@@ -78,7 +100,7 @@ export default function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1.5">
             <span className="admin-eyebrow" style={{ color: 'var(--color-accent)' }}>
-              {t('admin.programs.suggestion.title', 'Monthly Suggestion')}
+              {t('admin.programs.suggestion.title', 'Monthly Suggestion')} · {periodLabel}
             </span>
           </div>
 
@@ -97,14 +119,26 @@ export default function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram 
             })}
           </p>
 
-          <button
-            type="button"
-            onClick={onCreateProgram}
-            className="px-5 py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97]"
-            style={{ background: 'var(--color-admin-text)', color: '#fff' }}
-          >
-            {t('admin.programs.suggestion.createButton', 'Create This Program')}
-          </button>
+          {created ? (
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12.5px] font-bold"
+                style={{ background: 'var(--color-success-soft)', color: 'var(--color-success)' }}>
+                <CheckCircle2 size={15} /> {t('admin.programs.suggestion.created', 'Created')}{createdDate ? ` · ${createdDate}` : ''}
+              </div>
+              <p className="text-[10.5px] mt-1.5" style={{ color: 'var(--color-admin-text-muted)' }}>
+                {t('admin.programs.suggestion.alreadyHint', "You've already created this month's pick — a fresh one comes next month.")}
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onCreateProgram(suggestion)}
+              className="px-5 py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97]"
+              style={{ background: 'var(--color-admin-text)', color: '#fff' }}
+            >
+              {t('admin.programs.suggestion.createButton', 'Create This Program')}
+            </button>
+          )}
         </div>
       </div>
     </div>

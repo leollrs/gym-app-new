@@ -1,10 +1,54 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { classImageUrl } from '../../../lib/classImageUrl';
 import CoverPreview from './CoverPreview';
+
+const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
+const MONO_FONT = '"JetBrains Mono", ui-monospace, monospace';
+
+/** Pill segmented control (Día / Semana / Mes). */
+function Segmented({ items, active, onSelect }) {
+  return (
+    <div className="inline-flex" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', borderRadius: 999, padding: 4, gap: 2 }}>
+      {items.map(it => {
+        const on = it.key === active;
+        return (
+          <button key={it.key} onClick={() => onSelect(it.key)}
+            style={{ height: 34, padding: '0 16px', borderRadius: 999, fontSize: 13, fontWeight: 700,
+              color: on ? 'var(--color-accent)' : 'var(--color-admin-text-muted)',
+              background: on ? 'color-mix(in srgb, var(--color-accent) 16%, transparent)' : 'transparent' }}>
+            {it.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Circular calendar nav button (chevrons) or the accent "Hoy" pill. */
+function NavBtn({ icon: Icon, label, accent, onClick, ariaLabel }) {
+  if (label) {
+    return (
+      <button onClick={onClick} aria-label={ariaLabel}
+        style={{ height: 38, padding: '0 16px', borderRadius: 999, fontSize: 13, fontWeight: 800,
+          background: accent ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'var(--color-bg-card)',
+          border: `1px solid ${accent ? 'color-mix(in srgb, var(--color-accent) 24%, transparent)' : 'var(--color-admin-border)'}`,
+          color: accent ? 'var(--color-accent)' : 'var(--color-admin-text-sub)' }}>
+        {label}
+      </button>
+    );
+  }
+  return (
+    <button onClick={onClick} aria-label={ariaLabel}
+      className="grid place-items-center"
+      style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--color-bg-card)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-sub)' }}>
+      <Icon size={16} strokeWidth={2.2} />
+    </button>
+  );
+}
 
 /**
  * Top-level "Bookings" tab on the AdminClasses page.
@@ -112,11 +156,11 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
       if (!classIds.length) return { rows: [], truncated: false };
       const { data } = await supabase
         .from('gym_class_bookings')
-        .select('id, class_id, status, attended, rating, booking_date, created_at, waitlist_position, profiles(id, full_name, avatar_url)')
+        .select('id, class_id, status, attended, rating, booking_date, booked_at, waitlist_position, profiles(id, full_name, avatar_url)')
         .in('class_id', classIds)
         .gte('booking_date', dateFrom)
         .lte('booking_date', dateTo)
-        .order('created_at')
+        .order('booked_at')
         .limit(BOOKINGS_LIMIT);
       const rows = data || [];
       return { rows, truncated: rows.length >= BOOKINGS_LIMIT };
@@ -160,10 +204,10 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
 
   const statusStyle = (b) => {
     const styles = {
-      confirmed: { bg: 'var(--color-success-soft)', color: 'var(--color-success)' },
+      confirmed: { bg: 'var(--color-success-soft)', color: 'var(--color-success-ink)' },
       waitlisted: { bg: 'var(--color-info-soft)', color: 'var(--color-info)' },
-      cancelled: { bg: 'var(--color-danger-soft)', color: 'var(--color-danger)' },
-      attended: { bg: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)' },
+      cancelled: { bg: 'var(--color-danger-soft)', color: 'var(--color-danger-ink)' },
+      attended: { bg: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', color: 'var(--color-accent)' },
     };
     return styles[b.attended ? 'attended' : b.status] || styles.confirmed;
   };
@@ -181,54 +225,42 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
     ? new Date(displayDate + 'T12:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
     : null;
 
+  const dowHeaders = [t('admin.classes.daySun', 'D'), t('admin.classes.dayMon', 'L'), t('admin.classes.dayTue', 'M'), t('admin.classes.dayWed', 'X'), t('admin.classes.dayThu', 'J'), t('admin.classes.dayFri', 'V'), t('admin.classes.daySat', 'S')];
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* View toggle + nav */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-1 p-1 rounded-xl flex-shrink-0" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-          {VIEW_MODES.map(v => (
-            <button key={v.key} onClick={() => { setViewMode(v.key); setMonthSelectedDate(null); setExpandedClassId(null); }}
-              className="px-3 sm:px-3.5 py-2 rounded-lg text-[12px] sm:text-[13px] font-semibold transition-colors"
-              style={viewMode === v.key
-                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }
-                : { color: 'var(--color-text-muted)' }
-              }>{v.label}</button>
-          ))}
-        </div>
-        <div className="flex items-center gap-1.5 ml-auto">
-          <button onClick={() => shift(-1)} aria-label={t('admin.classes.previousPeriod', 'Previous period')} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-            <ChevronDown size={16} className="rotate-90" />
-          </button>
-          <button onClick={goToday} className="px-3 sm:px-3.5 py-2 rounded-xl text-[12px] font-bold"
-            style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
-            {t('admin.classes.today', 'Hoy')}
-          </button>
-          <button onClick={() => shift(1)} aria-label={t('admin.classes.nextPeriod', 'Next period')} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-            <ChevronDown size={16} className="-rotate-90" />
-          </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Segmented items={VIEW_MODES} active={viewMode}
+          onSelect={(k) => { setViewMode(k); setMonthSelectedDate(null); setExpandedClassId(null); }} />
+        <div className="flex items-center gap-2 ml-auto">
+          <NavBtn icon={ChevronLeft} onClick={() => shift(-1)} ariaLabel={t('admin.classes.previousPeriod', 'Previous period')} />
+          <NavBtn label={t('admin.classes.today', 'Hoy')} accent onClick={goToday} />
+          <NavBtn icon={ChevronRight} onClick={() => shift(1)} ariaLabel={t('admin.classes.nextPeriod', 'Next period')} />
         </div>
       </div>
 
       {/* Header */}
-      <p className="text-[13px] font-semibold text-center capitalize" style={{ color: 'var(--color-text-primary)' }}>{headerLabel}</p>
+      <p className="text-center capitalize" style={{ fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 700, letterSpacing: '-0.2px', color: 'var(--color-admin-text)' }}>{headerLabel}</p>
 
       {/* Week strip (week view only) */}
       {viewMode === 'week' && (
-        <div className="flex justify-between gap-1">
+        <div className="flex gap-2.5">
           {weekDays.map(d => {
             const hasBookings = (bookingsByDate[d.iso] || 0) > 0;
             const isSelected = selectedDate === d.iso;
             return (
               <button key={d.iso} onClick={() => { setSelectedDate(d.iso); setExpandedClassId(null); }}
-                className="flex-1 flex flex-col items-center py-2 rounded-xl transition-all"
-                style={isSelected
-                  ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }
-                  : { backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }
-                }>
-                <span className="text-[9px] font-medium uppercase" style={{ color: isSelected ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>{d.day}</span>
-                <span className="text-[15px] font-bold" style={{ color: isSelected ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{d.num}</span>
-                {d.isToday && <div className="w-1 h-1 rounded-full mt-0.5" style={{ backgroundColor: 'var(--color-accent)' }} />}
-                {hasBookings && !d.isToday && <div className="w-1 h-1 rounded-full mt-0.5" style={{ backgroundColor: 'var(--color-success)' }} />}
+                className="flex-1 flex flex-col items-center transition-all"
+                style={{ padding: '12px 0 12px', borderRadius: 14,
+                  background: isSelected ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'var(--color-bg-card)',
+                  border: `1px solid ${isSelected ? 'transparent' : 'var(--color-admin-border)'}` }}>
+                <span style={{ fontFamily: MONO_FONT, fontSize: 11, fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase', color: isSelected ? 'var(--color-accent)' : 'var(--color-admin-text-muted)' }}>{d.day}</span>
+                <span style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 800, letterSpacing: '-0.8px', marginTop: 4, color: isSelected ? 'var(--color-accent)' : 'var(--color-admin-text)' }}>{d.num}</span>
+                <span style={{ height: 6, marginTop: 5 }}>
+                  {d.isToday ? <span className="block rounded-full" style={{ width: 5, height: 5, background: 'var(--color-accent)' }} />
+                    : hasBookings ? <span className="block rounded-full" style={{ width: 5, height: 5, background: 'var(--color-success)' }} /> : null}
+                </span>
               </button>
             );
           })}
@@ -238,55 +270,57 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
       {/* Month grid */}
       {viewMode === 'month' && (
         <div>
-          <div className="grid grid-cols-7 gap-0.5 mb-1">
-            {[t('admin.classes.daySun', 'D'), t('admin.classes.dayMon', 'L'), t('admin.classes.dayTue', 'M'), t('admin.classes.dayWed', 'X'), t('admin.classes.dayThu', 'J'), t('admin.classes.dayFri', 'V'), t('admin.classes.daySat', 'S')].map((d, i) => (
-              <div key={i} className="text-center text-[9px] font-semibold py-1" style={{ color: 'var(--color-text-muted)' }}>{d}</div>
+          <div className="grid grid-cols-7 mb-1">
+            {dowHeaders.map((d, i) => (
+              <div key={i} className="text-center" style={{ fontFamily: MONO_FONT, fontSize: 11.5, fontWeight: 600, letterSpacing: '1px', color: 'var(--color-admin-text-faint)', padding: '4px 0' }}>{d}</div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-0.5">
+          <div className="grid grid-cols-7 gap-y-0.5">
             {monthDays.map((d, i) => d ? (
               <button key={d.iso}
                 onClick={() => { setMonthSelectedDate(prev => prev === d.iso ? null : d.iso); setExpandedClassId(null); }}
-                className="flex flex-col items-center py-1.5 rounded-lg transition-all"
-                style={monthSelectedDate === d.iso
-                  ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }
-                  : d.isToday ? { backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' } : { border: '1px solid transparent' }
-                }>
-                <span className="text-[12px] font-medium" style={{ color: d.isToday ? 'var(--color-accent)' : monthSelectedDate === d.iso ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{d.num}</span>
-                {(bookingsByDate[d.iso] || 0) > 0 && (
-                  <div className="flex items-center gap-0.5 mt-0.5">
-                    <div className="w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--color-success)' }} />
-                    <span className="text-[8px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{bookingsByDate[d.iso]}</span>
-                  </div>
-                )}
+                className="flex flex-col items-center py-1">
+                <span className="grid place-items-center" style={{
+                  minWidth: 34, height: 32, padding: '0 8px', borderRadius: 999,
+                  fontFamily: MONO_FONT, fontSize: 14, fontWeight: (d.isToday || monthSelectedDate === d.iso) ? 700 : 500,
+                  color: monthSelectedDate === d.iso ? '#fff' : d.isToday ? 'var(--color-accent)' : 'var(--color-admin-text-sub)',
+                  background: monthSelectedDate === d.iso ? 'var(--color-accent)' : 'transparent',
+                  border: `1.5px solid ${d.isToday && monthSelectedDate !== d.iso ? 'color-mix(in srgb, var(--color-accent) 35%, transparent)' : 'transparent'}`,
+                  boxShadow: monthSelectedDate === d.iso ? '0 2px 8px color-mix(in srgb, var(--color-accent) 32%, transparent)' : 'none',
+                }}>{d.num}</span>
+                <span style={{ height: 8, marginTop: 2 }}>
+                  {(bookingsByDate[d.iso] || 0) > 0 && (
+                    <span className="inline-flex items-center gap-0.5">
+                      <span className="rounded-full" style={{ width: 4, height: 4, background: 'var(--color-success)' }} />
+                      <span style={{ fontFamily: MONO_FONT, fontSize: 8, fontWeight: 700, color: 'var(--color-admin-text-muted)' }}>{bookingsByDate[d.iso]}</span>
+                    </span>
+                  )}
+                </span>
               </button>
             ) : <div key={`e-${i}`} />)}
           </div>
         </div>
       )}
 
-      {/* Detail date label (week/month when a day is selected) */}
-      {viewMode !== 'day' && detailDateLabel && (
-        <p className="text-[12px] font-semibold capitalize px-1 pt-1" style={{ color: 'var(--color-accent)' }}>{detailDateLabel}</p>
-      )}
-
-      {/* Summary */}
+      {/* Subhead: selected day + counts */}
       {(viewMode === 'day' || displayDate) && (
-        <div className="flex items-center gap-3 px-1">
-          <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-            {visibleBookings.length} {t('admin.classes.bookingsTotal', 'reservas')}
-          </p>
-          <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-            {classBookings.length} {classBookings.length === 1 ? t('admin.classes.classLabel', 'clase') : t('admin.classes.classesLabel', 'clases')}
-          </span>
+        <div>
+          {viewMode !== 'day' && detailDateLabel && (
+            <p className="capitalize" style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 15, letterSpacing: '-0.2px', color: 'var(--color-accent)' }}>{detailDateLabel}</p>
+          )}
+          <div className="flex items-center gap-2 mt-1" style={{ fontFamily: MONO_FONT, fontSize: 13 }}>
+            <span style={{ fontWeight: 700, color: 'var(--color-admin-text)' }}>{visibleBookings.length} {t('admin.classes.bookingsTotal', 'reservas')}</span>
+            <span style={{ color: 'var(--color-admin-text-faint)' }}>·</span>
+            <span style={{ color: 'var(--color-admin-text-muted)' }}>{classBookings.length} {classBookings.length === 1 ? t('admin.classes.classLabel', 'clase') : t('admin.classes.classesLabel', 'clases')}</span>
+          </div>
         </div>
       )}
 
       {/* Month view: no date selected prompt */}
       {viewMode === 'month' && !monthSelectedDate && !isLoading && (
         <div className="text-center py-6">
-          <CalendarDays size={24} className="mx-auto mb-2" style={{ color: 'var(--color-text-faint)' }} />
-          <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.tapDateToSee', 'Toca una fecha para ver las reservas')}</p>
+          <CalendarDays size={24} className="mx-auto mb-2" style={{ color: 'var(--color-admin-text-faint)' }} />
+          <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.classes.tapDateToSee', 'Toca una fecha para ver las reservas')}</p>
         </div>
       )}
 
@@ -294,13 +328,15 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
       {isLoading ? (
         <div className="flex items-center gap-2 py-8 justify-center">
           <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--color-accent)', borderTopColor: 'transparent' }} />
-          <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{tc('loading')}</span>
+          <span className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>{tc('loading')}</span>
         </div>
-      ) : classBookings.length === 0 ? (
-        <div className="text-center py-12">
-          <Users size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-faint)' }} />
-          <p className="text-[14px] font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>{t('admin.classes.noBookingsTitle', 'No hay reservas')}</p>
-          <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noBookingsForDate', 'No bookings for this date')}</p>
+      ) : classBookings.length === 0 && (viewMode === 'day' || displayDate) ? (
+        <div className="flex flex-col items-center text-center" style={{ padding: '44px 24px 26px' }}>
+          <div className="grid place-items-center" style={{ width: 62, height: 62, borderRadius: 18, background: 'var(--color-admin-panel)' }}>
+            <Users size={28} strokeWidth={1.7} style={{ color: 'var(--color-admin-text-faint)' }} />
+          </div>
+          <div style={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 18, letterSpacing: '-0.3px', color: 'var(--color-admin-text)', marginTop: 16 }}>{t('admin.classes.noBookingsTitle', 'No hay reservas')}</div>
+          <div style={{ fontSize: 13.5, color: 'var(--color-admin-text-muted)', marginTop: 5 }}>{t('admin.classes.noBookingsForDate', 'No bookings for this date')}</div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -309,8 +345,8 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
             const capacityPct = cls.max_capacity ? Math.min((confirmed / cls.max_capacity) * 100, 100) : 0;
 
             return (
-              <div key={cls.id} className="rounded-xl overflow-hidden transition-all"
-                style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+              <div key={cls.id} className="overflow-hidden transition-all"
+                style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-admin-border)', borderRadius: 14 }}>
                 {/* Class header — tap to expand */}
                 <button className="w-full flex items-center gap-3 p-3.5 text-left"
                   onClick={() => setExpandedClassId(isExpanded ? null : cls.id)}>
@@ -320,37 +356,37 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
                     <img src={classImageUrl(cls.image_path)} alt={cls.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                   ) : (
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${cls.accent_color || 'var(--color-accent)'}15` }}>
+                      style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}>
                       <CalendarDays size={16} style={{ color: cls.accent_color || 'var(--color-accent)' }} />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{cls.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-success-soft)', color: 'var(--color-success)' }}>{confirmed} {t('admin.classes.confirmed', 'confirmed')}</span>
-                      {waitlisted > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-info-soft)', color: 'var(--color-info)' }}>{waitlisted} {t('admin.classes.waitlisted', 'waitlist')}</span>}
+                    <p className="truncate" style={{ fontFamily: DISPLAY_FONT, fontSize: 14.5, fontWeight: 700, color: 'var(--color-admin-text)' }}>{cls.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '2px 8px', borderRadius: 999, background: 'var(--color-success-soft)', color: 'var(--color-success-ink)' }}>{confirmed} {t('admin.classes.confirmed', 'confirmed')}</span>
+                      {waitlisted > 0 && <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '2px 8px', borderRadius: 999, background: 'var(--color-info-soft)', color: 'var(--color-info)' }}>{waitlisted} {t('admin.classes.waitlisted', 'waitlist')}</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-[12px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{total}</span>
-                    {isExpanded ? <ChevronUp size={14} style={{ color: 'var(--color-text-muted)' }} /> : <ChevronDown size={14} style={{ color: 'var(--color-text-muted)' }} />}
+                    <span style={{ fontFamily: DISPLAY_FONT, fontSize: 15, fontWeight: 800, color: 'var(--color-admin-text)' }}>{total}</span>
+                    {isExpanded ? <ChevronUp size={15} style={{ color: 'var(--color-admin-text-muted)' }} /> : <ChevronDown size={15} style={{ color: 'var(--color-admin-text-muted)' }} />}
                   </div>
                 </button>
 
                 {/* Capacity bar */}
                 {cls.max_capacity > 0 && (
-                  <div className="px-3.5 pb-2">
-                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-bg-hover)' }}>
+                  <div className="px-3.5 pb-2.5">
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-admin-panel)' }}>
                       <div className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${capacityPct}%`, backgroundColor: capacityPct >= 90 ? 'var(--color-danger)' : capacityPct >= 70 ? 'var(--color-warning)' : 'var(--color-success)' }} />
+                        style={{ width: `${capacityPct}%`, background: capacityPct >= 90 ? 'var(--color-danger)' : capacityPct >= 70 ? 'var(--color-warning)' : 'var(--color-success)' }} />
                     </div>
-                    <p className="text-[9px] mt-0.5 text-right" style={{ color: 'var(--color-text-muted)' }}>{confirmed}/{cls.max_capacity}</p>
+                    <p className="mt-1 text-right" style={{ fontFamily: MONO_FONT, fontSize: 9.5, color: 'var(--color-admin-text-muted)' }}>{confirmed}/{cls.max_capacity}</p>
                   </div>
                 )}
 
                 {/* Expanded member list */}
                 {isExpanded && (
-                  <div className="px-3.5 pb-3 space-y-1.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                  <div className="px-3.5 pb-3 space-y-1.5" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
                     <div className="pt-2" />
                     {bookings.map(b => {
                       const sc = statusStyle(b);
@@ -360,13 +396,12 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
                             <img src={b.profiles.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
                           ) : (
                             <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                              style={{ backgroundColor: 'var(--color-bg-hover)' }}>
-                              <span className="text-[10px] font-bold" style={{ color: 'var(--color-text-secondary)' }}>{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
+                              style={{ background: 'var(--color-admin-panel)' }}>
+                              <span className="text-[10px] font-bold" style={{ color: 'var(--color-admin-text-sub)' }}>{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
                             </div>
                           )}
-                          <p className="text-[12px] font-medium truncate flex-1" style={{ color: 'var(--color-text-primary)' }}>{b.profiles?.full_name || '?'}</p>
-                          <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: sc.bg, color: sc.color }}>
+                          <p className="text-[12px] font-medium truncate flex-1" style={{ color: 'var(--color-admin-text)' }}>{b.profiles?.full_name || '?'}</p>
+                          <span className="flex-shrink-0" style={{ fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px', padding: '2px 8px', borderRadius: 999, background: sc.bg, color: sc.color }}>
                             {statusLabel(b)}
                           </span>
                         </div>

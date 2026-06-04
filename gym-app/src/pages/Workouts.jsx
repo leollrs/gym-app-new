@@ -25,6 +25,8 @@ import { clearCache } from '../lib/queryCache';
 import { loadAdaptationSuggestions, dismissAdaptationSuggestions } from '../lib/programAdaptation';
 import { usePostHog } from '@posthog/react';
 import { programImageUrl } from '../lib/imageUrl';
+import { CLASS_COVERS } from './admin/components/CoverPreview';
+import { classImageUrl } from '../lib/classImageUrl';
 import { getExerciseReasoning } from '../lib/exerciseReasoning';
 import { selectInBatches } from '../lib/churn/batchedSelect';
 
@@ -513,10 +515,19 @@ const Workouts = () => {
     // instantly and revalidates silently in the background.
     if (!hasCachedState(`${wCacheKey}-gymPrograms`)) setProgramsLoading(true);
     try {
-      const [{ data: progs }, { data: enrolled }] = await Promise.all([
-        supabase.from('gym_programs').select('id, name, description, duration_weeks, weeks, created_at').eq('gym_id', profile.gym_id).eq('is_published', true).order('created_at', { ascending: false }).limit(50),
-        supabase.from('gym_program_enrollments').select('program_id').eq('profile_id', user.id).limit(50),
-      ]);
+      const enrolledP = supabase.from('gym_program_enrollments').select('program_id').eq('profile_id', user.id).limit(50);
+      // Prefer the bilingual columns; retry without them on pre-0513 schemas.
+      let { data: progs, error: progErr } = await supabase
+        .from('gym_programs')
+        .select('id, name, name_es, description, description_es, cover_preset, image_path, duration_weeks, weeks, created_at')
+        .eq('gym_id', profile.gym_id).eq('is_published', true).order('created_at', { ascending: false }).limit(50);
+      if (progErr && /name_es|description_es|cover_preset|image_path|does not exist/i.test(progErr.message || '')) {
+        ({ data: progs } = await supabase
+          .from('gym_programs')
+          .select('id, name, description, duration_weeks, weeks, created_at')
+          .eq('gym_id', profile.gym_id).eq('is_published', true).order('created_at', { ascending: false }).limit(50));
+      }
+      const { data: enrolled } = await enrolledP;
       setGymPrograms(progs || []);
       setEnrolledIds(new Set((enrolled || []).map(r => r.program_id)));
       try { localStorage.setItem('offline_gym_programs', JSON.stringify(progs || [])); } catch {}
@@ -1588,15 +1599,24 @@ const Workouts = () => {
         logger.log(`Created routine ${i + 1}/${firstWeek.length}: ${routineName} (${routine.id})`);
 
         if (day.exercises?.length > 0) {
-          const rows = day.exercises.map((ex, pos) => ({
+          // Carry the admin-authored prescription through to the live session:
+          // reps + supersets/circuits (group_id/group_type exist since 0128).
+          const baseRows = day.exercises.map((ex, pos) => ({
             routine_id: routine.id,
             exercise_id: ex.id,
             position: pos + 1,
             target_sets: ex.sets || 3,
-            target_reps: '8-12',
+            target_reps: ex.reps || '8-12',
             rest_seconds: ex.rest_seconds || 90,
+            group_id: ex.group_id || null,
+            group_type: ex.group_type || null,
           }));
-          const { error: exErr } = await supabase.from('routine_exercises').insert(rows);
+          // Drop-set marker (0513). Retry without it on pre-migration schemas.
+          const rows = baseRows.map((r, pos) => ({ ...r, is_drop_set: !!day.exercises[pos].drop_set }));
+          let { error: exErr } = await supabase.from('routine_exercises').insert(rows);
+          if (exErr && /is_drop_set|does not exist/i.test(exErr.message || '')) {
+            ({ error: exErr } = await supabase.from('routine_exercises').insert(baseRows));
+          }
           if (exErr) logger.error('Failed to insert exercises for routine:', routineName, exErr);
         }
 
@@ -2648,29 +2668,44 @@ const Workouts = () => {
                   </div>
                 );
               }
-              return gymPrograms.map(prog => (
-                <button
-                  key={prog.id}
-                  onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); setTemplateWeek('1'); }}
-                  className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150"
-                  style={{ aspectRatio: '3 / 4', backgroundColor: 'var(--color-bg-card)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
-                  aria-label={`${prog.name} - Gym Exclusive program`}
-                >
-                  <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card)), var(--color-bg-card))' }} />
-                  <div className="absolute top-3 left-3 z-10">
-                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)', color: 'var(--color-accent)' }}>
-                      {t('workouts.gymExclusive', 'Gym Exclusive')}
-                    </span>
-                  </div>
-                  <div className="absolute bottom-0 left-0 right-0 p-3.5 z-10">
-                    <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{prog.name}</p>
-                    {prog.description && <p className="text-[10px] mt-1 line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>{prog.description}</p>}
-                    <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
-                      {t('workouts.programDuration', { weeks: prog.duration_weeks || 6, days: prog.weeks?.['1']?.length || '?', defaultValue: '{{weeks}} weeks, {{days}} days/wk' })}
-                    </p>
-                  </div>
-                </button>
-              ));
+              return gymPrograms.map(prog => {
+                // Stable cover: explicit preset, else derived from id so it's never blank/ugly.
+                const presetKey = prog.cover_preset || (() => { const id = String(prog.id || ''); let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return CLASS_COVERS[h % CLASS_COVERS.length]?.key; })();
+                const cover = CLASS_COVERS.find(c => c.key === presetKey) || CLASS_COVERS[0];
+                const CoverIcon = cover.icon;
+                const imgUrl = prog.image_path ? classImageUrl(prog.image_path) : null;
+                return (
+                  <button
+                    key={prog.id}
+                    onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); setTemplateWeek('1'); }}
+                    className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150"
+                    style={{ aspectRatio: '3 / 4', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+                    aria-label={`${progName(prog)} - Gym Exclusive program`}
+                  >
+                    {imgUrl ? (
+                      <img src={imgUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                    ) : (
+                      <>
+                        <div className="absolute inset-0" style={{ background: cover.gradient }} />
+                        <CoverIcon size={62} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/15" />
+                      </>
+                    )}
+                    <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.80), rgba(0,0,0,0.18) 55%, rgba(0,0,0,0.05))' }} />
+                    <div className="absolute top-3 left-3 z-10">
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ backgroundColor: 'rgba(255,255,255,0.22)', color: '#fff' }}>
+                        {t('workouts.gymExclusive', 'Gym Exclusive')}
+                      </span>
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 p-3.5 z-10">
+                      <p className="text-[14px] font-bold leading-tight" style={{ color: '#fff' }}>{progName(prog)}</p>
+                      {prog.description && <p className="text-[10px] mt-1 line-clamp-2" style={{ color: 'rgba(255,255,255,0.85)' }}>{progDesc(prog)}</p>}
+                      <p className="text-[10px] mt-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                        {t('workouts.programDuration', { weeks: prog.duration_weeks || 6, days: prog.weeks?.['1']?.length || '?', defaultValue: '{{weeks}} weeks, {{days}} days/wk' })}
+                      </p>
+                    </div>
+                  </button>
+                );
+              });
             }
 
             const filtered = programTemplates

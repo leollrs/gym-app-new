@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trophy, ChevronDown, Users, Gift, Pencil, Trash2, Award, BarChart3, Flame, Dumbbell, Zap, TrendingUp, Timer, Crown, Sparkles } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,12 +9,25 @@ import { es as esLocale } from 'date-fns/locale/es';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
 import posthog from 'posthog-js';
-import { PageHeader, AdminCard, FadeIn, CardSkeleton, SectionLabel, AdminTabs, AdminPageShell, ErrorCard } from '../../components/admin';
+import { FadeIn, CardSkeleton, AdminPageShell, ErrorCard, AdminModal } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import ChallengeModal from './components/ChallengeModal';
 import ChallengeSuggestionCard from './components/ChallengeSuggestionCard';
 import usePagedVisible from '../../hooks/usePagedVisible';
 import PaginationFooter from '../../components/admin/PaginationFooter';
+import {
+  TK, FK, Ico, ICON, TYPE_ICON, Card, IconChip, Pill, OutPill, Label,
+  PremiosBox, MiniAction, Avatar, PrimaryBtn, GhostBtn,
+} from './components/retosKit';
+
+// titleIcon adapter for AdminModal (it renders <TitleIcon size style/>; the kit
+// Ico inherits the accent through currentColor via the passed style.color).
+const SparkleIcon = (props) => <Ico ch={ICON.sparkle} {...props} />;
+
+const parseRewards = (raw) => {
+  if (!raw) return [];
+  try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+};
 
 // ── Participant list panel ─────────────────────────────────
 const ParticipantList = ({ challengeId, gymId }) => {
@@ -34,60 +46,31 @@ const ParticipantList = ({ challengeId, gymId }) => {
   });
 
   if (isLoading) return (
-    <div className="py-3 flex justify-center">
-      <div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)', borderTopColor: 'var(--color-accent)' }} />
+    <div style={{ padding: '12px 0', display: 'flex', justifyContent: 'center' }}>
+      <span className="animate-spin" style={{ width: 16, height: 16, borderRadius: 99, border: `2px solid ${TK.borderSolid}`, borderTopColor: TK.accent, display: 'inline-block' }} />
     </div>
   );
 
   if (participants.length === 0) return (
-    <p className="text-[12px] text-center py-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.challenges.noParticipants', 'No participants yet')}</p>
+    <div style={{ borderRadius: 13, border: `1px dashed ${TK.borderSolid}`, background: TK.surface2, padding: '26px 16px', textAlign: 'center', fontFamily: FK.body, fontSize: 13.5, color: TK.textFaint }}>
+      {t('admin.challenges.noParticipants', 'No participants yet')}
+    </div>
   );
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {participants.map(p => {
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+      {participants.map((p, i) => {
         const name = p.profiles?.full_name ?? '?';
         const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
         return (
-          <div key={p.profile_id} className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5" style={{ backgroundColor: 'var(--color-bg-card)' }}>
-            <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
-              <span className="text-[9px] font-bold" style={{ color: 'var(--color-accent)' }}>{initials}</span>
-            </div>
-            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{name}</span>
+          <div key={p.profile_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 14px 7px 7px', borderRadius: 999, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+            <Avatar initials={initials} hue={i} size={26} />
+            <span style={{ fontFamily: FK.body, fontSize: 13.5, fontWeight: 600, color: TK.text }}>{name}</span>
           </div>
         );
       })}
     </div>
   );
-};
-
-const CHALLENGE_COVERS = {
-  fire:      { icon: Flame,      gradient: 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)' },
-  power:     { icon: Dumbbell,   gradient: 'linear-gradient(135deg, #D4AF37 0%, #92751E 100%)' },
-  endurance: { icon: Zap,        gradient: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)' },
-  growth:    { icon: TrendingUp, gradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)' },
-  compete:   { icon: Trophy,     gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' },
-  team:      { icon: Users,      gradient: 'linear-gradient(135deg, #EC4899 0%, #BE185D 100%)' },
-  speed:     { icon: Timer,      gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' },
-  champion:  { icon: Crown,      gradient: 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)' },
-};
-
-function ChallengeCoverBadge({ preset }) {
-  if (!preset) return null;
-  const cover = CHALLENGE_COVERS[preset];
-  if (!cover) return null;
-  const Icon = cover.icon;
-  return (
-    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: cover.gradient }}>
-      <Icon size={17} className="text-white/90" />
-    </div>
-  );
-}
-
-const statusBadge = (c) => {
-  if (isFuture(new Date(c.start_date))) return { labelKey: 'admin.challenges.upcoming', tone: 'info' };
-  if (isPast(new Date(c.end_date)))     return { labelKey: 'admin.challenges.ended',    tone: 'outline' };
-  return                                       { labelKey: 'admin.challenges.live',     tone: 'good' };
 };
 
 // ── Leaderboard panel ─────────────────────────────────────
@@ -201,23 +184,19 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
   const scoreLabel = challenge.type === 'volume' ? t('admin.challenges.scoreLbs', 'lbs') : challenge.type === 'consistency' ? t('admin.challenges.scoreWorkouts', 'workouts') : t('admin.challenges.scorePRs', 'PRs');
 
   return (
-    <div className="mt-3 space-y-2">
+    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
       {loading ? (
-        <div className="py-4 flex justify-center">
-          <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)', borderTopColor: 'var(--color-accent)' }} />
+        <div style={{ padding: '16px 0', display: 'flex', justifyContent: 'center' }}>
+          <span className="animate-spin" style={{ width: 18, height: 18, borderRadius: 99, border: `2px solid ${TK.borderSolid}`, borderTopColor: TK.accent, display: 'inline-block' }} />
         </div>
       ) : entries.length === 0 ? (
-        <p className="text-[12px] text-center py-3" style={{ color: 'var(--color-text-muted)' }}>{t('admin.challenges.noActivity', 'No activity yet')}</p>
+        <div style={{ padding: '20px 0', textAlign: 'center', fontFamily: FK.body, fontSize: 13.5, color: TK.textFaint }}>{t('admin.challenges.noActivity', 'No activity yet')}</div>
       ) : (
         entries.map((e, i) => (
-          <div key={e.id} className="flex items-center gap-3 py-2 px-3 rounded-xl" style={{ backgroundColor: 'var(--color-bg-card)' }}>
-            <span className="text-[13px] font-bold w-5 text-center" style={{ color: i === 0 ? 'var(--color-accent)' : i === 1 ? 'var(--color-text-secondary)' : i === 2 ? '#B45309' : 'var(--color-text-muted)' }}>
-              {i + 1}
-            </span>
-            <p className="flex-1 text-[13px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{e.name}</p>
-            <p className="text-[12px] font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
-              {e.score.toLocaleString()} {scoreLabel}
-            </p>
+          <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+            <span style={{ fontFamily: FK.display, fontSize: 14, fontWeight: 800, width: 22, textAlign: 'center', color: i === 0 ? TK.accent : i === 1 ? TK.textSub : i === 2 ? '#C77B3E' : TK.textMute }}>{i + 1}</span>
+            <span style={{ flex: 1, fontFamily: FK.body, fontSize: 13.5, fontWeight: 600, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+            <span style={{ fontFamily: FK.mono, fontSize: 12.5, fontWeight: 700, color: TK.textSub, whiteSpace: 'nowrap' }}>{e.score.toLocaleString()} {scoreLabel}</span>
           </div>
         ))
       )}
@@ -234,6 +213,8 @@ export default function AdminChallenges() {
   const gymId = profile?.gym_id;
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
+  const ord = (n) => isEs ? `${n}º` : `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' })[n] || 'th'}`;
+  const placeWord = t('admin.challenges.place', 'place');
 
   const [showCreate, setShowCreate] = useState(false);
   const [editChallenge, setEditChallenge] = useState(null);
@@ -312,91 +293,164 @@ export default function AdminChallenges() {
     onError: (err) => { showToast(err.message, 'error'); setDeleteConfirm(null); },
   });
 
+  // ── one challenge card ──
+  const renderCard = (c, idx) => {
+    const isOpen = expanded === c.id;
+    const start = new Date(c.start_date);
+    const end = new Date(c.end_date);
+    const isEnded = isPast(end);
+    const isUpcoming = isFuture(start);
+    const isLive = !isUpcoming && !isEnded;
+    const dates = `${format(start, 'MMM d', dateFnsLocale)} – ${format(end, 'MMM d, yyyy', dateFnsLocale)}`;
+    const rewards = parseRewards(c.reward_description);
+    const typeLabel = t(`admin.challengeTypes.${c.type}`, (c.type || '').replace('_', ' '));
+    const typeIcon = TYPE_ICON[c.type] || ICON.target;
+
+    const hasRewardConfig = (() => {
+      if (!c.reward_description) return false;
+      try { const parsed = JSON.parse(c.reward_description); if (Array.isArray(parsed)) return parsed.length > 0; } catch {}
+      return String(c.reward_description).trim().length > 0;
+    })();
+
+    const statusEl = isUpcoming
+      ? <OutPill tone="accent">{t('admin.challenges.upcoming', 'Upcoming')}</OutPill>
+      : isEnded
+        ? <OutPill>{t('admin.challenges.ended', 'Ended')}</OutPill>
+        : <OutPill tone="good" dot>{t('admin.challenges.live', 'Live')}</OutPill>;
+
+    let prizeEl = null;
+    if (isEnded) {
+      if (c._prizesAwarded) prizeEl = <OutPill tone="good">{t('admin.challenges.pillPrizesAwarded', 'Prizes awarded')}</OutPill>;
+      else if (hasRewardConfig) prizeEl = <OutPill tone="warn">{t('admin.challenges.pillAwaitingPrize', 'Awaiting prize award')}</OutPill>;
+      else prizeEl = <OutPill>{t('admin.challenges.pillNoPrizes', 'No prizes set')}</OutPill>;
+    }
+
+    const awarding = awardPrizesMutation.isPending && awardingId === c.id;
+
+    return (
+      <FadeIn key={c.id} delay={idx * 40}>
+        <Card style={{ overflow: 'hidden' }}>
+          {/* header (toggles expand) */}
+          <button type="button" onClick={() => setExpanded(isOpen ? null : c.id)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 16, padding: '18px 20px', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+            <IconChip ch={ICON.trophy} tone="accent" size={46} r={14} strokeW={1.9} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: FK.display, fontSize: 17.5, fontWeight: 800, color: TK.text, letterSpacing: -0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+              <div style={{ fontFamily: FK.mono, fontSize: 13, color: TK.textMute, marginTop: 4 }}>{dates}</div>
+              {/* mobile-only status row */}
+              <div className="sm:hidden" style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>{statusEl}{prizeEl}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 13, flexShrink: 0 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: FK.mono, fontSize: 13.5, fontWeight: 700, color: TK.textSub }}>
+                <Ico ch={ICON.users} size={15} color={TK.textMute} stroke={2} />{c._participantCount}
+              </span>
+              {prizeEl && <span className="hidden sm:inline-flex">{prizeEl}</span>}
+              <span className="hidden sm:inline-flex">{statusEl}</span>
+              <span style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${TK.borderSolid}`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <Ico ch={isOpen ? ICON.chevU : ICON.chevD} size={17} color={TK.textMute} stroke={2} />
+              </span>
+            </div>
+          </button>
+
+          {/* expanded body */}
+          {isOpen && (
+            <div style={{ borderTop: `1px solid ${TK.divider}`, padding: '20px 20px 22px' }}>
+              {/* awarded banner */}
+              {isEnded && c._prizesAwarded && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, height: 50, borderRadius: 13, marginBottom: 18, background: 'var(--color-success-soft)', border: '1px solid color-mix(in srgb, var(--color-success) 35%, transparent)', fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: 'var(--color-success-ink, var(--color-success))' }}>
+                  <Ico ch={ICON.medal} size={18} color="var(--color-success)" stroke={2} />{t('admin.challenges.prizesAwarded', 'Prizes awarded!')}
+                </div>
+              )}
+              {/* award button */}
+              {isEnded && hasRewardConfig && !c._prizesAwarded && (
+                <button type="button" onClick={() => { setAwardingId(c.id); awardPrizesMutation.mutate(c.id); }} disabled={awarding}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, height: 50, borderRadius: 13, marginBottom: 18, border: 'none', cursor: awarding ? 'default' : 'pointer', background: TK.accent, color: '#fff', fontFamily: FK.body, fontSize: 14.5, fontWeight: 800, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)', opacity: awarding ? 0.6 : 1 }}>
+                  <Ico ch={ICON.award} size={18} color="#fff" stroke={2.2} />{awarding ? '…' : t('admin.challenges.awardPrizes', 'Award Prizes')}
+                </button>
+              )}
+
+              {/* actions row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                <MiniAction icon={ICON.edit} onClick={() => setEditChallenge(c)}>{t('admin.challenges.edit', 'Edit')}</MiniAction>
+                {deleteConfirm === c.id ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: FK.body, fontSize: 12.5, color: 'var(--color-danger)' }}>{t('admin.challenges.deleteConfirm')}</span>
+                    <button type="button" onClick={() => deleteMutation.mutate(c.id)} disabled={deleteMutation.isPending}
+                      style={{ padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5, fontWeight: 800, color: '#fff', background: 'var(--color-danger)', opacity: deleteMutation.isPending ? 0.6 : 1 }}>
+                      {deleteMutation.isPending ? t('admin.challenges.deleting', 'Deleting…') : t('admin.challenges.confirm', 'Confirm')}
+                    </button>
+                    <button type="button" onClick={() => setDeleteConfirm(null)}
+                      style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5, fontWeight: 700, color: TK.textSub, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                      {t('admin.challenges.cancel', 'Cancel')}
+                    </button>
+                  </span>
+                ) : (
+                  <MiniAction icon={ICON.trash} danger onClick={() => setDeleteConfirm(c.id)}>{t('admin.challenges.delete', 'Delete')}</MiniAction>
+                )}
+                <span style={{ flex: 1 }} />
+                {isLive && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: FK.body, fontSize: 13, fontWeight: 700, color: 'var(--color-success)' }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 99, background: 'var(--color-success)', boxShadow: '0 0 0 3px color-mix(in srgb, var(--color-success) 18%, transparent)' }} />
+                    {t('admin.challenges.liveScoring', 'Live scoring')}
+                  </span>
+                )}
+                <Pill tone="neutral" icon={typeIcon}>{typeLabel}</Pill>
+              </div>
+
+              {/* description */}
+              {c.description && (
+                <p style={{ margin: '18px 0 0', fontFamily: FK.body, fontSize: 15, color: TK.text, lineHeight: 1.5, fontWeight: 500 }}>{c.description}</p>
+              )}
+
+              {/* prizes */}
+              {rewards.length > 0 && (
+                <div style={{ marginTop: 18 }}>
+                  <PremiosBox rewards={rewards} title={t('admin.challenges.rewards', 'Prizes')} placeWord={placeWord} ordinal={ord} />
+                </div>
+              )}
+
+              {/* participants */}
+              <div style={{ marginTop: 20 }}>
+                <Label style={{ marginBottom: 12 }}>{t('admin.challenges.participants', 'Participants')} · {c._participantCount}</Label>
+                <ParticipantList challengeId={c.id} gymId={gymId} />
+              </div>
+
+              {/* leaderboard */}
+              <div style={{ marginTop: 18, borderRadius: 13, border: `1px solid ${TK.borderSolid}`, background: TK.surface2, overflow: 'hidden' }}>
+                <button type="button" onClick={() => setLeaderboardOpen(prev => ({ ...prev, [c.id]: !prev[c.id] }))}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                  <Ico ch={ICON.bar} size={17} color={TK.accent} stroke={2.1} />
+                  <span style={{ flex: 1, textAlign: 'left', fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text }}>{t('admin.challenges.viewLeaderboard', 'View Leaderboard')}</span>
+                  <Ico ch={leaderboardOpen[c.id] ? ICON.chevU : ICON.chevD} size={18} color={TK.textMute} stroke={2} />
+                </button>
+                {leaderboardOpen[c.id] && (
+                  <div style={{ borderTop: `1px solid ${TK.divider}`, padding: '4px 14px 14px' }}>
+                    <ChallengeLeaderboard challenge={c} gymId={gymId} />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </Card>
+      </FadeIn>
+    );
+  };
+
   return (
     <AdminPageShell>
-      <PageHeader
-        title={t('admin.challenges.title', 'Challenges')}
-        subtitle={t('admin.challenges.subtitle', 'Create and manage gym challenges')}
-        actions={
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button onClick={() => setShowTemplates(s => !s)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 font-semibold text-[13px] rounded-xl transition-colors flex-1 sm:flex-none"
-              style={{
-                backgroundColor: showTemplates ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'var(--color-bg-elevated)',
-                color: 'var(--color-text-primary)',
-                border: '1px solid var(--color-border-subtle)',
-              }}>
-              <Sparkles size={14} /> {t('admin.challenges.quickTemplates', 'Quick Templates')}
-            </button>
-            <button onClick={() => setShowCreate(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-[13px] rounded-xl transition-colors flex-1 sm:flex-none"
-              style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}>
-              <Plus size={15} /> {t('admin.challenges.newChallenge', 'New Challenge')}
-            </button>
-          </div>
-        }
-        className="mb-5"
-      />
+      {/* header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.challenges.title', 'Challenges')}</h1>
+          <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.challenges.subtitle', 'Create and manage gym challenges')}</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11, flexShrink: 0, flexWrap: 'wrap' }}>
+          <GhostBtn icon={ICON.sparkle} accentIcon onClick={() => setShowTemplates(true)}>{t('admin.challenges.quickTemplates', 'Quick Templates')}</GhostBtn>
+          <PrimaryBtn icon={ICON.plus} onClick={() => setShowCreate(true)}>{t('admin.challenges.newChallenge', 'New Challenge')}</PrimaryBtn>
+        </div>
+      </div>
 
-      {/* Quick Templates — collapsible drawer near the top, opened by the toolbar button. */}
-      {showTemplates && (
-        <FadeIn>
-          <AdminCard padding="p-0" className="mb-5">
-            <div className="p-4 pb-3 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="admin-page-title text-[15px] mb-0.5" style={{ letterSpacing: '-0.01em' }}>
-                  {t('admin.challenges.quickTemplates', 'Quick Templates')}
-                </h3>
-                <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>
-                  {t('admin.challenges.quickTemplatesSub', 'One-click challenges based on your data')}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowTemplates(false)}
-                aria-label={t('admin.challenges.cancel', 'Close')}
-                className="p-1.5 rounded-lg transition-colors hover:bg-white/5 flex-shrink-0"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                <ChevronDown size={16} className="rotate-180" />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3">
-              {[
-                { id: 'streak5', title: t('admin.challenges.tpl5Streak', '5-Day Streak'), desc: t('admin.challenges.tpl5StreakDesc', 'Visit 5 days in a row'), Icon: Flame, tone: 'hot' },
-                { id: 'prparty', title: t('admin.challenges.tplPRParty', 'PR Party'), desc: t('admin.challenges.tplPRPartyDesc', 'Set any PR this week'), Icon: Trophy, tone: 'warn' },
-                { id: 'bringfriend', title: t('admin.challenges.tplBringFriend', 'Bring a Friend'), desc: t('admin.challenges.tplBringFriendDesc', 'Referral bonus doubled'), Icon: Users, tone: 'coach' },
-              ].map((tpl) => {
-                const softVar = tpl.tone === 'hot' ? 'var(--color-danger-soft)' : tpl.tone === 'warn' ? 'var(--color-warning-soft)' : 'var(--color-coach-soft)';
-                const inkVar  = tpl.tone === 'hot' ? 'var(--color-danger)'      : tpl.tone === 'warn' ? 'var(--color-warning)'      : 'var(--color-coach)';
-                return (
-                  <div
-                    key={tpl.id}
-                    className="p-4 flex items-start gap-3 border-b md:border-b-0 md:border-r last:border-b-0 md:last:border-r-0"
-                    style={{ borderColor: 'var(--color-admin-border)' }}
-                  >
-                    <div className="w-9 h-9 rounded-[9px] flex items-center justify-center flex-shrink-0" style={{ background: softVar }}>
-                      <tpl.Icon size={16} style={{ color: inkVar }} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-bold" style={{ color: 'var(--color-admin-text)' }}>{tpl.title}</p>
-                      <p className="text-[11.5px] mt-0.5 mb-2" style={{ color: 'var(--color-admin-text-muted)' }}>{tpl.desc}</p>
-                      <button
-                        onClick={() => { setShowTemplates(false); setShowCreate(true); }}
-                        className="text-[11.5px] font-semibold inline-flex items-center gap-1 transition-colors"
-                        style={{ color: 'var(--color-accent)' }}
-                      >
-                        <Sparkles size={11} /> {t('admin.challenges.useTemplate', 'Use template')}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </AdminCard>
-        </FadeIn>
-      )}
-
-      {/* AI Suggestion */}
+      {/* AI Suggestion (self-spaces with marginTop; renders null when none) */}
       <ChallengeSuggestionCard
         gymId={gymId}
         onCreateFromSuggestion={async (suggestion) => {
@@ -426,7 +480,7 @@ export default function AdminChallenges() {
         }}
       />
 
-      {/* Tabs */}
+      {/* Tabs + content */}
       {(() => {
         const activeChallenges = challenges.filter(c => !isFuture(new Date(c.start_date)) && !isPast(new Date(c.end_date)));
         const upcomingChallenges = challenges.filter(c => isFuture(new Date(c.start_date)));
@@ -445,235 +499,79 @@ export default function AdminChallenges() {
 
         const renderChallengeList = (filtered, tabKey) => {
           if (isLoading) return (
-            <div className="space-y-3">
-              {[0, 1, 2].map(i => <CardSkeleton key={i} h="h-[80px]" />)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 22 }}>
+              {[0, 1, 2].map(i => <CardSkeleton key={i} h="h-[84px]" />)}
             </div>
           );
           if (isError) return (
-            <ErrorCard message={t('common:failedToLoadData')} onRetry={refetch} />
+            <div style={{ marginTop: 22 }}><ErrorCard message={t('common:failedToLoadData')} onRetry={refetch} /></div>
           );
           if (filtered.length === 0) return (
-            <div className="text-center py-20">
-              <Trophy size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-muted)' }} />
-              <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>{emptyMsgMap[tabKey]}</p>
-              <p className="text-[12px] mt-1 mb-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.challenges.noChallengesHint', 'Create your first challenge to get members competing')}</p>
-              <button
-                onClick={() => setShowCreate(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
-                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}
-              >
-                <Plus size={14} /> {t('admin.challenges.createFirst', 'Create your first challenge')}
-              </button>
+            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+              <Ico ch={ICON.trophy} size={34} color={TK.textMute} stroke={1.6} style={{ margin: '0 auto 12px' }} />
+              <p style={{ fontFamily: FK.body, fontSize: 14, color: TK.textMute, margin: 0 }}>{emptyMsgMap[tabKey]}</p>
+              <p style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textFaint, margin: '4px 0 18px' }}>{t('admin.challenges.noChallengesHint', 'Create your first challenge to get members competing')}</p>
+              <div style={{ display: 'inline-flex' }}>
+                <PrimaryBtn icon={ICON.plus} onClick={() => setShowCreate(true)}>{t('admin.challenges.createFirst', 'Create your first challenge')}</PrimaryBtn>
+              </div>
             </div>
           );
           return (
-            <div className="space-y-3">
-              {filtered.slice(0, challengePager.visibleCount).map((c, idx) => {
-                const badge = statusBadge(c);
-                const isOpen = expanded === c.id;
-                const isEnded = isPast(new Date(c.end_date));
-                // Prize status — visible in the card header for Past challenges
-                // so admins don't have to expand to know whether prizes need
-                // attention.
-                const hasRewardConfig = (() => {
-                  if (!c.reward_description) return false;
-                  // reward_description is sometimes a JSON array, sometimes a plain string
-                  try {
-                    const parsed = JSON.parse(c.reward_description);
-                    if (Array.isArray(parsed)) return parsed.length > 0;
-                  } catch {}
-                  return String(c.reward_description).trim().length > 0;
-                })();
-                let prizePill = null;
-                if (isEnded) {
-                  if (c._prizesAwarded) {
-                    prizePill = { tone: 'good', label: t('admin.challenges.pillPrizesAwarded', 'Prizes awarded') };
-                  } else if (hasRewardConfig) {
-                    prizePill = { tone: 'warn', label: t('admin.challenges.pillAwaitingPrize', 'Awaiting prize award') };
-                  } else {
-                    prizePill = { tone: 'outline', label: t('admin.challenges.pillNoPrizes', 'No prizes set') };
-                  }
-                }
-                return (
-                  <FadeIn key={c.id} delay={idx * 40}>
-                    <AdminCard hover className="overflow-hidden !p-0">
-                      <button className="w-full flex items-center gap-3 p-3 sm:p-4 text-left hover:bg-white/2 transition-colors"
-                        onClick={() => setExpanded(isOpen ? null : c.id)}>
-                        {c.cover_preset ? (
-                          <ChallengeCoverBadge preset={c.cover_preset} />
-                        ) : (
-                          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
-                            <Trophy size={17} style={{ color: 'var(--color-accent)' }} />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{c.name}</p>
-                          <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                            {format(new Date(c.start_date), 'MMM d', dateFnsLocale)} – {format(new Date(c.end_date), 'MMM d, yyyy', dateFnsLocale)}
-                          </p>
-                          <div className="flex md:hidden items-center gap-2 mt-1.5 flex-wrap">
-                            <span className={`admin-pill admin-pill--${badge.tone} flex-shrink-0`}>
-                              {t(badge.labelKey)}
-                            </span>
-                            <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                              <Users size={11} />
-                              {c._participantCount} {t('admin.challenges.participantsShort', 'participants')}
-                            </span>
-                            {prizePill && (
-                              <span className={`admin-pill admin-pill--${prizePill.tone} flex-shrink-0`}>
-                                {prizePill.label}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="hidden md:flex items-center gap-1.5 text-[11px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
-                          <Users size={11} />
-                          <span>{c._participantCount}</span>
-                        </div>
-                        {prizePill && (
-                          <span className={`hidden md:inline-flex admin-pill admin-pill--${prizePill.tone} flex-shrink-0`}>
-                            {prizePill.label}
-                          </span>
-                        )}
-                        <span className={`hidden md:inline-flex admin-pill admin-pill--${badge.tone} flex-shrink-0`}>
-                          {t(badge.labelKey)}
-                        </span>
-                        <ChevronDown size={16} className={`transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
-                      </button>
-                      {/* Award Prizes — surfaced prominently on ended challenges */}
-                      {isPast(new Date(c.end_date)) && c.reward_description && !c._prizesAwarded && (
-                        <div className="px-4 pb-3 -mt-1">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setAwardingId(c.id); awardPrizesMutation.mutate(c.id); }}
-                            disabled={awardPrizesMutation.isPending && awardingId === c.id}
-                            className="flex items-center gap-2 px-4 py-2.5 text-black font-bold text-[13px] rounded-xl transition-colors disabled:opacity-50 w-full justify-center"
-                            style={{ backgroundColor: 'var(--color-accent)' }}
-                          >
-                            <Award size={15} />
-                            {awardPrizesMutation.isPending && awardingId === c.id
-                              ? '...'
-                              : t('admin.challenges.awardPrizes', 'Award Prizes')}
-                          </button>
-                        </div>
-                      )}
-                      {isPast(new Date(c.end_date)) && c._prizesAwarded && (
-                        <div className="px-4 pb-3 -mt-1">
-                          <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                            <Award size={14} className="text-emerald-400" />
-                            <span className="text-[12px] font-semibold text-emerald-400">
-                              {t('admin.challenges.prizesAwarded', 'Prizes awarded!')}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                      {isOpen && (
-                        <div className="px-4 pb-4 border-t border-white/4">
-                          {/* Edit / Delete buttons */}
-                          <div className="flex items-center gap-2 mt-3 mb-3 flex-wrap">
-                            <button onClick={(e) => { e.stopPropagation(); setEditChallenge(c); }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-white/5 hover:bg-white/10 border rounded-lg transition-colors" style={{ color: 'var(--color-text-primary)', borderColor: 'var(--color-border-subtle)' }}>
-                              <Pencil size={12} /> {t('admin.challenges.edit', 'Edit')}
-                            </button>
-                            {deleteConfirm === c.id ? (
-                              <div className="flex items-center gap-2">
-                                <span className="text-[12px] text-red-400">{t('admin.challenges.deleteConfirm')}</span>
-                                <button onClick={() => deleteMutation.mutate(c.id)} disabled={deleteMutation.isPending}
-                                  className="px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50"
-                                  style={{ backgroundColor: 'var(--color-danger, #EF4444)', color: '#fff' }}>
-                                  {deleteMutation.isPending ? t('admin.challenges.deleting', 'Eliminando...') : t('admin.challenges.confirm', 'Confirmar')}
-                                </button>
-                                <button onClick={() => setDeleteConfirm(null)}
-                                  className="px-3 py-1.5 text-[12px] font-medium rounded-lg transition-colors"
-                                  style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-bg-hover)', border: '1px solid var(--color-border-subtle)' }}>
-                                  {t('admin.challenges.cancel', 'Cancelar')}
-                                </button>
-                              </div>
-                            ) : (
-                              <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(c.id); }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-lg transition-colors">
-                                <Trash2 size={12} /> {t('admin.challenges.delete', 'Delete')}
-                              </button>
-                            )}
-                          </div>
-
-                          {c.description && (
-                            <p className="text-[12px] mt-3 mb-2" style={{ color: 'var(--color-text-secondary)' }}>{c.description}</p>
-                          )}
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="text-[11px] bg-white/5 px-2 py-0.5 rounded-lg capitalize" style={{ color: 'var(--color-text-muted)' }}>{t(`admin.challengeTypes.${c.type}`, c.type.replace('_', ' '))}</span>
-                            {badge.labelKey === 'admin.challenges.live' && (
-                              <span className="flex items-center gap-1 text-[11px] text-emerald-400">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                {t('admin.challenges.liveScoring', 'Live scoring')}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Rewards display */}
-                          {(() => {
-                            let rewards = null;
-                            try { rewards = c.reward_description ? JSON.parse(c.reward_description) : null; } catch {}
-                            if (!rewards || !Array.isArray(rewards)) return null;
-                            const medals = ['🥇', '🥈', '🥉'];
-                            return (
-                              <div className="mb-4 rounded-xl p-3 border" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
-                                <div className="flex items-center gap-1.5 mb-2">
-                                  <Gift size={12} style={{ color: 'var(--color-accent)' }} />
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-accent)' }}>{t('admin.challenges.rewards', 'Prizes')}</p>
-                                </div>
-                                <div className="space-y-1.5">
-                                  {rewards.map((r, i) => (
-                                    <div key={i} className="flex items-center gap-2 text-[12px]">
-                                      <span>{medals[i]}</span>
-                                      <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{r.points} pts</span>
-                                      {r.prize && <span style={{ color: 'var(--color-text-secondary)' }}>+ {r.prize}</span>}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })()}
-
-                          {/* Enrolled members */}
-                          <div className="mb-4">
-                            <SectionLabel className="mb-2">
-                              {t('admin.challenges.participants', 'Participants')} · {c._participantCount}
-                            </SectionLabel>
-                            <ParticipantList challengeId={c.id} gymId={gymId} />
-                          </div>
-
-                          {/* Leaderboard — collapsed by default */}
-                          <div>
-                            <button
-                              onClick={() => setLeaderboardOpen(prev => ({ ...prev, [c.id]: !prev[c.id] }))}
-                              className="flex items-center gap-2 w-full py-2.5 px-3 rounded-xl bg-white/4 hover:bg-white/6 border border-white/6 transition-colors"
-                            >
-                              <BarChart3 size={14} style={{ color: 'var(--color-accent)' }} />
-                              <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.challenges.viewLeaderboard', 'View Leaderboard')}</span>
-                              <ChevronDown size={14} className={`ml-auto transition-transform ${leaderboardOpen[c.id] ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
-                            </button>
-                            {leaderboardOpen[c.id] && (
-                              <ChallengeLeaderboard challenge={c} gymId={gymId} />
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </AdminCard>
-                  </FadeIn>
-                );
-              })}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 22 }}>
+              {filtered.slice(0, challengePager.visibleCount).map((c, idx) => renderCard(c, idx))}
               <PaginationFooter pager={challengePager} total={filtered.length} />
             </div>
           );
         };
 
         return <>
-          <AdminTabs tabs={tabs} active={tab} onChange={setTab} className="mb-5" />
+          {/* RetoTab row */}
+          <div style={{ display: 'flex', marginTop: 24, borderBottom: `1px solid ${TK.borderSolid}` }}>
+            {tabs.map(tb => {
+              const on = tab === tb.key;
+              return (
+                <button key={tb.key} type="button" onClick={() => setTab(tb.key)}
+                  style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, paddingBottom: 16, position: 'relative', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                  <span style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: on ? 700 : 600, color: on ? TK.accent : TK.textMute }}>{tb.label}</span>
+                  <span style={{ minWidth: 22, height: 22, padding: '0 7px', borderRadius: 999, display: 'grid', placeItems: 'center', fontFamily: FK.mono, fontSize: 12, fontWeight: 800, background: on ? TK.accentSoft : TK.surface2, color: on ? TK.accentInk : TK.textFaint, border: `1px solid ${on ? TK.accentLine : TK.borderSolid}` }}>{tb.count}</span>
+                  {on && <span style={{ position: 'absolute', left: '34%', right: '34%', bottom: -1, height: 2.5, borderRadius: 99, background: TK.accent }} />}
+                </button>
+              );
+            })}
+          </div>
           <SwipeableTabContent tabs={tabs} active={tab} onChange={setTab}>
             {(tabKey) => renderChallengeList(filterMap[tabKey] || [], tabKey)}
           </SwipeableTabContent>
         </>;
       })()}
+
+      {/* Quick Templates modal */}
+      <AdminModal
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        title={t('admin.challenges.quickTemplates', 'Quick Templates')}
+        titleIcon={SparkleIcon}
+        subtitle={t('admin.challenges.quickTemplatesSub', 'Launch a challenge in seconds')}
+        size="md"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            { id: 'streak5', icon: ICON.flame, tone: 'hot', title: t('admin.challenges.tpl5Streak', '5-Day Streak'), desc: t('admin.challenges.tpl5StreakDesc', 'Visit 5 days in a row') },
+            { id: 'prparty', icon: ICON.trophy, tone: 'warn', title: t('admin.challenges.tplPRParty', 'PR Party'), desc: t('admin.challenges.tplPRPartyDesc', 'Set any PR this week') },
+            { id: 'bringfriend', icon: ICON.users, tone: 'coach', title: t('admin.challenges.tplBringFriend', 'Bring a Friend'), desc: t('admin.challenges.tplBringFriendDesc', 'Referral bonus doubled') },
+          ].map((tpl) => (
+            <button key={tpl.id} type="button" onClick={() => { setShowTemplates(false); setShowCreate(true); }}
+              style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', borderRadius: 16, padding: '18px 18px 16px', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, cursor: 'pointer' }}>
+              <IconChip ch={tpl.icon} tone={tpl.tone} size={44} r={13} strokeW={2} />
+              <div style={{ fontFamily: FK.display, fontSize: 16.5, fontWeight: 800, color: TK.text, letterSpacing: -0.3, marginTop: 14 }}>{tpl.title}</div>
+              <div style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, lineHeight: 1.45, marginTop: 6, flex: 1 }}>{tpl.desc}</div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${TK.divider}`, fontFamily: FK.body, fontSize: 13, fontWeight: 800, color: TK.accent }}>
+                <Ico ch={ICON.sparkle} size={14} color={TK.accent} stroke={2.2} />{t('admin.challenges.useTemplate', 'Use template')}
+              </div>
+            </button>
+          ))}
+        </div>
+      </AdminModal>
 
       {/* Create modal */}
       {showCreate && (

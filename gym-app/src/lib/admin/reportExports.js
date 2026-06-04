@@ -360,7 +360,7 @@ export async function exportPurchases(gymId, from, to, t) {
 export async function exportClassBookings(gymId, from, to, t) {
   let query = supabase
     .from('gym_class_bookings')
-    .select('status, booked_at, checked_in_at, rating, gym_class_schedules!inner(day_of_week, start_time, gym_classes!inner(name, gym_id)), profiles!inner(full_name)')
+    .select('status, booked_at, attended_at, rating, gym_class_schedules!inner(day_of_week, start_time, gym_classes!inner(name, gym_id)), profiles!inner(full_name)')
     .eq('gym_class_schedules.gym_classes.gym_id', gymId)
     .order('booked_at', { ascending: false })
     .limit(10000);
@@ -381,7 +381,7 @@ export async function exportClassBookings(gymId, from, to, t) {
   const rows = (data ?? []).map(b => [
     b.profiles?.full_name || '', b.gym_class_schedules?.gym_classes?.name || '',
     b.gym_class_schedules?.day_of_week ?? '', b.gym_class_schedules?.start_time || '',
-    b.status || '', fmtDate(b.booked_at), fmtDate(b.checked_in_at), b.rating ?? '',
+    b.status || '', fmtDate(b.booked_at), fmtDate(b.attended_at), b.rating ?? '',
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
   const filename = `class_bookings_${todayISO()}.csv`;

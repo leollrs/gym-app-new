@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { RotateCcw, CheckCircle, FlaskConical, Bell, Mail, Smartphone, Gift } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { encryptMessage } from '../../../lib/messageEncryption';
+import { RewardSymbol } from '../../../lib/rewardSymbols';
 import i18n from 'i18next';
 import logger from '../../../lib/logger';
 import { AdminModal, SectionLabel } from '../../../components/admin';
@@ -261,7 +262,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
                 return (
                   <button key={r.id} onClick={() => setSelectedRewardId(r.id)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors whitespace-nowrap ${selectedRewardId === r.id ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30' : 'bg-white/4 text-[#9CA3AF] border-white/6 hover:text-[#E5E7EB]'}`}>
-                    <span>{r.emoji_icon || '🎁'}</span>
+                    <span style={{ display: 'inline-flex' }}><RewardSymbol value={r.emoji_icon} size={15} /></span>
                     {name}
                   </button>
                 );
@@ -287,7 +288,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
 
         {selectedReward && (
           <div className="bg-[#D4AF37]/8 border border-[#D4AF37]/15 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5">
-            <span className="text-[20px]">{selectedReward.emoji_icon || '🎁'}</span>
+            <span className="text-[20px]" style={{ color: 'var(--color-accent)' }}><RewardSymbol value={selectedReward.emoji_icon} size={20} color="var(--color-accent)" /></span>
             <div>
               <p className="text-[11px] text-[#D4AF37] font-semibold">{t('admin.churn.rewardAttached', 'Reward will be gifted to member')}</p>
               <p className="text-[12px] text-[#E5E7EB]">{rewardName}</p>

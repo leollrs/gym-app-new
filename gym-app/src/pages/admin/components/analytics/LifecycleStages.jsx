@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import logger from '../../../../lib/logger';
-import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { TK, FK, Card, LifecycleBar } from './analyticsKit';
 
 async function fetchLifecycleData(gymId) {
   const now = new Date();
@@ -46,23 +47,14 @@ async function fetchLifecycleData(gymId) {
   const churnScores = churnScoresRes.data;
   const winBacks = winBacksRes.data;
 
-  // Build session count per member (last 30 days)
   const sessionCountMap = {};
-  (recentSessions || []).forEach(s => {
-    sessionCountMap[s.profile_id] = (sessionCountMap[s.profile_id] || 0) + 1;
-  });
+  (recentSessions || []).forEach(s => { sessionCountMap[s.profile_id] = (sessionCountMap[s.profile_id] || 0) + 1; });
 
-  // Build latest churn score per member
   const churnMap = {};
-  (churnScores || []).forEach(s => {
-    churnMap[s.profile_id] = s.risk_tier;
-  });
+  (churnScores || []).forEach(s => { churnMap[s.profile_id] = s.risk_tier; });
 
-  // Build win-back set (win_back_attempts uses user_id, not profile_id)
   const wonBackSet = new Set((winBacks || []).map(w => w.user_id));
 
-  // Need recent sessions for "total < 3" check (90-day window — long enough
-  // for new-onboarding bucket without unbounded scans on huge gyms).
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const { data: allSessions, error: allSessError } = await supabase
     .from('workout_sessions')
@@ -74,9 +66,7 @@ async function fetchLifecycleData(gymId) {
   if (allSessError) logger.error('LifecycleStages: failed to load all sessions:', allSessError);
 
   const totalSessionMap = {};
-  (allSessions || []).forEach(s => {
-    totalSessionMap[s.profile_id] = (totalSessionMap[s.profile_id] || 0) + 1;
-  });
+  (allSessions || []).forEach(s => { totalSessionMap[s.profile_id] = (totalSessionMap[s.profile_id] || 0) + 1; });
 
   const counts = { new: 0, onboarding: 0, active: 0, atRisk: 0, churned: 0, wonBack: 0 };
 
@@ -87,35 +77,24 @@ async function fetchLifecycleData(gymId) {
     const riskTier = churnMap[m.id];
     const joinedRecently = m.created_at >= fourteenDaysAgo;
 
-    if (status === 'cancelled' || status === 'frozen') {
-      counts.churned++;
-    } else if (wonBackSet.has(m.id)) {
-      counts.wonBack++;
-    } else if (riskTier && ['critical', 'high', 'medium'].includes(riskTier)) {
-      counts.atRisk++;
-    } else if (recentCount >= 3) {
-      counts.active++;
-    } else if (m.is_onboarded && totalCount < 3) {
-      counts.onboarding++;
-    } else if (!m.is_onboarded || (joinedRecently && totalCount === 0)) {
-      counts.new++;
-    } else {
-      counts.active++;
-    }
+    if (status === 'cancelled' || status === 'frozen') counts.churned++;
+    else if (wonBackSet.has(m.id)) counts.wonBack++;
+    else if (riskTier && ['critical', 'high', 'medium'].includes(riskTier)) counts.atRisk++;
+    else if (recentCount >= 3) counts.active++;
+    else if (m.is_onboarded && totalCount < 3) counts.onboarding++;
+    else if (!m.is_onboarded || (joinedRecently && totalCount === 0)) counts.new++;
+    else counts.active++;
   });
 
   const total = (members || []).length;
   return [
-    { key: 'new',        labelKey: 'lifecycleNew',        color: 'var(--color-info)', count: counts.new },
+    { key: 'new', labelKey: 'lifecycleNew', color: 'var(--color-info)', count: counts.new },
     { key: 'onboarding', labelKey: 'lifecycleOnboarding', color: 'var(--color-coach)', count: counts.onboarding },
-    { key: 'active',     labelKey: 'lifecycleActive',     color: 'var(--color-success)', count: counts.active },
-    { key: 'atRisk',     labelKey: 'lifecycleAtRisk',     color: 'var(--color-warning)', count: counts.atRisk },
-    { key: 'churned',    labelKey: 'lifecycleChurned',    color: 'var(--color-danger)', count: counts.churned },
-    { key: 'wonBack',    labelKey: 'lifecycleWonBack',    color: 'var(--color-accent-soft)', count: counts.wonBack },
-  ].map(s => ({
-    ...s,
-    pct: total > 0 ? Math.round((s.count / total) * 100) : 0,
-  }));
+    { key: 'active', labelKey: 'lifecycleActive', color: 'var(--color-success)', count: counts.active },
+    { key: 'atRisk', labelKey: 'lifecycleAtRisk', color: 'var(--color-warning)', count: counts.atRisk },
+    { key: 'churned', labelKey: 'lifecycleChurned', color: 'var(--color-danger)', count: counts.churned },
+    { key: 'wonBack', labelKey: 'lifecycleWonBack', color: 'var(--color-accent)', count: counts.wonBack },
+  ].map(s => ({ ...s, pct: total > 0 ? Math.round((s.count / total) * 100) : 0 }));
 }
 
 export default function LifecycleStages({ gymId }) {
@@ -126,54 +105,40 @@ export default function LifecycleStages({ gymId }) {
     enabled: !!gymId,
   });
 
-  if (isLoading) return <CardSkeleton h="h-[140px]" />;
+  if (isLoading) return <CardSkeleton h="h-[160px]" />;
   if (isError) return <ErrorCard message={t('admin.analytics.lifecycleError', 'Failed to load lifecycle data')} onRetry={refetch} />;
   if (stages.length === 0) return null;
 
-  // Headline: largest segment
   const totalMembers = stages.reduce((sum, s) => sum + s.count, 0);
   const activeStage = stages.find(s => s.key === 'active');
   const activePct = activeStage ? activeStage.pct : 0;
+  const segs = stages.map(s => ({ label: t(`admin.analytics.${s.labelKey}`, s.labelKey), value: s.count, color: s.color, pct: s.pct }));
 
   return (
-    <AdminCard hover className="h-full hover:border-white/10 transition-colors duration-300">
-      <div className="flex items-center justify-between mb-1">
-        <div>
-          <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight">{t('admin.analytics.lifecycleTitle', 'Member Lifecycle')}</p>
-          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-relaxed">{t('admin.analytics.lifecycleSubtitle', 'Where your members are right now')}</p>
+    <Card style={{ padding: '24px 26px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18, gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: FK.display, fontSize: 19, fontWeight: 800, letterSpacing: -0.4, color: TK.text }}>{t('admin.analytics.lifecycleTitle', 'Member Lifecycle')}</div>
+          <div style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, marginTop: 4 }}>{t('admin.analytics.lifecycleSubtitle', 'Where your members are right now')}</div>
         </div>
-        <div className="text-right">
-          <p className="text-[22px] font-bold text-[#34D399] leading-none tracking-tight">{activePct}%</p>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{t('admin.analytics.lifecycleActiveLabel', { count: totalMembers, defaultValue: 'active of {{count}}' })}</p>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ fontFamily: FK.display, fontSize: 30, fontWeight: 800, color: 'var(--color-success)', letterSpacing: -1, lineHeight: 1 }}>{activePct}%</div>
+          <div style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textMute, marginTop: 3 }}>{t('admin.analytics.lifecycleActiveLabel', { count: totalMembers, defaultValue: 'active of {{count}}' })}</div>
         </div>
       </div>
 
-      {/* Stacked segment bar */}
-      <div className="flex gap-[3px] h-8 rounded-xl overflow-hidden my-5">
-        {stages.map(s => (
-          <div
-            key={s.key}
-            className="relative group transition-all duration-300 hover:opacity-90"
-            style={{ flex: s.count, background: s.color, minWidth: s.count > 0 ? 3 : 0, opacity: 0.85 }}
-          >
-            <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-[var(--color-bg-card)] border border-[var(--color-border-subtle,rgba(255,255,255,0.08))] rounded-xl px-3 py-1.5 text-[11px] text-[var(--color-text-primary)] whitespace-nowrap z-10 pointer-events-none transition-opacity shadow-xl shadow-black/40 backdrop-blur-sm">
-              {t(`admin.analytics.${s.labelKey}`, s.labelKey)}: {s.count} ({s.pct}%)
-            </div>
-          </div>
-        ))}
-      </div>
+      <LifecycleBar segs={segs} />
 
-      {/* Legend */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2.5">
-        {stages.map(s => (
-          <div key={s.key} className="flex items-center gap-2.5 min-w-0">
-            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
-            <span className="text-[11px] text-[var(--color-text-muted)] truncate">{t(`admin.analytics.${s.labelKey}`, s.labelKey)}</span>
-            <span className="text-[12px] font-semibold text-[var(--color-text-primary)] flex-shrink-0 ml-auto tabular-nums">{s.count}</span>
-            <span className="text-[10px] text-[var(--color-text-muted)] flex-shrink-0 opacity-60">({s.pct}%)</span>
+      <div className="grid grid-cols-2 sm:grid-cols-3" style={{ gap: '16px 28px', marginTop: 22 }}>
+        {segs.map((s, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ width: 9, height: 9, borderRadius: 99, background: s.color, flexShrink: 0 }} />
+            <span style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textSub, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
+            <span style={{ fontFamily: FK.display, fontSize: 15, fontWeight: 800, color: TK.text }}>{s.value}</span>
+            <span style={{ fontFamily: FK.mono, fontSize: 12, color: TK.textFaint, width: 42, textAlign: 'right' }}>({s.pct}%)</span>
           </div>
         ))}
       </div>
-    </AdminCard>
+    </Card>
   );
 }

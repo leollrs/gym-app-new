@@ -3,6 +3,7 @@ import { Gift, Check, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import logger from '../lib/logger';
+import { RewardSymbol } from '../lib/rewardSymbols';
 
 /**
  * RewardPicker — lets a member choose their referral reward from the gym's
@@ -117,8 +118,8 @@ export default function RewardPicker({ rewardId, gymId, onChosen, onSkip, classN
         <p className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
           {t('rewards.rewardChosen', 'Reward chosen!')}
         </p>
-        <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
-          {selected?.emoji_icon} {isEs ? (selected?.name_es || selected?.name) : selected?.name}
+        <p className="text-[13px] mt-1 inline-flex items-center gap-1.5" style={{ color: 'var(--color-text-muted)' }}>
+          <RewardSymbol value={selected?.emoji_icon} size={14} /> {isEs ? (selected?.name_es || selected?.name) : selected?.name}
         </p>
       </div>
     );
@@ -161,7 +162,7 @@ export default function RewardPicker({ rewardId, gymId, onChosen, onSkip, classN
               }}
             >
               <div className="flex items-center gap-3">
-                <span className="text-[24px] flex-shrink-0">{r.emoji_icon || '🎁'}</span>
+                <span className="flex-shrink-0" style={{ color: 'var(--color-accent)' }}><RewardSymbol value={r.emoji_icon} size={24} color="var(--color-accent)" /></span>
                 <div className="flex-1 min-w-0">
                   <p className="text-[14px] font-semibold truncate" style={{ color: isSelected ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
                     {displayName}

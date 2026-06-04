@@ -1,17 +1,13 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from 'recharts';
-import { Download } from 'lucide-react';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth } from 'date-fns';
 import { exportCSV } from '../../../../lib/csvExport';
-import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
-import ChartTooltip from '../../../../components/ChartTooltip';
+import { CardSkeleton, ErrorCard } from '../../../../components/admin';
 import { es as esLocale } from 'date-fns/locale';
+import { TK, FK, ChartCard, LineChart } from './analyticsKit';
 
 async function fetchGrowthData(gymId, dateFnsLocale, span) {
   const now = new Date();
@@ -63,76 +59,29 @@ function GrowthChart({ gymId, monthsBack }) {
   if (isLoading) return <CardSkeleton />;
   if (isError) return <ErrorCard message={t('admin.analytics.growthError', 'Failed to load growth data')} onRetry={refetch} />;
 
-  // Headline: total new members across period
   const totalNewMembers = growthData.reduce((sum, d) => sum + d.count, 0);
   const latestMonthCount = growthData.length > 0 ? growthData[growthData.length - 1].count : 0;
+  const counts = growthData.map(d => d.count);
+  const labels = growthData.length
+    ? [growthData[0].month, growthData[Math.floor((growthData.length - 1) / 2)].month, growthData[growthData.length - 1].month]
+    : [];
 
   return (
-    <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
-      <div className="flex items-center justify-between mb-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight truncate">{t('admin.analytics.growthTitle', 'Member Growth')}</p>
-          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-relaxed">{t('admin.analytics.growthFooterDynamic', { count: span, defaultValue: 'New signups per month — last {{count}} months' })}</p>
-        </div>
-        <button
-          onClick={handleExport}
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-white/15 transition-colors whitespace-nowrap"
-        >
-          <Download size={13} />
-          {t('admin.analytics.export', 'Export')}
-        </button>
-      </div>
-
-      {/* Headline metric */}
-      <div className="flex items-baseline gap-3 mb-5">
-        <span className="text-[28px] font-bold text-[var(--color-accent)] leading-none tracking-tight">{totalNewMembers}</span>
-        <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.growthTotal', { count: latestMonthCount, defaultValue: 'total — {{count}} this month' })}</span>
-      </div>
-
+    <ChartCard
+      title={t('admin.analytics.growthTitle', 'Member Growth')}
+      subtitle={t('admin.analytics.growthFooterDynamic', { count: span, defaultValue: 'New signups per month — last {{count}} months' })}
+      big={totalNewMembers}
+      bigColor={TK.accent}
+      bigSub={t('admin.analytics.growthTotal', { count: latestMonthCount, defaultValue: 'total — {{count}} this month' })}
+      onExport={handleExport}
+      exportLabel={t('admin.analytics.export', 'Export')}
+    >
       {growthData.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-muted)] text-center py-10">{t('admin.analytics.growthEmpty', 'No member data yet')}</p>
+        <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, textAlign: 'center', padding: '40px 0' }}>{t('admin.analytics.growthEmpty', 'No member data yet')}</p>
       ) : (
-        <ResponsiveContainer width="100%" height={180}>
-          <AreaChart data={growthData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
-            <defs>
-              <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"  stopColor="var(--color-accent)" stopOpacity={0.18} />
-                <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, rgba(255,255,255,0.04))" vertical={false} />
-            <XAxis
-              dataKey="month"
-              tick={{ fontSize: 10, fill: 'var(--color-text-muted)', fontWeight: 500 }}
-              tickLine={false}
-              axisLine={false}
-              interval={Math.max(0, Math.floor(span / 6))}
-              dy={6}
-            />
-            <YAxis
-              tick={{ fontSize: 10, fill: 'var(--color-text-muted)', fontWeight: 500 }}
-              tickLine={false}
-              axisLine={false}
-              allowDecimals={false}
-              width={36}
-            />
-            <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--color-accent)', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.4 }} />
-            <Area
-              type="monotone"
-              dataKey="count"
-              name={t('admin.analytics.newMembersChartName', 'New members')}
-              stroke="var(--color-accent)"
-              strokeWidth={2.5}
-              fill="url(#growthGrad)"
-              dot={false}
-              activeDot={{ r: 5, strokeWidth: 2, fill: 'var(--color-bg-card)', stroke: 'var(--color-accent)' }}
-              animationDuration={1200}
-              animationEasing="ease-out"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        <LineChart data={counts} xLabels={labels} color={TK.accent} height={230} />
       )}
-    </AdminCard>
+    </ChartCard>
   );
 }
 

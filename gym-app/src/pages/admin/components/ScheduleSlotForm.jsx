@@ -13,8 +13,9 @@ import { addMinutes, format12h, DAYS_OF_WEEK } from '../../../lib/admin/classSch
  * — there's no end-time input here so changing the duration on the parent
  * class re-syncs every slot at once.
  */
-export default function ScheduleSlotForm({ onAdd, durationMinutes = 60, t, tc, lang }) {
+export default function ScheduleSlotForm({ onAdd, durationMinutes = 60, trainers = [], t, tc, lang }) {
   const [mode, setMode] = useState('recurring'); // 'recurring' | 'specific'
+  const [selectedTrainer, setSelectedTrainer] = useState(''); // per-slot teacher (optional)
   const [selectedDays, setSelectedDays] = useState([1]); // multiple days for recurring
   const [selectedDates, setSelectedDates] = useState([]); // multiple dates for specific
   const [dateInput, setDateInput] = useState('');
@@ -47,6 +48,7 @@ export default function ScheduleSlotForm({ onAdd, durationMinutes = 60, t, tc, l
           specific_date: null,
           start_time: startTime,
           end_time: computedEnd,
+          trainer_id: selectedTrainer || null,
         });
       }
     } else {
@@ -56,6 +58,7 @@ export default function ScheduleSlotForm({ onAdd, durationMinutes = 60, t, tc, l
           specific_date: date,
           start_time: startTime,
           end_time: computedEnd,
+          trainer_id: selectedTrainer || null,
         });
       }
       setSelectedDates([]);
@@ -162,6 +165,20 @@ export default function ScheduleSlotForm({ onAdd, durationMinutes = 60, t, tc, l
         {format12h(startTime)} <span style={{ opacity: 0.6 }}>–</span> {format12h(endTime)}
         <span className="ml-1" style={{ opacity: 0.6 }}>({durationMinutes} {tc('min') || 'min'})</span>
       </p>
+
+      {/* Trainer for this slot — powers per-trainer analytics */}
+      {trainers.length > 0 && (
+        <div>
+          <label className="block text-[10px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.slotTrainer', 'Trainer (optional)')}</label>
+          <select value={selectedTrainer} onChange={e => setSelectedTrainer(e.target.value)}
+            className="w-full rounded-lg px-2 py-2 text-[13px] outline-none cursor-pointer"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+            <option value="">{t('admin.classes.noTrainer', 'No trainer')}</option>
+            {trainers.map(tr => <option key={tr.id} value={tr.id}>{tr.full_name}</option>)}
+          </select>
+        </div>
+      )}
+
       {/* Add button */}
       <button onClick={handleAdd} disabled={!canAdd}
         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-[12px] font-semibold disabled:opacity-30 transition-colors" aria-label={t('admin.classes.addSchedule')}

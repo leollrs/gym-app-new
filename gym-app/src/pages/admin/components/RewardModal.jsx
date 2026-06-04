@@ -7,6 +7,7 @@ import { useToast } from '../../../contexts/ToastContext';
 import { useAutoTranslate } from '../../../hooks/useAutoTranslate';
 import { AdminModal } from '../../../components/admin';
 import { REWARD_TYPES, rewardKeys, REWARD_INPUT_CLASS as inputClass } from './rewardConstants';
+import { REWARD_SYMBOLS, RewardSymbol, isRewardSymbol } from '../../../lib/rewardSymbols';
 
 /**
  * Create/edit modal for a `gym_rewards` row.
@@ -29,7 +30,7 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
 
   const [form, setForm] = useState({
     name: '', name_es: '', description: '', description_es: '',
-    reward_type: 'custom', emoji_icon: '🎁', cost_points: '0', is_active: true,
+    reward_type: 'custom', emoji_icon: 'gift', cost_points: '0', is_active: true,
     sort_order: '0', is_featured: false,
   });
 
@@ -43,7 +44,7 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
         description: reward.description || '',
         description_es: reward.description_es || '',
         reward_type: reward.reward_type || 'custom',
-        emoji_icon: reward.emoji_icon || '🎁',
+        emoji_icon: reward.emoji_icon || 'gift',
         cost_points: reward.cost_points?.toString() || '0',
         is_active: reward.is_active ?? true,
         sort_order: reward.sort_order?.toString() || '0',
@@ -55,7 +56,7 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
     } else {
       setForm({
         name: '', name_es: '', description: '', description_es: '',
-        reward_type: 'custom', emoji_icon: '🎁', cost_points: '0', is_active: true,
+        reward_type: 'custom', emoji_icon: 'gift', cost_points: '0', is_active: true,
         sort_order: '0',
       });
       setErrors({});
@@ -117,6 +118,21 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
     mutationFn: async () => {
       if (!validateForm()) throw new Error(t('admin.rewards.nameRequired', 'Reward name is required.'));
 
+      // Reject duplicate names within the gym (case-insensitive), excluding self —
+      // two rewards with the same name confuse members and the pickers.
+      const trimmedName = form.name.trim();
+      const { data: dupes, error: dupeErr } = await supabase
+        .from('gym_rewards')
+        .select('id, name')
+        .eq('gym_id', gymId)
+        .ilike('name', trimmedName);
+      if (dupeErr) throw dupeErr;
+      const conflict = (dupes || []).some(d => d.id !== reward?.id && (d.name || '').trim().toLowerCase() === trimmedName.toLowerCase());
+      if (conflict) {
+        setErrors(prev => ({ ...prev, name: t('admin.rewards.duplicateName', 'A reward with this name already exists') }));
+        throw new Error(t('admin.rewards.duplicateName', 'A reward with this name already exists'));
+      }
+
       const payload = {
         gym_id: gymId,
         name: form.name.trim(),
@@ -124,7 +140,7 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
         description: form.description.trim() || null,
         description_es: form.description_es.trim() || null,
         reward_type: form.reward_type,
-        emoji_icon: form.emoji_icon || '🎁',
+        emoji_icon: form.emoji_icon || 'gift',
         cost_points: parseInt(form.cost_points) || 0,
         is_active: form.is_active,
         sort_order: parseInt(form.sort_order) || 0,
@@ -183,29 +199,49 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
       <div className="space-y-5">
         {/* ── Essential fields ── */}
 
-        {/* Emoji + Name */}
-        <div className="flex gap-3">
-          <div className="w-20">
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.emojiIcon', 'Emoji')}</label>
-            <input
-              value={form.emoji_icon}
-              onChange={e => set('emoji_icon', e.target.value)}
-              placeholder="🎁"
-              maxLength={4}
-              className={`${inputClass} !text-center !text-[20px] !px-2`}
-            />
+        {/* Name */}
+        <div>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardName', 'Reward Name')} <span className="text-red-400">*</span></label>
+          <input
+            value={form.name}
+            onChange={e => set('name', e.target.value)}
+            onBlur={() => handleBlur('name')}
+            placeholder={t('admin.rewards.rewardNamePlaceholder', 'e.g. Free Smoothie')}
+            className={errors.name ? `${inputClass} !border-red-500/50 focus:!border-red-500/50 focus:!ring-red-500/30` : inputClass}
+          />
+          {errors.name && <p className="text-[11px] text-red-400 mt-1">{errors.name}</p>}
+        </div>
+
+        {/* Symbol picker (custom icons in place of emoji) */}
+        <div>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2">{t('admin.rewards.symbol', 'Symbol')}</label>
+          <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
+            {REWARD_SYMBOLS.map(s => {
+              const on = form.emoji_icon === s.key;
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => set('emoji_icon', s.key)}
+                  aria-label={s.key}
+                  className="aspect-square rounded-lg grid place-items-center transition-colors"
+                  style={{
+                    background: on ? 'color-mix(in srgb, var(--color-accent) 16%, transparent)' : 'var(--color-bg-card)',
+                    border: `1px solid ${on ? 'var(--color-accent)' : 'var(--color-admin-border)'}`,
+                    color: on ? 'var(--color-accent)' : 'var(--color-admin-text-sub)',
+                  }}
+                >
+                  <RewardSymbol value={s.key} size={20} color={on ? 'var(--color-accent)' : 'currentColor'} />
+                </button>
+              );
+            })}
           </div>
-          <div className="flex-1">
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardName', 'Reward Name')} <span className="text-red-400">*</span></label>
-            <input
-              value={form.name}
-              onChange={e => set('name', e.target.value)}
-              onBlur={() => handleBlur('name')}
-              placeholder={t('admin.rewards.rewardNamePlaceholder', 'e.g. Free Smoothie')}
-              className={errors.name ? `${inputClass} !border-red-500/50 focus:!border-red-500/50 focus:!ring-red-500/30` : inputClass}
-            />
-            {errors.name && <p className="text-[11px] text-red-400 mt-1">{errors.name}</p>}
-          </div>
+          {form.emoji_icon && !isRewardSymbol(form.emoji_icon) && (
+            <p className="text-[11px] mt-2 flex items-center gap-1.5" style={{ color: 'var(--color-admin-text-muted)' }}>
+              <span className="text-[15px]">{form.emoji_icon}</span>
+              {t('admin.rewards.symbolLegacyHint', 'Pick a symbol above to replace your current emoji.')}
+            </p>
+          )}
         </div>
 
         {/* Description */}
@@ -236,21 +272,6 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Points Cost */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.costPoints', 'Points Cost')} <span className="text-red-400">*</span></label>
-          <input
-            type="number"
-            min="0"
-            value={form.cost_points}
-            onChange={e => set('cost_points', e.target.value)}
-            onBlur={() => handleBlur('cost_points')}
-            placeholder="0"
-            className={errors.cost_points ? `${inputClass} !border-red-500/50 focus:!border-red-500/50 focus:!ring-red-500/30` : inputClass}
-          />
-          {errors.cost_points && <p className="text-[11px] text-red-400 mt-1">{errors.cost_points}</p>}
         </div>
 
         {/* Active toggle */}

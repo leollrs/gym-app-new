@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Plus, Trash2, Clock, Users, CalendarDays, X, Save,
-  ChevronDown, ChevronUp, Edit3, Upload,
+  ChevronDown, ChevronUp, ChevronLeft, Edit3, Upload,
   Dumbbell, Star, Search, UserCheck,
   XCircle, UserX, Calendar, Languages, Check, Loader2,
   BarChart3, Repeat, Flame, Zap, Wind, Heart, Mountain,
@@ -24,7 +24,7 @@ import {
   AdminPageShell, FilterBar, AdminModal, StatCard, AdminTabs, Toggle,
 } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
-import ClassAnalytics from './components/ClassAnalytics';
+import { ToneIconChip } from '../../lib/admin/adminTones';
 import RoutineSelector from './components/RoutineSelector';
 import InstructorSelector from './components/InstructorSelector';
 import CoverPreview, { CLASS_COVERS } from './components/CoverPreview';
@@ -38,6 +38,7 @@ import BookingsView from './components/BookingsView';
 import ClassDetailModal from './components/ClassDetailModal';
 import ScheduleView from './components/ScheduleView';
 import ClassesListView from './components/ClassesListView';
+import ClassRoutinesPanel from './components/ClassRoutinesPanel';
 
 // DAYS_OF_WEEK extracted to lib/admin/classScheduleHelpers
 // slotDayLabel, format12h, addMinutes extracted to lib/admin/classScheduleHelpers
@@ -57,7 +58,7 @@ import ClassesListView from './components/ClassesListView';
 // ── Main Page ──────────────────────────────────────────────
 // ────────────────────────────────────────────────────────────
 export default function AdminClasses() {
-  const { profile, availableRoles } = useAuth();
+  const { profile, availableRoles, user } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const { t, i18n } = useTranslation('pages');
@@ -75,6 +76,7 @@ export default function AdminClasses() {
   // Surface today's roster above the tabs — collapsible so it's out of the
   // way when not needed but reachable in one click instead of two.
   const [todaySummaryExpanded, setTodaySummaryExpanded] = useState(false);
+  const [showRoutines, setShowRoutines] = useState(false);
 
   useEffect(() => { document.title = `${t('admin.classes.pageTitle', 'Admin - Classes')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -284,7 +286,11 @@ export default function AdminClasses() {
             day_of_week: s.specific_date ? null : s.day_of_week,
             specific_date: s.specific_date || null,
             start_time: s.start_time,
-            end_time: s.end_time,
+            // Recompute end from the final saved duration so slots stay in sync
+            // even if the admin changed the duration after adding the slots.
+            end_time: addMinutes(s.start_time, formData.duration_minutes),
+            // trainer_id only when set (pre-0512-migration safe).
+            ...(s.trainer_id ? { trainer_id: s.trainer_id } : {}),
           }));
           const { error: slotErr } = await supabase.from('gym_class_schedules').insert(slots);
           if (slotErr) throw slotErr;
@@ -345,6 +351,9 @@ export default function AdminClasses() {
     } else {
       payload.day_of_week = slot.day_of_week;
     }
+    // Only include trainer_id when set — keeps inserts working even before
+    // migration 0512 (the column) is applied.
+    if (slot.trainer_id) payload.trainer_id = slot.trainer_id;
 
     // Pre-insert conflict detection: same class, same day/date, overlapping times.
     const conflictQuery = supabase
@@ -359,7 +368,7 @@ export default function AdminClasses() {
       slot.start_time < s.end_time && slot.end_time > s.start_time
     );
     if (overlap) {
-      showToast(tc('admin.classes.slotConflict', { defaultValue: 'A slot already exists at this time.' }), 'error');
+      showToast(t('admin.classes.slotConflict', 'A slot already exists at this time.'), 'error');
       return;
     }
 
@@ -413,17 +422,39 @@ export default function AdminClasses() {
     <AdminPageShell size="wide" className="space-y-5">
       {/* Header */}
       <PageHeader
-        title={t('admin.classes.title')}
-        subtitle={`${activeClasses} ${t('admin.classes.activeClasses')} . ${totalSlots} ${t('admin.classes.weeklySlots')}`}
+        title={showRoutines ? t('admin.classes.routinesTitle', 'Class Routines') : t('admin.classes.title')}
+        subtitle={showRoutines
+          ? t('admin.classes.routinesSubtitle', 'Build workout routines you can attach to classes')
+          : `${activeClasses} ${t('admin.classes.activeClasses')} · ${totalSlots} ${t('admin.classes.weeklySlots')}`}
         actions={
-          <button onClick={() => setFormModal('new')}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold transition-all duration-200 hover:scale-[1.03] hover:shadow-lg w-full sm:w-auto"
-            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
-            <Plus size={15} /> {t('admin.classes.addClass')}
-          </button>
+          showRoutines ? (
+            <button onClick={() => setShowRoutines(false)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 text-[13px] font-bold transition-colors w-full sm:w-auto"
+              style={{ background: 'var(--color-bg-card)', color: 'var(--color-admin-text-sub)', border: '1px solid var(--color-admin-border)', borderRadius: 999 }}>
+              <ChevronLeft size={16} strokeWidth={2.4} /> {t('admin.classes.backToClasses', 'Back to classes')}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button onClick={() => setShowRoutines(true)}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 text-[13px] font-bold transition-colors"
+                style={{ background: 'var(--color-bg-card)', color: 'var(--color-admin-text-sub)', border: '1px solid var(--color-admin-border)', borderRadius: 999 }}>
+                <Dumbbell size={15} strokeWidth={2.4} /> {t('admin.classes.routines', 'Routines')}
+              </button>
+              <button onClick={() => setFormModal('new')}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04]"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}>
+                <Plus size={16} strokeWidth={2.6} /> {t('admin.classes.addClass')}
+              </button>
+            </div>
+          )
         }
       />
 
+      {showRoutines ? (
+        <FadeIn>
+          <ClassRoutinesPanel gymId={gymId} userId={user?.id} t={t} tc={tc} />
+        </FadeIn>
+      ) : (<>
       {/* Today's bookings — collapsible roster surfaced above the tabs */}
       {!isLoading && classes.length > 0 && (
         <AdminCard padding="p-0" clipContent={false}>
@@ -433,12 +464,9 @@ export default function AdminClasses() {
             className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
             aria-expanded={todaySummaryExpanded}
           >
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: 'var(--color-accent-soft, color-mix(in srgb, var(--color-accent) 12%, transparent))' }}>
-              <Users size={14} style={{ color: 'var(--color-accent)' }} />
-            </div>
+            <ToneIconChip icon={Users} tone="teal" size={40} radius={12} iconScale={0.42} />
             <div className="flex-1 min-w-0">
-              <p className="text-[13.5px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>
+              <p className="truncate" style={{ fontFamily: 'var(--admin-font-display, "Archivo", system-ui, sans-serif)', fontWeight: 700, fontSize: 15, letterSpacing: '-0.2px', color: 'var(--color-admin-text)' }}>
                 {t('admin.classes.todaysBookings', "Today's bookings")}
               </p>
               <p className="text-[11.5px]" style={{ color: 'var(--color-admin-text-muted)' }}>
@@ -498,10 +526,10 @@ export default function AdminClasses() {
               <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noClassesDesc')}</p>
               <button
                 onClick={() => setFormModal('new')}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
-                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04]"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}
               >
-                <Plus size={15} /> {t('admin.classes.addClass')}
+                <Plus size={16} strokeWidth={2.6} /> {t('admin.classes.addClass')}
               </button>
             </div>
           </AdminCard>
@@ -548,6 +576,7 @@ export default function AdminClasses() {
           </SwipeableTabContent>
         </FadeIn>
       )}
+      </>)}
 
       {/* Modals */}
       {formModal && (

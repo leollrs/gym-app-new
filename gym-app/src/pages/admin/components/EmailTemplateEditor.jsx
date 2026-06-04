@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { supabase } from '../../../lib/supabase';
+import { rewardLabelText } from '../../../lib/rewardSymbols';
 import { AdminCard, Toggle } from '../../../components/admin';
 import { generateEmailHtml } from '../../../lib/admin/emailTemplateRenderer';
 import { TEMPLATE_TYPES, TEMPLATE_VARIABLES } from './emailTemplatePrebuilts';
@@ -413,7 +414,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
                     ...(prev.reward || {}),
                     reward_id: id || '',
                     ...(picked ? {
-                      title: `${picked.emoji_icon || '🎁'} ${rewardName(picked)}`,
+                      title: rewardLabelText(picked.emoji_icon, rewardName(picked)),
                       description: rewardDesc(picked) || prev.reward?.description || '',
                     } : {}),
                   },
@@ -429,7 +430,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
               </option>
               {gymRewards.map(r => (
                 <option key={r.id} value={r.id}>
-                  {(r.emoji_icon || '🎁') + ' ' + rewardName(r)}
+                  {rewardLabelText(r.emoji_icon, rewardName(r))}
                   {r.cost_points ? ` · ${r.cost_points} ${t('admin.emailTemplates.pointsShort', 'pts')}` : ''}
                 </option>
               ))}

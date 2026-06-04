@@ -11,6 +11,7 @@ import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { WalletPass } from '../lib/walletPass';
 import { supabase } from '../lib/supabase';
+import { rewardLabelText } from '../lib/rewardSymbols';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
@@ -291,7 +292,7 @@ export default function Referrals() {
       const r = rewardsById[reward.reward_id];
       if (r) {
         const name = (isEs && r.name_es) ? r.name_es : r.name;
-        return `${r.emoji_icon || '🎁'} ${name}`;
+        return rewardLabelText(r.emoji_icon, name);
       }
       // Inventory not loaded yet — show a neutral placeholder, not the
       // "500 puntos" default which is misleading for a non-points reward.

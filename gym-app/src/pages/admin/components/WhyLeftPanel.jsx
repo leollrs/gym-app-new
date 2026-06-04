@@ -1,42 +1,36 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
-import { UserX, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { AdminCard } from '../../../components/admin';
+import { TK, FK, Ico, Card, AICON, EmptyBox, HBarRow } from './analytics/analyticsKit';
 
 const WINDOWS = [
-  { key: 30,  labelKey: 'last30',  fallback: 'Last 30 days' },
-  { key: 90,  labelKey: 'last90',  fallback: 'Last 90 days' },
+  { key: 30, labelKey: 'last30', fallback: 'Last 30 days' },
+  { key: 90, labelKey: 'last90', fallback: 'Last 90 days' },
   { key: 365, labelKey: 'last365', fallback: 'Last year' },
 ];
 
-// Hormozi's "% leaks in the bucket" view — categories sorted descending
-// by share, percentages bar-graphed against the largest category so the
-// owner can see at a glance which leak is biggest.
+// Hormozi's "% leaks in the bucket" — categories sorted descending by share,
+// percentages bar-graphed against the largest category.
 export default function WhyLeftPanel({ gymId }) {
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
   const dateLocale = isEs ? { locale: esLocale } : undefined;
   const [windowDays, setWindowDays] = useState(90);
 
-  // Aggregate breakdown via RPC
   const { data: breakdown = [], isLoading: loadingBreakdown } = useQuery({
     queryKey: ['cancellation_breakdown', gymId, windowDays],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_cancellation_reason_breakdown', {
-        p_gym_id: gymId,
-        p_days_back: windowDays,
-      });
+      const { data, error } = await supabase.rpc('get_cancellation_reason_breakdown', { p_gym_id: gymId, p_days_back: windowDays });
       if (error) throw error;
       return data || [];
     },
     enabled: !!gymId,
   });
 
-  // Recent cancellations list (last 20)
   const { data: recent = [], isLoading: loadingRecent } = useQuery({
     queryKey: ['cancellation_recent', gymId],
     queryFn: async () => {
@@ -52,128 +46,78 @@ export default function WhyLeftPanel({ gymId }) {
     enabled: !!gymId,
   });
 
-  const total = useMemo(
-    () => breakdown.reduce((sum, r) => sum + (r.count || 0), 0),
-    [breakdown],
-  );
+  const total = useMemo(() => breakdown.reduce((sum, r) => sum + (r.count || 0), 0), [breakdown]);
   const topPct = breakdown[0]?.percentage || 0;
-
-  const labelFor = (cat) =>
-    t(`admin.cancellationSurvey.reasons.${cat}`, { defaultValue: cat });
+  const labelFor = (cat) => t(`admin.cancellationSurvey.reasons.${cat}`, { defaultValue: cat });
 
   return (
-    <div className="space-y-4">
-      {/* Window selector */}
-      <div className="flex gap-1.5">
-        {WINDOWS.map(w => (
-          <button
-            key={w.key}
-            onClick={() => setWindowDays(w.key)}
-            className={`admin-pill ${windowDays === w.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
-          >
-            {t(`admin.whyLeft.${w.labelKey}`, w.fallback)}
-          </button>
-        ))}
+    <div>
+      {/* window selector */}
+      <div style={{ display: 'inline-flex', gap: 5, background: TK.surface3, padding: 4, borderRadius: 999, border: `1px solid ${TK.borderSolid}`, marginBottom: 18 }}>
+        {WINDOWS.map(w => {
+          const on = windowDays === w.key;
+          return (
+            <button key={w.key} type="button" onClick={() => setWindowDays(w.key)}
+              style={{ padding: '8px 15px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5, fontWeight: on ? 700 : 600, color: on ? '#fff' : TK.textSub, background: on ? TK.accent : 'transparent' }}>
+              {t(`admin.whyLeft.${w.labelKey}`, w.fallback)}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Breakdown card */}
-      <AdminCard>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-[14px] font-bold text-[#E5E7EB]">
-              {t('admin.whyLeft.breakdownTitle', 'Cancellation reasons')}
-            </p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5">
-              {t(total === 1 ? 'admin.whyLeft.totalCancellations' : 'admin.whyLeft.totalCancellations_plural', { count: total, defaultValue: total === 1 ? '{{count}} cancellation' : '{{count}} cancellations' })}
-            </p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px] items-start">
+        {/* breakdown */}
+        <Card style={{ padding: '20px 24px' }}>
+          <div style={{ fontFamily: FK.display, fontSize: 17, fontWeight: 800, letterSpacing: -0.3, color: TK.text }}>{t('admin.whyLeft.breakdownTitle', 'Cancellation reasons')}</div>
+          <div style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, marginTop: 3 }}>
+            {t(total === 1 ? 'admin.whyLeft.totalCancellations' : 'admin.whyLeft.totalCancellations_plural', { count: total, defaultValue: total === 1 ? '{{count}} cancellation' : '{{count}} cancellations' })}
           </div>
-        </div>
+          {loadingBreakdown ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}><Loader2 size={20} className="animate-spin" style={{ color: TK.textMute }} /></div>
+          ) : total === 0 ? (
+            <EmptyBox icon={AICON.userx} title={t('admin.whyLeft.empty', 'No cancellations in this window.')} sub={t('admin.whyLeft.emptyHint', 'When an admin cancels a membership, the reason is captured here.')} />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+              {breakdown.map(row => (
+                <HBarRow key={row.category} label={labelFor(row.category)} value={row.percentage} denominator={topPct}
+                  color="color-mix(in srgb, var(--color-danger) 70%, transparent)"
+                  rightLabel={`${row.count} · ${Number(row.percentage).toFixed(0)}%`} />
+              ))}
+            </div>
+          )}
+        </Card>
 
-        {loadingBreakdown ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={20} className="animate-spin text-[#6B7280]" />
-          </div>
-        ) : total === 0 ? (
-          <div className="text-center py-10">
-            <UserX size={28} className="mx-auto text-[#4B5563] mb-2" />
-            <p className="text-[13px] text-[#9CA3AF]">
-              {t('admin.whyLeft.empty', 'No cancellations in this window.')}
-            </p>
-            <p className="text-[11px] text-[#6B7280] mt-1">
-              {t('admin.whyLeft.emptyHint', 'When an admin cancels a membership, the reason is captured here.')}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {breakdown.map(row => {
-              const widthPct = topPct > 0 ? (row.percentage / topPct) * 100 : 0;
-              return (
-                <div key={row.category} className="space-y-1">
-                  <div className="flex items-center justify-between text-[12px]">
-                    <span className="font-medium text-[#E5E7EB]">{labelFor(row.category)}</span>
-                    <span className="text-[#9CA3AF] tabular-nums">
-                      {row.count} <span className="text-[#6B7280]">· {Number(row.percentage).toFixed(0)}%</span>
-                    </span>
+        {/* recent cancellations */}
+        <Card style={{ padding: '20px 24px' }}>
+          <div style={{ fontFamily: FK.display, fontSize: 17, fontWeight: 800, letterSpacing: -0.3, color: TK.text }}>{t('admin.whyLeft.recentTitle', 'Recent cancellations')}</div>
+          {loadingRecent ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}><Loader2 size={18} className="animate-spin" style={{ color: TK.textMute }} /></div>
+          ) : recent.length === 0 ? (
+            <EmptyBox icon={AICON.inbox} title={t('admin.whyLeft.recentEmpty', 'Nothing logged yet.')} h={140} />
+          ) : (
+            <div style={{ marginTop: 4 }}>
+              {recent.map((row, idx) => (
+                <div key={row.id} style={{ padding: '12px 0', borderTop: idx === 0 ? 'none' : `1px solid ${TK.divider}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: FK.body, fontSize: 13, fontWeight: 700, color: TK.text }}>{row.profiles?.full_name || t('admin.whyLeft.unknownMember', 'Unknown member')}</span>
+                    <span style={{ padding: '2px 8px', borderRadius: 999, fontFamily: FK.body, fontSize: 10.5, fontWeight: 700, background: 'var(--color-danger-soft)', color: 'var(--color-danger-ink, var(--color-danger))', border: '1px solid color-mix(in srgb, var(--color-danger) 26%, transparent)' }}>{labelFor(row.category)}</span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[#EF4444]/60"
-                      style={{ width: `${widthPct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </AdminCard>
-
-      {/* Recent cancellations list */}
-      <AdminCard>
-        <p className="text-[14px] font-bold text-[#E5E7EB] mb-3">
-          {t('admin.whyLeft.recentTitle', 'Recent cancellations')}
-        </p>
-        {loadingRecent ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 size={18} className="animate-spin text-[#6B7280]" />
-          </div>
-        ) : recent.length === 0 ? (
-          <p className="text-[12px] text-[#6B7280] text-center py-4">
-            {t('admin.whyLeft.recentEmpty', 'Nothing logged yet.')}
-          </p>
-        ) : (
-          <ul className="divide-y divide-white/[0.06]">
-            {recent.map(row => (
-              <li key={row.id} className="py-2.5 flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[12px] font-semibold text-[#E5E7EB] truncate">
-                      {row.profiles?.full_name || t('admin.whyLeft.unknownMember', 'Unknown member')}
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20">
-                      {labelFor(row.category)}
-                    </span>
-                  </div>
-                  {row.details_text && (
-                    <p className="text-[11px] text-[#9CA3AF] mt-1 line-clamp-2">"{row.details_text}"</p>
-                  )}
+                  {row.details_text && <p style={{ fontFamily: FK.body, fontSize: 11.5, color: TK.textMute, margin: '6px 0 0', lineHeight: 1.4 }}>&ldquo;{row.details_text}&rdquo;</p>}
                   {row.would_return_if && (
-                    <p className="text-[11px] text-[#10B981]/80 mt-1 line-clamp-2">
-                      <span className="text-[#6B7280]">{t('admin.whyLeft.returnIfPrefix', 'Would return:')} </span>
-                      {row.would_return_if}
+                    <p style={{ fontFamily: FK.body, fontSize: 11.5, color: 'var(--color-success)', margin: '4px 0 0', lineHeight: 1.4 }}>
+                      <span style={{ color: TK.textFaint }}>{t('admin.whyLeft.returnIfPrefix', 'Would return:')} </span>{row.would_return_if}
                     </p>
                   )}
-                  <p className="text-[10px] text-[#6B7280] mt-1">
+                  <p style={{ fontFamily: FK.mono, fontSize: 11, color: TK.textFaint, margin: '6px 0 0' }}>
                     {formatDistanceToNow(new Date(row.recorded_at), { addSuffix: true, ...dateLocale })}
-                    {' · '}
-                    {t('admin.whyLeft.tenureLabel', { count: row.tenure_days, defaultValue: '{{count}}d member' })}
+                    {' · '}{t('admin.whyLeft.tenureLabel', { count: row.tenure_days, defaultValue: '{{count}}d member' })}
                   </p>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </AdminCard>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

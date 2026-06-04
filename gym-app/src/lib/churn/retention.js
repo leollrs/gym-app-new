@@ -64,11 +64,12 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   }
 
   // ── 1. Member profiles ──
-  // training_frequency (edge-fn parity) and churn_pause_until (migration 0509)
-  // are newer columns. If the DB hasn't applied them, selecting them 400s and the
-  // ENTIRE churn page silently drops to the legacy estimator (everyone "95 / never
-  // logged a workout"). So fetch resiliently: try the full set, and on a
-  // missing-column error retry without the new columns (pause then = frozen-only).
+  // churn_pause_until (migration 0509) is a newer column. If the DB hasn't applied
+  // it, selecting it 400s and the ENTIRE churn page silently drops to the legacy
+  // estimator (everyone "95 / never logged a workout"). So fetch resiliently: try
+  // with it, and on a missing-column error retry without (pause then = frozen-only).
+  // Training frequency comes from preferred_training_days.length — there is NO
+  // scalar profiles.training_frequency column (selecting it always 400s).
   // membership_status filter must match the edge fn EXACTLY (explicit allowlist).
   const MEMBER_COLS_SAFE = 'id, full_name, username, phone_number, created_at, membership_started_at, last_active_at, gym_id, preferred_training_days, membership_status';
   const runMembers = (cols) => supabase
@@ -80,7 +81,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     .in('membership_status', ['active', 'frozen'])
     .order('full_name', { ascending: true });
 
-  let { data: memberRows, error: membersError } = await runMembers(`${MEMBER_COLS_SAFE}, training_frequency, churn_pause_until`);
+  let { data: memberRows, error: membersError } = await runMembers(`${MEMBER_COLS_SAFE}, churn_pause_until`);
   if (membersError && isMissingColumnError(membersError)) {
     ({ data: memberRows, error: membersError } = await runMembers(MEMBER_COLS_SAFE));
   }
@@ -124,7 +125,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .gte('created_at', ninetyDaysAgo).in('profile_id', ids).limit(12000), memberIds),
 
     selectInBatches((ids) => supabase.from('challenge_participants')
-      .select('profile_id, created_at').in('profile_id', ids).limit(8000), memberIds),
+      .select('profile_id, joined_at').in('profile_id', ids).limit(8000), memberIds),
 
     selectInBatches((ids) => supabase.from('referrals')
       .select('referrer_id').in('referrer_id', ids).limit(5000), memberIds),
@@ -221,8 +222,8 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   challengeRows.forEach((r) => {
     const id = r.profile_id;
     const b = ensure(challenge, id);
-    // created_at may be absent on legacy rows → count as baseline (neutral)
-    if (r.created_at && r.created_at >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
+    // joined_at may be absent on legacy rows → count as baseline (neutral)
+    if (r.joined_at && r.joined_at >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
   });
 
   const referralCount = {};
@@ -280,7 +281,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       daysSinceLastActivity,
       // attendance
       avgWeeklyVisits,
-      trainingFrequency: m.preferred_training_days?.length ?? m.training_frequency ?? 3, // mirror edge fn exactly
+      trainingFrequency: m.preferred_training_days?.length ?? 3, // mirror edge fn exactly
       cohortPercentile: cohortPct(avgWeeklyVisits),
       recentWeeklyRate,
       baselineWeeklyRate,

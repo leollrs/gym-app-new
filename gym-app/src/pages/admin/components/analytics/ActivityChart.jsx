@@ -1,23 +1,18 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from 'recharts';
-import { Download } from 'lucide-react';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale';
 import { exportCSV } from '../../../../lib/csvExport';
-import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { TK, FK, ChartCard, LineChart } from './analyticsKit';
 
 async function fetchActivityData(gymId, dateFnsLocale, span) {
   const now = new Date();
   const windowStart = startOfMonth(subMonths(now, span - 1));
 
-  // ONE query over the whole 6-month window + members, in parallel — was an
-  // N+1 (one sequential, unbounded sessions query PER month = 6 serial RTTs).
   const [membersRes, sessionsRes] = await Promise.all([
     supabase
       .from('profiles')
@@ -41,10 +36,8 @@ async function fetchActivityData(gymId, dateFnsLocale, span) {
 
   for (let i = span - 1; i >= 0; i--) {
     const monthStart = startOfMonth(subMonths(now, i));
-    const monthEnd   = endOfMonth(subMonths(now, i));
-
+    const monthEnd = endOfMonth(subMonths(now, i));
     const totalThatMonth = members.filter(m => new Date(m.created_at) <= monthEnd).length;
-
     const activeIds = new Set();
     for (const s of sessions) {
       const ts = new Date(s.started_at);
@@ -52,7 +45,6 @@ async function fetchActivityData(gymId, dateFnsLocale, span) {
     }
     const uniqueActive = activeIds.size;
     const pct = totalThatMonth > 0 ? Math.round((uniqueActive / totalThatMonth) * 100) : 0;
-
     months.push({
       month: format(subMonths(now, i), 'MMM yy', dateFnsLocale),
       engagement: pct,
@@ -72,8 +64,6 @@ function ActivityChart({ gymId, monthsBack }) {
     queryKey: [...adminKeys.analytics.activity(gymId), i18n.language, span],
     queryFn: () => fetchActivityData(gymId, dateFnsLocale, span),
     enabled: !!gymId,
-    // Engagement data changes slowly; 5 min avoids a refetch on every
-    // analytics-tab switch (matches LTVCard / currentKPIs).
     staleTime: 5 * 60_000,
   });
 
@@ -93,78 +83,29 @@ function ActivityChart({ gymId, monthsBack }) {
   if (isLoading) return <CardSkeleton h="h-[260px]" />;
   if (isError) return <ErrorCard message={t('admin.analytics.engagementError', 'Failed to load engagement data')} onRetry={refetch} />;
 
-  // Headline metric: latest month engagement
   const latestEngagement = activityData.length > 0 ? activityData[activityData.length - 1].engagement : 0;
   const latestActive = activityData.length > 0 ? activityData[activityData.length - 1].active : 0;
+  const data = activityData.map(d => d.engagement);
+  const labels = activityData.length
+    ? [activityData[0].month, activityData[Math.floor((activityData.length - 1) / 2)].month, activityData[activityData.length - 1].month]
+    : [];
 
   return (
-    <AdminCard hover className="h-full hover:border-white/10 transition-colors duration-300">
-      <div className="flex items-center justify-between mb-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight truncate">{t('admin.analytics.engagementTitle', 'Engagement')}</p>
-          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 truncate leading-relaxed">{t('admin.analytics.engagementSubtitle', '% of signed members who logged ≥1 workout that month')}</p>
-        </div>
-        <button
-          onClick={handleExport}
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-white/15 transition-colors whitespace-nowrap"
-        >
-          <Download size={13} />
-          {t('admin.analytics.export', 'Export')}
-        </button>
-      </div>
-
-      {/* Headline metric */}
-      <div className="flex items-baseline gap-3 mb-5">
-        <span className="text-[28px] font-bold text-[#6889FF] leading-none tracking-tight">{latestEngagement}%</span>
-        <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.engagementCurrent', { active: latestActive, defaultValue: '{{active}} active this month' })}</span>
-      </div>
-
+    <ChartCard
+      title={t('admin.analytics.engagementTitle', 'Engagement')}
+      subtitle={t('admin.analytics.engagementSubtitle', '% of signed members who logged ≥1 workout that month')}
+      big={`${latestEngagement}%`}
+      bigColor="var(--color-info)"
+      bigSub={t('admin.analytics.engagementCurrent', { active: latestActive, defaultValue: '{{active}} active this month' })}
+      onExport={handleExport}
+      exportLabel={t('admin.analytics.export', 'Export')}
+    >
       {activityData.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-muted)] text-center py-10">{t('admin.analytics.engagementEmpty', 'No session data yet')}</p>
+        <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, textAlign: 'center', padding: '40px 0' }}>{t('admin.analytics.engagementEmpty', 'No session data yet')}</p>
       ) : (
-        <ResponsiveContainer width="100%" height={170}>
-          <BarChart data={activityData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, rgba(255,255,255,0.04))" vertical={false} />
-            <XAxis
-              dataKey="month"
-              tick={{ fontSize: 10, fill: 'var(--color-text-muted)', fontWeight: 500 }}
-              tickLine={false}
-              axisLine={false}
-              dy={6}
-            />
-            <YAxis
-              tick={{ fontSize: 10, fill: 'var(--color-text-muted)', fontWeight: 500 }}
-              tickLine={false}
-              axisLine={false}
-              domain={[0, 100]}
-              tickFormatter={v => `${v}%`}
-              width={36}
-            />
-            <Tooltip
-              content={({ active, payload, label }) => {
-                if (!active || !payload?.length) return null;
-                const d = payload[0].payload;
-                return (
-                  <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle,rgba(255,255,255,0.08))] rounded-2xl px-4 py-3 shadow-2xl shadow-black/50 backdrop-blur-sm text-[12px]">
-                    {label && <p className="text-[var(--color-text-muted)] text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-70">{label}</p>}
-                    <p className="font-semibold text-[#6889FF]">{t('admin.analytics.engagementTooltip', { pct: d.engagement, active: d.active, total: d.total, defaultValue: 'Engaged: {{pct}}% ({{active}} / {{total}})' })}</p>
-                  </div>
-                );
-              }}
-              cursor={{ fill: 'var(--color-accent-glow)', radius: 4 }}
-            />
-            <Bar
-              dataKey="engagement"
-              fill="var(--color-info)"
-              radius={[6, 6, 0, 0]}
-              maxBarSize={36}
-              animationDuration={1000}
-              animationEasing="ease-out"
-            />
-          </BarChart>
-        </ResponsiveContainer>
+        <LineChart data={data} xLabels={labels} color="var(--color-info)" max={100} unit="%" height={220} />
       )}
-    </AdminCard>
+    </ChartCard>
   );
 }
 

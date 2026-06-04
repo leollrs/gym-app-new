@@ -332,7 +332,7 @@ serve(async (req) => {
 
       const { data: members } = await supabase
         .from('profiles')
-        .select('id, created_at, membership_started_at, last_active_at, preferred_training_days, training_frequency, membership_status, phone_number, churn_pause_until')
+        .select('id, created_at, membership_started_at, last_active_at, preferred_training_days, membership_status, phone_number, churn_pause_until')
         .eq('gym_id', gymId)
         .eq('role', 'member')
         .eq('imported_archived', false)
@@ -347,7 +347,7 @@ serve(async (req) => {
         supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').in('profile_id', memberIds).limit(50000),
         supabase.from('activity_feed_items').select('actor_id, created_at, type').eq('gym_id', gymId).gte('created_at', ninetyDaysAgo).in('actor_id', memberIds).limit(20000),
         supabase.from('notifications').select('profile_id, read_at, created_at').gte('created_at', ninetyDaysAgo).in('profile_id', memberIds).limit(30000),
-        supabase.from('challenge_participants').select('profile_id, created_at').in('profile_id', memberIds).limit(20000),
+        supabase.from('challenge_participants').select('profile_id, joined_at').in('profile_id', memberIds).limit(20000),
         supabase.from('referrals').select('referrer_id').in('referrer_id', memberIds).limit(10000),
         supabase.from('body_weight_logs').select('profile_id, logged_at').eq('gym_id', gymId).gte('logged_at', ninetyDaysAgo).in('profile_id', memberIds).limit(20000),
       ]);
@@ -411,7 +411,7 @@ serve(async (req) => {
       const challenge: Record<string, any> = {};
       challenges.forEach((r: any) => {
         const b = ensure(challenge, r.profile_id);
-        if (r.created_at && r.created_at >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
+        if (r.joined_at && r.joined_at >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
       });
 
       const referralCount: Record<string, number> = {};
@@ -449,7 +449,7 @@ serve(async (req) => {
           accountAgeDays: (nowMs - new Date(m.created_at).getTime()) / MS_PER_DAY,
           totalSessions, observedCheckIns, daysSinceLastActivity, daysSinceLastCheckIn,
           avgWeeklyVisits,
-          trainingFrequency: m.preferred_training_days?.length ?? m.training_frequency ?? 3,
+          trainingFrequency: m.preferred_training_days?.length ?? 3,
           cohortPercentile: cohortPct(avgWeeklyVisits),
           recentWeeklyRate: (ci14[m.id] || 0) / 2,
           baselineWeeklyRate: (ci14to60[m.id] || 0) / ((60 - 14) / 7),

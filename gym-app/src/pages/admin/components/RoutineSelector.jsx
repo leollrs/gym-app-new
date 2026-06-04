@@ -26,10 +26,23 @@ export default function RoutineSelector({ gymId, value, onChange, t }) {
   const { data: routines = [] } = useQuery({
     queryKey: adminKeys.classes.routines(gymId),
     queryFn: async () => {
+      // Only show routines authored by gym STAFF (trainers/admins). The
+      // `routines` table is dominated by members' personal routines (built in
+      // the Workout Builder / onboarding) — those shouldn't be attachable as
+      // class templates. `is_staff` is the maintained keystone (role OR
+      // additional_roles ∈ trainer/admin/super_admin; migration 0493).
+      const { data: staff } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('gym_id', gymId)
+        .eq('is_staff', true);
+      const staffIds = (staff || []).map(s => s.id);
+      if (!staffIds.length) return [];
       const { data } = await supabase
         .from('routines')
         .select('id, name, routine_exercises(count)')
         .eq('gym_id', gymId)
+        .in('created_by', staffIds)
         .order('name');
       return data || [];
     },

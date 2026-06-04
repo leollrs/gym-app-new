@@ -1,16 +1,27 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Milestone, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Save, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
-import { AdminCard, FadeIn } from '../../../components/admin';
+import { FadeIn } from '../../../components/admin';
 import RewardEditor from './RewardEditor';
+import { TK, FK, Ico, ICON, Card, IconChip, Pill } from './retosKit';
+
+const fieldLabel = {
+  display: 'block', fontFamily: FK.body, fontSize: 11, fontWeight: 800,
+  letterSpacing: 1.1, textTransform: 'uppercase', color: TK.textMute, marginBottom: 9,
+};
+const numInput = {
+  width: '100%', padding: '13px 15px', borderRadius: 12, background: TK.surface,
+  border: `1px solid ${TK.borderSolid}`, fontFamily: FK.display, fontSize: 16, fontWeight: 800,
+  color: TK.text, letterSpacing: -0.3, outline: 'none',
+};
+const squareBtn = { width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 };
 
 /**
  * Card managing per-referral-count reward milestones (e.g. "3 referrals → $10
  * smoothie"). Writes to `referral_milestones` table whose CHECK constraint
- * enforces exactly one of (reward_id, points_amount). Originally lived in
- * AdminRewards' Performance tab; lives under Referrals now.
+ * enforces exactly one of (reward_id, points_amount). Restyled onto the
+ * Referidos design system.
  */
 export default function ReferralMilestonesCard({ gymId, t, isEs }) {
   const { showToast } = useToast();
@@ -154,187 +165,156 @@ export default function ReferralMilestonesCard({ gymId, t, isEs }) {
     setEditReward({ type: 'points', value: 0 });
   };
 
+  const addDisabled = addMutation.isPending
+    || !count
+    || (newReward.type === 'gym_reward' ? !newReward.reward_id : !(parseInt(newReward.value, 10) > 0));
+
+  // reward display element for a saved milestone row
+  const RewardCell = ({ m }) => {
+    const rw = m.gym_rewards;
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+        <span style={{ width: 26, height: 26, borderRadius: 99, background: TK.accentSoft, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <Ico ch={m.points_amount ? ICON.star : ICON.gift} size={14} color={TK.accent} stroke={2} />
+        </span>
+        {m.points_amount ? (
+          <span style={{ fontFamily: FK.display, fontSize: 16, fontWeight: 800, color: TK.text, letterSpacing: -0.3, whiteSpace: 'nowrap' }}>
+            +{m.points_amount} {t('admin.referrals.pointsLabel', 'pts')}
+          </span>
+        ) : (
+          <span style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: 600, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {(isEs && rw?.name_es) ? rw.name_es : (rw?.name || t('admin.referrals.unknownReward', 'Unknown'))}
+          </span>
+        )}
+      </span>
+    );
+  };
+
   return (
     <FadeIn>
-      <AdminCard hover className="mt-6 p-4 sm:p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <Milestone size={16} style={{ color: 'var(--color-accent)' }} />
-          <h3 className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-            {t('admin.referrals.milestonesTitle', 'Referral milestones')}
-          </h3>
-        </div>
-        <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
-          {t('admin.referrals.milestonesDesc', 'Reward members automatically when they hit a referral count.')}
-        </p>
+      <Card style={{ overflow: 'hidden' }}>
+        {/* header + add row */}
+        <div style={{ padding: '20px 24px 22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <IconChip ch={ICON.signpost} tone="accent" size={38} r={11} strokeW={2} />
+            <div>
+              <div style={{ fontFamily: FK.display, fontSize: 19, fontWeight: 800, letterSpacing: -0.4, color: TK.text }}>
+                {t('admin.referrals.milestonesTitle', 'Referral milestones')}
+              </div>
+              <div style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, marginTop: 3 }}>
+                {t('admin.referrals.milestonesDesc', 'Reward members automatically when they hit a referral count.')}
+              </div>
+            </div>
+          </div>
 
-        {/* Add row */}
-        <div className="flex flex-col sm:flex-row sm:items-end gap-2.5 sm:gap-3 pb-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-          <div className="w-full sm:w-28">
-            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.referrals.referralCount', 'Referrals')}
-            </label>
-            <input
-              type="number" min="1"
-              value={count}
-              onChange={e => setCount(e.target.value)}
-              placeholder="3"
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none"
-              style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-            />
+          {/* add row */}
+          <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-4 sm:items-start" style={{ marginTop: 20 }}>
+            <div>
+              <span style={fieldLabel}>{t('admin.referrals.referralCount', 'Referrals')}</span>
+              <input
+                type="number" min="1"
+                value={count}
+                onChange={e => setCount(e.target.value)}
+                placeholder="3"
+                style={numInput}
+              />
+            </div>
+            <RewardEditor reward={newReward} onChange={setNewReward} rewards={rewards} rewardLabel={rewardLabel} t={t} />
           </div>
-          <div className="flex-1 min-w-0">
-            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.referrals.selectReward', 'Reward')}
-            </label>
-            <RewardEditor
-              reward={newReward}
-              onChange={setNewReward}
-              rewards={rewards}
-              rewardLabel={rewardLabel}
-              t={t}
-            />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <button
+              type="button"
+              onClick={() => addMutation.mutate()}
+              disabled={addDisabled}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 12,
+                cursor: addDisabled ? 'default' : 'pointer', border: 'none', background: TK.accent, color: '#fff',
+                fontFamily: FK.body, fontSize: 14, fontWeight: 700, opacity: addDisabled ? 0.45 : 1,
+                boxShadow: addDisabled ? 'none' : '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)',
+              }}
+            >
+              <Ico ch={ICON.plus} size={16} color="#fff" stroke={2.6} />{t('admin.referrals.addMilestone', 'Add')}
+            </button>
           </div>
-          <button
-            onClick={() => addMutation.mutate()}
-            disabled={
-              addMutation.isPending
-              || !count
-              || (newReward.type === 'gym_reward' ? !newReward.reward_id : !(parseInt(newReward.value, 10) > 0))
-            }
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
-          >
-            <Plus size={14} />
-            {t('admin.referrals.addMilestone', 'Add')}
-          </button>
         </div>
 
-        {/* List */}
+        {/* list */}
         {isLoading ? (
-          <div className="py-6 text-center text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('common:loading', 'Loading…')}</div>
+          <div style={{ padding: '24px', textAlign: 'center', fontFamily: FK.body, fontSize: 13, color: TK.textMute, borderTop: `1px solid ${TK.divider}` }}>
+            {t('common:loading', 'Loading…')}
+          </div>
         ) : milestones.length === 0 ? (
-          <div className="py-8 text-center">
-            <Milestone size={28} className="mx-auto mb-2" style={{ color: 'var(--color-text-muted)' }} />
-            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+          <div style={{ padding: '36px 24px', textAlign: 'center', borderTop: `1px solid ${TK.divider}` }}>
+            <Ico ch={ICON.signpost} size={28} color={TK.textFaint} stroke={1.6} style={{ margin: '0 auto 10px' }} />
+            <p style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, margin: 0 }}>
               {t('admin.referrals.noMilestones', 'No referral milestones configured yet.')}
             </p>
           </div>
         ) : (
-          <div className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
-            {milestones.map(m => {
-              const isEditing = editingId === m.id;
-              const rw = m.gym_rewards;
+          milestones.map((m) => {
+            const isEditing = editingId === m.id;
+            if (isEditing) {
               return (
-                <div key={m.id} className="py-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-                  {isEditing ? (
-                    <div className="flex flex-col sm:flex-row sm:items-end gap-2">
-                      <input
-                        type="number" min="1"
-                        value={editCount}
-                        onChange={e => setEditCount(e.target.value)}
-                        className="w-full sm:w-28 rounded-xl px-3 py-2 text-[13px] outline-none"
-                        style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <RewardEditor
-                          reward={editReward}
-                          onChange={setEditReward}
-                          rewards={rewards}
-                          rewardLabel={rewardLabel}
-                          t={t}
-                          compact
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => updateMutation.mutate()}
-                          disabled={updateMutation.isPending}
-                          className="px-3 py-2 rounded-xl text-[12px] font-semibold disabled:opacity-50"
-                          style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
-                        >
-                          <Save size={12} className="inline mr-1" />
-                          {t('admin.referrals.save', 'Save')}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="px-3 py-2 rounded-xl text-[12px] font-medium"
-                          style={{ background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
+                <div key={m.id} style={{ padding: '16px 22px', borderTop: `1px solid ${TK.divider}` }}>
+                  <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-4 sm:items-start">
+                    <div>
+                      <span style={fieldLabel}>{t('admin.referrals.referralCount', 'Referrals')}</span>
+                      <input type="number" min="1" value={editCount} onChange={e => setEditCount(e.target.value)} style={numInput} />
                     </div>
-                  ) : (
-                    <div className={`flex items-center gap-3 ${!m.is_active ? 'opacity-50' : ''}`}>
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <span className="text-[14px] font-bold tabular-nums w-8 text-right" style={{ color: 'var(--color-accent)' }}>
-                          {m.referral_count}
-                        </span>
-                        <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                          {t('admin.referrals.referralsNeeded', 'referrals')}
-                        </span>
-                        <span className="text-[12px] mx-1" style={{ color: 'var(--color-text-muted)' }}>→</span>
-                        {m.points_amount ? (
-                          <>
-                            <span className="text-[15px]">⭐</span>
-                            <span className="text-[13px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
-                              +{m.points_amount} {t('admin.referrals.pointsLabel', 'pts')}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-[15px]">{rw?.emoji_icon || '🎁'}</span>
-                            <span className="text-[13px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
-                              {(isEs && rw?.name_es) ? rw.name_es : (rw?.name || t('admin.referrals.unknownReward', 'Unknown'))}
-                            </span>
-                          </>
-                        )}
-                        {!m.is_active && (
-                          <span className="admin-pill admin-pill--hot" style={{ fontSize: '9.5px' }}>
-                            {t('admin.referrals.inactive', 'Inactive')}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => toggleActiveMutation.mutate({ id: m.id, is_active: !m.is_active })}
-                        className="w-8 h-8 rounded-lg grid place-items-center transition-colors"
-                        style={{ border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}
-                        aria-label={m.is_active ? t('admin.referrals.deactivate', 'Deactivate') : t('admin.referrals.activate', 'Activate')}
-                        title={m.is_active ? t('admin.referrals.deactivate', 'Deactivate') : t('admin.referrals.activate', 'Activate')}
-                      >
-                        {m.is_active
-                          ? <ToggleRight size={14} style={{ color: 'var(--color-success)' }} />
-                          : <ToggleLeft size={14} style={{ color: 'var(--color-text-muted)' }} />}
-                      </button>
-                      <button
-                        onClick={() => startEdit(m)}
-                        className="w-8 h-8 rounded-lg grid place-items-center transition-colors"
-                        style={{ border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}
-                        aria-label={t('admin.referrals.editMilestone', 'Edit milestone')}
-                        title={t('admin.referrals.editMilestone', 'Edit')}
-                      >
-                        <Pencil size={13} style={{ color: 'var(--color-text-muted)' }} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm(t('admin.referrals.deleteConfirm', 'Delete this milestone?'))) {
-                            deleteMutation.mutate(m.id);
-                          }
-                        }}
-                        className="w-8 h-8 rounded-lg grid place-items-center transition-colors"
-                        style={{ border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}
-                        aria-label={t('admin.referrals.deleteMilestone', 'Delete milestone')}
-                      >
-                        <Trash2 size={13} style={{ color: 'var(--color-danger)' }} />
-                      </button>
-                    </div>
-                  )}
+                    <RewardEditor reward={editReward} onChange={setEditReward} rewards={rewards} rewardLabel={rewardLabel} t={t} compact />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+                    <button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', background: TK.accent, color: '#fff', fontFamily: FK.body, fontSize: 13, fontWeight: 700, opacity: updateMutation.isPending ? 0.6 : 1 }}>
+                      <Ico ch={ICON.check} size={14} color="#fff" stroke={2.4} />{t('admin.referrals.save', 'Save')}
+                    </button>
+                    <button type="button" onClick={cancelEdit}
+                      style={{ display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 10, cursor: 'pointer', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                      <Ico ch={ICON.x} size={15} color={TK.textMute} stroke={2.2} />
+                    </button>
+                  </div>
                 </div>
               );
-            })}
-          </div>
+            }
+            return (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 22px', borderTop: `1px solid ${TK.divider}`, opacity: m.is_active ? 1 : 0.55 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, flexShrink: 0 }}>
+                  <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: TK.accentSoft, border: `1px solid ${TK.accentLine}`, fontFamily: FK.display, fontSize: 15, fontWeight: 800, color: TK.accentInk }}>
+                    {m.referral_count}
+                  </span>
+                  <span style={{ fontFamily: FK.body, fontSize: 13.5, fontWeight: 600, color: TK.textMute }} className="hidden sm:inline">
+                    {t('admin.referrals.referralsNeeded', 'referrals')}
+                  </span>
+                </span>
+                <Ico ch={ICON.arrowR} size={17} color={TK.textFaint} stroke={2} />
+                <div style={{ flex: 1, minWidth: 0 }}><RewardCell m={m} /></div>
+                {!m.is_active && <Pill tone="hot">{t('admin.referrals.inactive', 'Inactive')}</Pill>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+                  <button type="button" onClick={() => toggleActiveMutation.mutate({ id: m.id, is_active: !m.is_active })}
+                    title={m.is_active ? t('admin.referrals.deactivate', 'Deactivate') : t('admin.referrals.activate', 'Activate')}
+                    aria-label={m.is_active ? t('admin.referrals.deactivate', 'Deactivate') : t('admin.referrals.activate', 'Activate')}
+                    style={{ ...squareBtn, background: m.is_active ? 'var(--color-success-soft)' : TK.surface2, border: `1px solid ${m.is_active ? 'color-mix(in srgb, var(--color-success) 32%, transparent)' : TK.borderSolid}` }}>
+                    <span style={{ width: 22, height: 13, borderRadius: 99, background: m.is_active ? 'var(--color-success)' : TK.textFaint, position: 'relative', display: 'inline-block' }}>
+                      <span style={{ position: 'absolute', top: 1.5, left: m.is_active ? 11 : 1.5, width: 10, height: 10, borderRadius: 99, background: '#fff', transition: 'left .15s' }} />
+                    </span>
+                  </button>
+                  <button type="button" onClick={() => startEdit(m)}
+                    title={t('admin.referrals.editMilestone', 'Edit')} aria-label={t('admin.referrals.editMilestone', 'Edit milestone')}
+                    style={{ ...squareBtn, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                    <Ico ch={ICON.edit} size={15} color={TK.textSub} stroke={2} />
+                  </button>
+                  <button type="button"
+                    onClick={() => { if (window.confirm(t('admin.referrals.deleteConfirm', 'Delete this milestone?'))) deleteMutation.mutate(m.id); }}
+                    title={t('admin.referrals.deleteMilestone', 'Delete milestone')} aria-label={t('admin.referrals.deleteMilestone', 'Delete milestone')}
+                    style={{ ...squareBtn, background: TK.surface, border: `1px solid ${TK.borderSolid}` }}>
+                    <Ico ch={ICON.trash} size={15} color="var(--color-danger)" stroke={2} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
-      </AdminCard>
+      </Card>
     </FadeIn>
   );
 }

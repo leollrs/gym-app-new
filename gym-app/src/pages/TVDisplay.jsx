@@ -206,9 +206,12 @@ export default function TVDisplay() {
   // so a Spanish TV shows "JUEVES, MAY 21" instead of "THURSDAY, MAY 21".
   const tz = credentials?.gym_timezone || undefined;
   const intlLocale = lang === 'es' ? 'es-ES' : 'en-US';
+  // Clock time is always rendered en-US so the marker reads "AM/PM" (one token)
+  // rather than Spanish "p. m." (which also broke the Brutal style's space-split,
+  // showing "6:19p."). The date below stays localized.
   const timeFmt = (() => {
-    try { return new Intl.DateTimeFormat(intlLocale, { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz }); }
-    catch { return new Intl.DateTimeFormat(intlLocale, { hour: 'numeric', minute: '2-digit', hour12: true }); }
+    try { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz }); }
+    catch { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }); }
   })();
   const dateFmt = (() => {
     try { return new Intl.DateTimeFormat(intlLocale, { weekday: 'long', month: 'short', day: 'numeric', timeZone: tz }); }

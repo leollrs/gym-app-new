@@ -254,18 +254,18 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
         <div className="flex gap-2">
           {step === 2 && (
             <button onClick={() => setStep(1)}
-              className="flex items-center justify-center gap-1.5 flex-1 py-3 rounded-xl font-semibold text-[13px] text-[#E5E7EB] bg-white/5 border border-white/6 hover:bg-white/10 transition-colors">
-              <ArrowLeft size={14} /> {t('admin.challenges.back', 'Back')}
+              className="flex items-center justify-center gap-1.5 flex-1 px-4 py-3 rounded-xl font-semibold text-[13px] leading-tight text-center text-[#E5E7EB] bg-white/5 border border-white/6 hover:bg-white/10 transition-colors">
+              <ArrowLeft size={14} className="flex-shrink-0" /> {t('admin.challenges.back', 'Back')}
             </button>
           )}
           {step === 1 ? (
             <button onClick={() => { if (!validateStep1()) return; setError(''); setStep(2); }}
-              className="flex items-center justify-center gap-1.5 flex-1 py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors">
-              {t('admin.challenges.nextStep', 'Scoring & Rewards')} <ArrowRight size={14} />
+              className="flex items-center justify-center gap-1.5 flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors">
+              <span>{t('admin.challenges.nextStep', 'Scoring & Rewards')}</span> <ArrowRight size={14} className="flex-shrink-0" />
             </button>
           ) : (
             <button onClick={handleSave} disabled={saving}
-              className="flex-1 py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] disabled:opacity-50 transition-opacity">
+              className="flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center text-black bg-[#D4AF37] disabled:opacity-50 transition-opacity">
               {saving ? (isEdit ? t('admin.challenges.saving', 'Saving...') : t('admin.challenges.creating', 'Creating...')) : isEdit ? t('admin.challenges.saveChanges', 'Save Changes') : t('admin.challenges.createChallenge', 'Create Challenge')}
             </button>
           )}

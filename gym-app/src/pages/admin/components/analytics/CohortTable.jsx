@@ -1,18 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Download } from 'lucide-react';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth, addDays } from 'date-fns';
 import { exportCSV } from '../../../../lib/csvExport';
-import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
-
-const cohortCellStyle = (pct) => {
-  if (pct === null) return { bg: 'bg-white/[0.03]', text: 'text-[var(--color-text-subtle)]' };
-  if (pct >= 70)   return { bg: 'bg-emerald-500/15', text: 'text-emerald-400' };
-  if (pct >= 40)   return { bg: 'bg-amber-500/15',   text: 'text-amber-400' };
-  return                  { bg: 'bg-red-500/15',     text: 'text-red-400' };
-};
+import { CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { TK, FK, Ico, Card, AICON, cohortColor } from './analyticsKit';
 
 async function fetchCohortData(gymId, span) {
   const now = new Date();
@@ -51,35 +44,21 @@ async function fetchCohortData(gymId, span) {
   const rows = [];
   for (let i = span - 1; i >= 0; i--) {
     const cohortMonthDate = subMonths(now, i);
-    const label           = format(cohortMonthDate, 'MMM yy');
-    const cohortMembers   = cohortMap[label] || [];
-    const cohortSize      = cohortMembers.length;
+    const label = format(cohortMonthDate, 'MMM yy');
+    const cohortMembers = cohortMap[label] || [];
+    const cohortSize = cohortMembers.length;
 
-    // Use signup-relative 30-day windows instead of calendar months.
-    // Month 0 = days 0-29 after signup, Month 1 = days 30-59, etc.
-    // This gives every member the same observation window regardless of
-    // when in the calendar month they joined.
     const monthRetention = [0, 1, 2, 3].map(offset => {
       if (cohortSize === 0) return null;
-
       const activeCount = cohortMembers.filter(m => {
-        const joinDate       = new Date(m.created_at);
-        const windowStart    = addDays(joinDate, offset * 30);
-        const windowEnd      = addDays(joinDate, (offset + 1) * 30);
-
-        // Don't count windows that haven't fully elapsed yet
+        const joinDate = new Date(m.created_at);
+        const windowStart = addDays(joinDate, offset * 30);
+        const windowEnd = addDays(joinDate, (offset + 1) * 30);
         if (windowStart > now) return false;
-
         const memberSessions = sessionsByProfile[m.id] || [];
         return memberSessions.some(d => d >= windowStart && d <= windowEnd);
       }).length;
-
-      // Count only members whose window has started (for partial months)
-      const eligibleCount = cohortMembers.filter(m => {
-        const windowStart = addDays(new Date(m.created_at), offset * 30);
-        return windowStart <= now;
-      }).length;
-
+      const eligibleCount = cohortMembers.filter(m => addDays(new Date(m.created_at), offset * 30) <= now).length;
       if (eligibleCount === 0) return null;
       return Math.round((activeCount / eligibleCount) * 100);
     });
@@ -92,7 +71,7 @@ async function fetchCohortData(gymId, span) {
 
 export default function CohortTable({ gymId, monthsBack }) {
   const { t } = useTranslation('pages');
-  const span = monthsBack || 6; // 'All' (null) caps at 6 cohorts
+  const span = monthsBack || 6;
   const { data: cohortData = [], isLoading, isError, refetch } = useQuery({
     queryKey: [...adminKeys.analytics.cohort(gymId), span],
     queryFn: () => fetchCohortData(gymId, span),
@@ -117,82 +96,71 @@ export default function CohortTable({ gymId, monthsBack }) {
   if (isLoading) return <CardSkeleton h="h-[260px]" />;
   if (isError) return <ErrorCard message={t('admin.analytics.cohortError', 'Failed to load cohort data')} onRetry={refetch} />;
 
-  // Headline: latest cohort m0 retention
   const latestCohort = cohortData.length > 0 ? cohortData[cohortData.length - 1] : null;
   const headlineRetention = latestCohort?.m0 ?? 0;
+  const COLS = '120px 90px repeat(4,1fr)';
+  const headers = [
+    t('admin.analytics.cohortHeader', 'Cohort'),
+    t('admin.analytics.cohortSize', 'Size'),
+    ...[0, 1, 2, 3].map(n => t('admin.analytics.cohortMonth', { n, defaultValue: 'Month {{n}}' })),
+  ];
 
   return (
-    <AdminCard hover className="overflow-hidden hover:border-white/10 transition-colors duration-300">
-      <div className="flex items-center justify-between mb-1">
-        <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight truncate">{t('admin.analytics.cohortTitle', 'Cohort Retention')}</p>
+    <Card style={{ padding: '22px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: FK.display, fontSize: 18, fontWeight: 800, letterSpacing: -0.4, color: TK.text }}>{t('admin.analytics.cohortTitle', 'Cohort Retention')}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8 }}>
+            <span style={{ fontFamily: FK.display, fontSize: 28, fontWeight: 800, color: TK.accent, letterSpacing: -1 }}>{headlineRetention}%</span>
+            <span style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute }}>{t('admin.analytics.cohortHeadline', 'latest cohort, month 0')}</span>
+          </div>
         </div>
-        <button
-          onClick={handleExport}
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-white/15 transition-colors whitespace-nowrap"
-        >
-          <Download size={13} />
-          {t('admin.analytics.export', 'Export')}
+        <button type="button" onClick={handleExport} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: FK.body, fontSize: 13, fontWeight: 600, color: TK.textMute, cursor: 'pointer', background: 'transparent', border: 'none', flexShrink: 0 }}>
+          <Ico ch={AICON.download} size={15} color={TK.textMute} stroke={2} />{t('admin.analytics.export', 'Export')}
         </button>
       </div>
 
-      {/* Headline metric */}
-      <div className="flex items-baseline gap-3 mb-1">
-        <span className="text-[24px] font-bold text-[var(--color-accent)] leading-none tracking-tight">{headlineRetention}%</span>
-        <span className="text-[11px] text-[var(--color-text-muted)]">{t('admin.analytics.cohortHeadline', 'latest cohort, month 0')}</span>
+      <div style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, marginTop: 10, lineHeight: 1.5, maxWidth: 760 }}>
+        {t('admin.analytics.cohortDesc', 'Each row is a group of members who joined in the same month. Month 0 = their first month, Month 1 = second month, etc. The percentage shows how many are still working out.')}
       </div>
 
-      <p className="text-[11px] text-[var(--color-text-muted)] mb-5 leading-relaxed">{t('admin.analytics.cohortDesc', 'Each row is a group of members who joined in the same month. Month 0 = their first month, Month 1 = second month, etc. The percentage shows how many are still working out.')}</p>
       {cohortData.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-muted)] text-center py-10">{t('admin.analytics.cohortEmpty', 'No cohort data yet')}</p>
+        <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, textAlign: 'center', padding: '40px 0' }}>{t('admin.analytics.cohortEmpty', 'No cohort data yet')}</p>
       ) : (
-        <div className="overflow-x-auto -mx-5 px-5">
-        <div className="min-w-[480px]">
-          {/* Header row */}
-          <div className="grid grid-cols-[140px_60px_1fr_1fr_1fr_1fr] gap-2.5 mb-3">
-            <span className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">{t('admin.analytics.cohortHeader', 'Cohort')}</span>
-            <span className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider text-right">{t('admin.analytics.cohortSize', 'Size')}</span>
-            {[0, 1, 2, 3].map(n => (
-              <span key={n} className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider text-center">{t('admin.analytics.cohortMonth', { n, defaultValue: 'Month {{n}}' })}</span>
-            ))}
-          </div>
-
-          {/* Data rows */}
-          <div className="space-y-2">
-            {cohortData.map(row => (
-              <div key={row.label} className="grid grid-cols-[140px_60px_1fr_1fr_1fr_1fr] gap-2.5 items-center">
-                <span className="text-[13px] text-[var(--color-text-primary)] font-medium">{row.label}</span>
-                <span className="text-[12px] text-[var(--color-text-muted)] text-right tabular-nums">{row.cohortSize}</span>
-                {[row.m0, row.m1, row.m2, row.m3].map((pct, idx) => {
-                  const style = cohortCellStyle(pct);
+        <div style={{ overflowX: 'auto', marginTop: 18 }}>
+          <div style={{ minWidth: 520, borderRadius: 12, border: `1px solid ${TK.divider}`, overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: COLS, background: TK.surface2 }}>
+              {headers.map((h, i) => (
+                <span key={i} style={{ padding: '12px 14px', fontFamily: FK.body, fontSize: 11, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: TK.textFaint, textAlign: i < 2 ? 'left' : 'center' }}>{h}</span>
+              ))}
+            </div>
+            {cohortData.map((row) => (
+              <div key={row.label} style={{ display: 'grid', gridTemplateColumns: COLS, borderTop: `1px solid ${TK.divider}`, alignItems: 'center' }}>
+                <span style={{ padding: '10px 14px', fontFamily: FK.body, fontSize: 13.5, fontWeight: 700, color: TK.text }}>{row.label}</span>
+                <span style={{ padding: '10px 14px', fontFamily: FK.mono, fontSize: 13, color: TK.textMute }}>{row.cohortSize}</span>
+                {[row.m0, row.m1, row.m2, row.m3].map((v, ci) => {
+                  const col = cohortColor(v);
                   return (
-                    <div key={idx} className={`rounded-lg px-2 py-2 text-center ${style.bg} transition-colors`}>
-                      <span className={`text-[12px] font-semibold tabular-nums ${style.text}`}>
-                        {pct === null ? '\u2014' : `${pct}%`}
-                      </span>
+                    <div key={ci} style={{ padding: '8px 10px' }}>
+                      <div style={{ borderRadius: 8, padding: '9px 0', textAlign: 'center', background: col.bg, fontFamily: FK.display, fontSize: 14, fontWeight: 800, color: col.fg }}>{v == null ? '—' : `${v}%`}</div>
                     </div>
                   );
                 })}
               </div>
             ))}
           </div>
-
-          {/* Legend */}
-          <div className="flex items-center gap-5 mt-5 flex-wrap">
-            {[
-              { bg: 'bg-emerald-500/15', text: 'text-emerald-400', label: t('admin.analytics.cohortLegendStrong', '≥70% — Strong') },
-              { bg: 'bg-amber-500/15',   text: 'text-amber-400',   label: t('admin.analytics.cohortLegendModerate', '40–70% — Moderate') },
-              { bg: 'bg-red-500/15',     text: 'text-red-400',     label: t('admin.analytics.cohortLegendLow', '<40% — Low') },
-            ].map(({ bg, text, label }) => (
-              <div key={label} className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded ${bg}`} />
-                <span className={`text-[10px] font-medium ${text}`}>{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
         </div>
       )}
-    </AdminCard>
+
+      <div style={{ display: 'flex', gap: 22, marginTop: 16, flexWrap: 'wrap' }}>
+        {[[t('admin.analytics.cohortLegendStrong', '≥70% — Strong'), cohortColor(80)],
+          [t('admin.analytics.cohortLegendModerate', '40–70% — Moderate'), cohortColor(50)],
+          [t('admin.analytics.cohortLegendLow', '<40% — Low'), cohortColor(10)]].map((l, i) => (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: FK.body, fontSize: 12.5, color: TK.textSub }}>
+            <span style={{ width: 12, height: 12, borderRadius: 4, background: l[1].bg }} />{l[0]}
+          </span>
+        ))}
+      </div>
+    </Card>
   );
 }

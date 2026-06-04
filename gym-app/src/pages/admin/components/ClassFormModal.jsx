@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Repeat, CalendarDays, Trash2, X, Upload, Loader2, Languages } from 'lucide-react';
 import { AdminModal } from '../../../components/admin';
+import { useToast } from '../../../contexts/ToastContext';
 import { classImageUrl } from '../../../lib/classImageUrl';
 import { useAutoTranslate } from '../../../hooks/useAutoTranslate';
-import { slotDayLabel, format12h, DAYS_OF_WEEK } from '../../../lib/admin/classScheduleHelpers';
+import { slotDayLabel, format12h, addMinutes, DAYS_OF_WEEK } from '../../../lib/admin/classScheduleHelpers';
 import TranslationPreviewModal from './TranslationPreviewModal';
 import InstructorSelector from './InstructorSelector';
 import RoutineSelector from './RoutineSelector';
@@ -72,6 +73,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
   const [preview, setPreview] = useState(null);
   const [errors, setErrors] = useState({});
   const { translate, translating } = useAutoTranslate();
+  const { showToast } = useToast();
 
   const validateClassForm = () => {
     const e = {};
@@ -119,7 +121,10 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
   // actual save call behind a fragile preview step that several admins
   // reported "didn't save my changes". Editing now goes straight to save.
   const handleTranslateAndPreview = async () => {
-    if (!validateClassForm()) return;
+    if (!validateClassForm()) {
+      showToast(t('admin.validation.fixHighlighted', 'Please fix the highlighted fields'), 'error');
+      return;
+    }
 
     if (classData?.id) {
       onSave({
@@ -210,7 +215,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
         {/* Name */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.className')} <span className="text-red-400">*</span></label>
+            <label className="text-[12.5px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.className')} <span className="text-red-400">*</span></label>
             <CharCount value={form.name} max={NAME_MAX} />
           </div>
           <input value={form.name} onChange={e => { if (e.target.value.length <= NAME_MAX) setFormField('name', e.target.value); }}
@@ -224,7 +229,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
         {/* Description */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.description')}</label>
+            <label className="text-[12.5px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.description')}</label>
             <CharCount value={form.description} max={DESC_MAX} />
           </div>
           <textarea value={form.description} onChange={e => { if (e.target.value.length <= DESC_MAX) setFormField('description', e.target.value); }} rows={2}
@@ -243,16 +248,18 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
         {/* Duration + Capacity */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.duration')} ({tc('min') || 'min'}) <span className="text-red-400">*</span></label>
-            <input type="number" min={5} max={480} value={form.duration_minutes} onChange={e => setFormField('duration_minutes', Number(e.target.value))}
+            <label className="block text-[12.5px] font-bold mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.duration')} ({tc('min') || 'min'}) <span className="text-red-400">*</span></label>
+            <input type="number" inputMode="numeric" min={5} max={480} value={form.duration_minutes || ''}
+              onChange={e => setFormField('duration_minutes', e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0))}
               onBlur={() => handleClassBlur('duration_minutes')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
               style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.duration_minutes ? 'var(--color-danger-soft)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
             {errors.duration_minutes && <p className="text-[11px] text-red-400 mt-1">{errors.duration_minutes}</p>}
           </div>
           <div>
-            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.capacity')} <span className="text-red-400">*</span></label>
-            <input type="number" min={1} max={1000} value={form.max_capacity} onChange={e => setFormField('max_capacity', Number(e.target.value))}
+            <label className="block text-[12.5px] font-bold mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.capacity')} <span className="text-red-400">*</span></label>
+            <input type="number" inputMode="numeric" min={1} max={1000} value={form.max_capacity || ''}
+              onChange={e => setFormField('max_capacity', e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0))}
               onBlur={() => handleClassBlur('max_capacity')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
               style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.max_capacity ? 'var(--color-danger-soft)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
@@ -262,7 +269,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
 
         {/* Schedule Slots */}
         <div>
-          <label className="flex items-center gap-1.5 text-[11px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
+          <label className="flex items-center gap-1.5 text-[12.5px] font-bold mb-2" style={{ color: 'var(--color-text-muted)' }}>
             <Repeat size={12} /> {t('admin.classes.weeklySchedule', 'Weekly Schedule')}
           </label>
 
@@ -273,7 +280,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
               <table className="w-full text-[12px]">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-                    <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>{tc('day') || t('admin.classes.day', 'Day')}</th>
+                    <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.day', 'Day')}</th>
                     <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.time', 'Time')}</th>
                     <th className="w-10 px-2 py-2"></th>
                   </tr>
@@ -305,7 +312,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
                           )}
                         </td>
                         <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                          {format12h(slot.start_time)} <span style={{ color: 'var(--color-text-muted)' }}>–</span> {format12h(slot.end_time)}
+                          {format12h(slot.start_time)} <span style={{ color: 'var(--color-text-muted)' }}>–</span> {format12h(form.duration_minutes >= 5 ? addMinutes(slot.start_time, form.duration_minutes) : slot.end_time)}
                         </td>
                         <td className="px-2 py-2 text-right">
                           <button type="button" onClick={onDelete} aria-label={t('admin.classes.deleteSlot', 'Delete schedule slot')} className="p-1.5 rounded hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors">
@@ -330,6 +337,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
               }
             }}
             durationMinutes={form.duration_minutes}
+            trainers={trainers}
             t={t}
             tc={tc}
             lang={lang}
@@ -345,11 +353,11 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
 
         {/* Class cover — preset or custom upload */}
         <div>
-          <label className="block text-[11px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.classCover', 'Class Cover')}</label>
+          <label className="block text-[12.5px] font-bold mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.classCover', 'Class Cover')}</label>
 
           {/* Custom image preview */}
           {imagePreview ? (
-            <div className="relative w-full h-32 rounded-xl overflow-hidden mb-2" style={{ border: '1px solid var(--color-border-subtle)' }}>
+            <div className="relative mx-auto mb-3 aspect-square w-full max-w-[240px] rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-admin-border)', background: 'var(--color-admin-panel)' }}>
               <img src={imagePreview} alt={t('admin.classes.imagePreviewAlt', 'Class image preview')} className="w-full h-full object-cover" />
               <button onClick={() => { setImageFile(null); setImagePreview(''); setCoverPreset(''); }}
                 aria-label={t('admin.classes.removeImage', 'Remove image')}
@@ -358,8 +366,8 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
               </button>
             </div>
           ) : coverPreset ? (
-            <div className="relative mb-2">
-              <CoverPreview preset={coverPreset} size="lg" />
+            <div className="relative mx-auto mb-3 aspect-square w-full max-w-[240px] rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-admin-border)' }}>
+              <CoverPreview preset={coverPreset} size="square" />
               <button onClick={() => setCoverPreset('')}
                 aria-label={t('admin.classes.removeCover', 'Remove cover')}
                 className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
@@ -378,7 +386,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
                   return (
                     <button key={c.key} type="button"
                       onClick={() => { setCoverPreset(c.key); setImageFile(null); setImagePreview(''); }}
-                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${selected ? 'ring-2 ring-white scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
+                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${selected ? 'ring-2 ring-[var(--color-accent)] ring-offset-2 ring-offset-[var(--color-bg-card)] scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
                       style={{ background: c.gradient }}>
                       <Icon size={18} className="text-white/90" />
                       <span className="text-[8px] font-bold text-white/80 uppercase tracking-wide">{t(c.labelKey)}</span>
@@ -391,7 +399,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
               <label className="flex items-center justify-center gap-2 w-full py-2 rounded-xl border border-dashed cursor-pointer transition-colors hover:opacity-80"
                 style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <Upload size={14} style={{ color: 'var(--color-text-muted)' }} />
-                <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.uploadCustom', 'Or upload your own image')}</span>
+                <span className="text-[12.5px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.uploadCustom', 'Or upload your own image')}</span>
                 <input type="file" accept="image/*" className="hidden" onChange={(e) => { handleImageChange(e); setCoverPreset(''); }} />
               </label>
             </>
@@ -401,15 +409,15 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
 
       {/* Footer */}
       <div className="flex items-center gap-3 mt-5">
-        <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors hover:opacity-80"
-          style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-bg-hover)' }}>
+        <button onClick={onClose} className="flex-1 py-2.5 text-[13px] font-bold transition-colors hover:bg-[var(--color-bg-hover)]"
+          style={{ color: 'var(--color-admin-text-sub)', background: 'var(--color-bg-card)', border: '1px solid var(--color-admin-border)', borderRadius: 999 }}>
           {tc('cancel')}
         </button>
         <button onClick={handleTranslateAndPreview} disabled={saving || translating || !form.name.trim()}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-50 transition-opacity"
-          style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent)' }}>
-          {translating ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
-          {translating ? t('admin.classes.translating') : tc('save')}
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 text-[13px] font-bold disabled:opacity-50 transition-all hover:brightness-[1.04]"
+          style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}>
+          {(translating || saving) ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
+          {translating ? t('admin.classes.translating') : saving ? tc('saving') : tc('save')}
         </button>
       </div>
     </AdminModal>

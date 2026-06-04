@@ -172,7 +172,7 @@ export default function AdminEmailTemplates() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-colors hover:brightness-[1.04]"
             style={{
               backgroundColor: 'var(--color-accent)',
-              color: 'var(--color-text-on-accent)',
+              color: '#fff',
               boxShadow: '0 2px 8px color-mix(in srgb, var(--color-accent) 35%, transparent)',
             }}
           >
@@ -205,7 +205,7 @@ export default function AdminEmailTemplates() {
                     <p className="text-[12px] mt-1" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.emailTemplates.noTemplatesHint')}</p>
                     <button onClick={handleNewTemplate}
                       className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold hover:brightness-[1.04] transition-colors"
-                      style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
+                      style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
                       <Plus size={14} /> {t('admin.emailTemplates.createNew')}
                     </button>
                   </div>

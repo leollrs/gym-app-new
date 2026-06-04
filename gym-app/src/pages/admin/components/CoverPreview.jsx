@@ -28,8 +28,8 @@ export default function CoverPreview({ preset, size = 'sm', className = '' }) {
   const cover = CLASS_COVERS.find(c => c.key === preset);
   if (!cover) return null;
   const Icon = cover.icon;
-  const sz = size === 'lg' ? 'w-full h-32' : size === 'md' ? 'w-14 h-14' : 'w-10 h-10';
-  const iconSz = size === 'lg' ? 36 : size === 'md' ? 20 : 14;
+  const sz = size === 'square' ? 'w-full h-full' : size === 'lg' ? 'w-full h-32' : size === 'md' ? 'w-14 h-14' : 'w-10 h-10';
+  const iconSz = size === 'square' ? 56 : size === 'lg' ? 36 : size === 'md' ? 20 : 14;
   return (
     <div className={`${sz} rounded-xl flex items-center justify-center ${className}`} style={{ background: cover.gradient }}>
       <Icon size={iconSz} className="text-white/90" />
