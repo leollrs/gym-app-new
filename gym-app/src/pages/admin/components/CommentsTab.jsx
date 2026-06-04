@@ -1,25 +1,23 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
-import { MessageSquare, Trash2, RotateCcw } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { sanitize } from '../../../lib/sanitize';
-import { AdminCard, AdminTable, FilterBar, Skeleton, ErrorCard, Avatar } from '../../../components/admin';
+import { Skeleton, ErrorCard } from '../../../components/admin';
 import { postTypeBadge, relativeTime } from './moderationHelpers';
 import { fetchComments } from '../../../lib/admin/moderationQueries';
-import usePagedVisible from '../../../hooks/usePagedVisible';
-import PaginationFooter from '../../../components/admin/PaginationFooter';
+import { TK, FK, Ico, Card, MIC, Av, FilterPills, TypeBadge, StatusDot, TH, IconBtn, Pager, postTypeVisual } from './moderationKit';
+
+const COLS = '1.3fr 1fr 1fr 0.9fr 0.9fr 44px';
+const PAGE_SIZE = 10;
 
 /**
- * "Comments" tab on AdminModeration — comments belonging to this gym's
- * activity feed, filterable by status. Desktop view uses AdminTable;
- * mobile view drops down to a card list with the same actions.
- *
- * Soft-delete via the same toggle pattern as PostsTab — flips
- * `is_deleted` on `feed_comments` and logs to admin_audit_log.
+ * "Comments" tab on AdminModeration — comments on this gym's activity feed,
+ * filterable by status. Soft-delete toggles `is_deleted` on feed_comments and
+ * logs to admin_audit_log. Restyled onto moderationKit (desktop grid + mobile cards).
  */
 export default function CommentsTab({ gymId }) {
   const queryClient = useQueryClient();
@@ -27,7 +25,8 @@ export default function CommentsTab({ gymId }) {
   const dateFnsOpts = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const [filter, setFilter] = useState('all');
   const [acting, setActing] = useState(null);
-  const pager = usePagedVisible({ initial: 10, step: 10 });
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [filter]);
 
   const { data: comments = [], isLoading, error, refetch } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'comments'],
@@ -63,168 +62,124 @@ export default function CommentsTab({ gymId }) {
     return comments;
   }, [comments, filter]);
 
-  if (isLoading) return <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-[14px]" />)}</div>;
+  if (isLoading) return <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-[60px] rounded-[14px]" />)}</div>;
   if (error) return <ErrorCard message={t('admin.moderation.commentsFailed', { defaultValue: 'Failed to load comments' })} onRetry={refetch} />;
 
-  const filterOptions = [
-    { key: 'all',     label: t('admin.moderation.all', { defaultValue: 'All' }),     count: total },
-    { key: 'active',  label: t('admin.moderation.active', { defaultValue: 'Active' }),  count: active },
-    { key: 'deleted', label: t('admin.moderation.deleted', { defaultValue: 'Deleted' }), count: deleted },
+  const filterItems = [
+    { id: 'all',     label: t('admin.moderation.all', { defaultValue: 'All' }),     count: total },
+    { id: 'active',  label: t('admin.moderation.active', { defaultValue: 'Active' }),  count: active },
+    { id: 'deleted', label: t('admin.moderation.deleted', { defaultValue: 'Deleted' }), count: deleted },
   ];
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const visible = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  const goPrev = () => setPage(p => Math.max(0, p - 1));
+  const goNext = () => setPage(p => Math.min(pageCount - 1, p + 1));
 
-  const columns = [
-    {
-      key: 'user',
-      label: t('admin.moderation.user', { defaultValue: 'User' }),
-      render: (row) => {
-        const profile = row.profiles;
-        return (
-          <div className="flex items-center gap-2.5">
-            <Avatar name={profile?.full_name} size="sm" variant="accent" />
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
-              <p className="text-[11px] text-[#6B7280]">@{profile?.username ?? '—'}</p>
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'content',
-      label: t('admin.moderation.comment', { defaultValue: 'Comment' }),
-      render: (row) => (
-        <p className="text-[12px] text-[#E5E7EB] truncate max-w-[280px]">{sanitize(row.content)}</p>
-      ),
-    },
-    {
-      key: 'context',
-      label: t('admin.moderation.onPost', { defaultValue: 'On Post' }),
-      headerClassName: 'hidden md:table-cell',
-      className: 'hidden md:table-cell text-[#E5E7EB]',
-      render: (row) => {
-        const feedItem = row.activity_feed_items;
-        const badge = postTypeBadge(feedItem?.type, t);
-        return feedItem ? (
-          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full capitalize ${badge.color}`}>
-            {badge.label}
-          </span>
-        ) : <span className="text-[11px] text-[#6B7280]">—</span>;
-      },
-    },
-    {
-      key: 'status',
-      label: t('admin.moderation.status', { defaultValue: 'Status' }),
-      render: (row) => row.is_deleted ? (
-        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-red-400 bg-red-500/10">
-          {t('admin.moderation.deleted', { defaultValue: 'Deleted' })}
-        </span>
-      ) : (
-        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-emerald-400 bg-emerald-500/10">
-          {t('admin.moderation.live', { defaultValue: 'Live' })}
-        </span>
-      ),
-    },
-    {
-      key: 'created_at',
-      label: t('admin.moderation.date', { defaultValue: 'Date' }),
-      sortable: true,
-      headerClassName: 'hidden md:table-cell',
-      className: 'hidden md:table-cell text-[#E5E7EB]',
-      sortValue: (row) => new Date(row.created_at).getTime(),
-      render: (row) => (
-        <span className="text-[12px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</span>
-      ),
-    },
-    {
-      key: 'actions',
-      label: '',
-      headerClassName: 'w-12 hidden md:table-cell',
-      className: 'hidden md:table-cell text-[#E5E7EB]',
-      render: (row) => {
-        const busy = acting === row.id;
-        return (
-          <button
-            onClick={(e) => { e.stopPropagation(); handleToggleDelete(row); }}
-            disabled={busy}
-            title={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
-            className={`p-2 rounded-lg transition-all disabled:opacity-40 ${
-              row.is_deleted
-                ? 'text-emerald-500 hover:bg-emerald-500/10'
-                : 'text-[#6B7280] hover:text-red-400 hover:bg-red-500/10'
-            }`}
-          >
-            {row.is_deleted ? <RotateCcw size={15} /> : <Trash2 size={15} />}
-          </button>
-        );
-      },
-    },
-  ];
+  const emptyState = (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 20px' }}>
+      <span style={{ width: 46, height: 46, borderRadius: 13, display: 'grid', placeItems: 'center', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+        <Ico ch={MIC.chat} size={21} color={TK.textFaint} stroke={1.7} />
+      </span>
+      <span style={{ fontFamily: FK.body, fontSize: 14, fontWeight: 600, color: TK.textSub }}>
+        {filter === 'deleted' ? t('admin.moderation.noDeletedComments', { defaultValue: 'No deleted comments' }) : t('admin.moderation.noComments', { defaultValue: 'No comments match this filter' })}
+      </span>
+    </div>
+  );
+
+  const statusFor = (row) => row.is_deleted
+    ? { tone: 'hot', label: t('admin.moderation.deleted', { defaultValue: 'Deleted' }) }
+    : { tone: 'good', label: t('admin.moderation.live', { defaultValue: 'Live' }) };
 
   return (
-    <div className="space-y-4">
-      <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
+    <div>
+      <FilterPills items={filterItems} active={filter} onPick={setFilter} />
 
-      {/* Desktop table */}
+      {/* Desktop grid table */}
       <div className="hidden md:block">
-        <AdminTable
-          columns={columns}
-          data={filtered.slice(0, pager.visibleCount)}
-          loading={false}
-          emptyState={
-            <div className="text-center py-12">
-              <MessageSquare size={28} className="text-[#4B5563] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noComments', { defaultValue: 'No comments match this filter' })}</p>
-            </div>
-          }
-        />
+        <Card style={{ overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 16, padding: '15px 24px', background: TK.surface2 }}>
+            <TH>{t('admin.moderation.user', { defaultValue: 'User' })}</TH>
+            <TH>{t('admin.moderation.comment', { defaultValue: 'Comment' })}</TH>
+            <TH>{t('admin.moderation.onPost', { defaultValue: 'On Post' })}</TH>
+            <TH>{t('admin.moderation.status', { defaultValue: 'Status' })}</TH>
+            <TH>{t('admin.moderation.date', { defaultValue: 'Date' })}</TH>
+            <span />
+          </div>
+          {filtered.length === 0 ? emptyState : visible.map((row, i) => {
+            const profile = row.profiles;
+            const feedItem = row.activity_feed_items;
+            const st = statusFor(row);
+            const busy = acting === row.id;
+            const name = profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' });
+            return (
+              <div key={row.id} style={{ display: 'grid', gridTemplateColumns: COLS, gap: 16, padding: '16px 24px', borderTop: `1px solid ${TK.divider}`, alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  <Av name={name} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                    <div style={{ fontFamily: FK.mono, fontSize: 12, color: TK.textFaint, whiteSpace: 'nowrap' }}>@{profile?.username ?? '—'}</div>
+                  </div>
+                </div>
+                <span style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sanitize(row.content)}</span>
+                <div style={{ minWidth: 0 }}>
+                  {feedItem
+                    ? <TypeBadge {...postTypeVisual(feedItem.type)} label={postTypeBadge(feedItem.type, t).label} />
+                    : <span style={{ fontFamily: FK.body, fontSize: 13, color: TK.textFaint }}>—</span>}
+                </div>
+                <StatusDot tone={st.tone} label={st.label} />
+                <span style={{ fontFamily: FK.mono, fontSize: 12.5, color: TK.textFaint, whiteSpace: 'nowrap' }}>{relativeTime(row.created_at, dateFnsOpts)}</span>
+                <IconBtn
+                  icon={row.is_deleted ? MIC.restore : MIC.trash}
+                  tone={row.is_deleted ? 'good' : 'neutral'}
+                  iconColor={row.is_deleted ? undefined : 'var(--color-danger)'}
+                  disabled={busy}
+                  onClick={() => handleToggleDelete(row)}
+                  title={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
+                />
+              </div>
+            );
+          })}
+          {filtered.length > 0 && <Pager page={safePage} pageCount={pageCount} onPrev={goPrev} onNext={goNext} />}
+        </Card>
       </div>
 
       {/* Mobile card list */}
-      <div className="md:hidden space-y-2">
-        {filtered.length === 0 ? (
-          <AdminCard>
-            <div className="text-center py-10">
-              <MessageSquare size={28} className="text-[#4B5563] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noComments', { defaultValue: 'No comments match this filter' })}</p>
-            </div>
-          </AdminCard>
-        ) : filtered.slice(0, pager.visibleCount).map(row => {
+      <div className="md:hidden flex flex-col gap-2.5">
+        {filtered.length === 0 ? <Card>{emptyState}</Card> : visible.map((row) => {
           const profile = row.profiles;
           const feedItem = row.activity_feed_items;
-          const badge = postTypeBadge(feedItem?.type, t);
+          const st = statusFor(row);
           const busy = acting === row.id;
+          const name = profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' });
           return (
-            <div key={row.id} className="admin-card p-3">
-              <div className="flex items-start gap-2.5 mb-2">
-                <Avatar name={profile?.full_name} size="sm" variant="accent" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
-                  <p className="text-[11px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</p>
+            <Card key={row.id} style={{ padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+                <Av name={name} sm />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                  <div style={{ fontFamily: FK.mono, fontSize: 11.5, color: TK.textFaint }}>{relativeTime(row.created_at, dateFnsOpts)}</div>
                 </div>
-                <button
-                  onClick={() => handleToggleDelete(row)}
+                <IconBtn
+                  icon={row.is_deleted ? MIC.restore : MIC.trash}
+                  tone={row.is_deleted ? 'good' : 'neutral'}
+                  iconColor={row.is_deleted ? undefined : 'var(--color-danger)'}
                   disabled={busy}
-                  className={`p-1.5 rounded-lg transition-all disabled:opacity-40 flex-shrink-0 ${
-                    row.is_deleted ? 'text-emerald-500 bg-emerald-500/10' : 'text-[#6B7280] bg-white/[0.04]'
-                  }`}
-                >
-                  {row.is_deleted ? <RotateCcw size={14} /> : <Trash2 size={14} />}
-                </button>
+                  onClick={() => handleToggleDelete(row)}
+                  title={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
+                  size={30}
+                />
               </div>
-              <p className="text-[12px] text-[#E5E7EB] mb-2 line-clamp-3">{sanitize(row.content)}</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                {feedItem && (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${badge.color}`}>{badge.label}</span>
-                )}
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${row.is_deleted ? 'text-red-400 bg-red-500/10' : 'text-emerald-400 bg-emerald-500/10'}`}>
-                  {row.is_deleted ? t('admin.moderation.deleted', { defaultValue: 'Deleted' }) : t('admin.moderation.live', { defaultValue: 'Live' })}
-                </span>
+              <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textSub, margin: '0 0 10px' }}>{sanitize(row.content)}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {feedItem && <TypeBadge {...postTypeVisual(feedItem.type)} label={postTypeBadge(feedItem.type, t).label} />}
+                <StatusDot tone={st.tone} label={st.label} />
               </div>
-            </div>
+            </Card>
           );
         })}
+        {filtered.length > 0 && <Pager page={safePage} pageCount={pageCount} onPrev={goPrev} onNext={goNext} style={{ borderTop: 'none', paddingTop: 4 }} />}
       </div>
-      <PaginationFooter pager={pager} total={filtered.length} />
     </div>
   );
 }

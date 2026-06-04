@@ -85,7 +85,7 @@ export default function ChallengeStats({ gymId }) {
 
   const avgPct = challengeData.length > 0 ? Math.round(challengeData.reduce((sum, d) => sum + d.pct, 0) / challengeData.length) : 0;
   const totalParticipants = challengeData.reduce((sum, d) => sum + d.count, 0);
-  const bars = challengeData.map(d => ({ label: d.name, value: d.pct, label2: `${d.pct}%` }));
+  const bars = challengeData.map(d => ({ label: d.name, value: d.pct, label2: `${d.pct}%`, fullLabel: d.fullName, tipValue: `${d.pct}% · ${d.count}` }));
 
   return (
     <Card style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', minHeight: 360 }}>

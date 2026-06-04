@@ -1,14 +1,9 @@
 /**
- * AdminSettingsBranding: standalone sub-page that owns gym branding —
- * welcome message, logo, primary/accent colors, palette picker, and
- * custom-color overrides. Self-contained query + save mutation.
+ * AdminSettingsBranding: gym branding — welcome message, logo, primary/accent
+ * colors, palette picker, and custom-color overrides. Self-contained query +
+ * save mutation + live preview. Restyled onto settingsKit.
  */
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  Save, Upload, Image as ImageIcon, ChevronDown, ChevronUp,
-  Palette, Check, RotateCcw, AlertTriangle, Wand2, ArrowLeft,
-} from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import posthog from 'posthog-js';
@@ -22,17 +17,17 @@ import { getAllPalettes, getPalette, DEFAULT_PALETTE } from '../../lib/palettes'
 import { analyzeColorPair, autoHarmonize } from '../../lib/themeGenerator';
 import { validateImageFile } from '../../lib/validateImage';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
+import { FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
+import { TK, FK, Ico, Card, DIC, SettingsHeader, CardHd, Fld, Help, TextField, SaveBar, fieldStyle } from './components/settingsKit';
 
 const LOGO_URL_EXPIRY_SECONDS = 60 * 60 * 24 * 7;
 
-// Resolve a color value to a concrete #hex. State may hold a CSS-variable string
-// (e.g. 'var(--color-accent)') when a gym hasn't customized branding yet.
-// Persisting that literally corrupts the palette downstream —
-// hexToRgb('var(--color-accent)') → NaN, so applyBranding/generatePalette emit a
-// broken theme on every load, and a native <input type=color> can't display it
-// (renders black). Resolve vars against the live computed style; fall back to a
-// safe brand hex when resolution isn't possible (SSR / unknown var).
+const BIC = {
+  img: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-4.5-4.5L7 20" /></>,
+  wand: <><path d="M15 4V2M8 9h2M20 9h2M17.8 11.8 19 13M17.8 6.2 19 5M3 21l9-9M12.2 6.2 11 5" /></>,
+  alert: <><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></>,
+};
+
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 function resolveColorToHex(value, fallbackVar, fallbackHex) {
   if (typeof value === 'string' && HEX_RE.test(value.trim())) return value.trim();
@@ -43,12 +38,9 @@ function resolveColorToHex(value, fallbackVar, fallbackHex) {
       const resolved = getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim();
       if (HEX_RE.test(resolved)) return resolved;
       const rgb = resolved.match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
-      if (rgb) {
-        return '#' + [rgb[1], rgb[2], rgb[3]]
-          .map((n) => Number(n).toString(16).padStart(2, '0')).join('');
-      }
+      if (rgb) return '#' + [rgb[1], rgb[2], rgb[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
     }
-  } catch { /* fall through to the safe hex */ }
+  } catch { /* fall through */ }
   return fallbackHex;
 }
 
@@ -58,13 +50,9 @@ async function compressImage(file, maxSize = 512, quality = 0.8) {
     img.onload = () => {
       const canvas = document.createElement('canvas');
       let { width, height } = img;
-      if (width > height) {
-        if (width > maxSize) { height = Math.round((height * maxSize) / width); width = maxSize; }
-      } else if (height > maxSize) {
-        width = Math.round((width * maxSize) / height); height = maxSize;
-      }
-      canvas.width = width;
-      canvas.height = height;
+      if (width > height) { if (width > maxSize) { height = Math.round((height * maxSize) / width); width = maxSize; } }
+      else if (height > maxSize) { width = Math.round((width * maxSize) / height); height = maxSize; }
+      canvas.width = width; canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (!ctx) { resolve(file); return; }
       ctx.drawImage(img, 0, 0, width, height);
@@ -77,16 +65,12 @@ async function compressImage(file, maxSize = 512, quality = 0.8) {
 
 async function getSignedLogoUrl(path) {
   if (!path) return '';
-  const { data, error } = await supabase
-    .storage
-    .from('gym-logos')
-    .createSignedUrl(path, LOGO_URL_EXPIRY_SECONDS);
-  if (error || !data?.signedUrl) {
-    logger.warn('Failed to create signed URL for logo', error);
-    return '';
-  }
+  const { data, error } = await supabase.storage.from('gym-logos').createSignedUrl(path, LOGO_URL_EXPIRY_SECONDS);
+  if (error || !data?.signedUrl) { logger.warn('Failed to create signed URL for logo', error); return ''; }
   return data.signedUrl;
 }
+
+const isValidHex = (hex) => /^#[0-9A-Fa-f]{6}$/.test(hex);
 
 export default function AdminSettingsBranding() {
   const { profile, refreshProfile, availableRoles } = useAuth();
@@ -132,9 +116,6 @@ export default function AdminSettingsBranding() {
     if (!brandingData) return;
     const { branding, signedLogoUrl } = brandingData;
     if (branding) {
-      // Resolve null/var() defaults to concrete hex so the native color inputs
-      // render a real swatch AND an untouched Save can never persist a var()
-      // string (which would corrupt this gym's palette on every load).
       setPrimary(resolveColorToHex(branding.primary_color, 'var(--color-accent)', '#D4AF37'));
       setAccent(resolveColorToHex(branding.accent_color, 'var(--color-success)', '#10B981'));
       setWelcome(branding.welcome_message ?? '');
@@ -152,30 +133,18 @@ export default function AdminSettingsBranding() {
   const handleLogoUpload = async (file) => {
     if (!file) return;
     const validation = await validateImageFile(file);
-    if (!validation.valid) {
-      setError(validation.error);
-      showToast(validation.error, 'error');
-      return;
-    }
+    if (!validation.valid) { setError(validation.error); showToast(validation.error, 'error'); return; }
     setUploadingLogo(true);
     try {
       const compressed = await compressImage(file);
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const path = `${gymId}/logo.${ext}`;
-      const { error: storageErr } = await supabase.storage
-        .from('gym-logos')
-        .upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
-      if (storageErr) {
-        setError(`${t('admin.settings.logoUploadFailed', 'Logo upload failed')}: ${storageErr.message}`);
-        setUploadingLogo(false);
-        return;
-      }
+      const { error: storageErr } = await supabase.storage.from('gym-logos').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
+      if (storageErr) { setError(`${t('admin.settings.logoUploadFailed', 'Logo upload failed')}: ${storageErr.message}`); setUploadingLogo(false); return; }
       const signedUrl = await getSignedLogoUrl(path);
       setLogoUrl(signedUrl);
       setLogoFile(null);
-      const { error: dbErr } = await supabase
-        .from('gym_branding')
-        .upsert({ gym_id: gymId, logo_url: path }, { onConflict: 'gym_id' });
+      const { error: dbErr } = await supabase.from('gym_branding').upsert({ gym_id: gymId, logo_url: path }, { onConflict: 'gym_id' });
       if (dbErr) throw dbErr;
     } catch (err) {
       setError(err.message || t('admin.settings.logoUploadFailed', 'Logo upload failed'));
@@ -185,10 +154,6 @@ export default function AdminSettingsBranding() {
 
   const saveBrandingMutation = useMutation({
     mutationFn: async () => {
-      // Defensive: resolve any lingering var() default to hex BEFORE persisting,
-      // so gym_branding never stores 'var(--color-accent)' (which corrupts the
-      // palette on reload). All the palette/custom handlers already set real hex;
-      // this catches the "saved without touching colors" path.
       const primaryHex = resolveColorToHex(primaryColor, 'var(--color-accent)', '#D4AF37');
       const accentHex = resolveColorToHex(accentColor, 'var(--color-success)', '#10B981');
       const { error: brandingErr } = await supabase.from('gym_branding').upsert({
@@ -213,10 +178,7 @@ export default function AdminSettingsBranding() {
       setTimeout(() => setPaletteSaved(false), 2500);
       showToast(t('admin.settings.brandingSaved', 'Branding saved'), 'success');
     },
-    onError: (err) => {
-      setError(err.message);
-      showToast(err.message, 'error');
-    },
+    onError: (err) => { setError(err.message); showToast(err.message, 'error'); },
   });
 
   const handleSelectPalette = (paletteId) => {
@@ -228,12 +190,9 @@ export default function AdminSettingsBranding() {
     setAccent(palette.secondary);
   };
 
-  const isValidHex = (hex) => /^#[0-9A-Fa-f]{6}$/.test(hex);
-
   const handleApplyCustomColors = () => {
     if (isValidHex(customPrimary) && isValidHex(customSecondary)) {
-      const analysis = analyzeColorPair(customPrimary, customSecondary);
-      setColorAnalysis(analysis);
+      setColorAnalysis(analyzeColorPair(customPrimary, customSecondary));
       setSelectedPalette('custom');
       setPrimary(customPrimary);
       setAccent(customSecondary);
@@ -250,11 +209,8 @@ export default function AdminSettingsBranding() {
     setPrimary(fixed.primary);
     setAccent(fixed.secondary);
     applyBranding({ primaryColor: fixed.primary, secondaryColor: fixed.secondary });
-    const newAnalysis = analyzeColorPair(fixed.primary, fixed.secondary);
-    setColorAnalysis(newAnalysis);
-    if (fixed.wasAdjusted) {
-      showToast(t('admin.settings.colorsAutoAdjusted', 'Colors auto-adjusted for better harmony'), 'success');
-    }
+    setColorAnalysis(analyzeColorPair(fixed.primary, fixed.secondary));
+    if (fixed.wasAdjusted) showToast(t('admin.settings.colorsAutoAdjusted', 'Colors auto-adjusted for better harmony'), 'success');
   };
 
   const handleResetPalette = () => {
@@ -270,11 +226,11 @@ export default function AdminSettingsBranding() {
 
   if (!isAuthorized) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[14px] font-semibold" style={{ color: 'var(--color-danger, #EF4444)' }}>
-          {t('admin.overview.accessDenied', 'Access denied. You are not authorized to view this page.')}
-        </p>
-      </div>
+      <AdminPageShell>
+        <Card style={{ padding: '40px 20px', textAlign: 'center' }}>
+          <p style={{ fontFamily: FK.body, fontSize: 14, color: 'var(--color-danger)' }}>{t('admin.overview.accessDenied', 'Access denied. You are not authorized to view this page.')}</p>
+        </Card>
+      </AdminPageShell>
     );
   }
 
@@ -282,366 +238,160 @@ export default function AdminSettingsBranding() {
     <AdminPageShell className="space-y-4">
       <CardSkeleton h="h-[60px]" />
       <CardSkeleton h="h-[280px]" />
-      <CardSkeleton h="h-[200px]" />
     </AdminPageShell>
   );
 
-  const backLink = (
-    <Link
-      to="/admin/settings"
-      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-colors"
-      style={{
-        backgroundColor: 'var(--color-bg-deep)',
-        border: '1px solid var(--color-border-subtle)',
-        color: 'var(--color-text-muted)',
-      }}
-    >
-      <ArrowLeft size={14} />
-      {t('admin.settings.title', 'Settings')}
-    </Link>
-  );
+  const swatch = { width: 42, height: 42, borderRadius: 10, padding: 2, border: `1px solid ${TK.borderSolid}`, background: TK.surface2, cursor: 'pointer', flexShrink: 0 };
 
   return (
     <AdminPageShell>
-      <PageHeader
-        title={t('admin.settings.tabBranding', 'Branding')}
-        subtitle={t('admin.settingsHub.brandingDesc', 'Logo, welcome message, palette')}
-        actions={backLink}
-        className="mb-4"
-      />
+      <SettingsHeader t={t} title={t('admin.settings.tabBranding', 'Branding')} sub={t('admin.settingsHub.brandingDesc', 'Logo, welcome message, palette')} />
 
-      {error && <p className="text-[13px] text-red-400 mb-4">{error}</p>}
+      {error && <p style={{ fontFamily: FK.body, fontSize: 13, color: 'var(--color-danger)', margin: '14px 0 0' }}>{error}</p>}
 
-      <div className="space-y-4 min-w-0">
-        <div className="grid xl:grid-cols-12 gap-4 min-w-0">
-          {/* Logo & Welcome */}
-          <FadeIn delay={0} className="xl:col-span-6 min-w-0">
-            <AdminCard hover padding="p-4 sm:p-5">
-              <SectionLabel className="mb-4">{t('admin.settings.branding', 'Branding')}</SectionLabel>
-              <div className="space-y-4">
+      <div style={{ marginTop: 22 }}>
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.25fr] gap-[18px] items-start">
+          {/* ── Marca: welcome + logo + colors ── */}
+          <FadeIn delay={0} className="min-w-0">
+            <Card style={{ padding: '22px 24px' }}>
+              <CardHd icon={DIC.palette}>{t('admin.settings.branding', 'Branding')}</CardHd>
+
+              <Fld>{t('admin.settings.welcomeMessage', 'Welcome Message')}</Fld>
+              <textarea value={welcomeMsg} onChange={e => setWelcome(e.target.value)} rows={2} placeholder={t('admin.settings.welcomePlaceholder')}
+                onFocus={e => { e.target.style.borderColor = TK.accent; }} onBlur={e => { e.target.style.borderColor = 'var(--color-admin-border)'; }}
+                style={{ ...fieldStyle, resize: 'none', minHeight: 58, lineHeight: 1.45 }} />
+
+              <Fld>{t('admin.settings.gymLogo', 'Gym Logo')}</Fld>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+                {logoUrl ? (
+                  <img src={logoUrl} alt={t('admin.settings.gymLogo', 'Gym Logo')} style={{ width: 54, height: 54, borderRadius: 13, objectFit: 'contain', padding: 4, flexShrink: 0, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }} />
+                ) : (
+                  <span style={{ width: 54, height: 54, borderRadius: 13, flexShrink: 0, display: 'grid', placeItems: 'center', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}><Ico ch={BIC.img} size={20} color={TK.textMute} stroke={1.9} /></span>
+                )}
+                <label style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 12, border: `1.5px dashed ${TK.borderSolid}`, background: TK.surface2, fontFamily: FK.body, fontSize: 14, fontWeight: 600, color: TK.textMute, cursor: uploadingLogo ? 'default' : 'pointer' }}>
+                  <Ico ch={DIC.upload} size={16} color={TK.textMute} stroke={2} />
+                  {uploadingLogo ? t('admin.settings.uploading', 'Uploading...') : logoFile ? logoFile.name : t('admin.settings.uploadLogo', 'Upload logo')}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} disabled={uploadingLogo}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) { setLogoFile(f); handleLogoUpload(f); } }} />
+                </label>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 4 }}>
                 <div>
-                  <label htmlFor="welcome-msg" className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.welcomeMessage', 'Welcome Message')}</label>
-                  <textarea id="welcome-msg" value={welcomeMsg} onChange={e => setWelcome(e.target.value)} rows={2}
-                    placeholder={t('admin.settings.welcomePlaceholder')}
-                    className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none resize-none transition-colors"
-                    style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                </div>
-                <div>
-                  <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.gymLogo', 'Gym Logo')}</label>
-                  <div className="flex items-center gap-3">
-                    {logoUrl ? (
-                      <img src={logoUrl} alt={t('admin.settings.gymLogo', 'Gym Logo')} className="w-12 h-12 rounded-xl object-contain p-1" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }} />
-                    ) : (
-                      <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                        <ImageIcon size={20} style={{ color: 'var(--color-text-muted)' }} />
-                      </div>
-                    )}
-                    <label
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl cursor-pointer transition-colors"
-                      style={{ border: '1px dashed var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-                      <Upload size={14} />
-                      <span className="text-[12px] font-medium">
-                        {uploadingLogo ? t('admin.settings.uploading', 'Uploading...') : logoFile ? logoFile.name : t('admin.settings.uploadLogo', 'Upload logo')}
-                      </span>
-                      <input
-                        type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-                        disabled={uploadingLogo}
-                        onChange={e => {
-                          const f = e.target.files?.[0];
-                          if (f) { setLogoFile(f); handleLogoUpload(f); }
-                        }}
-                      />
-                    </label>
+                  <Fld>{t('admin.settings.primaryColor', 'Primary Color')}</Fld>
+                  <div style={{ display: 'flex', gap: 9 }}>
+                    <input type="color" value={isValidHex(primaryColor) ? primaryColor : '#333333'} onChange={e => setPrimary(e.target.value)} style={swatch} />
+                    <TextField value={primaryColor} onChange={e => setPrimary(e.target.value)} mono />
                   </div>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="min-w-0">
-                    <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.primaryColor', 'Primary Color')}</label>
-                    <div className="flex items-center gap-3 min-w-0">
-                      <input type="color" value={primaryColor} onChange={e => setPrimary(e.target.value)}
-                        className="w-10 h-10 rounded-xl cursor-pointer p-1 flex-shrink-0"
-                        style={{ border: '1px solid var(--color-border-subtle)', backgroundColor: 'var(--color-bg-deep)' }} />
-                      <input value={primaryColor} onChange={e => setPrimary(e.target.value)}
-                        className="flex-1 min-w-0 rounded-xl px-3 py-2 text-[13px] outline-none font-mono transition-colors"
-                        style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.accentColor', 'Accent Color')}</label>
-                    <div className="flex items-center gap-3 min-w-0">
-                      <input type="color" value={accentColor} onChange={e => setAccent(e.target.value)}
-                        className="w-10 h-10 rounded-xl cursor-pointer p-1 flex-shrink-0"
-                        style={{ border: '1px solid var(--color-border-subtle)', backgroundColor: 'var(--color-bg-deep)' }} />
-                      <input value={accentColor} onChange={e => setAccent(e.target.value)}
-                        className="flex-1 min-w-0 rounded-xl px-3 py-2 text-[13px] outline-none font-mono transition-colors"
-                        style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                    </div>
+                <div>
+                  <Fld>{t('admin.settings.accentColor', 'Accent Color')}</Fld>
+                  <div style={{ display: 'flex', gap: 9 }}>
+                    <input type="color" value={isValidHex(accentColor) ? accentColor : '#333333'} onChange={e => setAccent(e.target.value)} style={swatch} />
+                    <TextField value={accentColor} onChange={e => setAccent(e.target.value)} mono />
                   </div>
                 </div>
               </div>
-            </AdminCard>
+            </Card>
           </FadeIn>
 
-          {/* Theme & Colors */}
-          <FadeIn delay={30} className="xl:col-span-6 min-w-0">
-            <div id="theme" />
-            <AdminCard hover padding="p-4 sm:p-5">
-              <SectionLabel icon={Palette} className="mb-2">{t('admin.settings.themeColors', 'Theme & Colors')}</SectionLabel>
-              <p className="text-[12px] mb-5" style={{ color: 'var(--color-text-muted)' }}>
-                {t('admin.settings.themeColorsDesc', 'Choose a predefined palette or create custom colors. Changes preview instantly.')}
-              </p>
+          {/* ── Tema y colores: palette grid + custom ── */}
+          <FadeIn delay={30} className="min-w-0">
+            <Card id="theme" style={{ padding: '22px 24px' }}>
+              <CardHd icon={DIC.palette}>{t('admin.settings.themeColors', 'Theme & Colors')}</CardHd>
+              <Help>{t('admin.settings.themeColorsDesc', 'Choose a predefined palette or create custom colors. Changes preview instantly.')}</Help>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5" style={{ marginTop: 16 }}>
                 {getAllPalettes().map((palette) => {
                   const isActive = selectedPalette === palette.id;
                   return (
-                    <button
-                      key={palette.id}
-                      onClick={() => handleSelectPalette(palette.id)}
-                      className="relative text-left rounded-[14px] p-3.5 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] border"
-                      style={{
-                        backgroundColor: 'var(--color-bg-deep)',
-                        borderColor: isActive ? palette.primary : 'var(--color-border-subtle)',
-                        boxShadow: isActive ? `0 0 0 1px ${palette.primary}, 0 0 20px ${palette.primary}22` : 'none',
-                      }}
-                    >
+                    <button key={palette.id} type="button" onClick={() => handleSelectPalette(palette.id)} style={{ position: 'relative', textAlign: 'left', borderRadius: 14, padding: '16px 18px', cursor: 'pointer', background: isActive ? TK.accentWash : TK.surface2, border: `1.5px solid ${isActive ? palette.primary : TK.borderSolid}`, boxShadow: isActive ? `0 0 18px ${palette.primary}22` : 'none' }}>
                       {isActive && (
-                        <div
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center shadow-lg"
-                          style={{ backgroundColor: palette.primary }}
-                        >
-                          <Check size={11} className="text-[var(--color-text-on-accent)]" strokeWidth={3} />
-                        </div>
+                        <span style={{ position: 'absolute', top: -9, right: -9, width: 24, height: 24, borderRadius: 99, display: 'grid', placeItems: 'center', background: palette.primary, boxShadow: '0 2px 6px rgba(0,0,0,.2)' }}><Ico ch={DIC.check} size={14} color="#fff" stroke={3} /></span>
                       )}
-
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <span className="w-6 h-6 rounded-full border border-white/10 flex-shrink-0" style={{ backgroundColor: palette.primary }} />
-                        <span className="w-6 h-6 rounded-full border border-white/10 flex-shrink-0" style={{ backgroundColor: palette.secondary }} />
-                        <span className="w-6 h-6 rounded-full border border-white/10 flex-shrink-0" style={{ backgroundColor: palette.preview?.dark || '#0B0F1A' }} />
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 11 }}>
+                        {[palette.primary, palette.secondary, palette.preview?.dark || '#0B0F1A'].map((c, i) => (
+                          <span key={i} style={{ width: 26, height: 26, borderRadius: 99, background: c, border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.15)' }} />
+                        ))}
                       </div>
-
-                      <p className="text-[13px] font-bold truncate" style={{ color: isActive ? palette.primary : 'var(--color-text-primary)' }}>
-                        {t(`admin.settings.palettes.${palette.id}.name`, palette.name)}
-                      </p>
-                      <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>
-                        {t(`admin.settings.palettes.${palette.id}.description`, palette.description)}
-                      </p>
+                      <div style={{ fontFamily: FK.display, fontSize: 15.5, fontWeight: 800, letterSpacing: -0.3, color: isActive ? palette.primary : TK.text }}>{t(`admin.settings.palettes.${palette.id}.name`, palette.name)}</div>
+                      <div style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textMute, marginTop: 3, lineHeight: 1.4 }}>{t(`admin.settings.palettes.${palette.id}.description`, palette.description)}</div>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Custom Colors */}
-              <div
-                className="rounded-[14px] border transition-all"
-                style={{
-                  backgroundColor: 'var(--color-bg-deep)',
-                  borderColor: selectedPalette === 'custom' ? 'var(--color-accent)' : 'var(--color-border-subtle)',
-                }}
-              >
-                <button
-                  onClick={() => setCustomExpanded(e => !e)}
-                  className="w-full flex items-center justify-between px-4 py-3"
-                >
-                  <div className="flex items-center gap-2">
-                    <Palette size={14} style={{ color: 'var(--color-text-muted)' }} />
-                    <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                      {t('admin.settings.customColors', 'Custom Colors')}
-                    </span>
-                    {selectedPalette === 'custom' && (
-                      <span
-                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                        style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
-                      >
-                        {t('admin.settings.active', 'Active')}
-                      </span>
-                    )}
-                  </div>
-                  {customExpanded
-                    ? <ChevronUp size={14} style={{ color: 'var(--color-text-muted)' }} />
-                    : <ChevronDown size={14} style={{ color: 'var(--color-text-muted)' }} />
-                  }
+              {/* custom colors (collapsible) */}
+              <div style={{ borderRadius: 14, marginTop: 14, background: TK.surface2, border: `1px solid ${selectedPalette === 'custom' ? TK.accent : TK.borderSolid}` }}>
+                <button type="button" onClick={() => setCustomExpanded(e => !e)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text }}>
+                    <Ico ch={DIC.palette} size={16} color={TK.textSub} stroke={2} />{t('admin.settings.customColors', 'Custom Colors')}
+                    {selectedPalette === 'custom' && <span style={{ fontFamily: FK.body, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', padding: '3px 8px', borderRadius: 999, background: TK.accentSoft, color: TK.accentInk }}>{t('admin.settings.active', 'Active')}</span>}
+                  </span>
+                  <Ico ch={customExpanded ? DIC.chevU : DIC.chevD} size={16} color={TK.textMute} stroke={2.2} />
                 </button>
 
                 {customExpanded && (
-                  <div className="px-4 pb-4 space-y-3 min-w-0">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="min-w-0">
-                        <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                          {t('admin.settings.primaryColor', 'Primary Color')}
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="color"
-                            value={isValidHex(customPrimary) ? customPrimary : '#333333'}
-                            onChange={e => setCustomPrimary(e.target.value)}
-                            className="w-11 h-11 rounded-xl border flex-shrink-0 cursor-pointer p-1"
-                            style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-bg-deep)' }}
-                          />
-                          <input
-                            type="text"
-                            value={customPrimary}
-                            onChange={e => setCustomPrimary(e.target.value)}
-                            placeholder="var(--color-danger)"
-                            maxLength={7}
-                            className="flex-1 bg-transparent border rounded-lg px-2.5 py-1.5 text-[12px] font-mono outline-none transition-colors"
-                            style={{
-                              color: 'var(--color-text-primary)',
-                              borderColor: customPrimary && !isValidHex(customPrimary) ? 'var(--color-danger)' : 'var(--color-border-subtle)',
-                            }}
-                          />
+                  <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      {[['primaryColor', customPrimary, setCustomPrimary], ['secondaryColor', customSecondary, setCustomSecondary]].map(([labelKey, val, setVal]) => (
+                        <div key={labelKey} style={{ minWidth: 0 }}>
+                          <Fld style={{ margin: '0 0 8px' }}>{t(`admin.settings.${labelKey}`)}</Fld>
+                          <div style={{ display: 'flex', gap: 9 }}>
+                            <input type="color" value={isValidHex(val) ? val : '#333333'} onChange={e => setVal(e.target.value)} style={swatch} />
+                            <TextField value={val} onChange={e => setVal(e.target.value)} placeholder="#10B981" maxLength={7} mono style={{ borderColor: val && !isValidHex(val) ? 'var(--color-danger)' : undefined }} />
+                          </div>
+                          {val && !isValidHex(val) && <p style={{ fontFamily: FK.body, fontSize: 10.5, marginTop: 4, color: 'var(--color-danger)' }}>{t('admin.settings.invalidHex', 'Invalid hex format')}</p>}
                         </div>
-                        {customPrimary && !isValidHex(customPrimary) && (
-                          <p className="text-[10px] mt-1" style={{ color: 'var(--color-danger)' }}>{t('admin.settings.invalidHex', 'Invalid hex format')}</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                          {t('admin.settings.secondaryColor', 'Secondary Color')}
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="color"
-                            value={isValidHex(customSecondary) ? customSecondary : '#333333'}
-                            onChange={e => setCustomSecondary(e.target.value)}
-                            className="w-11 h-11 rounded-xl border flex-shrink-0 cursor-pointer p-1"
-                            style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-bg-deep)' }}
-                          />
-                          <input
-                            type="text"
-                            value={customSecondary}
-                            onChange={e => setCustomSecondary(e.target.value)}
-                            placeholder="var(--color-success)"
-                            maxLength={7}
-                            className="flex-1 bg-transparent border rounded-lg px-2.5 py-1.5 text-[12px] font-mono outline-none transition-colors"
-                            style={{
-                              color: 'var(--color-text-primary)',
-                              borderColor: customSecondary && !isValidHex(customSecondary) ? 'var(--color-danger)' : 'var(--color-border-subtle)',
-                            }}
-                          />
-                        </div>
-                        {customSecondary && !isValidHex(customSecondary) && (
-                          <p className="text-[10px] mt-1" style={{ color: 'var(--color-danger)' }}>{t('admin.settings.invalidHex', 'Invalid hex format')}</p>
-                        )}
-                      </div>
+                      ))}
                     </div>
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleApplyCustomColors}
-                        disabled={!isValidHex(customPrimary) || !isValidHex(customSecondary)}
-                        className="flex-1 py-2 rounded-xl text-[12px] font-semibold transition-all disabled:opacity-40 border"
-                        style={{
-                          backgroundColor: 'var(--color-accent)',
-                          color: 'var(--color-text-on-accent)',
-                          borderColor: 'transparent',
-                          opacity: (!isValidHex(customPrimary) || !isValidHex(customSecondary)) ? 0.4 : 1,
-                        }}
-                      >
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button type="button" onClick={handleApplyCustomColors} disabled={!isValidHex(customPrimary) || !isValidHex(customSecondary)} style={{ flex: 1, padding: '11px 0', borderRadius: 11, cursor: 'pointer', border: 'none', background: TK.accent, color: '#fff', fontFamily: FK.body, fontSize: 13, fontWeight: 700, opacity: (!isValidHex(customPrimary) || !isValidHex(customSecondary)) ? 0.4 : 1 }}>
                         {t('admin.settings.previewColors', 'Preview Colors')}
                       </button>
                       {isValidHex(customPrimary) && (
-                        <button
-                          onClick={handleAutoFix}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all border"
-                          style={{
-                            backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
-                            color: 'var(--color-accent)',
-                            borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)',
-                          }}
-                          title={t('admin.settings.autoFixTitle', 'Auto-adjust colors for best harmony and contrast')}
-                        >
-                          <Wand2 size={12} /> {t('admin.settings.autoFix', 'Auto-fix')}
+                        <button type="button" onClick={handleAutoFix} title={t('admin.settings.autoFixTitle', 'Auto-adjust colors for best harmony and contrast')} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '11px 14px', borderRadius: 11, cursor: 'pointer', background: TK.accentWash, border: `1px solid ${TK.accentLine}`, color: TK.accent, fontFamily: FK.body, fontSize: 13, fontWeight: 700 }}>
+                          <Ico ch={BIC.wand} size={13} color={TK.accent} stroke={2} />{t('admin.settings.autoFix', 'Auto-fix')}
                         </button>
                       )}
                     </div>
 
                     {colorAnalysis && !colorAnalysis.ok && (
-                      <div
-                        className="rounded-xl p-3 space-y-2"
-                        style={{
-                          backgroundColor: 'color-mix(in srgb, var(--color-warning) 8%, transparent)',
-                          border: '1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)',
-                        }}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <AlertTriangle size={12} style={{ color: 'var(--color-warning)' }} />
-                          <span className="text-[11px] font-semibold" style={{ color: 'var(--color-warning)' }}>
-                            {t('admin.settings.colorIssuesDetected', 'Color Issues Detected')}
-                          </span>
-                        </div>
-                        {colorAnalysis.warnings.map((w, i) => (
-                          <p key={i} className="text-[11px] pl-5" style={{ color: 'var(--color-text-muted)' }}>
-                            {w.message}
-                          </p>
-                        ))}
-                        <button
-                          onClick={handleAutoFix}
-                          className="flex items-center gap-1.5 text-[11px] font-semibold pl-5 mt-1 hover:underline"
-                          style={{ color: 'var(--color-accent)' }}
-                        >
-                          <Wand2 size={10} /> {t('admin.settings.fixAutomatically', 'Fix automatically')}
-                        </button>
+                      <div style={{ borderRadius: 11, padding: 12, background: 'var(--color-warning-soft)', border: '1px solid color-mix(in srgb, var(--color-warning) 22%, transparent)', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: FK.body, fontSize: 11.5, fontWeight: 800, color: 'var(--color-warning-ink, var(--color-warning))' }}>
+                          <Ico ch={BIC.alert} size={13} color="var(--color-warning)" stroke={2} />{t('admin.settings.colorIssuesDetected', 'Color Issues Detected')}
+                        </span>
+                        {colorAnalysis.warnings.map((w, i) => <p key={i} style={{ margin: 0, fontFamily: FK.body, fontSize: 11.5, paddingLeft: 20, color: TK.textMute }}>{w.message}</p>)}
                       </div>
                     )}
 
                     {colorAnalysis && (
-                      <div className="flex gap-3 text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
-                        <span>
-                          {t('admin.settings.darkContrast', 'Dark contrast')}:{' '}
-                          <span style={{ color: colorAnalysis.contrast.primaryOnDark >= 3 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                            {colorAnalysis.contrast.primaryOnDark.toFixed(1)}:1
-                          </span>
-                        </span>
-                        <span>
-                          {t('admin.settings.lightContrast', 'Light contrast')}:{' '}
-                          <span style={{ color: colorAnalysis.contrast.primaryOnLight >= 3 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                            {colorAnalysis.contrast.primaryOnLight.toFixed(1)}:1
-                          </span>
-                        </span>
+                      <div style={{ display: 'flex', gap: 14, fontFamily: FK.body, fontSize: 10.5, color: TK.textFaint }}>
+                        <span>{t('admin.settings.darkContrast', 'Dark contrast')}: <b style={{ color: colorAnalysis.contrast.primaryOnDark >= 3 ? 'var(--color-success)' : 'var(--color-danger)' }}>{colorAnalysis.contrast.primaryOnDark.toFixed(1)}:1</b></span>
+                        <span>{t('admin.settings.lightContrast', 'Light contrast')}: <b style={{ color: colorAnalysis.contrast.primaryOnLight >= 3 ? 'var(--color-success)' : 'var(--color-danger)' }}>{colorAnalysis.contrast.primaryOnLight.toFixed(1)}:1</b></span>
                       </div>
                     )}
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-3 mt-5">
-                <button
-                  onClick={handleResetPalette}
-                  className="flex items-center gap-2 px-4 py-3 rounded-xl text-[13px] font-semibold transition-all border"
-                  style={{
-                    backgroundColor: 'transparent',
-                    color: 'var(--color-text-muted)',
-                    borderColor: 'var(--color-border-subtle)',
-                  }}
-                >
-                  <RotateCcw size={14} />
-                  {t('admin.settings.reset', 'Reset')}
-                </button>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, cursor: 'pointer', fontFamily: FK.body, fontSize: 13.5, fontWeight: 600, color: TK.textMute }} onClick={handleResetPalette}>
+                <Ico ch={DIC.reset} size={15} color={TK.textMute} stroke={2} />{t('admin.settings.reset', 'Reset')}
               </div>
-            </AdminCard>
+            </Card>
           </FadeIn>
         </div>
 
         <FadeIn delay={60}>
-          <button
+          <SaveBar
             onClick={() => { setError(''); saveBrandingMutation.mutate(); }}
-            disabled={saveBrandingMutation.isPending}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
-            style={{
-              backgroundColor: paletteSaved ? 'var(--color-success)' : 'var(--color-accent)',
-              color: paletteSaved ? '#fff' : 'var(--color-text-on-accent)',
-            }}
-          >
-            <Save size={16} />
-            {saveBrandingMutation.isPending
-              ? t('admin.settings.saving', 'Saving...')
-              : paletteSaved
-                ? t('admin.settings.saved', 'Saved!')
-                : t('admin.settings.saveBranding', 'Save Branding')}
-          </button>
+            saving={saveBrandingMutation.isPending}
+            saved={paletteSaved}
+            label={t('admin.settings.saveBranding', 'Save Branding')}
+            savingLabel={t('admin.settings.saving', 'Saving...')}
+            savedLabel={t('admin.settings.saved', 'Saved!')}
+          />
         </FadeIn>
       </div>
     </AdminPageShell>

@@ -6,36 +6,42 @@
  * Reset = DELETE the gym row so the global default takes over again.
  * Disable = keep the gym row with enabled=false, which the SQL lookup
  *   functions treat as an explicit opt-out (skips that send entirely).
+ *
+ * Restyled onto retosKit per the "Plantillas de Mensajes" design: centered
+ * header, two icon tabs (lifecycle / win-back), a 2-col grid of template cards
+ * each with an inline enable/disable toggle, and a restyled edit modal.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Loader2, RotateCcw, Save, Mail, Heart } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
-import {
-  PageHeader,
-  AdminCard,
-  AdminModal,
-  AdminTabs,
-  SectionLabel,
-  Toggle,
-} from '../../components/admin';
+import { AdminModal, AdminPageShell, FadeIn } from '../../components/admin';
+import { TK, FK, TONE, Ico, Card } from './components/retosKit';
 
 const FAKE_NAME = 'Maria';
+
+const PLIC = {
+  heart: <path d="M12 20s-7-4.5-9.5-9C1 8 2.5 4.5 6 4.5c2 0 3.2 1.2 4 2.3.8-1.1 2-2.3 4-2.3 3.5 0 5 3.5 3.5 6.5C19 15.5 12 20 12 20Z" />,
+  mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3.5 6.5 8.5 6 8.5-6" /></>,
+  message: <path d="M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12Z" />,
+  reset: <><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 4v4h4" /></>,
+  save: <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" /><path d="M17 21v-8H7v8M7 3v5h8" /></>,
+};
+
+// winback cancel-reason category → tone
+const CAT_TONE = { EXPERIENCE: 'info', FINANCIAL: 'good', NO_RESULTS: 'coach', TIME: 'warn', OTHER: 'neutral' };
 
 /** Render preview by substituting {{first_name}}. */
 function renderPreview(text) {
   return (text || '').replace(/\{\{first_name\}\}/g, FAKE_NAME);
 }
 
-/**
- * Group rows by (kind, step_key, language, category) where global default
- * is the base and any gym-specific row layers on top as the override.
- */
+/** Group rows by (kind, step_key, language, category): global default + gym override. */
 function buildRows(allTemplates, gymId) {
   const map = new Map();
   for (const tpl of allTemplates) {
@@ -50,7 +56,6 @@ function buildRows(allTemplates, gymId) {
   return Array.from(map.values());
 }
 
-/** Sort step keys like day_1 < day_3 < day_7 < day_14 ... */
 function stepWeight(stepKey) {
   const m = /^day_(\d+)$/.exec(stepKey || '');
   return m ? parseInt(m[1], 10) : 9999;
@@ -68,20 +73,103 @@ function sortRows(rows) {
   });
 }
 
+function dayLabel(stepKey, t) {
+  const m = /^day_(\d+)$/.exec(stepKey || '');
+  if (m) return `${t('admin.messageTemplates.day', { defaultValue: 'Day' })} ${m[1]}`.toUpperCase();
+  return (stepKey || '').replace(/_/g, ' ').toUpperCase();
+}
+
+// ── small presentational bits ──
+function Spin() {
+  return <span className="animate-spin" style={{ width: 14, height: 14, borderRadius: 99, border: '2px solid color-mix(in srgb, currentColor 35%, transparent)', borderTopColor: 'currentColor', display: 'inline-block' }} />;
+}
+
+function Lbl({ children }) {
+  return <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: TK.textMute, marginBottom: 8 }}>{children}</div>;
+}
+
+function MetaTag({ children, lang = false }) {
+  return <span style={{ fontFamily: FK.mono, fontSize: 11, fontWeight: 700, letterSpacing: 1, color: lang ? TK.accent : TK.textFaint }}>{children}</span>;
+}
+
+function CatTag({ cat }) {
+  const tone = CAT_TONE[cat] || 'neutral';
+  const c = TONE[tone] || TONE.neutral;
+  const neutral = tone === 'neutral';
+  return (
+    <span style={{ padding: '2px 8px', borderRadius: 6, background: neutral ? TK.surface3 : c.bg, border: `1px solid ${neutral ? TK.borderSolid : c.line}`, fontFamily: FK.mono, fontSize: 10, fontWeight: 700, letterSpacing: 0.8, color: neutral ? TK.textMute : c.ink, whiteSpace: 'nowrap' }}>{cat}</span>
+  );
+}
+
 function StatusPill({ status, t }) {
   const map = {
-    default: { bg: 'rgba(156,163,175,0.12)', fg: '#9CA3AF', label: t('admin.messageTemplates.statusDefault', 'Default') },
-    overridden: { bg: 'color-mix(in srgb, var(--color-accent, #D4AF37) 18%, transparent)', fg: 'var(--color-accent, #D4AF37)', label: t('admin.messageTemplates.statusOverridden', 'Overridden') },
-    disabled: { bg: 'rgba(239,68,68,0.14)', fg: '#EF4444', label: t('admin.messageTemplates.statusDisabled', 'Disabled') },
+    default: { tone: 'neutral', label: t('admin.messageTemplates.statusDefault', 'Default') },
+    overridden: { tone: 'accent', label: t('admin.messageTemplates.statusOverridden', 'Overridden') },
+    disabled: { tone: 'hot', label: t('admin.messageTemplates.statusDisabled', 'Disabled') },
   };
   const cfg = map[status] || map.default;
+  const c = TONE[cfg.tone] || TONE.neutral;
+  const neutral = cfg.tone === 'neutral';
   return (
-    <span
-      className="text-[10px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded-full"
-      style={{ backgroundColor: cfg.bg, color: cfg.fg }}
-    >
-      {cfg.label}
+    <span style={{ fontFamily: FK.body, fontSize: 9.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: neutral ? TK.textFaint : c.ink, background: neutral ? TK.surface3 : c.bg, border: neutral ? `1px solid ${TK.borderSolid}` : `1px solid ${c.line}`, padding: '4px 9px', borderRadius: 6, whiteSpace: 'nowrap' }}>{cfg.label}</span>
+  );
+}
+
+function Switch({ on, disabled = false }) {
+  return (
+    <span style={{ width: 38, height: 21, borderRadius: 99, flexShrink: 0, opacity: disabled ? 0.55 : 1, background: on ? TK.accent : TK.surface3, border: `1px solid ${on ? TK.accent : TK.borderSolid}`, position: 'relative', transition: 'background .2s, border-color .2s', display: 'inline-block' }}>
+      <span style={{ position: 'absolute', top: 1.5, left: on ? 18.5 : 1.5, width: 16, height: 16, borderRadius: 99, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.2)', transition: 'left .2s' }} />
     </span>
+  );
+}
+
+// ── tab nav (centered icon tabs) ──
+function PlTabs({ tabs, active, onPick }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: `1px solid ${TK.borderSolid}`, margin: '24px auto', maxWidth: 760 }}>
+      {tabs.map(tab => {
+        const on = tab.key === active;
+        return (
+          <button key={tab.key} type="button" onClick={() => onPick(tab.key)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '6px 0 16px', position: 'relative', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+            <Ico ch={tab.icon} size={18} color={on ? TK.accent : TK.textMute} stroke={on ? 2.1 : 1.9} />
+            <span style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: on ? 700 : 600, color: on ? TK.accent : TK.textMute }}>{tab.label}</span>
+            {on && <span style={{ position: 'absolute', left: '35%', right: '35%', bottom: -1, height: 2.5, borderRadius: 99, background: TK.accent }} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── template card (inline toggle + click to edit) ──
+function TemplateCard({ row, t, onEdit, onToggle, shownEnabled, toggleDisabled }) {
+  const effective = row.override ?? row.global;
+  if (!effective) return null;
+  const status = !row.override ? 'default' : (row.override.enabled ? 'overridden' : 'disabled');
+  return (
+    <Card onClick={onEdit} style={{ padding: '18px 20px', cursor: 'pointer', opacity: shownEnabled ? 1 : 0.62, transition: 'opacity .2s' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 11 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+          <MetaTag>{dayLabel(row.step_key, t)}</MetaTag>
+          <span style={{ color: TK.textFaint, fontSize: 11 }}>/</span>
+          <MetaTag lang>{row.language.toUpperCase()}</MetaTag>
+          {row.category && <><span style={{ color: TK.textFaint, fontSize: 11 }}>/</span><CatTag cat={row.category} /></>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <StatusPill status={status} t={t} />
+          <span
+            role="switch"
+            aria-checked={shownEnabled}
+            onClick={(e) => { e.stopPropagation(); if (!toggleDisabled) onToggle(); }}
+            style={{ cursor: toggleDisabled ? 'default' : 'pointer', display: 'inline-flex' }}
+          >
+            <Switch on={shownEnabled} disabled={toggleDisabled} />
+          </span>
+        </div>
+      </div>
+      <div style={{ fontFamily: FK.display, fontSize: 17, fontWeight: 800, color: TK.text, letterSpacing: -0.3 }}>{renderPreview(effective.title)}</div>
+      <p style={{ margin: '8px 0 0', fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{renderPreview(effective.body)}</p>
+    </Card>
   );
 }
 
@@ -95,6 +183,7 @@ export default function AdminMessageTemplates() {
 
   const [kindTab, setKindTab] = useState('lifecycle');
   const [editing, setEditing] = useState(null); // { row, title, body, enabled }
+  const [pendingToggle, setPendingToggle] = useState(null); // { key, value }
 
   useEffect(() => {
     document.title = `${t('admin.messageTemplates.title', 'Message Templates')} | ${window.__APP_NAME || 'TuGymPR'}`;
@@ -103,7 +192,6 @@ export default function AdminMessageTemplates() {
   const { data: allTemplates = [], isLoading } = useQuery({
     queryKey: adminKeys.messageTemplates(gymId),
     queryFn: async () => {
-      // RLS already restricts SELECT to globals + this gym's rows.
       const { data, error } = await supabase
         .from('message_templates')
         .select('id, gym_id, kind, step_key, language, category, title, body, enabled, updated_at')
@@ -119,7 +207,7 @@ export default function AdminMessageTemplates() {
     [allTemplates, gymId, kindTab],
   );
 
-  // Save = upsert per-gym override row.
+  // Save = upsert per-gym override row (used by the modal AND the inline toggle).
   const saveMutation = useMutation({
     mutationFn: async ({ row, title, body, enabled }) => {
       if (row.override) {
@@ -133,16 +221,7 @@ export default function AdminMessageTemplates() {
       } else {
         const { data, error } = await supabase
           .from('message_templates')
-          .insert({
-            gym_id: gymId,
-            kind: row.kind,
-            step_key: row.step_key,
-            language: row.language,
-            category: row.category, // can be null
-            title,
-            body,
-            enabled,
-          })
+          .insert({ gym_id: gymId, kind: row.kind, step_key: row.step_key, language: row.language, category: row.category, title, body, enabled })
           .select('id')
           .single();
         if (error) throw error;
@@ -162,6 +241,7 @@ export default function AdminMessageTemplates() {
     onError: () => {
       showToast(t('admin.messageTemplates.saveFailed', 'Failed to save template'), 'error');
     },
+    onSettled: () => setPendingToggle(null),
   });
 
   // Reset = delete gym row, revealing the global default again.
@@ -185,99 +265,94 @@ export default function AdminMessageTemplates() {
     onError: () => {
       showToast(t('admin.messageTemplates.resetFailed', 'Failed to reset'), 'error');
     },
+    onSettled: () => setPendingToggle(null),
   });
+
+  const openEdit = (row) => {
+    const effective = row.override ?? row.global;
+    if (!effective) return;
+    setEditing({ row, title: effective.title, body: effective.body, enabled: row.override ? row.override.enabled : true });
+  };
+
+  // Inline toggle: enable/disable this template at the gym.
+  const handleToggle = (row, nextEnabled) => {
+    const effective = row.override ?? row.global;
+    if (!effective) return;
+    setPendingToggle({ key: row.key, value: nextEnabled });
+    // Re-enabling an override that never changed the wording → delete it so it
+    // reverts to a clean "Default" instead of a content-identical "Overridden".
+    if (nextEnabled && row.override && row.global
+      && row.override.title === row.global.title
+      && row.override.body === row.global.body) {
+      resetMutation.mutate(row);
+      return;
+    }
+    saveMutation.mutate({ row, title: effective.title, body: effective.body, enabled: nextEnabled });
+  };
 
   if (!isAuthorized) {
     return (
-      <div className="px-4 md:px-8 py-6 max-w-[1100px] mx-auto">
-        <AdminCard>
-          <p className="text-[14px] text-[#9CA3AF]">
+      <AdminPageShell>
+        <Card style={{ padding: '40px 20px', textAlign: 'center' }}>
+          <p style={{ fontFamily: FK.body, fontSize: 14, color: TK.textMute }}>
             {t('admin.messageTemplates.notAuthorized', 'You must be a gym admin to edit message templates.')}
           </p>
-        </AdminCard>
-      </div>
+        </Card>
+      </AdminPageShell>
     );
   }
 
   const tabs = [
-    { key: 'lifecycle', label: t('admin.messageTemplates.tabLifecycle', 'Lifecycle'), icon: Heart },
-    { key: 'winback', label: t('admin.messageTemplates.tabWinback', 'Win-Back'), icon: Mail },
+    { key: 'lifecycle', label: t('admin.messageTemplates.tabLifecycle', 'Lifecycle'), icon: PLIC.heart },
+    { key: 'winback', label: t('admin.messageTemplates.tabWinback', 'Win-Back'), icon: PLIC.mail },
   ];
 
   return (
-    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1100px] mx-auto">
-      <PageHeader
-        title={t('admin.messageTemplates.title', 'Message Templates')}
-        subtitle={t('admin.messageTemplates.subtitle', 'Override the platform defaults for lifecycle and win-back messages. Disable to skip a step entirely at your gym.')}
-        className="mb-6"
-      />
+    <AdminPageShell>
+      {/* centered header */}
+      <div style={{ textAlign: 'center', maxWidth: 720, margin: '0 auto' }}>
+        <h1 className="admin-page-title" style={{ margin: 0, fontSize: 32, fontWeight: 800, letterSpacing: -1.1, lineHeight: 1 }}>{t('admin.messageTemplates.title', 'Message Templates')}</h1>
+        <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 10, lineHeight: 1.5 }}>{t('admin.messageTemplates.subtitle', 'Override the platform defaults for lifecycle and win-back messages. Disable to skip a step entirely at your gym.')}</div>
+      </div>
 
-      <AdminTabs tabs={tabs} active={kindTab} onChange={setKindTab} className="mb-5" />
+      <PlTabs tabs={tabs} active={kindTab} onPick={setKindTab} />
 
       {isLoading ? (
-        <AdminCard>
-          <div className="flex items-center justify-center py-10">
-            <Loader2 size={22} className="animate-spin text-[#6B7280]" />
-          </div>
-        </AdminCard>
-      ) : rows.length === 0 ? (
-        <AdminCard>
-          <div className="text-center py-10">
-            <MessageSquare size={28} className="mx-auto text-[#6B7280] mb-3" />
-            <p className="text-[14px] text-[#9CA3AF]">
-              {t('admin.messageTemplates.empty', 'No templates available.')}
-            </p>
-          </div>
-        </AdminCard>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {rows.map((row) => {
-            const effective = row.override ?? row.global;
-            if (!effective) return null;
-            const status = !row.override ? 'default' : (row.override.enabled ? 'overridden' : 'disabled');
-            return (
-              <button
-                key={row.key}
-                onClick={() => setEditing({
-                  row,
-                  title: effective.title,
-                  body: effective.body,
-                  enabled: row.override ? row.override.enabled : true,
-                })}
-                className="text-left admin-card admin-card-hover overflow-hidden p-4 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7280]">
-                      {row.step_key.replace(/_/g, ' ')}
-                      <span className="mx-1.5 opacity-50">/</span>
-                      {row.language.toUpperCase()}
-                      {row.category && (
-                        <>
-                          <span className="mx-1.5 opacity-50">/</span>
-                          {row.category}
-                        </>
-                      )}
-                    </p>
-                    <p
-                      className="text-[14px] font-bold mt-1 truncate"
-                      style={{ color: 'var(--color-text-primary, #E5E7EB)' }}
-                    >
-                      {renderPreview(effective.title)}
-                    </p>
-                  </div>
-                  <StatusPill status={status} t={t} />
-                </div>
-                <p
-                  className="text-[12.5px] leading-relaxed line-clamp-3"
-                  style={{ color: 'var(--color-text-muted, #9CA3AF)' }}
-                >
-                  {renderPreview(effective.body)}
-                </p>
-              </button>
-            );
-          })}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-[18px]">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} style={{ padding: '18px 20px' }}>
+              <div className="animate-pulse" style={{ height: 11, width: '38%', background: TK.surface2, borderRadius: 6, marginBottom: 13 }} />
+              <div className="animate-pulse" style={{ height: 16, width: '70%', background: TK.surface2, borderRadius: 6, marginBottom: 10 }} />
+              <div className="animate-pulse" style={{ height: 12, width: '100%', background: TK.surface2, borderRadius: 6 }} />
+            </Card>
+          ))}
         </div>
+      ) : rows.length === 0 ? (
+        <Card style={{ padding: '60px 20px', textAlign: 'center' }}>
+          <Ico ch={PLIC.message} size={30} color={TK.textFaint} stroke={1.7} style={{ margin: '0 auto 12px' }} />
+          <p style={{ fontFamily: FK.body, fontSize: 14, color: TK.textMute }}>{t('admin.messageTemplates.empty', 'No templates available.')}</p>
+        </Card>
+      ) : (
+        <FadeIn delay={0.05} key={kindTab}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-[18px]">
+            {rows.map((row) => {
+              const isEnabled = row.override ? row.override.enabled : true;
+              const pend = pendingToggle?.key === row.key ? pendingToggle.value : null;
+              const shownEnabled = pend != null ? pend : isEnabled;
+              return (
+                <TemplateCard
+                  key={row.key}
+                  row={row}
+                  t={t}
+                  onEdit={() => openEdit(row)}
+                  onToggle={() => handleToggle(row, !shownEnabled)}
+                  shownEnabled={shownEnabled}
+                  toggleDisabled={pendingToggle?.key === row.key}
+                />
+              );
+            })}
+          </div>
+        </FadeIn>
       )}
 
       {editing && (
@@ -291,7 +366,7 @@ export default function AdminMessageTemplates() {
           t={t}
         />
       )}
-    </div>
+    </AdminPageShell>
   );
 }
 
@@ -300,8 +375,15 @@ function EditModal({ editing, setEditing, onSave, onReset, saving, resetting, t 
   const hasOverride = !!row.override;
   const previewTitle = renderPreview(title);
   const previewBody = renderPreview(body);
-
   const status = !hasOverride ? 'default' : (row.override.enabled ? 'overridden' : 'disabled');
+
+  const inputBase = {
+    width: '100%', padding: '11px 13px', borderRadius: 11, fontSize: 14,
+    background: TK.surface2, border: `1px solid ${TK.borderSolid}`, color: TK.text, outline: 'none',
+  };
+  const onFocus = (e) => { e.target.style.borderColor = TK.accent; };
+  const onBlur = (e) => { e.target.style.borderColor = TK.borderSolid; };
+  const btnBase = { padding: '10px 16px', borderRadius: 11, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7, border: '1px solid transparent' };
 
   return (
     <AdminModal
@@ -309,135 +391,66 @@ function EditModal({ editing, setEditing, onSave, onReset, saving, resetting, t 
       onClose={() => setEditing(null)}
       title={t('admin.messageTemplates.editTitle', 'Edit message')}
       titleIcon={MessageSquare}
-      subtitle={`${row.step_key.replace(/_/g, ' ')} · ${row.language.toUpperCase()}${row.category ? ` · ${row.category}` : ''}`}
+      subtitle={`${dayLabel(row.step_key, t)} · ${row.language.toUpperCase()}${row.category ? ` · ${row.category}` : ''}`}
       size="lg"
       footer={
         <>
           {hasOverride && (
-            <button
-              onClick={onReset}
-              disabled={resetting || saving}
-              className="px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5"
-              style={{
-                color: '#EF4444',
-                backgroundColor: 'rgba(239,68,68,0.10)',
-                border: '1px solid rgba(239,68,68,0.22)',
-              }}
-            >
-              {resetting ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+            <button onClick={onReset} disabled={resetting || saving} style={{ ...btnBase, color: 'var(--color-danger)', background: 'var(--color-danger-soft)', borderColor: 'color-mix(in srgb, var(--color-danger) 24%, transparent)', opacity: (resetting || saving) ? 0.5 : 1 }}>
+              {resetting ? <Spin /> : <Ico ch={PLIC.reset} size={14} color="var(--color-danger)" stroke={2.1} />}
               {t('admin.messageTemplates.reset', 'Reset to default')}
             </button>
           )}
-          <div className="flex-1" />
-          <button
-            onClick={() => setEditing(null)}
-            className="px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-            style={{
-              color: 'var(--color-text-muted, #9CA3AF)',
-              backgroundColor: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-            }}
-          >
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setEditing(null)} style={{ ...btnBase, color: TK.textSub, background: TK.surface2, borderColor: TK.borderSolid }}>
             {t('admin.messageTemplates.cancel', 'Cancel')}
           </button>
-          <button
-            onClick={onSave}
-            disabled={saving || !title.trim() || !body.trim()}
-            className="px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors disabled:opacity-50 flex items-center gap-1.5"
-            style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: '#000' }}
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          <button onClick={onSave} disabled={saving || !title.trim() || !body.trim()} style={{ ...btnBase, fontWeight: 800, color: '#fff', background: TK.accent, borderColor: 'transparent', opacity: (saving || !title.trim() || !body.trim()) ? 0.5 : 1 }}>
+            {saving ? <Spin /> : <Ico ch={PLIC.save} size={14} color="#fff" stroke={2.1} />}
             {t('admin.messageTemplates.save', 'Save override')}
           </button>
         </>
       }
     >
-      <div className="space-y-5">
-        <div className="flex items-center justify-between">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <StatusPill status={status} t={t} />
-          <div className="flex items-center gap-2.5">
-            <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted, #9CA3AF)' }}>
-              {t('admin.messageTemplates.enabled', 'Enabled')}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontFamily: FK.body, fontSize: 12, fontWeight: 600, color: TK.textMute }}>{t('admin.messageTemplates.enabled', 'Enabled')}</span>
+            <span role="switch" aria-checked={enabled} onClick={() => setEditing({ ...editing, enabled: !enabled })} style={{ cursor: 'pointer', display: 'inline-flex' }}>
+              <Switch on={enabled} />
             </span>
-            <Toggle
-              checked={enabled}
-              onChange={(v) => setEditing({ ...editing, enabled: v })}
-              label={t('admin.messageTemplates.enabled', 'Enabled')}
-            />
           </div>
         </div>
 
         {!enabled && hasOverride && (
-          <p className="text-[12px] leading-relaxed px-3 py-2 rounded-lg"
-            style={{
-              color: '#EF4444',
-              backgroundColor: 'rgba(239,68,68,0.08)',
-              border: '1px solid rgba(239,68,68,0.18)',
-            }}>
+          <p style={{ margin: 0, fontFamily: FK.body, fontSize: 12, lineHeight: 1.5, padding: '9px 12px', borderRadius: 10, color: 'var(--color-danger-ink, var(--color-danger))', background: 'var(--color-danger-soft)', border: '1px solid color-mix(in srgb, var(--color-danger) 20%, transparent)' }}>
             {t('admin.messageTemplates.disabledHint', 'Disabled: this step will not send at your gym. The global default is overridden, not used as a fallback.')}
           </p>
         )}
 
         <div>
-          <SectionLabel className="mb-2">{t('admin.messageTemplates.fieldTitle', 'Title')}</SectionLabel>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] focus:outline-none focus:ring-2"
-            style={{
-              backgroundColor: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: 'var(--color-text-primary, #E5E7EB)',
-            }}
-            placeholder={t('admin.messageTemplates.titlePlaceholder', 'Title shown in the notification')}
-          />
+          <Lbl>{t('admin.messageTemplates.fieldTitle', 'Title')}</Lbl>
+          <input type="text" value={title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} onFocus={onFocus} onBlur={onBlur} style={inputBase} placeholder={t('admin.messageTemplates.titlePlaceholder', 'Title shown in the notification')} />
         </div>
 
         <div>
-          <SectionLabel className="mb-2">{t('admin.messageTemplates.fieldBody', 'Body')}</SectionLabel>
-          <textarea
-            value={body}
-            onChange={(e) => setEditing({ ...editing, body: e.target.value })}
-            rows={5}
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] leading-relaxed focus:outline-none focus:ring-2 resize-y"
-            style={{
-              backgroundColor: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: 'var(--color-text-primary, #E5E7EB)',
-            }}
-            placeholder={t('admin.messageTemplates.bodyPlaceholder', 'Message body. Use {{first_name}} for personalization.')}
-          />
-          <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted, #6B7280)' }}>
-            {t('admin.messageTemplates.tokenHint', 'Use {{first_name}} to insert the member\'s first name.')}
-          </p>
+          <Lbl>{t('admin.messageTemplates.fieldBody', 'Body')}</Lbl>
+          <textarea value={body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} onFocus={onFocus} onBlur={onBlur} rows={5} style={{ ...inputBase, lineHeight: 1.5, resize: 'vertical' }} placeholder={t('admin.messageTemplates.bodyPlaceholder', 'Message body. Use {{first_name}} for personalization.')} />
+          <p style={{ fontFamily: FK.body, fontSize: 11, marginTop: 6, color: TK.textFaint }}>{t('admin.messageTemplates.tokenHint', 'Use {{first_name}} to insert the member\'s first name.')}</p>
         </div>
 
         <div>
-          <SectionLabel className="mb-2">{t('admin.messageTemplates.preview', 'Preview')}</SectionLabel>
-          <div className="rounded-xl px-4 py-3"
-            style={{
-              backgroundColor: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.06)',
-            }}>
-            <p className="text-[14px] font-bold mb-1"
-              style={{ color: 'var(--color-text-primary, #E5E7EB)' }}>
-              {previewTitle || (
-                <span style={{ color: 'var(--color-text-muted, #6B7280)' }}>
-                  {t('admin.messageTemplates.previewEmpty', '(empty title)')}
-                </span>
-              )}
+          <Lbl>{t('admin.messageTemplates.preview', 'Preview')}</Lbl>
+          <div style={{ borderRadius: 12, padding: '14px 16px', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+            <p style={{ margin: 0, fontFamily: FK.display, fontSize: 14.5, fontWeight: 800, color: TK.text }}>
+              {previewTitle || <span style={{ color: TK.textFaint }}>{t('admin.messageTemplates.previewEmpty', '(empty title)')}</span>}
             </p>
-            <p className="text-[13px] leading-relaxed whitespace-pre-wrap"
-              style={{ color: 'var(--color-text-muted, #9CA3AF)' }}>
-              {previewBody || (
-                <span>{t('admin.messageTemplates.previewBodyEmpty', '(empty body)')}</span>
-              )}
+            <p style={{ margin: '6px 0 0', fontFamily: FK.body, fontSize: 13, lineHeight: 1.5, color: TK.textMute, whiteSpace: 'pre-wrap' }}>
+              {previewBody || <span style={{ color: TK.textFaint }}>{t('admin.messageTemplates.previewBodyEmpty', '(empty body)')}</span>}
             </p>
           </div>
-          <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted, #6B7280)' }}>
-            {t('admin.messageTemplates.previewHint', { defaultValue: 'Showing {{first_name}} replaced with "{{name}}" as a sample.', name: FAKE_NAME })}
-          </p>
+          <p style={{ fontFamily: FK.body, fontSize: 11, marginTop: 6, color: TK.textFaint }}>{t('admin.messageTemplates.previewHint', { defaultValue: 'Showing {{first_name}} replaced with "{{name}}" as a sample.', name: FAKE_NAME })}</p>
         </div>
       </div>
     </AdminModal>

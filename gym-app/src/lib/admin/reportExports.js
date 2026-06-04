@@ -67,19 +67,43 @@ export const EXPORT_DEFS = [
 ];
 
 // ── localStorage history helpers ─────────────────────────────
+// History lives in localStorage (per-device, never touches the DB). We keep at
+// most MAX_HISTORY entries AND auto-expire anything older than 30 days so the
+// log doesn't accumulate stale rows. The UI pages it HISTORY_PAGE_SIZE at a time.
 export const HISTORY_KEY = 'admin_export_history';
 export const MAX_HISTORY = 10;
+export const HISTORY_RETENTION_DAYS = 30;
+export const HISTORY_PAGE_SIZE = 5;
+
+// Drop entries older than the retention window, newest-first, capped.
+function pruneHistory(list) {
+  if (!Array.isArray(list)) return [];
+  const cutoff = Date.now() - HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  return list
+    .filter((e) => {
+      const ts = e?.exportedAt ? new Date(e.exportedAt).getTime() : NaN;
+      return Number.isFinite(ts) && ts >= cutoff;
+    })
+    .slice(0, MAX_HISTORY);
+}
 
 export function getExportHistory() {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    const fresh = pruneHistory(raw);
+    // Re-persist when pruning actually removed something, so expired rows stop
+    // taking up space on the device.
+    if (!Array.isArray(raw) || fresh.length !== raw.length) {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(fresh));
+    }
+    return fresh;
   } catch (err) { console.warn('Failed to parse export history from localStorage', err); return []; }
 }
 
 export function addExportHistory(entry) {
   const history = getExportHistory();
   history.unshift(entry);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(pruneHistory(history)));
 }
 
 export function clearExportHistory() {
@@ -107,9 +131,12 @@ export function applyDateFilter(query, dateCol, from, to) {
 
 // ── Export functions ─────────────────────────────────────────
 export async function exportMembers(gymId, from, to, t) {
+  // NOTE on column homes: fitness_level + primary_goal live on member_onboarding
+  // (NOT profiles); the login email lives on auth.users (read via the admin RPC
+  // below); there is no profiles.last_workout_at, so we report last_active_at.
   let query = supabase
     .from('profiles')
-    .select('id, full_name, email, role, fitness_level, goal, created_at, last_workout_at, streak_cache(current_streak_days)')
+    .select('id, full_name, role, created_at, last_active_at, member_onboarding(fitness_level, primary_goal), streak_cache(current_streak_days)')
     .eq('gym_id', gymId)
     .order('full_name', { ascending: true })
     .limit(10000);
@@ -117,6 +144,7 @@ export async function exportMembers(gymId, from, to, t) {
   const { data, error } = await query;
   if (error) throw error;
 
+  // Churn score + tier (nightly precompute written by compute-churn-scores).
   let churnMap = {};
   try {
     const { data: scores } = await supabase
@@ -126,6 +154,17 @@ export async function exportMembers(gymId, from, to, t) {
     for (const s of (scores || [])) churnMap[s.profile_id] = s;
   } catch (err) { console.warn('Failed to fetch churn scores for export', err); }
 
+  // Login email lives on auth.users — admins read it through a SECURITY DEFINER
+  // RPC (gym-scoped, admin-gated). Non-fatal: blank email column if it fails.
+  let emailMap = {};
+  try {
+    const ids = (data ?? []).map(p => p.id);
+    if (ids.length) {
+      const { data: emailRows } = await supabase.rpc('admin_get_member_emails', { p_member_ids: ids });
+      for (const e of (emailRows || [])) emailMap[e.member_id] = e.email;
+    }
+  } catch (err) { console.warn('Failed to fetch member emails for export', err); }
+
   const header = [
     t('admin.reports.csv.name', 'Name'),
     t('admin.reports.csv.email', 'Email'),
@@ -133,16 +172,21 @@ export async function exportMembers(gymId, from, to, t) {
     t('admin.reports.csv.fitnessLevel', 'Fitness Level'),
     t('admin.reports.csv.goal', 'Goal'),
     t('admin.reports.csv.joined', 'Joined'),
-    t('admin.reports.csv.lastWorkout', 'Last Workout'),
+    t('admin.reports.csv.lastActive', 'Last Active'),
     t('admin.reports.csv.streak', 'Streak'),
     t('admin.reports.csv.churnScore', 'Churn Score'),
     t('admin.reports.csv.riskTier', 'Risk Tier'),
   ].map(esc).join(',');
-  const rows = (data ?? []).map(p => [
-    p.full_name || '', p.email || '', p.role || '', p.fitness_level || '',
-    p.goal || '', fmtDate(p.created_at), fmtDate(p.last_workout_at),
-    p.streak_cache?.current_streak_days ?? p.streak_cache?.[0]?.current_streak_days ?? '', churnMap[p.id]?.score ?? '', churnMap[p.id]?.risk_tier ?? '',
-  ].map(esc).join(','));
+  const rows = (data ?? []).map(p => {
+    const ob = Array.isArray(p.member_onboarding) ? p.member_onboarding[0] : p.member_onboarding;
+    const sc = Array.isArray(p.streak_cache) ? p.streak_cache[0] : p.streak_cache;
+    return [
+      p.full_name || '', emailMap[p.id] || '', p.role || '',
+      ob?.fitness_level || '', ob?.primary_goal || '',
+      fmtDate(p.created_at), fmtDate(p.last_active_at),
+      sc?.current_streak_days ?? '', churnMap[p.id]?.score ?? '', churnMap[p.id]?.risk_tier ?? '',
+    ].map(esc).join(',');
+  });
   const csv = [header, ...rows].join('\n');
   const filename = `members_${todayISO()}.csv`;
   await downloadCSV(filename, csv);
@@ -302,7 +346,7 @@ export async function exportBodyMetrics(gymId, from, to, t) {
 export async function exportChallenges(gymId, from, to, t) {
   let query = supabase
     .from('challenge_participants')
-    .select('score, joined_at, challenges!inner(id, title, type, status, gym_id), profiles!inner(full_name)')
+    .select('score, joined_at, challenges!inner(id, name, type, status, gym_id), profiles!inner(full_name)')
     .eq('challenges.gym_id', gymId)
     .order('score', { ascending: false })
     .limit(10000);
@@ -319,7 +363,7 @@ export async function exportChallenges(gymId, from, to, t) {
     t('admin.reports.csv.joined', 'Joined'),
   ].map(esc).join(',');
   const rows = (data ?? []).map(cp => [
-    cp.challenges?.title || '', cp.challenges?.type || '', cp.challenges?.status || '',
+    cp.challenges?.name || '', cp.challenges?.type || '', cp.challenges?.status || '',
     cp.profiles?.full_name || '', cp.score ?? '', fmtDate(cp.joined_at),
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
@@ -329,10 +373,13 @@ export async function exportChallenges(gymId, from, to, t) {
 }
 
 export async function exportPurchases(gymId, from, to, t) {
+  // member_purchases has TWO FKs to profiles (member_id + recorded_by) — embed the
+  // buyer explicitly via member_id to avoid PGRST201 ambiguity. gym_id is a column
+  // on member_purchases, so scope there (no embedded-profiles filter needed).
   let query = supabase
     .from('member_purchases')
-    .select('quantity, total_price, created_at, profiles!inner(full_name, gym_id), gym_products!inner(name, category)')
-    .eq('profiles.gym_id', gymId)
+    .select('quantity, total_price, created_at, profiles:member_id(full_name), gym_products:product_id(name, category)')
+    .eq('gym_id', gymId)
     .order('created_at', { ascending: false })
     .limit(10000);
   query = applyDateFilter(query, 'created_at', from, to);

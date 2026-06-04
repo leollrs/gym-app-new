@@ -1,15 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import {
-  MessageSquare, Activity, ShieldAlert, Flag, CheckCircle, AlertTriangle,
-} from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import {
-  PageHeader, AdminCard, AdminPageShell, FadeIn, AdminTabs,
-} from '../../components/admin';
+import { AdminPageShell, FadeIn } from '../../components/admin';
 import { fetchPosts, fetchComments, fetchReports } from '../../lib/admin/moderationQueries';
+import { TK, FK, Ico, Card, MIC, ModTabs } from './components/moderationKit';
 import PostsTab from './components/PostsTab';
 import CommentsTab from './components/CommentsTab';
 import ReportsTab from './components/ReportsTab';
@@ -25,7 +21,7 @@ export default function AdminModeration() {
 
   const gymId = profile?.gym_id;
 
-  // Prefetch all data for stat cards + tab counts
+  // Prefetch all three lists so the banner + tab counts are accurate up front.
   const { data: reports = [] } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'reports'],
     queryFn: () => fetchReports(gymId),
@@ -45,74 +41,67 @@ export default function AdminModeration() {
   const pendingReports = reports.filter(r => r.status === 'pending').length;
 
   const tabs = [
-    { key: 'reports',  label: t('admin.moderation.reports', { defaultValue: 'Reports' }),   icon: Flag,            count: pendingReports || null },
-    { key: 'posts',    label: t('admin.moderation.feedPosts', { defaultValue: 'Posts' }),    icon: Activity,        count: posts.length || null },
-    { key: 'comments', label: t('admin.moderation.comments', { defaultValue: 'Comments' }),  icon: MessageSquare,   count: comments.length || null },
+    { key: 'reports',  label: t('admin.moderation.reports', { defaultValue: 'Reports' }),    icon: MIC.flag,  count: pendingReports || null },
+    { key: 'posts',    label: t('admin.moderation.feedPosts', { defaultValue: 'Posts' }),    icon: MIC.pulse, count: posts.length || null },
+    { key: 'comments', label: t('admin.moderation.comments', { defaultValue: 'Comments' }),  icon: MIC.chat,  count: comments.length || null },
   ];
 
   return (
     <AdminPageShell>
-      <PageHeader
-        title={t('admin.moderation.title', { defaultValue: 'Content Moderation' })}
-        subtitle={t('admin.moderation.subtitle', { defaultValue: 'Review and moderate feed posts, comments, and member reports' })}
-      />
+      {/* header */}
+      <div style={{ minWidth: 0 }}>
+        <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>
+          {t('admin.moderation.title', { defaultValue: 'Content Moderation' })}
+        </h1>
+        <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>
+          {t('admin.moderation.subtitle', { defaultValue: 'Review and moderate feed posts, comments, and member reports' })}
+        </div>
+      </div>
 
-      {/* Focused status banner — tab counts already surface report totals, so the
-          page-level signal is just "do you have pending work right now?". */}
+      {/* status banner — pending (danger) vs all-clear (success) */}
       <FadeIn>
         {pendingReports > 0 ? (
-          <div
-            className="flex items-center gap-3 mt-5 mb-6 px-4 py-3 rounded-xl"
-            style={{
-              background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--color-danger) 35%, transparent)',
-            }}
-          >
-            <AlertTriangle size={18} style={{ color: 'var(--color-danger)' }} className="flex-shrink-0" />
-            <span className="flex-1 min-w-0 text-[13.5px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>
-              {t('admin.moderation.pendingBanner', {
-                count: pendingReports,
-                defaultValue: 'You have {{count}} pending reports — review now',
-              })}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, marginTop: 20, padding: '14px 20px', borderRadius: 14,
+            background: 'var(--color-danger-soft)', border: '1px solid color-mix(in srgb, var(--color-danger) 32%, transparent)',
+          }}>
+            <span style={{ width: 30, height: 30, borderRadius: 99, display: 'grid', placeItems: 'center', background: TK.surface, border: '1px solid color-mix(in srgb, var(--color-danger) 32%, transparent)', flexShrink: 0 }}>
+              <Ico ch={MIC.flag} size={16} color="var(--color-danger)" stroke={2.1} />
             </span>
-            <button
-              onClick={() => setTab('reports')}
-              className="text-[11.5px] font-bold px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
-              style={{
-                background: 'var(--color-danger)',
-                color: '#fff',
-              }}
-            >
-              {t('admin.moderation.reviewNow', 'Review')}
+            <span style={{ flex: 1, minWidth: 0, fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: 'var(--color-danger-ink, var(--color-danger))' }}>
+              {t('admin.moderation.pendingBanner', { count: pendingReports, defaultValue: 'You have {{count}} pending reports — review now' })}
+            </span>
+            <button onClick={() => setTab('reports')} style={{
+              flexShrink: 0, padding: '8px 16px', borderRadius: 999, cursor: 'pointer', border: 'none',
+              background: 'var(--color-danger)', color: '#fff', fontFamily: FK.body, fontSize: 12.5, fontWeight: 700,
+            }}>
+              {t('admin.moderation.reviewNow', { defaultValue: 'Review' })}
             </button>
           </div>
         ) : (
-          <div
-            className="flex items-center gap-2 mt-5 mb-6 px-4 py-2.5 rounded-xl"
-            style={{
-              background: 'color-mix(in srgb, var(--color-success) 8%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--color-success) 25%, transparent)',
-            }}
-          >
-            <CheckCircle size={16} style={{ color: 'var(--color-success)' }} className="flex-shrink-0" />
-            <span className="text-[12.5px] font-semibold" style={{ color: 'var(--color-admin-text-sub)' }}>
-              {t('admin.moderation.allResolved', 'All reports resolved')}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, marginTop: 20, padding: '14px 20px', borderRadius: 14,
+            background: 'var(--color-success-soft)', border: '1px solid color-mix(in srgb, var(--color-success) 30%, transparent)',
+          }}>
+            <span style={{ width: 30, height: 30, borderRadius: 99, display: 'grid', placeItems: 'center', background: TK.surface, border: '1px solid color-mix(in srgb, var(--color-success) 30%, transparent)', flexShrink: 0 }}>
+              <Ico ch={MIC.check} size={17} color="var(--color-success)" stroke={2.1} />
+            </span>
+            <span style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: 'var(--color-success-ink, var(--color-success))' }}>
+              {t('admin.moderation.allResolved', { defaultValue: 'All reports resolved' })}
             </span>
           </div>
         )}
       </FadeIn>
 
-      {/* Tab bar */}
-      <AdminTabs tabs={tabs.map(t => ({ key: t.key, label: t.label, icon: t.icon, count: t.count }))} active={tab} onChange={setTab} className="mb-5" />
+      {/* tab bar */}
+      <ModTabs tabs={tabs} active={tab} onPick={setTab} />
 
-      {/* Tab content */}
+      {/* tab content */}
       {!gymId ? (
-        <AdminCard>
-          <div className="text-center py-16">
-            <ShieldAlert size={32} className="text-[#4B5563] mx-auto mb-3" />
-            <p className="text-[14px] text-[#6B7280]">{t('admin.moderation.noGym', { defaultValue: 'No gym associated with your account.' })}</p>
-          </div>
-        </AdminCard>
+        <Card style={{ padding: '60px 20px', textAlign: 'center' }}>
+          <Ico ch={MIC.flag} size={30} color={TK.textFaint} stroke={1.7} style={{ margin: '0 auto 12px' }} />
+          <p style={{ fontFamily: FK.body, fontSize: 14, color: TK.textMute }}>{t('admin.moderation.noGym', { defaultValue: 'No gym associated with your account.' })}</p>
+        </Card>
       ) : (
         <FadeIn delay={0.05} key={tab}>
           {tab === 'reports' ? (

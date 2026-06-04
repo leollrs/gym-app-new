@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Download, ChevronLeft, ChevronRight, Dumbbell, Users, TrendingUp, Zap, CalendarCheck, Trophy as TrophyIcon, X, FileText } from 'lucide-react';
@@ -10,7 +11,7 @@ import logger from '../../../../lib/logger';
 import { CardSkeleton, ErrorCard } from '../../../../components/admin';
 import { TK, FK, Card } from './analyticsKit';
 
-async function fetchSummaryData(gymId, summaryMonth) {
+async function fetchSummaryData(gymId, summaryMonth, dateFnsLocale) {
   const now = new Date();
   const target = subMonths(now, summaryMonth);
   const mStart = startOfMonth(target).toISOString();
@@ -69,7 +70,7 @@ async function fetchSummaryData(gymId, summaryMonth) {
   const activeRate = totalMembersAtEnd > 0 ? Math.round((uniqueActive / totalMembersAtEnd) * 100) : 0;
 
   return {
-    label: format(target, 'MMMM yyyy'),
+    label: format(target, 'MMMM yyyy', dateFnsLocale),
     newMembers: newMemberCount,
     totalWorkouts,
     uniqueActive,
@@ -103,8 +104,8 @@ export default function MonthlySummary({ gymId }) {
   const [showReport, setShowReport] = useState(false);
 
   const { data: summary, isLoading, isError, refetch } = useQuery({
-    queryKey: adminKeys.analytics.summary(gymId, summaryMonth),
-    queryFn: () => fetchSummaryData(gymId, summaryMonth),
+    queryKey: [...adminKeys.analytics.summary(gymId, summaryMonth), i18n.language],
+    queryFn: () => fetchSummaryData(gymId, summaryMonth, dateFnsLocale),
     enabled: !!gymId,
   });
 
@@ -300,8 +301,8 @@ table tr:nth-child(even){background:#f8fafc}
       {showReport && (() => {
         const fmtVol = s.totalVolume >= 1_000_000 ? `${(s.totalVolume / 1_000_000).toFixed(1)}M` : s.totalVolume >= 1_000 ? `${(s.totalVolume / 1_000).toFixed(1)}K` : s.totalVolume.toLocaleString();
         const fmtTime = s.totalDuration >= 60 ? `${(s.totalDuration / 60).toFixed(0)} hours` : `${s.totalDuration} min`;
-        return (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowReport(false)}>
+        return createPortal((
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowReport(false)}>
           <div className="w-full max-w-2xl md:max-w-3xl my-4 md:my-10" onClick={e => e.stopPropagation()}>
 
             <div className="bg-[#fafbfc] rounded-2xl overflow-hidden shadow-2xl">
@@ -424,7 +425,7 @@ table tr:nth-child(even){background:#f8fafc}
             </div>
           </div>
         </div>
-        );
+        ), document.body);
       })()}
     </>
   );

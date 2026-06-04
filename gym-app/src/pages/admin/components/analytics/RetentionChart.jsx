@@ -115,7 +115,7 @@ function RetentionChart({ gymId, monthsBack }) {
       {curve.length === 0 ? (
         <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, textAlign: 'center', padding: '40px 0' }}>{t('admin.analytics.retentionEmpty', 'No member data yet')}</p>
       ) : (
-        <LineChart data={data} xLabels={labels} color="var(--color-success)" max={100} unit="%" target={BENCHMARKS.retentionRate} height={230} />
+        <LineChart data={data} xLabels={labels} pointLabels={curve.map(p => p.label)} color="var(--color-success)" max={100} unit="%" target={BENCHMARKS.retentionRate} height={230} />
       )}
     </ChartCard>
   );

@@ -1,137 +1,111 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
-import {
-  ClipboardList, Download, ChevronDown, ChevronUp, Filter,
-  User, Calendar, Search, X,
-} from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import {
-  PageHeader, AdminCard, AdminPageShell, AdminTable,
-  AdminModal, FadeIn, SectionLabel, StatCard, CardSkeleton,
-} from '../../components/admin';
+import { AdminPageShell, FadeIn } from '../../components/admin';
+import { TK, FK, TONE, Ico, ICON, Card } from './components/retosKit';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-// Bumped from 20 to 50 — high-volume audits don't want to click "load more" twice as often.
-const PAGE_SIZE = 50;
+// One page of audit rows. Capped at 8 with prev/next pagination (server-side via
+// .range + exact count) so the list stays scannable on the admin dashboard.
+const PAGE_SIZE = 8;
+const COLS = '1.4fr 1.3fr 1.3fr 1.3fr';
 
-// Curated filter options — these are REAL action strings written by
-// logAdminAction(...) across the app (verified against every call site). The
-// full action set is ~90; this is the subset admins actually filter by. Any
-// action not listed still shows under the "All" view and still gets a sensible
-// tone + icon from the prefix resolvers below. (The previous list used invented
-// names like 'setting_updated'/'role_changed' that NEVER matched a real row, so
-// every filter returned nothing — that's the bug this fixes.)
+// Curated filter options — REAL action strings written by logAdminAction(...)
+// across the app. Any action not listed still shows under "All" and still gets a
+// sensible tone + icon from the prefix resolvers below.
 const ACTION_TYPES = [
-  'add_member',
-  'invite_member',
-  'change_status',
-  'deactivate_member',
-  'delete_account',
-  'change_role',
-  'add_trainer',
-  'demote_trainer',
-  'update_settings',
-  'settings_cards_updated',
-  'update_hours',
-  'create_challenge',
-  'create_program',
-  'create_class',
-  'create_product',
-  'create_announcement',
-  'outreach_send',
-  'send_email',
-  'send_sms',
-  'award_prizes',
-  'moderation',
-  'print_cards_marked',
-  'print_cards_delivered',
+  'add_member', 'invite_member', 'change_status', 'deactivate_member', 'delete_account',
+  'change_role', 'add_trainer', 'demote_trainer', 'update_settings', 'settings_cards_updated',
+  'update_hours', 'create_challenge', 'create_program', 'create_class', 'create_product',
+  'create_announcement', 'outreach_send', 'send_email', 'send_sms', 'award_prizes',
+  'moderation', 'print_cards_marked', 'print_cards_delivered',
 ];
 
 const DATE_PRESETS = [
   { key: 'today', days: 0 },
-  { key: '7d',    days: 7 },
-  { key: '30d',   days: 30 },
-  { key: '90d',   days: 90 },
+  { key: '7d', days: 7 },
+  { key: '30d', days: 30 },
+  { key: '90d', days: 90 },
 ];
 
-const fallbackColor = 'admin-pill admin-pill--outline';
-
-// Tone/icon are resolved by PREFIX so all ~90 real action strings (and any new
-// ones added later) get a sensible treatment without enumerating each. Explicit
-// overrides handle the handful that don't follow the verb_noun prefix pattern.
-const TONE_OVERRIDES = {
-  moderation: 'hot',
-  block_user: 'hot',
-  unblock_user: 'good',
-  change_role: 'hot',
-  add_trainer: 'coach',
-  demote_trainer: 'hot',
-  outreach_send: 'coach',
-  gym_import: 'warn',
+// ── Icons (from the Registro de Acciones mock + retosKit) ──────────────────────
+const LIC = {
+  download: <><path d="M12 3v12M7 10l5 5 5-5" /><path d="M4 20h16" /></>,
+  search: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
+  chevD: <path d="m6 9 6 6 6-6" />,
+  chevL: <path d="m15 18-6-6 6-6" />,
+  chevR: <path d="m9 18 6-6-6-6" />,
+  x: <path d="M18 6 6 18M6 6l12 12" />,
+  pulse: <path d="M3 12h4l3 7 4-14 3 7h4" />,
+  chat: <path d="M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12Z" />,
+  flag: <><path d="M5 21V4M5 4h11l-2 4 2 4H5" /></>,
+  member: <><path d="M16 19a4 4 0 0 0-8 0M12 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 12 11Z" /></>,
+  megaphone: <><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1Z" /><path d="M14 8a4 4 0 0 1 0 8" /></>,
 };
 
-// First matching prefix wins — order matters (more specific first).
+// entity_type → icon (fallback: box)
+const ENTITY_ICON = {
+  member: LIC.member, trainer: LIC.member, member_segment: ICON.users,
+  activity_feed_item: LIC.pulse, feed_comment: LIC.chat, conversation: LIC.chat,
+  content_report: LIC.flag,
+  product: ICON.box, gym: ICON.box, gym_closure: ICON.box, platform_config: ICON.box,
+  gym_card_settings: ICON.box, owner_queue_item: ICON.box, print_card: ICON.box,
+  challenge: ICON.trophy, program: ICON.dumbbell, routine: ICON.dumbbell,
+  class: ICON.cal, gym_class_schedule: ICON.cal,
+  reward: ICON.gift, gym_email_template: ICON.mail, message_template: ICON.mail, invite: ICON.mail,
+  announcement: LIC.megaphone, win_back_attempt: ICON.refresh, admin_notification_prefs: ICON.bolt,
+};
+const entityIcon = (et) => ENTITY_ICON[et] || ICON.box;
+
+// Tone is resolved by PREFIX so all ~90 real action strings get a sensible
+// treatment. Explicit overrides handle the ones that break the verb_noun pattern.
+// (moderation → accent per the Registro de Acciones design.)
+const TONE_OVERRIDES = {
+  moderation: 'accent',
+  block_user: 'hot', unblock_user: 'good', change_role: 'hot',
+  add_trainer: 'coach', demote_trainer: 'hot', outreach_send: 'coach', gym_import: 'warn',
+};
+
 const TONE_PREFIXES = [
-  ['permanently_', 'hot'],
-  ['super_admin_delete', 'hot'],
-  ['super_admin_schedule', 'hot'],
-  ['delete_', 'hot'],
-  ['revoke_', 'hot'],
-  ['deactivate_', 'hot'],
-  ['pause_', 'hot'],
-  ['expire_', 'hot'],
-  ['create_', 'good'],
-  ['add_', 'good'],
-  ['award_', 'good'],
-  ['claim_', 'good'],
-  ['redeem_', 'good'],
-  ['reactivate_', 'good'],
-  ['resolve_', 'good'],
-  ['invite_', 'coach'],
-  ['resend_', 'coach'],
-  ['send_', 'coach'],
-  ['bulk_', 'coach'],
-  ['quick_', 'coach'],
-  ['update_', 'warn'],
-  ['change_', 'warn'],
-  ['set_', 'warn'],
-  ['save_', 'warn'],
-  ['toggle_', 'warn'],
-  ['settings_', 'warn'],
-  ['reset_', 'warn'],
-  ['print_card', 'info'],
-  ['checkin_', 'info'],
-  ['purchase_', 'info'],
-  ['referral', 'info'],
-  ['tv_', 'info'],
+  ['permanently_', 'hot'], ['super_admin_delete', 'hot'], ['super_admin_schedule', 'hot'],
+  ['delete_', 'hot'], ['revoke_', 'hot'], ['deactivate_', 'hot'], ['pause_', 'hot'], ['expire_', 'hot'],
+  ['create_', 'good'], ['add_', 'good'], ['award_', 'good'], ['claim_', 'good'], ['redeem_', 'good'],
+  ['reactivate_', 'good'], ['resolve_', 'good'],
+  ['invite_', 'coach'], ['resend_', 'coach'], ['send_', 'coach'], ['bulk_', 'coach'], ['quick_', 'coach'],
+  ['update_', 'warn'], ['change_', 'warn'], ['set_', 'warn'], ['save_', 'warn'], ['toggle_', 'warn'],
+  ['settings_', 'warn'], ['reset_', 'warn'],
+  ['print_card', 'info'], ['checkin_', 'info'], ['purchase_', 'info'], ['referral', 'info'], ['tv_', 'info'],
 ];
 
 function getActionTone(action) {
-  if (!action) return null;
+  if (!action) return 'neutral';
   if (TONE_OVERRIDES[action]) return TONE_OVERRIDES[action];
   for (const [prefix, tone] of TONE_PREFIXES) {
     if (action.startsWith(prefix)) return tone;
   }
-  return null;
+  return 'neutral';
 }
 
-function getActionColor(action) {
-  const tone = getActionTone(action);
-  return tone ? `admin-pill admin-pill--${tone}` : fallbackColor;
+// Humanize an unknown action/entity key (snake_case → "Sentence case") so the UI
+// never shows a raw code when a translation happens to be missing.
+function humanizeKey(key) {
+  if (!key) return '—';
+  const s = String(key).replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function relativeTime(ts, dateFnsLocale) {
-  if (!ts) return '\u2014';
+  if (!ts) return '—';
   try { return formatDistanceToNow(new Date(ts), { addSuffix: true, ...dateFnsLocale }); }
-  catch { return '\u2014'; }
+  catch { return '—'; }
 }
 
 function absoluteTime(ts, dateFnsLocale) {
@@ -140,19 +114,12 @@ function absoluteTime(ts, dateFnsLocale) {
   catch { return ''; }
 }
 
-function formatDetails(details) {
-  if (!details || typeof details !== 'object' || Object.keys(details).length === 0) return null;
-  return JSON.stringify(details, null, 2);
-}
-
 function sanitizeDetailsForExport(details) {
   if (!details || typeof details !== 'object') return '';
-  // Strip internal IDs and metadata, keep only human-readable fields
   const sanitized = {};
   const sensitiveKeys = ['id', 'actor_id', 'entity_id', 'gym_id', 'user_id', 'member_id', 'profile_id', 'token', 'secret', 'password', 'ip_address'];
   for (const [key, value] of Object.entries(details)) {
     if (sensitiveKeys.includes(key)) continue;
-    // Skip any value that looks like a UUID
     if (typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) continue;
     sanitized[key] = value;
   }
@@ -168,9 +135,7 @@ function buildCSVRows(pages, t) {
         actor: entry.profiles?.full_name || t('admin.audit.unknownUser', 'Unknown user'),
         action: entry.action,
         entity_type: entry.entity_type || '',
-        entity_ref: entry.entity_type && entry.entity_id
-          ? `${entry.entity_type}#${entry.entity_id.slice(0, 6)}`
-          : '',
+        entity_ref: entry.entity_type && entry.entity_id ? `${entry.entity_type}#${entry.entity_id.slice(0, 6)}` : '',
         details: sanitizeDetailsForExport(entry.details),
       });
     }
@@ -189,81 +154,27 @@ async function downloadCSVRows(rows) {
   await downloadCSVString(`audit_log_${format(new Date(), 'yyyy-MM-dd')}.csv`, lines.join('\n'));
 }
 
-// ── Detail Modal ─────────────────────────────────────────────────────────────
+// ── Presentational bits ────────────────────────────────────────────────────────
 
-function AuditDetailModal({ entry, isOpen, onClose, t, dateFnsOpts }) {
-  if (!entry) return null;
-  const details = formatDetails(entry.details);
-  const colorClass = getActionColor(entry.action);
-
+function ActionBadge({ action, label }) {
+  const c = TONE[getActionTone(action)] || TONE.neutral;
   return (
-    <AdminModal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={t('admin.audit.details')}
-      titleIcon={ClipboardList}
-      size="md"
-    >
-      <div className="space-y-5">
-        {/* Action badge */}
-        <div className="flex items-center gap-3">
-          <span className={colorClass}>
-            {t(`admin.audit.actions.${entry.action}`, { defaultValue: entry.action })}
-          </span>
-          <span className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }} title={absoluteTime(entry.created_at, dateFnsOpts)}>
-            {relativeTime(entry.created_at, dateFnsOpts)}
-          </span>
-        </div>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', padding: '6px 14px', borderRadius: 999,
+      background: c.bg, border: `1px solid ${c.line}`, fontFamily: FK.body, fontSize: 11.5, fontWeight: 800,
+      letterSpacing: 0.8, textTransform: 'uppercase', color: c.ink, whiteSpace: 'nowrap',
+    }}>{label}</span>
+  );
+}
 
-        {/* Actor */}
-        <div>
-          <SectionLabel icon={User}>{t('admin.audit.actor', { defaultValue: 'Actor' })}</SectionLabel>
-          <div className="mt-2 flex items-center gap-3">
-            {entry.profiles?.avatar_url ? (
-              <img src={entry.profiles.avatar_url} alt={entry.profiles.full_name || t('admin.audit.userAvatarAlt', 'User avatar')} className="w-9 h-9 rounded-full object-cover border border-white/8" />
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 flex items-center justify-center border border-white/8">
-                <span className="text-[12px] font-bold text-[#D4AF37]">
-                  {entry.profiles?.full_name?.[0]?.toUpperCase() ?? 'A'}
-                </span>
-              </div>
-            )}
-            <p className="text-[14px] font-semibold text-[#E5E7EB]">
-              {entry.profiles?.full_name || t('admin.audit.unknownUser')}
-            </p>
-          </div>
-        </div>
-
-        {/* Entity info */}
-        {entry.entity_type && (
-          <div>
-            <SectionLabel>{t('admin.audit.entity')}</SectionLabel>
-            <div className="mt-2 bg-white/[0.03] rounded-xl p-3 border border-white/6">
-              <p className="text-[13px] text-[#E5E7EB]">{entry.entity_type}</p>
-              {entry.entity_id && (
-                <p className="text-[11px] text-[#6B7280] font-mono mt-0.5">{entry.entity_id}</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Timestamp */}
-        <div>
-          <SectionLabel icon={Calendar}>{t('admin.audit.timestamp', { defaultValue: 'Timestamp' })}</SectionLabel>
-          <p className="mt-2 text-[13px] text-[#E5E7EB]">{absoluteTime(entry.created_at, dateFnsOpts)}</p>
-        </div>
-
-        {/* Details JSON */}
-        {details && (
-          <div>
-            <SectionLabel>{t('admin.audit.details')}</SectionLabel>
-            <pre className="mt-2 text-[12px] text-[#9CA3AF] bg-white/[0.02] rounded-xl p-4 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap break-all border border-white/6">
-              {details}
-            </pre>
-          </div>
-        )}
-      </div>
-    </AdminModal>
+function Avatar({ name, url, size = 34 }) {
+  if (url) return <img src={url} alt={name || ''} style={{ width: size, height: size, borderRadius: 99, objectFit: 'cover', flexShrink: 0 }} />;
+  const ch = (name || '?').trim()[0]?.toUpperCase() || '?';
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: 99, flexShrink: 0, display: 'grid', placeItems: 'center',
+      background: TK.accentSoft, color: TK.accent, fontFamily: FK.display, fontSize: size * 0.41, fontWeight: 800,
+    }}>{ch}</span>
   );
 }
 
@@ -273,7 +184,6 @@ export default function AdminAuditLog() {
   const { profile } = useAuth();
   const gymId = profile?.gym_id;
   const { t, i18n } = useTranslation('pages');
-  const { t: tc } = useTranslation('common');
   const isEs = i18n.language?.startsWith('es');
   const dateFnsOpts = isEs ? { locale: esLocale } : undefined;
 
@@ -282,12 +192,20 @@ export default function AdminAuditLog() {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [userSearch, setUserSearch] = useState('');
-  const [selectedEntry, setSelectedEntry] = useState(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(0);
 
   useEffect(() => { document.title = `${t('admin.audit.title', 'Admin - Audit Log')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
-  // Compute date range
+  // Debounce the actor-name search so we don't fire a query per keystroke.
+  // Reset to page 1 in the SAME batch as the search lands so a stale high
+  // offset is never sent with the new query. (Filter changes reset inline at
+  // their change sites for the same reason — see setActionFilter/preset/custom.)
+  useEffect(() => {
+    const id = setTimeout(() => { setDebouncedSearch(userSearch); setPage(0); }, 300);
+    return () => clearTimeout(id);
+  }, [userSearch]);
+
   const dateRange = useMemo(() => {
     if (datePreset === 'custom') {
       return {
@@ -305,356 +223,275 @@ export default function AdminAuditLog() {
     return { from: subDays(new Date(), preset.days).toISOString(), to: null };
   }, [datePreset, customFrom, customTo]);
 
-  // ── Infinite query ──
-  const {
-    data,
-    isLoading,
-    isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
-  } = useInfiniteQuery({
-    queryKey: adminKeys.auditLog.list(gymId, actionFilter, datePreset, customFrom, customTo),
-    queryFn: async ({ pageParam = 0 }) => {
+  // ── Paginated query (8/page, server-side via .range + exact count) ──
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: [...adminKeys.auditLog.list(gymId, actionFilter, datePreset, customFrom, customTo), debouncedSearch, page],
+    queryFn: async () => {
+      const search = debouncedSearch.trim();
       let query = supabase
         .from('admin_audit_log')
-        .select('id, gym_id, actor_id, action, entity_type, entity_id, details, created_at, profiles!admin_audit_log_actor_id_fkey(full_name, avatar_url)')
+        .select(
+          'id, gym_id, actor_id, action, entity_type, entity_id, details, created_at, profiles!admin_audit_log_actor_id_fkey!inner(full_name, avatar_url)',
+          { count: 'exact' },
+        )
         .eq('gym_id', gymId)
         .order('created_at', { ascending: false })
-        .range(pageParam, pageParam + PAGE_SIZE - 1);
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
-      if (actionFilter !== 'all') {
-        query = query.eq('action', actionFilter);
-      }
-      if (dateRange.from) {
-        query = query.gte('created_at', dateRange.from);
-      }
-      if (dateRange.to) {
-        query = query.lte('created_at', dateRange.to);
-      }
+      if (actionFilter !== 'all') query = query.eq('action', actionFilter);
+      if (dateRange.from) query = query.gte('created_at', dateRange.from);
+      if (dateRange.to) query = query.lte('created_at', dateRange.to);
+      // actor_id is NOT NULL (every row has a profile) so the inner join never
+      // drops rows; the ilike narrows by actor name across the WHOLE dataset.
+      if (search) query = query.ilike('profiles.full_name', `%${search}%`);
 
-      const { data: rows, error } = await query;
+      const { data: rows, count, error } = await query;
       if (error) throw error;
-      return rows || [];
-    },
-    getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.length < PAGE_SIZE) return undefined;
-      return allPages.reduce((sum, p) => sum + p.length, 0);
+      return { rows: rows || [], count: count || 0 };
     },
     enabled: !!gymId,
+    placeholderData: (prev) => prev,
   });
 
-  const allEntries = useMemo(() => data?.pages?.flat() || [], [data]);
+  const entries = data?.rows || [];
+  const totalCount = data?.count || 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
 
-  // Client-side user search filter
-  const entries = useMemo(() => {
-    if (!userSearch.trim()) return allEntries;
-    const q = userSearch.toLowerCase();
-    return allEntries.filter(e =>
-      e.profiles?.full_name?.toLowerCase().includes(q)
+  // Clamp if the result set shrank under the current page.
+  useEffect(() => { if (page > totalPages - 1) setPage(Math.max(0, totalPages - 1)); }, [totalPages, page]);
+
+  const handleExport = useCallback(async () => {
+    if (!gymId) return;
+    const search = debouncedSearch.trim();
+    const EXPORT_CAP = 5000;
+    let query = supabase
+      .from('admin_audit_log')
+      .select('id, action, entity_type, entity_id, details, created_at, profiles!admin_audit_log_actor_id_fkey!inner(full_name, avatar_url)')
+      .eq('gym_id', gymId)
+      .order('created_at', { ascending: false })
+      .range(0, EXPORT_CAP - 1);
+    if (actionFilter !== 'all') query = query.eq('action', actionFilter);
+    if (dateRange.from) query = query.gte('created_at', dateRange.from);
+    if (dateRange.to) query = query.lte('created_at', dateRange.to);
+    if (search) query = query.ilike('profiles.full_name', `%${search}%`);
+    const { data: rows, error } = await query;
+    if (error) { console.error('Audit export failed:', error); return; }
+    const csvRows = buildCSVRows([rows || []], t);
+    await downloadCSVRows(csvRows);
+  }, [gymId, actionFilter, dateRange, debouncedSearch, t]);
+
+  // ── shared bits ──
+  const actionLabel = (a) => t(`admin.audit.actions.${a}`, { defaultValue: humanizeKey(a) });
+  const entityLabel = (e) => t(`admin.audit.entities.${e}`, { defaultValue: humanizeKey(e) });
+
+  const goPrev = () => setPage(p => Math.max(0, p - 1));
+  const goNext = () => setPage(p => Math.min(totalPages - 1, p + 1));
+
+  // Today (local) as YYYY-MM-DD — custom range dates can't be in the future
+  // (an audit log only ever has past entries).
+  const todayStr = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
+  const rangePill = (key, label) => {
+    const on = datePreset === key;
+    return (
+      <button key={key} type="button" onClick={() => { setDatePreset(key); setPage(0); }} style={{
+        padding: '9px 16px', borderRadius: 999, cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5,
+        fontWeight: on ? 700 : 600, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap',
+        color: on ? '#fff' : TK.textSub, background: on ? TK.accent : TK.surface, border: `1px solid ${on ? TK.accent : TK.borderSolid}`,
+      }}>{label}</button>
     );
-  }, [allEntries, userSearch]);
-
-  const handleExport = useCallback(() => {
-    if (!data?.pages) return;
-    const rows = buildCSVRows(data.pages, t);
-    downloadCSVRows(rows);
-  }, [data, t]);
-
-
-
-  // ── Table columns ──
-  const columns = [
-    {
-      key: 'actor',
-      label: t('admin.audit.actor', { defaultValue: 'Actor' }),
-      render: (row) => (
-        <div className="flex items-center gap-2.5">
-          {row.profiles?.avatar_url ? (
-            <img src={row.profiles.avatar_url} alt={row.profiles.full_name || t('admin.audit.userAvatarAlt', 'User avatar')} className="w-7 h-7 rounded-full object-cover border border-white/8" />
-          ) : (
-            <div className="w-7 h-7 rounded-full bg-[#D4AF37]/15 flex items-center justify-center border border-white/8">
-              <span className="text-[10px] font-bold text-[#D4AF37]">
-                {row.profiles?.full_name?.[0]?.toUpperCase() ?? 'A'}
-              </span>
-            </div>
-          )}
-          <span className="text-[13px] font-semibold text-[#E5E7EB] truncate">
-            {row.profiles?.full_name || t('admin.audit.unknownUser')}
-          </span>
-        </div>
-      ),
-    },
-    {
-      key: 'action',
-      label: t('admin.audit.actionLabel', { defaultValue: 'Action' }),
-      sortable: true,
-      render: (row) => {
-        const colorClass = getActionColor(row.action);
-        return (
-          <span className={colorClass}>
-            {t(`admin.audit.actions.${row.action}`, { defaultValue: row.action })}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'entity_type',
-      label: t('admin.audit.entity'),
-      render: (row) => row.entity_type ? (
-        <div className="min-w-0">
-          <p className="text-[12px] text-[#E5E7EB]">{row.entity_type}</p>
-          {row.entity_id && (
-            <p className="text-[10px] text-[#6B7280] font-mono truncate max-w-[120px]">{row.entity_id.slice(0, 8)}...</p>
-          )}
-        </div>
-      ) : <span className="text-[11px] text-[#6B7280]">{'\u2014'}</span>,
-    },
-    {
-      key: 'created_at',
-      label: t('admin.audit.date', { defaultValue: 'Date' }),
-      sortable: true,
-      sortValue: (row) => new Date(row.created_at).getTime(),
-      render: (row) => (
-        <div>
-          <p className="text-[12px] text-[#E5E7EB]">{relativeTime(row.created_at, dateFnsOpts)}</p>
-          <p className="text-[10px] text-[#6B7280]">{absoluteTime(row.created_at, dateFnsOpts)}</p>
-        </div>
-      ),
-    },
-    {
-      key: 'details_indicator',
-      label: '',
-      headerClassName: 'w-10',
-      render: (row) => {
-        const details = formatDetails(row.details);
-        return details ? (
-          <ChevronDown size={14} className="text-[#6B7280]" />
-        ) : null;
-      },
-    },
-  ];
+  };
 
   return (
     <AdminPageShell>
-      <PageHeader
-        title={t('admin.audit.title')}
-        subtitle={t('admin.audit.subtitle')}
-        actions={
-          <button
-            onClick={handleExport}
-            disabled={!entries.length}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold text-[#E5E7EB] bg-white/[0.04] border border-white/6 hover:border-white/10 hover:bg-white/[0.06] transition-colors disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <Download size={14} />
-            {t('admin.audit.exportCSV')}
-          </button>
-        }
-      />
+      {/* header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.audit.title')}</h1>
+          <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.audit.subtitle')}</div>
+        </div>
+        <button onClick={handleExport} disabled={!totalCount} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 17px', borderRadius: 11, flexShrink: 0,
+          cursor: totalCount ? 'pointer' : 'default', background: TK.surface, border: `1px solid ${TK.borderSolid}`, boxShadow: TK.shadow,
+          fontFamily: FK.body, fontSize: 13.5, fontWeight: 700, color: TK.textSub, opacity: totalCount ? 1 : 0.5,
+        }}>
+          <Ico ch={LIC.download} size={16} color={TK.accent} stroke={2.1} />{t('admin.audit.exportCSV')}
+        </button>
+      </div>
 
-      {/* ── Filters ──────────────────────────────────────────── */}
+      {/* filter bar */}
       <FadeIn>
-        <AdminCard className="mt-5 mb-5">
-          {/* Mobile filter toggle */}
-          <div className="sm:hidden flex items-center justify-between mb-3">
-            <button
-              onClick={() => setShowFilters(f => !f)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors"
-              style={{ color: 'var(--color-admin-text-sub)', background: 'var(--color-bg-input)', border: '1px solid var(--color-admin-border)' }}
-            >
-              <Filter size={14} />
-              {tc('filters')}
-            </button>
-          </div>
+        <Card style={{ padding: '16px 20px', marginTop: 22 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+              {DATE_PRESETS.map(p => rangePill(p.key, t(`admin.audit.date.${p.key}`)))}
+              {rangePill('custom', t('admin.audit.date.custom'))}
+            </div>
 
-          <div className={`${showFilters ? 'block' : 'hidden'} sm:block space-y-3`}>
-            {/* Row 1: Date presets + Action filter */}
-            <div className="flex sm:flex-wrap items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible pb-1 sm:pb-0">
-              {/* Date presets as pills */}
-              {DATE_PRESETS.map(p => (
-                <button
-                  key={p.key}
-                  onClick={() => setDatePreset(p.key)}
-                  className={`admin-pill flex-shrink-0 ${datePreset === p.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
-                  style={{ padding: '0 16px', fontSize: 12, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                >
-                  {t(`admin.audit.date.${p.key}`)}
-                </button>
-              ))}
-              <button
-                onClick={() => setDatePreset('custom')}
-                className={`admin-pill flex-shrink-0 ${datePreset === 'custom' ? 'admin-pill--dark' : 'admin-pill--outline'}`}
-                style={{ padding: '0 16px', fontSize: 12, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                {t('admin.audit.date.custom')}
-              </button>
-
-              {/* Action type select */}
+            {/* action filter (native select, styled) */}
+            <div style={{ position: 'relative' }}>
               <select
                 value={actionFilter}
-                onChange={e => setActionFilter(e.target.value)}
-                className="rounded-lg px-3 py-1.5 text-[13px] focus:outline-none flex-shrink-0"
-                style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
+                onChange={e => { setActionFilter(e.target.value); setPage(0); }}
+                style={{
+                  appearance: 'none', WebkitAppearance: 'none', padding: '11px 38px 11px 15px', borderRadius: 11,
+                  background: TK.surface, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.body, fontSize: 14, fontWeight: 600,
+                  color: TK.textSub, cursor: 'pointer', outline: 'none',
+                }}
               >
                 <option value="all">{t('admin.audit.allActions')}</option>
-                {ACTION_TYPES.map(a => (
-                  <option key={a} value={a}>{t(`admin.audit.actions.${a}`)}</option>
-                ))}
+                {ACTION_TYPES.map(a => <option key={a} value={a}>{t(`admin.audit.actions.${a}`)}</option>)}
               </select>
-
-              {/* User search */}
-              <div className="relative sm:ml-auto flex-shrink-0">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-admin-text-muted)' }} />
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={e => setUserSearch(e.target.value)}
-                  placeholder={t('admin.audit.searchUser', { defaultValue: 'Search user...' })}
-                  aria-label={t('admin.audit.searchUser', { defaultValue: 'Search user...' })}
-                  className="rounded-lg pl-8 pr-8 py-1.5 text-[13px] focus:outline-none w-[180px]"
-                  style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                />
-                {userSearch && (
-                  <button
-                    onClick={() => setUserSearch('')}
-                    aria-label={t('admin.audit.clearSearch', { defaultValue: 'Clear search' })}
-                    className="absolute right-2 top-1/2 -translate-y-1/2"
-                    style={{ color: 'var(--color-admin-text-muted)' }}
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
+              <Ico ch={LIC.chevD} size={15} color={TK.textMute} stroke={2.2} style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
             </div>
 
-            {/* Custom date inputs */}
-            {datePreset === 'custom' && (
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 pt-3" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
-                <div className="flex items-center gap-2">
-                  <label className="text-[12px] flex-shrink-0" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.audit.date.from')}</label>
-                  <input
-                    type="date"
-                    value={customFrom}
-                    onChange={e => setCustomFrom(e.target.value)}
-                    className="w-full sm:w-auto rounded-lg px-2.5 py-1.5 text-[13px] focus:outline-none"
-                    style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-[12px] flex-shrink-0" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.audit.date.to')}</label>
-                  <input
-                    type="date"
-                    value={customTo}
-                    onChange={e => setCustomTo(e.target.value)}
-                    className="w-full sm:w-auto rounded-lg px-2.5 py-1.5 text-[13px] focus:outline-none"
-                    style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                  />
-                </div>
-              </div>
-            )}
+            {/* user search */}
+            <div style={{ flex: 1, minWidth: 180, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 15px', borderRadius: 11, background: TK.surface, border: `1px solid ${TK.borderSolid}` }}>
+              <Ico ch={LIC.search} size={16} color={TK.textMute} stroke={2} />
+              <input
+                type="text"
+                value={userSearch}
+                onChange={e => setUserSearch(e.target.value)}
+                placeholder={t('admin.audit.searchUser', { defaultValue: 'Search user…' })}
+                aria-label={t('admin.audit.searchUser', { defaultValue: 'Search user…' })}
+                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: FK.body, fontSize: 14, color: TK.text }}
+              />
+              {userSearch && (
+                <button onClick={() => setUserSearch('')} aria-label={t('admin.audit.clearSearch', { defaultValue: 'Clear search' })} style={{ display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }}>
+                  <Ico ch={LIC.x} size={14} color={TK.textMute} stroke={2.2} />
+                </button>
+              )}
+            </div>
           </div>
-        </AdminCard>
+
+          {/* custom date inputs */}
+          {datePreset === 'custom' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${TK.divider}` }}>
+              {[['from', customFrom, setCustomFrom], ['to', customTo, setCustomTo]].map(([key, val, set]) => (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                  <label style={{ fontFamily: FK.body, fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: TK.textMute }}>{t(`admin.audit.date.${key}`)}</label>
+                  <input
+                    type="date"
+                    value={val}
+                    max={key === 'from' ? (customTo || todayStr) : todayStr}
+                    min={key === 'to' ? (customFrom || undefined) : undefined}
+                    onChange={e => { const v = e.target.value; set(v && v > todayStr ? todayStr : v); setPage(0); }}
+                    style={{ borderRadius: 10, padding: '8px 12px', fontFamily: FK.body, fontSize: 13, background: TK.surface, border: `1px solid ${TK.borderSolid}`, color: TK.text, outline: 'none' }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       </FadeIn>
 
-      {/* ── Audit Table ─────────────────────────────────────── */}
+      {/* table */}
       <FadeIn delay={0.05}>
         {isLoading ? (
-          <div className="space-y-3">
-            {[...Array(5)].map((_, i) => <CardSkeleton key={i} />)}
-          </div>
+          <Card style={{ overflow: 'hidden', marginTop: 18 }}>
+            {[...Array(6)].map((_, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '17px 24px', borderTop: i > 0 ? `1px solid ${TK.divider}` : 'none' }}>
+                <span className="animate-pulse" style={{ width: 34, height: 34, borderRadius: 99, background: TK.surface2 }} />
+                <span className="animate-pulse" style={{ flex: 1, height: 14, borderRadius: 6, background: TK.surface2 }} />
+                <span className="animate-pulse" style={{ width: 90, height: 22, borderRadius: 999, background: TK.surface2 }} />
+              </div>
+            ))}
+          </Card>
         ) : entries.length === 0 ? (
-          <AdminCard>
-            <div className="py-16 text-center">
-              <ClipboardList size={32} className="mx-auto mb-3 text-[#6B7280]" />
-              <p className="text-[14px] text-[#6B7280]">{t('admin.audit.empty')}</p>
-            </div>
-          </AdminCard>
+          <Card style={{ marginTop: 18, padding: '60px 20px', textAlign: 'center' }}>
+            <Ico ch={ICON.bar} size={30} color={TK.textFaint} stroke={1.7} style={{ margin: '0 auto 12px' }} />
+            <p style={{ fontFamily: FK.body, fontSize: 14, color: TK.textMute }}>{t('admin.audit.empty')}</p>
+          </Card>
         ) : (
-          <div className="space-y-4">
-            {/* Desktop table */}
+          <>
+            {/* desktop grid table */}
             <div className="hidden md:block">
-              <AdminTable
-                columns={columns}
-                data={entries}
-                loading={false}
-                onRowClick={(row) => setSelectedEntry(row)}
-                stickyHeader
-              />
-            </div>
-
-            {/* Mobile card list */}
-            <div className="md:hidden space-y-2">
-              {entries.map(row => {
-                const colorClass = getActionColor(row.action);
+            <Card style={{ overflow: 'hidden', marginTop: 18 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 16, padding: '14px 24px', background: TK.surface2 }}>
+                {[t('admin.audit.actor'), t('admin.audit.actionLabel'), t('admin.audit.entity'), t('admin.audit.dateColumn')].map((h, i) => (
+                  <span key={i} style={{ fontFamily: FK.body, fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: TK.textFaint }}>{h}</span>
+                ))}
+              </div>
+              {entries.map((row, i) => {
+                const name = row.profiles?.full_name || t('admin.audit.unknownUser');
                 return (
-                  <div
-                    key={row.id}
-                    onClick={() => setSelectedEntry(row)}
-                    className="admin-card p-3 cursor-pointer"
-                  >
-                    <div className="flex items-start gap-2.5 mb-2">
-                      {row.profiles?.avatar_url ? (
-                        <img src={row.profiles.avatar_url} alt={row.profiles.full_name || t('admin.audit.userAvatarAlt', 'User avatar')} className="w-8 h-8 rounded-full object-cover border border-white/8 flex-shrink-0" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 flex items-center justify-center border border-white/8 flex-shrink-0">
-                          <span className="text-[11px] font-bold text-[#D4AF37]">
-                            {row.profiles?.full_name?.[0]?.toUpperCase() ?? 'A'}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
-                          {row.profiles?.full_name || t('admin.audit.unknownUser')}
-                        </p>
-                        <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>
-                          {relativeTime(row.created_at, dateFnsOpts)}
-                        </p>
-                      </div>
-                      <ChevronDown size={14} className="text-[#6B7280] flex-shrink-0 mt-1" />
+                  <div key={row.id} style={{ display: 'grid', gridTemplateColumns: COLS, gap: 16, alignItems: 'center', padding: '15px 24px', borderTop: i > 0 ? `1px solid ${TK.divider}` : 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                      <Avatar name={name} url={row.profiles?.avatar_url} />
+                      <span style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={colorClass}>
-                        {t(`admin.audit.actions.${row.action}`, { defaultValue: row.action })}
-                      </span>
-                      {row.entity_type && (
-                        <span className="text-[10.5px] font-mono truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
-                          {row.entity_type}{row.entity_id ? `#${row.entity_id.slice(0, 6)}` : ''}
-                        </span>
-                      )}
+                    <div><ActionBadge action={row.action} label={actionLabel(row.action)} /></div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      {row.entity_type ? (
+                        <>
+                          <span style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: 'grid', placeItems: 'center', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                            <Ico ch={entityIcon(row.entity_type)} size={15} color={TK.textMute} stroke={2} />
+                          </span>
+                          <span style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entityLabel(row.entity_type)}</span>
+                        </>
+                      ) : <span style={{ fontFamily: FK.body, fontSize: 13, color: TK.textFaint }}>—</span>}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{relativeTime(row.created_at, dateFnsOpts)}</div>
+                      <div style={{ fontFamily: FK.mono, fontSize: 12, color: TK.textFaint, whiteSpace: 'nowrap' }}>{absoluteTime(row.created_at, dateFnsOpts)}</div>
                     </div>
                   </div>
                 );
               })}
+            </Card>
             </div>
 
-            {/* Load more */}
-            {hasNextPage && (
-              <div className="pt-2 flex justify-center">
-                <button
-                  onClick={() => fetchNextPage()}
-                  disabled={isFetchingNextPage}
-                  className="px-5 py-2 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
-                  style={{
-                    color: 'var(--color-accent)',
-                    background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
-                    border: '1px solid color-mix(in srgb, var(--color-accent) 22%, transparent)',
-                  }}
-                >
-                  {isFetchingNextPage ? t('admin.audit.loading') : t('admin.audit.loadMore')}
+            {/* mobile card list */}
+            <div className="md:hidden flex flex-col gap-2.5" style={{ marginTop: 18 }}>
+              {entries.map(row => {
+                const name = row.profiles?.full_name || t('admin.audit.unknownUser');
+                return (
+                  <Card key={row.id} style={{ padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 10 }}>
+                      <Avatar name={name} url={row.profiles?.avatar_url} size={32} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                        <div style={{ fontFamily: FK.mono, fontSize: 11.5, color: TK.textFaint }}>{relativeTime(row.created_at, dateFnsOpts)}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <ActionBadge action={row.action} label={actionLabel(row.action)} />
+                      {row.entity_type && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: FK.body, fontSize: 12.5, color: TK.textMute }}>
+                          <Ico ch={entityIcon(row.entity_type)} size={14} color={TK.textMute} stroke={2} />{entityLabel(row.entity_type)}
+                        </span>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {/* pagination */}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 18, marginTop: 24 }}>
+                <button type="button" onClick={goPrev} disabled={safePage === 0 || isFetching} aria-label={t('admin.audit.prevPage', { defaultValue: 'Previous page' })} style={{
+                  width: 38, height: 38, borderRadius: 99, display: 'grid', placeItems: 'center', cursor: safePage === 0 ? 'default' : 'pointer',
+                  background: TK.surface, border: `1px solid ${TK.borderSolid}`, opacity: safePage === 0 ? 0.45 : 1, boxShadow: safePage === 0 ? 'none' : TK.shadow,
+                }}>
+                  <Ico ch={LIC.chevL} size={16} color={TK.textSub} stroke={2.2} />
+                </button>
+                <span style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub }}><b style={{ color: TK.text, fontWeight: 800 }}>{safePage + 1}</b> / {totalPages}</span>
+                <button type="button" onClick={goNext} disabled={safePage >= totalPages - 1 || isFetching} aria-label={t('admin.audit.nextPage', { defaultValue: 'Next page' })} style={{
+                  width: 38, height: 38, borderRadius: 99, display: 'grid', placeItems: 'center', cursor: safePage >= totalPages - 1 ? 'default' : 'pointer',
+                  background: TK.surface, border: `1px solid ${TK.borderSolid}`, opacity: safePage >= totalPages - 1 ? 0.45 : 1, boxShadow: safePage >= totalPages - 1 ? 'none' : TK.shadow,
+                }}>
+                  <Ico ch={LIC.chevR} size={16} color={TK.textSub} stroke={2.2} />
                 </button>
               </div>
             )}
-          </div>
+          </>
         )}
       </FadeIn>
-
-      {/* Detail modal */}
-      {selectedEntry && <AuditDetailModal
-        entry={selectedEntry}
-        isOpen={!!selectedEntry}
-        onClose={() => setSelectedEntry(null)}
-        t={t}
-        dateFnsOpts={dateFnsOpts}
-      />}
     </AdminPageShell>
   );
 }

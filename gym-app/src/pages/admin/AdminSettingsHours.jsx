@@ -1,11 +1,9 @@
 /**
- * AdminSettingsHours: standalone sub-page for gym opening hours by day +
- * holiday closures. Self-contained query + save mutation against the
- * `gym_hours` table; closures handled by the existing GymClosuresCard.
+ * AdminSettingsHours: gym opening hours by day + holiday closures. Self-contained
+ * query + save against `gym_hours`; closures handled by GymClosuresCard.
+ * Restyled onto settingsKit per the "Configuración — detalle" design.
  */
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Save, Clock, ArrowLeft } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
@@ -14,11 +12,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
+import { FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
 import GymClosuresCard from './components/GymClosuresCard';
+import { TK, FK, Card, DIC, SettingsHeader, CardHd, Help, Toggle, SaveBar } from './components/settingsKit';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-const defaultHours = () => [0,1,2,3,4,5,6].map(d => ({ day_of_week: d, open_time: '06:00', close_time: '22:00', is_closed: false }));
+const defaultHours = () => [0, 1, 2, 3, 4, 5, 6].map(d => ({ day_of_week: d, open_time: '06:00', close_time: '22:00', is_closed: false }));
 
 export default function AdminSettingsHours() {
   const { profile, availableRoles } = useAuth();
@@ -75,8 +74,6 @@ export default function AdminSettingsHours() {
       const { error: hoursErr } = await supabase.from('gym_hours').upsert(hoursRows, { onConflict: 'gym_id,day_of_week' });
       if (hoursErr) throw hoursErr;
 
-      // Sync the derived `open_days` + open/close fallback on `gyms` so admin
-      // dashboard and member-facing "is gym open" checks stay coherent.
       const derivedOpenDays = dayHours.filter(d => !d.is_closed).map(d => d.day_of_week).sort();
       const firstOpen = dayHours.find(d => !d.is_closed);
       const { error: gymErr } = await supabase.from('gyms').update({
@@ -103,11 +100,11 @@ export default function AdminSettingsHours() {
 
   if (!isAuthorized) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[14px] font-semibold" style={{ color: 'var(--color-danger, #EF4444)' }}>
-          {t('admin.overview.accessDenied', 'Access denied. You are not authorized to view this page.')}
-        </p>
-      </div>
+      <AdminPageShell>
+        <Card style={{ padding: '40px 20px', textAlign: 'center' }}>
+          <p style={{ fontFamily: FK.body, fontSize: 14, color: 'var(--color-danger)' }}>{t('admin.overview.accessDenied', 'Access denied. You are not authorized to view this page.')}</p>
+        </Card>
+      </AdminPageShell>
     );
   }
 
@@ -118,101 +115,57 @@ export default function AdminSettingsHours() {
     </AdminPageShell>
   );
 
-  const backLink = (
-    <Link
-      to="/admin/settings"
-      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-colors"
-      style={{
-        backgroundColor: 'var(--color-bg-deep)',
-        border: '1px solid var(--color-border-subtle)',
-        color: 'var(--color-text-muted)',
-      }}
-    >
-      <ArrowLeft size={14} />
-      {t('admin.settings.title', 'Settings')}
-    </Link>
-  );
+  const timeInput = { flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '10px 14px', borderRadius: 10, background: TK.surface, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.mono, fontSize: 13.5, fontWeight: 600, color: TK.text, outline: 'none' };
 
   return (
     <AdminPageShell>
-      <PageHeader
-        title={t('admin.settings.gymHours', 'Gym Hours')}
-        subtitle={t('admin.settingsHub.hoursDesc', 'Daily opening hours + closures')}
-        actions={backLink}
-        className="mb-4"
-      />
+      <SettingsHeader t={t} title={t('admin.settings.gymHours', 'Gym Hours')} sub={t('admin.settingsHub.hoursDesc', 'Daily opening hours + closures')} />
 
-      {error && <p className="text-[13px] text-red-400 mb-4">{error}</p>}
+      {error && <p style={{ fontFamily: FK.body, fontSize: 13, color: 'var(--color-danger)', margin: '14px 0 0' }}>{error}</p>}
 
-      <div className="space-y-4 min-w-0">
-        <div className="grid xl:grid-cols-12 gap-4 min-w-0">
-          <FadeIn delay={0} className="xl:col-span-6 min-w-0">
-            <AdminCard hover padding="p-4 sm:p-5">
-              <SectionLabel icon={Clock} className="mb-4">{t('admin.settings.gymHours', 'Gym Hours')}</SectionLabel>
-              <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.gymHoursDesc', 'Set opening hours for each day. Toggle days off to mark as closed.')}</p>
-              <div className="space-y-2">
+      <div style={{ marginTop: 22 }}>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-[18px] items-start">
+          <FadeIn delay={0} className="min-w-0">
+            <Card style={{ padding: '22px 24px' }}>
+              <CardHd icon={DIC.clock}>{t('admin.settings.gymHours', 'Gym Hours')}</CardHd>
+              <Help>{t('admin.settings.gymHoursDesc', 'Set opening hours for each day. Toggle days off to mark as closed.')}</Help>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 11, marginTop: 16 }}>
                 {DAY_KEYS.map((dayKey, idx) => {
-                  const dayLabel = t(`common:days.${dayKey}`);
                   const dayShort = t(`common:days.${dayKey.slice(0, 3)}`);
                   const dh = dayHours.find(d => d.day_of_week === idx) || { open_time: '06:00', close_time: '22:00', is_closed: false };
-                  const updateDay = (field, value) => {
-                    setDayHours(prev => prev.map(d => d.day_of_week === idx ? { ...d, [field]: value } : d));
-                  };
+                  const updateDay = (field, value) => setDayHours(prev => prev.map(d => d.day_of_week === idx ? { ...d, [field]: value } : d));
                   return (
-                    <div key={dayKey} className={`flex flex-wrap items-center gap-2 sm:gap-3 rounded-xl px-3 sm:px-4 py-3 transition-colors ${dh.is_closed ? 'opacity-50' : ''}`}
-                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                      <button
-                        onClick={() => updateDay('is_closed', !dh.is_closed)}
-                        className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-                        style={{ backgroundColor: dh.is_closed ? 'var(--color-text-faint)' : 'var(--color-accent)' }}
-                        aria-label={`Toggle ${dayLabel}`}
-                      >
-                        <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-                          style={{ left: dh.is_closed ? '2px' : 'calc(100% - 18px)' }} />
-                      </button>
-                      <span className="text-[13px] font-semibold w-12 flex-shrink-0" style={{ color: 'var(--color-text-primary)' }}>
-                        {dayShort}
-                      </span>
+                    <div key={dayKey} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 16px', borderRadius: 13, background: TK.surface2, border: `1px solid ${TK.borderSolid}`, opacity: dh.is_closed ? 0.6 : 1 }}>
+                      <Toggle on={!dh.is_closed} onClick={() => updateDay('is_closed', !dh.is_closed)} />
+                      <span style={{ width: 44, flexShrink: 0, fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text }}>{dayShort}</span>
                       {dh.is_closed ? (
-                        <span className="text-[12px] font-medium" style={{ color: 'var(--color-danger)' }}>{t('admin.settings.closed', 'Closed')}</span>
+                        <span style={{ fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: 'var(--color-danger)' }}>{t('admin.settings.closed', 'Closed')}</span>
                       ) : (
-                        <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0">
-                          <input type="time" value={dh.open_time} onChange={e => updateDay('open_time', e.target.value)}
-                            className="rounded-lg px-2 sm:px-2.5 py-1.5 text-[12px] outline-none flex-1 min-w-0 sm:flex-none sm:w-[110px] transition-colors"
-                            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                          <span className="text-[12px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.to', 'to')}</span>
-                          <input type="time" value={dh.close_time} onChange={e => updateDay('close_time', e.target.value)}
-                            className="rounded-lg px-2 sm:px-2.5 py-1.5 text-[12px] outline-none flex-1 min-w-0 sm:flex-none sm:w-[110px] transition-colors"
-                            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 11, flex: 1, minWidth: 0 }}>
+                          <input type="time" value={dh.open_time} onChange={e => updateDay('open_time', e.target.value)} style={timeInput} />
+                          <span style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, flexShrink: 0 }}>{t('admin.settings.to', 'to')}</span>
+                          <input type="time" value={dh.close_time} onChange={e => updateDay('close_time', e.target.value)} style={timeInput} />
                         </div>
                       )}
                     </div>
                   );
                 })}
               </div>
-            </AdminCard>
+            </Card>
           </FadeIn>
 
           <GymClosuresCard id="closures" gymId={gymId} delay={60} />
         </div>
 
         <FadeIn delay={120}>
-          <button
+          <SaveBar
             onClick={() => { setError(''); saveMutation.mutate(); }}
-            disabled={saveMutation.isPending}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
-            style={{
-              backgroundColor: saved ? 'var(--color-success)' : 'var(--color-accent)',
-              color: saved ? '#fff' : 'var(--color-text-on-accent)',
-            }}
-          >
-            <Save size={16} />
-            {saveMutation.isPending
-              ? t('admin.settings.saving', 'Saving...')
-              : saved
-                ? t('admin.settings.saved', 'Saved!')
-                : t('admin.settings.saveGeneral', 'Save General Settings')}
-          </button>
+            saving={saveMutation.isPending}
+            saved={saved}
+            label={t('admin.settings.saveGeneral', 'Save General Settings')}
+            savingLabel={t('admin.settings.saving', 'Saving...')}
+            savedLabel={t('admin.settings.saved', 'Saved!')}
+          />
         </FadeIn>
       </div>
     </AdminPageShell>

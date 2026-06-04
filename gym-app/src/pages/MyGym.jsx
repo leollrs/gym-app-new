@@ -72,7 +72,7 @@ export default function MyGym() {
         supabase.from('gyms').select('id, name, open_days, open_time, close_time, country, address').eq('id', profile.gym_id).maybeSingle(),
         supabase.from('gym_hours').select('day_of_week, is_closed, open_time, close_time').eq('gym_id', profile.gym_id).order('day_of_week'),
         supabase.from('gym_holidays').select('id, label, date, is_closed, open_time, close_time').eq('gym_id', profile.gym_id).gte('date', todayStr).order('date').limit(5),
-        supabase.from('gym_closures').select('id, name, closure_date, reason').eq('gym_id', profile.gym_id).gte('closure_date', todayStr).order('closure_date').limit(5),
+        supabase.from('gym_closures').select('*').eq('gym_id', profile.gym_id).gte('closure_date', todayStr).order('closure_date').limit(5),
         supabase
           .from('announcements')
           .select('id, title, message, type, published_at')
@@ -105,9 +105,11 @@ export default function MyGym() {
             id: `closure-${c.id}`,
             label: c.name || reasonLabel[c.reason] || t('myGym.closed', 'Closed'),
             date: c.closure_date,
-            is_closed: true,
-            open_time: null,
-            close_time: null,
+            // is_closed/open_time/close_time exist after migration 0516; default
+            // to a full closure when absent (pre-migration rows).
+            is_closed: c.is_closed !== false,
+            open_time: c.open_time ?? null,
+            close_time: c.close_time ?? null,
           }));
         const merged = [...hols, ...mappedClosures]
           .sort((a, b) => a.date.localeCompare(b.date))

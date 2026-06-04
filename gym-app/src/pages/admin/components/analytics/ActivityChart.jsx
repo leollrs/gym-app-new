@@ -103,7 +103,7 @@ function ActivityChart({ gymId, monthsBack }) {
       {activityData.length === 0 ? (
         <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, textAlign: 'center', padding: '40px 0' }}>{t('admin.analytics.engagementEmpty', 'No session data yet')}</p>
       ) : (
-        <LineChart data={data} xLabels={labels} color="var(--color-info)" max={100} unit="%" height={220} />
+        <LineChart data={data} xLabels={labels} pointLabels={activityData.map(d => d.month)} color="var(--color-info)" max={100} unit="%" height={220} />
       )}
     </ChartCard>
   );

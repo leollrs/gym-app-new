@@ -24,7 +24,6 @@ import OnboardingFunnel from './components/analytics/OnboardingFunnel';
 import LifecycleStages from './components/analytics/LifecycleStages';
 import TrainerPerformance from './components/analytics/TrainerPerformance';
 import MonthlySummary from './components/analytics/MonthlySummary';
-import LTVCard from './components/analytics/LTVCard';
 import WhyLeftPanel from './components/WhyLeftPanel';
 import RetentionEffectivenessPanel from './components/RetentionEffectivenessPanel';
 
@@ -312,9 +311,8 @@ export default function AdminAnalytics() {
           );
           if (tabKey === 'growth') return (
             <div style={{ paddingTop: 24 }}>
-              <FadeIn delay={30}><LTVCard gymId={gymId} /></FadeIn>
-              <FadeIn delay={40}>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]" style={{ marginTop: 18 }}>
+              <FadeIn delay={30}>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]">
                   <GrowthChart gymId={gymId} monthsBack={monthsBack} />
                   <RetentionChart gymId={gymId} monthsBack={monthsBack} />
                 </div>

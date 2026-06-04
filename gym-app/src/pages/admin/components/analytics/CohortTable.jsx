@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth, addDays } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale';
 import { exportCSV } from '../../../../lib/csvExport';
 import { CardSkeleton, ErrorCard } from '../../../../components/admin';
 import { TK, FK, Ico, Card, AICON, cohortColor } from './analyticsKit';
 
-async function fetchCohortData(gymId, span) {
+async function fetchCohortData(gymId, span, dateFnsLocale) {
   const now = new Date();
   const from = subMonths(startOfMonth(now), span - 1).toISOString();
 
@@ -36,7 +37,7 @@ async function fetchCohortData(gymId, span) {
 
   const cohortMap = {};
   (members || []).forEach(m => {
-    const joinMonth = format(new Date(m.created_at), 'MMM yy');
+    const joinMonth = format(new Date(m.created_at), 'MMM yy', dateFnsLocale);
     if (!cohortMap[joinMonth]) cohortMap[joinMonth] = [];
     cohortMap[joinMonth].push(m);
   });
@@ -44,7 +45,7 @@ async function fetchCohortData(gymId, span) {
   const rows = [];
   for (let i = span - 1; i >= 0; i--) {
     const cohortMonthDate = subMonths(now, i);
-    const label = format(cohortMonthDate, 'MMM yy');
+    const label = format(cohortMonthDate, 'MMM yy', dateFnsLocale);
     const cohortMembers = cohortMap[label] || [];
     const cohortSize = cohortMembers.length;
 
@@ -70,11 +71,12 @@ async function fetchCohortData(gymId, span) {
 }
 
 export default function CohortTable({ gymId, monthsBack }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : {};
   const span = monthsBack || 6;
   const { data: cohortData = [], isLoading, isError, refetch } = useQuery({
-    queryKey: [...adminKeys.analytics.cohort(gymId), span],
-    queryFn: () => fetchCohortData(gymId, span),
+    queryKey: [...adminKeys.analytics.cohort(gymId), span, i18n.language],
+    queryFn: () => fetchCohortData(gymId, span, dateFnsLocale),
     enabled: !!gymId,
   });
 

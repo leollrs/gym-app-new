@@ -1,11 +1,10 @@
 /**
  * AdminSettingsGymInfo: standalone sub-page for gym identity — name + slug
- * display, language selector, and the multi-role view switcher. Owns its
- * own gym query + save mutation for the name field.
+ * display, membership pricing, language selector, and the multi-role view
+ * switcher. Owns its own gym query + save mutation. Restyled onto settingsKit
+ * per the "Configuración — detalle" design.
  */
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Save, Globe, Check, Repeat, ChevronRight, ArrowLeft, DollarSign } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
@@ -14,8 +13,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
+import { FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
 import ViewSwitcherModal from '../../components/ViewSwitcherModal';
+import { TK, FK, Ico, Card, DIC, SettingsHeader, CardHd, Fld, TextField, SaveBar } from './components/settingsKit';
 
 const LANGUAGES = [
   { code: 'en', label: 'English', flag: '\u{1F1FA}\u{1F1F8}' },
@@ -34,8 +34,6 @@ export default function AdminSettingsGymInfo() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [name, setName] = useState('');
-  const [monthlyPrice, setMonthlyPrice] = useState('');
-  const [currency, setCurrency] = useState('USD');
   const [showViewSwitcher, setShowViewSwitcher] = useState(false);
 
   useEffect(() => { document.title = `${t('admin.settings.gymName', 'Gym Name')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
@@ -45,7 +43,7 @@ export default function AdminSettingsGymInfo() {
     queryFn: async () => {
       const { data, error: gymErr } = await supabase
         .from('gyms')
-        .select('name, slug, monthly_price, currency')
+        .select('name, slug')
         .eq('id', gymId)
         .single();
       if (gymErr) logger.warn('Failed to load gym info', gymErr);
@@ -56,29 +54,12 @@ export default function AdminSettingsGymInfo() {
 
   useEffect(() => {
     if (gymData?.name != null) setName(gymData.name);
-    if (gymData?.monthly_price != null) setMonthlyPrice(String(gymData.monthly_price));
-    if (gymData?.currency) setCurrency(gymData.currency);
   }, [gymData]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // Empty input clears the price; otherwise parse and validate.
-      let priceValue = null;
-      if (monthlyPrice !== '' && monthlyPrice != null) {
-        const parsed = Number(monthlyPrice);
-        if (!Number.isFinite(parsed) || parsed < 0) {
-          throw new Error(t('admin.settings.priceInvalid', { defaultValue: 'Monthly price must be a positive number.' }));
-        }
-        priceValue = Math.round(parsed * 100) / 100;
-      }
-      const trimmedCurrency = (currency || 'USD').toUpperCase();
-      if (!/^[A-Z]{3}$/.test(trimmedCurrency)) {
-        throw new Error(t('admin.settings.currencyInvalid', { defaultValue: 'Currency must be a 3-letter ISO code (e.g. USD).' }));
-      }
       const { error: gymErr } = await supabase.from('gyms').update({
         name,
-        monthly_price: priceValue,
-        currency: trimmedCurrency,
         updated_at: new Date().toISOString(),
       }).eq('id', gymId);
       if (gymErr) throw gymErr;
@@ -97,13 +78,20 @@ export default function AdminSettingsGymInfo() {
     },
   });
 
+  const changeLang = async (code) => {
+    i18n.changeLanguage(code);
+    if (profile?.id) {
+      await supabase.from('profiles').update({ preferred_language: code }).eq('id', profile.id);
+    }
+  };
+
   if (!isAuthorized) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[14px] font-semibold" style={{ color: 'var(--color-danger, #EF4444)' }}>
-          {t('admin.overview.accessDenied', 'Access denied. You are not authorized to view this page.')}
-        </p>
-      </div>
+      <AdminPageShell>
+        <Card style={{ padding: '40px 20px', textAlign: 'center' }}>
+          <p style={{ fontFamily: FK.body, fontSize: 14, color: 'var(--color-danger)' }}>{t('admin.overview.accessDenied', 'Access denied. You are not authorized to view this page.')}</p>
+        </Card>
+      </AdminPageShell>
     );
   }
 
@@ -114,173 +102,71 @@ export default function AdminSettingsGymInfo() {
     </AdminPageShell>
   );
 
-  const backLink = (
-    <Link
-      to="/admin/settings"
-      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-colors"
-      style={{
-        backgroundColor: 'var(--color-bg-deep)',
-        border: '1px solid var(--color-border-subtle)',
-        color: 'var(--color-text-muted)',
-      }}
-    >
-      <ArrowLeft size={14} />
-      {t('admin.settings.title', 'Settings')}
-    </Link>
-  );
-
   return (
     <AdminPageShell>
-      <PageHeader
-        title={t('admin.settings.gymName', 'Gym Name')}
-        subtitle={t('admin.settings.subtitle', 'Gym branding and configuration')}
-        actions={backLink}
-        className="mb-4"
-      />
+      <SettingsHeader t={t} title={t('admin.settings.gymName', 'Gym Name')} sub={t('admin.settings.subtitle', 'Gym branding and configuration')} />
 
-      {error && <p className="text-[13px] text-red-400 mb-4">{error}</p>}
+      {error && <p style={{ fontFamily: FK.body, fontSize: 13, color: 'var(--color-danger)', margin: '14px 0 0' }}>{error}</p>}
 
-      <div className="space-y-4 min-w-0">
+      <div style={{ marginTop: 22 }}>
         <FadeIn delay={0}>
-          <AdminCard hover padding="p-4 sm:p-5">
-            <SectionLabel className="mb-4">{t('admin.settings.gymName', 'Gym Name')}</SectionLabel>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="gym-name" className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.gymName', 'Gym Name')}</label>
-                <input id="gym-name" value={name} onChange={e => setName(e.target.value)}
-                  className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-colors"
-                  style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-              </div>
-              <div>
-                <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.settings.gymSlug', 'Gym Slug')}</p>
-                <p className="text-[12px] mt-0.5 break-words" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.settings.gymSlugDesc', 'Members sign up using:')}{' '}
-                  <span style={{ color: 'var(--color-accent)' }} className="font-mono break-all">{gymData?.slug}</span>
-                </p>
-              </div>
+          <Card style={{ padding: '22px 24px' }}>
+            <CardHd icon={DIC.building}>{t('admin.settings.gymName', 'Gym Name')}</CardHd>
+            <Fld>{t('admin.settings.gymName', 'Gym Name')}</Fld>
+            <TextField value={name} onChange={e => setName(e.target.value)} />
+            <div style={{ marginTop: 18, fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text }}>{t('admin.settings.gymSlug', 'Gym Slug')}</div>
+            <div style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, marginTop: 5, wordBreak: 'break-word' }}>
+              {t('admin.settings.gymSlugDesc', 'Members sign up using:')}{' '}
+              <b style={{ color: TK.accent, fontWeight: 700, fontFamily: FK.mono }}>{gymData?.slug}</b>
             </div>
-          </AdminCard>
-        </FadeIn>
-
-        <FadeIn delay={10}>
-          <AdminCard hover padding="p-4 sm:p-5">
-            <SectionLabel icon={DollarSign} className="mb-3">
-              {t('admin.settings.pricingLabel', 'Membership pricing')}
-            </SectionLabel>
-            <p className="text-[12px] mb-3" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.settings.pricingDesc', 'Used to calculate member lifetime value (LTV) in retention reports. Members never see this.')}
-            </p>
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
-                <label htmlFor="gym-monthly-price" className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.settings.monthlyPrice', 'Monthly price')}
-                </label>
-                <input
-                  id="gym-monthly-price"
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={monthlyPrice}
-                  onChange={e => setMonthlyPrice(e.target.value)}
-                  placeholder="50.00"
-                  className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-colors"
-                  style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-                />
-              </div>
-              <div className="w-24">
-                <label htmlFor="gym-currency" className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.settings.currency', 'Currency')}
-                </label>
-                <input
-                  id="gym-currency"
-                  type="text"
-                  maxLength={3}
-                  value={currency}
-                  onChange={e => setCurrency(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
-                  placeholder="USD"
-                  className="w-full rounded-xl px-3 py-2.5 text-[13px] font-mono uppercase outline-none transition-colors"
-                  style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-                />
-              </div>
-            </div>
-          </AdminCard>
+          </Card>
         </FadeIn>
 
         {hasMultipleViews && (
           <FadeIn delay={15}>
-            <AdminCard hover padding="p-4 sm:p-5">
-              <SectionLabel icon={Repeat} className="mb-3">{t('common:viewSwitcher.eyebrow', 'Switch view')}</SectionLabel>
-              <button
-                type="button"
-                onClick={() => setShowViewSwitcher(true)}
-                className="w-full flex items-center justify-between rounded-2xl px-5 py-4 text-left transition-colors duration-200"
-                style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <Repeat size={16} style={{ color: 'var(--color-accent)' }} />
-                  <div className="min-w-0">
-                    <div className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                      {t('common:viewSwitcher.title', 'Choose your experience')}
-                    </div>
-                    <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
-                      {t('common:viewSwitcher.help', 'Your data and identity stay the same — only the layout changes.')}
-                    </div>
-                  </div>
-                </div>
-                <ChevronRight size={16} style={{ color: 'var(--color-text-subtle)' }} />
+            <Card style={{ padding: '22px 24px', marginTop: 16 }}>
+              <CardHd icon={DIC.repeat}>{t('common:viewSwitcher.eyebrow', 'Switch view')}</CardHd>
+              <button type="button" onClick={() => setShowViewSwitcher(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, marginTop: 6 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  <Ico ch={DIC.repeat} size={17} color={TK.accent} stroke={2} />
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text }}>{t('common:viewSwitcher.title', 'Choose your experience')}</span>
+                    <span style={{ display: 'block', fontFamily: FK.body, fontSize: 11.5, color: TK.textFaint, marginTop: 2 }}>{t('common:viewSwitcher.help', 'Your data and identity stay the same — only the layout changes.')}</span>
+                  </span>
+                </span>
+                <Ico ch={DIC.chevD} size={16} color={TK.textMute} stroke={2.2} style={{ transform: 'rotate(-90deg)' }} />
               </button>
-            </AdminCard>
+            </Card>
           </FadeIn>
         )}
 
         <FadeIn delay={30}>
-          <AdminCard hover padding="p-4 sm:p-5">
-            <SectionLabel icon={Globe} className="mb-3">{t('admin.settings.language')}</SectionLabel>
-            <div className="rounded-2xl min-w-0 divide-y" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-              {LANGUAGES.map(lang => (
-                <button
-                  key={lang.code}
-                  type="button"
-                  onClick={async () => {
-                    i18n.changeLanguage(lang.code);
-                    if (profile?.id) {
-                      await supabase.from('profiles').update({ preferred_language: lang.code }).eq('id', profile.id);
-                    }
-                  }}
-                  className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors duration-200"
-                  style={{ backgroundColor: i18n.language?.startsWith(lang.code) ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent' }}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-[18px]">{lang.flag}</span>
-                    <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{lang.label}</span>
-                  </div>
-                  {i18n.language?.startsWith(lang.code) && (
-                    <Check size={16} style={{ color: 'var(--color-accent)' }} />
-                  )}
-                </button>
-              ))}
+          <Card style={{ padding: '22px 24px', marginTop: 16 }}>
+            <CardHd icon={DIC.globe}>{t('admin.settings.language')}</CardHd>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+              {LANGUAGES.map(lang => {
+                const on = i18n.language?.startsWith(lang.code);
+                return (
+                  <button key={lang.code} type="button" onClick={() => changeLang(lang.code)} style={{ display: 'flex', alignItems: 'center', gap: 13, padding: '14px 16px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', background: on ? TK.accentWash : TK.surface2, border: `1.5px solid ${on ? TK.accent : TK.borderSolid}` }}>
+                    <span style={{ fontSize: 20 }}>{lang.flag}</span>
+                    <span style={{ flex: 1, fontFamily: FK.body, fontSize: 15, fontWeight: 700, color: TK.text }}>{lang.label}</span>
+                    {on && <Ico ch={DIC.check} size={17} color={TK.accent} stroke={2.4} />}
+                  </button>
+                );
+              })}
             </div>
-          </AdminCard>
+          </Card>
         </FadeIn>
 
         <FadeIn delay={60}>
-          <button
+          <SaveBar
             onClick={() => { setError(''); saveMutation.mutate(); }}
-            disabled={saveMutation.isPending}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
-            style={{
-              backgroundColor: saved ? 'var(--color-success)' : 'var(--color-accent)',
-              color: saved ? '#fff' : 'var(--color-text-on-accent)',
-            }}
-          >
-            <Save size={16} />
-            {saveMutation.isPending
-              ? t('admin.settings.saving', 'Saving...')
-              : saved
-                ? t('admin.settings.saved', 'Saved!')
-                : t('admin.settings.saveGeneral', 'Save Settings')}
-          </button>
+            saving={saveMutation.isPending}
+            saved={saved}
+            label={t('admin.settings.saveGeneral', 'Save Settings')}
+            savingLabel={t('admin.settings.saving', 'Saving...')}
+            savedLabel={t('admin.settings.saved', 'Saved!')}
+          />
         </FadeIn>
       </div>
 

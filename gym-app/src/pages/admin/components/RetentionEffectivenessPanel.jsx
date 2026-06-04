@@ -1,43 +1,48 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../../lib/supabase';
 import { ErrorCard } from '../../../components/admin';
 import { TK, FK, Ico, Card, AICON, StatTile, EmptyBox, HBarRow } from './analytics/analyticsKit';
 
-const OUTCOME_ICON = { reached_out: AICON.phone, returned: AICON.check, no_response: AICON.eyeoff, lost: AICON.userx };
-const OUTCOME_COLOR = {
-  reached_out: 'var(--color-info)',
-  returned: 'var(--color-success)',
-  no_response: TK.textMute,
-  lost: 'var(--color-danger)',
-};
-
-// compact native grouped bars (cancellations vs returns) for the 12-week trend
-function GroupedBars({ rows }) {
+// compact native grouped bars (cancellations vs returns) for the 12-week trend, with hover
+function GroupedBars({ rows, cancLabel, retLabel }) {
+  const [hover, setHover] = useState(null);
   const max = Math.max(1, ...rows.flatMap(r => [r.cancellations || 0, r.returns || 0]));
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 200, padding: '10px 4px 0' }}>
-      {rows.map((r, i) => (
-        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end', minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: '100%', width: '100%', justifyContent: 'center' }}>
-            <div style={{ width: 7, height: `${Math.max(2, ((r.cancellations || 0) / max) * 100)}%`, background: 'var(--color-danger)', borderRadius: '3px 3px 0 0' }} />
-            <div style={{ width: 7, height: `${Math.max(2, ((r.returns || 0) / max) * 100)}%`, background: 'var(--color-success)', borderRadius: '3px 3px 0 0' }} />
+    <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 200, padding: '10px 4px 0' }}>
+        {rows.map((r, i) => (
+          <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(h => (h === i ? null : h))}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end', minWidth: 0, cursor: 'default', opacity: hover == null || hover === i ? 1 : 0.5, transition: 'opacity .15s' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: '100%', width: '100%', justifyContent: 'center' }}>
+              <div style={{ width: 7, height: `${Math.max(2, ((r.cancellations || 0) / max) * 100)}%`, background: 'var(--color-danger)', borderRadius: '3px 3px 0 0' }} />
+              <div style={{ width: 7, height: `${Math.max(2, ((r.returns || 0) / max) * 100)}%`, background: 'var(--color-success)', borderRadius: '3px 3px 0 0' }} />
+            </div>
+            <span style={{ fontFamily: FK.mono, fontSize: 9, color: TK.textFaint, whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: '100%' }}>{r.label}</span>
           </div>
-          <span style={{ fontFamily: FK.mono, fontSize: 9, color: TK.textFaint, whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: '100%' }}>{r.label}</span>
+        ))}
+      </div>
+      {hover != null && rows[hover] && (
+        <div style={{ position: 'absolute', top: 0, left: `${((hover + 0.5) / rows.length) * 100}%`, transform: 'translate(-50%,-4px)', background: TK.surface, border: `1px solid ${TK.borderSolid}`, borderRadius: 10, padding: '7px 11px', boxShadow: TK.shadowLg, whiteSpace: 'nowrap', zIndex: 6, pointerEvents: 'none' }}>
+          <div style={{ fontFamily: FK.mono, fontSize: 10.5, color: TK.textFaint, marginBottom: 3 }}>{rows[hover].label}</div>
+          <div style={{ fontFamily: FK.body, fontSize: 12, color: TK.textSub }}><span style={{ color: 'var(--color-danger)' }}>●</span> {cancLabel}: <b style={{ color: TK.text }}>{rows[hover].cancellations || 0}</b></div>
+          <div style={{ fontFamily: FK.body, fontSize: 12, color: TK.textSub }}><span style={{ color: 'var(--color-success)' }}>●</span> {retLabel}: <b style={{ color: TK.text }}>{rows[hover].returns || 0}</b></div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
 
 export default function RetentionEffectivenessPanel({ gymId }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['retention-effectiveness', gymId],
+    queryKey: ['retention-effectiveness', gymId, i18n.language],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_retention_effectiveness', { p_gym_id: gymId });
       if (error) throw error;
@@ -55,7 +60,7 @@ export default function RetentionEffectivenessPanel({ gymId }) {
   }, [data]);
 
   const timeseries = data?.timeseries || [];
-  const chartRows = useMemo(() => timeseries.map((w) => ({ ...w, label: w.week_start ? format(parseISO(w.week_start), 'MMM d') : '' })), [timeseries]);
+  const chartRows = useMemo(() => timeseries.map((w) => ({ ...w, label: w.week_start ? format(parseISO(w.week_start), 'MMM d', dateFnsLocale) : '' })), [timeseries, dateFnsLocale]);
   const totalCancelTs = timeseries.reduce((s, w) => s + (w.cancellations || 0), 0);
   const totalReturnsTs = timeseries.reduce((s, w) => s + (w.returns || 0), 0);
   const avgReactivationRateTs = totalCancelTs > 0 ? Math.round((totalReturnsTs / totalCancelTs) * 100) : null;
@@ -91,7 +96,7 @@ export default function RetentionEffectivenessPanel({ gymId }) {
               {legendDot('var(--color-danger)', t('admin.effectiveness.cancellations', 'Cancellations'))}
               {legendDot('var(--color-success)', t('admin.effectiveness.returns', 'Returns'))}
             </div>
-            <GroupedBars rows={chartRows} />
+            <GroupedBars rows={chartRows} cancLabel={t('admin.effectiveness.cancellations', 'Cancellations')} retLabel={t('admin.effectiveness.returns', 'Returns')} />
             <p style={{ fontFamily: FK.body, fontSize: 11.5, color: TK.textMute, textAlign: 'center', marginTop: 8 }}>
               {t('admin.effectiveness.avgReactivationRate', 'Avg reactivation rate (12w)')}:{' '}
               <span style={{ fontFamily: FK.display, fontWeight: 800, color: TK.text }}>{avgReactivationRateTs != null ? `${avgReactivationRateTs}%` : '—'}</span>
@@ -111,41 +116,6 @@ export default function RetentionEffectivenessPanel({ gymId }) {
         <StatTile icon={AICON.pulse} label={t('admin.effectiveness.reactivationRate', 'Reactivation rate')} value={reactivationRate != null ? `${reactivationRate}%` : '—'} sub={t('admin.effectiveness.returnsOverCancels', 'returns / cancels')} tone={reactTone} />
         <StatTile icon={AICON.send} label={t('admin.effectiveness.lifecycleSent7d', 'Sent this week')} value={tt.lifecycle_sent_7d} sub={t('admin.effectiveness.lifecycleOnly', 'lifecycle only')} tone="neutral" />
       </div>
-
-      {/* owner queue outcomes */}
-      <Card style={{ padding: '20px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
-          <Ico ch={AICON.inbox} size={15} color="var(--color-info)" stroke={2} />
-          <span style={{ fontFamily: FK.display, fontSize: 16, fontWeight: 800, letterSpacing: -0.3, color: TK.text }}>{t('admin.effectiveness.queueOutcomesTitle', 'Owner queue — resolution outcomes (30d)')}</span>
-        </div>
-        {(!data.queue_outcomes || data.queue_outcomes.length === 0) ? (
-          <p style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textMute, textAlign: 'center', padding: '12px 0' }}>{t('admin.effectiveness.queueEmpty', 'No resolved cards yet.')}</p>
-        ) : (() => {
-          const totalQ = data.queue_outcomes.reduce((s, r) => s + r.count, 0);
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {data.queue_outcomes.map((row) => {
-                const color = OUTCOME_COLOR[row.outcome] || TK.textMute;
-                const pct = totalQ > 0 ? Math.round((row.count / totalQ) * 100) : 0;
-                return (
-                  <div key={row.outcome} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: FK.body, fontSize: 12.5, fontWeight: 600, color: TK.textSub }}>
-                        <Ico ch={OUTCOME_ICON[row.outcome] || AICON.eyeoff} size={13} color={color} stroke={2} />
-                        {t(`admin.morningQueue.outcomes.${row.outcome}`, row.outcome)}
-                      </span>
-                      <span style={{ fontFamily: FK.mono, fontSize: 12, color: TK.textMute }}>{row.count} · {pct}%</span>
-                    </div>
-                    <div style={{ height: 9, borderRadius: 99, background: TK.surface3, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: color }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
-      </Card>
 
       {/* winback by category */}
       <Card style={{ padding: '20px 24px' }}>

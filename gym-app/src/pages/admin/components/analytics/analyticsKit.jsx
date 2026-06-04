@@ -6,9 +6,16 @@
    reproduced in light mode while staying theme- + white-label
    correct (accent = var(--color-accent)).
    ============================================================ */
+import { useState } from 'react';
 import { TK, FK, TONE, Ico, Card } from '../retosKit';
 
 export { TK, FK, TONE, Ico, Card };
+
+// shared floating tooltip box
+const tipBox = {
+  background: TK.surface, border: `1px solid ${TK.borderSolid}`, borderRadius: 10,
+  padding: '7px 11px', boxShadow: TK.shadowLg, whiteSpace: 'nowrap', zIndex: 6, pointerEvents: 'none',
+};
 
 /* analytics-specific inline icon paths (exact from the mock's AIC) */
 export const AICON = {
@@ -43,6 +50,8 @@ export const AICON = {
   x: <path d="M18 6 6 18M6 6l12 12" />,
   chevL: <path d="m15 6-6 6 6 6" />,
   chevR: <path d="m9 6 6 6-6 6" />,
+  chevU: <path d="m6 15 6-6 6 6" />,
+  chevD: <path d="m6 9 6 6 6-6" />,
   printer: <><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M6 14h12v7H6Z" /></>,
   eyeoff: <><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9 9 0 0 1 21 12a9 9 0 0 1-1.6 2.6M6.1 6.1A9 9 0 0 0 3 12a9 9 0 0 0 8 5" /></>,
   trend: <><path d="M3 17l6-6 4 4 7-7" /><path d="M17 8h4v4" /></>,
@@ -66,8 +75,9 @@ function smoothPath(pts) {
   return d;
 }
 
-/* ── line/area chart ── */
-export function LineChart({ data, xLabels = [], color = TK.accent, max, yTicks = 4, height = 230, target, unit = '', smooth = true }) {
+/* ── line/area chart (with hover tooltip) ── */
+export function LineChart({ data, xLabels = [], pointLabels = [], seriesLabel, color = TK.accent, max, yTicks = 4, height = 230, target, unit = '', smooth = true }) {
+  const [hover, setHover] = useState(null);
   const W = 1000, H = height, padL = 44, padR = 18, padT = 18, padB = 30;
   const mx = max != null ? max : Math.max(1, ...data);
   const innerW = W - padL - padR, innerH = H - padT - padB;
@@ -78,31 +88,134 @@ export function LineChart({ data, xLabels = [], color = TK.accent, max, yTicks =
   const area = line + ` L ${xOf(data.length - 1)} ${padT + innerH} L ${xOf(0)} ${padT + innerH} Z`;
   const gid = 'ac_' + String(color).replace(/[^a-z0-9]/gi, '');
   const ticks = Array.from({ length: yTicks + 1 }, (_, i) => (mx / yTicks) * i);
+
+  const onMove = (e) => {
+    if (!data.length) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    let idx = Math.round(((svgX - padL) / innerW) * (data.length - 1));
+    idx = Math.max(0, Math.min(data.length - 1, idx));
+    setHover(idx);
+  };
+  const hxPct = hover != null ? (xOf(hover) / W) * 100 : 0;
+  const hyPx = hover != null ? yOf(data[hover]) : 0;
+  const tipBelow = hyPx < 56;
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.16" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {ticks.map((tv, i) => (
-        <g key={i}>
-          <line x1={padL} y1={yOf(tv)} x2={W - padR} y2={yOf(tv)} stroke={TK.divider} strokeWidth="1" strokeDasharray={i === 0 ? '0' : '4 6'} />
-          <text x={padL - 10} y={yOf(tv) + 4} textAnchor="end" fontFamily={FK.mono} fontSize="13" fill={TK.textFaint}>{Math.round(tv)}{unit}</text>
-        </g>
-      ))}
-      {target != null && (
-        <line x1={padL} y1={yOf(target)} x2={W - padR} y2={yOf(target)} stroke={TK.accent} strokeWidth="1.5" strokeDasharray="6 5" opacity="0.55" />
+    <div style={{ position: 'relative', width: '100%' }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.16" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {ticks.map((tv, i) => (
+          <g key={i}>
+            <line x1={padL} y1={yOf(tv)} x2={W - padR} y2={yOf(tv)} stroke={TK.divider} strokeWidth="1" strokeDasharray={i === 0 ? '0' : '4 6'} />
+            <text x={padL - 10} y={yOf(tv) + 4} textAnchor="end" fontFamily={FK.mono} fontSize="13" fill={TK.textFaint}>{Math.round(tv)}{unit}</text>
+          </g>
+        ))}
+        {target != null && (
+          <line x1={padL} y1={yOf(target)} x2={W - padR} y2={yOf(target)} stroke={TK.accent} strokeWidth="1.5" strokeDasharray="6 5" opacity="0.55" />
+        )}
+        <path d={area} fill={`url(#${gid})`} />
+        <path d={line} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        {xLabels.map((lb, i) => {
+          const idx = Math.round((i / (xLabels.length - 1)) * (data.length - 1));
+          return <text key={i} x={xOf(idx)} y={H - 8} textAnchor={i === 0 ? 'start' : i === xLabels.length - 1 ? 'end' : 'middle'}
+            fontFamily={FK.mono} fontSize="13" fill={TK.textMute}>{lb}</text>;
+        })}
+      </svg>
+      {hover != null && (
+        <>
+          <div style={{ position: 'absolute', left: `${hxPct}%`, top: padT, height: innerH, width: 1, background: TK.borderSolid, transform: 'translateX(-0.5px)', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', left: `${hxPct}%`, top: hyPx, width: 11, height: 11, borderRadius: 99, background: color, border: `2px solid ${TK.surface}`, transform: 'translate(-50%,-50%)', boxShadow: '0 1px 3px rgba(0,0,0,.25)', pointerEvents: 'none' }} />
+          <div style={{ ...tipBox, position: 'absolute', left: `${hxPct}%`, top: tipBelow ? hyPx + 14 : hyPx - 14, transform: `translate(-50%, ${tipBelow ? '0' : '-100%'})` }}>
+            {pointLabels[hover] && <div style={{ fontFamily: FK.mono, fontSize: 10.5, color: TK.textFaint, marginBottom: 2 }}>{pointLabels[hover]}</div>}
+            <div style={{ fontFamily: FK.display, fontSize: 14, fontWeight: 800, color: TK.text }}>{seriesLabel ? `${seriesLabel}: ` : ''}{data[hover]}{unit}</div>
+          </div>
+        </>
       )}
-      <path d={area} fill={`url(#${gid})`} />
-      <path d={line} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-      {xLabels.map((lb, i) => {
-        const idx = Math.round((i / (xLabels.length - 1)) * (data.length - 1));
-        return <text key={i} x={xOf(idx)} y={H - 8} textAnchor={i === 0 ? 'start' : i === xLabels.length - 1 ? 'end' : 'middle'}
-          fontFamily={FK.mono} fontSize="13" fill={TK.textMute}>{lb}</text>;
-      })}
-    </svg>
+    </div>
+  );
+}
+
+/* ── multi-series line/area chart (with hover tooltip) ── */
+export function MultiLine({ series, xLabels = [], pointLabels = [], max, yTicks = 4, height = 300, unit = '' }) {
+  const [hover, setHover] = useState(null);
+  const W = 1000, H = height, padL = 40, padR = 18, padT = 18, padB = 30;
+  const n = series[0]?.data.length || 0;
+  const allMax = max != null ? max : Math.max(1, ...series.flatMap(s => s.data));
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const xOf = i => padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const yOf = v => padT + innerH - (v / allMax) * innerH;
+  const ticks = Array.from({ length: yTicks + 1 }, (_, i) => (allMax / yTicks) * i);
+
+  const onMove = (e) => {
+    if (!n) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    let idx = Math.round(((svgX - padL) / innerW) * (n - 1));
+    idx = Math.max(0, Math.min(n - 1, idx));
+    setHover(idx);
+  };
+  const hxPct = hover != null ? (xOf(hover) / W) * 100 : 0;
+  const ys = hover != null ? series.map(s => yOf(s.data[hover])) : [];
+  const topY = ys.length ? Math.min(...ys) : 0;
+  const botY = ys.length ? Math.max(...ys) : 0;
+  const tipBelow = topY < 84;
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }} preserveAspectRatio="none">
+        <defs>
+          {series.map((s, si) => (
+            <linearGradient key={si} id={`ml${si}${String(s.color).replace(/[^a-z0-9]/gi, '')}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={s.color} stopOpacity="0.14" /><stop offset="100%" stopColor={s.color} stopOpacity="0" />
+            </linearGradient>
+          ))}
+        </defs>
+        {ticks.map((tv, i) => (
+          <g key={i}>
+            <line x1={padL} y1={yOf(tv)} x2={W - padR} y2={yOf(tv)} stroke={TK.divider} strokeWidth="1" strokeDasharray={i === 0 ? '0' : '4 6'} />
+            <text x={padL - 10} y={yOf(tv) + 4} textAnchor="end" fontFamily={FK.mono} fontSize="13" fill={TK.textFaint}>{Math.round(tv)}{unit}</text>
+          </g>
+        ))}
+        {series.map((s, si) => {
+          const pts = s.data.map((v, i) => ({ x: xOf(i), y: yOf(v) }));
+          const line = smoothPath(pts);
+          const area = line + ` L ${xOf(n - 1)} ${padT + innerH} L ${xOf(0)} ${padT + innerH} Z`;
+          return (
+            <g key={si}>
+              <path d={area} fill={`url(#ml${si}${String(s.color).replace(/[^a-z0-9]/gi, '')})`} />
+              <path d={line} fill="none" stroke={s.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            </g>
+          );
+        })}
+        {xLabels.map((lb, i) => {
+          const idx = Math.round((i / (xLabels.length - 1)) * (n - 1));
+          return <text key={i} x={xOf(idx)} y={H - 8} textAnchor={i === 0 ? 'start' : i === xLabels.length - 1 ? 'end' : 'middle'} fontFamily={FK.mono} fontSize="13" fill={TK.textMute}>{lb}</text>;
+        })}
+      </svg>
+      {hover != null && (
+        <>
+          <div style={{ position: 'absolute', left: `${hxPct}%`, top: padT, height: innerH, width: 1, background: TK.borderSolid, transform: 'translateX(-0.5px)', pointerEvents: 'none' }} />
+          {series.map((s, si) => (
+            <div key={si} style={{ position: 'absolute', left: `${hxPct}%`, top: yOf(s.data[hover]), width: 10, height: 10, borderRadius: 99, background: s.color, border: `2px solid ${TK.surface}`, transform: 'translate(-50%,-50%)', boxShadow: '0 1px 3px rgba(0,0,0,.25)', pointerEvents: 'none' }} />
+          ))}
+          <div style={{ ...tipBox, position: 'absolute', left: `${hxPct}%`, top: tipBelow ? botY + 14 : topY - 14, transform: `translate(-50%, ${tipBelow ? '0' : '-100%'})` }}>
+            {pointLabels[hover] && <div style={{ fontFamily: FK.mono, fontSize: 10.5, color: TK.textFaint, marginBottom: 4 }}>{pointLabels[hover]}</div>}
+            {series.map((s, si) => (
+              <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 7, fontFamily: FK.body, fontSize: 12, color: TK.textSub }}>
+                <span style={{ width: 8, height: 8, borderRadius: 99, background: s.color, flexShrink: 0 }} />
+                {s.label ? `${s.label}: ` : ''}<b style={{ color: TK.text, fontFamily: FK.display }}>{s.data[hover]}{unit}</b>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -124,22 +237,33 @@ export function Donut({ pct = 83, size = 150, stroke = 22, color = TK.accent, tr
   );
 }
 
-/* ── vertical bar chart ── */
-export function BarChart({ data, height = 300, color = TK.accent }) {
+/* ── vertical bar chart (with hover tooltip) ── */
+export function BarChart({ data, height = 300, color = TK.accent, unit = '' }) {
+  const [hover, setHover] = useState(null);
   const max = Math.max(1, ...data.map(d => d.value));
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 18, height, padding: '10px 6px 0' }}>
-      {data.map((d, i) => (
-        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, height: '100%', justifyContent: 'flex-end', minWidth: 0 }}>
-          <span style={{ fontFamily: FK.display, fontSize: 14, fontWeight: 800, color: TK.text }}>{d.value > 0 ? (d.label2 || d.value) : ''}</span>
-          <div style={{
-            width: '72%', maxWidth: 70, height: `${Math.max(2, (d.value / max) * 100)}%`, borderRadius: '7px 7px 3px 3px',
-            background: d.value > 0 ? `linear-gradient(180deg, ${color}, color-mix(in srgb, ${color} 78%, #ffffff))` : TK.surface3,
-            boxShadow: d.value > 0 ? `0 2px 8px color-mix(in srgb, ${color} 26%, transparent)` : 'none', minHeight: 6,
-          }} />
-          <span style={{ fontFamily: FK.body, fontSize: 12, color: TK.textMute, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 90 }}>{d.label}</span>
+    <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 18, height, padding: '10px 6px 0' }}>
+        {data.map((d, i) => (
+          <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(h => (h === i ? null : h))}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, height: '100%', justifyContent: 'flex-end', minWidth: 0, cursor: 'default' }}>
+            <span style={{ fontFamily: FK.display, fontSize: 14, fontWeight: 800, color: TK.text }}>{d.value > 0 ? (d.label2 || d.value) : ''}</span>
+            <div style={{
+              width: '72%', maxWidth: 70, height: `${Math.max(2, (d.value / max) * 100)}%`, borderRadius: '7px 7px 3px 3px',
+              background: d.value > 0 ? `linear-gradient(180deg, ${color}, color-mix(in srgb, ${color} 78%, #ffffff))` : TK.surface3,
+              boxShadow: d.value > 0 ? `0 2px 8px color-mix(in srgb, ${color} 26%, transparent)` : 'none', minHeight: 6,
+              opacity: hover == null || hover === i ? 1 : 0.5, transition: 'opacity .15s',
+            }} />
+            <span style={{ fontFamily: FK.body, fontSize: 12, color: TK.textMute, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 90 }}>{d.label}</span>
+          </div>
+        ))}
+      </div>
+      {hover != null && (
+        <div style={{ ...tipBox, position: 'absolute', top: 0, left: `${((hover + 0.5) / data.length) * 100}%`, transform: 'translate(-50%, -4px)' }}>
+          <div style={{ fontFamily: FK.body, fontSize: 11, fontWeight: 700, color: TK.textSub, marginBottom: 2 }}>{data[hover].fullLabel || data[hover].label}</div>
+          <div style={{ fontFamily: FK.display, fontSize: 14, fontWeight: 800, color: TK.text }}>{data[hover].tipValue || `${data[hover].value}${unit}`}</div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -174,14 +298,26 @@ export function Funnel({ steps, color = TK.accent }) {
   );
 }
 
-/* ── lifecycle stacked bar ── */
+/* ── lifecycle stacked bar (with hover tooltip) ── */
 export function LifecycleBar({ segs, height = 34 }) {
+  const [hover, setHover] = useState(null);
   const total = segs.reduce((a, s) => a + s.value, 0) || 1;
+  const vis = segs.filter(s => s.value > 0);
   return (
-    <div style={{ display: 'flex', height, borderRadius: 10, overflow: 'hidden', gap: 3 }}>
-      {segs.filter(s => s.value > 0).map((s, i) => (
-        <div key={i} style={{ width: `${(s.value / total) * 100}%`, background: s.color, minWidth: 6 }} />
-      ))}
+    <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', height, borderRadius: 10, overflow: 'hidden', gap: 3 }}>
+        {vis.map((s, i) => (
+          <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(h => (h === i ? null : h))}
+            style={{ width: `${(s.value / total) * 100}%`, background: s.color, minWidth: 6, cursor: 'default', opacity: hover == null || hover === i ? 1 : 0.55, transition: 'opacity .15s' }} />
+        ))}
+      </div>
+      {hover != null && vis[hover] && (
+        <div style={{ ...tipBox, position: 'absolute', top: height + 8, left: '50%', transform: 'translateX(-50%)' }}>
+          <span style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textSub }}>
+            <span style={{ fontWeight: 700, color: TK.text }}>{vis[hover].label}</span>: {vis[hover].value}{vis[hover].pct != null ? ` (${vis[hover].pct}%)` : ''}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

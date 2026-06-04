@@ -2,33 +2,28 @@ import { useEffect, useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
-import { Flag, XCircle, CheckCircle, Eye } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
-import { AdminCard, AdminTable, FilterBar, Skeleton, ErrorCard, Avatar } from '../../../components/admin';
+import { Skeleton, ErrorCard } from '../../../components/admin';
 import {
-  postTypeBadge, relativeTime, getReportStatus, getContentTypeChip, getReasonLabel,
+  relativeTime, getReportStatus, getContentTypeChip, getReasonLabel,
 } from './moderationHelpers';
 import ReportDetailModal from './ReportDetailModal';
 import { fetchReports } from '../../../lib/admin/moderationQueries';
-import usePagedVisible from '../../../hooks/usePagedVisible';
-import PaginationFooter from '../../../components/admin/PaginationFooter';
+import {
+  TK, FK, Ico, Card, MIC, Av, FilterPills, TypeBadge, StatusDot, TH, IconBtn, Pager,
+  contentTypeVisual, reportStatusTone,
+} from './moderationKit';
+
+const COLS = '1.3fr 1fr 1.4fr 1fr 0.9fr auto';
+const PAGE_SIZE = 10;
 
 /**
- * "Reports" tab on AdminModeration — last 50 `content_reports` rows with
- * realtime updates (postgres_changes) so the inbox stays current
- * without a manual refresh.
- *
- * On `actioned` status:
- *   - activity → soft-delete the feed item
- *   - comment  → soft-delete the comment
- *   - message  → no auto-delete (DMs are encrypted; admin handles via Members)
- *   - profile  → no auto-delete (use Members admin for suspend/ban)
- *
- * The row-action buttons are inline on desktop. Clicking anywhere on a
- * row opens the ReportDetailModal which has the same actions plus
- * richer context for non-pending entries.
+ * "Reports" tab on AdminModeration — last 50 content_reports with realtime
+ * updates. Actioning a pending report soft-deletes the underlying content
+ * (activity / comment) and logs to admin_audit_log. Restyled onto
+ * moderationKit (desktop grid + mobile cards); the row opens ReportDetailModal.
  */
 export default function ReportsTab({ gymId }) {
   const queryClient = useQueryClient();
@@ -37,7 +32,8 @@ export default function ReportsTab({ gymId }) {
   const [filter, setFilter] = useState('all');
   const [acting, setActing] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
-  const pager = usePagedVisible({ initial: 10, step: 10 });
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [filter]);
 
   const { data: reports = [], isLoading, error, refetch } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'reports'],
@@ -45,8 +41,7 @@ export default function ReportsTab({ gymId }) {
     enabled: !!gymId,
   });
 
-  // Realtime: refetch the reports list whenever a new content_report lands or
-  // an existing one is reviewed. Without this, admin had to manually refresh.
+  // Realtime: refetch whenever a content_report lands or is reviewed.
   useEffect(() => {
     if (!gymId) return;
     const channel = supabase.channel(`mod-reports-${gymId}`)
@@ -66,16 +61,6 @@ export default function ReportsTab({ gymId }) {
       .eq('gym_id', gymId); // defense-in-depth: scope to this gym, not RLS alone
 
     // If actioned, soft-delete the underlying content based on its type.
-    // - activity : soft-delete the feed item (existing behavior).
-    // - comment  : soft-delete the comment row (matches StrataFeedCard pattern).
-    // - message  : NOT auto-deletable. `direct_messages` has no `is_deleted`
-    //              column today (see migration 0161). Admin must remove the
-    //              DM by blocking the user via Members admin, which severs
-    //              the conversation via RLS. Adding column is a multi-table
-    //              change (RLS + every SELECT + encryption layer) — defer.
-    // - profile  : NOT auto-deletable. Profile-level moderation should go
-    //              through Members admin (suspend / ban / remove) so the
-    //              admin can pick the right severity rather than auto-delete.
     if (newStatus === 'actioned') {
       const ct = report.content_type || 'activity';
       if (ct === 'activity' && report.feed_item_id) {
@@ -93,9 +78,7 @@ export default function ReportsTab({ gymId }) {
       // message / profile : no automatic delete.
     }
 
-    // Audit trail — fire-and-forget. Records who reviewed which report,
-    // the new status, the reason, and the underlying content type/id so
-    // moderation decisions are reviewable in the platform-level audit log.
+    // Audit trail — fire-and-forget.
     logAdminAction('moderation', 'content_report', report.id, {
       report_id: report.id,
       content_type: report.content_type || 'activity',
@@ -122,239 +105,138 @@ export default function ReportsTab({ gymId }) {
     return reports;
   }, [reports, filter]);
 
-  if (isLoading) return <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-[14px]" />)}</div>;
+  if (isLoading) return <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-[60px] rounded-[14px]" />)}</div>;
   if (error) return <ErrorCard message={t('admin.moderation.reportsFailed', { defaultValue: 'Failed to load reports' })} onRetry={refetch} />;
 
-  const filterOptions = [
-    { key: 'all',      label: t('admin.moderation.all', { defaultValue: 'All' }),      count: total },
-    { key: 'pending',  label: t('admin.moderation.pending', { defaultValue: 'Pending' }),  count: pending },
-    { key: 'resolved', label: t('admin.moderation.resolved', { defaultValue: 'Resolved' }), count: resolved },
+  const filterItems = [
+    { id: 'all',      label: t('admin.moderation.all', { defaultValue: 'All' }),      count: total },
+    { id: 'pending',  label: t('admin.moderation.pending', { defaultValue: 'Pending' }),  count: pending },
+    { id: 'resolved', label: t('admin.moderation.resolved', { defaultValue: 'Resolved' }), count: resolved },
   ];
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const visible = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  const goPrev = () => setPage(p => Math.max(0, p - 1));
+  const goNext = () => setPage(p => Math.min(pageCount - 1, p + 1));
 
-  const columns = [
-    {
-      key: 'reporter',
-      label: t('admin.moderation.reporter', { defaultValue: 'Reporter' }),
-      render: (row) => {
-        const profile = row.profiles;
-        return (
-          <div className="flex items-center gap-2.5">
-            <Avatar name={profile?.full_name} size="sm" variant="accent" />
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
-              <p className="text-[11px] text-[#6B7280]">@{profile?.username ?? '—'}</p>
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'reason',
-      label: t('admin.moderation.reason', { defaultValue: 'Reason' }),
-      render: (row) => {
-        const isAutoFlagged = typeof row.details === 'string' && row.details.startsWith('Auto-flagged by content filter:');
-        return (
-          <div className="flex items-center gap-1.5 max-w-[260px]">
-            <p className="text-[12px] text-[#E5E7EB] truncate">{getReasonLabel(row.reason, t)}</p>
-            {isAutoFlagged && (
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-amber-300 bg-amber-500/10 border border-amber-500/20 flex-shrink-0">
-                {t('admin.moderation.autoFlagged', { defaultValue: '🤖 Auto' })}
-              </span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      key: 'reported_post',
-      label: t('admin.moderation.reportedContent', { defaultValue: 'Reported Content' }),
-      headerClassName: 'hidden md:table-cell',
-      className: 'hidden md:table-cell text-[#E5E7EB]',
-      render: (row) => {
-        const ct = row.content_type || 'activity';
-        const typeChip = getContentTypeChip(ct, t);
-        const TypeIcon = typeChip.icon;
-        const feedItem = row.activity_feed_items;
-        const author = feedItem?.profiles
-          ?? row.reported_comment?.profiles
-          ?? row.reported_profile
-          ?? null;
-        return (
-          <div className="flex items-center gap-2 min-w-0">
-            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${typeChip.color}`}>
-              <TypeIcon size={10} />
-              {typeChip.label}
-            </span>
-            {author && (
-              <span className="text-[11px] text-[#9CA3AF] truncate">{author.full_name ?? `@${author.username ?? ''}`}</span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      key: 'status',
-      label: t('admin.moderation.status', { defaultValue: 'Status' }),
-      sortable: true,
-      render: (row) => {
-        const status = getReportStatus(row.status, t);
-        return (
-          <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-            <span className={`text-[11px] font-bold ${status.color.split(' ')[0]}`}>{status.label}</span>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'created_at',
-      label: t('admin.moderation.date', { defaultValue: 'Date' }),
-      sortable: true,
-      headerClassName: 'hidden md:table-cell',
-      className: 'hidden md:table-cell text-[#E5E7EB]',
-      sortValue: (row) => new Date(row.created_at).getTime(),
-      render: (row) => (
-        <span className="text-[12px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</span>
-      ),
-    },
-    {
-      key: 'actions',
-      label: '',
-      headerClassName: 'w-28 hidden md:table-cell',
-      className: 'hidden md:table-cell text-[#E5E7EB]',
-      render: (row) => {
-        const isPending = row.status === 'pending';
-        const busy = acting === row.id;
-        return isPending ? (
-          <div className="flex items-center gap-1">
-            <button
-              onClick={(e) => { e.stopPropagation(); handleUpdateStatus(row, 'actioned'); }}
-              disabled={busy}
-              title={t('admin.moderation.actionRemove', { defaultValue: 'Remove Content' })}
-              aria-label={t('admin.moderation.actionRemove', { defaultValue: 'Remove Content' })}
-              className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-40"
-            >
-              <XCircle size={15} />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); handleUpdateStatus(row, 'dismissed'); }}
-              disabled={busy}
-              title={t('admin.moderation.dismiss', { defaultValue: 'Dismiss' })}
-              aria-label={t('admin.moderation.dismiss', { defaultValue: 'Dismiss' })}
-              className="p-2 rounded-lg text-[#6B7280] hover:text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-40"
-            >
-              <CheckCircle size={15} />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={(e) => { e.stopPropagation(); setSelectedReport(row); }}
-            aria-label={t('admin.moderation.viewReport', { defaultValue: 'View report' })}
-            className="p-2 rounded-lg text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.04] transition-all"
-          >
-            <Eye size={15} />
-          </button>
-        );
-      },
-    },
-  ];
+  const isAuto = (row) => typeof row.details === 'string' && row.details.startsWith('Auto-flagged by content filter:');
+  const reportedAuthor = (row) =>
+    row.activity_feed_items?.profiles ?? row.reported_comment?.profiles ?? row.reported_profile ?? null;
+
+  const AutoPill = () => (
+    <span style={{ fontFamily: FK.body, fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 999, color: 'var(--color-warning-ink, var(--color-warning))', background: 'var(--color-warning-soft)', border: '1px solid color-mix(in srgb, var(--color-warning) 28%, transparent)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+      {t('admin.moderation.autoFlagged', { defaultValue: '🤖 Auto' })}
+    </span>
+  );
+
+  // Row action cell: pending → remove + dismiss; resolved → view.
+  const RowActions = ({ row, stop = false }) => {
+    const isPending = row.status === 'pending';
+    const busy = acting === row.id;
+    const wrap = (fn) => (e) => { if (stop) e.stopPropagation(); fn(); };
+    return isPending ? (
+      <div style={{ display: 'flex', gap: 7 }}>
+        <IconBtn icon={MIC.xCircle} iconColor="var(--color-danger)" disabled={busy} onClick={wrap(() => handleUpdateStatus(row, 'actioned'))} title={t('admin.moderation.actionRemove', { defaultValue: 'Remove Content' })} />
+        <IconBtn icon={MIC.check} iconColor="var(--color-success)" disabled={busy} onClick={wrap(() => handleUpdateStatus(row, 'dismissed'))} title={t('admin.moderation.dismiss', { defaultValue: 'Dismiss' })} />
+      </div>
+    ) : (
+      <IconBtn icon={MIC.eye} onClick={wrap(() => setSelectedReport(row))} title={t('admin.moderation.viewReport', { defaultValue: 'View report' })} />
+    );
+  };
+
+  const emptyState = (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 20px' }}>
+      <span style={{ width: 46, height: 46, borderRadius: 13, display: 'grid', placeItems: 'center', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+        <Ico ch={MIC.flag} size={21} color={TK.textFaint} stroke={1.7} />
+      </span>
+      <span style={{ fontFamily: FK.body, fontSize: 14, fontWeight: 600, color: TK.textSub }}>{t('admin.moderation.noReports', { defaultValue: 'No reports match this filter' })}</span>
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
-      <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
+    <div>
+      <FilterPills items={filterItems} active={filter} onPick={setFilter} />
 
-      {/* Desktop table */}
+      {/* Desktop grid table */}
       <div className="hidden md:block">
-        <AdminTable
-          columns={columns}
-          data={filtered.slice(0, pager.visibleCount)}
-          loading={false}
-          onRowClick={(row) => setSelectedReport(row)}
-          emptyState={
-            <div className="text-center py-12">
-              <Flag size={28} className="text-[#4B5563] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noReports', { defaultValue: 'No reports match this filter' })}</p>
-            </div>
-          }
-        />
+        <Card style={{ overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 16, padding: '15px 24px', background: TK.surface2 }}>
+            <TH>{t('admin.moderation.reporter', { defaultValue: 'Reporter' })}</TH>
+            <TH>{t('admin.moderation.reason', { defaultValue: 'Reason' })}</TH>
+            <TH>{t('admin.moderation.reportedContent', { defaultValue: 'Reported Content' })}</TH>
+            <TH>{t('admin.moderation.status', { defaultValue: 'Status' })}</TH>
+            <TH>{t('admin.moderation.date', { defaultValue: 'Date' })}</TH>
+            <span />
+          </div>
+          {filtered.length === 0 ? emptyState : visible.map((row) => {
+            const reporter = row.profiles;
+            const ct = row.content_type || 'activity';
+            const cv = contentTypeVisual(ct);
+            const author = reportedAuthor(row);
+            const st = getReportStatus(row.status, t);
+            const name = reporter?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' });
+            return (
+              <div
+                key={row.id}
+                onClick={() => setSelectedReport(row)}
+                style={{ display: 'grid', gridTemplateColumns: COLS, gap: 16, padding: '16px 24px', borderTop: `1px solid ${TK.divider}`, alignItems: 'center', cursor: 'pointer' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  <Av name={name} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                    <div style={{ fontFamily: FK.mono, fontSize: 12, color: TK.textFaint, whiteSpace: 'nowrap' }}>@{reporter?.username ?? '—'}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                  <span style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getReasonLabel(row.reason, t)}</span>
+                  {isAuto(row) && <AutoPill />}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <TypeBadge tone={cv.tone} icon={cv.icon} label={getContentTypeChip(ct, t).label} />
+                  {author && <span style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{author.full_name ?? `@${author.username ?? ''}`}</span>}
+                </div>
+                <StatusDot tone={reportStatusTone(row.status)} label={st.label} />
+                <span style={{ fontFamily: FK.mono, fontSize: 12.5, color: TK.textFaint, whiteSpace: 'nowrap' }}>{relativeTime(row.created_at, dateFnsOpts)}</span>
+                <span onClick={(e) => e.stopPropagation()}><RowActions row={row} stop /></span>
+              </div>
+            );
+          })}
+          {filtered.length > 0 && <Pager page={safePage} pageCount={pageCount} onPrev={goPrev} onNext={goNext} />}
+        </Card>
       </div>
 
       {/* Mobile card list */}
-      <div className="md:hidden space-y-2">
-        {filtered.length === 0 ? (
-          <AdminCard>
-            <div className="text-center py-10">
-              <Flag size={28} className="text-[#4B5563] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noReports', { defaultValue: 'No reports match this filter' })}</p>
-            </div>
-          </AdminCard>
-        ) : filtered.slice(0, pager.visibleCount).map(row => {
+      <div className="md:hidden flex flex-col gap-2.5">
+        {filtered.length === 0 ? <Card>{emptyState}</Card> : visible.map((row) => {
           const reporter = row.profiles;
           const ct = row.content_type || 'activity';
-          const typeChip = getContentTypeChip(ct, t);
-          const TypeIcon = typeChip.icon;
-          const feedItem = row.activity_feed_items;
-          const badge = postTypeBadge(feedItem?.type, t);
-          const status = getReportStatus(row.status, t);
-          const isPending = row.status === 'pending';
-          const busy = acting === row.id;
+          const cv = contentTypeVisual(ct);
+          const st = getReportStatus(row.status, t);
+          const name = reporter?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' });
           return (
-            <div
-              key={row.id}
-              onClick={() => setSelectedReport(row)}
-              className="admin-card p-3 cursor-pointer"
-            >
-              <div className="flex items-start gap-2.5 mb-2">
-                <Avatar name={reporter?.full_name} size="sm" variant="accent" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{reporter?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
-                  <p className="text-[11px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</p>
+            <Card key={row.id} style={{ padding: 14, cursor: 'pointer' }} onClick={() => setSelectedReport(row)}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+                <Av name={name} sm />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                  <div style={{ fontFamily: FK.mono, fontSize: 11.5, color: TK.textFaint }}>{relativeTime(row.created_at, dateFnsOpts)}</div>
                 </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-                  <span className={`text-[10.5px] font-bold ${status.color.split(' ')[0]}`}>{status.label}</span>
-                </div>
+                <StatusDot tone={reportStatusTone(row.status)} label={st.label} />
               </div>
-              <p className="text-[12px] text-[#E5E7EB] mb-2 line-clamp-2">{getReasonLabel(row.reason, t)}</p>
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${typeChip.color}`}>
-                  <TypeIcon size={10} />
-                  {typeChip.label}
-                </span>
-                {feedItem && (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${badge.color}`}>{badge.label}</span>
-                )}
-                {typeof row.details === 'string' && row.details.startsWith('Auto-flagged by content filter:') && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-300 bg-amber-500/10 border border-amber-500/20">
-                    {t('admin.moderation.autoFlagged', { defaultValue: '🤖 Auto-flagged' })}
-                  </span>
-                )}
+              <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textSub, margin: '0 0 10px' }}>{getReasonLabel(row.reason, t)}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: row.status === 'pending' ? 12 : 0 }}>
+                <TypeBadge tone={cv.tone} icon={cv.icon} label={getContentTypeChip(ct, t).label} />
+                {isAuto(row) && <AutoPill />}
               </div>
-              {isPending && (
-                <div className="flex items-center gap-1.5 mt-2">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleUpdateStatus(row, 'actioned'); }}
-                    disabled={busy}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11.5px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 disabled:opacity-40"
-                  >
-                    <XCircle size={13} />
-                    {t('admin.moderation.actionRemove', { defaultValue: 'Remove' })}
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleUpdateStatus(row, 'dismissed'); }}
-                    disabled={busy}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11.5px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 disabled:opacity-40"
-                  >
-                    <CheckCircle size={13} />
-                    {t('admin.moderation.dismiss', { defaultValue: 'Dismiss' })}
-                  </button>
-                </div>
+              {row.status === 'pending' && (
+                <div onClick={(e) => e.stopPropagation()}><RowActions row={row} stop /></div>
               )}
-            </div>
+            </Card>
           );
         })}
+        {filtered.length > 0 && <Pager page={safePage} pageCount={pageCount} onPrev={goPrev} onNext={goNext} style={{ borderTop: 'none', paddingTop: 4 }} />}
       </div>
-      <PaginationFooter pager={pager} total={filtered.length} />
 
       <ReportDetailModal
         report={selectedReport}

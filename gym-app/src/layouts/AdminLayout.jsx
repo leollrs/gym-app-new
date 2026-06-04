@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, FlaskConical, Award, Wrench, UserCog, Bell, Send, Printer, Tv,
+  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Palette, FlaskConical, Award, Wrench, UserCog, Bell, Send, Printer, Tv,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -81,7 +81,6 @@ const NAV_SECTIONS = [
 const ADVANCED_PAGES = [
   { to: '/admin/moderation',        labelKey: 'adminNav.moderation',       icon: ShieldAlert,   descKey: 'adminNav.advancedDesc.moderation' },
   { to: '/admin/audit-log',         labelKey: 'adminNav.auditLog',         icon: ClipboardList, descKey: 'adminNav.advancedDesc.auditLog' },
-  { to: '/admin/digest',            labelKey: 'adminNav.digest',           icon: Mail,          descKey: 'adminNav.advancedDesc.digest' },
   { to: '/admin/message-templates', labelKey: 'adminNav.messageTemplates', icon: MessageSquare, descKey: 'adminNav.advancedDesc.messageTemplates' },
 ];
 

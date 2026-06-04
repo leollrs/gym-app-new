@@ -6,31 +6,26 @@ import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { getAllPalettes } from '../../lib/palettes';
-import { PageHeader, AdminCard, FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
+import { FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
+import { TK, FK, TONE, Card } from './components/retosKit';
 import SettingsHubGrid from './components/SettingsHubGrid';
 
-// ── Status pill for live config summary ──
-function ConfigPill({ label, value, color }) {
+// ── Live-config summary chip (tone pill + dot) ──
+function SummaryChip({ label, value, tone = 'accent' }) {
+  const c = TONE[tone] || TONE.accent;
   return (
-    <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
-      style={{
-        backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`,
-        color,
-        border: `1px solid color-mix(in srgb, ${color} 25%, transparent)`,
-      }}
-    >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-      {label}: {value}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 999, background: c.bg, border: `1px solid ${c.line}` }}>
+      <span style={{ width: 7, height: 7, borderRadius: 99, background: c.fg, flexShrink: 0 }} />
+      <span style={{ fontFamily: FK.body, fontSize: 13, fontWeight: 700, color: c.ink }}>{label}: <b style={{ fontWeight: 800 }}>{value}</b></span>
     </span>
   );
 }
 
 /**
  * AdminSettings root: hub-only landing page. Each card in the
- * SettingsHubGrid below navigates to a dedicated sub-page that owns its
- * own data fetching + save mutation. This page only renders the live
- * config summary pills and the hub grid.
+ * SettingsHubGrid navigates to a dedicated sub-page that owns its own data
+ * fetching + save mutation. This page renders the live config summary chips
+ * and the hub grid (restyled onto retosKit per the "Configuración" design).
  */
 export default function AdminSettings() {
   const { profile, availableRoles } = useAuth();
@@ -40,7 +35,7 @@ export default function AdminSettings() {
 
   useEffect(() => { document.title = `${t('admin.settings.pageTitle', 'Admin - Settings')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
-  // Minimal query just for the live-config summary pills.
+  // Minimal query just for the live-config summary chips.
   const { data: summary, isLoading } = useQuery({
     queryKey: [...adminKeys.settings(gymId), 'summary'],
     queryFn: async () => {
@@ -87,39 +82,27 @@ export default function AdminSettings() {
 
   return (
     <AdminPageShell>
-      <PageHeader
-        title={t('admin.settings.title', 'Settings')}
-        subtitle={t('admin.settings.subtitle', 'Gym branding and configuration')}
-        className="mb-4"
-      />
+      {/* header */}
+      <div style={{ minWidth: 0 }}>
+        <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.settings.title', 'Settings')}</h1>
+        <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.settings.subtitle', 'Gym branding and configuration')}</div>
+      </div>
 
-      {/* ── Compact Live Config Summary ── */}
+      {/* current config summary */}
       <FadeIn delay={0}>
-        <AdminCard padding="p-3 px-4" className="mb-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="admin-eyebrow mr-1">
-              {t('admin.settings.liveConfigTitle', 'Current Live Config')}
-            </span>
-            <ConfigPill
-              label={t('admin.settings.gymName', 'Gym Name')}
-              value={name || '—'}
-              color="var(--color-accent)"
-            />
-            <ConfigPill
-              label={t('admin.settings.summaryPalette', 'Palette')}
-              value={paletteName}
-              color="var(--color-accent)"
-            />
-            <ConfigPill
-              label={t('admin.settings.summaryRegistration', 'Registration')}
-              value={regModeLabel}
-              color={registrationMode === 'invite_only' ? 'var(--color-warning)' : 'var(--color-success)'}
-            />
+        <Card style={{ padding: '16px 22px', marginTop: 22, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: FK.body, fontSize: 11.5, fontWeight: 800, letterSpacing: 1.3, textTransform: 'uppercase', color: TK.textFaint }}>
+            {t('admin.settings.liveConfigTitle', 'Current Live Config')}
+          </span>
+          <div style={{ display: 'flex', gap: 11, flexWrap: 'wrap' }}>
+            <SummaryChip label={t('admin.settings.gymName', 'Gym Name')} value={name || '—'} tone="accent" />
+            <SummaryChip label={t('admin.settings.summaryPalette', 'Palette')} value={paletteName} tone="accent" />
+            <SummaryChip label={t('admin.settings.summaryRegistration', 'Registration')} value={regModeLabel} tone={registrationMode === 'invite_only' ? 'warn' : 'good'} />
           </div>
-        </AdminCard>
+        </Card>
       </FadeIn>
 
-      {/* ── Hub: card grid that routes to each sub-page ── */}
+      {/* hub: card grid that routes to each sub-page */}
       <SettingsHubGrid />
     </AdminPageShell>
   );

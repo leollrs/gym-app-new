@@ -1,9 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend,
-} from 'recharts';
-import { Download, CalendarCheck, Dumbbell, Users, TrendingUp, Flame } from 'lucide-react';
+import { Fragment, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
@@ -13,27 +8,47 @@ import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { exportCSV } from '../../lib/csvExport';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import ChartTooltip from '../../components/ChartTooltip';
-import {
-  AdminPageShell,
-  PageHeader,
-  StatCard,
-  AdminCard,
-  FadeIn,
-  CardSkeleton,
-  ErrorCard,
-} from '../../components/admin';
+import { AdminPageShell, FadeIn, CardSkeleton, ErrorCard } from '../../components/admin';
+import { TK, FK, TONE, Ico, AICON, Card, MultiLine } from './components/analytics/analyticsKit';
 
 const DAY_KEYS = ['dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 'daySun'];
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 6); // 6am-8pm (15 hours)
 
-// Days are kept as strings so the existing useQuery key + parseInt usage works,
-// but each option carries `days` (number) for sync with InsightsRangeContext.
+// Days kept as strings so the existing query key + parseInt usage works; each
+// carries `days` (number) for sync with InsightsRangeContext.
 const PERIOD_OPTIONS = [
   { key: '7', label: '7d', days: 7 },
   { key: '30', label: '30d', days: 30 },
   { key: '90', label: '90d', days: 90 },
 ];
+
+const calCheck = <><rect x="3.5" y="5" width="17" height="16" rx="2" /><path d="M3.5 9.5h17M8 3v4M16 3v4M8.5 15l2 2 3.5-3.5" /></>;
+
+// KPI card with colored left rail + delta
+function AsStat({ value, label, deltaPct, vsLabel, icon, rail, tone }) {
+  const c = TONE[tone] || TONE.neutral;
+  const showDelta = deltaPct != null && deltaPct !== 0;
+  const up = deltaPct > 0;
+  return (
+    <Card style={{ position: 'relative', overflow: 'hidden', padding: '20px 22px' }}>
+      <span style={{ position: 'absolute', left: 0, top: 14, bottom: 14, width: 3.5, borderRadius: 99, background: rail }} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: FK.display, fontSize: 38, fontWeight: 800, letterSpacing: -1.3, lineHeight: 1, color: TK.text }}>{value}</div>
+          <div style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, marginTop: 9 }}>{label}</div>
+          {showDelta && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 9, fontFamily: FK.body, fontSize: 12, fontWeight: 700, color: up ? 'var(--color-success)' : 'var(--color-danger)' }}>
+              <span>{up ? '↑' : '↓'}</span>{Math.abs(deltaPct)}%{vsLabel && <span style={{ color: TK.textFaint, fontWeight: 600 }}>{vsLabel}</span>}
+            </div>
+          )}
+        </div>
+        <span style={{ width: 40, height: 40, borderRadius: 11, flexShrink: 0, display: 'grid', placeItems: 'center', background: c.bg, border: `1px solid ${c.line}` }}>
+          <Ico ch={icon} size={18} color={c.ink} stroke={2} />
+        </span>
+      </div>
+    </Card>
+  );
+}
 
 export default function AdminAttendance() {
   const { t, i18n } = useTranslation('pages');
@@ -41,9 +56,8 @@ export default function AdminAttendance() {
   const gymId = profile?.gym_id;
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
-  // Period is shared across Insights pages. Attendance has no "all time"
-  // option, so if context is null (NPS/Analytics picked "all") we fall
-  // back to 30d locally.
+  // Period shared across Insights pages. Attendance has no "all time" option,
+  // so if context is null (NPS/Analytics picked "all") fall back to 30d locally.
   const { periodDays: ctxPeriodDays, setPeriodDays } = useInsightsRange();
   const matchedOption = PERIOD_OPTIONS.find((o) => o.days === ctxPeriodDays) ?? PERIOD_OPTIONS.find((o) => o.key === '30');
   const period = matchedOption.key;
@@ -107,11 +121,7 @@ export default function AdminAttendance() {
         avgPerDay: (checkInList.length / days).toFixed(1),
       };
 
-      // Heatmap — strictly check-ins. Previous behavior silently fell back to
-      // workout sessions when there were no check-ins, but the heatmap label says
-      // "Peak Hours" and admins were seeing workout data presented as check-in
-      // data. If there are no check-ins, the heatmap stays empty (and the empty
-      // state in the UI surfaces that honestly).
+      // Heatmap — strictly check-ins (honest "Peak Hours"; empty if no check-ins).
       const heat = {};
       checkInList.forEach(c => {
         const d = new Date(c.checked_in_at);
@@ -121,30 +131,27 @@ export default function AdminAttendance() {
         heat[key] = (heat[key] || 0) + 1;
       });
 
-      // Compute deltas: compare second half of period to first half
+      // Deltas: 2nd half of period vs 1st half
       const midpoint = Math.floor(interval.length / 2);
       const firstHalfCheckins = dailyData.slice(0, midpoint).reduce((s, d) => s + d.checkins, 0);
       const secondHalfCheckins = dailyData.slice(midpoint).reduce((s, d) => s + d.checkins, 0);
       const firstHalfWorkouts = dailyData.slice(0, midpoint).reduce((s, d) => s + d.workouts, 0);
       const secondHalfWorkouts = dailyData.slice(midpoint).reduce((s, d) => s + d.workouts, 0);
-
       const calcDelta = (curr, prev) => {
         if (!prev) return curr > 0 ? 100 : 0;
         return Math.round(((curr - prev) / prev) * 100);
       };
-
       const deltas = {
         checkins: calcDelta(secondHalfCheckins, firstHalfCheckins),
         workouts: calcDelta(secondHalfWorkouts, firstHalfWorkouts),
       };
 
-      // Find peak hour
+      // Peak hour
       let peakKey = null;
       let peakVal = 0;
       Object.entries(heat).forEach(([key, val]) => {
         if (val > peakVal) { peakKey = key; peakVal = val; }
       });
-
       let peakSummary = null;
       if (peakKey) {
         const [dayIdx, hour] = peakKey.split('-').map(Number);
@@ -162,15 +169,6 @@ export default function AdminAttendance() {
   const deltas = data?.deltas ?? { checkins: 0, workouts: 0 };
   const peakSummary = data?.peakSummary ?? null;
 
-  const formatDelta = (val) => {
-    if (val === 0) return null;
-    const arrow = val > 0 ? '\u2191' : '\u2193';
-    // Delta is computed as 2nd half vs 1st half of the current period (data only
-    // covers the current window). Relabel so admins don't read it as "vs the
-    // previous period of the same length".
-    return `${arrow} ${Math.abs(val)}% ${t('admin.attendance.vsPrevHalf', '1st vs 2nd half of period')}`;
-  };
-
   const peakLabel = peakSummary
     ? (() => {
         const dayName = DAYS[peakSummary.dayIdx] || '';
@@ -180,21 +178,20 @@ export default function AdminAttendance() {
       })()
     : null;
 
-  // Heat intensity bucket (0..4)
+  // Heat intensity bucket (0..4) + accent ramp (theme + white-label safe)
   const heatBucket = (val) => {
     if (!val) return 0;
     const intensity = val / maxHeat;
     if (intensity > 0.75) return 4;
-    if (intensity > 0.5)  return 3;
+    if (intensity > 0.5) return 3;
     if (intensity > 0.25) return 2;
     return 1;
   };
-
   const heatBg = (bucket) => {
-    if (bucket === 0) return 'var(--color-admin-panel)';
-    if (bucket === 1) return 'color-mix(in srgb, var(--color-accent) 18%, transparent)';
-    if (bucket === 2) return 'color-mix(in srgb, var(--color-accent) 38%, transparent)';
-    if (bucket === 3) return 'color-mix(in srgb, var(--color-accent) 65%, transparent)';
+    if (bucket === 0) return TK.surface3;
+    if (bucket === 1) return 'color-mix(in srgb, var(--color-accent) 20%, transparent)';
+    if (bucket === 2) return 'color-mix(in srgb, var(--color-accent) 42%, transparent)';
+    if (bucket === 3) return 'color-mix(in srgb, var(--color-accent) 68%, transparent)';
     return 'var(--color-accent)';
   };
 
@@ -210,251 +207,141 @@ export default function AdminAttendance() {
     });
   };
 
+  // chart series + labels
+  const labelCount = Math.min(6, dailyData.length);
+  const xLabels = dailyData.length
+    ? Array.from({ length: labelCount }, (_, i) => {
+        const idx = labelCount === 1 ? 0 : Math.round((i / (labelCount - 1)) * (dailyData.length - 1));
+        return dailyData[idx]?.date;
+      })
+    : [];
+  const series = [
+    { data: dailyData.map(d => d.checkins), color: 'var(--color-coach)', label: t('admin.attendance.checkins', 'Check-ins') },
+    { data: dailyData.map(d => d.workouts), color: TK.accent, label: t('admin.attendance.workoutsLabel', 'Workouts') },
+  ];
+
   return (
     <AdminPageShell>
-      <PageHeader
-        title={t('admin.attendance.title', 'Attendance')}
-        subtitle={t('admin.attendance.subtitle', 'Check-ins and workout activity')}
-        actions={
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-colors min-h-[44px]"
-            style={{
-              border: '1px solid var(--color-admin-border)',
-              color: 'var(--color-admin-text-sub)',
-              background: 'var(--color-bg-card)',
-            }}
-            aria-label={t('admin.attendance.export', 'Export CSV')}
-          >
-            <Download size={13} />
-            {t('admin.attendance.export', 'Export')}
-          </button>
-        }
-      />
+      {/* header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.attendance.title', 'Attendance')}</h1>
+          <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.attendance.subtitle', 'Check-ins and workout activity')}</div>
+        </div>
+        <button type="button" onClick={handleExport} aria-label={t('admin.attendance.export', 'Export')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 17px', borderRadius: 999, cursor: 'pointer', background: TK.surface, border: `1px solid ${TK.borderSolid}`, boxShadow: TK.shadow, fontFamily: FK.body, fontSize: 13.5, fontWeight: 700, color: TK.textSub, whiteSpace: 'nowrap' }}>
+          <Ico ch={AICON.download} size={16} color={TK.accent} stroke={2.1} />{t('admin.attendance.export', 'Export')}
+        </button>
+      </div>
 
-      {/* Period filter row */}
-      <FadeIn>
-        <div className="mt-5 mb-5 flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1 md:mx-0 md:px-0 md:flex-wrap md:overflow-visible">
-          {PERIOD_OPTIONS.map(opt => (
-            <button
-              key={opt.key}
-              onClick={() => setPeriod(opt.key)}
-              className={`admin-pill flex-shrink-0 ${period === opt.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
-              style={{ cursor: 'pointer', minHeight: 44, padding: '0 16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-            >
+      {/* range pills */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 20 }}>
+        {PERIOD_OPTIONS.map(opt => {
+          const on = period === opt.key;
+          return (
+            <button key={opt.key} type="button" onClick={() => setPeriod(opt.key)}
+              style={{ padding: '9px 18px', borderRadius: 999, cursor: 'pointer', fontFamily: FK.body, fontSize: 13, fontWeight: on ? 700 : 600, color: on ? '#fff' : TK.textSub, background: on ? TK.accent : TK.surface, border: `1px solid ${on ? TK.accent : TK.borderSolid}`, whiteSpace: 'nowrap' }}>
               {t(`admin.attendance.periodLabel.${opt.key}`, opt.label)}
             </button>
-          ))}
-        </div>
-      </FadeIn>
+          );
+        })}
+      </div>
 
       {isLoading ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3">
-            {[0, 1, 2, 3].map(i => <CardSkeleton key={i} h="h-[90px]" />)}
+        <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-[14px] md:gap-[18px]">
+            {[0, 1, 2, 3].map(i => <CardSkeleton key={i} h="h-[120px]" />)}
           </div>
-          <CardSkeleton h="h-[260px]" />
-          <CardSkeleton h="h-[260px]" />
+          <CardSkeleton h="h-[300px]" />
+          <CardSkeleton h="h-[300px]" />
         </div>
       ) : isError ? (
-        <ErrorCard message={t('common:failedToLoadData')} onRetry={refetch} />
+        <div style={{ marginTop: 24 }}><ErrorCard message={t('common:failedToLoadData')} onRetry={refetch} /></div>
       ) : (
         <>
           {/* KPI row */}
-          <span className="admin-eyebrow block mb-2">
-            {t('admin.attendance.atAGlance', 'LAST ' + period + ' DAYS')}
-          </span>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-5">
-            <StatCard
-              label={t('admin.attendance.totalCheckins', 'Total Check-ins')}
-              value={summaryStats.totalCheckins}
-              sub={formatDelta(deltas.checkins)}
-              borderColor="var(--color-coach)"
-              icon={CalendarCheck}
-              delay={0}
-            />
-            <StatCard
-              label={t('admin.attendance.totalWorkouts', 'Total Workouts')}
-              value={summaryStats.totalWorkouts}
-              sub={formatDelta(deltas.workouts)}
-              borderColor="var(--color-accent)"
-              icon={Dumbbell}
-              delay={0.05}
-            />
-            <StatCard
-              label={t('admin.attendance.uniqueVisitors', 'Unique Visitors')}
-              value={summaryStats.uniqueVisitors}
-              borderColor="var(--color-success)"
-              icon={Users}
-              delay={0.1}
-            />
-            <StatCard
-              label={t('admin.attendance.avgPerDay', 'Avg Check-ins / Day')}
-              value={summaryStats.avgPerDay}
-              borderColor="var(--color-info)"
-              icon={Flame}
-              delay={0.15}
-            />
+          <div style={{ fontFamily: FK.body, fontSize: 11.5, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: TK.textFaint, margin: '26px 0 14px' }}>
+            {t('admin.attendance.atAGlance', 'At a glance')}
           </div>
-
-          {/* Daily activity trend chart */}
-          <FadeIn delay={0.1}>
-            <AdminCard hover padding="p-3 sm:p-4 md:p-5" className="mb-5">
-              <div className="flex items-start justify-between mb-4 gap-3">
-                <div>
-                  <h3 className="admin-page-title text-[17px] mb-1" style={{ letterSpacing: '-0.01em' }}>
-                    {t('admin.attendance.dailyActivity', 'Daily Activity')}
-                  </h3>
-                  <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>
-                    {t('admin.attendance.dailySubtitle', 'Check-ins and workouts over last {{period}} days', { period })}
-                  </p>
-                </div>
-                <TrendingUp size={16} style={{ color: 'var(--color-admin-text-muted)' }} />
-              </div>
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={dailyData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 4" stroke="var(--color-admin-border)" />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 10, fill: 'var(--color-admin-text-muted)' }}
-                    tickLine={false}
-                    axisLine={false}
-                    interval={Math.floor(dailyData.length / 6)}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: 'var(--color-admin-text-muted)' }}
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
-                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--color-accent)', strokeWidth: 1, strokeDasharray: '4 4' }} />
-                  <Legend
-                    iconType="circle"
-                    iconSize={8}
-                    wrapperStyle={{ fontSize: 11, color: 'var(--color-admin-text-muted)', paddingTop: 8 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="checkins"
-                    name={t('admin.attendance.checkins', 'Check-ins')}
-                    stroke="var(--color-coach)"
-                    strokeWidth={2.5}
-                    dot={false}
-                    activeDot={{ r: 5, strokeWidth: 2, fill: 'var(--color-coach)' }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="workouts"
-                    name={t('admin.attendance.workoutsLabel', 'Workouts')}
-                    stroke="var(--color-warning)"
-                    strokeWidth={2.5}
-                    dot={false}
-                    activeDot={{ r: 5, strokeWidth: 2, fill: 'var(--color-warning)' }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </AdminCard>
+          <FadeIn>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-[14px] md:gap-[18px]">
+              <AsStat value={summaryStats.totalCheckins} label={t('admin.attendance.totalCheckins', 'Total Check-ins')} deltaPct={deltas.checkins} vsLabel={t('admin.attendance.vsPrevHalf', '1st vs 2nd half of period')} icon={calCheck} rail="var(--color-coach)" tone="coach" />
+              <AsStat value={summaryStats.totalWorkouts} label={t('admin.attendance.totalWorkouts', 'Total Workouts')} deltaPct={deltas.workouts} vsLabel={t('admin.attendance.vsPrevHalf', '1st vs 2nd half of period')} icon={AICON.dumbbell} rail={TK.accent} tone="accent" />
+              <AsStat value={summaryStats.uniqueVisitors} label={t('admin.attendance.uniqueVisitors', 'Unique Visitors')} icon={AICON.users} rail="var(--color-danger)" tone="hot" />
+              <AsStat value={summaryStats.avgPerDay} label={t('admin.attendance.avgPerDay', 'Avg Check-ins / Day')} icon={AICON.flame} rail="var(--color-info)" tone="info" />
+            </div>
           </FadeIn>
 
-          {/* Peak hours heatmap */}
-          <FadeIn delay={0.2}>
-            <AdminCard hover padding="p-3 sm:p-4 md:p-5" className="overflow-x-auto">
-              <div className="flex items-start justify-between mb-3 gap-3">
-                <div>
-                  <h3 className="admin-page-title text-[17px] mb-1" style={{ letterSpacing: '-0.01em' }}>
-                    {t('admin.attendance.peakHours', 'Peak Hours')}
-                  </h3>
-                  <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>
-                    {t('admin.attendance.basedOn', 'Based on gym check-ins')}
-                  </p>
+          {/* Daily activity */}
+          <FadeIn delay={60}>
+            <Card style={{ padding: '22px 26px', marginTop: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: FK.display, fontSize: 19, fontWeight: 800, letterSpacing: -0.4, color: TK.text }}>{t('admin.attendance.dailyActivity', 'Daily Activity')}</div>
+                  <div style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, marginTop: 4 }}>{t('admin.attendance.dailySubtitle', 'Check-ins and workouts over last {{period}} days', { period })}</div>
                 </div>
+                <Ico ch={AICON.trend} size={18} color={TK.accent} stroke={2} />
               </div>
-              {/* Peak summary — elevated above the heatmap, accent-colored */}
-              {peakLabel && (
-                <div
-                  className="mb-4 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl"
-                  style={{
-                    background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
-                    border: '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)',
-                  }}
-                >
-                  <Flame size={16} style={{ color: 'var(--color-accent)' }} />
-                  <span
-                    className="text-[13px] font-bold tracking-tight"
-                    style={{ color: 'var(--color-accent)', fontFamily: 'Archivo, sans-serif' }}
-                  >
-                    {peakLabel}
+              <div style={{ marginTop: 14 }}>
+                <MultiLine series={series} xLabels={xLabels} pointLabels={dailyData.map(d => d.date)} height={300} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 22, marginTop: 6 }}>
+                {series.map((s, i) => (
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: FK.body, fontSize: 13, fontWeight: 600, color: TK.textSub }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 99, background: s.color }} />{s.label}
                   </span>
-                  <span className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>
-                    · {peakSummary.count} {t('admin.attendance.checkins', 'check-ins')}
-                  </span>
+                ))}
+              </div>
+            </Card>
+          </FadeIn>
+
+          {/* Peak hours */}
+          <FadeIn delay={120}>
+            <Card style={{ padding: '22px 26px', marginTop: 18, overflowX: 'auto' }}>
+              <div style={{ fontFamily: FK.display, fontSize: 19, fontWeight: 800, letterSpacing: -0.4, color: TK.text }}>{t('admin.attendance.peakHours', 'Peak Hours')}</div>
+              <div style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, marginTop: 4 }}>{t('admin.attendance.basedOn', 'Based on gym check-ins')}</div>
+
+              {peakLabel ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11, margin: '18px 0 22px', padding: '13px 18px', borderRadius: 13, background: TK.accentWash, border: `1px solid ${TK.accentLine}` }}>
+                  <Ico ch={AICON.flame} size={17} color={TK.accent} stroke={2.1} />
+                  <span style={{ fontFamily: FK.display, fontSize: 15, fontWeight: 800, color: TK.accentInk, letterSpacing: -0.2 }}>{peakLabel}</span>
+                  <span style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.accent }}>· {peakSummary.count} {t('admin.attendance.checkins', 'check-ins')}</span>
                 </div>
+              ) : (
+                <div style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, margin: '16px 0 18px' }}>{t('admin.attendance.noCheckins', 'No check-ins in this period yet.')}</div>
               )}
-              <div className="min-w-[520px] md:min-w-0">
-                <div
-                  className="grid gap-[3px]"
-                  style={{ gridTemplateColumns: `40px repeat(${HOURS.length}, 1fr)` }}
-                >
-                  <div />
+
+              <div style={{ minWidth: 520 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: `48px repeat(${HOURS.length}, 1fr)`, gap: 4, alignItems: 'center' }}>
+                  <span />
                   {HOURS.map(h => (
-                    <div
-                      key={`h-${h}`}
-                      className="text-center admin-mono"
-                      style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--color-admin-text-muted)' }}
-                    >
+                    <span key={`h-${h}`} style={{ fontFamily: FK.body, fontSize: 10.5, fontWeight: 600, color: TK.textMute, textAlign: 'center' }}>
                       {`${h > 12 ? h - 12 : h}${h >= 12 ? t('admin.attendance.pmShort', 'p') : t('admin.attendance.amShort', 'a')}`}
-                    </div>
+                    </span>
                   ))}
                   {DAYS.map((day, di) => (
                     <Fragment key={`row-${di}`}>
-                      <div
-                        className="flex items-center"
-                        style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-admin-text-muted)' }}
-                      >
-                        {day}
-                      </div>
+                      <span style={{ fontFamily: FK.body, fontSize: 12, fontWeight: 600, color: TK.textSub }}>{day}</span>
                       {HOURS.map(h => {
                         const val = heatmap[`${di}-${h}`] || 0;
                         const bucket = heatBucket(val);
                         return (
-                          <div
-                            key={`${di}-${h}`}
-                            title={`${day} ${h}:00 — ${val} ${t('admin.attendance.checkins', 'check-ins')}`}
-                            style={{
-                              height: 26,
-                              background: heatBg(bucket),
-                              borderRadius: 4,
-                              transition: 'background 0.15s',
-                            }}
-                          />
+                          <div key={`${di}-${h}`} title={`${day} ${h}:00 — ${val} ${t('admin.attendance.checkins', 'check-ins')}`}
+                            style={{ height: 28, borderRadius: 6, background: heatBg(bucket), border: `1px solid ${bucket > 0 ? 'transparent' : TK.divider}`, transition: 'background 0.15s' }} />
                         );
                       })}
                     </Fragment>
                   ))}
                 </div>
-
-                {/* Legend */}
-                <div
-                  className="flex items-center gap-1.5 mt-3 justify-end"
-                  style={{ fontSize: 10.5, color: 'var(--color-admin-text-muted)', fontWeight: 600 }}
-                >
-                  <span>{t('admin.attendance.less', 'Less')}</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+                  <span style={{ fontFamily: FK.body, fontSize: 12, color: TK.textFaint }}>{t('admin.attendance.less', 'Less')}</span>
                   {[0, 1, 2, 3, 4].map(b => (
-                    <span
-                      key={b}
-                      style={{
-                        width: 14,
-                        height: 14,
-                        borderRadius: 3,
-                        background: heatBg(b),
-                        display: 'inline-block',
-                      }}
-                    />
+                    <span key={b} style={{ width: 18, height: 18, borderRadius: 5, background: heatBg(b), border: `1px solid ${b > 0 ? 'transparent' : TK.divider}`, display: 'inline-block' }} />
                   ))}
-                  <span>{t('admin.attendance.more', 'More')}</span>
+                  <span style={{ fontFamily: FK.body, fontSize: 12, color: TK.textFaint }}>{t('admin.attendance.more', 'More')}</span>
                 </div>
               </div>
-            </AdminCard>
+            </Card>
           </FadeIn>
         </>
       )}

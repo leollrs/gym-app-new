@@ -79,7 +79,7 @@ function GrowthChart({ gymId, monthsBack }) {
       {growthData.length === 0 ? (
         <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, textAlign: 'center', padding: '40px 0' }}>{t('admin.analytics.growthEmpty', 'No member data yet')}</p>
       ) : (
-        <LineChart data={counts} xLabels={labels} color={TK.accent} height={230} />
+        <LineChart data={counts} xLabels={labels} pointLabels={growthData.map(d => d.month)} seriesLabel={t('admin.analytics.newMembers', 'New members')} color={TK.accent} height={230} />
       )}
     </ChartCard>
   );

@@ -1,0 +1,16 @@
+-- 0515 — Add 'nps_survey' to the notification_type enum
+--
+-- The admin "Send Survey" action (AdminNPS → sendSurvey) broadcasts a
+-- member-facing in-app + push notification of type 'nps_survey'
+-- ("How likely are you to recommend us? Take a quick survey"). That value was
+-- never added to the enum — only 'nps_response' exists (the admin-facing "a
+-- member responded", added in 0334). So the notifications insert rejected with:
+--
+--   22P02  invalid input value for enum notification_type: "nps_survey"
+--
+-- which surfaced to the admin as a failed survey send. Add the value so the
+-- broadcast (and its per-type push opt-out routing in send-push-user) works.
+--
+-- `ADD VALUE IF NOT EXISTS` is idempotent and safe to re-run. It must run
+-- outside an explicit transaction block (this standalone migration is fine).
+ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'nps_survey';
