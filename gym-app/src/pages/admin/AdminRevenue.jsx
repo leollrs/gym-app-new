@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useInsightsRange } from '../../contexts/InsightsRangeContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { AdminPageShell, FadeIn, CardSkeleton } from '../../components/admin';
+import AdminPagination from '../../components/admin/AdminPagination';
 import { TK, FK, TONE, Ico, Card, MultiLine, AICON } from './components/analytics/analyticsKit';
 
 // ── Constants ──────────────────────────────────────────────
@@ -61,19 +62,6 @@ const CardLabel = ({ icon, children }) => (
     <span style={{ fontFamily: FK.body, fontSize: 12, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: TK.textSub }}>{children}</span>
   </div>
 );
-
-// compact prev/next pager
-function Pager({ page, pageCount, onPage }) {
-  if (pageCount <= 1) return null;
-  const btn = (disabled) => ({ width: 34, height: 34, borderRadius: 9, display: 'grid', placeItems: 'center', cursor: disabled ? 'default' : 'pointer', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, opacity: disabled ? 0.4 : 1 });
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 16 }}>
-      <button type="button" disabled={page <= 0} onClick={() => onPage(page - 1)} style={btn(page <= 0)} aria-label="Previous"><Ico ch={AICON.chevL} size={16} color={TK.textSub} stroke={2.2} /></button>
-      <span style={{ fontFamily: FK.mono, fontSize: 12.5, fontWeight: 700, color: TK.textMute }}>{page + 1} / {pageCount}</span>
-      <button type="button" disabled={page >= pageCount - 1} onClick={() => onPage(page + 1)} style={btn(page >= pageCount - 1)} aria-label="Next"><Ico ch={AICON.chevR} size={16} color={TK.textSub} stroke={2.2} /></button>
-    </div>
-  );
-}
 
 // horizontal category bars
 function CategoryBars({ data, unit }) {
@@ -502,7 +490,7 @@ export default function AdminRevenue() {
                         <StampCard key={card.id} name={card.name} perCard={card.punchCardSize} total={card.totalStamps} completed={card.completions} progress={card.inProgress} rate={card.completionRate} t={t} />
                       ))}
                     </div>
-                    <Pager page={sp} pageCount={stampPageCount} onPage={setStampPage} />
+                    <AdminPagination page={sp + 1} pageSize={3} total={punchCardData.length} onPageChange={(n) => setStampPage(n - 1)} />
                   </>
                 )}
               </Card>

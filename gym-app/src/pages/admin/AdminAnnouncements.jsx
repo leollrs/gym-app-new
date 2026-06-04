@@ -403,9 +403,9 @@ export default function AdminAnnouncements() {
         subtitle={t('admin.announcements.subtitle', 'Messages broadcast to all members')}
         actions={
           <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 font-bold text-[13px] md:text-[14px] rounded-xl transition-colors whitespace-nowrap flex-shrink-0 hover:brightness-[1.04]"
-            style={{ background: 'var(--color-accent)', color: '#fff', boxShadow: '0 2px 8px color-mix(in srgb, var(--color-accent) 35%, transparent)' }}>
-            <Plus size={15} /> {t('admin.announcements.newAnnouncement', 'New Announcement')}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04] whitespace-nowrap flex-shrink-0"
+            style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}>
+            <Plus size={16} strokeWidth={2.6} /> {t('admin.announcements.newAnnouncement', 'New Announcement')}
           </button>
         }
         className="mb-6"
@@ -444,10 +444,10 @@ export default function AdminAnnouncements() {
             </div>
             <button
               onClick={() => setShowCreate(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] text-[13px] font-bold transition-colors"
-              style={{ color: 'var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 22%, transparent)' }}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04]"
+              style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}
             >
-              <Plus size={14} /> {t('admin.announcements.createFirst', 'Create your first announcement')}
+              <Plus size={16} strokeWidth={2.6} /> {t('admin.announcements.createFirst', 'Create your first announcement')}
             </button>
           </div>
         </AdminCard>

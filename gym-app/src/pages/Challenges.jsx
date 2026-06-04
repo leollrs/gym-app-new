@@ -1966,6 +1966,25 @@ export default function Challenges({ embedded = false }) {
     load();
   }, [profile?.gym_id, user?.id]);
 
+  // Deep-link focus: /challenges?challenge=<id> (e.g. scanned from the gym TV
+  // "Join now" QR) jumps to the tab that holds that challenge and scrolls it
+  // into view, so the member lands right on it to join instead of on the
+  // generic list.
+  const deepLinkDone = useRef(false);
+  useEffect(() => {
+    if (loading || deepLinkDone.current || !challenges.length) return;
+    let cid = null;
+    try { cid = new URLSearchParams(window.location.search).get('challenge'); } catch { /* noop */ }
+    if (!cid) return;
+    const target = challenges.find((c) => c.id === cid);
+    if (!target) return;
+    deepLinkDone.current = true;
+    setTab(statusOf(target));
+    setTimeout(() => {
+      try { document.getElementById(`ch-${cid}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch { /* noop */ }
+    }, 300);
+  }, [loading, challenges]);
+
   // Check if the user has already earned challenge_joined points for a specific challenge.
   // This prevents the farming exploit: join → leave → rejoin → repeat for unlimited points.
   const hasEarnedChallengeJoinPoints = async (challengeId) => {
@@ -2141,16 +2160,18 @@ export default function Challenges({ embedded = false }) {
                 <div key={tabKey}>
                   {/* Featured hero for first live challenge */}
                   {isLive && featuredChallenge && (
-                    <FeaturedHeroCard
-                      challenge={featuredChallenge}
-                      gymId={profile.gym_id}
-                      myId={user.id}
-                      joined={myJoinedIds.has(featuredChallenge.id)}
-                      participantCount={countMap[featuredChallenge.id] ?? 0}
-                      onJoin={handleJoin}
-                      onLeave={handleLeave}
-                      t={t}
-                    />
+                    <div id={`ch-${featuredChallenge.id}`}>
+                      <FeaturedHeroCard
+                        challenge={featuredChallenge}
+                        gymId={profile.gym_id}
+                        myId={user.id}
+                        joined={myJoinedIds.has(featuredChallenge.id)}
+                        participantCount={countMap[featuredChallenge.id] ?? 0}
+                        onJoin={handleJoin}
+                        onLeave={handleLeave}
+                        t={t}
+                      />
+                    </div>
                   )}
 
                   {/* Section header for active challenges */}
@@ -2179,33 +2200,35 @@ export default function Challenges({ embedded = false }) {
                       {isDiscover ? (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
                           {items.map(c => (
-                            <DiscoverCard
-                              key={c.id}
-                              challenge={c}
-                              gymId={profile.gym_id}
-                              myId={user.id}
-                              joined={myJoinedIds.has(c.id)}
-                              participantCount={countMap[c.id] ?? 0}
-                              onJoin={handleJoin}
-                              onLeave={handleLeave}
-                              t={t}
-                            />
+                            <div key={c.id} id={`ch-${c.id}`}>
+                              <DiscoverCard
+                                challenge={c}
+                                gymId={profile.gym_id}
+                                myId={user.id}
+                                joined={myJoinedIds.has(c.id)}
+                                participantCount={countMap[c.id] ?? 0}
+                                onJoin={handleJoin}
+                                onLeave={handleLeave}
+                                t={t}
+                              />
+                            </div>
                           ))}
                         </div>
                       ) : (
                         <div className="space-y-3">
                           {items.map(c => (
-                            <ChallengeCard
-                              key={c.id}
-                              challenge={c}
-                              gymId={profile.gym_id}
-                              myId={user.id}
-                              joined={myJoinedIds.has(c.id)}
-                              participantCount={countMap[c.id] ?? 0}
-                              onJoin={handleJoin}
-                              onLeave={handleLeave}
-                              t={t}
-                            />
+                            <div key={c.id} id={`ch-${c.id}`}>
+                              <ChallengeCard
+                                challenge={c}
+                                gymId={profile.gym_id}
+                                myId={user.id}
+                                joined={myJoinedIds.has(c.id)}
+                                participantCount={countMap[c.id] ?? 0}
+                                onJoin={handleJoin}
+                                onLeave={handleLeave}
+                                t={t}
+                              />
+                            </div>
                           ))}
                         </div>
                       )}

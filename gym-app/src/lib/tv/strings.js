@@ -62,6 +62,9 @@ const STRINGS = {
     period_30: 'LAST 30 DAYS',
     period_alltime: 'ALL TIME',
     period_month: 'THIS MONTH',
+    period_today: 'TODAY',
+    period_week: 'LAST 7 DAYS',
+    period_90: 'LAST 90 DAYS',
     // Units
     unit_lbs: 'LBS',
     unit_sessions: 'SESSIONS',
@@ -140,6 +143,9 @@ const STRINGS = {
     period_30: 'ÚLTIMOS 30 DÍAS',
     period_alltime: 'TODO EL TIEMPO',
     period_month: 'ESTE MES',
+    period_today: 'HOY',
+    period_week: 'ÚLTIMOS 7 DÍAS',
+    period_90: 'ÚLTIMOS 90 DÍAS',
     unit_lbs: 'LBS',
     unit_sessions: 'SESIONES',
     unit_visits: 'VISITAS',
@@ -195,4 +201,18 @@ export function getMetricSlides(lang) {
     { key: 'consistency', label: s.metric_consistency.toUpperCase(), unit: s.unit_percent,  period: s.period_month },
     { key: 'checkins',    label: s.metric_checkins.toUpperCase(),    unit: s.unit_visits,   period: s.period_30 },
   ];
+}
+
+// Headline label for the gym-chosen leaderboard window (Volume/Workouts/Check-ins).
+// `month` reuses the existing "LAST 30 DAYS" string (the window is 30d rolling).
+export function tvPeriodLabel(lang, periodKey) {
+  const s = getTvStrings(lang);
+  switch (periodKey) {
+    case 'today': return s.period_today;
+    case 'week':  return s.period_week;
+    case '90d':   return s.period_90;
+    case 'all':   return s.period_alltime;
+    case 'month':
+    default:      return s.period_30;
+  }
 }

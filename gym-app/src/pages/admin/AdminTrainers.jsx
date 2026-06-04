@@ -427,9 +427,9 @@ export default function AdminTrainers() {
         <Download size={13} /> {t('admin.trainers.export')}
       </button>
       <button onClick={() => setShowAddTrainer(true)}
-        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-colors whitespace-nowrap"
-        style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}>
-        <Plus size={13} /> {t('admin.trainers.addTrainer')}
+        className="flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04]"
+        style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}>
+        <Plus size={16} strokeWidth={2.6} /> {t('admin.trainers.addTrainer')}
       </button>
     </>
   );
@@ -767,9 +767,9 @@ export default function AdminTrainers() {
               <p className="text-[14px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>{t('admin.trainers.emptyTitle')}</p>
               <p className="text-[12.5px] mt-1" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.trainers.emptyDesc')}</p>
               <button onClick={() => setShowAddTrainer(true)}
-                className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold transition-colors whitespace-nowrap"
-                style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}>
-                <Plus size={13} /> {t('admin.trainers.addTrainer')}
+                className="mt-4 inline-flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04]"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}>
+                <Plus size={16} strokeWidth={2.6} /> {t('admin.trainers.addTrainer')}
               </button>
             </AdminCard>
           ) : (

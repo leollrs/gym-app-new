@@ -5,7 +5,7 @@ import {
   AlertTriangle, Search, Phone, Filter, Users, Clock, RotateCcw,
   CheckCircle, MessageSquare, Download, Square, CheckSquare, Send,
   UserPlus, X, Sparkles, FlaskConical, Trophy, StopCircle, Plus, ChevronDown, MoreHorizontal, Trash2,
-  RefreshCw, Target, Activity, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus,
+  RefreshCw, Target, Activity, TrendingUp, TrendingDown, Minus,
 } from 'lucide-react';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale';
@@ -23,6 +23,7 @@ import posthog from 'posthog-js';
 
 // Shared components
 import { PageHeader, Avatar, FilterBar, StatCard, SkeletonRow, AdminTable, AdminPageShell, AdminTabs, AdminModal } from '../../components/admin';
+import AdminPagination from '../../components/admin/AdminPagination';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import { ScoreBar, RiskBadge } from '../../components/admin/StatusBadge';
 
@@ -134,17 +135,6 @@ const CHURN_SORT_VALUES = {
   churnScore: (m) => m.churnScore ?? 0,
   daysInactive: (m) => ((m.daysSinceLastCheckIn ?? m.daysSinceLastActivity) ?? 9999),
 };
-function getChurnPageWindow(current, total) {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const out = [1];
-  const lo = Math.max(2, current - 1);
-  const hi = Math.min(total - 1, current + 1);
-  if (lo > 2) out.push('…');
-  for (let p = lo; p <= hi; p++) out.push(p);
-  if (hi < total - 1) out.push('…');
-  out.push(total);
-  return out;
-}
 
 export default function AdminChurn() {
   const { profile, availableRoles } = useAuth();
@@ -168,7 +158,7 @@ export default function AdminChurn() {
   const [winBackModal, setWinBackModal] = useState(null);
   const [contactPanel, setContactPanel] = useState(null);
   const [savingOutcome, setSavingOutcome] = useState(null);
-  const [winBackVisible, setWinBackVisible] = useState(10);
+  const [winBackPage, setWinBackPage] = useState(1);
   const [deletingAttempt, setDeletingAttempt] = useState(null);
   // Win-back attempts modal: shows the full history for one member.
   const [attemptsModalUserId, setAttemptsModalUserId] = useState(null);
@@ -189,7 +179,6 @@ export default function AdminChurn() {
 
   const [selectedMember, setSelectedMember] = useState(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
-  const [mobileVisibleCount, setMobileVisibleCount] = useState(10);
 
   // Lock body scroll while the mobile member-detail sheet is open
   useEffect(() => {
@@ -366,8 +355,9 @@ export default function AdminChurn() {
   const churnSafePage = Math.min(churnPage, churnTotalPages);
   const churnPageStart = (churnSafePage - 1) * CHURN_PAGE_SIZE;
   const churnPageItems = sortedAtRisk.slice(churnPageStart, churnPageStart + CHURN_PAGE_SIZE);
-  const churnPageWindow = useMemo(() => getChurnPageWindow(churnSafePage, churnTotalPages), [churnSafePage, churnTotalPages]);
   useEffect(() => { setChurnPage(1); }, [riskFilter, search, tab, tableSort]);
+  // Reset the win-back list to page 1 when switching tabs (its only "filter").
+  useEffect(() => { setWinBackPage(1); }, [tab]);
 
   // "Churned"/"Lost" = v3 churned state (60d+ dark). Dormant members (30–60d) stay
   // in the actionable at-risk queue per the ghost-threshold refinement.
@@ -964,30 +954,7 @@ export default function AdminChurn() {
               <div className="hidden md:flex gap-4 items-start">
                 <div className="w-full lg:w-[60%] lg:flex-shrink-0">
                   <AdminTable columns={atRiskTableColumns} data={churnPageItems} sort={tableSort} onSortChange={handleTableSort} onRowClick={(m) => setSelectedMember(m)} activeRowId={selectedMember?.id} fixedLayout />
-                  {sortedAtRisk.length > CHURN_PAGE_SIZE && (
-                    <div className="flex items-center justify-between gap-3 flex-wrap mt-3 px-1">
-                      <span style={{ fontSize: 11.5, color: 'var(--color-admin-text-muted)' }}>
-                        {t('admin.churn.showingRange', { start: churnPageStart + 1, end: churnPageStart + churnPageItems.length, total: sortedAtRisk.length, defaultValue: '{{start}}–{{end}} of {{total}}' })}
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <button type="button" onClick={() => setChurnPage(p => Math.max(1, p - 1))} disabled={churnSafePage <= 1} aria-label={t('admin.churn.prevPage', 'Previous')} className="grid place-items-center disabled:opacity-40 disabled:cursor-not-allowed" style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-sub)' }}>
-                          <ChevronLeft size={15} />
-                        </button>
-                        {churnPageWindow.map((p, i) => (
-                          p === '…' ? (
-                            <span key={`e${i}`} style={{ fontSize: 12, color: 'var(--color-admin-text-faint)', padding: '0 2px' }}>…</span>
-                          ) : (
-                            <button key={p} type="button" onClick={() => setChurnPage(p)} className="grid place-items-center admin-mono" style={{ minWidth: 30, height: 30, borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: p === churnSafePage ? 'var(--color-admin-text)' : 'var(--color-admin-panel)', color: p === churnSafePage ? '#fff' : 'var(--color-admin-text-sub)', border: `1px solid ${p === churnSafePage ? 'transparent' : 'var(--color-admin-border)'}` }}>
-                              {p}
-                            </button>
-                          )
-                        ))}
-                        <button type="button" onClick={() => setChurnPage(p => Math.min(churnTotalPages, p + 1))} disabled={churnSafePage >= churnTotalPages} aria-label={t('admin.churn.nextPage', 'Next')} className="grid place-items-center disabled:opacity-40 disabled:cursor-not-allowed" style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-sub)' }}>
-                          <ChevronRight size={15} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <AdminPagination page={churnSafePage} pageSize={CHURN_PAGE_SIZE} total={sortedAtRisk.length} onPageChange={setChurnPage} />
                 </div>
                 <div className="hidden lg:block flex-1 min-w-0 sticky top-4">
                   <div className="w-full bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
@@ -1008,7 +975,7 @@ export default function AdminChurn() {
               </div>
               {/* Mobile card list */}
               <div className="md:hidden space-y-2">
-                {atRiskMembers.slice(0, mobileVisibleCount).map(m => {
+                {churnPageItems.map(m => {
                   const isContacted = contactedIds.has(m.id);
                   const mContactCount = contactCountMap[m.id] || 0;
                   const isSelected = selectedIds.has(m.id);
@@ -1083,12 +1050,9 @@ export default function AdminChurn() {
                   );
                 })}
               </div>
-              {atRiskMembers.length > mobileVisibleCount && (
-                <button onClick={() => setMobileVisibleCount(c => c + 10)}
-                  className="md:hidden w-full mt-3 py-3 rounded-xl text-[13px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 border border-[#D4AF37]/20 hover:bg-[#D4AF37]/15 transition-colors">
-                  {t('admin.churn.loadMore', 'Load more')} ({atRiskMembers.length - mobileVisibleCount} {t('admin.churn.remaining', 'remaining')})
-                </button>
-              )}
+              <div className="md:hidden">
+                <AdminPagination page={churnSafePage} pageSize={CHURN_PAGE_SIZE} total={sortedAtRisk.length} onPageChange={setChurnPage} />
+              </div>
             </div>
           )}
         </div>
@@ -1198,6 +1162,12 @@ export default function AdminChurn() {
               })
               .sort((a, b) => new Date(b.last.created_at) - new Date(a.last.created_at));
 
+            // Page the grouped win-back rows (replaces the old "show more" reveal).
+            const WINBACK_PAGE_SIZE = 10;
+            const winBackTotalPages = Math.max(1, Math.ceil(groupedRows.length / WINBACK_PAGE_SIZE));
+            const winBackSafePage = Math.min(winBackPage, winBackTotalPages);
+            const winBackRows = groupedRows.slice((winBackSafePage - 1) * WINBACK_PAGE_SIZE, (winBackSafePage - 1) * WINBACK_PAGE_SIZE + WINBACK_PAGE_SIZE);
+
             return (
               <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
                 <div className="grid grid-cols-[1fr_auto] items-center gap-2 md:gap-4 px-4 py-2.5 border-b border-white/6">
@@ -1209,7 +1179,7 @@ export default function AdminChurn() {
                   </p>
                 </div>
                 <div className="divide-y divide-white/4">
-                  {groupedRows.slice(0, winBackVisible).map(row => {
+                  {winBackRows.map(row => {
                     const m = members.find(mem => mem.id === row.userId);
                     const memberName = m?.full_name ?? t('admin.churn.unknownMember', 'Unknown Member');
                     const lastOutcome = row.last.outcome || 'pending';
@@ -1255,14 +1225,13 @@ export default function AdminChurn() {
                     );
                   })}
                 </div>
-                {groupedRows.length > winBackVisible && (
-                  <button onClick={() => setWinBackVisible(v => v + 10)}
-                    className="w-full py-3 text-[12px] font-semibold transition-colors" style={{ color: 'var(--color-accent)', borderTop: '1px solid var(--color-border-subtle)' }}>
-                    {t('admin.churn.showMore', 'Show more')} ({groupedRows.length - winBackVisible} {t('admin.churn.remaining', 'remaining')})
-                  </button>
+                {winBackTotalPages > 1 && (
+                  <div className="px-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                    <AdminPagination page={winBackSafePage} pageSize={WINBACK_PAGE_SIZE} total={groupedRows.length} onPageChange={setWinBackPage} />
+                  </div>
                 )}
                 <p className="text-[11px] text-center py-2" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border-subtle)' }}>
-                  {Math.min(winBackVisible, groupedRows.length)} / {groupedRows.length} {t('admin.churn.members', 'members')}
+                  {groupedRows.length} {t('admin.churn.members', 'members')}
                   {' · '}
                   {winBackAttempts.length} {t('admin.churn.totalAttempts', 'total attempts')}
                 </p>

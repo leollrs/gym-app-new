@@ -119,12 +119,13 @@ const linkClass = (active) =>
   }`;
 
 export default function AdminLayout({ children }) {
-  const { profile, gymName, gymLogoUrl, signOut, gymConfig, availableRoles } = useAuth();
+  const { profile, gymName, gymLogoUrl, signOut, gymConfig, availableRoles, unreadAdminNotifs } = useAuth();
   const { t } = useTranslation('common');
   const navigate = useNavigate();
   const location = useLocation();
   const [highRiskCount, setHighRiskCount] = useState(0);
-  const [unreadAdminNotifs, setUnreadAdminNotifs] = useState(0);
+  // unreadAdminNotifs now comes from AuthContext (shared with the notifications
+  // page so mark-read / dismiss update the badge instantly + one realtime sub).
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef(null);
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
@@ -275,34 +276,6 @@ export default function AdminLayout({ children }) {
     };
     fetchHighRisk();
   }, [profile?.gym_id]);
-
-  // Unread admin-audience notifications (live).
-  useEffect(() => {
-    if (!profile?.id) return;
-    const isSuperAdmin = profile.role === 'super_admin' || (profile.additional_roles || []).includes('super_admin');
-    const audValues = isSuperAdmin ? ['admin', 'super_admin'] : ['admin'];
-    const refreshUnread = () => {
-      supabase
-        .from('notifications')
-        .select('id', { count: 'exact', head: true })
-        .eq('profile_id', profile.id)
-        .in('audience', audValues)
-        .is('read_at', null)
-        .is('dismissed_at', null)
-        .then(({ count }) => setUnreadAdminNotifs(count || 0));
-    };
-    refreshUnread();
-    const ch = supabase
-      .channel(`admin-notifs-${profile.id}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'notifications',
-        filter: `profile_id=eq.${profile.id}`,
-      }, refreshUnread)
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [profile?.id, profile?.role]);
 
   const handleSignOut = async () => {
     await signOut();

@@ -2,7 +2,8 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
 import { derivePalette, TV_METRIC_DEFS } from '../lib/tv/palette';
-import { getTvStrings, getMetricSlides } from '../lib/tv/strings';
+import { getTvStrings, getMetricSlides, tvPeriodLabel } from '../lib/tv/strings';
+import { PROD_WEB_URL } from '../lib/appUrls';
 import TVStyleStadium from '../components/tv/TVStyleStadium';
 import TVStyleBrutal from '../components/tv/TVStyleBrutal';
 import TVStyleBoricua from '../components/tv/TVStyleBoricua';
@@ -230,12 +231,17 @@ export default function TVDisplay() {
   //   - challenges: challenge slides only (empty state = no active challenges)
   const slides = useMemo(() => {
     if (!dashboardData) return [];
+    // The gym-chosen window applies to the count-based boards only; the other
+    // three keep their intrinsic labels (PRs = all-time, Improved/Consistency
+    // = this month). Mirrors the period applied server-side in 0518.
+    const windowedLabel = tvPeriodLabel(lang, dashboardData.tv_period || 'month');
+    const WINDOWED = new Set(['volume', 'workouts', 'checkins']);
     const metricSlides = getMetricSlides(lang).map((m) => ({
       kind: 'metric',
       key: m.key,
       label: m.label,
       unit: m.unit,
-      period: m.period,
+      period: WINDOWED.has(m.key) ? windowedLabel : m.period,
       entries: dashboardData.leaderboards?.[m.key] || [],
     }));
     const challengeSlides = (dashboardData.challenges || []).map((c) => ({
@@ -538,14 +544,18 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
   // login first. The gym slug helps post-login routing land in the right
   // tenant when the member uses a fresh browser.
   const qrUrl = (() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tugympr.app';
+    // Must be a publicly reachable URL — a phone scanning the TV can't reach the
+    // TV's own origin when that's localhost (dev) or a kiosk host. In dev we use
+    // the canonical production URL; in prod the real serving origin is correct
+    // (handles custom domains too).
+    const base = import.meta.env.DEV ? PROD_WEB_URL : window.location.origin;
     const params = new URLSearchParams({ challenge: c.id });
     if (gymSlug) params.set('gym', gymSlug);
-    return `${origin}/challenges?${params.toString()}`;
+    return `${base}/challenges?${params.toString()}`;
   })();
 
   const participants = c.participants || [];
-  const topFive = participants.slice(0, 5);
+  const topTen = participants.slice(0, 10);
 
   return (
     // Same no-scroll discipline as the metric leaderboard slides: grid + min-h-0 + flex-1
@@ -579,9 +589,11 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
           )}
         </div>
 
-        {/* Top-5 within this challenge — flex distribution, no fixed heights */}
+        {/* Top-10 within this challenge — uniform flex rows distribute across
+            the available height, so the list always fits (no overflow / clip)
+            no matter how many of the 10 are filled. */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          {topFive.length === 0 ? (
+          {topTen.length === 0 ? (
             <div className="h-full flex items-center justify-center rounded-2xl border-2 border-dashed" style={{ borderColor: `${accent}30` }}>
               <div className="text-center px-8">
                 <p className="text-[26px] lg:text-[32px] font-black" style={{ color: accent }}>{tStr.beTheFirst}</p>
@@ -589,43 +601,38 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 h-full">
-              {topFive.map((p, i) => {
-                const flexBasis = i === 0 ? '1.35 1 0' : '1 1 0';
-                return (
-                  <div
-                    key={p.profile_id}
-                    className="relative flex items-center gap-3 lg:gap-5 rounded-xl px-3 lg:px-5 min-h-0"
-                    style={{
-                      flex: flexBasis,
-                      background: i < 3 ? `${accent}10` : 'rgba(255,255,255,0.03)',
-                      border: i < 3 ? `1px solid ${accent}33` : '1px solid rgba(255,255,255,0.05)',
-                    }}
-                  >
-                    <div className="w-10 lg:w-12 flex items-center justify-center flex-shrink-0">
-                      {i < 3 ? (
-                        <span className={i === 0 ? 'text-[28px] lg:text-[32px]' : 'text-[22px] lg:text-[26px]'}>{['🥇', '🥈', '🥉'][i]}</span>
-                      ) : (
-                        <span className="text-[18px] lg:text-[20px] font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{i + 1}</span>
-                      )}
-                    </div>
-                    <p
-                      className={`flex-1 font-black truncate ${i === 0 ? 'text-[22px] lg:text-[26px]' : 'text-[16px] lg:text-[20px]'}`}
-                      style={{
-                        color: i === 0 ? accent : 'rgba(255,255,255,0.9)',
-                      }}
-                    >
-                      {p.name}
-                    </p>
-                    <p
-                      className={`font-black tabular-nums flex-shrink-0 ${i === 0 ? 'text-[24px] lg:text-[28px]' : 'text-[18px] lg:text-[22px]'}`}
-                      style={{ color: i === 0 ? accent : 'rgba(255,255,255,0.75)' }}
-                    >
-                      {p.score != null ? Number(p.score).toLocaleString() : '—'}
-                    </p>
+            <div className="flex flex-col gap-1.5 lg:gap-2 h-full">
+              {topTen.map((p, i) => (
+                <div
+                  key={p.profile_id}
+                  className="relative flex items-center gap-3 lg:gap-4 rounded-lg lg:rounded-xl px-3 lg:px-4 min-h-0"
+                  style={{
+                    flex: '1 1 0',
+                    background: i < 3 ? `${accent}10` : 'rgba(255,255,255,0.03)',
+                    border: i < 3 ? `1px solid ${accent}33` : '1px solid rgba(255,255,255,0.05)',
+                  }}
+                >
+                  <div className="w-8 lg:w-10 flex items-center justify-center flex-shrink-0">
+                    {i < 3 ? (
+                      <span className="text-[20px] lg:text-[26px]">{['🥇', '🥈', '🥉'][i]}</span>
+                    ) : (
+                      <span className="text-[15px] lg:text-[19px] font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{i + 1}</span>
+                    )}
                   </div>
-                );
-              })}
+                  <p
+                    className="flex-1 font-black truncate text-[15px] lg:text-[20px]"
+                    style={{ color: i === 0 ? accent : 'rgba(255,255,255,0.9)' }}
+                  >
+                    {p.name}
+                  </p>
+                  <p
+                    className="font-black tabular-nums flex-shrink-0 text-[15px] lg:text-[20px]"
+                    style={{ color: i === 0 ? accent : 'rgba(255,255,255,0.75)' }}
+                  >
+                    {p.score != null ? Number(p.score).toLocaleString() : '—'}
+                  </p>
+                </div>
+              ))}
             </div>
           )}
         </div>

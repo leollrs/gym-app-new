@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, Dumbbell, ChevronRight, ChevronDown, Trash2, Users, Search } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
@@ -7,15 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import {
-  PageHeader,
-  AdminCard,
-  StatCard,
-  FadeIn,
-  CardSkeleton,
-  SectionLabel,
-  AdminTabs,
-} from '../../components/admin';
+import { AdminPageShell, FadeIn, CardSkeleton } from '../../components/admin';
+import AdminPagination from '../../components/admin/AdminPagination';
 import {
   normalizeWeeks,
   calcDaySeconds,
@@ -28,9 +20,21 @@ import { validateImageFile } from '../../lib/validateImage';
 import TemplatesModal from './components/TemplatesModal';
 import ProgramBuilderModal from './components/ProgramBuilderModal';
 import ProgramSuggestionCard from './components/ProgramSuggestionCard';
-import usePagedVisible from '../../hooks/usePagedVisible';
-import PaginationFooter from '../../components/admin/PaginationFooter';
+import { TK, FK, TONE, Ico, ICON, Card, Avatar, PrimaryBtn } from './components/retosKit';
 
+
+// ── local icon map (paths from the "Programas de entrenamiento" handoff) ──
+const PRIC = {
+  dumbbell: ICON.dumbbell,
+  users: ICON.users,
+  search: ICON.search,
+  chevR: <path d="m9 18 6-6-6-6" />,
+  chevD: ICON.chevD,
+  trash: ICON.trash,
+  fire: ICON.flame,
+};
+
+const PROGRAMS_PAGE_SIZE = 5;
 
 // Extended gym_programs columns (migration 0513). Frontend stays resilient
 // before the migration. Capability is detected from the list query (zero failed
@@ -45,6 +49,42 @@ const pickCover = (category) => {
   const MAP = { hypertrophy: 'strength', strength: 'strength', general: 'functional', sport: 'functional', home: 'functional', advanced: 'strength', express: 'crossfit', cardio: 'cardio' };
   return MAP[category] || CLASS_COVERS[Math.floor(Math.random() * CLASS_COVERS.length)].key;
 };
+
+// ── stat card (colored left rail + big number + label + icon box) ──
+function PrgStat({ value, label, rail, icon }) {
+  return (
+    <Card style={{ position: 'relative', overflow: 'hidden', padding: '20px 24px' }}>
+      <span style={{ position: 'absolute', left: 0, top: 14, bottom: 14, width: 3.5, borderRadius: 99, background: rail }} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div className="admin-kpi" style={{ fontFamily: FK.display, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1.05, color: TK.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+        {icon && (
+          <span style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: 'grid', placeItems: 'center', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+            <Ico ch={icon} size={17} color={TK.textMute} stroke={2} />
+          </span>
+        )}
+      </div>
+      <div style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, marginTop: 10 }}>{label}</div>
+    </Card>
+  );
+}
+
+// ── square icon action button (chevron / trash) ──
+function RowAction({ icon, onClick, ariaLabel, danger = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      style={{
+        width: 34, height: 34, borderRadius: 9, flexShrink: 0, cursor: 'pointer',
+        display: 'grid', placeItems: 'center',
+        background: TK.surface, border: `1px solid ${TK.borderSolid}`,
+      }}
+    >
+      <Ico ch={icon} size={danger ? 15 : 16} color={danger ? 'var(--color-danger)' : TK.textSub} stroke={danger ? 2 : 2.2} />
+    </button>
+  );
+}
 
 // ── Main ──────────────────────────────────────────────────
 export default function AdminPrograms() {
@@ -65,6 +105,7 @@ export default function AdminPrograms() {
   const [programSearch, setProgramSearch] = useState('');
   const [durationFilter, setDurationFilter] = useState('all');
   const [statusTab, setStatusTab] = useState('published');
+  const [page, setPage] = useState(1);
 
   useEffect(() => { document.title = t('admin.programs.pageTitle', `Admin - Programs | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
 
@@ -117,11 +158,11 @@ export default function AdminPrograms() {
     const activeCount = enrollments.length;
     const compRate = 0;
 
-    let topName = '\u2014';
+    let topName = '—';
     if (Object.keys(enrollmentCounts).length > 0) {
       const topId = Object.entries(enrollmentCounts).sort((a, b) => b[1] - a[1])[0][0];
       const topProg = programs.find(p => p.id === topId);
-      topName = topProg?.name || '\u2014';
+      topName = topProg?.name || '—';
     }
 
     return { totalPrograms: publishedCount, activeEnrollments: activeCount, completionRate: compRate, topProgram: topName };
@@ -345,8 +386,6 @@ export default function AdminPrograms() {
 
   // ── Filtered programs ────────────────────────────────────
 
-  const programPager = usePagedVisible({ initial: 10, step: 10 });
-
   const filteredPrograms = useMemo(() => {
     let result = programs;
     // Status tab — published vs draft. `is_published` lives on gym_programs.
@@ -378,357 +417,265 @@ export default function AdminPrograms() {
     draft: programs.filter(p => p.is_published !== true).length,
   }), [programs]);
 
+  // Page of programs to render (1-based AdminPagination).
+  const pagedPrograms = filteredPrograms.slice((page - 1) * PROGRAMS_PAGE_SIZE, page * PROGRAMS_PAGE_SIZE);
+
   // ── Render ───────────────────────────────────────────────
 
   const loading = loadingPrograms;
 
-  return (
-    <div className="admin-shell px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
-      <PageHeader
-        title={t('admin.programs.title', 'Programs')}
-        subtitle={t('admin.programs.subtitle', 'Multi-week training plans members can enroll in')}
-        actions={
-          <button
-            onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 font-bold text-[13px] rounded-xl transition-colors w-full sm:w-auto"
-            style={{ background: 'var(--color-accent)', color: '#fff' }}
-          >
-            <Plus size={15} /> {t('admin.programs.newProgram', 'New Program')}
-          </button>
-        }
-        className="mb-5"
-      />
+  const statusTabs = [
+    { key: 'published', label: t('admin.programs.published', 'Published'), count: statusCounts.published },
+    { key: 'draft', label: t('admin.programs.draft', 'Draft'), count: statusCounts.draft },
+  ];
 
-      {/* Program Suggestion */}
-      <ProgramSuggestionCard
-        gymId={gymId}
-        t={t}
-        isEs={isEs}
-        onCreateProgram={handleSuggestionCreate}
-      />
+  const durationPills = [
+    { key: 'all', label: t('admin.programs.durationAll', 'All') },
+    { key: '4', label: t('admin.programs.durationShort', '1–4w') },
+    { key: '8', label: t('admin.programs.durationMed', '5–8w') },
+    { key: '12+', label: t('admin.programs.durationLong', '12w+') },
+  ];
+
+  return (
+    <AdminPageShell>
+      {/* header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.programs.title', 'Programs')}</h1>
+          <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.programs.subtitle', 'Multi-week training plans members can enroll in')}</div>
+        </div>
+        <PrimaryBtn icon={ICON.plus} onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}>{t('admin.programs.newProgram', 'New Program')}</PrimaryBtn>
+      </div>
+
+      {/* Program Suggestion (self-spaces with mb; renders null when none) */}
+      <div style={{ marginTop: 22 }}>
+        <ProgramSuggestionCard
+          gymId={gymId}
+          t={t}
+          isEs={isEs}
+          onCreateProgram={handleSuggestionCreate}
+        />
+      </div>
 
       {/* Program Analytics Summary */}
       {!loading && programs.length > 0 && (
         <FadeIn>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3 mb-5">
-            <StatCard label={t('admin.programs.publishedPrograms', 'Published Programs')} value={programStats.totalPrograms} borderColor="var(--color-accent)" delay={0} />
-            <StatCard label={t('admin.programs.activeEnrollments', 'Active Enrollments')} value={programStats.activeEnrollments} borderColor="var(--color-info)" delay={50} />
-            <AdminCard className="admin-stat-card border-l-2" borderLeft="var(--color-coach)">
-              <p className="admin-kpi text-[18px] md:text-[20px] truncate">{programStats.topProgram}</p>
-              <p className="text-[11px] mt-1.5 truncate" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.mostPopular', 'Most Popular')}</p>
-            </AdminCard>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+            <PrgStat value={programStats.totalPrograms} label={t('admin.programs.publishedPrograms', 'Published Programs')} rail={TK.accent} icon={PRIC.dumbbell} />
+            <PrgStat value={programStats.activeEnrollments} label={t('admin.programs.activeEnrollments', 'Active Enrollments')} rail="var(--color-info)" icon={PRIC.users} />
+            <PrgStat value={programStats.topProgram} label={t('admin.programs.mostPopular', 'Most Popular')} rail="var(--color-coach)" icon={PRIC.fire} />
           </div>
         </FadeIn>
       )}
 
       {/* Status tabs — separate Published from Draft */}
       {!loading && programs.length > 0 && (
-        <AdminTabs
-          tabs={[
-            { key: 'published', label: t('admin.programs.published', 'Published'), count: statusCounts.published },
-            { key: 'draft', label: t('admin.programs.draft', 'Draft'), count: statusCounts.draft },
-          ]}
-          active={statusTab}
-          onChange={setStatusTab}
-          className="mb-4"
-        />
+        <div style={{ display: 'flex', gap: 30, margin: '24px 0 0', paddingLeft: 4 }}>
+          {statusTabs.map(tb => {
+            const on = statusTab === tb.key;
+            return (
+              <button key={tb.key} type="button" onClick={() => { setStatusTab(tb.key); setPage(1); }}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer', paddingBottom: 6, position: 'relative', background: 'transparent', border: 'none' }}>
+                <span style={{ fontFamily: FK.body, fontSize: 13.5, fontWeight: 700, color: on ? TK.accent : TK.textMute }}>{tb.label}</span>
+                <span style={{ minWidth: 24, padding: '2px 8px', borderRadius: 999, textAlign: 'center', fontFamily: FK.mono, fontSize: 12, fontWeight: 700, background: on ? TK.accentSoft : TK.surface2, color: on ? TK.accentInk : TK.textMute, border: `1px solid ${on ? TK.accentLine : TK.borderSolid}` }}>{tb.count}</span>
+                {on && <span style={{ position: 'absolute', left: 0, right: 0, bottom: -1, height: 2.5, borderRadius: 99, background: TK.accent }} />}
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {/* Search and filters */}
       {!loading && programs.length > 0 && (
         <FadeIn delay={0.05}>
-          <div className="flex flex-wrap items-center gap-2.5 mb-4">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14, flexWrap: 'wrap' }}>
             {/* Search */}
-            <div
-              className="relative flex-1 min-w-[200px] flex items-center gap-2"
-              style={{
-                padding: '8px 12px',
-                background: 'var(--color-bg-card)',
-                border: '1px solid var(--color-admin-border)',
-                borderRadius: 10,
-              }}
-            >
-              <Search size={13} style={{ color: 'var(--color-admin-text-muted)' }} />
+            <div style={{ flex: 1, minWidth: 200, display: 'flex', alignItems: 'center', gap: 11, padding: '12px 16px', borderRadius: 12, background: TK.surface, border: `1px solid ${TK.borderSolid}`, boxShadow: TK.shadow }}>
+              <Ico ch={PRIC.search} size={17} color={TK.textMute} stroke={2} />
               <input
                 type="text"
                 placeholder={t('admin.programs.searchPlaceholder', 'Search programs…')}
                 aria-label={t('admin.programs.searchPlaceholder', 'Search programs')}
                 value={programSearch}
-                onChange={e => setProgramSearch(e.target.value)}
-                className="flex-1 bg-transparent outline-none text-[13px]"
-                style={{ color: 'var(--color-admin-text)' }}
+                onChange={e => { setProgramSearch(e.target.value); setPage(1); }}
+                style={{ flex: 1, minWidth: 0, background: 'transparent', outline: 'none', border: 'none', fontFamily: FK.body, fontSize: 14.5, color: TK.text }}
               />
             </div>
             {/* Duration filter pills */}
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide w-full md:w-auto md:flex-wrap pb-1">
-              {[
-                { key: 'all', label: t('admin.programs.durationAll', 'All') },
-                { key: '4', label: t('admin.programs.durationShort', '1–4w') },
-                { key: '8', label: t('admin.programs.durationMed', '5–8w') },
-                { key: '12+', label: t('admin.programs.durationLong', '12w+') },
-              ].map(f => (
-                <button
-                  key={f.key}
-                  onClick={() => setDurationFilter(f.key)}
-                  className={`admin-pill flex-shrink-0 ${durationFilter === f.key ? 'admin-pill--dark' : 'admin-pill--outline'}`}
-                  style={{ cursor: 'pointer', minHeight: 28 }}
-                >
-                  {f.label}
-                </button>
-              ))}
+            <div className="scrollbar-hide" style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>
+              {durationPills.map(f => {
+                const on = durationFilter === f.key;
+                return (
+                  <button key={f.key} type="button" onClick={() => { setDurationFilter(f.key); setPage(1); }}
+                    style={{ flexShrink: 0, padding: '10px 16px', borderRadius: 999, cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5, fontWeight: on ? 700 : 600, letterSpacing: 0.4, textTransform: 'uppercase', color: on ? '#fff' : TK.textSub, background: on ? TK.text : TK.surface, border: `1px solid ${on ? TK.text : TK.borderSolid}` }}>
+                    {f.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </FadeIn>
       )}
 
       {loading ? (
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 18 }}>
           <CardSkeleton h="h-[80px]" />
           <CardSkeleton h="h-[80px]" />
           <CardSkeleton h="h-[80px]" />
         </div>
       ) : programs.length === 0 ? (
         <FadeIn>
-          <div className="text-center py-20">
-            <div
-              className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
-              style={{ background: 'var(--color-admin-panel)' }}
-            >
-              <Dumbbell size={24} style={{ color: 'var(--color-admin-text-muted)' }} />
+          <div style={{ textAlign: 'center', padding: '72px 20px' }}>
+            <span style={{ width: 56, height: 56, borderRadius: 16, margin: '0 auto 14px', display: 'grid', placeItems: 'center', background: TK.surface2 }}>
+              <Ico ch={PRIC.dumbbell} size={24} color={TK.textMute} stroke={1.8} />
+            </span>
+            <p style={{ fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text, margin: 0 }}>{t('admin.programs.noPrograms', 'No programs yet')}</p>
+            <p style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textMute, margin: '6px 0 18px' }}>{t('admin.programs.noProgramsHint', 'Create structured programs for your members to follow')}</p>
+            <div style={{ display: 'inline-flex' }}>
+              <PrimaryBtn icon={ICON.plus} onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}>{t('admin.programs.createFirst', 'Create your first program')}</PrimaryBtn>
             </div>
-            <p className="text-[14px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>{t('admin.programs.noPrograms', 'No programs yet')}</p>
-            <p className="text-[12.5px] mt-1 mb-4" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.noProgramsHint', 'Create structured programs for your members to follow')}</p>
-            <button
-              onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
-              style={{ background: 'var(--color-accent)', color: '#fff' }}
-            >
-              <Plus size={14} /> {t('admin.programs.createFirst', 'Create your first program')}
-            </button>
           </div>
         </FadeIn>
       ) : (
         <FadeIn>
           {filteredPrograms.length === 0 ? (
-            <div className="text-center py-12">
-              <Search size={24} className="mx-auto mb-2" style={{ color: 'var(--color-admin-text-muted)' }} />
-              <p className="text-[13px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.noMatchingPrograms', 'No programs match your search')}</p>
+            <div style={{ textAlign: 'center', padding: '48px 20px', marginTop: 16 }}>
+              <Ico ch={PRIC.search} size={24} color={TK.textMute} stroke={1.8} style={{ margin: '0 auto 8px' }} />
+              <p style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, margin: 0 }}>{t('admin.programs.noMatchingPrograms', 'No programs match your search')}</p>
             </div>
           ) : (
-          <AdminCard padding="p-0" clipContent={false}>
-            {filteredPrograms.slice(0, programPager.visibleCount).map((p, idx) => {
-              const wks = normalizeWeeks(p.weeks);
-              const allDays = Object.values(wks).flat();
-              const totalDays = allDays.length;
-              const totalEx   = allDays.reduce((s, d) => s + d.exercises.length, 0);
-              const avgTime   = totalDays > 0
-                ? Math.round(allDays.reduce((s, d) => s + calcDaySeconds(d), 0) / totalDays)
-                : 0;
-              const isLast = idx === filteredPrograms.length - 1;
-              return (
-                <div
-                  key={p.id}
-                  style={{ borderBottom: isLast ? 'none' : '1px solid var(--color-admin-border)' }}
-                >
-                  <div className="px-4 py-4">
-                    {/* Header row: icon + title + status pill */}
-                    <div className="flex items-start gap-3 md:gap-3.5">
-                      <div
-                        className="w-11 h-11 rounded-[11px] flex items-center justify-center flex-shrink-0"
-                        style={{ background: 'var(--color-coach-soft)' }}
-                      >
-                        <Dumbbell size={20} style={{ color: 'var(--color-coach)' }} strokeWidth={2} />
-                      </div>
+            <Card style={{ overflow: 'hidden', marginTop: 16 }}>
+              {pagedPrograms.map((p, idx) => {
+                const wks = normalizeWeeks(p.weeks);
+                const allDays = Object.values(wks).flat();
+                const totalDays = allDays.length;
+                const totalEx   = allDays.reduce((s, d) => s + d.exercises.length, 0);
+                const avgTime   = totalDays > 0
+                  ? Math.round(allDays.reduce((s, d) => s + calcDaySeconds(d), 0) / totalDays)
+                  : 0;
+                const isLast = idx === pagedPrograms.length - 1;
+                const isOpen = expandedEnroll === p.id;
+                return (
+                  <div key={p.id} style={{ borderBottom: isLast ? 'none' : `1px solid ${TK.divider}` }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: '18px 22px' }}>
+                      {/* dumbbell icon tile */}
+                      <span style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, display: 'grid', placeItems: 'center', background: TONE.coach.bg }}>
+                        <Ico ch={PRIC.dumbbell} size={21} color={TONE.coach.fg} stroke={1.9} />
+                      </span>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                          <span className="admin-page-title text-[14.5px] truncate" style={{ letterSpacing: '-0.015em' }}>{p.name}</span>
-                          <span className="admin-pill admin-pill--outline">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {/* title + weeks badge */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: FK.display, fontSize: 17, fontWeight: 800, color: TK.text, letterSpacing: -0.3, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+                          <span style={{ padding: '2px 9px', borderRadius: 7, background: TK.surface2, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.mono, fontSize: 11.5, fontWeight: 700, color: TK.textMute }}>
                             {p.duration_weeks}{t('admin.programs.weeksShort', 'w')}
                           </span>
                         </div>
-                        <p className="text-[11.5px]" style={{ color: 'var(--color-admin-text-muted)' }}>
-                          {totalDays} {t('admin.programs.days', 'days')} · {totalEx} {t('admin.programs.exercises', 'exercises')}
-                          {avgTime > 0 && ` · ~${fmtTime(avgTime)}/${t('admin.programs.session', 'session')}`}
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() => togglePublishMutation.mutate({ id: p.id, next: !p.is_published })}
-                        title={p.is_published ? t('admin.programs.unpublishHint', 'Click to unpublish — hide from members') : t('admin.programs.publishHint', 'Click to publish — show to members')}
-                        className={`admin-pill ${p.is_published ? 'admin-pill--good' : 'admin-pill--outline'} flex-shrink-0 cursor-pointer transition-opacity hover:opacity-75`}
-                      >
-                        {p.is_published ? t('admin.programs.published', 'Published') : t('admin.programs.draft', 'Draft')}
-                      </button>
-
-                      {/* Desktop-only inline edit/delete */}
-                      <div className="hidden md:flex items-center gap-1.5 flex-shrink-0">
-                        <button
-                          onClick={() => setEditing(p)}
-                          aria-label={t('admin.programs.editProgram', 'Edit program')}
-                          className="flex items-center justify-center transition-colors"
-                          style={{
-                            width: 30, height: 30, borderRadius: 8,
-                            border: '1px solid var(--color-admin-border)',
-                            background: 'var(--color-bg-card)',
-                            color: 'var(--color-admin-text-sub)',
-                          }}
-                        >
-                          <ChevronRight size={13} />
-                        </button>
-                        {confirmDeleteId === p.id ? (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => deleteMutation.mutate(p.id)}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
-                              style={{ background: 'var(--color-danger-soft)', color: 'var(--color-danger)' }}
-                            >
-                              {t('admin.programs.confirm')}
-                            </button>
-                            <button
-                              onClick={() => setConfirmDeleteId(null)}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
-                              style={{ background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)' }}
-                            >
-                              {t('admin.programs.cancel')}
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmDeleteId(p.id)}
-                            aria-label={t('admin.programs.deleteProgram', 'Delete program')}
-                            className="flex items-center justify-center transition-colors"
-                            style={{
-                              width: 30, height: 30, borderRadius: 8,
-                              border: '1px solid var(--color-admin-border)',
-                              background: 'var(--color-bg-card)',
-                              color: 'var(--color-danger)',
-                            }}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Description */}
-                    {p.description && (
-                      <p className="text-[12px] mt-2 line-clamp-2" style={{ color: 'var(--color-admin-text-sub)', maxWidth: 600 }}>{p.description}</p>
-                    )}
-
-                    {/* Meta + actions row */}
-                    <div className="flex items-center justify-between gap-2 mt-2.5 flex-wrap">
-                      <button
-                        onClick={() => toggleEnroll(p.id)}
-                        className="flex items-center gap-1.5 text-[11.5px] font-medium transition-colors"
-                        style={{ color: 'var(--color-admin-text-sub)' }}
-                      >
-                        <Users size={12} />
-                        <span>{enrollmentCounts[p.id] ?? 0} {t('admin.programs.enrolled', 'enrolled')}</span>
-                        <ChevronDown size={11} className={`transition-transform ${expandedEnroll === p.id ? 'rotate-180' : ''}`} />
-                      </button>
-
-                      {/* Mobile-only actions */}
-                      <div className="flex md:hidden items-center gap-1.5">
-                        <button
-                          onClick={() => setEditing(p)}
-                          aria-label={t('admin.programs.editProgram', 'Edit program')}
-                          className="flex items-center justify-center transition-colors"
-                          style={{
-                            width: 30, height: 30, borderRadius: 8,
-                            border: '1px solid var(--color-admin-border)',
-                            background: 'var(--color-bg-card)',
-                            color: 'var(--color-admin-text-sub)',
-                          }}
-                        >
-                          <ChevronRight size={13} />
-                        </button>
-                        {confirmDeleteId === p.id ? (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => deleteMutation.mutate(p.id)}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
-                              style={{ background: 'var(--color-danger-soft)', color: 'var(--color-danger)' }}
-                            >
-                              {t('admin.programs.confirm')}
-                            </button>
-                            <button
-                              onClick={() => setConfirmDeleteId(null)}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
-                              style={{ background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)' }}
-                            >
-                              {t('admin.programs.cancel')}
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmDeleteId(p.id)}
-                            aria-label={t('admin.programs.deleteProgram', 'Delete program')}
-                            className="flex items-center justify-center transition-colors"
-                            style={{
-                              width: 30, height: 30, borderRadius: 8,
-                              border: '1px solid var(--color-admin-border)',
-                              background: 'var(--color-bg-card)',
-                              color: 'var(--color-danger)',
-                            }}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Enrolled members panel */}
-                  {expandedEnroll === p.id && (
-                    <div
-                      className="px-4 pb-4 pt-3"
-                      style={{ borderTop: '1px solid var(--color-admin-border)' }}
-                    >
-                      <SectionLabel className="mb-2">{t('admin.programs.enrolledMembers', 'Enrolled Members')}</SectionLabel>
-                      {!enrolledMembers[p.id] ? (
-                        <div className="flex justify-center py-3">
-                          <div
-                            className="w-4 h-4 border-2 rounded-full animate-spin"
-                            style={{
-                              borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)',
-                              borderTopColor: 'var(--color-accent)',
-                            }}
-                          />
+                        {/* mono meta line */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7, fontFamily: FK.mono, fontSize: 12.5, color: TK.textFaint, flexWrap: 'wrap' }}>
+                          <span>{totalDays} {t('admin.programs.days', 'days')}</span><span>·</span>
+                          <span>{totalEx} {t('admin.programs.exercises', 'exercises')}</span>
+                          {avgTime > 0 && <><span>·</span><span>~{fmtTime(avgTime)}/{t('admin.programs.session', 'session')}</span></>}
                         </div>
-                      ) : enrolledMembers[p.id].length === 0 ? (
-                        <p className="text-[12px] text-center py-2" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.noEnrolled', 'No members enrolled yet')}</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {enrolledMembers[p.id].map(e => {
-                            const name = e.profiles?.full_name ?? '?';
-                            const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-                            return (
-                              <div
-                                key={e.profile_id}
-                                className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5"
-                                style={{ background: 'var(--color-admin-panel)' }}
-                              >
-                                <div
-                                  className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-                                  style={{ background: 'color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
-                                >
-                                  <span className="text-[9px] font-bold" style={{ color: 'var(--color-accent)' }}>{initials}</span>
+                        {/* description */}
+                        {p.description && (
+                          <p className="line-clamp-2" style={{ margin: '10px 0 0', fontFamily: FK.body, fontSize: 14, color: TK.textMute, lineHeight: 1.5, maxWidth: 600 }}>{p.description}</p>
+                        )}
+                        {/* enrolled expander */}
+                        <button
+                          type="button"
+                          onClick={() => toggleEnroll(p.id)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 11, fontFamily: FK.body, fontSize: 13, fontWeight: 600, color: TK.textSub, cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }}
+                        >
+                          <Ico ch={PRIC.users} size={14} color={TK.textMute} stroke={2} />
+                          <span>{enrollmentCounts[p.id] ?? 0} {t('admin.programs.enrolled', 'enrolled')}</span>
+                          <Ico ch={PRIC.chevD} size={13} color={TK.textFaint} stroke={2.2} style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
+                        </button>
+                      </div>
+
+                      {/* status pill + actions */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <button
+                          type="button"
+                          onClick={() => togglePublishMutation.mutate({ id: p.id, next: !p.is_published })}
+                          title={p.is_published ? t('admin.programs.unpublishHint', 'Click to unpublish — hide from members') : t('admin.programs.publishHint', 'Click to publish — show to members')}
+                          className="transition-opacity hover:opacity-75"
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
+                            fontFamily: FK.body, fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase',
+                            background: p.is_published ? TONE.good.bg : TK.surface, color: p.is_published ? TONE.good.ink : TK.textSub,
+                            border: `1px solid ${p.is_published ? TONE.good.line : TK.borderSolid}`,
+                          }}
+                        >
+                          {p.is_published && <span style={{ width: 6, height: 6, borderRadius: 99, background: TONE.good.fg }} />}
+                          {p.is_published ? t('admin.programs.published', 'Published') : t('admin.programs.draft', 'Draft')}
+                        </button>
+
+                        <RowAction icon={PRIC.chevR} onClick={() => setEditing(p)} ariaLabel={t('admin.programs.editProgram', 'Edit program')} />
+                        {confirmDeleteId === p.id ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <button
+                              type="button"
+                              onClick={() => deleteMutation.mutate(p.id)}
+                              style={{ padding: '6px 12px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: FK.body, fontSize: 11.5, fontWeight: 800, color: 'var(--color-danger)', background: 'var(--color-danger-soft)' }}
+                            >
+                              {t('admin.programs.confirm')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(null)}
+                              style={{ padding: '6px 12px', borderRadius: 999, cursor: 'pointer', fontFamily: FK.body, fontSize: 11.5, fontWeight: 700, color: TK.textSub, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}
+                            >
+                              {t('admin.programs.cancel')}
+                            </button>
+                          </span>
+                        ) : (
+                          <RowAction icon={PRIC.trash} danger onClick={() => setConfirmDeleteId(p.id)} ariaLabel={t('admin.programs.deleteProgram', 'Delete program')} />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Enrolled members panel */}
+                    {isOpen && (
+                      <div style={{ padding: '14px 22px 18px', borderTop: `1px solid ${TK.divider}` }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: TK.textMute, marginBottom: 12 }}>
+                          {t('admin.programs.enrolledMembers', 'Enrolled Members')}
+                        </div>
+                        {!enrolledMembers[p.id] ? (
+                          <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0' }}>
+                            <span className="animate-spin" style={{ width: 16, height: 16, borderRadius: 99, border: `2px solid ${TK.borderSolid}`, borderTopColor: TK.accent, display: 'inline-block' }} />
+                          </div>
+                        ) : enrolledMembers[p.id].length === 0 ? (
+                          <p style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textFaint, textAlign: 'center', padding: '8px 0', margin: 0 }}>{t('admin.programs.noEnrolled', 'No members enrolled yet')}</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                            {enrolledMembers[p.id].map((e, i) => {
+                              const name = e.profiles?.full_name ?? '?';
+                              const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                              return (
+                                <div key={e.profile_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 14px 7px 7px', borderRadius: 999, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                                  <Avatar initials={initials} hue={i} size={26} />
+                                  <span style={{ fontFamily: FK.body, fontSize: 13.5, fontWeight: 600, color: TK.text }}>{name}</span>
                                 </div>
-                                <span className="text-[11px] font-medium" style={{ color: 'var(--color-admin-text)' }}>{name}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </AdminCard>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div style={{ padding: '0 22px 14px' }}>
+                <AdminPagination
+                  page={page}
+                  pageSize={PROGRAMS_PAGE_SIZE}
+                  total={filteredPrograms.length}
+                  onPageChange={setPage}
+                />
+              </div>
+            </Card>
           )}
-          <PaginationFooter pager={programPager} total={filteredPrograms.length} />
         </FadeIn>
       )}
 
@@ -757,6 +704,6 @@ export default function AdminPrograms() {
           saveError={saveMutation.error?.message || ''}
         />
       )}
-    </div>
+    </AdminPageShell>
   );
 }

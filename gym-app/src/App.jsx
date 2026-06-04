@@ -11,6 +11,7 @@ import './App.css';
 import { useAuth } from './contexts/AuthContext';
 import { useToast } from './contexts/ToastContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import RouteErrorBoundary from './components/RouteErrorBoundary';
 import Skeleton from './components/Skeleton';
 import { initPushNotifications } from './lib/pushNotifications';
 import { supabase } from './lib/supabase';
@@ -181,6 +182,7 @@ const GymHealth          = lazy(() => import('./pages/platform/GymHealth'));
 const FeatureAdoption    = lazy(() => import('./pages/platform/FeatureAdoption'));
 const CardQueue          = lazy(() => import('./pages/platform/CardQueue'));
 const Attention          = lazy(() => import('./pages/platform/Attention'));
+const PlatformNotifications = lazy(() => import('./pages/platform/PlatformNotifications'));
 
 // ── APPLY SAVED THEME PREFERENCE ────────────────────────────
 // Theme is now system-based — html.dark class managed by ThemeContext + index.html
@@ -698,11 +700,25 @@ const isSuperAdminView = (activeView) => activeView === 'super_admin';
 const isAdminView = (activeView) => activeView === 'admin' || activeView === 'super_admin';
 const isTrainerView = (activeView) => activeView === 'trainer';
 
+// Redirects a logged-out user to /login, but first remembers where they were
+// trying to go (e.g. a challenge deep link scanned from the gym TV while signed
+// out) so PublicRoute can send them back there after they authenticate. The
+// sessionStorage write is render-phase on purpose — it must land before the
+// <Navigate> below changes the URL to /login.
+function RedirectToLogin() {
+  const location = useLocation();
+  const path = `${location.pathname}${location.search}`;
+  if (typeof window !== 'undefined' && path && path !== '/' && !path.startsWith('/login')) {
+    try { sessionStorage.setItem('postLoginRedirect', path); } catch { /* noop */ }
+  }
+  return <Navigate to="/login" replace />;
+}
+
 // ── PROTECTED ROUTE (member) ───────────────────────────────
 const ProtectedRoute = ({ children }) => {
   const { user, profile, loading, gymDeactivated, memberBlocked, requiresAgeVerification, activeView, availableRoles } = useAuth();
   if (loading) return <LoadingScreen />;
-  if (!user)   return <Navigate to="/login" replace />;
+  if (!user)   return <RedirectToLogin />;
   if (!profile) return <ProfileUnavailableScreen />;
   // Defensive: cached profile may be hydrated without role data (stripped for
   // security on cold start). Wait for the live profile fetch before deciding
@@ -728,7 +744,7 @@ const ProtectedRoute = ({ children }) => {
 const OnboardingRoute = ({ children }) => {
   const { user, profile, loading, gymDeactivated, memberBlocked, requiresAgeVerification, activeView } = useAuth();
   if (loading) return <LoadingScreen />;
-  if (!user)   return <Navigate to="/login" replace />;
+  if (!user)   return <RedirectToLogin />;
   if (!profile) return <ProfileUnavailableScreen />;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
@@ -818,7 +834,7 @@ const TrainerRoute = ({ children }) => {
 const AuthenticatedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return <LoadingScreen />;
-  if (!user)   return <Navigate to="/login" replace />;
+  if (!user)   return <RedirectToLogin />;
   return children;
 };
 
@@ -833,6 +849,14 @@ const PublicRoute = ({ children }) => {
   if (user && profile && hasRole(availableRoles, 'super_admin')) return <Navigate to="/platform/attention" replace />;
   if (user && profile && !profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   if (user && profile?.is_onboarded) {
+    // Honor a deep-link destination saved before login (e.g. a TV challenge QR
+    // scanned while signed out). Internal app paths only; consume once.
+    let dest = null;
+    try { dest = sessionStorage.getItem('postLoginRedirect'); } catch { /* noop */ }
+    if (dest && dest.startsWith('/') && !dest.startsWith('//') && !dest.startsWith('/login')) {
+      try { sessionStorage.removeItem('postLoginRedirect'); } catch { /* noop */ }
+      return <Navigate to={dest} replace />;
+    }
     if (isAdminView(activeView))   return <Navigate to="/admin" replace />;
     if (isTrainerView(activeView)) return <Navigate to="/trainer" replace />;
     return <Navigate to="/" replace />;
@@ -1560,10 +1584,11 @@ function App() {
         element={
           <PlatformRoute>
             <PlatformLayout>
-              <ErrorBoundary>
+              <RouteErrorBoundary home="/platform/attention">
               <Suspense fallback={<Skeleton variant="page" />}>
               <Routes>
                 <Route path="/attention"           element={<Attention />} />
+                <Route path="/notifications"       element={<PlatformNotifications />} />
                 <Route path="/operations"          element={<Operations />} />
                 <Route path="/"                    element={<GymsOverview />} />
                 <Route path="/gym/:gymId"          element={<GymDetail />} />
@@ -1581,7 +1606,7 @@ function App() {
                 <Route path="*"             element={<Navigate to="/platform/attention" replace />} />
               </Routes>
               </Suspense>
-              </ErrorBoundary>
+              </RouteErrorBoundary>
             </PlatformLayout>
           </PlatformRoute>
         }
@@ -1627,7 +1652,7 @@ function App() {
         element={
           <AdminRoute>
             <AdminLayout>
-              <ErrorBoundary>
+              <RouteErrorBoundary home="/admin">
               <Suspense fallback={<Skeleton variant="page" />}>
               <Routes>
                 <Route path="/"             element={<AdminOverview />} />
@@ -1670,7 +1695,7 @@ function App() {
                 <Route path="*"            element={<Navigate to="/admin" replace />} />
               </Routes>
               </Suspense>
-              </ErrorBoundary>
+              </RouteErrorBoundary>
             </AdminLayout>
           </AdminRoute>
         }
@@ -1682,7 +1707,7 @@ function App() {
         element={
           <TrainerRoute>
             <TrainerLayout>
-              <ErrorBoundary>
+              <RouteErrorBoundary home="/trainer">
               <Suspense fallback={<Skeleton variant="page" />}>
               <Routes>
                 <Route path="/"                         element={<TrainerHome />} />
@@ -1710,7 +1735,7 @@ function App() {
                 <Route path="*"                 element={<Navigate to="/trainer" replace />} />
               </Routes>
               </Suspense>
-              </ErrorBoundary>
+              </RouteErrorBoundary>
             </TrainerLayout>
           </TrainerRoute>
         }
@@ -1729,11 +1754,11 @@ function App() {
               {/* resetKey=pathname lets the boundary auto-clear when the user
                   navigates away from the crashed page, so they don't have to
                   manually tap "Try Again" to recover. */}
-              <ErrorBoundary resetKey={location.pathname}>
+              <RouteErrorBoundary home="/">
               <Suspense fallback={<Skeleton variant="page" />}>
                 <MemberRoutes />
               </Suspense>
-              </ErrorBoundary>
+              </RouteErrorBoundary>
               </div>
             </div>
           </ProtectedRoute>

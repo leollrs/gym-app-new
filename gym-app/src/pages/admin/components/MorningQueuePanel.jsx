@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,7 @@ import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
 import logger from '../../../lib/logger';
 import { AdminCard, Avatar } from '../../../components/admin';
+import AdminPagination from '../../../components/admin/AdminPagination';
 import { translateQueueReason } from '../../../lib/churn/signalI18n';
 import QueueItemResolveModal from './QueueItemResolveModal';
 import ContactPanel from './ContactPanel';
@@ -38,8 +39,7 @@ const ACTION_ICONS = {
 const SEGMENT_SCORE = { critical: 85, at_risk: 60, cooling: 40 };
 
 const SNOOZE_HOURS = 24;
-const INITIAL_VISIBLE = 5;
-const LOAD_MORE_STEP = 5;
+const PAGE_SIZE = 10;
 
 export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
   const navigate = useNavigate();
@@ -52,7 +52,7 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
 
   const [resolving, setResolving] = useState(null);   // queue item being resolved
   const [actingId, setActingId]   = useState(null);   // id of item being mutated (for spinner)
-  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+  const [convPage, setConvPage] = useState(1);        // 1-based page for the conversations list
   const [showExplainer, setShowExplainer] = useState(false);  // toggles the "what is this?" inline help
   const [contacting, setContacting] = useState(null);         // member whose contact modal is open
 
@@ -97,6 +97,12 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
     items.forEach(i => { if (counts[i.segment] != null) counts[i.segment]++; });
     return counts;
   }, [items]);
+
+  // Keep the page in range as items get resolved/snoozed/dismissed off the list.
+  const totalPages = Math.max(1, Math.ceil(sortedItems.length / PAGE_SIZE));
+  useEffect(() => {
+    if (convPage > totalPages) setConvPage(totalPages);
+  }, [convPage, totalPages]);
 
   // ── Mutations ──
   const resolveMutation = useMutation({
@@ -215,10 +221,11 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
   }
 
   // ── Main view ──
-  // How many rows actually fit the matched height (so we fill it, then "Load 5"
-  // reveals more and they scroll INSIDE the fixed card — page never grows).
-  const fitCount = cardHeight > 0 ? Math.max(3, Math.floor((cardHeight - 104) / 62)) : INITIAL_VISIBLE;
-  const effectiveVisible = Math.min(sortedItems.length, Math.max(visibleCount, fitCount));
+  // Paginate the conversations 5 at a time (shared Miembros-style pager in the
+  // footer). The card keeps its matched height; any overflow scrolls inside.
+  const safePage = Math.min(convPage, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const pageItems = sortedItems.slice(pageStart, pageStart + PAGE_SIZE);
 
   return (
     <>
@@ -278,7 +285,7 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
         <ul style={cardHeight
           ? { listStyle: 'none', margin: 0, padding: 0, flex: '1 1 0', minHeight: 0, overflowY: 'auto' }
           : { listStyle: 'none', margin: 0, padding: 0, maxHeight: 440, overflowY: 'auto' }}>
-          {sortedItems.slice(0, effectiveVisible).map((item, idx) => {
+          {pageItems.map((item, idx) => {
             const ActionIcon = ACTION_ICONS[item.suggested_action] || MessageSquare;
             const isActing = actingId === item.id;
             const p = item.profiles || {};
@@ -335,6 +342,18 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
           })}
         </ul>
 
+        {/* Pagination — 5 conversations per page (shared Miembros-style pager) */}
+        {sortedItems.length > PAGE_SIZE && (
+          <div style={{ padding: '0 18px 4px' }}>
+            <AdminPagination
+              page={safePage}
+              pageSize={PAGE_SIZE}
+              total={sortedItems.length}
+              onPageChange={setConvPage}
+            />
+          </div>
+        )}
+
         {/* Footer — total in follow-up · open retention board. Rows scroll
             inside the card above, so this bar stays put. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '12px 18px', borderTop: '1px solid var(--color-admin-border)', background: 'var(--color-admin-panel)' }}>
@@ -342,14 +361,6 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
             {t('admin.morningQueue.totalInQueue', { count: sortedItems.length, defaultValue: '{{count}} in follow-up' })}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-            {effectiveVisible < sortedItems.length && (
-              <button
-                onClick={() => setVisibleCount(effectiveVisible + LOAD_MORE_STEP)}
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11.5, fontWeight: 800, color: 'var(--color-accent)' }}
-              >
-                {t('admin.morningQueue.loadMore', { count: Math.min(LOAD_MORE_STEP, sortedItems.length - effectiveVisible), defaultValue: 'Load {{count}} more' })}
-              </button>
-            )}
             <button onClick={() => navigate('/admin/churn')}
               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: 'var(--color-admin-text-sub)' }}>
               {t('admin.morningQueue.viewRetention', 'Open full retention board')}

@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Filter, Plus, Pin, PinOff, Pencil, Trash2, Users, Search,
-  RefreshCw, Download, MessageSquare, ChevronLeft, ChevronRight, Sparkles,
+  RefreshCw, Download, MessageSquare, Sparkles,
   Shield, AlertTriangle, Zap, Clock, UserPlus, Target,
   Activity, Flame, Heart, Star, Eye, Send,
 } from 'lucide-react';
@@ -26,6 +26,7 @@ import {
 import { ICON_MAP, ICON_OPTIONS, COLOR_OPTIONS } from './components/segmentConstants';
 import { applySegmentFilters } from '../../lib/admin/segmentFilters';
 import SegmentEditorModal from './components/SegmentEditorModal';
+import AdminPagination from '../../components/admin/AdminPagination';
 
 // ICON_MAP / ICON_OPTIONS / COLOR_OPTIONS extracted to ./components/segmentConstants
 
@@ -241,10 +242,10 @@ export default function AdminSegments() {
               )}
               <button
                 onClick={() => setEditModal('new')}
-                className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-bold rounded-lg transition-colors"
-                style={{ background: 'var(--color-accent)', color: '#fff' }}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04]"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}
               >
-                <Plus size={14} />
+                <Plus size={16} strokeWidth={2.6} />
                 {t('admin.segments.create', 'New Segment')}
               </button>
             </div>
@@ -350,17 +351,10 @@ export default function AdminSegments() {
               ))}
               <button
                 onClick={() => setEditModal('new')}
-                className="w-full flex items-center justify-center gap-2 transition-colors"
-                style={{
-                  padding: 13, borderRadius: 13, cursor: 'pointer',
-                  border: '1.5px dashed var(--color-border-strong)',
-                  background: 'transparent', color: 'var(--color-admin-text-sub)',
-                  fontFamily: 'var(--admin-font-body)', fontSize: 12.5, fontWeight: 700,
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.color = 'var(--color-accent)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--color-border-strong)'; e.currentTarget.style.color = 'var(--color-admin-text-sub)'; }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04]"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}
               >
-                <Plus size={15} />
+                <Plus size={16} strokeWidth={2.6} />
                 {t('admin.segments.newSegment', 'New segment')}
               </button>
             </div>
@@ -554,17 +548,6 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
   const safePage = Math.min(page, totalPages);
   const pageStart = (safePage - 1) * PAGE_SIZE;
   const pageItems = filtered.slice(pageStart, pageStart + PAGE_SIZE);
-  const pageWindow = useMemo(() => {
-    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    const out = [1];
-    const lo = Math.max(2, safePage - 1);
-    const hi = Math.min(totalPages - 1, safePage + 1);
-    if (lo > 2) out.push('…');
-    for (let p = lo; p <= hi; p++) out.push(p);
-    if (hi < totalPages - 1) out.push('…');
-    out.push(totalPages);
-    return out;
-  }, [totalPages, safePage]);
 
   const IconComp = ICON_MAP[segment.icon] || Users;
 
@@ -786,37 +769,15 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
         )}
       </div>
 
-      {/* Pagination — 10 per page */}
+      {/* Pagination — 10 per page (shared Miembros-style component) */}
       {filtered.length > PAGE_SIZE && (
-        <div className="flex items-center justify-between gap-3 flex-wrap" style={{ padding: '12px 18px', borderTop: '1px solid var(--color-admin-border)', background: 'var(--color-bg-subtle)' }}>
-          <span style={{ fontSize: 11.5, color: 'var(--color-admin-text-muted)' }}>
-            {t('admin.segments.showingRange', { start: pageStart + 1, end: pageStart + pageItems.length, total: filtered.length, defaultValue: '{{start}}–{{end}} of {{total}}' })}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <SegIconBtn icon={ChevronLeft} size={30} disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} title={t('admin.segments.prevPage', 'Previous')} />
-            {pageWindow.map((p, i) => (
-              p === '…' ? (
-                <span key={`e${i}`} style={{ fontSize: 12, color: 'var(--color-admin-text-faint)', padding: '0 2px' }}>…</span>
-              ) : (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPage(p)}
-                  className="transition-colors"
-                  style={{
-                    minWidth: 30, height: 30, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                    fontFamily: 'var(--admin-font-mono)',
-                    background: p === safePage ? 'var(--color-accent)' : 'var(--color-admin-panel)',
-                    color: p === safePage ? '#fff' : 'var(--color-admin-text-sub)',
-                    border: `1px solid ${p === safePage ? 'transparent' : 'var(--color-admin-border)'}`,
-                  }}
-                >
-                  {p}
-                </button>
-              )
-            ))}
-            <SegIconBtn icon={ChevronRight} size={30} disabled={safePage >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title={t('admin.segments.nextPage', 'Next')} />
-          </div>
+        <div style={{ padding: '4px 18px 12px', background: 'var(--color-bg-subtle)' }}>
+          <AdminPagination
+            page={safePage}
+            pageSize={PAGE_SIZE}
+            total={filtered.length}
+            onPageChange={setPage}
+          />
         </div>
       )}
     </AdminCard>

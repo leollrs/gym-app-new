@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ChevronLeft, CheckCircle, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,7 +45,8 @@ const OBLogo = ({ size = 48 }) => (
 
 const Login = () => {
   const { signIn } = useAuth();
-  const navigate   = useNavigate();
+  // Post-login redirect is owned by PublicRoute (it honors any saved deep-link
+  // destination, e.g. a TV challenge QR scanned while signed out).
   const { t }      = useTranslation(['auth', 'common']);
 
   const [email,    setEmail]    = useState('');
@@ -116,7 +117,8 @@ const Login = () => {
       setLoginAttempts(0);
       setLockoutUntil(null);
       persistLockout(0, null);
-      navigate('/');
+      // No explicit navigate — PublicRoute redirects once auth state lands
+      // (and restores any saved deep-link destination).
     } catch {
       setError(t('invalidCredentials'));
       const attempts = loginAttempts + 1;

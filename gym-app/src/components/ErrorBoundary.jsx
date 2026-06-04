@@ -2,6 +2,7 @@ import { Component } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import i18n from 'i18next';
 import { trackError } from '../lib/errorTracker';
+import { recordGoodPath } from '../lib/lastGoodPath';
 
 // The error boundary may render before the lazy `pages` namespace finishes
 // loading (the very crash we're catching can happen during initial hydration).
@@ -34,50 +35,111 @@ class ErrorBoundary extends Component {
     trackError('react_crash', error, { componentStack: errorInfo.componentStack });
   }
 
-  // Auto-clear the boundary when the parent bumps `resetKey` (typically the
-  // current pathname — see App.jsx). Without this, a crash on one page kept
-  // showing the fallback even after the user navigated away, because the
-  // class state only cleared via the manual "Try Again" button.
   componentDidUpdate(prevProps) {
-    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+    const navigated = prevProps.resetKey !== this.props.resetKey;
+    if (!navigated) return;
+
+    if (this.state.hasError) {
+      // Auto-clear the fallback once the user navigates to a different route,
+      // so a crash on one page doesn't keep showing after they move away.
       this.setState({ hasError: false, error: null });
+      return;
+    }
+
+    // We just left `prevProps.resetKey` and it had rendered cleanly → it's a
+    // safe place for "Reiniciar" to return to. Recording the OUTGOING path
+    // (not the incoming one) is what makes lazy pages work: a lazy route shows
+    // a Suspense fallback first (no error), so recording the incoming path
+    // would wrongly mark the page that's about to crash as "good".
+    if (prevProps.resetKey) recordGoodPath(prevProps.resetKey);
+  }
+
+  componentWillUnmount() {
+    // A whole section's boundary is unmounting (e.g. leaving /admin/* for the
+    // member app). If it wasn't showing an error, its route was good — record
+    // it so cross-section recovery has a target.
+    if (!this.state.hasError && this.props.resetKey) {
+      recordGoodPath(this.props.resetKey);
     }
   }
 
-  handleRetry = () => {
-    this.setState({ hasError: false, error: null });
+  handleRestart = () => {
+    const { onReset } = this.props;
+    if (typeof onReset === 'function') {
+      // Router-aware reset: navigate back to the last good page, then clear.
+      try { onReset(); } catch { /* navigation failed — fall through to clear */ }
+      this.setState({ hasError: false, error: null });
+    } else {
+      // No router context (public/standalone boundary) — hard restart the app.
+      try {
+        window.location.reload();
+      } catch {
+        this.setState({ hasError: false, error: null });
+      }
+    }
   };
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-[60vh] flex items-center justify-center px-6">
-          <div className="bg-white/[0.04] border border-white/[0.06] rounded-2xl p-8 max-w-md w-full text-center space-y-5">
-            <div className="mx-auto w-14 h-14 rounded-full bg-[#D4AF37]/10 flex items-center justify-center">
-              <AlertTriangle size={28} className="text-[#D4AF37]" />
+        <div
+          className="min-h-[60vh] flex items-center justify-center px-6 py-10"
+          role="alert"
+        >
+          <div
+            className="w-full max-w-sm text-center"
+            style={{
+              background: 'var(--color-bg-card, #0F172A)',
+              border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))',
+              borderRadius: 20,
+              padding: '32px 24px',
+            }}
+          >
+            <div
+              className="mx-auto flex items-center justify-center"
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: '9999px',
+                background: 'color-mix(in srgb, var(--color-danger, #EF4444) 14%, transparent)',
+                color: 'var(--color-danger, #EF4444)',
+              }}
+            >
+              <AlertTriangle size={26} />
             </div>
 
-            <div className="space-y-2">
-              <h2 className="text-[20px] font-semibold text-[#E5E7EB]">{tr('errorBoundary.title', 'Something went wrong', 'errorBoundaryTitle')}</h2>
-              <p className="text-[14px] text-[#6B7280] leading-relaxed">
-                {tr('errorBoundary.body', 'An unexpected error occurred. Please try again or refresh the page.', 'errorBoundaryBody')}
-              </p>
-            </div>
-
-            {this.state.error?.message && (
-              <div className="bg-[#111827] border border-white/[0.06] rounded-xl px-4 py-3">
-                <p className="text-[12px] text-[#9CA3AF] font-mono break-all">
-                  {this.state.error.message}
-                </p>
-              </div>
-            )}
+            <h2
+              className="font-semibold"
+              style={{ marginTop: 18, fontSize: 20, color: 'var(--color-text-primary, #E5E7EB)' }}
+            >
+              {tr('errorBoundary.title', 'Something went wrong', 'errorBoundaryTitle')}
+            </h2>
+            <p
+              style={{
+                marginTop: 8,
+                fontSize: 14,
+                lineHeight: 1.5,
+                color: 'var(--color-text-muted, #9CA3AF)',
+              }}
+            >
+              {tr('errorBoundary.body', 'An unexpected error occurred. Please try again or refresh the page.', 'errorBoundaryBody')}
+            </p>
 
             <button
-              onClick={this.handleRetry}
-              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] transition-colors duration-200"
+              onClick={this.handleRestart}
+              className="inline-flex items-center justify-center gap-2 font-bold transition-opacity hover:opacity-90"
+              style={{
+                marginTop: 24,
+                width: '100%',
+                padding: '14px 24px',
+                borderRadius: 14,
+                fontSize: 14,
+                background: 'var(--color-accent, #D4AF37)',
+                color: 'var(--color-text-on-accent, #ffffff)',
+              }}
             >
               <RotateCcw size={16} />
-              {tr('errorBoundary.tryAgain', 'Try Again', 'errorBoundaryRetry')}
+              {tr('errorBoundary.restart', 'Restart', 'errorBoundaryRestart')}
             </button>
           </div>
         </div>

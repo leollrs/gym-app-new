@@ -9,7 +9,8 @@ import { sanitize } from '../../../lib/sanitize';
 import { Skeleton, ErrorCard } from '../../../components/admin';
 import { postTypeBadge, relativeTime } from './moderationHelpers';
 import { fetchComments } from '../../../lib/admin/moderationQueries';
-import { TK, FK, Ico, Card, MIC, Av, FilterPills, TypeBadge, StatusDot, TH, IconBtn, Pager, postTypeVisual } from './moderationKit';
+import { TK, FK, Ico, Card, MIC, Av, FilterPills, TypeBadge, StatusDot, TH, IconBtn, postTypeVisual } from './moderationKit';
+import AdminPagination from '../../../components/admin/AdminPagination';
 
 const COLS = '1.3fr 1fr 1fr 0.9fr 0.9fr 44px';
 const PAGE_SIZE = 10;
@@ -73,8 +74,6 @@ export default function CommentsTab({ gymId }) {
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
   const visible = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
-  const goPrev = () => setPage(p => Math.max(0, p - 1));
-  const goNext = () => setPage(p => Math.min(pageCount - 1, p + 1));
 
   const emptyState = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 20px' }}>
@@ -140,7 +139,9 @@ export default function CommentsTab({ gymId }) {
               </div>
             );
           })}
-          {filtered.length > 0 && <Pager page={safePage} pageCount={pageCount} onPrev={goPrev} onNext={goNext} />}
+          {filtered.length > 0 && (
+            <AdminPagination page={safePage + 1} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={(n) => setPage(n - 1)} />
+          )}
         </Card>
       </div>
 
@@ -178,7 +179,9 @@ export default function CommentsTab({ gymId }) {
             </Card>
           );
         })}
-        {filtered.length > 0 && <Pager page={safePage} pageCount={pageCount} onPrev={goPrev} onNext={goNext} style={{ borderTop: 'none', paddingTop: 4 }} />}
+        {filtered.length > 0 && (
+          <AdminPagination page={safePage + 1} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={(n) => setPage(n - 1)} />
+        )}
       </div>
     </div>
   );

@@ -178,7 +178,7 @@ export default function AdminSettingsRegistration() {
             {birthdayRewardsEnabled && (
               <div style={{ marginTop: 16 }}>
                 <Fld>{t('admin.settings.birthdayPoints', 'Points to grant')}</Fld>
-                <TextField type="number" min={0} value={birthdayRewardPoints} onChange={e => setBirthdayRewardPoints(Number(e.target.value) || 0)} mono />
+                <TextField type="text" inputMode="numeric" placeholder="0" value={birthdayRewardPoints === 0 ? '' : String(birthdayRewardPoints)} onChange={e => { const d = e.target.value.replace(/\D/g, ''); setBirthdayRewardPoints(d === '' ? 0 : Number(d)); }} mono />
                 <Fld>{t('admin.settings.birthdayMessage', 'Birthday message')}</Fld>
                 <TextField value={birthdayRewardMessage} onChange={e => setBirthdayRewardMessage(e.target.value)} />
               </div>

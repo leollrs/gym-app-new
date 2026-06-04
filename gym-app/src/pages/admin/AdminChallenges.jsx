@@ -13,8 +13,7 @@ import { FadeIn, CardSkeleton, AdminPageShell, ErrorCard, AdminModal } from '../
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import ChallengeModal from './components/ChallengeModal';
 import ChallengeSuggestionCard from './components/ChallengeSuggestionCard';
-import usePagedVisible from '../../hooks/usePagedVisible';
-import PaginationFooter from '../../components/admin/PaginationFooter';
+import AdminPagination from '../../components/admin/AdminPagination';
 import {
   TK, FK, Ico, ICON, TYPE_ICON, Card, IconChip, Pill, OutPill, Label,
   PremiosBox, MiniAction, Avatar, PrimaryBtn, GhostBtn,
@@ -222,10 +221,11 @@ export default function AdminChallenges() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [tab, setTab] = useState('active');
   // Single pager shared across tabs — SwipeableTabContent only renders one
-  // tab at a time, and we reset to the initial view on tab change so the
-  // count starts fresh after a switch.
-  const challengePager = usePagedVisible({ initial: 10, step: 10 });
-  useEffect(() => { challengePager.reset(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  // tab at a time, and we reset to the first page on tab change so the
+  // list starts fresh after a switch.
+  const CHALLENGES_PAGE_SIZE = 8;
+  const [challengePage, setChallengePage] = useState(1);
+  useEffect(() => { setChallengePage(1); }, [tab]);
   const [awardingId, setAwardingId] = useState(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState({});
   const [showTemplates, setShowTemplates] = useState(false);
@@ -516,10 +516,13 @@ export default function AdminChallenges() {
               </div>
             </div>
           );
+          const pageCount = Math.max(1, Math.ceil(filtered.length / CHALLENGES_PAGE_SIZE));
+          const safePage = Math.min(challengePage, pageCount);
+          const visible = filtered.slice((safePage - 1) * CHALLENGES_PAGE_SIZE, (safePage - 1) * CHALLENGES_PAGE_SIZE + CHALLENGES_PAGE_SIZE);
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 22 }}>
-              {filtered.slice(0, challengePager.visibleCount).map((c, idx) => renderCard(c, idx))}
-              <PaginationFooter pager={challengePager} total={filtered.length} />
+              {visible.map((c, idx) => renderCard(c, idx))}
+              <AdminPagination page={safePage} pageSize={CHALLENGES_PAGE_SIZE} total={filtered.length} onPageChange={setChallengePage} />
             </div>
           );
         };

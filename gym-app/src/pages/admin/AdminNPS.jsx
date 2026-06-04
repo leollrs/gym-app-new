@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -10,6 +10,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { broadcastNotification } from '../../lib/notifications';
 import { AdminPageShell, FadeIn, CardSkeleton } from '../../components/admin';
+import AdminPagination from '../../components/admin/AdminPagination';
 import { PERIODS, npsColor, npsGaugePercent } from '../../lib/admin/npsHelpers';
 import { SurveyManagerModal } from './components/NpsSurveyModals';
 import { TK, FK, TONE, Ico, Card, PrimaryBtn } from './components/retosKit';
@@ -27,6 +28,8 @@ const OIC = {
   chevD: <path d="m6 9 6 6 6-6" />,
   chevL: <path d="m15 6-6 6 6 6" />,
   chevR: <path d="m9 6 6 6-6 6" />,
+  trash: <><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" /></>,
+  refresh: <><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 4v4h-4M21 12a9 9 0 0 1-15 6.7L3 16M3 20v-4h4" /></>,
 };
 
 // score → semantic tone (aligned with promoter/passive/detractor bucketing)
@@ -95,6 +98,7 @@ const OpLabel = ({ icon, children }) => (
 
 export default function AdminNPS() {
   const { t, i18n } = useTranslation('pages');
+  const { t: tc } = useTranslation('common');
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const { profile } = useAuth();
@@ -110,61 +114,134 @@ export default function AdminNPS() {
   const [surveyOpen, setSurveyOpen] = useState(false);
   const [question, setQuestion] = useState('');
   const openSurvey = (preset) => { setQuestion(preset || ''); setSurveyOpen(true); };
+  // Which survey's stats/reactions are on screen (null = the active/default one).
+  const [pickedSurveyId, setPickedSurveyId] = useState(null);
+  const topRef = useRef(null);
+  const pickSurvey = (id) => {
+    setPickedSurveyId(id);
+    try { topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* noop */ }
+  };
 
   useEffect(() => {
     document.title = t('admin.nps.pageTitle', 'Member Feedback | Admin');
   }, [t]);
 
-  const statsKey = ['admin', 'nps', gymId, 'stats', days];
-  const responsesKey = ['admin', 'nps', gymId, 'responses', days];
-
-  const { data: stats } = useQuery({
-    queryKey: statsKey,
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_nps_stats', { p_gym_id: gymId, p_days: days });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!gymId,
-  });
-
-  const { data: responses, isLoading: responsesLoading } = useQuery({
-    queryKey: responsesKey,
-    queryFn: async () => {
-      let query = supabase
-        .from('nps_responses')
-        .select('id, score, feedback, created_at, profiles:profile_id(full_name, avatar_url, avatar_type, avatar_value)')
-        .eq('gym_id', gymId)
-        .gte('score', 1)
-        .order('created_at', { ascending: false })
-        .limit(1000);
-      if (days) {
-        const since = new Date();
-        since.setDate(since.getDate() - days);
-        query = query.gte('created_at', since.toISOString());
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!gymId,
-  });
-
-  const activeSurveysKey = ['admin', 'nps', gymId, 'active-surveys'];
-  const { data: activeSurveys = [] } = useQuery({
-    queryKey: activeSurveysKey,
+  // All surveys for this gym (admins can read every survey via RLS). The page
+  // shows ONE survey's data at a time — the active one, or, if none is active,
+  // the most recent survey so results don't disappear after you deactivate.
+  // Multiple surveys can coexist; only one is ever active (send deactivates the
+  // rest), and each response is linked to its survey via nps_responses.survey_id.
+  const surveysKey = ['admin', 'nps', gymId, 'surveys'];
+  const { data: surveys = [] } = useQuery({
+    queryKey: surveysKey,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('nps_surveys')
-        .select('id, title, created_at, created_by')
+        .select('id, title, is_active, created_at, created_by')
         .eq('gym_id', gymId)
-        .eq('is_active', true)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     },
     enabled: !!gymId,
   });
+  const activeSurveys = useMemo(() => surveys.filter((s) => s.is_active), [surveys]);
+  // Default view = the active survey, or the most recent if none is active. The
+  // admin can also pick a PAST survey from the "Encuestas pasadas" section to
+  // inspect its stats + reactions.
+  const defaultSurvey = activeSurveys[0] || surveys[0] || null;
+  const selectedSurvey = (pickedSurveyId && surveys.find((s) => s.id === pickedSurveyId)) || defaultSurvey;
+  const selectedSurveyId = selectedSurvey?.id || null;
+  const viewingPast = !!selectedSurvey && !!defaultSurvey && selectedSurvey.id !== defaultSurvey.id;
+  const pastSurveys = useMemo(
+    () => surveys.filter((s) => s.id !== defaultSurvey?.id),
+    [surveys, defaultSurvey?.id],
+  );
+  // Paginate the past-surveys list (5/page, Miembros-style pager).
+  const PAST_PAGE_SIZE = 5;
+  const [pastPage, setPastPage] = useState(1);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const pastPageCount = Math.max(1, Math.ceil(pastSurveys.length / PAST_PAGE_SIZE));
+  const safePastPage = Math.min(pastPage, pastPageCount);
+  const pastPageItems = pastSurveys.slice((safePastPage - 1) * PAST_PAGE_SIZE, safePastPage * PAST_PAGE_SIZE);
+  // When inspecting a past survey, show ALL of its responses (the survey is the
+  // scope); the date-range pills only apply to the current/active survey.
+  const appliedDays = viewingPast ? null : days;
+
+  // Responses for the SELECTED survey only. Previously this was gym-wide by
+  // time window, which is why the page always showed the same aggregate no
+  // matter which survey was active. Everything downstream (NPS score,
+  // distribution, highlights, recent list) is derived from this set, so
+  // scoping it here scopes the entire page to the selected survey.
+  const responsesKey = ['admin', 'nps', gymId, 'responses', selectedSurveyId, appliedDays];
+  const { data: responses, isLoading: responsesLoading } = useQuery({
+    queryKey: responsesKey,
+    queryFn: async () => {
+      let query = supabase
+        .from('nps_responses')
+        .select('id, score, feedback, created_at, profile_id, profiles:profile_id(full_name, avatar_url, avatar_type, avatar_value)')
+        .eq('gym_id', gymId)
+        .eq('survey_id', selectedSurveyId)
+        .gte('score', 1)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      if (appliedDays) {
+        const since = new Date();
+        since.setDate(since.getDate() - appliedDays);
+        query = query.gte('created_at', since.toISOString());
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!gymId && !!selectedSurveyId,
+  });
+
+  // Current member roster size — powers the response-rate stat, computed
+  // client-side so it stays scoped to the selected survey like everything else.
+  const { data: memberCount = 0 } = useQuery({
+    queryKey: ['admin', 'nps', gymId, 'member-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('gym_id', gymId)
+        .eq('role', 'member');
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!gymId,
+  });
+
+  // Lightweight per-survey summary (count + NPS) for the "Encuestas pasadas"
+  // list — scores only, gym-wide, capped, so it's cheap to fetch once.
+  const { data: surveyScores = [] } = useQuery({
+    queryKey: ['admin', 'nps', gymId, 'survey-scores'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('nps_responses')
+        .select('survey_id, score')
+        .eq('gym_id', gymId)
+        .gte('score', 1)
+        .limit(5000);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!gymId,
+  });
+  const summaryBySurvey = useMemo(() => {
+    const m = new Map();
+    for (const r of surveyScores) {
+      const s = Number(r.score);
+      if (!Number.isFinite(s) || s < 1 || s > 5) continue;
+      let e = m.get(r.survey_id);
+      if (!e) { e = { count: 0, prom: 0, det: 0 }; m.set(r.survey_id, e); }
+      e.count += 1;
+      if (s >= 4) e.prom += 1; else if (s <= 2) e.det += 1;
+    }
+    for (const e of m.values()) e.nps = e.count === 0 ? 0 : Math.round(((e.prom / e.count) - (e.det / e.count)) * 100);
+    return m;
+  }, [surveyScores]);
 
   const deactivateSurvey = useMutation({
     mutationFn: async (surveyId) => {
@@ -219,9 +296,41 @@ export default function AdminNPS() {
     onSuccess: () => {
       showToast(t('admin.nps.surveySent', 'Survey sent to all members'), 'success');
       setSurveyOpen(false);
+      setPickedSurveyId(null); // jump back to the (newly active) survey's view
       queryClient.invalidateQueries({ queryKey: ['admin', 'nps', gymId] });
     },
     onError: (err) => showToast(err.message || t('admin.nps.sendFailed', 'Failed to send survey'), 'error'),
+  });
+
+  // Reactivate a past survey — only one active at a time, so deactivate any
+  // current active survey first, then turn this one back on.
+  const reactivateSurvey = useMutation({
+    mutationFn: async (surveyId) => {
+      await supabase.from('nps_surveys').update({ is_active: false }).eq('gym_id', gymId).eq('is_active', true);
+      const { error } = await supabase.from('nps_surveys').update({ is_active: true }).eq('id', surveyId).eq('gym_id', gymId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      showToast(t('admin.nps.surveyReactivated', 'Encuesta reactivada'), 'success');
+      setPickedSurveyId(null); // land on the now-active survey's view
+      queryClient.invalidateQueries({ queryKey: ['admin', 'nps', gymId] });
+    },
+    onError: (err) => showToast(err.message || t('admin.nps.reactivateFailed', 'No se pudo reactivar'), 'error'),
+  });
+
+  // Permanently delete a past survey AND its responses (FK cascade, migration 0169).
+  const deleteSurvey = useMutation({
+    mutationFn: async (surveyId) => {
+      const { error } = await supabase.from('nps_surveys').delete().eq('id', surveyId).eq('gym_id', gymId);
+      if (error) throw error;
+    },
+    onSuccess: (_d, surveyId) => {
+      showToast(t('admin.nps.surveyDeleted', 'Encuesta eliminada'), 'success');
+      setConfirmDeleteId(null);
+      setPickedSurveyId((prev) => (prev === surveyId ? null : prev));
+      queryClient.invalidateQueries({ queryKey: ['admin', 'nps', gymId] });
+    },
+    onError: (err) => showToast(err.message || t('admin.nps.deleteFailed', 'No se pudo eliminar'), 'error'),
   });
 
   // Client-side 1-5 bucketing (correct regardless of which get_nps_stats RPC is deployed).
@@ -243,7 +352,9 @@ export default function AdminNPS() {
 
   const nps = computed.nps;
   const totalResponses = computed.total;
-  const responseRate = stats?.response_rate ?? 0;
+  // Response rate for the selected survey = unique responders ÷ current members.
+  const distinctResponders = useMemo(() => new Set((responses || []).map((r) => r.profile_id)).size, [responses]);
+  const responseRate = memberCount > 0 ? Math.min(100, Math.round((distinctResponders / memberCount) * 100)) : 0;
   const promoters = computed.promoters;
   const passives = computed.passives;
   const detractors = computed.detractors;
@@ -350,10 +461,23 @@ export default function AdminNPS() {
   return (
     <AdminPageShell>
       {/* header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
+      <div ref={topRef} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.nps.title', 'Member Feedback')}</h1>
           <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.nps.subtitle', 'NPS surveys and satisfaction tracking')}</div>
+          {selectedSurvey && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textFaint }}>
+                {t('admin.nps.viewingSurvey', { title: selectedSurvey.title, defaultValue: 'Viewing: {{title}}' })}
+              </span>
+              {viewingPast && (
+                <button type="button" onClick={() => setPickedSurveyId(null)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 11px', borderRadius: 999, cursor: 'pointer', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.body, fontSize: 11.5, fontWeight: 700, color: TK.accent }}>
+                  <Ico ch={OIC.chevL} size={12} color={TK.accent} stroke={2.4} />{t('admin.nps.backToCurrent', 'Back to current')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <PrimaryBtn icon={OIC.send} onClick={() => openSurvey(activeSurveys[0]?.title)}>{t('admin.nps.sendSurvey', 'Send Survey')}</PrimaryBtn>
       </div>
@@ -374,7 +498,8 @@ export default function AdminNPS() {
         </FadeIn>
       )}
 
-      {/* range pills */}
+      {/* range pills — only meaningful for the current/active survey */}
+      {!viewingPast && (
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 20 }}>
         {PERIODS.map((p) => {
           const on = days === p.days;
@@ -386,6 +511,7 @@ export default function AdminNPS() {
           );
         })}
       </div>
+      )}
 
       {responsesLoading ? (
         <div style={{ marginTop: 22 }}><CardSkeleton count={4} /></div>
@@ -502,6 +628,72 @@ export default function AdminNPS() {
             </div>
           )}
         </>
+      )}
+
+      {/* Past surveys — click one to load its stats + reactions above */}
+      {pastSurveys.length > 0 && (
+        <FadeIn>
+          <OpLabel icon={OIC.clock}>{t('admin.nps.pastSurveys', 'Past surveys')}</OpLabel>
+          <Card style={{ overflow: 'hidden' }}>
+            {pastPageItems.map((s, i) => {
+              const sum = summaryBySurvey.get(s.id) || { count: 0, nps: 0 };
+              const isSel = selectedSurvey?.id === s.id;
+              return (
+                <div key={s.id} role="button" tabIndex={0} onClick={() => pickSurvey(s.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickSurvey(s.id); } }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '16px 22px', textAlign: 'left', cursor: 'pointer',
+                    background: isSel ? TK.accentWash : 'transparent', borderTop: i > 0 ? `1px solid ${TK.divider}` : 'none',
+                    borderLeft: `3px solid ${isSel ? TK.accent : 'transparent'}` }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{s.title}</span>
+                      <span style={{ padding: '2px 9px', borderRadius: 999, background: s.is_active ? TONE.good.bg : TK.surface2, border: `1px solid ${s.is_active ? TONE.good.line : TK.borderSolid}`, fontFamily: FK.body, fontSize: 10.5, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: s.is_active ? TONE.good.ink : TK.textMute }}>
+                        {s.is_active ? t('admin.nps.surveyActivePill', 'Active') : t('admin.nps.surveyEndedPill', 'Ended')}
+                      </span>
+                    </div>
+                    <div style={{ fontFamily: FK.mono, fontSize: 12, color: TK.textFaint, marginTop: 4 }}>
+                      {new Date(s.created_at).toLocaleDateString(lang, { day: 'numeric', month: 'short', year: 'numeric' })} · {sum.count} {t('admin.nps.responses', 'Responses').toLowerCase()}
+                    </div>
+                  </div>
+                  <span style={{ fontFamily: FK.display, fontSize: 18, fontWeight: 800, minWidth: 46, textAlign: 'right', color: sum.count ? npsColor(sum.nps) : TK.textFaint }}>
+                    {sum.count ? `${sum.nps > 0 ? '+' : ''}${sum.nps}` : '—'}
+                  </span>
+                  {confirmDeleteId === s.id ? (
+                    <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <span style={{ fontFamily: FK.body, fontSize: 12, color: TK.textMute, whiteSpace: 'nowrap' }}>{t('admin.nps.deleteConfirm', '¿Eliminar?')}</span>
+                      <button type="button" onClick={() => deleteSurvey.mutate(s.id)} disabled={deleteSurvey.isPending}
+                        style={{ padding: '6px 12px', borderRadius: 8, cursor: 'pointer', border: 'none', background: 'var(--color-danger)', color: '#fff', fontFamily: FK.body, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {t('admin.nps.delete', 'Delete')}
+                      </button>
+                      <button type="button" onClick={() => setConfirmDeleteId(null)}
+                        style={{ padding: '6px 12px', borderRadius: 8, cursor: 'pointer', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.body, fontSize: 12, fontWeight: 600, color: TK.textSub, whiteSpace: 'nowrap' }}>
+                        {tc('cancel', 'Cancel')}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+                      {!s.is_active && (
+                        <button type="button" title={t('admin.nps.reactivate', 'Reactivate')} aria-label={t('admin.nps.reactivate', 'Reactivate')}
+                          disabled={reactivateSurvey.isPending}
+                          onClick={(e) => { e.stopPropagation(); reactivateSurvey.mutate(s.id); }}
+                          style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                          <Ico ch={OIC.refresh} size={15} color={TK.accent} stroke={2} />
+                        </button>
+                      )}
+                      <button type="button" title={t('admin.nps.delete', 'Delete')} aria-label={t('admin.nps.delete', 'Delete')}
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(s.id); }}
+                        style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}>
+                        <Ico ch={OIC.trash} size={15} color="var(--color-danger)" stroke={2} />
+                      </button>
+                      <Ico ch={OIC.chevR} size={16} color={TK.textFaint} stroke={2.2} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </Card>
+          <AdminPagination page={safePastPage} pageSize={PAST_PAGE_SIZE} total={pastSurveys.length} onPageChange={setPastPage} />
+        </FadeIn>
       )}
 
       <SurveyManagerModal

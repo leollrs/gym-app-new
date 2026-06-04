@@ -126,26 +126,6 @@ export function LoadMoreBtn({ children, onClick }) {
   );
 }
 
-/* prev/next page navigation ("‹  p / N  ›") */
-export function Pager({ page, pageCount, onPrev, onNext, style = {} }) {
-  if (pageCount <= 1) return null;
-  const btn = (disabled) => ({
-    width: 34, height: 34, borderRadius: 9, display: 'grid', placeItems: 'center', flexShrink: 0,
-    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
-    background: TK.surface2, border: `1px solid ${TK.borderSolid}`,
-  });
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '15px 22px', borderTop: `1px solid ${TK.divider}`, ...style }}>
-      <button type="button" disabled={page === 0} onClick={onPrev} style={btn(page === 0)} aria-label="Previous page">
-        <Ico ch={MIC.chevL} size={15} color={TK.textSub} stroke={2.2} />
-      </button>
-      <span style={{ fontFamily: FK.mono, fontSize: 12.5, color: TK.textMute }}>{page + 1} / {pageCount}</span>
-      <button type="button" disabled={page >= pageCount - 1} onClick={onNext} style={btn(page >= pageCount - 1)} aria-label="Next page">
-        <Ico ch={MIC.chevR} size={15} color={TK.textSub} stroke={2.2} />
-      </button>
-    </div>
-  );
-}
 
 /* ── top icon-tab nav (accent underline) ── */
 export function ModTabs({ tabs, active, onPick }) {

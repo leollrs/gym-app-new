@@ -110,6 +110,7 @@ export const AuthProvider = ({ children }) => {
   // we have no current `role`/`additional_roles` to safely route with.
   const [loading, setLoading] = useState(!cachedProfile?.id || cachedProfileStale);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadAdminNotifs, setUnreadAdminNotifs] = useState(0);
   const [gymDeactivated, setGymDeactivated] = useState(false);
   const [gymConfig, setGymConfig] = useState({});
   const [memberBlocked, setMemberBlocked] = useState(null); // null = not blocked, 'deactivated' | 'banned'
@@ -176,6 +177,28 @@ export const AuthProvider = ({ children }) => {
   const refreshNotifications = useCallback(() => {
     if (profile?.id) fetchUnreadNotifications(profile.id);
   }, [profile?.id, fetchUnreadNotifications]);
+
+  // Unread admin/super_admin-audience notifications — powers the admin sidebar
+  // + bell badge. Refetched (not incremented) so it stays in lockstep with the
+  // exact filters the badge counts: admin-audience, unread, not-dismissed.
+  const fetchUnreadAdminNotifications = useCallback(async (profileId, role, additionalRoles) => {
+    const isSuperAdmin = role === 'super_admin' || (additionalRoles || []).includes('super_admin');
+    const audValues = isSuperAdmin ? ['admin', 'super_admin'] : ['admin'];
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profileId)
+      .in('audience', audValues)
+      .is('read_at', null)
+      .is('dismissed_at', null);
+    if (!error) setUnreadAdminNotifs(count || 0);
+  }, []);
+
+  // Called by the admin notifications page after mark-read / dismiss / clear so
+  // the badge updates instantly through React state — no realtime round-trip.
+  const refreshAdminNotifications = useCallback(() => {
+    if (profile?.id) fetchUnreadAdminNotifications(profile.id, profile.role, profile.additional_roles);
+  }, [profile?.id, profile?.role, profile?.additional_roles, fetchUnreadAdminNotifications]);
 
   // Fetch the profile row for a given user id, then apply gym branding
   const fetchProfile = async (userId) => {
@@ -793,25 +816,37 @@ export const AuthProvider = ({ children }) => {
   //     the same filters used by fetchUnreadNotifications (member-audience,
   //     unread, not-dismissed).
   useEffect(() => {
-    if (profile?.id) {
-      fetchUnreadNotifications(profile.id);
-
-      const refetch = () => fetchUnreadNotifications(profile.id);
-      const channel = supabase
-        .channel('unread-notif-badge')
-        .on('postgres_changes', {
-          event: '*',
-          schema: 'public',
-          table: 'notifications',
-          filter: `profile_id=eq.${profile.id}`,
-        }, refetch)
-        .subscribe();
-
-      return () => supabase.removeChannel(channel);
-    } else {
+    if (!profile?.id) {
       setUnreadNotifications(0);
+      setUnreadAdminNotifs(0);
+      return;
     }
-  }, [profile?.id, fetchUnreadNotifications]);
+    const role = profile.role;
+    const extra = profile.additional_roles || [];
+    const isAdminish = role === 'admin' || role === 'super_admin'
+      || extra.includes('admin') || extra.includes('super_admin');
+
+    // One channel, both badges: any change to this profile's notification rows
+    // refetches the member count and (for admins) the admin count too. A single
+    // subscription avoids overlapping postgres_changes filters on one table.
+    const refetch = () => {
+      fetchUnreadNotifications(profile.id);
+      if (isAdminish) fetchUnreadAdminNotifications(profile.id, role, extra);
+      else setUnreadAdminNotifs(0);
+    };
+    refetch();
+    const channel = supabase
+      .channel('unread-notif-badge')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'notifications',
+        filter: `profile_id=eq.${profile.id}`,
+      }, refetch)
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [profile?.id, profile?.role, fetchUnreadNotifications, fetchUnreadAdminNotifications]);
 
   // ── SIGN UP ────────────────────────────────────────────────
   // Creates the Supabase auth user then immediately inserts a profiles row.
@@ -1155,6 +1190,8 @@ export const AuthProvider = ({ children }) => {
     patchProfile,
     unreadNotifications,
     refreshNotifications,
+    unreadAdminNotifs,
+    refreshAdminNotifications,
     // True for legacy accounts (signed up before migration 0344) that have
     // no DOB on file. Enforced via a route-level interstitial; prevents
     // continued use of the app until the user self-attests age >= MIN_AGE.
@@ -1184,6 +1221,8 @@ export const AuthProvider = ({ children }) => {
     patchProfile,
     unreadNotifications,
     refreshNotifications,
+    unreadAdminNotifs,
+    refreshAdminNotifications,
     availableRoles,
     effectiveView,
     switchView,

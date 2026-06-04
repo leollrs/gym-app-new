@@ -169,14 +169,15 @@ export default function AdminEmailTemplates() {
         actions={
           <button
             onClick={handleNewTemplate}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-colors hover:brightness-[1.04]"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04]"
             style={{
               backgroundColor: 'var(--color-accent)',
               color: '#fff',
-              boxShadow: '0 2px 8px color-mix(in srgb, var(--color-accent) 35%, transparent)',
+              borderRadius: 999,
+              boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)',
             }}
           >
-            <Plus size={16} /> {t('admin.emailTemplates.createNew')}
+            <Plus size={16} strokeWidth={2.6} /> {t('admin.emailTemplates.createNew')}
           </button>
         }
         className="mb-6"
@@ -204,9 +205,9 @@ export default function AdminEmailTemplates() {
                     <p className="text-[14px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.emailTemplates.noTemplates')}</p>
                     <p className="text-[12px] mt-1" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.emailTemplates.noTemplatesHint')}</p>
                     <button onClick={handleNewTemplate}
-                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold hover:brightness-[1.04] transition-colors"
-                      style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
-                      <Plus size={14} /> {t('admin.emailTemplates.createNew')}
+                      className="mt-4 inline-flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold transition-all duration-200 hover:brightness-[1.04]"
+                      style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}>
+                      <Plus size={16} strokeWidth={2.6} /> {t('admin.emailTemplates.createNew')}
                     </button>
                   </div>
                 </AdminCard>

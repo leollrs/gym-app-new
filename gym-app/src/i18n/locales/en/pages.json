@@ -4559,7 +4559,8 @@
         "activate_reward": "Reward activated",
         "deactivate_reward": "Reward deactivated",
         "publish_program": "Program published",
-        "unpublish_program": "Program unpublished"
+        "unpublish_program": "Program unpublished",
+        "tv_period_changed": "TV range changed"
       },
       "userAvatarAlt": "User avatar",
       "dateColumn": "Date",
@@ -6819,7 +6820,19 @@
       "resendToAll": "Resend to all",
       "resendWarning": "Resending relaunches the survey and notifies every member again — existing responses are kept. To only fix the wording without notifying, use Save.",
       "sendFirstSurvey": "Send your first survey",
-      "surveyActiveSince": "Active survey · started {{time}}"
+      "surveyActiveSince": "Active survey · started {{time}}",
+      "viewingSurvey": "Viewing: {{title}}",
+      "pastSurveys": "Past surveys",
+      "surveyActivePill": "Active",
+      "surveyEndedPill": "Ended",
+      "backToCurrent": "Back to current",
+      "reactivate": "Reactivate",
+      "delete": "Delete",
+      "deleteConfirm": "Delete?",
+      "surveyReactivated": "Survey reactivated",
+      "surveyDeleted": "Survey deleted",
+      "reactivateFailed": "Couldn't reactivate",
+      "deleteFailed": "Couldn't delete"
     },
     "analytics": {
       "retentionRate": "Retention Rate",
@@ -7492,7 +7505,18 @@
       "style_boricua_label": "Boricua Heat",
       "style_boricua_description": "Tropical sunset palette · 3-column podium · hometown energy",
       "style_telemetry_label": "Live Telemetry",
-      "style_telemetry_description": "Mission-control monospace · dense signal · ops dashboard"
+      "style_telemetry_description": "Mission-control monospace · dense signal · ops dashboard",
+      "loading": "Loading…",
+      "periodTitle": "Leaderboard time range",
+      "periodHint": "Window for the Volume, Workouts, and Check-ins boards. Top PRs stay all-time; Most Improved and Consistency stay monthly.",
+      "periodToday": "Today",
+      "periodWeek": "This week",
+      "periodMonth": "Last 30 days",
+      "period90": "Last 90 days",
+      "periodAll": "All time",
+      "periodChanged": "Range updated — connected TVs will switch within 30s.",
+      "periodChangeFailed": "Could not update range.",
+      "urlComboEsMixed": "Spanish mixed — leaderboards + challenges in Spanish"
     },
     "unauthorized": "Not authorized"
   },
@@ -11697,6 +11721,14 @@
       "deleteConfirm": "Delete \"{{label}}\"? This action cannot be undone.",
       "videoSizeError": "Video must be under 100MB",
       "videoTypeError": "Only MP4, WebM, and MOV videos are allowed"
+    },
+    "notifications": {
+      "title": "Alerts",
+      "subtitle": "App crashes and platform alerts.",
+      "empty": "No alerts",
+      "emptyBody": "Crash reports and platform alerts will appear here.",
+      "markAllRead": "Mark all read",
+      "dismiss": "Dismiss"
     }
   },
   "socialFeed": {
@@ -11930,7 +11962,8 @@
   "errorBoundary": {
     "title": "Something went wrong",
     "body": "An unexpected error occurred. Please try again or refresh the page.",
-    "tryAgain": "Try Again"
+    "tryAgain": "Try Again",
+    "restart": "Restart"
   },
   "aiConsent": {
     "title": "AI Photo Analysis",

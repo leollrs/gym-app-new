@@ -4559,7 +4559,8 @@
         "activate_reward": "Recompensa activada",
         "deactivate_reward": "Recompensa desactivada",
         "publish_program": "Programa publicado",
-        "unpublish_program": "Programa despublicado"
+        "unpublish_program": "Programa despublicado",
+        "tv_period_changed": "Rango de TV cambiado"
       },
       "userAvatarAlt": "Avatar del usuario",
       "dateColumn": "Fecha",
@@ -6987,7 +6988,19 @@
       "resendToAll": "Reenviar a todos",
       "resendWarning": "Reenviar relanza la encuesta y vuelve a notificar a todos los miembros — las respuestas existentes se conservan. Para solo corregir el texto sin notificar, usa Guardar.",
       "sendFirstSurvey": "Envía tu primera encuesta",
-      "surveyActiveSince": "Encuesta activa · iniciada {{time}}"
+      "surveyActiveSince": "Encuesta activa · iniciada {{time}}",
+      "viewingSurvey": "Viendo: {{title}}",
+      "pastSurveys": "Encuestas pasadas",
+      "surveyActivePill": "Activa",
+      "surveyEndedPill": "Finalizada",
+      "backToCurrent": "Volver a la actual",
+      "reactivate": "Reactivar",
+      "delete": "Eliminar",
+      "deleteConfirm": "¿Eliminar?",
+      "surveyReactivated": "Encuesta reactivada",
+      "surveyDeleted": "Encuesta eliminada",
+      "reactivateFailed": "No se pudo reactivar",
+      "deleteFailed": "No se pudo eliminar"
     },
     "analytics": {
       "retentionRate": "Tasa de Retención",
@@ -7660,7 +7673,18 @@
       "style_boricua_label": "Calor Boricua",
       "style_boricua_description": "Paleta tropical de atardecer · podio de 3 columnas · energía local",
       "style_telemetry_label": "Telemetría en Vivo",
-      "style_telemetry_description": "Monoespaciada de centro de mando · señal densa · panel de operaciones"
+      "style_telemetry_description": "Monoespaciada de centro de mando · señal densa · panel de operaciones",
+      "loading": "Cargando…",
+      "periodTitle": "Rango de tiempo de las tablas",
+      "periodHint": "Ventana para las tablas de Volumen, Entrenos y Asistencias. Los récords se mantienen históricos; Más Mejorados y Constancia se mantienen mensuales.",
+      "periodToday": "Hoy",
+      "periodWeek": "Esta semana",
+      "periodMonth": "Últimos 30 días",
+      "period90": "Últimos 90 días",
+      "periodAll": "Histórico",
+      "periodChanged": "Rango actualizado — las TVs conectadas cambiarán en 30 s.",
+      "periodChangeFailed": "No se pudo actualizar el rango.",
+      "urlComboEsMixed": "TV mixta en español — tablas + retos en español"
     },
     "unauthorized": "No autorizado"
   },
@@ -11780,6 +11804,14 @@
       "deleteConfirm": "Eliminar \"{{label}}\"? Esta accion no se puede deshacer.",
       "videoSizeError": "El video debe ser menor a 100MB",
       "videoTypeError": "Solo se permiten videos MP4, WebM y MOV"
+    },
+    "notifications": {
+      "title": "Alertas",
+      "subtitle": "Fallos de la app y alertas de plataforma.",
+      "empty": "Sin alertas",
+      "emptyBody": "Los reportes de fallos y alertas de plataforma aparecerán aquí.",
+      "markAllRead": "Marcar todo leído",
+      "dismiss": "Descartar"
     }
   },
   "socialFeed": {
@@ -12011,9 +12043,10 @@
     }
   },
   "errorBoundary": {
-    "title": "Algo salió mal",
+    "title": "Hubo un error",
     "body": "Ocurrió un error inesperado. Intenta de nuevo o recarga la página.",
-    "tryAgain": "Reintentar"
+    "tryAgain": "Reintentar",
+    "restart": "Reiniciar"
   },
   "aiConsent": {
     "title": "Análisis de fotos con IA",

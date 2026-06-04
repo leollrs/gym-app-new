@@ -19,6 +19,7 @@ import {
   FadeIn, SectionLabel, AdminModal,
 } from '../../components/admin';
 import AdminNotificationPrefs from './AdminNotificationPrefs';
+import AdminPagination from '../../components/admin/AdminPagination';
 import { loadGymChurnScores } from '../../lib/churnScore';
 
 // ── Admin-specific type metadata ────────────────────────────────────
@@ -76,11 +77,14 @@ const metaFor = (type) => TYPE_META[type] || {
   icon: Bell, tone: 'info', cat: 'system', labelKey: type, label: type,
 };
 
+// How many notifications to show per page in the inbox.
+const PAGE_SIZE = 6;
+
 export default function AdminNotifications() {
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
-  const { user, profile, refreshNotifications } = useAuth();
+  const { user, profile, refreshNotifications, refreshAdminNotifications } = useAuth();
   const { showToast } = useToast();
   const { data: queryItems, isLoading } = useNotifications(user?.id, 'admin');
   const { invalidateNotifications } = useInvalidate();
@@ -91,8 +95,13 @@ export default function AdminNotifications() {
 
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('all');
+  const [page, setPage] = useState(0);
   const [marking, setMarking] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // Changing the category resets to the first page (inline, not in an effect —
+  // an effect would race and briefly slice with the old filter + stale page).
+  const changeFilter = useCallback((key) => { setFilter(key); setPage(0); }, []);
 
   // At-risk headcount (same source as the Churn page) — turns an empty
   // inbox from a dead-end into a pointer toward today's retention work.
@@ -173,6 +182,13 @@ export default function AdminNotifications() {
     return items.filter(n => metaFor(n.type).cat === filter);
   }, [items, filter]);
 
+  // Paginate the filtered list. safePage guards against a stale page index
+  // after the list shrinks (dismiss / clear / realtime removal).
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const visible = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  useEffect(() => { if (page > pageCount - 1) setPage(pageCount - 1); }, [page, pageCount]);
+
   const unreadCount = items.filter(n => !n.read_at).length;
   const criticalCount = items.filter(n => !n.read_at && metaFor(n.type).tone === 'critical').length;
   const todayCount = items.filter(n => {
@@ -192,6 +208,7 @@ export default function AdminNotifications() {
     }
     invalidateNotifications(user.id);
     refreshNotifications();
+    refreshAdminNotifications();
   };
 
   const markAllRead = async () => {
@@ -215,6 +232,7 @@ export default function AdminNotifications() {
     }
     invalidateNotifications(user.id);
     refreshNotifications();
+    refreshAdminNotifications();
     setMarking(false);
   };
 
@@ -235,7 +253,8 @@ export default function AdminNotifications() {
     }
     invalidateNotifications(user.id);
     refreshNotifications();
-  }, [items, user?.id, invalidateNotifications, refreshNotifications, showToast, t]);
+    refreshAdminNotifications();
+  }, [items, user?.id, invalidateNotifications, refreshNotifications, refreshAdminNotifications, showToast, t]);
 
   const clearAll = useCallback(async () => {
     if (!items.length) return;
@@ -261,7 +280,8 @@ export default function AdminNotifications() {
     }
     invalidateNotifications(user.id);
     refreshNotifications();
-  }, [items, user?.id, profile?.role, invalidateNotifications, refreshNotifications, showToast, t]);
+    refreshAdminNotifications();
+  }, [items, user?.id, profile?.role, invalidateNotifications, refreshNotifications, refreshAdminNotifications, showToast, t]);
 
   const handleTap = (n) => {
     if (!n.read_at) markRead(n.id);
@@ -377,7 +397,7 @@ export default function AdminNotifications() {
           icon={Filter}
           borderColor="var(--color-text-subtle)"
           delay={0.1}
-          onClick={() => setFilter('all')}
+          onClick={() => changeFilter('all')}
         />
         <StatCard
           label={t('adminNotifications.stats.atRisk', 'At risk')}
@@ -385,7 +405,7 @@ export default function AdminNotifications() {
           icon={AlertTriangle}
           borderColor="var(--color-danger)"
           delay={0.15}
-          onClick={() => setFilter('risk')}
+          onClick={() => changeFilter('risk')}
         />
       </div>
 
@@ -400,7 +420,7 @@ export default function AdminNotifications() {
               <button
                 key={c.key}
                 type="button"
-                onClick={() => setFilter(c.key)}
+                onClick={() => changeFilter(c.key)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap transition-colors flex-shrink-0"
                 style={{
                   background: active ? 'var(--color-accent)' : 'var(--color-bg-card)',
@@ -469,7 +489,7 @@ export default function AdminNotifications() {
         ) : (
           <div className="space-y-2">
             <SectionLabel>{t('adminNotifications.recent', 'Recent')}</SectionLabel>
-            {filtered.map(n => {
+            {visible.map(n => {
               const meta = metaFor(n.type);
               const Icon = meta.icon;
               const isUnread = !n.read_at;
@@ -537,6 +557,12 @@ export default function AdminNotifications() {
                 </AdminCard>
               );
             })}
+            <AdminPagination
+              page={safePage + 1}
+              pageSize={PAGE_SIZE}
+              total={filtered.length}
+              onPageChange={(n) => setPage(n - 1)}
+            />
             <p className="text-center text-[11px] mt-4" style={{ color: 'var(--color-text-subtle)' }}>
               {t('adminNotifications.footerHint', 'Notifications auto-dismiss after 14 days.')}
             </p>

@@ -2,7 +2,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import {
   Building2, Users, BarChart3, Search, Settings, LogOut,
-  ScrollText, MoreHorizontal, X, Shield, Bug,
+  ScrollText, MoreHorizontal, X, Shield, Bug, Bell,
   Activity, HeadphonesIcon, AlertTriangle, HeartPulse, Puzzle, Printer, ListChecks,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +15,7 @@ const NAV_SECTIONS = [
     labelKey: 'platformNav.main',
     items: [
       { to: '/platform/attention',   labelKey: 'platformNav.attention',  icon: ListChecks, exact: true },
+      { to: '/platform/notifications', labelKey: 'platformNav.notifications', icon: Bell, exact: true },
       { to: '/platform/operations',  labelKey: 'platformNav.operations', icon: Activity, exact: true },
       { to: '/platform',             labelKey: 'platformNav.gyms',       icon: Building2, exact: true },
       { to: '/platform/support',     labelKey: 'platformNav.support',    icon: HeadphonesIcon },
@@ -54,7 +55,7 @@ const linkClass = (active) =>
 
 export default function PlatformLayout({ children }) {
   const { t } = useTranslation('common');
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, unreadAdminNotifs } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -168,6 +169,14 @@ export default function PlatformLayout({ children }) {
                   >
                     <Icon size={16} strokeWidth={1.75} />
                     <span className="flex-1">{t(labelKey)}</span>
+                    {to === '/platform/notifications' && unreadAdminNotifs > 0 && (
+                      <span
+                        className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+                        style={{ background: '#D4AF37', color: '#000' }}
+                      >
+                        {unreadAdminNotifs > 9 ? '9+' : unreadAdminNotifs}
+                      </span>
+                    )}
                   </NavLink>
                 ))}
               </div>
@@ -204,9 +213,24 @@ export default function PlatformLayout({ children }) {
             <Shield size={16} className="text-[#D4AF37]" />
             <p className="text-[15px] font-bold text-[#E5E7EB]">{t('platformLayout.platform', 'Platform')}</p>
           </div>
-          <button onClick={handleSignOut} aria-label="Sign out" className="w-11 h-11 flex items-center justify-center text-[#6B7280] hover:text-[#EF4444] transition-colors duration-200">
-            <LogOut size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => navigate('/platform/notifications')}
+              aria-label={t('platformNav.notifications', 'Alerts')}
+              className="relative w-11 h-11 flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors duration-200"
+            >
+              <Bell size={18} />
+              {unreadAdminNotifs > 0 && (
+                <span
+                  className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full"
+                  style={{ background: '#D4AF37', boxShadow: '0 0 0 2px #05070B' }}
+                />
+              )}
+            </button>
+            <button onClick={handleSignOut} aria-label="Sign out" className="w-11 h-11 flex items-center justify-center text-[#6B7280] hover:text-[#EF4444] transition-colors duration-200">
+              <LogOut size={18} />
+            </button>
+          </div>
         </header>
 
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pb-[calc(72px+var(--safe-area-bottom,env(safe-area-inset-bottom)))] md:pb-0">

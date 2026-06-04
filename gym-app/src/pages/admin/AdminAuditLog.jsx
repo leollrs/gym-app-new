@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { AdminPageShell, FadeIn } from '../../components/admin';
+import AdminPagination from '../../components/admin/AdminPagination';
 import { TK, FK, TONE, Ico, ICON, Card } from './components/retosKit';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -39,8 +40,6 @@ const LIC = {
   download: <><path d="M12 3v12M7 10l5 5 5-5" /><path d="M4 20h16" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
   chevD: <path d="m6 9 6 6 6-6" />,
-  chevL: <path d="m15 18-6-6 6-6" />,
-  chevR: <path d="m9 18 6-6-6-6" />,
   x: <path d="M18 6 6 18M6 6l12 12" />,
   pulse: <path d="M3 12h4l3 7 4-14 3 7h4" />,
   chat: <path d="M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12Z" />,
@@ -224,7 +223,7 @@ export default function AdminAuditLog() {
   }, [datePreset, customFrom, customTo]);
 
   // ── Paginated query (8/page, server-side via .range + exact count) ──
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: [...adminKeys.auditLog.list(gymId, actionFilter, datePreset, customFrom, customTo), debouncedSearch, page],
     queryFn: async () => {
       const search = debouncedSearch.trim();
@@ -284,9 +283,6 @@ export default function AdminAuditLog() {
   // ── shared bits ──
   const actionLabel = (a) => t(`admin.audit.actions.${a}`, { defaultValue: humanizeKey(a) });
   const entityLabel = (e) => t(`admin.audit.entities.${e}`, { defaultValue: humanizeKey(e) });
-
-  const goPrev = () => setPage(p => Math.max(0, p - 1));
-  const goNext = () => setPage(p => Math.min(totalPages - 1, p + 1));
 
   // Today (local) as YYYY-MM-DD — custom range dates can't be in the future
   // (an audit log only ever has past entries).
@@ -472,23 +468,12 @@ export default function AdminAuditLog() {
             </div>
 
             {/* pagination */}
-            {totalPages > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 18, marginTop: 24 }}>
-                <button type="button" onClick={goPrev} disabled={safePage === 0 || isFetching} aria-label={t('admin.audit.prevPage', { defaultValue: 'Previous page' })} style={{
-                  width: 38, height: 38, borderRadius: 99, display: 'grid', placeItems: 'center', cursor: safePage === 0 ? 'default' : 'pointer',
-                  background: TK.surface, border: `1px solid ${TK.borderSolid}`, opacity: safePage === 0 ? 0.45 : 1, boxShadow: safePage === 0 ? 'none' : TK.shadow,
-                }}>
-                  <Ico ch={LIC.chevL} size={16} color={TK.textSub} stroke={2.2} />
-                </button>
-                <span style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub }}><b style={{ color: TK.text, fontWeight: 800 }}>{safePage + 1}</b> / {totalPages}</span>
-                <button type="button" onClick={goNext} disabled={safePage >= totalPages - 1 || isFetching} aria-label={t('admin.audit.nextPage', { defaultValue: 'Next page' })} style={{
-                  width: 38, height: 38, borderRadius: 99, display: 'grid', placeItems: 'center', cursor: safePage >= totalPages - 1 ? 'default' : 'pointer',
-                  background: TK.surface, border: `1px solid ${TK.borderSolid}`, opacity: safePage >= totalPages - 1 ? 0.45 : 1, boxShadow: safePage >= totalPages - 1 ? 'none' : TK.shadow,
-                }}>
-                  <Ico ch={LIC.chevR} size={16} color={TK.textSub} stroke={2.2} />
-                </button>
-              </div>
-            )}
+            <AdminPagination
+              page={safePage + 1}
+              pageSize={PAGE_SIZE}
+              total={totalCount}
+              onPageChange={(n) => setPage(n - 1)}
+            />
           </>
         )}
       </FadeIn>

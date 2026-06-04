@@ -8,7 +8,8 @@ import { logAdminAction } from '../../../lib/adminAudit';
 import { Skeleton, ErrorCard } from '../../../components/admin';
 import { postTypeBadge, relativeTime, dataPreview } from './moderationHelpers';
 import { fetchPosts } from '../../../lib/admin/moderationQueries';
-import { TK, FK, Ico, Card, MIC, Av, FilterPills, TypeBadge, IconBtn, postTypeVisual, Pager } from './moderationKit';
+import { TK, FK, Ico, Card, MIC, Av, FilterPills, TypeBadge, IconBtn, postTypeVisual } from './moderationKit';
+import AdminPagination from '../../../components/admin/AdminPagination';
 
 const POSTS_PAGE_SIZE = 10;
 
@@ -133,7 +134,9 @@ export default function PostsTab({ gymId }) {
                 </div>
               );
             })}
-            <Pager page={safePage} pageCount={pageCount} onPrev={() => setPage(p => Math.max(0, p - 1))} onNext={() => setPage(p => Math.min(pageCount - 1, p + 1))} />
+            <div style={{ padding: '0 22px' }}>
+              <AdminPagination page={safePage + 1} pageSize={POSTS_PAGE_SIZE} total={filtered.length} onPageChange={(n) => setPage(n - 1)} />
+            </div>
           </>
         )}
       </Card>

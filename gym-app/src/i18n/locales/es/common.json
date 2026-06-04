@@ -34,7 +34,7 @@
   "submit": "Enviar",
   "retry": "Intentar de nuevo",
   "somethingWentWrong": "Algo salió mal. Por favor, inténtalo de nuevo.",
-  "errorBoundaryTitle": "Algo salió mal",
+  "errorBoundaryTitle": "Hubo un error",
   "errorBoundaryBody": "Ocurrió un error inesperado. Intenta de nuevo o recarga la página.",
   "errorBoundaryRetry": "Reintentar",
   "required": "Requerido",
@@ -194,7 +194,8 @@
     "gymHealth": "Salud del Gimnasio",
     "adoption": "Adopción",
     "cardQueue": "Tarjetas",
-    "attention": "Atención"
+    "attention": "Atención",
+    "notifications": "Alertas"
   },
   "platformLayout": {
     "skipToContent": "Ir al contenido principal",
@@ -453,5 +454,6 @@
     "update": "Actualizar ahora",
     "reload": "Recargar ahora",
     "versionLabel": "Versión {{client}} → {{required}}"
-  }
+  },
+  "errorBoundaryRestart": "Reiniciar"
 }
