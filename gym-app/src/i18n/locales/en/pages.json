@@ -681,6 +681,7 @@
     "deleteConfirm": "Are you sure you want to delete this post? This cannot be undone.",
     "postDeleted": "Post deleted",
     "deleteError": "Could not delete post. Please try again.",
+    "postError": "Could not publish your post. Please try again.",
     "report": {
       "title": "Report this post?",
       "subtitle": "Select a reason for reporting",
@@ -1147,7 +1148,37 @@
     "deleting": "Deleting…",
     "cancel": "Cancel",
     "share": {
-      "shareWorkout": "Share this workout"
+      "shareWorkout": "Share this workout",
+      "bold": "Bold",
+      "changePhoto": "Change photo",
+      "clearBackground": "Clear background",
+      "compose": "Compose with photo",
+      "copyLink": "Copy link",
+      "customize": "Customize",
+      "editorial": "Editorial",
+      "exactWeights": "Exact weights",
+      "feed": "Feed",
+      "format": "Format",
+      "gym": "Gym",
+      "muscles": "Muscles",
+      "photo": "Photo",
+      "pickDestination": "Pick a destination",
+      "pickPhoto": "Pick photo",
+      "portrait": "Portrait",
+      "poster": "Poster",
+      "prs": "PRs",
+      "recompose": "Re-compose with photo",
+      "resetAccent": "Reset",
+      "save": "Save",
+      "shareNow": "Share now",
+      "shareTo": "Share to",
+      "showOnCard": "Show on card",
+      "sticker": "Sticker",
+      "story": "Story",
+      "style": "Style",
+      "themeDark": "Dark",
+      "themeLight": "Light",
+      "titlePlaceholder": "Custom title (optional)"
     }
   },
   "workoutLog": {
@@ -3440,7 +3471,7 @@
       "currentPasswordWrong": "Current password is wrong",
       "openSettings": "Open settings",
       "signOutSub": "Sign out from this device",
-      "welcomeBtnSub": "Re-read the retention thesis and first-week actions",
+      "welcomeBtnSub": "Walk through the app page by page",
       "deleting": "Deleting…",
       "deleteAccount": "Delete account",
       "deleteWarning": "This action is permanent and will remove all your data.",
@@ -3452,7 +3483,8 @@
       "editName": "Edit name",
       "fullName": "Full name",
       "saveName": "Save",
-      "cancelEdit": "Cancel"
+      "cancelEdit": "Cancel",
+      "thisWeek": "This week"
     },
     "members": {
       "pending": "Pending",
@@ -4014,11 +4046,14 @@
       "pageTitle": "Admin - Classes",
       "todaysBookings": "Today's bookings",
       "todaysBookingsSummary": "{{spots}} spots booked across {{count}} classes",
-      "noClassesToday": "No classes scheduled today"
+      "noClassesToday": "No classes scheduled today",
+      "guestInstructor": "Guest instructor",
+      "guestInstructorPlaceholder": "e.g. Coach Alex (no app account)",
+      "guestInstructorHint": "Optional. Shown to members only when no trainer above is selected."
     },
     "churn": {
       "pageTitle": "Admin - Churn | TuGymPR",
-      "title": "Churn Intelligence",
+      "title": "Churn Intel",
       "analyzing": "Analyzing member activity…",
       "critical": "Critical",
       "highRisk": "At Risk",
@@ -4361,7 +4396,7 @@
     },
     "revenue": {
       "pageTitle": "Admin - Revenue | TuGymPR",
-      "title": "Store & Rewards",
+      "title": "Revenue",
       "subtitle": "Sales, redemptions, and points circulation",
       "pointsIssued": "Points Issued",
       "pointsRedeemed": "Points Redeemed",
@@ -4761,10 +4796,12 @@
       "cardsSaved": "Card settings saved",
       "cardsErrWindow": "Habit window must be between 7 and 365 days",
       "cardsErrTarget": "Habit target must be between 1 and 50 workouts",
-      "saveFailed": "Failed to save"
+      "saveFailed": "Failed to save",
+      "gymAddress": "Address",
+      "gymAddressPlaceholder": "Street, city, country"
     },
     "moderation": {
-      "title": "Content Moderation",
+      "title": "Moderation",
       "subtitle": "Review and moderate feed posts, comments, and member reports",
       "reports": "Reports",
       "feedPosts": "Feed Posts",
@@ -5895,7 +5932,7 @@
       "templateRequired": "Message template is required",
       "titleBodyRequired": "Title and body are required",
       "pageTitle": "Admin - Messaging",
-      "inboxTitle": "Inbox"
+      "inboxTitle": "Messages"
     },
     "challenges": {
       "upcoming": "Upcoming",
@@ -6004,7 +6041,7 @@
     },
     "programs": {
       "pageTitle": "Admin - Programs | TuGymPR",
-      "title": "Programs",
+      "title": "Training programs",
       "subtitle": "Multi-week training plans members can enroll in",
       "tabPrograms": "Programs",
       "tabClassRoutines": "Class Routines",
@@ -6759,7 +6796,7 @@
     },
     "nps": {
       "pageTitle": "Member Feedback | Admin",
-      "title": "Member Feedback",
+      "title": "Feedback",
       "subtitle": "NPS surveys and satisfaction tracking",
       "sendSurvey": "Send Survey",
       "npsLabel": "Net Promoter Score",
@@ -7323,7 +7360,7 @@
     },
     "outreach": {
       "pageTitle": "Outreach",
-      "title": "Send a message",
+      "title": "Send message",
       "subtitle": "Reach the right members on the right channel — one place, no copy-paste",
       "audience": "Audience",
       "pickGroup": "Pick a group",
@@ -7898,7 +7935,7 @@
     "dismiss": "Dismiss"
   },
   "adminNotifications": {
-    "title": "Admin Notifications",
+    "title": "Alerts",
     "subtitle": "Activity from your gym",
     "recent": "Recent",
     "footerHint": "Notifications older than 14 days are auto-archived",
@@ -11754,7 +11791,8 @@
     "accentTeal": "Teal",
     "accentGold": "Gold",
     "accentCoachPurple": "Coach purple",
-    "accentInk": "Ink"
+    "accentInk": "Ink",
+    "preview": "Preview"
   },
   "achievementToast": {
     "dismiss": "Dismiss"
@@ -12216,5 +12254,165 @@
     "save": "Save",
     "saving": "Saving…",
     "saved": "Got it — thanks!"
+  },
+  "adminTour": {
+    "ariaLabel": "Guided tour",
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "done": "Finish",
+    "stepCounter": "{{current}} of {{total}}",
+    "welcome": {
+      "title": "Welcome aboard",
+      "desc": "This isn't a management system — it's your retention tool. I'll walk you through it page by page: what each section does and what it's for. Takes about 2 minutes.",
+      "f1": "Use “Next” to move forward and “Back” to return.",
+      "f2": "You can skip the guide anytime.",
+      "f3": "Reopen it from your profile whenever you need it."
+    },
+    "overview": {
+      "title": "Overview",
+      "desc": "Your starting point every morning. Here you see “today’s conversations”: the 3–5 members you should message today so they don’t leave.",
+      "f1": "Morning queue with at-risk members prioritized.",
+      "f2": "Alerts and the day’s pending actions.",
+      "f3": "Shortcuts to what matters most."
+    },
+    "members": {
+      "title": "Members",
+      "desc": "Your full member list with search, sorting and risk signals. Open anyone to see their workout history, attendance and notes.",
+      "f1": "Churn-risk badges per member.",
+      "f2": "Member detail: workouts, attendance, PRs and notes.",
+      "f3": "Build segments and print cards from here."
+    },
+    "churn": {
+      "title": "Churn Intel",
+      "desc": "The brain of retention. A model scores who’s about to leave based on attendance, frequency and streaks, and tells you who to contact first.",
+      "f1": "Risk score and tier per member.",
+      "f2": "Win-back campaigns.",
+      "f3": "Contact history and follow-up."
+    },
+    "trainers": {
+      "title": "Trainers",
+      "desc": "Manage your team. Add or remove trainers, see how many clients each one carries and review their performance.",
+      "f1": "Add and remove trainers.",
+      "f2": "Clients and load per trainer.",
+      "f3": "Export the list to CSV."
+    },
+    "outreach": {
+      "title": "Send message",
+      "desc": "Reach many members at once via push, email or SMS. Pick an audience or specific members and personalize the message.",
+      "f1": "Audiences by segment or manual selection.",
+      "f2": "Preview recipients before sending.",
+      "f3": "Email templates and A/B testing available."
+    },
+    "messages": {
+      "title": "Messages",
+      "desc": "One-to-one chat with your members. Answer questions, follow up and keep the relationship close.",
+      "f1": "Direct conversations with each member.",
+      "f2": "Delivery and read receipts.",
+      "f3": "Message templates for quick replies."
+    },
+    "announcements": {
+      "title": "Announcements",
+      "desc": "Post news for the whole gym: events, maintenance or challenges. You can schedule them to go out at an exact time.",
+      "f1": "Types: news, event, challenge or maintenance.",
+      "f2": "Schedule with date and time.",
+      "f3": "They show up in every member’s app."
+    },
+    "classes": {
+      "title": "Classes",
+      "desc": "Manage your class schedule with capacity, waitlist and assigned trainer. Review attendance and ratings per class.",
+      "f1": "Recurring schedule with capacity and spots.",
+      "f2": "Waitlist with automatic promotion.",
+      "f3": "Analytics: attendance, ratings and results."
+    },
+    "programs": {
+      "title": "Training programs",
+      "desc": "Create gym training programs as ready-made routines for your members to enroll in and follow.",
+      "f1": "Structured by weeks, days and exercises.",
+      "f2": "Track enrolled members.",
+      "f3": "Templates to start fast."
+    },
+    "challenges": {
+      "title": "Challenges",
+      "desc": "Launch competitions to spark motivation: consistency, volume, PRs or team-based, with prizes and a live leaderboard.",
+      "f1": "Several challenge types with prizes.",
+      "f2": "Real-time leaderboard.",
+      "f3": "Ready-to-use challenge suggestions."
+    },
+    "leaderboard": {
+      "title": "Leaderboard",
+      "desc": "The gym’s rankings across different metrics. Healthy competition keeps people coming back.",
+      "f1": "Volume, workouts, consistency, streaks and more.",
+      "f2": "Filter by period: week, month or all-time.",
+      "f3": "Control which metrics are shown."
+    },
+    "tvDisplay": {
+      "title": "TV Display",
+      "desc": "Screen mode for the gym TV: it rotates leaderboards, challenges and metrics. Set the time range and grab the link or QR.",
+      "f1": "Automatic rotation of boards.",
+      "f2": "Pick the range: today, week, month, 90 days or all.",
+      "f3": "Link and QR to open on any screen."
+    },
+    "rewards": {
+      "title": "Rewards",
+      "desc": "The points and rewards system. Define what your members can redeem and drive consistency with real rewards.",
+      "f1": "Rewards catalog and tiers.",
+      "f2": "Redemption log.",
+      "f3": "Automations, like birthday rewards."
+    },
+    "store": {
+      "title": "Store",
+      "desc": "Your in-house point of sale: products, categories and a purchase log. Track what you sell with points or money.",
+      "f1": "Add products and categories.",
+      "f2": "Purchase log per member.",
+      "f3": "Referral program to grow by word of mouth."
+    },
+    "analytics": {
+      "title": "Analytics",
+      "desc": "Your business health in charts: growth, retention, cohorts and the onboarding funnel. The full picture lives here.",
+      "f1": "Growth, retention and activity.",
+      "f2": "Cohorts and lifecycle stages.",
+      "f3": "Onboarding funnel with its drop-offs."
+    },
+    "attendance": {
+      "title": "Attendance",
+      "desc": "Who comes in and when. 30, 60 and 90-day trends plus heatmaps by day and hour to understand your peak times.",
+      "f1": "Attendance trends over time.",
+      "f2": "Heatmap by day and hour.",
+      "f3": "Export to CSV (revenue view too)."
+    },
+    "nps": {
+      "title": "Feedback",
+      "desc": "Measure how happy your members are. Launch surveys, read the feedback and catch problems before they become cancellations.",
+      "f1": "NPS surveys with a score.",
+      "f2": "Member comments and reactions.",
+      "f3": "History of past surveys."
+    },
+    "reports": {
+      "title": "Reports",
+      "desc": "Export your data to CSV: members, activity, commerce and more. Handy for backups or outside analysis.",
+      "f1": "Exports by category.",
+      "f2": "Customizable date range.",
+      "f3": "Export history."
+    },
+    "moderation": {
+      "title": "Moderation",
+      "desc": "Keep your community healthy. Review reported content and approve, hide or remove posts and comments.",
+      "f1": "Reports, posts and comments.",
+      "f2": "Actions: remove, restore or dismiss.",
+      "f3": "Action log for auditing."
+    },
+    "settings": {
+      "title": "Settings",
+      "desc": "Your gym’s control center: brand and colors, hours, registration mode, email digest and more.",
+      "f1": "Brand: logo, colors and name.",
+      "f2": "Hours, closures and member registration.",
+      "f3": "Email digest and welcome cards."
+    },
+    "finish": {
+      "title": "You’re all set!",
+      "desc": "You know your dashboard now. The routine that matters: check the Overview every morning and message 3 at-risk members. That’s the difference between 70% and 85% annual retention.",
+      "f1": "Reopen this guide anytime from your profile."
+    }
   }
 }

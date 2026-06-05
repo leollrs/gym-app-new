@@ -134,7 +134,7 @@ const PastChallengeParticipants = ({ challenge, t }) => {
           .select('profile_id, score, profiles!inner(full_name, username, avatar_url)')
           .eq('challenge_id', challenge.id)
           .eq('profiles.is_staff', false) // staff excluded from challenge rankings
-          .order('created_at', { ascending: true })
+          .order('joined_at', { ascending: true })
           .limit(500);
         if (cancelled) return;
         const dnf = (data || []).filter(p => !p.score || Math.round(p.score) === 0);

@@ -545,7 +545,7 @@ const Navigation = () => {
           <Bell size={16} />
           <span className="flex-1">{t('nav.notifications', { defaultValue: 'Notifications' })}</span>
           {unreadNotifications > 0 && (
-            <span className="min-w-[18px] h-[18px] rounded-full bg-[#D4AF37] text-black text-[10px] font-bold flex items-center justify-center">
+            <span className="min-w-[18px] h-[18px] rounded-full bg-[#D4AF37] text-white text-[10px] font-bold flex items-center justify-center">
               {unreadNotifications > 9 ? '9+' : unreadNotifications}
             </span>
           )}
@@ -664,7 +664,7 @@ const Navigation = () => {
             >
               <Bell size={16} />
               {unreadNotifications > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-black text-[10px] font-bold flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-white text-[10px] font-bold flex items-center justify-center">
                   {unreadNotifications > 9 ? '9+' : unreadNotifications}
                 </span>
               )}
@@ -741,7 +741,7 @@ const Navigation = () => {
         >
           <Bell size={16} />
           {unreadNotifications > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-black text-[10px] font-bold flex items-center justify-center">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-white text-[10px] font-bold flex items-center justify-center">
               {unreadNotifications > 9 ? '9+' : unreadNotifications}
             </span>
           )}

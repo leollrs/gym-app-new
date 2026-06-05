@@ -3015,7 +3015,7 @@ export const ExerciseLibraryPage = () => {
               className="inline-flex items-center gap-1 px-3.5 py-2.5 rounded-full active:scale-95 transition-all whitespace-nowrap"
               style={{
                 background: 'var(--color-accent)',
-                color: '#001512',
+                color: '#fff',
                 fontSize: 13,
                 fontWeight: 800,
                 letterSpacing: '-0.1px',

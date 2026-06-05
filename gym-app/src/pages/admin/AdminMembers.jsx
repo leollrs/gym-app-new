@@ -564,6 +564,7 @@ export default function AdminMembers() {
 
   return (
     <AdminPageShell>
+      <div data-admin-tour="members">
       <PageHeader
         title={`${t('admin.members.title', 'Members')} (${members.length})`}
         subtitle={t('admin.members.subtitleDirectory', { total: members.length, defaultValue: '{{total}} total members' })}
@@ -585,6 +586,7 @@ export default function AdminMembers() {
           </div>
         }
       />
+      </div>
 
       {/* Top summary row -- visible on all tabs.
           Risk-tier cards (Critical, At Risk) moved to AdminChurn — this page

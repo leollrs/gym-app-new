@@ -22,6 +22,10 @@ const LANGUAGES = [
   { code: 'es', label: 'Español', flag: '\u{1F1EA}\u{1F1F8}' },
 ];
 
+// `gyms.address` lands with migration 0519 — until it's deployed, selecting or
+// updating it 400s (42703 / PGRST204). Detect that so we can fall back.
+const isMissingColumn = (e) => !!e && (e.code === '42703' || e.code === 'PGRST204');
+
 export default function AdminSettingsGymInfo() {
   const { profile, refreshProfile, availableRoles } = useAuth();
   const hasMultipleViews = Array.isArray(availableRoles) && availableRoles.length > 1;
@@ -34,6 +38,7 @@ export default function AdminSettingsGymInfo() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
   const [showViewSwitcher, setShowViewSwitcher] = useState(false);
 
   useEffect(() => { document.title = `${t('admin.settings.gymName', 'Gym Name')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
@@ -41,11 +46,15 @@ export default function AdminSettingsGymInfo() {
   const { data: gymData, isLoading } = useQuery({
     queryKey: [...adminKeys.settings(gymId), 'gym-info'],
     queryFn: async () => {
-      const { data, error: gymErr } = await supabase
+      let { data, error: gymErr } = await supabase
         .from('gyms')
-        .select('name, slug')
+        .select('name, slug, address')
         .eq('id', gymId)
         .single();
+      // `address` (migration 0519) may not be deployed yet — retry without it.
+      if (gymErr && isMissingColumn(gymErr)) {
+        ({ data, error: gymErr } = await supabase.from('gyms').select('name, slug').eq('id', gymId).single());
+      }
       if (gymErr) logger.warn('Failed to load gym info', gymErr);
       return data;
     },
@@ -54,14 +63,17 @@ export default function AdminSettingsGymInfo() {
 
   useEffect(() => {
     if (gymData?.name != null) setName(gymData.name);
+    if (gymData?.address != null) setAddress(gymData.address);
   }, [gymData]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const { error: gymErr } = await supabase.from('gyms').update({
-        name,
-        updated_at: new Date().toISOString(),
-      }).eq('id', gymId);
+      const base = { name, updated_at: new Date().toISOString() };
+      let { error: gymErr } = await supabase.from('gyms').update({ ...base, address: address.trim() || null }).eq('id', gymId);
+      // `address` (migration 0519) may not be deployed yet — still save the rest.
+      if (gymErr && isMissingColumn(gymErr)) {
+        ({ error: gymErr } = await supabase.from('gyms').update(base).eq('id', gymId));
+      }
       if (gymErr) throw gymErr;
       logAdminAction('update_settings', 'gym', gymId);
     },
@@ -114,6 +126,8 @@ export default function AdminSettingsGymInfo() {
             <CardHd icon={DIC.building}>{t('admin.settings.gymName', 'Gym Name')}</CardHd>
             <Fld>{t('admin.settings.gymName', 'Gym Name')}</Fld>
             <TextField value={name} onChange={e => setName(e.target.value)} />
+            <Fld>{t('admin.settings.gymAddress', 'Address')}</Fld>
+            <TextField value={address} onChange={e => setAddress(e.target.value)} placeholder={t('admin.settings.gymAddressPlaceholder', 'Street, city, country')} />
             <div style={{ marginTop: 18, fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text }}>{t('admin.settings.gymSlug', 'Gym Slug')}</div>
             <div style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, marginTop: 5, wordBreak: 'break-word' }}>
               {t('admin.settings.gymSlugDesc', 'Members sign up using:')}{' '}

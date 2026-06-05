@@ -397,7 +397,7 @@ export default function AdminAnnouncements() {
   }, [announcements]);
 
   return (
-    <div className="px-3 sm:px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+    <div className="px-3 sm:px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto" data-admin-tour="announcements">
       <PageHeader
         title={t('admin.announcements.title', 'Announcements')}
         subtitle={t('admin.announcements.subtitle', 'Messages broadcast to all members')}

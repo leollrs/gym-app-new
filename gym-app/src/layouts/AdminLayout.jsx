@@ -11,6 +11,7 @@ import { ScanClaimProvider } from '../contexts/ScanClaimContext';
 import { InsightsRangeProvider } from '../contexts/InsightsRangeContext';
 import { supabase } from '../lib/supabase';
 import UserAvatar from '../components/UserAvatar';
+import AdminTour from '../components/admin/AdminTour';
 
 const AdminOnboardingWizard = lazy(() => import('../components/admin/AdminOnboardingWizard'));
 const ScanFeedback = lazy(() => import('../components/admin/ScanFeedback'));
@@ -312,23 +313,23 @@ export default function AdminLayout({ children }) {
                 src={gymLogoUrl}
                 alt={gymName || 'Gym logo'}
                 className="w-8 h-8 rounded-lg object-contain flex-shrink-0"
-                style={{ background: 'var(--color-bg-active)', border: '1px solid var(--color-border-subtle)' }}
+                style={{ background: 'var(--color-bg-active)', border: '1px solid var(--color-admin-border)' }}
               />
             ) : (
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-subtle)' }}>
-                <LayoutDashboard size={14} style={{ color: 'var(--color-text-subtle)' }} />
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-admin-border)' }}>
+                <LayoutDashboard size={14} style={{ color: 'var(--color-admin-text-faint)' }} />
               </div>
             )}
             <div className="min-w-0">
               <p className="text-[15px] font-semibold truncate leading-tight"
-                style={{ color: 'var(--color-text-primary)' }}>
+                style={{ color: 'var(--color-admin-text)' }}>
                 {gymName || 'Dashboard'}
               </p>
-              <p className="text-[12px] leading-tight" style={{ color: 'var(--color-text-subtle)' }}>{t('adminNav.admin')}</p>
+              <p className="text-[12px] leading-tight" style={{ color: 'var(--color-admin-text-faint)' }}>{t('adminNav.admin')}</p>
             </div>
           </div>
-          <div className="mt-4" style={{ height: '1px', background: 'var(--color-border-subtle)' }} />
+          <div className="mt-4" style={{ height: '1px', background: 'var(--color-admin-border)' }} />
         </div>
 
         {/* Nav sections */}
@@ -340,13 +341,13 @@ export default function AdminLayout({ children }) {
                 className="w-full flex items-center justify-between px-3 mb-1.5 text-left"
               >
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em]"
-                  style={{ color: 'var(--color-text-subtle)' }}>
+                  style={{ color: 'var(--color-admin-text-faint)' }}>
                   {t(section.labelKey)}
                 </p>
                 <ChevronRight
                   size={12}
                   className={`transition-transform ${collapsedSections[section.labelKey] ? '' : 'rotate-90'}`}
-                  style={{ color: 'var(--color-text-subtle)' }}
+                  style={{ color: 'var(--color-admin-text-faint)' }}
                 />
               </button>
               {!collapsedSections[section.labelKey] && (
@@ -356,6 +357,7 @@ export default function AdminLayout({ children }) {
                       key={to}
                       to={to}
                       end={exact}
+                      data-admin-tour-nav={to}
                       className={({ isActive }) => linkClass(isActive)}
                     >
                       <Icon size={16} strokeWidth={1.75} />
@@ -380,7 +382,7 @@ export default function AdminLayout({ children }) {
           ))}
 
           {/* Advanced Tools entry */}
-          <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+          <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
             <button
               onClick={() => setAdvancedToolsOpen(prev => !prev)}
               className="admin-nav-link w-full"
@@ -392,7 +394,7 @@ export default function AdminLayout({ children }) {
             {advancedToolsOpen && (
               <div className="mt-1 space-y-0.5">
                 {advancedPages.map(({ to, labelKey, icon: Icon, descKey }) => (
-                  <NavLink key={to} to={to} end={false} className={({ isActive }) => linkClass(isActive)}>
+                  <NavLink key={to} to={to} end={false} data-admin-tour-nav={to} className={({ isActive }) => linkClass(isActive)}>
                     <Icon size={16} strokeWidth={1.75} />
                     <span className="flex-1">{t(labelKey)}</span>
                   </NavLink>
@@ -416,14 +418,14 @@ export default function AdminLayout({ children }) {
             <div className="px-3 py-2 rounded-lg"
               style={{ background: 'color-mix(in srgb, var(--color-success) 5%, transparent)', border: '1px solid color-mix(in srgb, var(--color-success) 10%, transparent)' }}>
               <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5"
-                style={{ color: 'color-mix(in srgb, var(--color-success) 70%, var(--color-text-primary))' }}>Online Now</p>
+                style={{ color: 'color-mix(in srgb, var(--color-success) 70%, var(--color-admin-text))' }}>Online Now</p>
               {onlineAdmins.map(a => (
                 <div key={a.profile_id} className="flex items-center gap-2 py-0.5">
                   <span className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0"
                     style={{ background: 'var(--color-success)' }} />
-                  <span className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{a.profiles?.full_name || 'Admin'}</span>
+                  <span className="text-[11px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>{a.profiles?.full_name || 'Admin'}</span>
                   {a.current_page && (
-                    <span className="text-[9px] ml-auto flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>{a.current_page}</span>
+                    <span className="text-[9px] ml-auto flex-shrink-0" style={{ color: 'var(--color-admin-text-faint)' }}>{a.current_page}</span>
                   )}
                 </div>
               ))}
@@ -432,7 +434,7 @@ export default function AdminLayout({ children }) {
         )}
 
         {/* User + sign out */}
-        <div className="px-3 py-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+        <div className="px-3 py-3" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
           <button
             onClick={() => navigate('/admin/profile')}
             className="w-full flex items-center gap-2.5 px-3 py-1.5 mb-1 rounded-lg transition-colors duration-200 text-left"
@@ -440,22 +442,18 @@ export default function AdminLayout({ children }) {
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
             <UserAvatar
-              user={{
-                ...profile,
-                avatar_type: profile?.avatar_url ? 'photo' : profile?.avatar_design ? 'design' : 'color',
-                avatar_value: profile?.avatar_url || profile?.avatar_design || profile?.avatar_color || '#6366F1',
-              }}
+              user={profile}
               size={28}
             />
-            <p className="text-[14px] font-medium truncate" style={{ color: 'var(--color-text-muted)' }}>{profile?.full_name ?? 'Admin'}</p>
-            <ChevronRight size={14} className="ml-auto flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }} />
+            <p className="text-[14px] font-medium truncate" style={{ color: 'var(--color-admin-text-muted)' }}>{profile?.full_name ?? 'Admin'}</p>
+            <ChevronRight size={14} className="ml-auto flex-shrink-0" style={{ color: 'var(--color-admin-text-faint)' }} />
           </button>
           <button
             onClick={handleSignOut}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors"
-            style={{ color: 'var(--color-text-subtle)' }}
+            style={{ color: 'var(--color-admin-text-faint)' }}
             onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-danger)'; e.currentTarget.style.background = 'color-mix(in srgb, var(--color-danger) 5%, transparent)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-text-subtle)'; e.currentTarget.style.background = 'transparent'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-admin-text-faint)'; e.currentTarget.style.background = 'transparent'; }}
           >
             <LogOut size={14} />
             {t('adminNav.signOut')}
@@ -476,7 +474,7 @@ export default function AdminLayout({ children }) {
             background: 'var(--color-bg-nav)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
-            borderBottom: '1px solid var(--color-border-subtle)',
+            borderBottom: '1px solid var(--color-admin-border)',
           }}
         >
           {/* Left: gym logo or name */}
@@ -486,15 +484,15 @@ export default function AdminLayout({ children }) {
                 src={gymLogoUrl}
                 alt={gymName || 'Gym logo'}
                 className="w-9 h-9 rounded-lg object-contain flex-shrink-0"
-                style={{ background: 'var(--color-bg-active)', border: '1px solid var(--color-border-subtle)' }}
+                style={{ background: 'var(--color-bg-active)', border: '1px solid var(--color-admin-border)' }}
               />
             ) : (
               <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-subtle)' }}>
-                <LayoutDashboard size={15} style={{ color: 'var(--color-text-subtle)' }} />
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-admin-border)' }}>
+                <LayoutDashboard size={15} style={{ color: 'var(--color-admin-text-faint)' }} />
               </div>
             )}
-            <p className="text-[16px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{gymName || 'Dashboard'}</p>
+            <p className="text-[16px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>{gymName || 'Dashboard'}</p>
           </div>
 
           {/* Right: notifications + alert badge + admin avatar */}
@@ -505,7 +503,7 @@ export default function AdminLayout({ children }) {
               className="relative w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ background: 'var(--color-bg-hover)' }}
             >
-              <Bell size={16} style={{ color: 'var(--color-text-primary)' }} />
+              <Bell size={16} style={{ color: 'var(--color-admin-text)' }} />
               {unreadAdminNotifs > 0 && (
                 <span
                   className="absolute top-1 right-1 w-2 h-2 rounded-full"
@@ -522,7 +520,7 @@ export default function AdminLayout({ children }) {
               className="relative w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ background: 'var(--color-bg-hover)' }}
             >
-              <AlertTriangle size={16} style={{ color: 'var(--color-text-primary)' }} />
+              <AlertTriangle size={16} style={{ color: 'var(--color-admin-text)' }} />
               {highRiskCount > 0 && (
                 <span className="absolute top-1 right-1 w-2 h-2 rounded-full"
                   style={{ background: 'var(--color-danger)', boxShadow: '0 0 0 2px var(--color-bg-hover)' }} />
@@ -534,11 +532,7 @@ export default function AdminLayout({ children }) {
               className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 focus:ring-2 focus:outline-none overflow-hidden"
             >
               <UserAvatar
-                user={{
-                  ...profile,
-                  avatar_type: profile?.avatar_url ? 'photo' : profile?.avatar_design ? 'design' : 'color',
-                  avatar_value: profile?.avatar_url || profile?.avatar_design || profile?.avatar_color || '#6366F1',
-                }}
+                user={profile}
                 size={36}
               />
             </button>
@@ -566,14 +560,14 @@ export default function AdminLayout({ children }) {
         }`}
       >
         <div className="rounded-t-2xl px-4 pt-3 overflow-hidden max-h-[70vh] overflow-y-auto"
-          style={{ background: 'var(--color-bg-card)', borderTop: '1px solid var(--color-border-default)', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
+          style={{ background: 'var(--color-bg-card)', borderTop: '1px solid var(--color-admin-border)', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
           {/* Panel header */}
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t('adminNav.morePages')}</p>
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-admin-text-muted)' }}>{t('adminNav.morePages')}</p>
             <button
               onClick={() => setMoreMenuOpen(false)}
               className="p-1.5 rounded-lg transition-colors"
-              style={{ color: 'var(--color-text-subtle)' }}
+              style={{ color: 'var(--color-admin-text-faint)' }}
               aria-label="Close menu"
             >
               <X size={18} />
@@ -599,7 +593,7 @@ export default function AdminLayout({ children }) {
                         }`
                       }
                       style={({ isActive }) => ({
-                        color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                        color: isActive ? 'var(--color-accent)' : 'var(--color-admin-text-muted)',
                         background: isActive ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent',
                       })}>
                       <Icon size={22} strokeWidth={1.75} />
@@ -610,7 +604,7 @@ export default function AdminLayout({ children }) {
               </div>
             ))}
           {/* Advanced Tools subsection */}
-          <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+          <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
             <button
               onClick={() => setAdvancedToolsOpen(prev => !prev)}
               className="w-full flex items-center gap-2 px-1 mb-1.5"
@@ -625,7 +619,7 @@ export default function AdminLayout({ children }) {
                   <NavLink key={to} to={to} end={false} onClick={() => setMoreMenuOpen(false)}
                     className="flex flex-col items-center gap-1 py-3 px-1 rounded-xl transition-colors"
                     style={({ isActive }) => ({
-                      color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                      color: isActive ? 'var(--color-accent)' : 'var(--color-admin-text-muted)',
                       background: isActive ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent',
                     })}>
                     <Icon size={22} strokeWidth={1.75} />
@@ -636,11 +630,11 @@ export default function AdminLayout({ children }) {
             )}
 
             {/* Settings */}
-            <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+            <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
               <NavLink to="/admin/settings" end={false} onClick={() => setMoreMenuOpen(false)}
                 className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-colors"
                 style={({ isActive }) => ({
-                  color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                  color: isActive ? 'var(--color-accent)' : 'var(--color-admin-text-muted)',
                   background: isActive ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent',
                 })}>
                 <Settings size={20} strokeWidth={1.75} />
@@ -658,7 +652,7 @@ export default function AdminLayout({ children }) {
           background: 'var(--color-bg-nav)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-          borderTop: '1px solid var(--color-border-default)',
+          borderTop: '1px solid var(--color-admin-border)',
         }}>
         {MOBILE_NAV.map(({ to, labelKey, icon: Icon, exact }) => (
           <NavLink
@@ -667,7 +661,7 @@ export default function AdminLayout({ children }) {
             end={exact}
             className="flex-1 flex flex-col items-center gap-0.5 py-2 transition-colors"
             style={({ isActive }) => ({
-              color: isActive ? 'var(--color-accent)' : 'var(--color-text-subtle)',
+              color: isActive ? 'var(--color-accent)' : 'var(--color-admin-text-faint)',
             })}
           >
             <Icon size={20} />
@@ -678,7 +672,7 @@ export default function AdminLayout({ children }) {
         <button
           onClick={() => setMoreMenuOpen(prev => !prev)}
           className="flex-1 flex flex-col items-center gap-0.5 py-2 transition-colors"
-          style={{ color: moreMenuOpen || moreIsActive ? 'var(--color-accent)' : 'var(--color-text-subtle)' }}
+          style={{ color: moreMenuOpen || moreIsActive ? 'var(--color-accent)' : 'var(--color-admin-text-faint)' }}
           aria-label={t('adminNav.morePages')}
           aria-expanded={moreMenuOpen}
         >
@@ -696,6 +690,10 @@ export default function AdminLayout({ children }) {
           pageIndex={pageIndex}
         />
       </Suspense>
+
+      {/* Guided, page-by-page product tour (auto on first run + relaunchable
+          from Admin Profile). Mounted here so it survives route changes. */}
+      <AdminTour />
 
     </div>
     </InsightsRangeProvider>

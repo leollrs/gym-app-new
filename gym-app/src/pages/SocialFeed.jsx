@@ -589,7 +589,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
     if (comments !== null) return;
     const { data } = await supabase
       .from('feed_comments')
-      .select('id, content, created_at, profiles(full_name, avatar_url)')
+      .select('id, content, created_at, profile_id, profiles(id, full_name, username, avatar_url, avatar_type, avatar_value)')
       .eq('feed_item_id', item.id)
       .eq('is_deleted', false)
       .order('created_at', { ascending: true })
@@ -629,7 +629,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
     const { data: newComment, error } = await supabase
       .from('feed_comments')
       .insert({ feed_item_id: item.id, profile_id: currentUserId, content })
-      .select('id, content, created_at, profiles(full_name, avatar_url)')
+      .select('id, content, created_at, profile_id, profiles(id, full_name, username, avatar_url, avatar_type, avatar_value)')
       .single();
     if (error && (error.code === '23514' || error.message?.includes('community guidelines'))) {
       showToast(t('moderation.contentBlocked', { defaultValue: 'Comment blocked: content violates community guidelines.' }), 'error');
@@ -769,7 +769,9 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
           style={!showComments ? { color: 'var(--color-text-subtle)' } : undefined}
         >
           <MessageCircle size={16} />
-          {item.commentCount > 0 ? item.commentCount : t('social.comment')}
+          {(comments?.length ?? item.commentCount ?? 0) > 0
+            ? (comments?.length ?? item.commentCount ?? 0)
+            : t('social.comment')}
         </button>
         {item.actor_id !== currentUserId && (
           <button
@@ -1543,72 +1545,124 @@ const SocialFeed = ({ embedded = false }) => {
 
   const handleCreatePost = async ({ body, photoFile, workoutSession }) => {
     if (!user || !profile) return;
-    let photo_url = null;
-    let signedPhotoUrl = null;
-    let storagePath = null;
-    if (photoFile) {
-      const validation = await validateImageFile(photoFile);
-      if (!validation.valid) {
-        showToast(validation.error, 'error');
-        return;
-      }
-      // Strip EXIF metadata (GPS, device info) before uploading
-      const cleanPhoto = await stripExif(photoFile);
-      // Object key must NOT include the bucket name — the INSERT RLS policy
-      // requires foldername[1] === auth.uid(). Prefixing with 'social-posts/'
-      // made foldername[1] = 'social-posts' and silently failed every upload.
-      storagePath = `${user.id}/${Date.now()}.jpg`;
-      const { error: uploadErr } = await supabase.storage.from('social-posts').upload(storagePath, cleanPhoto, { contentType: 'image/jpeg' });
-      if (!uploadErr) {
-        // Use signed URL (1 hour expiry) instead of public URL
+
+    // ── 1. OPTIMISTIC: drop the post into the feed and close the modal
+    //       immediately so it feels instant. We upload + persist in the
+    //       background, then reconcile (success) or roll back (failure). ──
+    const tempId = `temp-${Date.now()}`;
+    const localPreview = photoFile ? URL.createObjectURL(photoFile) : null;
+    const postFields = workoutSession ? {
+      workout_name:     workoutSession.name,
+      duration_seconds: workoutSession.duration_seconds,
+      total_volume_lbs: workoutSession.total_volume_lbs,
+      session_id:       workoutSession.id,
+    } : {};
+    setFeed(prev => [{
+      id: tempId,
+      actor_id: user.id,
+      gym_id: profile.gym_id,
+      type: 'user_post',
+      post_type: 'user',
+      is_public: true,
+      created_at: new Date().toISOString(),
+      body: body || null,
+      photo_url: localPreview,
+      data: { body: body || null, photo_url: localPreview, ...postFields },
+      profiles: {
+        full_name:    profile.full_name,
+        username:     profile.username,
+        avatar_url:   profile.avatar_url,
+        avatar_type:  profile.avatar_type,
+        avatar_value: profile.avatar_value,
+      },
+      reactionCounts: {},
+      currentReaction: null,
+      commentCount: 0,
+    }, ...prev]);
+    setShowCreatePost(false);
+
+    const rollback = (msg) => {
+      setFeed(prev => prev.filter(i => i.id !== tempId));
+      if (localPreview) URL.revokeObjectURL(localPreview);
+      if (msg) showToast(msg, 'error');
+    };
+    const genericError = t('social.postError', { defaultValue: 'Could not publish your post. Please try again.' });
+
+    try {
+      // ── 2. Upload photo (if any) ──
+      let photo_url = null;
+      let signedPhotoUrl = null;
+      if (photoFile) {
+        const validation = await validateImageFile(photoFile);
+        if (!validation.valid) { rollback(validation.error); return; }
+        // Strip EXIF metadata (GPS, device info) before uploading
+        const cleanPhoto = await stripExif(photoFile);
+        // Object key must NOT include the bucket name — the INSERT RLS policy
+        // requires foldername[1] === auth.uid().
+        const storagePath = `${user.id}/${Date.now()}.jpg`;
+        const { error: uploadErr } = await supabase.storage.from('social-posts').upload(storagePath, cleanPhoto, { contentType: 'image/jpeg' });
+        if (uploadErr) { rollback(genericError); return; }
         const { data: signedData } = await supabase.storage.from('social-posts').createSignedUrl(storagePath, 3600);
         signedPhotoUrl = signedData?.signedUrl ?? null;
-        // Store the storage path in DB (not the signed URL)
-        photo_url = storagePath;
+        photo_url = storagePath; // store the path, not the signed URL
       }
-    }
-    const itemData = {
-      body: body || null,
-      photo_url,
-      ...(workoutSession ? {
-        workout_name: workoutSession.routine_name,
-        duration_seconds: workoutSession.duration_seconds,
-        total_volume_lbs: workoutSession.total_volume_lbs,
-        session_id: workoutSession.id,
-      } : {}),
-    };
-    const { data: newItem, error } = await supabase
-      .from('activity_feed_items')
-      .insert({
-        actor_id: user.id,
-        gym_id: profile.gym_id,
-        type: 'user_post',
-        post_type: 'user',
-        data: itemData,
-        body: body || null,
-        photo_url,
-      })
-      .select('id, actor_id, gym_id, type, data, body, photo_url, created_at, post_type, profiles(full_name, username, avatar_url, avatar_type, avatar_value)')
-      .single();
-    if (error && (error.code === '23514' || error.message?.includes('community guidelines'))) {
-      showToast(t('moderation.contentBlocked', { defaultValue: 'Post blocked: content violates community guidelines.' }), 'error');
-    }
-    if (!error && newItem) {
+
+      // ── 3. Persist. We deliberately DON'T embed profiles or use .single()
+      //       on the readback: a row the RLS feed_select policy hides, or an
+      //       embed that fails to resolve, would otherwise masquerade as an
+      //       insert failure and roll back a post that actually saved. So the
+      //       `error` below is a TRUE write failure — the feed_insert_own RLS
+      //       WITH CHECK (gym_id = current_gym_id()), a constraint, or the
+      //       moderation trigger. ──
+      const itemData = { body: body || null, photo_url, ...postFields };
+      const { data: rows, error } = await supabase
+        .from('activity_feed_items')
+        .insert({
+          actor_id: user.id,
+          gym_id: profile.gym_id,
+          type: 'user_post',
+          post_type: 'user',
+          data: itemData,
+          body: body || null,
+          photo_url,
+        })
+        .select('id, actor_id, gym_id, type, data, body, photo_url, created_at, post_type');
+
+      if (error) {
+        // Log the real cause for debugging; keep the toast friendly.
+        // (RLS gym mismatch → 42501/PGRST301; moderation block → 23514.)
+        console.error('[SocialFeed] create post failed:', error);
+        const blocked = error.code === '23514' || error.message?.includes('community guidelines');
+        rollback(blocked
+          ? t('moderation.contentBlocked', { defaultValue: 'Post blocked: content violates community guidelines.' })
+          : genericError);
+        return;
+      }
+
+      // ── 4. Insert committed. Reconcile with the real row when RLS let us
+      //       read it back; otherwise keep the optimistic item (the post IS
+      //       saved and reloads from get_friend_feed on refresh). Either path
+      //       swaps the temporary blob preview for the signed photo URL. ──
       posthog?.capture('social_post_created', { has_photo: !!photoFile });
-      setFeed(prev => [{
-        ...newItem,
-        // Use signed URL in state for immediate display (both top-level and
-        // the data.photo_url copy that FeedContent reads from).
-        photo_url: signedPhotoUrl || newItem.photo_url,
-        data: newItem.data
-          ? { ...newItem.data, ...(newItem.data.photo_url ? { photo_url: signedPhotoUrl || newItem.data.photo_url } : {}) }
-          : newItem.data,
-        reactionCounts: {},
-        currentReaction: null,
-        commentCount: 0,
-      }, ...prev]);
+      const newItem = rows?.[0] || null;
+      setFeed(prev => prev.map(i => {
+        if (i.id !== tempId) return i;
+        const merged = newItem ? { ...i, ...newItem, profiles: i.profiles } : i;
+        return {
+          ...merged,
+          photo_url: signedPhotoUrl || merged.photo_url,
+          data: merged.data
+            ? { ...merged.data, ...(merged.data.photo_url ? { photo_url: signedPhotoUrl || merged.data.photo_url } : {}) }
+            : merged.data,
+          reactionCounts: {},
+          currentReaction: null,
+          commentCount: 0,
+        };
+      }));
+      if (localPreview) URL.revokeObjectURL(localPreview);
+    } catch (err) {
+      rollback(genericError);
     }
-    setShowCreatePost(false);
   };
 
   const handleLoadMore = useCallback(() => {
@@ -1915,7 +1969,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
     // Load recent workout sessions for tagging
     supabase
       .from('workout_sessions')
-      .select('id, routine_name, duration_seconds, total_volume_lbs, created_at')
+      .select('id, name, duration_seconds, total_volume_lbs, created_at')
       .eq('profile_id', userId)
       .order('created_at', { ascending: false })
       .limit(10)
@@ -1993,7 +2047,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
           {workoutSession && (
             <div className="rounded-xl p-3 border border-[#D4AF37]/30 bg-white/[0.05] flex items-center justify-between">
               <div>
-                <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{workoutSession.routine_name}</p>
+                <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{workoutSession.name}</p>
                 <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                   {workoutSession.duration_seconds > 0 && fmtDuration(workoutSession.duration_seconds)}
                   {workoutSession.total_volume_lbs > 0 && ` · ${fmtVolume(workoutSession.total_volume_lbs, t('common:lbs'))}`}
@@ -2016,7 +2070,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
                     onClick={() => { setWorkoutSession(s); setShowWorkoutPicker(false); }}
                     className="w-full text-left px-4 py-2.5 hover:bg-white/[0.06] transition-colors border-b border-white/[0.04] last:border-0"
                   >
-                    <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.routine_name ?? 'Workout'}</p>
+                    <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.name ?? 'Workout'}</p>
                     <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{timeAgo(s.created_at)}</p>
                   </button>
                 ))

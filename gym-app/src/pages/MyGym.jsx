@@ -12,6 +12,10 @@ import { es as esLocale } from 'date-fns/locale/es';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
+// `gyms.address` lands with migration 0519 — until it's deployed a select that
+// names the column 400s (42703). Detect that so we can retry without it.
+const isMissingColumn = (e) => !!e && (e.code === '42703' || e.code === 'PGRST204');
+
 const ANN_COLOR = {
   event: 'var(--color-accent)',
   challenge: 'var(--color-success)',
@@ -81,7 +85,14 @@ export default function MyGym() {
           .order('published_at', { ascending: false })
           .limit(5),
       ]);
-      setGym(gymRes.data);
+      // `address` (migration 0519) may not be deployed yet — fall back to the
+      // pre-address column set so the gym card still loads.
+      let gymData = gymRes.data;
+      if (!gymData && isMissingColumn(gymRes.error)) {
+        const { data } = await supabase.from('gyms').select('id, name, open_days, open_time, close_time, country').eq('id', profile.gym_id).maybeSingle();
+        gymData = data;
+      }
+      setGym(gymData);
       setHours(hoursRes.data || []);
       // "Próximos Feriados" merges TWO admin-managed tables:
       //   • gym_holidays — admin Hours page; can be a full closure OR special hours
@@ -125,7 +136,7 @@ export default function MyGym() {
         // Fetch schedules for all days of the week, then sort client-side by proximity
         const classRes = await supabase
           .from('gym_class_schedules')
-          .select('id, day_of_week, start_time, end_time, gym_classes(name, color, instructor, trainer:profiles!trainer_id(id, full_name))')
+          .select('id, day_of_week, start_time, end_time, gym_classes(name, color, instructor_name, trainer:profiles!trainer_id(id, full_name))')
           .eq('gym_id', profile.gym_id)
           .order('start_time');
         const allSchedules = classRes.data || [];
@@ -356,10 +367,10 @@ export default function MyGym() {
                                 className="underline-offset-2 hover:underline active:opacity-80"
                                 style={{ color: 'var(--color-accent)', background: 'transparent', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer' }}
                               >
-                                {cls.trainer.full_name || cls.instructor}
+                                {cls.trainer.full_name || cls.instructor_name}
                               </button>
                             </>
-                          ) : cls.instructor ? ` · ${cls.instructor}` : ''}
+                          ) : cls.instructor_name ? ` · ${cls.instructor_name}` : ''}
                         </p>
                       </div>
                       <ChevronRight size={16} style={{ color: 'var(--color-text-faint)' }} />

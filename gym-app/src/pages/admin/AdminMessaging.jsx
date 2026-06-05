@@ -27,10 +27,12 @@ export default function AdminMessaging() {
 
   return (
     <div className="px-3 sm:px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+      <div data-admin-tour="messages">
       <PageHeader
         title={t('admin.messaging.inboxTitle', 'Inbox')}
         subtitle={t('admin.messaging.subtitle')}
       />
+      </div>
 
       <div className="mt-5">
         <DirectMessagesTab

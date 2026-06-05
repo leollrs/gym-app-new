@@ -7,7 +7,7 @@ import {
 import ViewSwitcherModal from '../../components/ViewSwitcherModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, startOfWeek } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,12 +20,15 @@ import {
 } from '../../components/admin';
 import AvatarPicker from '../../components/AvatarPicker';
 import UserAvatar from '../../components/UserAvatar';
-import { compressAvatar, ROLE_PILL_CLASS, ACTION_PILL_CLASS } from '../../lib/admin/profileHelpers';
+import { ROLE_PILL_CLASS, ACTION_PILL_CLASS } from '../../lib/admin/profileHelpers';
+import { validateImageFile } from '../../lib/validateImage';
+import { stripExif } from '../../lib/stripExif';
 import DeleteAccountModal from './components/DeleteAccountModal';
+import { startAdminTour } from '../../components/admin/AdminTour';
 
 export default function AdminProfile() {
   const navigate = useNavigate();
-  const { profile, user, gymName, signOut, refreshProfile, availableRoles } = useAuth();
+  const { profile, user, gymName, signOut, refreshProfile, patchProfile, availableRoles } = useAuth();
   const hasMultipleViews = Array.isArray(availableRoles) && availableRoles.length > 1;
   const [showViewSwitcher, setShowViewSwitcher] = useState(false);
   const { t, i18n } = useTranslation('pages');
@@ -42,43 +45,43 @@ export default function AdminProfile() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
-  const currentAvatar = profile?.avatar_url
-    ? { type: 'photo', value: profile.avatar_url }
-    : profile?.avatar_color
-      ? { type: 'color', value: profile.avatar_color }
-      : profile?.avatar_design
-        ? { type: 'design', value: profile.avatar_design }
-        : { type: 'color', value: 'var(--color-coach)' };
+  const currentAvatar = {
+    type: profile?.avatar_type || (profile?.avatar_url ? 'photo' : 'color'),
+    value: profile?.avatar_value || '#6366F1',
+  };
 
+  // Mirrors the member-side avatar flow (Profile.jsx): the `avatars` bucket +
+  // the real avatar_type/avatar_value/avatar_url columns. The previous admin
+  // version wrote to nonexistent avatar_color/avatar_design columns and the
+  // wrong bucket, so every save silently failed.
   const handleAvatarSave = async ({ type, value, file }) => {
     setUploading(true);
     try {
       if (type === 'photo' && file) {
-        const compressed = await compressAvatar(file);
-        const ext = file.name.split('.').pop() || 'jpg';
-        // Object key must be <uid>/<file> so foldername[1] === auth.uid() (the
-        // profile-photos INSERT RLS check). The old 'avatars/<id>.ext' key set
-        // foldername[1] = 'avatars' and was rejected. Unique timestamp avoids
-        // needing an UPDATE policy for upsert overwrites.
-        const path = `${profile.id}/${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('profile-photos').upload(path, compressed, { upsert: true });
+        // Validate via magic bytes (MIME can be spoofed), strip EXIF + downscale.
+        const validation = await validateImageFile(file);
+        if (!validation.valid) { showToast(validation.error, 'error'); setUploading(false); return; }
+        const cleanFile = await stripExif(file, { maxDimension: 256, quality: 0.85 });
+        // Key must be <uid>/<file> so foldername[1] === auth.uid() (avatars
+        // bucket INSERT RLS). Unique timestamp doubles as a cache-buster.
+        const path = `${profile.id}/${Date.now()}.jpg`;
+        const { error: upErr } = await supabase.storage
+          .from('avatars')
+          .upload(path, cleanFile, { upsert: true, contentType: 'image/jpeg' });
         if (upErr) throw upErr;
-        const { data: urlData } = supabase.storage.from('profile-photos').getPublicUrl(path);
-        const { error } = await supabase.from('profiles').update({
-          avatar_url: urlData.publicUrl + '?v=' + Date.now(),
-          avatar_color: null, avatar_design: null,
-        }).eq('id', profile.id);
+        const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+        const { error } = await supabase.from('profiles')
+          .update({ avatar_url: urlData.publicUrl, avatar_type: 'photo', avatar_value: null })
+          .eq('id', profile.id);
         if (error) throw error;
-      } else if (type === 'color') {
-        const { error } = await supabase.from('profiles').update({
-          avatar_color: value, avatar_design: null, avatar_url: null,
-        }).eq('id', profile.id);
+        patchProfile?.({ avatar_url: urlData.publicUrl, avatar_type: 'photo', avatar_value: null });
+      } else {
+        // Color or design — store type + value.
+        const { error } = await supabase.from('profiles')
+          .update({ avatar_type: type, avatar_value: value })
+          .eq('id', profile.id);
         if (error) throw error;
-      } else if (type === 'design') {
-        const { error } = await supabase.from('profiles').update({
-          avatar_design: value, avatar_color: null, avatar_url: null,
-        }).eq('id', profile.id);
-        if (error) throw error;
+        patchProfile?.({ avatar_type: type, avatar_value: value });
       }
       queryClient.invalidateQueries({ queryKey: adminKeys.overview(profile.gym_id) });
       await refreshProfile();
@@ -111,17 +114,20 @@ export default function AdminProfile() {
     enabled: !!gymId && !!profile?.id,
   });
 
-  // ── Stats: total actions, member count, plus authoritative created_at ──
+  // ── Stats: actions THIS WEEK, member count, plus authoritative created_at ──
   const { data: stats } = useQuery({
     queryKey: ['admin', 'profile-stats', gymId, profile?.id],
     queryFn: async () => {
+      // Monday 00:00 of the current week. The "Actions" KPI is scoped to this
+      // week — the all-time count grew unboundedly large and wasn't useful.
+      const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).toISOString();
       const [actionsRes, membersRes, profileRes] = await Promise.all([
-        supabase.from('admin_audit_log').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('actor_id', profile.id),
+        supabase.from('admin_audit_log').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('actor_id', profile.id).gte('created_at', weekStart),
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('role', 'member'),
         supabase.from('profiles').select('created_at').eq('id', profile.id).maybeSingle(),
       ]);
       return {
-        totalActions: actionsRes.count || 0,
+        weeklyActions: actionsRes.count || 0,
         memberCount: membersRes.count || 0,
         createdAt: profileRes.data?.created_at || profile.created_at || null,
       };
@@ -269,11 +275,7 @@ export default function AdminProfile() {
                     style={{ borderColor: 'var(--color-bg-card)', width: 112, height: 112 }}
                   >
                     <UserAvatar
-                      user={{
-                        ...profile,
-                        avatar_type: profile?.avatar_url ? 'photo' : profile?.avatar_design ? 'design' : 'color',
-                        avatar_value: profile?.avatar_url || profile?.avatar_design || profile?.avatar_color || 'var(--color-coach)',
-                      }}
+                      user={profile}
                       size={104}
                       rounded="3xl"
                     />
@@ -372,7 +374,8 @@ export default function AdminProfile() {
           <div className="grid grid-cols-2 gap-3">
             <StatCard
               label={t('admin.profile.totalActions', 'Actions')}
-              value={stats?.totalActions ?? '—'}
+              sub={t('admin.profile.thisWeek', 'This week')}
+              value={stats?.weeklyActions ?? '—'}
               icon={Activity}
               borderColor="var(--color-info)"
             />
@@ -386,10 +389,12 @@ export default function AdminProfile() {
           </div>
         </FadeIn>
 
-        {/* ── TWO-COLUMN: Security + Activity ──────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
-          {/* Security section */}
-          <FadeIn delay={0.1}>
+        {/* ── TWO-COLUMN: (Security + Account) | Recent Activity ──
+            Security sits top-left, Account directly beneath it (same width),
+            and Recent Activity spans both rows on the right. */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 items-start">
+          {/* Security section — left column, row 1 */}
+          <FadeIn delay={0.1} className="lg:col-start-1 lg:row-start-1">
             <SectionLabel>{t('admin.profile.security', 'Security')}</SectionLabel>
             <AdminCard className="p-4 sm:p-5">
               <div className="space-y-4">
@@ -512,8 +517,8 @@ export default function AdminProfile() {
             </AdminCard>
           </FadeIn>
 
-          {/* Recent activity */}
-          <FadeIn delay={0.2}>
+          {/* Recent activity — right column, spans both rows */}
+          <FadeIn delay={0.2} className="lg:col-start-2 lg:row-start-1 lg:row-span-2">
             <SectionLabel>{t('admin.profile.recentActivity', 'Recent Activity')}</SectionLabel>
             <AdminCard className="p-4 sm:p-5">
               {activityLoading ? (
@@ -571,25 +576,18 @@ export default function AdminProfile() {
             </AdminCard>
           </FadeIn>
 
-        </div>
-
-        {/* ── ACCOUNT ACTIONS ─────────────────────────────────── */}
-        <FadeIn delay={0.25}>
+        {/* ── ACCOUNT — left column, row 2 (directly under Security) ── */}
+        <FadeIn delay={0.25} className="lg:col-start-1 lg:row-start-2">
           <SectionLabel>{t('admin.profile.account', 'Account')}</SectionLabel>
           <AdminCard className="p-0 overflow-hidden">
-            {/* "Show welcome guide" — clears the per-admin dismissal flag and
-                bounces to /admin so AdminOverview re-mounts and the modal
-                reads localStorage fresh. Useful when the owner wants to re-
-                read the retention thesis or remembered there were "3 first
-                week actions" but forgot what they were. */}
+            {/* "Show welcome guide" — relaunches the page-by-page product tour
+                (AdminTour, mounted in AdminLayout). Bounces to the overview and
+                replays every stop so the owner can rediscover what each page
+                does and why it matters. */}
             <button
               onClick={() => {
-                try {
-                  if (profile?.gym_id && profile?.id) {
-                    localStorage.removeItem(`admin_welcome_shown_${profile.gym_id}_${profile.id}`);
-                  }
-                } catch { /* private mode etc. — best effort */ }
                 navigate('/admin');
+                startAdminTour();
               }}
               className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition-colors duration-200 hover:bg-white/[0.04]"
             >
@@ -663,6 +661,7 @@ export default function AdminProfile() {
             </button>
           </AdminCard>
         </FadeIn>
+        </div>
       </div>
 
       {/* Delete account confirmation */}

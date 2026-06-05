@@ -140,7 +140,7 @@ export default function AdminRewards() {
   return (
     <AdminPageShell>
       {/* header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
+      <div data-admin-tour="rewards" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.rewards.title', 'Rewards')}</h1>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginTop: 11, fontFamily: FK.body, fontSize: 14 }}>

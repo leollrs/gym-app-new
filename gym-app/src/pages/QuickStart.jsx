@@ -759,9 +759,9 @@ const QuickStart = () => {
                                 </button>
                                 <button
                                   onClick={() => navigate(`/session/${r.id}`, { state: { skipWarmUp: !includeWarmUp } })}
-                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-white transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                                 >
-                                  <Play size={14} fill="black" strokeWidth={0} />
+                                  <Play size={14} fill="white" strokeWidth={0} />
                                   {t('quickStart.start', 'Start')}
                                 </button>
                               </div>

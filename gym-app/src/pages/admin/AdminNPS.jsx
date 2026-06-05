@@ -461,7 +461,7 @@ export default function AdminNPS() {
   return (
     <AdminPageShell>
       {/* header */}
-      <div ref={topRef} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
+      <div ref={topRef} data-admin-tour="nps" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.nps.title', 'Member Feedback')}</h1>
           <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.nps.subtitle', 'NPS surveys and satisfaction tracking')}</div>

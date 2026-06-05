@@ -304,7 +304,7 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => 
           to={`/session/${routineId}`}
           onClick={onStart}
           className="w-full flex items-center justify-center py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-[0.98]"
-          style={{ backgroundColor: 'var(--color-accent)', color: '#000000' }}
+          style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
         >
           {t('workouts.startWorkout')}
         </Link>

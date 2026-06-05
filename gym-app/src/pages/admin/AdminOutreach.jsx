@@ -403,11 +403,13 @@ export default function AdminOutreach() {
 
   return (
     <AdminPageShell>
+      <div data-admin-tour="outreach">
       <PageHeader
         title={t('admin.outreach.title', 'Send a message')}
         subtitle={t('admin.outreach.subtitle', 'Reach the right members on the right channel — one place, no copy-paste')}
         className="mb-5"
       />
+      </div>
 
       <div className="grid lg:grid-cols-[1fr_360px] gap-5 min-w-0">
         {/* ── Left column: composer ─────────────────────────── */}

@@ -730,7 +730,9 @@ export default function AdminTrainers() {
       ) : (
         // ───── Direction A: roster table ─────
         <>
+          <div data-admin-tour="trainers">
           <PageHeader title={t('admin.trainers.title')} subtitle={t('admin.trainers.subtitle')} className="mb-5" actions={headerActions} />
+          </div>
 
           {!isLoading && !error && trainers.length > 0 && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 mb-5">

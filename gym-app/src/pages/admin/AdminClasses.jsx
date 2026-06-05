@@ -421,6 +421,7 @@ export default function AdminClasses() {
   return (
     <AdminPageShell size="wide" className="space-y-5">
       {/* Header */}
+      <div data-admin-tour="classes">
       <PageHeader
         title={showRoutines ? t('admin.classes.routinesTitle', 'Class Routines') : t('admin.classes.title')}
         subtitle={showRoutines
@@ -449,6 +450,7 @@ export default function AdminClasses() {
           )
         }
       />
+      </div>
 
       {showRoutines ? (
         <FadeIn>

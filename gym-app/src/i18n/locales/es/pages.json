@@ -681,6 +681,7 @@
     "deleteConfirm": "¿Estás seguro de que quieres eliminar esta publicación? No se puede deshacer.",
     "postDeleted": "Publicación eliminada",
     "deleteError": "No se pudo eliminar la publicación. Inténtalo de nuevo.",
+    "postError": "No se pudo publicar. Inténtalo de nuevo.",
     "report": {
       "title": "¿Reportar esta publicación?",
       "subtitle": "Selecciona un motivo para reportar",
@@ -1147,7 +1148,37 @@
     "deleting": "Borrando…",
     "cancel": "Cancelar",
     "share": {
-      "shareWorkout": "Compartir este entrenamiento"
+      "shareWorkout": "Compartir este entrenamiento",
+      "bold": "Audaz",
+      "changePhoto": "Cambiar foto",
+      "clearBackground": "Quitar fondo",
+      "compose": "Componer con foto",
+      "copyLink": "Copiar enlace",
+      "customize": "Personalizar",
+      "editorial": "Editorial",
+      "exactWeights": "Pesos exactos",
+      "feed": "Feed",
+      "format": "Formato",
+      "gym": "Gimnasio",
+      "muscles": "Músculos",
+      "photo": "Foto",
+      "pickDestination": "Elige un destino",
+      "pickPhoto": "Elegir foto",
+      "portrait": "Retrato",
+      "poster": "Póster",
+      "prs": "RPs",
+      "recompose": "Recomponer con foto",
+      "resetAccent": "Restablecer",
+      "save": "Guardar",
+      "shareNow": "Compartir ahora",
+      "shareTo": "Compartir en",
+      "showOnCard": "Mostrar en la tarjeta",
+      "sticker": "Sticker",
+      "story": "Historia",
+      "style": "Estilo",
+      "themeDark": "Oscuro",
+      "themeLight": "Claro",
+      "titlePlaceholder": "Título personalizado (opcional)"
     }
   },
   "workoutLog": {
@@ -3440,7 +3471,7 @@
       "currentPasswordWrong": "Contraseña actual incorrecta",
       "openSettings": "Abrir ajustes",
       "signOutSub": "Cierra sesión en este dispositivo",
-      "welcomeBtnSub": "Vuelve a leer la tesis de retención y las acciones de la primera semana",
+      "welcomeBtnSub": "Recorre la app página por página",
       "deleting": "Eliminando…",
       "deleteAccount": "Eliminar cuenta",
       "deleteWarning": "Esta acción es permanente y borra todos tus datos.",
@@ -3452,7 +3483,8 @@
       "editName": "Editar nombre",
       "fullName": "Nombre completo",
       "saveName": "Guardar",
-      "cancelEdit": "Cancelar"
+      "cancelEdit": "Cancelar",
+      "thisWeek": "Esta semana"
     },
     "members": {
       "pending": "Pendientes",
@@ -4014,11 +4046,14 @@
       "pageTitle": "Admin - Clases",
       "todaysBookings": "Reservas de hoy",
       "todaysBookingsSummary": "{{spots}} cupos reservados en {{count}} clases",
-      "noClassesToday": "Sin clases programadas hoy"
+      "noClassesToday": "Sin clases programadas hoy",
+      "guestInstructor": "Instructor invitado",
+      "guestInstructorPlaceholder": "p. ej. Coach Alex (sin cuenta)",
+      "guestInstructorHint": "Opcional. Se muestra a los miembros solo cuando no hay ningún entrenador seleccionado arriba."
     },
     "churn": {
       "pageTitle": "Admin - Churn | TuGymPR",
-      "title": "Inteligencia de Churn",
+      "title": "Riesgo de Baja",
       "analyzing": "Analizando actividad de miembros…",
       "critical": "Crítico",
       "highRisk": "En Riesgo",
@@ -4361,7 +4396,7 @@
     },
     "revenue": {
       "pageTitle": "Admin - Ingresos | TuGymPR",
-      "title": "Tienda y Recompensas",
+      "title": "Ingresos",
       "subtitle": "Ventas, canjes y circulación de puntos",
       "pointsIssued": "Puntos Emitidos",
       "pointsRedeemed": "Puntos Canjeados",
@@ -4595,7 +4630,7 @@
       }
     },
     "settings": {
-      "title": "Configuración",
+      "title": "Ajustes",
       "subtitle": "Marca y configuración del gimnasio",
       "settingsSaved": "Configuración guardada",
       "colorsAutoAdjusted": "Colores ajustados automáticamente para mejor armonía",
@@ -4761,10 +4796,12 @@
       "cardsSaved": "Configuración de tarjetas guardada",
       "cardsErrWindow": "La ventana de hábito debe estar entre 7 y 365 días",
       "cardsErrTarget": "La meta de hábito debe estar entre 1 y 50 entrenos",
-      "saveFailed": "Error al guardar"
+      "saveFailed": "Error al guardar",
+      "gymAddress": "Dirección",
+      "gymAddressPlaceholder": "Calle, ciudad, país"
     },
     "moderation": {
-      "title": "Moderación de Contenido",
+      "title": "Moderación",
       "subtitle": "Revisa y modera publicaciones, comentarios y reportes de miembros",
       "reports": "Reportes",
       "feedPosts": "Publicaciones",
@@ -6035,7 +6072,7 @@
       "templateRequired": "Se requiere una plantilla",
       "titleBodyRequired": "Se requiere título y mensaje",
       "pageTitle": "Admin - Mensajería",
-      "inboxTitle": "Bandeja"
+      "inboxTitle": "Mensajes"
     },
     "challenges": {
       "upcoming": "Próximo",
@@ -6927,7 +6964,7 @@
     },
     "nps": {
       "pageTitle": "Opinión de Miembros | Admin",
-      "title": "Opinión de Miembros",
+      "title": "Opiniones",
       "subtitle": "Encuestas NPS y seguimiento de satisfacción",
       "sendSurvey": "Enviar Encuesta",
       "npsLabel": "Net Promoter Score",
@@ -7491,7 +7528,7 @@
     },
     "outreach": {
       "pageTitle": "Mensajería",
-      "title": "Enviar un mensaje",
+      "title": "Enviar mensaje",
       "subtitle": "Llega a los miembros correctos por el canal correcto — un solo lugar, sin copiar y pegar",
       "audience": "Audiencia",
       "pickGroup": "Elige un grupo",
@@ -8066,7 +8103,7 @@
     "dismiss": "Descartar"
   },
   "adminNotifications": {
-    "title": "Notificaciones de Admin",
+    "title": "Alertas",
     "subtitle": "Actividad de tu gimnasio",
     "recent": "Recientes",
     "footerHint": "Las notificaciones de más de 14 días se archivan automáticamente",
@@ -11837,7 +11874,8 @@
     "accentTeal": "Turquesa",
     "accentGold": "Dorado",
     "accentCoachPurple": "Morado coach",
-    "accentInk": "Tinta"
+    "accentInk": "Tinta",
+    "preview": "Vista previa"
   },
   "achievementToast": {
     "dismiss": "Descartar"
@@ -12299,5 +12337,165 @@
     "save": "Guardar",
     "saving": "Guardando…",
     "saved": "¡Listo, gracias!"
+  },
+  "adminTour": {
+    "ariaLabel": "Guía interactiva",
+    "skip": "Saltar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "done": "Finalizar",
+    "stepCounter": "{{current}} de {{total}}",
+    "welcome": {
+      "title": "Te damos la bienvenida",
+      "desc": "Esto no es un sistema de gestión: es tu herramienta de retención. Te voy a mostrar, página por página, qué hace cada sección y para qué te sirve. Toma unos 2 minutos.",
+      "f1": "Usa “Siguiente” para avanzar y “Atrás” para volver.",
+      "f2": "Puedes saltar la guía cuando quieras.",
+      "f3": "Vuelve a verla desde tu perfil cuando la necesites."
+    },
+    "overview": {
+      "title": "Resumen",
+      "desc": "Tu punto de partida cada mañana. Aquí ves las “conversaciones de hoy”: los 3–5 miembros a los que deberías escribir hoy para que no se vayan.",
+      "f1": "Cola matutina con los miembros en riesgo priorizados.",
+      "f2": "Alertas y acciones pendientes del día.",
+      "f3": "Atajos a lo más importante del panel."
+    },
+    "members": {
+      "title": "Miembros",
+      "desc": "Tu lista completa de miembros con búsqueda, orden y señales de riesgo. Entra a cualquiera para ver su historial de entrenos, asistencia y notas.",
+      "f1": "Insignias de riesgo de abandono por miembro.",
+      "f2": "Ficha individual: entrenos, asistencia, PRs y notas.",
+      "f3": "Crea segmentos e imprime tarjetas desde aquí."
+    },
+    "churn": {
+      "title": "Riesgo de Baja",
+      "desc": "El cerebro de la retención. Un modelo puntúa quién está por irse según asistencia, frecuencia y rachas, y te dice a quién contactar primero.",
+      "f1": "Puntaje y nivel de riesgo por miembro.",
+      "f2": "Campañas de recuperación (win-back).",
+      "f3": "Historial de contacto y seguimiento."
+    },
+    "trainers": {
+      "title": "Entrenadores",
+      "desc": "Gestiona tu equipo. Agrega o quita entrenadores, mira cuántos clientes lleva cada uno y revisa su rendimiento.",
+      "f1": "Alta y baja de entrenadores.",
+      "f2": "Clientes y carga por entrenador.",
+      "f3": "Exporta el listado a CSV."
+    },
+    "outreach": {
+      "title": "Enviar mensaje",
+      "desc": "Llega a varios miembros a la vez por push, correo o SMS. Elige una audiencia o miembros específicos y personaliza el mensaje.",
+      "f1": "Audiencias por segmento o selección manual.",
+      "f2": "Vista previa de destinatarios antes de enviar.",
+      "f3": "Plantillas de correo y pruebas A/B disponibles."
+    },
+    "messages": {
+      "title": "Mensajes",
+      "desc": "Chat uno a uno con tus miembros. Responde dudas, da seguimiento y mantén la relación cercana.",
+      "f1": "Conversaciones directas con cada miembro.",
+      "f2": "Estados de entrega y lectura.",
+      "f3": "Plantillas de mensajes para respuestas rápidas."
+    },
+    "announcements": {
+      "title": "Anuncios",
+      "desc": "Publica novedades para todo el gym: eventos, mantenimiento o retos. Puedes programarlos para que salgan a una hora exacta.",
+      "f1": "Tipos: noticia, evento, reto o mantenimiento.",
+      "f2": "Programación con fecha y hora.",
+      "f3": "Se muestran en la app de cada miembro."
+    },
+    "classes": {
+      "title": "Clases",
+      "desc": "Administra tu horario de clases con cupos, lista de espera y entrenador asignado. Revisa asistencia y calificaciones por clase.",
+      "f1": "Horario recurrente con capacidad y cupos.",
+      "f2": "Lista de espera con promoción automática.",
+      "f3": "Analítica: asistencia, calificación y resultados."
+    },
+    "programs": {
+      "title": "Programas de entrenamiento",
+      "desc": "Crea programas de entrenamiento del gym como rutinas listas para que tus miembros se inscriban y los sigan.",
+      "f1": "Estructura por semanas, días y ejercicios.",
+      "f2": "Seguimiento de miembros inscritos.",
+      "f3": "Plantillas para empezar rápido."
+    },
+    "challenges": {
+      "title": "Retos",
+      "desc": "Lanza competencias para encender la motivación: constancia, volumen, PRs o por equipos, con premios y tabla en vivo.",
+      "f1": "Varios tipos de reto con premios.",
+      "f2": "Tabla de posiciones en tiempo real.",
+      "f3": "Sugerencias de retos listas para usar."
+    },
+    "leaderboard": {
+      "title": "Clasificación",
+      "desc": "Las tablas de posiciones del gym por distintas métricas. La competencia sana mantiene a la gente viniendo.",
+      "f1": "Volumen, entrenos, constancia, rachas y más.",
+      "f2": "Filtros por periodo: semana, mes o todo el tiempo.",
+      "f3": "Controla qué métricas se muestran."
+    },
+    "tvDisplay": {
+      "title": "Pantalla TV",
+      "desc": "Modo pantalla para el televisor del gym: rota tablas, retos y métricas. Configura el rango de tiempo y obtén el enlace o QR.",
+      "f1": "Rotación automática de tableros.",
+      "f2": "Elige el rango: hoy, semana, mes, 90 días o todo.",
+      "f3": "Enlace y QR para abrir en cualquier pantalla."
+    },
+    "rewards": {
+      "title": "Recompensas",
+      "desc": "El sistema de puntos y premios. Define qué pueden canjear tus miembros y motiva la constancia con recompensas reales.",
+      "f1": "Catálogo de premios y niveles.",
+      "f2": "Registro de canjes.",
+      "f3": "Automatizaciones, como premios de cumpleaños."
+    },
+    "store": {
+      "title": "Tienda",
+      "desc": "Tu punto de venta interno: productos, categorías y registro de compras. Lleva control de lo que vendes con puntos o dinero.",
+      "f1": "Alta de productos y categorías.",
+      "f2": "Registro de compras por miembro.",
+      "f3": "Programa de referidos para crecer por recomendación."
+    },
+    "analytics": {
+      "title": "Analíticas",
+      "desc": "La salud de tu negocio en gráficas: crecimiento, retención, cohortes y embudo de onboarding. Aquí ves la foto completa.",
+      "f1": "Crecimiento, retención y actividad.",
+      "f2": "Cohortes y etapas del ciclo de vida.",
+      "f3": "Embudo de onboarding con sus caídas."
+    },
+    "attendance": {
+      "title": "Asistencia",
+      "desc": "Quién viene y cuándo. Tendencias de 30, 60 y 90 días y mapas de calor por día y hora para entender tus horas pico.",
+      "f1": "Tendencias de asistencia en el tiempo.",
+      "f2": "Mapa de calor por día y hora.",
+      "f3": "Exporta a CSV (también hay vista de ingresos)."
+    },
+    "nps": {
+      "title": "Opiniones",
+      "desc": "Mide qué tan contentos están tus miembros. Lanza encuestas, lee el feedback y detecta problemas antes de que se vuelvan bajas.",
+      "f1": "Encuestas NPS con puntaje.",
+      "f2": "Comentarios y reacciones de los miembros.",
+      "f3": "Historial de encuestas pasadas."
+    },
+    "reports": {
+      "title": "Reportes",
+      "desc": "Exporta tus datos a CSV: miembros, actividad, comercio y más. Útil para respaldos o análisis externos.",
+      "f1": "Exportaciones por categoría.",
+      "f2": "Rango de fechas personalizable.",
+      "f3": "Historial de exportaciones."
+    },
+    "moderation": {
+      "title": "Moderación",
+      "desc": "Mantén tu comunidad sana. Revisa el contenido reportado y aprueba, oculta o elimina publicaciones y comentarios.",
+      "f1": "Reportes, publicaciones y comentarios.",
+      "f2": "Acciones: eliminar, restaurar o descartar.",
+      "f3": "Registro de acciones para auditoría."
+    },
+    "settings": {
+      "title": "Ajustes",
+      "desc": "El centro de control de tu gym: marca y colores, horario, modo de registro, resumen por correo y más.",
+      "f1": "Marca: logo, colores y nombre.",
+      "f2": "Horario, cierres y registro de miembros.",
+      "f3": "Resumen por correo y tarjetas de bienvenida."
+    },
+    "finish": {
+      "title": "¡Listo!",
+      "desc": "Ya conoces tu panel. La rutina que importa: revisa el Resumen cada mañana y escribe a 3 miembros en riesgo. Eso marca la diferencia entre 70% y 85% de retención al año.",
+      "f1": "Reabre esta guía cuando quieras desde tu perfil."
+    }
   }
 }

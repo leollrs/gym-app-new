@@ -32,34 +32,18 @@ import MorningQueuePanel from './components/MorningQueuePanel';
 import WeeklyPulse from './components/WeeklyPulse';
 import RetentionHealth from './components/RetentionHealth';
 import GrowthChart from './components/GrowthChart';
-import AdminWelcomeModal from './components/AdminWelcomeModal';
 
 
 export default function AdminOverview() {
-  const { profile, gymConfig, gymName, availableRoles } = useAuth();
+  const { profile, gymConfig, availableRoles } = useAuth();
   const navigate = useNavigate();
 
   const gymId = profile?.gym_id;
   const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
-  // First-time welcome modal — explains the retention thesis and the first
-  // 3 actions. Per gym + per admin profile localStorage flag (so a 2nd
-  // admin on the same gym still gets the explainer on their first login).
-  // Tracked here so the modal mounts immediately when the user lands on
-  // the dashboard; the AdminFirstRunChecklist that lives below it is the
-  // ongoing setup tracker — different concept, different lifecycle.
-  const [showWelcome, setShowWelcome] = useState(() => {
-    if (typeof window === 'undefined' || !gymId || !profile?.id) return false;
-    try {
-      return localStorage.getItem(`admin_welcome_shown_${gymId}_${profile.id}`) !== '1';
-    } catch { return false; }
-  });
-  useEffect(() => {
-    if (typeof window === 'undefined' || !gymId || !profile?.id) return;
-    try {
-      setShowWelcome(localStorage.getItem(`admin_welcome_shown_${gymId}_${profile.id}`) !== '1');
-    } catch { /* ignore */ }
-  }, [gymId, profile?.id]);
+  // First-time onboarding is now the page-by-page guided tour (AdminTour,
+  // mounted in AdminLayout, auto-shows on first run + relaunchable from the
+  // profile). The old thesis-only welcome modal was retired in its favor.
 
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
@@ -170,16 +154,6 @@ export default function AdminOverview() {
 
   return (
     <AdminPageShell>
-      {/* ── First-time welcome modal ─────────────────────── */}
-      {showWelcome && (
-        <AdminWelcomeModal
-          gymId={gymId}
-          gymName={gymName}
-          profileId={profile?.id}
-          onClose={() => setShowWelcome(false)}
-        />
-      )}
-
       {/* ── Password reset approval modal ────────────────── */}
       {resetApprovalId && (
         <PasswordResetApprovalModal
@@ -300,7 +274,9 @@ export default function AdminOverview() {
       <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
         {/* Left — the daily retention loop (matches the right rail's height) */}
         <FadeIn delay={20}>
-          <MorningQueuePanel gymId={gymId} cardHeight={isLg ? railH : 0} />
+          <div data-admin-tour="overview">
+            <MorningQueuePanel gymId={gymId} cardHeight={isLg ? railH : 0} />
+          </div>
         </FadeIn>
 
         {/* Right rail */}

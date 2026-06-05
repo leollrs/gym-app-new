@@ -439,7 +439,7 @@ export default function AdminPrograms() {
   return (
     <AdminPageShell>
       {/* header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
+      <div data-admin-tour="programs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.programs.title', 'Programs')}</h1>
           <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.programs.subtitle', 'Multi-week training plans members can enroll in')}</div>

@@ -259,7 +259,7 @@ export default function AdminTVDisplay() {
       <div style={{ maxWidth: 1180, margin: '0 auto' }}>
         {/* ── Header ─────────────────────────────────────────── */}
         <FadeIn>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+          <div data-admin-tour="tvDisplay" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
             <div>
               <h1 style={{ margin: 0, fontFamily: FK.display, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1, color: TK.text }}>
                 {t('admin.tvDisplay.title', { defaultValue: 'TV Display' })}

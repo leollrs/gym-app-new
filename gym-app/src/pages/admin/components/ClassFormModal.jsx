@@ -245,6 +245,18 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
           t={t}
         />
 
+        {/* Guest instructor — free-text fallback persisted to
+            gym_classes.instructor_name, shown to members only when no
+            registered trainer above is assigned to the class. */}
+        <div>
+          <label className="block text-[12.5px] font-bold mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.guestInstructor', 'Guest instructor')}</label>
+          <input value={form.instructor} onChange={e => setFormField('instructor', e.target.value)}
+            className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+            placeholder={t('admin.classes.guestInstructorPlaceholder', 'e.g. Coach Alex (no app account)')} />
+          <p className="text-[10px] italic mt-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.guestInstructorHint', 'Optional. Shown to members only when no trainer above is selected.')}</p>
+        </div>
+
         {/* Duration + Capacity */}
         <div className="grid grid-cols-2 gap-3">
           <div>

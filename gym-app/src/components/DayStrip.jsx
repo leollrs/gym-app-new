@@ -127,15 +127,14 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
             onClick={() => handleSelectDate(date)}
             disabled={isFuture && !isCurrentWeek}
             aria-label={`${label} ${dayNum}`}
-            className="relative flex flex-col items-center flex-1 py-1 transition-all active:scale-95 min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg disabled:opacity-30"
+            className="relative flex flex-col items-center flex-1 py-1 transition-all active:scale-95 min-h-[44px] focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none rounded-lg disabled:opacity-30"
           >
             {/* Weekday label */}
             <span
               className="text-[10px] font-bold uppercase mb-1.5"
               style={{
-                color: isSelected && hasCompleted ? '#D4AF37'
-                  : isSelected ? '#6D5FDB'
-                  : hasCompleted ? 'rgba(201,162,39,0.7)'
+                color: isSelected ? 'var(--color-accent)'
+                  : hasCompleted ? 'color-mix(in srgb, var(--color-accent) 70%, transparent)'
                   : 'var(--color-text-muted)',
                 letterSpacing: 0.6,
               }}
@@ -153,19 +152,19 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
                 <motion.div
                   layoutId="dayPill"
                   className="absolute inset-0 rounded-full"
-                  style={{ background: hasCompleted ? '#D4AF37' : '#6D5FDB' }}
+                  style={{ background: 'var(--color-accent)' }}
                   transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                 />
               )}
 
               {hasCompleted && !isSelected && (
-                <div className="absolute inset-[-2px] rounded-full border-[3px] border-[#D4AF37] z-20" />
+                <div className="absolute inset-[-2px] rounded-full border-[3px] z-20" style={{ borderColor: 'var(--color-accent)' }} />
               )}
 
               <span
                 className={`relative z-30 text-[15px] font-extrabold ${
                   isSelected ? 'text-white'
-                  : hasCompleted ? 'text-[#D4AF37]'
+                  : hasCompleted ? 'text-[var(--color-accent)]'
                   : ''
                 }`}
                 style={{
@@ -181,7 +180,7 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
             <div className="h-2 flex items-center justify-center mt-1">
               {isSelected ? null
                 : state === 'completed' ? (
-                  <div className="w-1 h-1 rounded-full bg-[#C9A227]/70" />
+                  <div className="w-1 h-1 rounded-full" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 70%, transparent)' }} />
                 ) : state === 'scheduled' ? (
                   <div className="w-1 h-1 rounded-full" style={{ backgroundColor: 'var(--color-accent, #2EC4C4)' }} />
                 ) : state === 'missed' ? (

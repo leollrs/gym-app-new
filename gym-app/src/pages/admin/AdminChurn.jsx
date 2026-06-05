@@ -756,6 +756,7 @@ export default function AdminChurn() {
 
   return (
     <AdminPageShell>
+      <div data-admin-tour="churn">
       <PageHeader
         title={t('admin.churn.title', 'Churn Intelligence')}
         subtitle={loading ? t('admin.churn.analyzing', 'Analyzing member activity…') : `${criticalCount} ${t('admin.churn.critical', 'critical')} · ${highRiskCount} ${t('admin.churn.highRisk', 'high risk')} · ${medRiskCount} ${t('admin.churn.mediumRisk', 'medium risk')} · ${churnedMembers.length} ${t('admin.churn.churned', 'churned')}`}
@@ -773,6 +774,7 @@ export default function AdminChurn() {
           </div>
         }
       />
+      </div>
 
       {/* Scores freshness strip */}
       {!loading && lastComputedAt && (

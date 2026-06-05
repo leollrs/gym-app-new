@@ -83,7 +83,7 @@ export default function AdminSettings() {
   return (
     <AdminPageShell>
       {/* header */}
-      <div style={{ minWidth: 0 }}>
+      <div data-admin-tour="settings" style={{ minWidth: 0 }}>
         <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.settings.title', 'Settings')}</h1>
         <div style={{ fontFamily: FK.body, fontSize: 14, color: TK.textSub, marginTop: 9 }}>{t('admin.settings.subtitle', 'Gym branding and configuration')}</div>
       </div>

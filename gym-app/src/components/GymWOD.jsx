@@ -109,12 +109,11 @@ function GymWOD() {
         const { data: inserted, error: insertErr } = await supabase
           .from('gym_workouts_of_the_day')
           .upsert(row, { onConflict: 'gym_id,date', ignoreDuplicates: true })
-          .select()
-          .maybeSingle();
+          .select();
 
         if (!cancelled) {
-          if (inserted) {
-            setWod(inserted);
+          if (inserted && inserted.length > 0) {
+            setWod(inserted[0]);
           } else {
             // Row already existed (DO NOTHING returned nothing) or the write
             // failed — fetch the canonical row, falling back to the locally

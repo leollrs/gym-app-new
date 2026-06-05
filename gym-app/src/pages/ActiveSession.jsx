@@ -25,7 +25,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT } from '../data/exercises';
 import Confetti from '../components/Confetti';
-import { SharePRSheet } from '../components/share/QuickShareSheets';
 
 import SessionHeader from './active-session/SessionHeader';
 import ExerciseCard from './active-session/ExerciseCard';
@@ -356,7 +355,7 @@ const isPR = (exerciseId, weight, reps, knownPRs) => {
 };
 
 // ── PR Celebration Banner ─────────────────────────────────────────────────────
-const PRBanner = ({ exercise, weight, reps, onDismiss, onShare, t }) => (
+const PRBanner = ({ exercise, weight, reps, onDismiss, t }) => (
   <div className="fixed top-0 left-0 right-0 z-[200] animate-scale-pop" style={{ paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
     <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-orange-500 px-5 py-5 shadow-2xl flex items-center gap-3 w-full" style={{ boxShadow: '0 8px 32px rgba(212, 175, 55, 0.4)' }}>
       <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white/20 flex-shrink-0"><Trophy size={28} className="text-white drop-shadow-lg" /></div>
@@ -364,15 +363,6 @@ const PRBanner = ({ exercise, weight, reps, onDismiss, onShare, t }) => (
         <p className="font-extrabold text-[17px] leading-tight text-white tracking-wide uppercase drop-shadow-sm">{t('activeSession.newPersonalRecord')}</p>
         <p className="text-[14px] text-white/90 mt-1 font-semibold truncate">{t('activeSession.prSubtitle', { exercise, weight, reps })}</p>
       </div>
-      {/* "Share" surfaces the PR-kind ShareSheet immediately. Biggest moment
-          in a workout → biggest social-share opportunity. */}
-      <button
-        onClick={onShare}
-        aria-label={t('share.shareThisPR', { defaultValue: 'Share this PR' })}
-        className="px-3 py-2 rounded-full bg-white/90 text-amber-700 font-bold text-[12px] tracking-wide uppercase flex-shrink-0 focus:ring-2 focus:ring-white focus:outline-none"
-      >
-        {t('share.share', { defaultValue: 'Share' })}
-      </button>
       <button onClick={onDismiss} aria-label={t('activeSession.dismiss', { defaultValue: 'Dismiss' })} className="w-9 h-9 flex items-center justify-center text-white/70 hover:text-white text-[20px] leading-none transition-colors duration-200 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-full">×</button>
     </div>
   </div>
@@ -715,9 +705,6 @@ const ActiveSession = () => {
   const [showDeleteSessionConfirm, setShowDeleteSessionConfirm] = useState(false);
 
   const [activePRBanner, setActivePRBanner] = useState(null);
-  // PR share payload — set by the "Share" button on the PR celebration banner;
-  // ShareSheet (kind='pr') reads it via buildPRShareData() below.
-  const [sharePRPayload, setSharePRPayload] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [sessionPRs, setSessionPRs]         = useState(savedSession?.sessionPRs ?? []);
   const livePRs = useRef({});
@@ -1039,7 +1026,7 @@ const ActiveSession = () => {
   useEffect(() => {
     if (!user?.id) return;
     Promise.all([
-      supabase.from('exercise_favorites').select('exercise_id').eq('profile_id', user.id),
+      supabase.from('exercise_favorites').select('exercise_id').eq('user_id', user.id),
       supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, default_sets, default_reps, rest_seconds, instructions, instructions_es, video_url, primary_regions, secondary_regions'),
     ]).then(([favRes, exRes]) => {
       if (favRes.data) setFavoriteExerciseIds(new Set(favRes.data.map(r => r.exercise_id)));
@@ -2715,9 +2702,12 @@ const ActiveSession = () => {
 
       sessionEndedRef.current = true;
       localStorage.removeItem(sessionKey);
-      // Also clear DB draft
-      supabase.from('session_drafts').delete()
-        .eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {});
+      // Also clear DB draft — skip for empty/free sessions: they have no
+      // session_drafts row and their id 'empty' isn't a valid UUID (22P02).
+      if (!isEmptyMode) {
+        supabase.from('session_drafts').delete()
+          .eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {});
+      }
       cancelWorkoutNotification();
       endLiveActivity({ elapsedSeconds: elapsedTime, completedSets, totalSets });
       syncWorkoutEnded({ duration: elapsedTime, totalVolume, prsHit: sessionPRs.length, setsCompleted: completedSets });
@@ -2881,7 +2871,7 @@ const ActiveSession = () => {
               posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: 0, from: 'warmup_gate' });
               sessionEndedRef.current = true;
               try { localStorage.removeItem(sessionKey); } catch {}
-              if (user?.id) {
+              if (user?.id && !isEmptyMode) {
                 supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}, () => {});
               }
               try { cancelWorkoutNotification(); } catch {}
@@ -3216,25 +3206,9 @@ const ActiveSession = () => {
           weight={activePRBanner.weight}
           reps={activePRBanner.reps}
           onDismiss={() => setActivePRBanner(null)}
-          onShare={() => setSharePRPayload(activePRBanner)}
           t={t}
         />
       )}
-      {/* PR Share sheet — opens immediately when the user taps "Share" on
-          the celebration banner. Biggest moment in a workout → biggest
-          social-share opportunity. */}
-      <SharePRSheet
-        open={!!sharePRPayload}
-        onClose={() => setSharePRPayload(null)}
-        pr={sharePRPayload && {
-          exerciseName: sharePRPayload.exercise,
-          value: sharePRPayload.weight,
-          previousBest: sharePRPayload.previousWeight,
-          unit: 'lbs',
-        }}
-        user={profile}
-        gym={gymName}
-      />
       <Confetti active={showConfetti} onComplete={() => setShowConfetti(false)} />
 
       {/* Save Warning Toast */}
@@ -3368,7 +3342,7 @@ const ActiveSession = () => {
         onOpenListManager={() => setShowListManager(true)}
         onDismissResumedBanner={() => setShowResumedBanner(false)}
         watchHeartRate={watchHeartRate}
-        onDiscardSession={() => { posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: elapsedTime }); sessionEndedRef.current = true; localStorage.removeItem(sessionKey); supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {}); cancelWorkoutNotification(); endLiveActivity(); syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); navigate('/workouts'); }}
+        onDiscardSession={() => { posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: elapsedTime }); sessionEndedRef.current = true; localStorage.removeItem(sessionKey); if (!isEmptyMode) supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {}); cancelWorkoutNotification(); endLiveActivity(); syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); navigate('/workouts'); }}
       />
 
       {/* ── Pause action sheet — Resume / Save for later / Delete ────────── */}
@@ -3511,7 +3485,7 @@ const ActiveSession = () => {
                   sessionEndedRef.current = true;
                   try { localStorage.removeItem(sessionKey); } catch { /* non-critical */ }
                   try {
-                    if (user?.id) {
+                    if (user?.id && !isEmptyMode) {
                       supabase.from('session_drafts').delete()
                         .eq('profile_id', user.id).eq('routine_id', id)
                         .then(() => {}).catch(() => {});

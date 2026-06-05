@@ -252,7 +252,7 @@ export default function AdminLeaderboard() {
   return (
     <AdminPageShell>
       {/* header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
+      <div data-admin-tour="leaderboard" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>{t('admin.leaderboard.title', 'Leaderboard')}</h1>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 10 }}>

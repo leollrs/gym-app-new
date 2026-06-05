@@ -2281,7 +2281,7 @@ const Dashboard = () => {
                         background: todayCardioSessions.length > 0
                           ? 'rgba(16,185,129,0.15)'
                           : 'var(--color-accent)',
-                        color: todayCardioSessions.length > 0 ? '#10B981' : '#001512',
+                        color: todayCardioSessions.length > 0 ? '#10B981' : '#fff',
                         fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif',
                       }}
                     >

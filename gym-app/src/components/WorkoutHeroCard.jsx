@@ -477,7 +477,7 @@ const WorkoutHeroCard = ({
               : 'var(--color-accent, #2EC4C4)',
             color: isCompleted
               ? '#10B981'
-              : '#001512',
+              : '#fff',
             border: isCompleted ? '1px solid rgba(16,185,129,0.2)' : 'none',
             fontFamily: '"Familjen Grotesk", "Archivo", system-ui',
             letterSpacing: -0.2,

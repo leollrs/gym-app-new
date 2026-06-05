@@ -49,7 +49,7 @@ export default function AdminModeration() {
   return (
     <AdminPageShell>
       {/* header */}
-      <div style={{ minWidth: 0 }}>
+      <div data-admin-tour="moderation" style={{ minWidth: 0 }}>
         <h1 className="admin-page-title" style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1 }}>
           {t('admin.moderation.title', { defaultValue: 'Content Moderation' })}
         </h1>
