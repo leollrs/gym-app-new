@@ -95,6 +95,7 @@ const QuickStart = () => {
   const [todayRoutine, setTodayRoutine] = useState(cachedInit?.todayRoutine || null);
   const [todayExercises, setTodayExercises] = useState(cachedInit?.todayExercises || []);
   const [loading, setLoading] = useState(!cachedInit);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [activeDrafts] = useState(() => readActiveDrafts());
   const [liveCardio, setLiveCardio] = useState(() => readLiveCardio(user?.id));
   // Refresh on visibility — handles returning from the LiveCardio screen.
@@ -192,6 +193,36 @@ const QuickStart = () => {
         todayR = allRoutines.find(r => r.id === scheduleMap[todayDow]) || null;
       }
 
+      // ── ACTIVE-DRAFT OVERRIDE ────────────────────────────────────────
+      // A workout IN PROGRESS beats the schedule. If the member started a
+      // routine that isn't today's scheduled one (off-day session, rest day,
+      // gym closed), the hero must surface THAT routine with the Resume
+      // state — previously drafts were only honored when they matched the
+      // scheduled routine, so off-schedule sessions vanished from /record.
+      const freshDraft = (activeDrafts || [])
+        .slice()
+        .sort((a, b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0))[0] || null;
+      if (freshDraft && String(freshDraft.routineId) !== String(todayR?.id ?? '')) {
+        let draftRoutine = allRoutines.find(r => String(r.id) === String(freshDraft.routineId)) || null;
+        if (!draftRoutine) {
+          // Not one of the member's own routines (class template, friend's
+          // routine, pre-regenerate program routine) — fetch it directly.
+          const { data: ext } = await supabase
+            .from('routines')
+            .select('id, name, created_at, routine_exercises(id, exercise_id, target_sets, target_reps, position, exercises(name, video_url))')
+            .eq('id', freshDraft.routineId)
+            .maybeSingle();
+          draftRoutine = ext || null;
+        }
+        if (draftRoutine) {
+          todayR = draftRoutine;
+          // An in-progress session also overrides the rest-day / closed
+          // states from a previous load pass.
+          setIsRestDay(false);
+          setIsGymClosed(false);
+        }
+      }
+
       // Check if gym is closed today
       // Only show gym closed / rest day if there's NO scheduled workout for today
       if (!todayR) {
@@ -266,7 +297,21 @@ const QuickStart = () => {
     };
 
     load();
-  }, [user, location.key]);
+  }, [user, location.key, refreshKey]);
+
+  // Stay in sync with the Home tab when the program is (re)generated elsewhere.
+  // generate / regenerate broadcast 'tugympr:programs-changed' — clear the SWR
+  // cache and refetch so /record reflects the new schedule immediately instead
+  // of waiting for the next navigation.
+  useEffect(() => {
+    if (!user?.id) return;
+    const onProgramsChanged = () => {
+      try { localStorage.removeItem(cacheKey(user.id)); } catch { /* ignore */ }
+      setRefreshKey((k) => k + 1);
+    };
+    window.addEventListener('tugympr:programs-changed', onProgramsChanged);
+    return () => window.removeEventListener('tugympr:programs-changed', onProgramsChanged);
+  }, [user?.id]);
 
   // Also revalidate whenever the tab becomes visible again (e.g. user returns
   // to the app after finishing a workout so the completed state shows up).
@@ -372,7 +417,7 @@ const QuickStart = () => {
             </p>
             <button
               onClick={() => setShowOther(v => !v)}
-              className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl text-[13px] font-bold text-black transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl text-[13px] font-bold text-[var(--color-text-on-accent,#000)] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{ backgroundColor: 'var(--color-accent)' }}
             >
               <Dumbbell size={15} />
@@ -528,9 +573,9 @@ const QuickStart = () => {
                 const completed = draftSets.filter(s => s.completed).length;
                 const total = draftSets.length;
                 return (
-                  <div className={`w-full py-5 rounded-2xl flex items-center justify-center gap-2.5 shadow-[0_4px_24px_rgba(212,175,55,0.3)] ${isResume ? 'bg-emerald-500' : 'bg-[#D4AF37]'}`}>
-                    <Play size={20} className="text-black" fill="black" strokeWidth={0} />
-                    <span className="text-[14px] font-black tracking-wide uppercase text-black whitespace-nowrap">
+                  <div className={`w-full py-5 rounded-2xl flex items-center justify-center gap-2.5 shadow-[0_4px_24px_rgba(212,175,55,0.3)] ${isResume ? 'bg-emerald-500 text-black' : 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]'}`}>
+                    <Play size={20} fill="currentColor" strokeWidth={0} />
+                    <span className="text-[14px] font-black tracking-wide uppercase whitespace-nowrap">
                       {isResume
                         ? `${t('quickStart.resumeWorkout', 'Resume Workout')} · ${completed}/${total}`
                         : t('quickStart.startWorkout')}

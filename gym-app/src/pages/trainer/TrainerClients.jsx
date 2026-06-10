@@ -39,47 +39,69 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
     : isAtRisk
       ? t('trainerClients.statusAtRisk', 'At Risk')
       : t('trainerClients.statusInactive', 'Inactive');
-  const statusColor = isActive
-    ? 'text-emerald-400 bg-emerald-500/10'
-    : isAtRisk
-      ? 'text-amber-400 bg-amber-500/10'
-      : 'text-[var(--color-text-muted)] bg-[var(--color-bg-subtle)]';
+  const statusTone = isActive ? 'good' : isAtRisk ? 'warn' : 'neutral';
+  const statusDot = isActive ? TT.good : isAtRisk ? TT.warn : TT.textFaint;
+
+  const statCardStyle = {
+    background: TT.surface2, borderRadius: 14, padding: 12,
+  };
+  const statLabelStyle = {
+    fontSize: 10, color: TT.textMute, textTransform: 'uppercase',
+    letterSpacing: 0.4, marginBottom: 2, fontWeight: 700,
+  };
+  const statValueStyle = {
+    fontSize: 15, fontWeight: 700, color: TT.text,
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
+    <div
+      role="dialog" aria-modal="true" aria-labelledby="client-preview-title"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
       <div
         ref={focusTrapRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="client-preview-title"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
         onClick={e => e.stopPropagation()}
+        style={{
+          background: TT.surface, borderRadius: 18,
+          width: '100%', maxWidth: 380, overflow: 'hidden',
+          boxShadow: TT.shadowLg,
+        }}
       >
         {/* Close button */}
-        <div className="flex justify-end p-3 pb-0">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 12px 0' }}>
           <button
             onClick={onClose}
             aria-label={t('trainerClients.close', 'Close')}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none rounded-lg"
+            style={{
+              width: 32, height: 32, borderRadius: 999, border: 'none',
+              background: TT.surface2, color: TT.textSub,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
           >
-            <X size={20} />
+            <X size={16} />
           </button>
         </div>
 
         {/* Avatar + Name + Summary */}
-        <div className="flex flex-col items-center px-5 pb-4">
-          <div className="w-20 h-20 rounded-full bg-[var(--color-bg-elevated)] flex items-center justify-center mb-3 relative">
-            <span className="text-[28px] font-bold text-[var(--color-text-secondary)]">{(client.full_name || 'U')[0]}</span>
-            <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[var(--color-bg-card)] ${
-              isActive ? 'bg-emerald-400' : isAtRisk ? 'bg-amber-400' : 'bg-[var(--color-bg-inset)]'
-            }`} />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 20px 16px' }}>
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <TAvatar name={client.full_name || '?'} size={80} idx={avatarIdx(client.id)} src={client.avatar_url} />
+            <span style={{
+              position: 'absolute', bottom: 2, right: 2, width: 14, height: 14,
+              borderRadius: 999, background: statusDot, border: `2px solid ${TT.surface}`,
+            }} />
           </div>
-          <p id="client-preview-title" className="text-[18px] font-bold text-[var(--color-text-primary)] text-center">{client.full_name}</p>
-          <span className={`mt-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${statusColor}`}>
-            {statusLabel}
-          </span>
+          <p id="client-preview-title" style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: TT.text, textAlign: 'center', letterSpacing: -0.3 }}>
+            {client.full_name}
+          </p>
+          <TPill tone={statusTone} size="m" style={{ marginTop: 6 }}>{statusLabel}</TPill>
           {/* Summary line */}
-          <p className="mt-2 text-[12px] text-[var(--color-text-muted)] text-center">
+          <p style={{ marginTop: 8, fontSize: 12, color: TT.textMute, textAlign: 'center' }}>
             {client.created_at
               ? t('trainerClients.memberSince', 'Member since {{date}}', { date: new Date(client.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) })
               : null}
@@ -91,11 +113,11 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
         </div>
 
         {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 mx-5 mb-5">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, margin: '0 20px 20px' }}>
           {/* Last active */}
-          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3">
-            <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.lastActive', 'Last Active')}</p>
-            <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">
+          <div style={statCardStyle}>
+            <p style={statLabelStyle}>{t('trainerClients.lastActive', 'Last Active')}</p>
+            <p style={statValueStyle}>
               {client.last_active_at
                 ? formatDistanceToNow(new Date(client.last_active_at), { addSuffix: true, locale: dateFnsLocale })
                 : t('trainerClients.never', 'Never')}
@@ -103,15 +125,15 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
           </div>
 
           {/* Recent workouts */}
-          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3">
-            <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.recentWorkouts', 'Workouts (14d)')}</p>
-            <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">{client.recentWorkouts ?? 0}</p>
+          <div style={statCardStyle}>
+            <p style={statLabelStyle}>{t('trainerClients.recentWorkouts', 'Workouts (14d)')}</p>
+            <p style={statValueStyle}>{client.recentWorkouts ?? 0}</p>
           </div>
 
           {/* Program */}
-          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3">
-            <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.program', 'Program')}</p>
-            <p className="text-[15px] font-semibold text-[var(--color-text-primary)] truncate">
+          <div style={statCardStyle}>
+            <p style={statLabelStyle}>{t('trainerClients.program', 'Program')}</p>
+            <p style={{ ...statValueStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {client.assigned_program_id
                 ? t('trainerClients.assigned', 'Assigned')
                 : t('trainerClients.none', 'None')}
@@ -119,59 +141,86 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
           </div>
 
           {/* Churn risk */}
-          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3">
-            <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.churnRisk', 'Churn Risk')}</p>
+          <div style={statCardStyle}>
+            <p style={statLabelStyle}>{t('trainerClients.churnRisk', 'Churn Risk')}</p>
             {churnScore && churnScore.score >= 30 ? (
-              <p className={`text-[15px] font-semibold ${
-                churnScore.score >= 80 ? 'text-red-400' : churnScore.score >= 55 ? 'text-orange-400' : 'text-yellow-400'
-              }`}>
+              <p style={{
+                ...statValueStyle,
+                color: churnScore.score >= 80 ? TT.hot : churnScore.score >= 55 ? TT.warn : TT.warnInk,
+              }}>
                 {Math.round(churnScore.score)}%
               </p>
             ) : (
-              <p className="text-[15px] font-semibold text-emerald-400">{t('trainerClients.low', 'Low')}</p>
+              <p style={{ ...statValueStyle, color: TT.goodInk }}>{t('trainerClients.low', 'Low')}</p>
             )}
           </div>
         </div>
 
         {/* Action buttons */}
-        <div className="px-5 pb-5 space-y-2.5">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 20px 20px' }}>
           <button
             onClick={() => { onClose(); onMessage(client.id); }}
-            className="w-full flex items-center justify-center gap-2 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl py-3 text-[14px] transition-colors min-h-[44px]"
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              background: TT.surface2, color: TT.textSub, border: 'none',
+              fontWeight: 700, borderRadius: 12, padding: '12px 0', fontSize: 14,
+              minHeight: 44, cursor: 'pointer',
+            }}
           >
             <MessageSquare size={16} />
             {t('trainerClients.message', 'Message')}
           </button>
-          <div className="flex gap-2">
+          <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={onOpen}
-              className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl py-3.5 text-[15px] transition-colors min-h-[48px]"
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                background: TT.accent, color: '#06363B', border: 'none',
+                fontFamily: TFont.display, fontWeight: 800, borderRadius: 12,
+                padding: '14px 0', fontSize: 15, minHeight: 48, cursor: 'pointer',
+              }}
             >
               <ExternalLink size={16} />
               {t('trainerClients.openClient', 'Open Client')}
             </button>
             {/* More options menu */}
-            <div className="relative">
+            <div style={{ position: 'relative' }}>
               <button
                 onClick={() => setShowMoreMenu(prev => !prev)}
                 aria-label={t('trainerClients.moreOptions', 'More options')}
-                className="w-[48px] h-[48px] flex items-center justify-center bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] rounded-xl border border-[var(--color-border-subtle)] transition-colors"
+                style={{
+                  width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: TT.surface2, color: TT.textMute, borderRadius: 12,
+                  border: `1px solid ${TT.borderSolid}`, cursor: 'pointer',
+                }}
               >
                 <MoreHorizontal size={18} />
               </button>
               {showMoreMenu && (
-                <div className="absolute bottom-full right-0 mb-1.5 w-48 bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-xl shadow-lg overflow-hidden z-10 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                <div style={{
+                  position: 'absolute', bottom: '100%', right: 0, marginBottom: 6, width: 192,
+                  background: TT.surface, border: `1px solid ${TT.borderSolid}`, borderRadius: 12,
+                  boxShadow: TT.shadowLg, overflow: 'hidden', zIndex: 10,
+                }}>
                   <button
                     onClick={() => { setShowMoreMenu(false); onClose(); onRemove(client); }}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] transition-colors text-left min-h-[44px]"
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '12px 16px', fontSize: 13, fontWeight: 600, color: TT.textSub,
+                      background: 'transparent', border: 'none', textAlign: 'left', minHeight: 44, cursor: 'pointer',
+                    }}
                   >
-                    <UserMinus size={15} className="text-[var(--color-text-muted)]" />
+                    <UserMinus size={15} color={TT.textMute} />
                     {t('trainerClients.removeClient', 'Remove Client')}
                   </button>
-                  <div className="mx-3 border-t border-[var(--color-border-subtle)]" />
+                  <div style={{ margin: '0 12px', borderTop: `1px solid ${TT.border}` }} />
                   <button
                     onClick={() => { setShowMoreMenu(false); onClose(); onBlock(client); }}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium text-red-400 hover:bg-red-500/5 transition-colors text-left min-h-[44px]"
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '12px 16px', fontSize: 13, fontWeight: 600, color: TT.hot,
+                      background: 'transparent', border: 'none', textAlign: 'left', minHeight: 44, cursor: 'pointer',
+                    }}
                   >
                     <ShieldBan size={15} />
                     {t('trainerClients.blockClient', 'Block Client')}
@@ -252,61 +301,85 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
+    <div
+      role="dialog" aria-modal="true" aria-labelledby="add-client-title"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
       <div
         ref={focusTrapRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-client-title"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden mx-auto"
         onClick={e => e.stopPropagation()}
+        style={{
+          background: TT.surface, borderRadius: 18,
+          width: '100%', maxWidth: 448, maxHeight: '85vh',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          boxShadow: TT.shadowLg,
+        }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <h2 id="add-client-title" className="text-[16px] font-bold text-[var(--color-text-primary)]">
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px 12px', flexShrink: 0,
+        }}>
+          <h2 id="add-client-title" style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
             {t('trainerClients.addClient', 'Add Client')}
           </h2>
           <button
             onClick={onClose}
             aria-label={t('trainerClients.close', 'Close')}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none rounded-lg"
+            style={{
+              width: 32, height: 32, borderRadius: 999, border: 'none',
+              background: TT.surface2, color: TT.textSub,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
           >
-            <X size={20} />
+            <X size={16} />
           </button>
         </div>
 
         {/* Search */}
-        <div className="px-5 pb-3">
-          <div className="relative">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+        <div style={{ padding: '0 20px 12px', flexShrink: 0 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            height: 42, background: TT.surface2, borderRadius: 12,
+            border: `1px solid ${TT.borderSolid}`, padding: '0 12px',
+          }}>
+            <Search size={16} color={TT.textMute} strokeWidth={2} />
             <input
               value={memberSearch}
               onChange={handleSearchChange}
               placeholder={t('trainerClients.searchMembersHint', 'Type at least 2 characters to search…')}
               autoFocus
               aria-label={t('trainerClients.searchMembers', 'Search gym members')}
-              className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              style={{
+                flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                fontSize: 13, color: TT.text, minWidth: 0,
+              }}
             />
           </div>
         </div>
 
         {/* Member list */}
-        <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-1.5">
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {loadingMembers ? (
-            <div className="flex justify-center py-12">
-              <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-accent-glow)', borderTopColor: 'var(--color-accent)' }} />
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
+              <Loader2 size={24} className="animate-spin" color={TT.accent} />
             </div>
           ) : memberSearch.trim().length < 2 ? (
-            <div className="text-center py-10">
-              <Search size={24} className="text-[var(--color-text-muted)] mx-auto mb-2" />
-              <p className="text-[13px] text-[var(--color-text-muted)]">
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Search size={24} color={TT.textMute} style={{ margin: '0 auto 8px' }} />
+              <p style={{ fontSize: 13, color: TT.textMute }}>
                 {t('trainerClients.typeToSearch', 'Type at least 2 characters to search')}
               </p>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-10">
-              <Users size={24} className="text-[var(--color-text-muted)] mx-auto mb-2" />
-              <p className="text-[13px] text-[var(--color-text-muted)]">
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Users size={24} color={TT.textMute} style={{ margin: '0 auto 8px' }} />
+              <p style={{ fontSize: 13, color: TT.textMute }}>
                 {t('trainerClients.noMembersFound', 'No members found')}
               </p>
             </div>
@@ -314,22 +387,27 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
             filtered.map(m => (
               <div
                 key={m.id}
-                className="flex items-center gap-3 px-3.5 py-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 14px', background: TT.surface2,
+                  border: `1px solid ${TT.border}`, borderRadius: 12,
+                }}
               >
-                <div className="w-9 h-9 rounded-full bg-[var(--color-bg-elevated)] flex items-center justify-center flex-shrink-0">
-                  <span className="text-[13px] font-bold text-[var(--color-text-secondary)]">{(m.full_name || 'U')[0]}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">{m.full_name}</p>
+                <TAvatar name={m.full_name || '?'} size={36} idx={avatarIdx(m.id)} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: TT.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name}</p>
                   {m.username && (
-                    <p className="text-[11px] text-[var(--color-text-muted)] truncate">@{m.username}</p>
+                    <p style={{ fontSize: 11, color: TT.textMute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{m.username}</p>
                   )}
                 </div>
                 <button
                   onClick={() => handleAdd(m.id)}
                   disabled={addingId === m.id}
-                  className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-[var(--color-accent)] hover:brightness-110 transition-colors disabled:opacity-50"
-                  style={{ backgroundColor: 'var(--color-accent-glow)' }}
+                  style={{
+                    minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    borderRadius: 12, border: 'none', background: TT.accentSoft, color: TT.accentInk,
+                    cursor: addingId === m.id ? 'default' : 'pointer', opacity: addingId === m.id ? 0.5 : 1,
+                  }}
                   aria-label={t('trainerClients.addMember', 'Add {{name}}', { name: m.full_name })}
                 >
                   {addingId === m.id ? (
@@ -389,57 +467,83 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
+    <div
+      role="dialog" aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
       <div
-        role="dialog"
-        aria-modal="true"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
         onClick={e => e.stopPropagation()}
+        style={{
+          background: TT.surface, borderRadius: 18,
+          width: '100%', maxWidth: 380, overflow: 'hidden',
+          boxShadow: TT.shadowLg,
+        }}
       >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <h2 className="text-[16px] font-bold text-[var(--color-text-primary)]">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px' }}>
+          <h2 style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
             {t('trainerClients.assignProgram', 'Assign Program')}
           </h2>
-          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg">
-            <X size={20} />
+          <button
+            onClick={onClose}
+            aria-label={t('trainerClients.close', 'Close')}
+            style={{
+              width: 32, height: 32, borderRadius: 999, border: 'none',
+              background: TT.surface2, color: TT.textSub,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
+          >
+            <X size={16} />
           </button>
         </div>
-        <div className="px-5 pb-2">
-          <p className="text-[12px] text-[var(--color-text-muted)]">
+        <div style={{ padding: '0 20px 8px' }}>
+          <p style={{ fontSize: 12, color: TT.textMute }}>
             {t('trainerClients.assignProgramDesc', 'Select a program to assign to {{count}} selected clients', { count: selectedClients.length })}
           </p>
         </div>
-        <div className="px-5 pb-5 space-y-2 max-h-60 overflow-y-auto">
+        <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflowY: 'auto' }}>
           {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-accent-glow)', borderTopColor: 'var(--color-accent)' }} />
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
+              <Loader2 size={20} className="animate-spin" color={TT.accent} />
             </div>
           ) : programs.length === 0 ? (
-            <p className="text-[13px] text-[var(--color-text-muted)] text-center py-6">{t('trainerClients.noPrograms', 'No published programs')}</p>
+            <p style={{ fontSize: 13, color: TT.textMute, textAlign: 'center', padding: '24px 0' }}>{t('trainerClients.noPrograms', 'No published programs')}</p>
           ) : (
-            programs.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setSelectedProgram(p.id)}
-                className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all ${
-                  selectedProgram === p.id
-                    ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10'
-                    : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-secondary)] hover:border-[var(--color-border-strong)]'
-                }`}
-              >
-                <p className={`text-[13px] font-semibold ${selectedProgram === p.id ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>{p.name}</p>
-              </button>
-            ))
+            programs.map(p => {
+              const sel = selectedProgram === p.id;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedProgram(p.id)}
+                  style={{
+                    width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12,
+                    border: `1px solid ${sel ? TT.accent : TT.border}`,
+                    background: sel ? TT.accentSoft : TT.surface2, cursor: 'pointer',
+                  }}
+                >
+                  <p style={{ fontSize: 13, fontWeight: 700, color: sel ? TT.accentInk : TT.text }}>{p.name}</p>
+                </button>
+              );
+            })
           )}
         </div>
-        <div className="px-5 pb-5">
+        <div style={{ padding: '0 20px 20px' }}>
           <button
             onClick={handleAssign}
             disabled={!selectedProgram || assigning}
-            className="w-full py-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50"
+            style={{
+              width: '100%', padding: '12px 0', background: TT.accent, color: '#06363B',
+              fontFamily: TFont.display, fontWeight: 800, borderRadius: 12, fontSize: 14, border: 'none',
+              minHeight: 48, cursor: (!selectedProgram || assigning) ? 'default' : 'pointer',
+              opacity: (!selectedProgram || assigning) ? 0.5 : 1,
+            }}
           >
             {assigning ? (
-              <Loader2 size={16} className="animate-spin mx-auto" />
+              <Loader2 size={16} className="animate-spin" style={{ margin: '0 auto' }} />
             ) : (
               t('trainerClients.assignProgram', 'Assign Program')
             )}
@@ -518,48 +622,76 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
+    <div
+      role="dialog" aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
       <div
         ref={focusTrapRef}
-        role="dialog"
-        aria-modal="true"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
         onClick={e => e.stopPropagation()}
+        style={{
+          background: TT.surface, borderRadius: 18,
+          width: '100%', maxWidth: 380, overflow: 'hidden',
+          boxShadow: TT.shadowLg,
+        }}
       >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <h2 className="text-[16px] font-bold text-[var(--color-text-primary)]">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px' }}>
+          <h2 style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
             {t('trainerClients.messageAll', 'Message All')}
           </h2>
-          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg">
-            <X size={20} />
+          <button
+            onClick={onClose}
+            aria-label={t('trainerClients.close', 'Close')}
+            style={{
+              width: 32, height: 32, borderRadius: 999, border: 'none',
+              background: TT.surface2, color: TT.textSub,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
+          >
+            <X size={16} />
           </button>
         </div>
-        <div className="px-5 pb-2">
-          <p className="text-[12px] text-[var(--color-text-muted)]">
+        <div style={{ padding: '0 20px 8px' }}>
+          <p style={{ fontSize: 12, color: TT.textMute }}>
             {t('trainerClients.messageAllDesc', 'Send a direct message to {{count}} selected clients', { count: selectedClients.length })}
           </p>
         </div>
-        <div className="px-5 pb-3">
+        <div style={{ padding: '0 20px 12px' }}>
           <textarea
             value={message}
             onChange={e => setMessage(e.target.value)}
             placeholder={t('trainerClients.typeMessage', 'Type your message...')}
             autoFocus
             rows={3}
-            className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-3 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none min-h-[80px] sm:min-h-[100px]"
+            style={{
+              width: '100%', background: TT.surface2, border: `1px solid ${TT.borderSolid}`,
+              borderRadius: 12, padding: '12px 14px', fontSize: 13, color: TT.text,
+              outline: 'none', resize: 'none', minHeight: 90, fontFamily: 'inherit',
+            }}
           />
         </div>
-        <div className="px-5 pb-5">
+        <div style={{ padding: '0 20px 20px' }}>
           <button
             onClick={handleSend}
             disabled={!message.trim() || sending}
-            className="w-full py-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{
+              width: '100%', padding: '12px 0', background: TT.accent, color: '#06363B',
+              fontFamily: TFont.display, fontWeight: 800, borderRadius: 12, fontSize: 14, border: 'none',
+              minHeight: 48, cursor: (!message.trim() || sending) ? 'default' : 'pointer',
+              opacity: (!message.trim() || sending) ? 0.5 : 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}
           >
             {sending ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
                 {progress.total > 0 && (
-                  <span className="text-[13px]">
+                  <span style={{ fontSize: 13 }}>
                     {t('trainerClients.sendingProgress', 'Sending {{sent}}/{{total}}...', { sent: progress.sent, total: progress.total })}
                   </span>
                 )}
@@ -909,7 +1041,7 @@ export default function TrainerClients() {
                 cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
               }}
             >
-              <SortAsc size={14} color={TT.text} />
+              <SortAsc size={14} style={{ color: TT.text }} />
               {t(`trainerClients.sort_${sortBy}`, SORT_DEFAULTS[sortBy] || sortBy)}
             </button>
             <TIconButton
@@ -1123,27 +1255,45 @@ export default function TrainerClients() {
 
       {/* Bulk action bar */}
       {bulkSelected.size > 0 && (
-        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 sm:px-4 py-2.5 bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl shadow-lg backdrop-blur-sm max-w-[calc(100vw-2rem)]">
-          <span className="text-[12px] font-semibold text-[var(--color-text-secondary)] mr-1 whitespace-nowrap">
+        <div
+          className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-2rem)]"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+            background: TT.surface, border: `1px solid ${TT.borderSolid}`,
+            borderRadius: 18, boxShadow: TT.shadowLg,
+          }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 700, color: TT.textSub, marginRight: 4, whiteSpace: 'nowrap' }}>
             {t('trainerClients.selectedCount', '{{count}} selected', { count: bulkSelected.size })}
           </span>
           <button
             onClick={() => setShowAssignProgram(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-semibold rounded-xl text-[12px] transition-colors min-h-[44px]"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px',
+              background: TT.accent, color: '#06363B', fontWeight: 700,
+              borderRadius: 12, fontSize: 12, border: 'none', minHeight: 44, cursor: 'pointer',
+            }}
           >
             <ClipboardList size={14} />
             {t('trainerClients.assignProgram', 'Assign Program')}
           </button>
           <button
             onClick={() => setShowComposeMessage(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl text-[12px] transition-colors min-h-[44px] border border-[var(--color-border-subtle)]"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px',
+              background: TT.surface2, color: TT.textSub, fontWeight: 700,
+              borderRadius: 12, fontSize: 12, border: `1px solid ${TT.border}`, minHeight: 44, cursor: 'pointer',
+            }}
           >
             <Send size={14} />
             {t('trainerClients.messageAll', 'Message All')}
           </button>
           <button
             onClick={() => { setBulkSelected(new Set()); setSelectMode(false); }}
-            className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
+            style={{
+              padding: 8, color: TT.textMute, borderRadius: 10, background: 'transparent', border: 'none',
+              minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
             aria-label={t('trainerClients.clearSelection', 'Clear selection')}
           >
             <X size={16} />
@@ -1180,35 +1330,55 @@ export default function TrainerClients() {
 
       {/* Remove Client Confirmation */}
       {removeTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => setRemoveTarget(null)}>
+        <div
+          role="dialog" aria-modal="true"
+          onClick={() => setRemoveTarget(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 80,
+            background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
           <div
-            role="dialog"
-            aria-modal="true"
-            className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
             onClick={e => e.stopPropagation()}
+            style={{
+              background: TT.surface, borderRadius: 18,
+              width: '100%', maxWidth: 380, overflow: 'hidden', boxShadow: TT.shadowLg,
+            }}
           >
-            <div className="flex flex-col items-center px-5 pt-6 pb-4">
-              <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mb-3">
-                <AlertTriangle size={24} className="text-amber-400" />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 20px 16px' }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: 999, background: TT.warnSoft,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+              }}>
+                <AlertTriangle size={24} color={TT.warn} />
               </div>
-              <h2 className="text-[16px] font-bold text-[var(--color-text-primary)] text-center">
+              <h2 style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, textAlign: 'center', letterSpacing: -0.3 }}>
                 {t('trainerClients.removeConfirmTitle', 'Remove Client')}
               </h2>
-              <p className="text-[13px] text-[var(--color-text-muted)] text-center mt-2">
+              <p style={{ fontSize: 13, color: TT.textMute, textAlign: 'center', marginTop: 8 }}>
                 {t('trainerClients.removeConfirmDesc', 'Are you sure you want to remove {{name}} from your client list? This will not delete their account.', { name: removeTarget.full_name })}
               </p>
             </div>
-            <div className="px-5 pb-5 flex gap-2.5">
+            <div style={{ display: 'flex', gap: 10, padding: '0 20px 20px' }}>
               <button
                 onClick={() => setRemoveTarget(null)}
-                className="flex-1 py-3 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl text-[14px] transition-colors min-h-[48px]"
+                style={{
+                  flex: 1, padding: '12px 0', background: TT.surface2, color: TT.textSub,
+                  fontWeight: 700, borderRadius: 12, fontSize: 14, border: 'none', minHeight: 48, cursor: 'pointer',
+                }}
               >
                 {t('trainerClients.cancel', 'Cancel')}
               </button>
               <button
                 onClick={handleRemoveClient}
                 disabled={removingClient}
-                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
+                style={{
+                  flex: 1, padding: '12px 0', background: TT.warn, color: '#fff',
+                  fontWeight: 800, borderRadius: 12, fontSize: 14, border: 'none', minHeight: 48,
+                  cursor: removingClient ? 'default' : 'pointer', opacity: removingClient ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
               >
                 {removingClient ? (
                   <Loader2 size={16} className="animate-spin" />
@@ -1226,35 +1396,55 @@ export default function TrainerClients() {
 
       {/* Block Client Confirmation */}
       {blockTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => setBlockTarget(null)}>
+        <div
+          role="dialog" aria-modal="true"
+          onClick={() => setBlockTarget(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 80,
+            background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
           <div
-            role="dialog"
-            aria-modal="true"
-            className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
             onClick={e => e.stopPropagation()}
+            style={{
+              background: TT.surface, borderRadius: 18,
+              width: '100%', maxWidth: 380, overflow: 'hidden', boxShadow: TT.shadowLg,
+            }}
           >
-            <div className="flex flex-col items-center px-5 pt-6 pb-4">
-              <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mb-3">
-                <ShieldBan size={24} className="text-red-400" />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 20px 16px' }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: 999, background: TT.hotSoft,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+              }}>
+                <ShieldBan size={24} color={TT.hot} />
               </div>
-              <h2 className="text-[16px] font-bold text-[var(--color-text-primary)] text-center">
+              <h2 style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, textAlign: 'center', letterSpacing: -0.3 }}>
                 {t('trainerClients.blockConfirmTitle', 'Block Client')}
               </h2>
-              <p className="text-[13px] text-[var(--color-text-muted)] text-center mt-2">
+              <p style={{ fontSize: 13, color: TT.textMute, textAlign: 'center', marginTop: 8 }}>
                 {t('trainerClients.blockConfirmDesc', 'Are you sure you want to block {{name}}? They will be removed from your client list and will not be able to send you messages.', { name: blockTarget.full_name })}
               </p>
             </div>
-            <div className="px-5 pb-5 flex gap-2.5">
+            <div style={{ display: 'flex', gap: 10, padding: '0 20px 20px' }}>
               <button
                 onClick={() => setBlockTarget(null)}
-                className="flex-1 py-3 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl text-[14px] transition-colors min-h-[48px]"
+                style={{
+                  flex: 1, padding: '12px 0', background: TT.surface2, color: TT.textSub,
+                  fontWeight: 700, borderRadius: 12, fontSize: 14, border: 'none', minHeight: 48, cursor: 'pointer',
+                }}
               >
                 {t('trainerClients.cancel', 'Cancel')}
               </button>
               <button
                 onClick={handleBlockClient}
                 disabled={blockingClient}
-                className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
+                style={{
+                  flex: 1, padding: '12px 0', background: TT.hot, color: '#fff',
+                  fontWeight: 800, borderRadius: 12, fontSize: 14, border: 'none', minHeight: 48,
+                  cursor: blockingClient ? 'default' : 'pointer', opacity: blockingClient ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
               >
                 {blockingClient ? (
                   <Loader2 size={16} className="animate-spin" />

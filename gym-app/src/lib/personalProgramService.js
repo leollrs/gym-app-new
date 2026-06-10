@@ -130,6 +130,24 @@ export async function generateAndSavePersonalProgram({ supabase, user, gymId, sn
     pickedDows.sort((a, b) => a - b);
   }
 
+  // "Start today" option (regenerate): guarantee today is one of the training
+  // days so the first workout is available immediately instead of waiting for
+  // the next preferred day. When off, the schedule follows preferred days only.
+  const startTodayDow = startDate.getDay();
+  if (snapshot.start_today && !closedDays.has(startTodayDow) && !pickedDows.includes(startTodayDow)) {
+    // Swap today in for the latest-in-week pick, keeping N distinct days.
+    pickedDows[pickedDows.length - 1] = startTodayDow;
+    pickedDows = Array.from(new Set(pickedDows)).sort((a, b) => a - b);
+    if (pickedDows.length < N) {
+      const used = new Set(pickedDows);
+      for (const d of [0, 1, 2, 3, 4, 5, 6]) {
+        if (pickedDows.length >= N) break;
+        if (!used.has(d) && !closedDays.has(d)) { pickedDows.push(d); used.add(d); }
+      }
+      pickedDows.sort((a, b) => a - b);
+    }
+  }
+
   // 3. Partial-week scheduling (signup mid-week) ─────────────────────────
   // For a Thu signup with M/W/F/S over 12 training-weeks:
   //   week 0:    [Fri, Sat]                       2 sessions
@@ -274,7 +292,7 @@ export async function generateAndSavePersonalProgram({ supabase, user, gymId, sn
 // no logged sessions referencing them — are deleted so the user's My
 // Routines list doesn't pile up with stale "Auto: Upper A"-style cruft from
 // pre-creative-naming generations.
-export async function regenerateMemberProgram({ supabase, user, posthog }) {
+export async function regenerateMemberProgram({ supabase, user, posthog, startToday = false }) {
   if (!user?.id) throw new Error('user is required');
 
   const [{ data: profileRow }, { data: onbRow }] = await Promise.all([
@@ -342,6 +360,7 @@ export async function regenerateMemberProgram({ supabase, user, posthog }) {
     age: onbRow.age,
     workout_duration_min: onbRow.workout_duration_min,
     preferred_training_days: profileRow.preferred_training_days,
+    start_today: !!startToday,
   };
 
   return generateAndSavePersonalProgram({

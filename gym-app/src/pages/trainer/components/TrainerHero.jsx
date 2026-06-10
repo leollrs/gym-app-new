@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import AnimatedCounter from '../../../components/AnimatedCounter';
+import { TT, TFont } from './designTokens';
 
 /**
  * Member-style hero card adapted for trainer pages. Big gradient number,
@@ -37,10 +38,9 @@ export default function TrainerHero({
       transition={{ duration: 0.4 }}
       className="relative rounded-2xl overflow-hidden"
       style={{
-        background:
-          'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-card)) 0%, var(--color-bg-card) 60%)',
-        border: '1px solid var(--color-border-subtle)',
-        boxShadow: 'var(--shadow-card, 0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05))',
+        background: `linear-gradient(135deg, ${TT.accentSoft} 0%, ${TT.surface} 60%)`,
+        border: `1px solid ${TT.border}`,
+        boxShadow: TT.shadow,
       }}
     >
       {/* Decorative accent halo (uses brand) */}
@@ -49,7 +49,7 @@ export default function TrainerHero({
         className="pointer-events-none absolute -top-12 -right-12 w-48 h-48 rounded-full opacity-50"
         style={{
           background:
-            'radial-gradient(circle, color-mix(in srgb, var(--color-accent) 20%, transparent), transparent 65%)',
+            'radial-gradient(circle, color-mix(in srgb, #19B8B8 20%, transparent), transparent 65%)',
           filter: 'blur(2px)',
         }}
       />
@@ -60,7 +60,7 @@ export default function TrainerHero({
             {accentLabel && (
               <p
                 className="text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5"
-                style={{ color: 'var(--color-accent)' }}
+                style={{ color: TT.accent }}
               >
                 {accentLabel}
               </p>
@@ -68,7 +68,7 @@ export default function TrainerHero({
             {title && (
               <p
                 className="text-[13px] font-semibold mb-2"
-                style={{ color: 'var(--color-text-secondary)' }}
+                style={{ color: TT.textSub }}
               >
                 {title}
               </p>
@@ -78,13 +78,12 @@ export default function TrainerHero({
               <p
                 className="leading-none"
                 style={{
-                  fontFamily: '"Familjen Grotesk", "Archivo", system-ui',
+                  fontFamily: TFont.display,
                   fontWeight: 800,
                   letterSpacing: -1.2,
                   fontSize: 44,
                   fontVariantNumeric: 'tabular-nums',
-                  background:
-                    'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-soft) 100%)',
+                  background: `linear-gradient(135deg, ${TT.accent} 0%, ${TT.accentDark} 100%)`,
                   WebkitBackgroundClip: 'text',
                   backgroundClip: 'text',
                   color: 'transparent',
@@ -110,7 +109,7 @@ export default function TrainerHero({
             {subText && (
               <p
                 className="text-[12px] mt-2"
-                style={{ color: 'var(--color-text-muted)' }}
+                style={{ color: TT.textMute }}
               >
                 {subText}
               </p>
@@ -121,11 +120,11 @@ export default function TrainerHero({
             <div
               className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
               style={{
-                background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
-                border: '1px solid color-mix(in srgb, var(--color-accent) 22%, transparent)',
+                background: TT.accentSoft,
+                border: `1px solid ${TT.accent}`,
               }}
             >
-              <Icon size={20} style={{ color: 'var(--color-accent)' }} strokeWidth={2.2} />
+              <Icon size={20} style={{ color: TT.accent }} strokeWidth={2.2} />
             </div>
           )}
         </div>
@@ -134,10 +133,10 @@ export default function TrainerHero({
           <button
             type="button"
             onClick={action.onClick}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold active:scale-95 transition-transform focus:outline-none"
             style={{
-              background: 'var(--color-accent)',
-              color: 'var(--color-text-on-accent)',
+              background: TT.accent,
+              color: '#06363B',
             }}
           >
             {action.icon ? <action.icon size={14} strokeWidth={2.4} /> : null}

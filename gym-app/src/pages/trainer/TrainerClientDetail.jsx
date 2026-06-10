@@ -791,11 +791,11 @@ export default function TrainerClientNotes() {
   };
 
   const OUTCOME_STYLES = {
-    no_answer: { label: t('trainerNotes.followUp.outcomes.noAnswer'), color: 'text-[var(--color-text-muted)]', bg: 'bg-white/[0.04]' },
-    rescheduled: { label: t('trainerNotes.followUp.outcomes.rescheduled'), color: 'text-[var(--color-accent)]', bg: 'bg-[var(--color-accent)]/10' },
-    coming_back: { label: t('trainerNotes.followUp.outcomes.comingBack'), color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-    not_interested: { label: t('trainerNotes.followUp.outcomes.notInterested'), color: 'text-red-400', bg: 'bg-red-500/10' },
-    other: { label: t('trainerNotes.followUp.outcomes.other'), color: 'text-[var(--color-text-secondary)]', bg: 'bg-white/[0.04]' },
+    no_answer: { label: t('trainerNotes.followUp.outcomes.noAnswer'), color: 'text-[var(--tt-text-sub)]', bg: 'bg-[var(--tt-bg)]' },
+    rescheduled: { label: t('trainerNotes.followUp.outcomes.rescheduled'), color: 'text-[#19B8B8]', bg: 'bg-[#19B8B8]/10' },
+    coming_back: { label: t('trainerNotes.followUp.outcomes.comingBack'), color: 'text-[var(--tt-good-ink)]', bg: 'bg-[var(--tt-good-soft)]' },
+    not_interested: { label: t('trainerNotes.followUp.outcomes.notInterested'), color: 'text-[#FF5A2E]', bg: 'bg-[var(--tt-hot-soft)]' },
+    other: { label: t('trainerNotes.followUp.outcomes.other'), color: 'text-[var(--tt-text-sub)]', bg: 'bg-[var(--tt-bg)]' },
   };
 
   function getDaysSince(dateStr) {
@@ -993,20 +993,20 @@ export default function TrainerClientNotes() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg-primary)] px-4 py-6 max-w-[480px] mx-auto">
+      <div className="min-h-screen bg-[var(--tt-bg)] px-4 py-6 max-w-[480px] mx-auto">
         <div className="animate-pulse space-y-4">
           <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-full" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+            <div className="w-14 h-14 rounded-full" style={{ backgroundColor: TT.surface2 }} />
             <div className="space-y-2 flex-1">
-              <div className="h-5 w-32 rounded-lg" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
-              <div className="h-3 w-24 rounded-lg" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+              <div className="h-5 w-32 rounded-lg" style={{ backgroundColor: TT.surface2 }} />
+              <div className="h-3 w-24 rounded-lg" style={{ backgroundColor: TT.surface2 }} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="h-24 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
-            <div className="h-24 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+            <div className="h-24 rounded-xl" style={{ backgroundColor: TT.surface2 }} />
+            <div className="h-24 rounded-xl" style={{ backgroundColor: TT.surface2 }} />
           </div>
-          <div className="h-48 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+          <div className="h-48 rounded-xl" style={{ backgroundColor: TT.surface2 }} />
         </div>
       </div>
     );
@@ -1014,17 +1014,17 @@ export default function TrainerClientNotes() {
 
   if (accessDenied) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg-primary)] px-4 md:px-6 py-6 max-w-5xl mx-auto">
+      <div className="min-h-screen bg-[var(--tt-bg)] px-4 md:px-6 py-6 max-w-5xl mx-auto">
         <button
           onClick={() => navigate('/trainer/clients')}
-          className="flex items-center gap-2 text-[var(--color-text-secondary)] text-[14px] mb-6 hover:text-[var(--color-text-primary)] transition-colors whitespace-nowrap"
+          className="flex items-center gap-2 text-[var(--tt-text-sub)] text-[14px] mb-6 hover:text-[var(--tt-text)] transition-colors whitespace-nowrap"
         >
           <ArrowLeft className="w-4 h-4 flex-shrink-0" />
           {t('trainerNotes.backToClients')}
         </button>
         <div className="text-center py-20">
-          <p className="text-[16px] font-semibold text-[var(--color-text-primary)] mb-2">{t('trainerNotes.accessDenied')}</p>
-          <p className="text-[14px] text-[var(--color-text-muted)]">{t('trainerNotes.notAssigned')}</p>
+          <p className="text-[16px] font-semibold text-[var(--tt-text)] mb-2">{t('trainerNotes.accessDenied')}</p>
+          <p className="text-[14px] text-[#96A0AA]">{t('trainerNotes.notAssigned')}</p>
         </div>
       </div>
     );
@@ -1032,15 +1032,15 @@ export default function TrainerClientNotes() {
 
   if (!client) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg-primary)] px-4 md:px-6 py-6 max-w-5xl mx-auto">
+      <div className="min-h-screen bg-[var(--tt-bg)] px-4 md:px-6 py-6 max-w-5xl mx-auto">
         <button
           onClick={() => navigate('/trainer/clients')}
-          className="flex items-center gap-2 text-[var(--color-text-secondary)] text-[14px] mb-6 whitespace-nowrap"
+          className="flex items-center gap-2 text-[var(--tt-text-sub)] text-[14px] mb-6 whitespace-nowrap"
         >
           <ArrowLeft className="w-4 h-4 flex-shrink-0" />
           {t('trainerNotes.backToClients')}
         </button>
-        <p className="text-[var(--color-text-secondary)] text-[14px]">{t('trainerNotes.clientNotFound')}</p>
+        <p className="text-[var(--tt-text-sub)] text-[14px]">{t('trainerNotes.clientNotFound')}</p>
       </div>
     );
   }
@@ -1611,7 +1611,7 @@ export default function TrainerClientNotes() {
                         <stop offset="100%" stopColor={TT.accent} stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={TT.border} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,134,140,0.22)" />
                     <XAxis dataKey="date" tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                     <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} width={32} />
                     <Tooltip content={<ChartTooltip formatter={(v) => `${v} lb`} nameLabel={t('trainerClientDetail.body.weight', 'Weight')} />} />
@@ -1771,7 +1771,7 @@ export default function TrainerClientNotes() {
               <div style={{ height: 200, marginLeft: -10 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={prTimelineData.series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={TT.border} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,134,140,0.22)" />
                     <XAxis dataKey="month" tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} width={36} />
                     <Tooltip content={<ChartTooltip formatter={(v) => `${v} lb`} />} />
@@ -1818,7 +1818,7 @@ export default function TrainerClientNotes() {
                         <stop offset="100%" stopColor={TT.accent} stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={TT.border} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,134,140,0.22)" />
                     <XAxis dataKey="week" tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                     <YAxis tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} width={48} />
                     <Tooltip content={<ChartTooltip formatter={(v) => `${Number(v).toLocaleString()} lb`} nameLabel={t('trainerClientDetail.history.volume', 'Volume')} />} />
@@ -2003,28 +2003,28 @@ export default function TrainerClientNotes() {
         <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
           {/* Client stats strip */}
           {onboarding && (
-            <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 md:col-span-2">
+            <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
               <div className="flex items-center gap-2 mb-3">
-                <Target className="w-4 h-4 text-[var(--color-accent)]" />
-                <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.overview.clientSummary')}</span>
+                <Target className="w-4 h-4 text-[#19B8B8]" />
+                <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.overview.clientSummary')}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
                 {onboarding.primary_goal && (
-                  <div className="bg-[var(--color-bg-secondary)]/60 rounded-xl px-3 py-2.5">
-                    <p className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.overview.goal')}</p>
-                    <p className="text-[13px] text-[var(--color-text-primary)] capitalize mt-0.5">{t(`trainerNotes.goals.${onboarding.primary_goal}`, onboarding.primary_goal.replace(/_/g, ' '))}</p>
+                  <div className="bg-[var(--tt-surface-2)]/60 rounded-xl px-3 py-2.5">
+                    <p className="text-[11px] text-[#96A0AA] uppercase tracking-wide">{t('trainerNotes.overview.goal')}</p>
+                    <p className="text-[13px] text-[var(--tt-text)] capitalize mt-0.5">{t(`trainerNotes.goals.${onboarding.primary_goal}`, onboarding.primary_goal.replace(/_/g, ' '))}</p>
                   </div>
                 )}
                 {onboarding.fitness_level && (
-                  <div className="bg-[var(--color-bg-secondary)]/60 rounded-xl px-3 py-2.5">
-                    <p className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.overview.fitnessLevel')}</p>
-                    <p className="text-[13px] text-[var(--color-text-primary)] capitalize mt-0.5">{t(`trainerNotes.fitnessLevels.${onboarding.fitness_level}`, onboarding.fitness_level)}</p>
+                  <div className="bg-[var(--tt-surface-2)]/60 rounded-xl px-3 py-2.5">
+                    <p className="text-[11px] text-[#96A0AA] uppercase tracking-wide">{t('trainerNotes.overview.fitnessLevel')}</p>
+                    <p className="text-[13px] text-[var(--tt-text)] capitalize mt-0.5">{t(`trainerNotes.fitnessLevels.${onboarding.fitness_level}`, onboarding.fitness_level)}</p>
                   </div>
                 )}
                 {onboarding.available_equipment && onboarding.available_equipment.length > 0 && (
-                  <div className="bg-[var(--color-bg-secondary)]/60 rounded-xl px-3 py-2.5">
-                    <p className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.overview.equipment')}</p>
-                    <p className="text-[13px] text-[var(--color-text-primary)] mt-0.5 truncate">
+                  <div className="bg-[var(--tt-surface-2)]/60 rounded-xl px-3 py-2.5">
+                    <p className="text-[11px] text-[#96A0AA] uppercase tracking-wide">{t('trainerNotes.overview.equipment')}</p>
+                    <p className="text-[13px] text-[var(--tt-text)] mt-0.5 truncate">
                       {Array.isArray(onboarding.available_equipment)
                         ? onboarding.available_equipment.join(', ')
                         : onboarding.available_equipment}
@@ -2033,41 +2033,41 @@ export default function TrainerClientNotes() {
                 )}
               </div>
               {onboarding.injuries_notes && (
-                <div className="mt-3 bg-red-500/5 rounded-xl px-3 py-2.5 border border-red-500/10">
+                <div className="mt-3 bg-[var(--tt-hot-soft)] rounded-xl px-3 py-2.5 border border-[var(--tt-hot-soft)]">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <AlertTriangle className="w-3 h-3 text-red-400" />
-                    <p className="text-[11px] text-red-400 uppercase tracking-wide">{t('trainerNotes.overview.injuries')}</p>
+                    <AlertTriangle className="w-3 h-3 text-[#FF5A2E]" />
+                    <p className="text-[11px] text-[#FF5A2E] uppercase tracking-wide">{t('trainerNotes.overview.injuries')}</p>
                   </div>
-                  <p className="text-[13px] text-[var(--color-text-primary)]">{onboarding.injuries_notes}</p>
+                  <p className="text-[13px] text-[var(--tt-text)]">{onboarding.injuries_notes}</p>
                 </div>
               )}
             </div>
           )}
 
           {/* Recent 5 workouts */}
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
+          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
             <div className="flex items-center gap-2 mb-3">
-              <Activity className="w-4 h-4 text-[var(--color-accent)]" />
-              <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.overview.recentActivity')}</span>
+              <Activity className="w-4 h-4 text-[#19B8B8]" />
+              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.overview.recentActivity')}</span>
             </div>
             {recentSessions.length === 0 ? (
-              <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.overview.noRecentWorkouts')}</p>
+              <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.overview.noRecentWorkouts')}</p>
             ) : (
               <div className="space-y-2">
                 {recentSessions.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-[var(--color-bg-secondary)]/60">
+                  <div key={s.id} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-[var(--tt-surface-2)]/60">
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] text-[var(--color-text-primary)] truncate">{s.name || t('trainerNotes.overview.workout')}</p>
-                      <p className="text-[11px] text-[var(--color-text-muted)]">
+                      <p className="text-[13px] text-[var(--tt-text)] truncate">{s.name || t('trainerNotes.overview.workout')}</p>
+                      <p className="text-[11px] text-[#96A0AA]">
                         {format(new Date(s.started_at), 'MMM d', { locale: dateFnsLocale })}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 text-right shrink-0">
-                      <span className="text-[12px] text-[var(--color-text-secondary)]">
+                      <span className="text-[12px] text-[var(--tt-text-sub)]">
                         <Clock className="w-3 h-3 inline mr-0.5" />
                         {formatDuration(s.duration_seconds)}
                       </span>
-                      <span className="text-[12px] text-[var(--color-text-secondary)]">
+                      <span className="text-[12px] text-[var(--tt-text-sub)]">
                         {s.total_volume_lbs >= 1000
                           ? `${(s.total_volume_lbs / 1000).toFixed(1)}k`
                           : s.total_volume_lbs || 0} {t('common:lbs', 'lbs')}
@@ -2080,28 +2080,28 @@ export default function TrainerClientNotes() {
           </div>
 
           {/* Top PRs */}
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
+          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
             <div className="flex items-center gap-2 mb-3">
-              <Trophy className="w-4 h-4 text-[var(--color-accent)]" />
-              <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.progress.personalRecords')}</span>
+              <Trophy className="w-4 h-4 text-[#19B8B8]" />
+              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.personalRecords')}</span>
               {personalRecords.length > 0 && (
-                <span className="text-[11px] text-[var(--color-text-muted)] ml-auto">({personalRecords.length})</span>
+                <span className="text-[11px] text-[#96A0AA] ml-auto">({personalRecords.length})</span>
               )}
             </div>
             {personalRecords.length === 0 ? (
-              <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.progress.noPRs')}</p>
+              <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.progress.noPRs')}</p>
             ) : (
               <div className="space-y-2 max-h-[400px] overflow-y-auto">
                 {personalRecords.map((pr, i) => (
-                  <div key={i} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-[var(--color-bg-secondary)]/60">
+                  <div key={i} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-[var(--tt-surface-2)]/60">
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] text-[var(--color-text-primary)] truncate">{pr.exercises?.name || t('trainerNotes.overview.unknownExercise')}</p>
-                      <p className="text-[11px] text-[var(--color-text-muted)]">{format(new Date(pr.achieved_at), 'MMM d, yyyy', { locale: dateFnsLocale })}</p>
+                      <p className="text-[13px] text-[var(--tt-text)] truncate">{pr.exercises?.name || t('trainerNotes.overview.unknownExercise')}</p>
+                      <p className="text-[11px] text-[#96A0AA]">{format(new Date(pr.achieved_at), 'MMM d, yyyy', { locale: dateFnsLocale })}</p>
                     </div>
                     <div className="text-right shrink-0 ml-3">
-                      <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">{pr.weight_lbs} {t('common:lbs', 'lbs')} x {pr.reps}</p>
+                      <p className="text-[13px] font-semibold text-[var(--tt-text)]">{pr.weight_lbs} {t('common:lbs', 'lbs')} x {pr.reps}</p>
                       {pr.estimated_1rm && (
-                        <p className="text-[11px] text-[var(--color-accent)]">1RM: {Math.round(pr.estimated_1rm)} {t('common:lbs', 'lbs')}</p>
+                        <p className="text-[11px] text-[#19B8B8]">1RM: {Math.round(pr.estimated_1rm)} {t('common:lbs', 'lbs')}</p>
                       )}
                     </div>
                   </div>
@@ -2111,10 +2111,10 @@ export default function TrainerClientNotes() {
           </div>
 
           {/* Weekly volume chart */}
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 md:col-span-2">
+          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-4 h-4 text-[var(--color-accent)]" />
-              <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.progress.trainingTrend')}</span>
+              <BarChart3 className="w-4 h-4 text-[#19B8B8]" />
+              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.trainingTrend')}</span>
             </div>
             {weeklyWorkouts.length > 0 ? (
               <div className="h-[160px] sm:h-[180px] overflow-hidden -mx-1">
@@ -2122,29 +2122,29 @@ export default function TrainerClientNotes() {
                   <AreaChart data={weeklyWorkouts}>
                     <defs>
                       <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#19B8B8" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#19B8B8" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis
                       dataKey="week"
-                      tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+                      tick={{ fill: '#96A0AA', fontSize: 10 }}
                       axisLine={false}
                       tickLine={false}
                       interval="preserveStartEnd"
                     />
                     <YAxis
                       allowDecimals={false}
-                      tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+                      tick={{ fill: '#96A0AA', fontSize: 10 }}
                       axisLine={false}
                       tickLine={false}
                       width={20}
                     />
-                    <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--color-accent)', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.4 }} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#19B8B8', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.4 }} />
                     <Area
                       type="monotone"
                       dataKey="count"
-                      stroke="var(--color-accent)"
+                      stroke="#19B8B8"
                       strokeWidth={2}
                       fill="url(#goldGrad)"
                       name={t('trainerNotes.progress.workouts')}
@@ -2153,40 +2153,40 @@ export default function TrainerClientNotes() {
                 </ResponsiveContainer>
               </div>
             ) : (
-              <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.progress.noData')}</p>
+              <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.progress.noData')}</p>
             )}
           </div>
 
           {/* Weight trend — chart only with latest weight summary */}
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 md:col-span-2">
+          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
-              <Scale className="w-4 h-4 text-[var(--color-accent)]" />
-              <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.progress.weightHistory')}</span>
+              <Scale className="w-4 h-4 text-[#19B8B8]" />
+              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.weightHistory')}</span>
             </div>
             {weights.length === 0 ? (
-              <p className="text-[14px] text-[var(--color-text-muted)]">{t('trainerNotes.progress.noWeightLogs')}</p>
+              <p className="text-[14px] text-[#96A0AA]">{t('trainerNotes.progress.noWeightLogs')}</p>
             ) : (
               <>
                 {/* Latest weight summary line */}
-                <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 mb-4 border border-[var(--color-accent)]/15">
-                  <p className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1">{t('trainerNotes.progress.latestWeight')}</p>
+                <div className="bg-[var(--tt-surface-2)] rounded-xl p-4 mb-4 border border-[#19B8B8]/15">
+                  <p className="text-[11px] text-[#96A0AA] uppercase tracking-wide mb-1">{t('trainerNotes.progress.latestWeight')}</p>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[20px] sm:text-[24px] font-bold text-[var(--color-text-primary)]">{weights[0].weight_lbs}</span>
-                    <span className="text-[14px] text-[var(--color-text-muted)]">{t('common:lbs', 'lbs')}</span>
+                    <span className="text-[20px] sm:text-[24px] font-bold text-[var(--tt-text)]">{weights[0].weight_lbs}</span>
+                    <span className="text-[14px] text-[#96A0AA]">{t('common:lbs', 'lbs')}</span>
                     {weights.length >= 2 && (
                       <span className={`text-[13px] font-medium ml-2 ${
                         weights[0].weight_lbs - weights[1].weight_lbs > 0
-                          ? 'text-[#EF4444]'
+                          ? 'text-[#FF5A2E]'
                           : weights[0].weight_lbs - weights[1].weight_lbs < 0
-                            ? 'text-[#10B981]'
-                            : 'text-[var(--color-text-muted)]'
+                            ? 'text-[var(--tt-good-ink)]'
+                            : 'text-[#96A0AA]'
                       }`}>
                         {weights[0].weight_lbs - weights[1].weight_lbs > 0 ? '+' : ''}
                         {(weights[0].weight_lbs - weights[1].weight_lbs).toFixed(1)} {t('common:lbs', 'lbs')}
                       </span>
                     )}
                   </div>
-                  <p className="text-[12px] text-[var(--color-text-muted)] mt-1">
+                  <p className="text-[12px] text-[#96A0AA] mt-1">
                     {format(new Date(weights[0].logged_at), 'EEEE, MMM d, yyyy', { locale: dateFnsLocale })}
                   </p>
                 </div>
@@ -2197,32 +2197,32 @@ export default function TrainerClientNotes() {
                       <AreaChart data={weightChartData}>
                         <defs>
                           <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.3} />
-                            <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
+                            <stop offset="0%" stopColor="#19B8B8" stopOpacity={0.3} />
+                            <stop offset="100%" stopColor="#19B8B8" stopOpacity={0} />
                           </linearGradient>
                         </defs>
                         <XAxis
                           dataKey="date"
-                          tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+                          tick={{ fill: '#96A0AA', fontSize: 10 }}
                           axisLine={false}
                           tickLine={false}
                           interval="preserveStartEnd"
                         />
                         <YAxis
                           domain={['dataMin - 2', 'dataMax + 2']}
-                          tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+                          tick={{ fill: '#96A0AA', fontSize: 10 }}
                           axisLine={false}
                           tickLine={false}
                           width={35}
                         />
                         <Tooltip
                           content={<ChartTooltip formatter={(val) => `${val} lbs`} nameLabel={t('trainerNotes.progress.weight', 'Weight')} />}
-                          cursor={{ stroke: 'var(--color-accent)', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.4 }}
+                          cursor={{ stroke: '#19B8B8', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.4 }}
                         />
                         <Area
                           type="monotone"
                           dataKey="weight"
-                          stroke="var(--color-accent)"
+                          stroke="#19B8B8"
                           strokeWidth={2}
                           fill="url(#weightGrad)"
                           name={t('trainerNotes.progress.weight', 'Weight')}
@@ -2236,25 +2236,25 @@ export default function TrainerClientNotes() {
           </div>
 
           {/* Body measurements (collapsible) */}
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 md:col-span-2">
+          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
             <button
               onClick={() => dispatch({ type: 'SET', payload: { showMeasurements: !showMeasurements } })}
               className="flex items-center justify-between w-full min-h-[44px]"
             >
               <div className="flex items-center gap-2">
-                <Ruler className="w-4 h-4 text-[var(--color-accent)]" />
-                <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.progress.bodyMeasurements')}</span>
+                <Ruler className="w-4 h-4 text-[#19B8B8]" />
+                <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.bodyMeasurements')}</span>
               </div>
-              <ChevronDown className={`w-4 h-4 text-[var(--color-text-muted)] transition-transform ${showMeasurements ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`w-4 h-4 text-[#96A0AA] transition-transform ${showMeasurements ? 'rotate-180' : ''}`} />
             </button>
             {showMeasurements && (
               <div className="mt-3">
                 {!measurements ? (
-                  <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.progress.noMeasurements')}</p>
+                  <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.progress.noMeasurements')}</p>
                 ) : (
                   <div className="space-y-1.5">
                     {measurements.measured_at && (
-                      <p className="text-[11px] text-[var(--color-text-muted)] mb-2">
+                      <p className="text-[11px] text-[#96A0AA] mb-2">
                         {t('trainerNotes.progress.measuredOn')} {format(new Date(measurements.measured_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
                       </p>
                     )}
@@ -2271,10 +2271,10 @@ export default function TrainerClientNotes() {
                       .map((m, i) => (
                         <div
                           key={i}
-                          className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--color-bg-secondary)]/50"
+                          className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--tt-surface-2)]/50"
                         >
-                          <span className="text-[13px] text-[var(--color-text-secondary)]">{m.label}</span>
-                          <span className="text-[14px] font-medium text-[var(--color-text-primary)]">
+                          <span className="text-[13px] text-[var(--tt-text-sub)]">{m.label}</span>
+                          <span className="text-[14px] font-medium text-[var(--tt-text)]">
                             {m.value} {t('common:cm', 'cm')}
                           </span>
                         </div>
@@ -2287,22 +2287,22 @@ export default function TrainerClientNotes() {
 
           {/* Progress Photos (collapsible) */}
           {progressPhotos.length > 0 && (
-            <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 md:col-span-2">
+            <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
               <button
                 onClick={() => dispatch({ type: 'SET', payload: { showPhotos: !showPhotos } })}
                 className="flex items-center justify-between w-full min-h-[44px]"
               >
                 <div className="flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-[var(--color-accent)]" />
-                  <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.progress.photos', 'Progress Photos')}</span>
-                  <span className="text-[11px] text-[var(--color-text-muted)]">({progressPhotos.length})</span>
+                  <Camera className="w-4 h-4 text-[#19B8B8]" />
+                  <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.photos', 'Progress Photos')}</span>
+                  <span className="text-[11px] text-[#96A0AA]">({progressPhotos.length})</span>
                 </div>
-                <ChevronDown className={`w-4 h-4 text-[var(--color-text-muted)] transition-transform ${showPhotos ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-[#96A0AA] transition-transform ${showPhotos ? 'rotate-180' : ''}`} />
               </button>
               {showPhotos && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 mt-3">
                   {progressPhotos.map(photo => (
-                    <div key={photo.id} className="aspect-square rounded-xl overflow-hidden bg-[var(--color-bg-secondary)] relative">
+                    <div key={photo.id} className="aspect-square rounded-xl overflow-hidden bg-[var(--tt-surface-2)] relative">
                       <img
                         src={photo.signedUrl}
                         alt={photo.view_angle || t('trainerNotes.progress.progressAlt')}
@@ -2322,14 +2322,14 @@ export default function TrainerClientNotes() {
           {/* Monthly Report */}
           <button
             onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
-            className="w-full bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 flex items-center gap-3 hover:border-[var(--color-accent)]/30 transition-colors min-h-[44px] md:col-span-2"
+            className="w-full bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 flex items-center gap-3 hover:border-[#19B8B8]/30 transition-colors min-h-[44px] md:col-span-2"
           >
-            <div className="w-10 h-10 rounded-xl bg-[var(--color-accent)]/10 flex items-center justify-center">
-              <BarChart3 className="w-5 h-5 text-[var(--color-accent)]" />
+            <div className="w-10 h-10 rounded-xl bg-[#19B8B8]/10 flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-[#19B8B8]" />
             </div>
             <div className="text-left">
-              <p className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.overview.monthlyReport')}</p>
-              <p className="text-[12px] text-[var(--color-text-muted)]">{t('trainerNotes.overview.monthlyReportDesc')}</p>
+              <p className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.overview.monthlyReport')}</p>
+              <p className="text-[12px] text-[#96A0AA]">{t('trainerNotes.overview.monthlyReportDesc')}</p>
             </div>
           </button>
         </div>
@@ -2341,10 +2341,10 @@ export default function TrainerClientNotes() {
           {/* Notes editor — 2 textareas: Coach Notes (merged) and Injuries */}
           <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
             {/* Coach Notes (merged: notes + preferences + goal reminders) */}
-            <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
+            <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
               <div className="flex items-center gap-2 mb-3">
-                <StickyNote className="w-4 h-4 text-[var(--color-accent)]" />
-                <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.notes.coachNotes')}</span>
+                <StickyNote className="w-4 h-4 text-[#19B8B8]" />
+                <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.notes.coachNotes')}</span>
               </div>
               <textarea
                 value={notesData.notes}
@@ -2354,19 +2354,19 @@ export default function TrainerClientNotes() {
                   }
                 }}
                 placeholder={t('trainerNotes.notes.notesPlaceholder')}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
+                className="w-full bg-[var(--tt-surface-2)] border border-[var(--tt-border-solid)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--tt-text)] placeholder-[#96A0AA] resize-none focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
                 rows={10}
               />
-              <span className="text-[11px] text-[var(--color-text-muted)] mt-1 block">
+              <span className="text-[11px] text-[#96A0AA] mt-1 block">
                 {notesData.notes.length} / 5000
               </span>
             </div>
 
             {/* Injuries / Limitations — kept separate (safety-critical) */}
-            <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
+            <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
               <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="w-4 h-4 text-red-400" />
-                <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.notes.injuriesLimitations')}</span>
+                <AlertTriangle className="w-4 h-4 text-[#FF5A2E]" />
+                <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.notes.injuriesLimitations')}</span>
               </div>
               <textarea
                 value={notesData.injuries}
@@ -2376,7 +2376,7 @@ export default function TrainerClientNotes() {
                   }
                 }}
                 placeholder={t('trainerNotes.notes.injuriesPlaceholder')}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
+                className="w-full bg-[var(--tt-surface-2)] border border-[var(--tt-border-solid)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--tt-text)] placeholder-[#96A0AA] resize-none focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
                 rows={5}
               />
             </div>
@@ -2384,12 +2384,12 @@ export default function TrainerClientNotes() {
             {/* Save button */}
             <div className="flex items-center justify-end gap-3 md:col-span-2">
               {notesSaved && (
-                <span className="text-[13px] text-[#10B981]">{t('trainerNotes.notes.saved')}</span>
+                <span className="text-[13px] text-[var(--tt-good-ink)]">{t('trainerNotes.notes.saved')}</span>
               )}
               <button
                 onClick={handleSaveNotes}
                 disabled={savingNotes}
-                className="flex items-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-text-on-accent)] text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50 min-h-[44px]"
+                className="flex items-center gap-2 bg-[#19B8B8] hover:bg-[#0F9E9E] text-[#06363B] text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50 min-h-[44px]"
               >
                 <Save className="w-3.5 h-3.5" />
                 {savingNotes ? t('trainerNotes.notes.saving') : t('trainerNotes.notes.saveNotes')}
@@ -2398,31 +2398,31 @@ export default function TrainerClientNotes() {
           </div>
 
           {/* Divider */}
-          <div className="border-t border-[var(--color-border-subtle)]" />
+          <div className="border-t border-[var(--tt-border)]" />
 
           {/* Follow-up section */}
           <button
             onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: true } })}
-            className="w-full flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-text-on-accent)] text-[14px] font-semibold px-4 py-3 rounded-xl transition-colors min-h-[44px]"
+            className="w-full flex items-center justify-center gap-2 bg-[#19B8B8] hover:bg-[#0F9E9E] text-[#06363B] text-[14px] font-semibold px-4 py-3 rounded-xl transition-colors min-h-[44px]"
           >
             <Plus className="w-4 h-4" />
             {t('trainerNotes.followUp.logFollowUp')}
           </button>
 
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
+          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
             <div className="flex items-center gap-2 mb-3">
-              <Phone className="w-4 h-4 text-[var(--color-accent)]" />
-              <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.followUp.title')}</span>
+              <Phone className="w-4 h-4 text-[#19B8B8]" />
+              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.followUp.title')}</span>
               {followups.length > 0 && (
-                <span className="text-[11px] text-[var(--color-text-muted)]">({followups.length})</span>
+                <span className="text-[11px] text-[#96A0AA]">({followups.length})</span>
               )}
             </div>
 
             {followups.length === 0 ? (
               <div className="text-center py-8">
-                <Phone className="w-8 h-8 text-[var(--color-text-muted)] mx-auto mb-2 opacity-40" />
-                <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.followUp.noFollowUps')}</p>
-                <p className="text-[12px] text-[var(--color-text-muted)]/60 mt-1">{t('trainerNotes.followUp.noFollowUpsHint')}</p>
+                <Phone className="w-8 h-8 text-[#96A0AA] mx-auto mb-2 opacity-40" />
+                <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.followUp.noFollowUps')}</p>
+                <p className="text-[12px] text-[#96A0AA]/60 mt-1">{t('trainerNotes.followUp.noFollowUpsHint')}</p>
               </div>
             ) : (
               <div className="space-y-2 max-h-[500px] overflow-y-auto">
@@ -2430,13 +2430,13 @@ export default function TrainerClientNotes() {
                   const MethodIcon = METHOD_ICONS[fu.method] || Phone;
                   const outcomeStyle = fu.outcome ? OUTCOME_STYLES[fu.outcome] : null;
                   return (
-                    <div key={fu.id} className="flex items-start gap-3 py-3 px-3 rounded-xl bg-[var(--color-bg-secondary)]/60">
-                      <div className="w-7 h-7 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0 mt-0.5">
-                        <MethodIcon size={13} className="text-[var(--color-text-secondary)]" />
+                    <div key={fu.id} className="flex items-start gap-3 py-3 px-3 rounded-xl bg-[var(--tt-surface-2)]/60">
+                      <div className="w-7 h-7 rounded-lg bg-[var(--tt-bg)] flex items-center justify-center shrink-0 mt-0.5">
+                        <MethodIcon size={13} className="text-[var(--tt-text-sub)]" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[12px] text-[var(--color-text-secondary)]">
+                          <span className="text-[12px] text-[var(--tt-text-sub)]">
                             {format(new Date(fu.created_at), 'MMM d, yyyy h:mm a', { locale: dateFnsLocale })}
                           </span>
                           {outcomeStyle && (
@@ -2446,7 +2446,7 @@ export default function TrainerClientNotes() {
                           )}
                         </div>
                         {fu.note && (
-                          <p className="text-[13px] text-[var(--color-text-primary)] mt-1">{fu.note}</p>
+                          <p className="text-[13px] text-[var(--tt-text)] mt-1">{fu.note}</p>
                         )}
                       </div>
                     </div>
@@ -2467,30 +2467,30 @@ export default function TrainerClientNotes() {
       {activeTab === 'programNutrition' && (
         <div className="space-y-4">
           {/* Current assigned program */}
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
+          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
             <div className="flex items-center gap-2 mb-3">
-              <BookOpen className="w-4 h-4 text-[var(--color-accent)]" />
-              <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.program.currentProgram')}</span>
+              <BookOpen className="w-4 h-4 text-[#19B8B8]" />
+              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.program.currentProgram')}</span>
             </div>
 
             {programName ? (
               <div>
-                <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-accent)]/15">
-                  <p className="text-[16px] font-semibold text-[var(--color-text-primary)]">{programName}</p>
+                <div className="bg-[var(--tt-surface-2)] rounded-xl p-4 border border-[#19B8B8]/15">
+                  <p className="text-[16px] font-semibold text-[var(--tt-text)]">{programName}</p>
                   {programProgress && (
                     <>
-                      <div className="flex items-center gap-4 mt-3 text-[12px] text-[var(--color-text-secondary)]">
+                      <div className="flex items-center gap-4 mt-3 text-[12px] text-[var(--tt-text-sub)]">
                         <span>{t('trainerNotes.program.week')} {programProgress.currentWeek} / {programProgress.totalWeeks}</span>
                         <span>{programProgress.daysPerWeek} {t('trainerNotes.program.daysPerWeek')}</span>
                       </div>
                       <div className="mt-3">
-                        <div className="flex items-center justify-between text-[11px] text-[var(--color-text-muted)] mb-1.5">
+                        <div className="flex items-center justify-between text-[11px] text-[#96A0AA] mb-1.5">
                           <span>{t('trainerNotes.program.progress')}</span>
                           <span>{programProgress.progressPct}%</span>
                         </div>
-                        <div className="w-full h-2 bg-white/[0.06] rounded-full overflow-hidden">
+                        <div className="w-full h-2 bg-[var(--tt-border-solid)] rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-[var(--color-accent)] rounded-full transition-all"
+                            className="h-full bg-[#19B8B8] rounded-full transition-all"
                             style={{ width: `${programProgress.progressPct}%` }}
                           />
                         </div>
@@ -2500,28 +2500,28 @@ export default function TrainerClientNotes() {
                 </div>
                 <button
                   onClick={() => handleAssignProgram(null)}
-                  className="mt-3 text-[12px] text-red-400 hover:text-red-300 transition-colors min-h-[44px] py-2"
+                  className="mt-3 text-[12px] text-[#FF5A2E] hover:text-[#E0431C] transition-colors min-h-[44px] py-2"
                 >
                   {t('trainerNotes.program.removeProgram')}
                 </button>
               </div>
             ) : (
               <div className="text-center py-6">
-                <BookOpen className="w-8 h-8 text-[var(--color-text-muted)] mx-auto mb-2 opacity-40" />
-                <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.program.noProgram')}</p>
+                <BookOpen className="w-8 h-8 text-[#96A0AA] mx-auto mb-2 opacity-40" />
+                <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.program.noProgram')}</p>
               </div>
             )}
           </div>
 
           {/* Available programs to assign */}
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
+          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
             <div className="flex items-center gap-2 mb-3">
-              <ClipboardList className="w-4 h-4 text-[var(--color-accent)]" />
-              <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.program.availablePrograms')}</span>
+              <ClipboardList className="w-4 h-4 text-[#19B8B8]" />
+              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.program.availablePrograms')}</span>
             </div>
 
             {availablePrograms.length === 0 ? (
-              <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.program.noProgramsAvailable')}</p>
+              <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.program.noProgramsAvailable')}</p>
             ) : (
               <div className="space-y-2">
                 {availablePrograms.map((prog) => {
@@ -2531,26 +2531,26 @@ export default function TrainerClientNotes() {
                       key={prog.id}
                       className={`flex items-center justify-between py-3 px-4 rounded-xl transition-colors ${
                         isAssigned
-                          ? 'bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20'
-                          : 'bg-[var(--color-bg-secondary)]/60 hover:bg-[var(--color-bg-secondary)]'
+                          ? 'bg-[#19B8B8]/10 border border-[#19B8B8]/20'
+                          : 'bg-[var(--tt-surface-2)]/60 hover:bg-[var(--tt-surface-2)]'
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{prog.name}</p>
-                        <p className="text-[11px] text-[var(--color-text-muted)]">
+                        <p className="text-[13px] font-medium text-[var(--tt-text)] truncate">{prog.name}</p>
+                        <p className="text-[11px] text-[#96A0AA]">
                           {prog.duration_weeks ? `${prog.duration_weeks} ${t('trainerNotes.program.weeks')}` : ''}
                           {prog.days_per_week ? ` · ${prog.days_per_week} ${t('trainerNotes.program.daysWk')}` : ''}
                         </p>
                       </div>
                       {isAssigned ? (
-                        <span className="text-[11px] font-medium text-[var(--color-accent)] px-2.5 py-1 rounded-lg bg-[var(--color-accent)]/10">
+                        <span className="text-[11px] font-medium text-[#19B8B8] px-2.5 py-1 rounded-lg bg-[#19B8B8]/10">
                           {t('trainerNotes.program.assigned')}
                         </span>
                       ) : (
                         <button
                           onClick={() => handleAssignProgram(prog.id)}
                           disabled={assigningProgram}
-                          className="text-[12px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] px-3 py-2 sm:py-1.5 rounded-lg border border-[var(--color-accent)]/30 hover:bg-[var(--color-accent)]/10 transition-colors disabled:opacity-50 min-h-[44px] sm:min-h-[36px]"
+                          className="text-[12px] font-medium text-[#19B8B8] hover:text-[#D9F1F1] px-3 py-2 sm:py-1.5 rounded-lg border border-[#19B8B8]/30 hover:bg-[#19B8B8]/10 transition-colors disabled:opacity-50 min-h-[44px] sm:min-h-[36px]"
                         >
                           {t('trainerNotes.program.assign')}
                         </button>
@@ -2563,20 +2563,20 @@ export default function TrainerClientNotes() {
           </div>
 
           {/* Divider */}
-          <div className="border-t border-[var(--color-border-subtle)]" />
+          <div className="border-t border-[var(--tt-border)]" />
 
           {/* Nutrition section */}
           {!nutritionLoaded ? (
             <div className="flex justify-center py-16">
-              <div className="w-8 h-8 border-2 border-[var(--color-accent)]/30 border-t-[var(--color-accent)] rounded-full animate-spin" />
+              <div className="w-8 h-8 border-2 border-[#19B8B8]/30 border-t-[#19B8B8] rounded-full animate-spin" />
             </div>
           ) : (
             <>
               {/* Active Meal Plan / Macro Targets */}
-              <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
+              <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                  <h3 className="text-[14px] font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-                    <UtensilsCrossed className="w-4 h-4 text-[var(--color-accent)] shrink-0" />
+                  <h3 className="text-[14px] font-semibold text-[var(--tt-text)] flex items-center gap-2">
+                    <UtensilsCrossed className="w-4 h-4 text-[#19B8B8] shrink-0" />
                     {t('trainerNotes.nutrition.mealPlan', 'Assigned Meal Plan')}
                   </h3>
                   {!showMealPlanForm && (
@@ -2584,14 +2584,14 @@ export default function TrainerClientNotes() {
                     <button
                       onClick={handleAutoGenerateMeals}
                       disabled={generatingMeals}
-                      className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] px-3 py-1.5 rounded-lg border border-[var(--color-accent)]/30 hover:bg-[var(--color-accent)]/10 transition-colors min-h-[36px] disabled:opacity-40"
+                      className="flex items-center gap-1.5 text-[12px] font-medium text-[#19B8B8] hover:text-[#D9F1F1] px-3 py-1.5 rounded-lg border border-[#19B8B8]/30 hover:bg-[#19B8B8]/10 transition-colors min-h-[36px] disabled:opacity-40"
                     >
                       {generatingMeals ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
                       {t('trainerNotes.nutrition.autoGenerate', 'Auto-Generate')}
                     </button>
                     <button
                       onClick={() => dispatch({ type: 'SET', payload: { showMealPlanForm: true } })}
-                      className="text-[12px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] px-3 py-1.5 rounded-lg border border-[var(--color-accent)]/30 hover:bg-[var(--color-accent)]/10 transition-colors min-h-[36px]"
+                      className="text-[12px] font-medium text-[#19B8B8] hover:text-[#D9F1F1] px-3 py-1.5 rounded-lg border border-[#19B8B8]/30 hover:bg-[#19B8B8]/10 transition-colors min-h-[36px]"
                     >
                       {activeMealPlan ? t('trainerNotes.nutrition.editPlan', 'Edit Plan') : t('trainerNotes.nutrition.assignPlan', 'Assign Plan')}
                     </button>
@@ -2600,31 +2600,31 @@ export default function TrainerClientNotes() {
                 </div>
 
                 {activeMealPlan && !showMealPlanForm ? (
-                  <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-accent)]/15">
-                    <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">{activeMealPlan.name}</p>
+                  <div className="bg-[var(--tt-surface-2)] rounded-xl p-4 border border-[#19B8B8]/15">
+                    <p className="text-[15px] font-semibold text-[var(--tt-text)]">{activeMealPlan.name}</p>
                     {activeMealPlan.description && (
-                      <p className="text-[12px] text-[var(--color-text-secondary)] mt-1">{activeMealPlan.description}</p>
+                      <p className="text-[12px] text-[var(--tt-text-sub)] mt-1">{activeMealPlan.description}</p>
                     )}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
                       {[
-                        { label: t('trainerNotes.nutrition.cal', 'Cal'), val: activeMealPlan.target_calories, color: 'text-[var(--color-text-primary)]' },
-                        { label: t('trainerNotes.nutrition.protein', 'Protein'), val: activeMealPlan.target_protein_g ? `${activeMealPlan.target_protein_g}g` : '--', color: 'text-blue-400' },
-                        { label: t('trainerNotes.nutrition.carbs', 'Carbs'), val: activeMealPlan.target_carbs_g ? `${activeMealPlan.target_carbs_g}g` : '--', color: 'text-amber-400' },
-                        { label: t('trainerNotes.nutrition.fat', 'Fat'), val: activeMealPlan.target_fat_g ? `${activeMealPlan.target_fat_g}g` : '--', color: 'text-rose-400' },
+                        { label: t('trainerNotes.nutrition.cal', 'Cal'), val: activeMealPlan.target_calories, color: 'text-[var(--tt-text)]' },
+                        { label: t('trainerNotes.nutrition.protein', 'Protein'), val: activeMealPlan.target_protein_g ? `${activeMealPlan.target_protein_g}g` : '--', color: 'text-[#6D5FDB]' },
+                        { label: t('trainerNotes.nutrition.carbs', 'Carbs'), val: activeMealPlan.target_carbs_g ? `${activeMealPlan.target_carbs_g}g` : '--', color: 'text-[var(--tt-warn-ink)]' },
+                        { label: t('trainerNotes.nutrition.fat', 'Fat'), val: activeMealPlan.target_fat_g ? `${activeMealPlan.target_fat_g}g` : '--', color: 'text-[#FF5A2E]' },
                       ].map((m, i) => (
                         <div key={i} className="text-center py-1 sm:py-0">
-                          <p className="text-[10px] text-[var(--color-text-muted)] uppercase">{m.label}</p>
+                          <p className="text-[10px] text-[#96A0AA] uppercase">{m.label}</p>
                           <p className={`text-[14px] font-semibold ${m.color}`}>{m.val || '--'}</p>
                         </div>
                       ))}
                     </div>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
-                      <p className="text-[11px] text-[var(--color-text-muted)]">
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--tt-border)]">
+                      <p className="text-[11px] text-[#96A0AA]">
                         {t('trainerNotes.nutrition.since', 'Since')} {format(new Date(activeMealPlan.start_date), 'MMM d, yyyy', { locale: dateFnsLocale })}
                       </p>
                       <button
                         onClick={handleDeactivateMealPlan}
-                        className="text-[11px] text-red-400 hover:text-red-300 transition-colors py-2 min-h-[44px] flex items-center"
+                        className="text-[11px] text-[#FF5A2E] hover:text-[#E0431C] transition-colors py-2 min-h-[44px] flex items-center"
                       >
                         {t('trainerNotes.nutrition.deactivate', 'Deactivate')}
                       </button>
@@ -2632,41 +2632,41 @@ export default function TrainerClientNotes() {
                   </div>
                 ) : !showMealPlanForm ? (
                   <div className="text-center py-6">
-                    <UtensilsCrossed className="w-8 h-8 text-[var(--color-text-muted)] mx-auto mb-2 opacity-40" />
-                    <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.nutrition.noPlan', 'No meal plan assigned yet')}</p>
+                    <UtensilsCrossed className="w-8 h-8 text-[#96A0AA] mx-auto mb-2 opacity-40" />
+                    <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.nutrition.noPlan', 'No meal plan assigned yet')}</p>
                   </div>
                 ) : null}
 
                 {/* Meal Plan Form */}
                 {showMealPlanForm && (
-                  <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-border-default)] space-y-3">
+                  <div className="bg-[var(--tt-surface-2)] rounded-xl p-4 border border-[var(--tt-border-solid)] space-y-3">
                     <div>
-                      <label className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1 block">{t('trainerNotes.nutrition.planName', 'Plan Name')}</label>
+                      <label className="text-[11px] text-[#96A0AA] uppercase tracking-wide mb-1 block">{t('trainerNotes.nutrition.planName', 'Plan Name')}</label>
                       <input
                         value={mealPlanForm.name}
                         onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: 'name', value: e.target.value })}
                         placeholder={t('trainerNotes.nutrition.planNamePlaceholder', 'e.g. Cutting Phase, Lean Bulk')}
-                        className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
+                        className="w-full bg-[var(--tt-surface)] border border-[var(--tt-border-solid)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--tt-text)] placeholder-[#96A0AA] focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1 block">{t('trainerNotes.nutrition.description', 'Description')}</label>
+                      <label className="text-[11px] text-[#96A0AA] uppercase tracking-wide mb-1 block">{t('trainerNotes.nutrition.description', 'Description')}</label>
                       <textarea
                         value={mealPlanForm.description}
                         onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: 'description', value: e.target.value })}
                         placeholder={t('trainerNotes.nutrition.descPlaceholder', 'Optional notes for the client…')}
-                        className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
+                        className="w-full bg-[var(--tt-surface)] border border-[var(--tt-border-solid)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--tt-text)] placeholder-[#96A0AA] resize-none focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
                         rows={2}
                       />
                     </div>
 
                     {/* Macro targets */}
                     <div className="flex items-center justify-between">
-                      <label className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.nutrition.macroTargets', 'Daily Macro Targets')}</label>
+                      <label className="text-[11px] text-[#96A0AA] uppercase tracking-wide">{t('trainerNotes.nutrition.macroTargets', 'Daily Macro Targets')}</label>
                       <button
                         onClick={handleAutoCalculate}
                         disabled={!weights.length}
-                        className="text-[11px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="text-[11px] font-medium text-[#19B8B8] hover:text-[#D9F1F1] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         {t('trainerNotes.nutrition.autoCalc', 'Auto-Calculate')}
                       </button>
@@ -2679,13 +2679,13 @@ export default function TrainerClientNotes() {
                         { key: 'fat', label: t('trainerNotes.nutrition.fat', 'Fat'), placeholder: '60g' },
                       ].map(({ key, label, placeholder }) => (
                         <div key={key}>
-                          <p className="text-[10px] text-[var(--color-text-muted)] text-center mb-1">{label}</p>
+                          <p className="text-[10px] text-[#96A0AA] text-center mb-1">{label}</p>
                           <input
                             type="number"
                             value={mealPlanForm[key]}
                             onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: key, value: e.target.value })}
                             placeholder={placeholder}
-                            className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-lg px-2 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] text-center placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
+                            className="w-full bg-[var(--tt-surface)] border border-[var(--tt-border-solid)] rounded-lg px-2 py-2.5 text-[16px] sm:text-[13px] text-[var(--tt-text)] text-center placeholder-[#96A0AA] focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
                           />
                         </div>
                       ))}
@@ -2694,14 +2694,14 @@ export default function TrainerClientNotes() {
                     <div className="flex gap-3 pt-2">
                       <button
                         onClick={() => dispatch({ type: 'SET', payload: { showMealPlanForm: false } })}
-                        className="flex-1 py-3 sm:py-2.5 rounded-xl border border-[var(--color-border-default)] text-[14px] sm:text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors min-h-[44px]"
+                        className="flex-1 py-3 sm:py-2.5 rounded-xl border border-[var(--tt-border-solid)] text-[14px] sm:text-[13px] font-medium text-[var(--tt-text-sub)] hover:text-[var(--tt-text)] transition-colors min-h-[44px]"
                       >
                         {t('trainerNotes.nutrition.cancel', 'Cancel')}
                       </button>
                       <button
                         onClick={handleSaveMealPlan}
                         disabled={savingMealPlan || (!mealPlanForm.calories && !mealPlanForm.protein)}
-                        className="flex-1 py-3 sm:py-2.5 rounded-xl bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-text-on-accent)] text-[14px] sm:text-[13px] font-semibold transition-colors disabled:opacity-50 min-h-[44px]"
+                        className="flex-1 py-3 sm:py-2.5 rounded-xl bg-[#19B8B8] hover:bg-[#0F9E9E] text-[#06363B] text-[14px] sm:text-[13px] font-semibold transition-colors disabled:opacity-50 min-h-[44px]"
                       >
                         {savingMealPlan ? t('trainerNotes.nutrition.saving', 'Saving…') : t('trainerNotes.nutrition.savePlan', 'Save Plan')}
                       </button>
@@ -2711,14 +2711,14 @@ export default function TrainerClientNotes() {
               </div>
 
               {/* 7-Day Food Log Compliance */}
-              <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
-                <h3 className="text-[14px] font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-[var(--color-accent)]" />
+              <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
+                <h3 className="text-[14px] font-semibold text-[var(--tt-text)] mb-3 flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-[#19B8B8]" />
                   {t('trainerNotes.nutrition.weeklyIntake', '7-Day Intake')}
                 </h3>
                 {foodLogSummary.length === 0 ? (
                   <div className="text-center py-6">
-                    <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.nutrition.noLogs', 'No food logs in the last 7 days')}</p>
+                    <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.nutrition.noLogs', 'No food logs in the last 7 days')}</p>
                   </div>
                 ) : (
                   <>
@@ -2728,7 +2728,7 @@ export default function TrainerClientNotes() {
                           <XAxis
                             dataKey="date"
                             tickFormatter={d => format(new Date(d + 'T00:00:00'), 'EEE', { locale: dateFnsLocale })}
-                            tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
+                            tick={{ fill: '#96A0AA', fontSize: 11 }}
                             axisLine={false}
                             tickLine={false}
                           />
@@ -2737,10 +2737,10 @@ export default function TrainerClientNotes() {
                             content={({ active, payload, label }) => {
                               if (!active || !payload?.length) return null;
                               return (
-                                <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle,rgba(255,255,255,0.08))] rounded-2xl px-4 py-3 shadow-2xl shadow-black/50 backdrop-blur-sm text-[12px] min-w-[120px]">
-                                  {label && <p className="text-[var(--color-text-muted)] text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-70">{format(new Date(label + 'T00:00:00'), 'EEE, MMM d', { locale: dateFnsLocale })}</p>}
+                                <div className="bg-[var(--tt-surface)] border border-[var(--tt-border)] rounded-2xl px-4 py-3 shadow-xl shadow-black/10 backdrop-blur-sm text-[12px] min-w-[120px]">
+                                  {label && <p className="text-[#96A0AA] text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-70">{format(new Date(label + 'T00:00:00'), 'EEE, MMM d', { locale: dateFnsLocale })}</p>}
                                   {payload.map((entry, i) => (
-                                    <p key={entry.dataKey || i} className="font-semibold leading-snug" style={{ color: entry.color || 'var(--color-accent)' }}>
+                                    <p key={entry.dataKey || i} className="font-semibold leading-snug" style={{ color: entry.color || '#19B8B8' }}>
                                       {entry.name === 'calories' ? t('trainerNotes.nutrition.cal') : `${entry.name} (g)`}: {Math.round(entry.value)}
                                     </p>
                                   ))}
@@ -2748,7 +2748,7 @@ export default function TrainerClientNotes() {
                               );
                             }}
                           />
-                          <Bar dataKey="calories" fill="var(--color-accent)" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                          <Bar dataKey="calories" fill="#19B8B8" radius={[4, 4, 0, 0]} maxBarSize={32} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -2760,19 +2760,19 @@ export default function TrainerClientNotes() {
                         const calTarget = targets?.target_calories || targets?.daily_calories;
                         const calPct = calTarget ? Math.round((day.calories / calTarget) * 100) : null;
                         return (
-                          <div key={day.date} className="flex items-center gap-2 md:gap-3 py-2 px-2 md:px-3 rounded-xl bg-[var(--color-bg-secondary)]/60 overflow-hidden">
-                            <span className="text-[11px] text-[var(--color-text-muted)] w-8 shrink-0">{format(new Date(day.date + 'T00:00:00'), 'EEE', { locale: dateFnsLocale })}</span>
+                          <div key={day.date} className="flex items-center gap-2 md:gap-3 py-2 px-2 md:px-3 rounded-xl bg-[var(--tt-surface-2)]/60 overflow-hidden">
+                            <span className="text-[11px] text-[#96A0AA] w-8 shrink-0">{format(new Date(day.date + 'T00:00:00'), 'EEE', { locale: dateFnsLocale })}</span>
                             <div className="flex-1 flex items-center gap-1.5 md:gap-3 text-[10px] md:text-[11px] min-w-0 flex-wrap">
-                              <span className="text-[var(--color-text-primary)] font-medium whitespace-nowrap">{Math.round(day.calories)} {t('common:cal', 'cal')}</span>
-                              <span className="text-blue-400 whitespace-nowrap">{t('trainerClientDetail.macros.gramsProtein', 'P')} {Math.round(day.protein)}g</span>
-                              <span className="text-amber-400 whitespace-nowrap">{t('trainerClientDetail.macros.gramsCarbs', 'C')} {Math.round(day.carbs)}g</span>
-                              <span className="text-rose-400 whitespace-nowrap">{t('trainerClientDetail.macros.gramsFat', 'F')} {Math.round(day.fat)}g</span>
+                              <span className="text-[var(--tt-text)] font-medium whitespace-nowrap">{Math.round(day.calories)} {t('common:cal', 'cal')}</span>
+                              <span className="text-[#6D5FDB] whitespace-nowrap">{t('trainerClientDetail.macros.gramsProtein', 'P')} {Math.round(day.protein)}g</span>
+                              <span className="text-[var(--tt-warn-ink)] whitespace-nowrap">{t('trainerClientDetail.macros.gramsCarbs', 'C')} {Math.round(day.carbs)}g</span>
+                              <span className="text-[#FF5A2E] whitespace-nowrap">{t('trainerClientDetail.macros.gramsFat', 'F')} {Math.round(day.fat)}g</span>
                             </div>
                             {calPct !== null && (
                               <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${
-                                calPct >= 90 && calPct <= 110 ? 'bg-emerald-500/10 text-emerald-400'
-                                : calPct < 70 ? 'bg-red-500/10 text-red-400'
-                                : 'bg-amber-500/10 text-amber-400'
+                                calPct >= 90 && calPct <= 110 ? 'bg-[var(--tt-good-soft)] text-[var(--tt-good-ink)]'
+                                : calPct < 70 ? 'bg-[var(--tt-hot-soft)] text-[#FF5A2E]'
+                                : 'bg-[var(--tt-warn-soft)] text-[var(--tt-warn-ink)]'
                               }`}>
                                 {calPct}%
                               </span>
@@ -2787,15 +2787,15 @@ export default function TrainerClientNotes() {
 
               {/* Compliance Summary */}
               {foodLogSummary.length > 0 && (activeMealPlan || nutritionTargets) && (
-                <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
-                  <h3 className="text-[14px] font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-[var(--color-accent)]" />
+                <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
+                  <h3 className="text-[14px] font-semibold text-[var(--tt-text)] mb-3 flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-[#19B8B8]" />
                     {t('trainerNotes.nutrition.compliance', 'Compliance')}
                   </h3>
                   {(() => {
                     const targets = activeMealPlan || nutritionTargets;
                     const calTarget = targets?.target_calories || targets?.daily_calories;
-                    if (!calTarget) return <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerNotes.nutrition.noTargetsSet', 'No targets set to compare against')}</p>;
+                    if (!calTarget) return <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.nutrition.noTargetsSet', 'No targets set to compare against')}</p>;
                     const onTrack = foodLogSummary.filter(d => {
                       const pct = (d.calories / calTarget) * 100;
                       return pct >= 85 && pct <= 115;
@@ -2804,17 +2804,17 @@ export default function TrainerClientNotes() {
                     const compliancePct = Math.round((onTrack / daysLogged) * 100);
                     return (
                       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                        <div className="text-center bg-[var(--color-bg-secondary)] rounded-xl py-2.5 sm:py-3 px-1">
-                          <p className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] uppercase mb-0.5">{t('trainerNotes.nutrition.daysLogged', 'Days Logged')}</p>
-                          <p className="text-[16px] sm:text-[18px] font-bold text-[var(--color-text-primary)]">{daysLogged}<span className="text-[11px] sm:text-[12px] text-[var(--color-text-muted)]">/7</span></p>
+                        <div className="text-center bg-[var(--tt-surface-2)] rounded-xl py-2.5 sm:py-3 px-1">
+                          <p className="text-[9px] sm:text-[10px] text-[#96A0AA] uppercase mb-0.5">{t('trainerNotes.nutrition.daysLogged', 'Days Logged')}</p>
+                          <p className="text-[16px] sm:text-[18px] font-bold text-[var(--tt-text)]">{daysLogged}<span className="text-[11px] sm:text-[12px] text-[#96A0AA]">/7</span></p>
                         </div>
-                        <div className="text-center bg-[var(--color-bg-secondary)] rounded-xl py-2.5 sm:py-3 px-1">
-                          <p className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] uppercase mb-0.5">{t('trainerNotes.nutrition.onTarget', 'On Target')}</p>
-                          <p className="text-[16px] sm:text-[18px] font-bold text-emerald-400">{onTrack}<span className="text-[11px] sm:text-[12px] text-[var(--color-text-muted)]">/{daysLogged}</span></p>
+                        <div className="text-center bg-[var(--tt-surface-2)] rounded-xl py-2.5 sm:py-3 px-1">
+                          <p className="text-[9px] sm:text-[10px] text-[#96A0AA] uppercase mb-0.5">{t('trainerNotes.nutrition.onTarget', 'On Target')}</p>
+                          <p className="text-[16px] sm:text-[18px] font-bold text-[var(--tt-good-ink)]">{onTrack}<span className="text-[11px] sm:text-[12px] text-[#96A0AA]">/{daysLogged}</span></p>
                         </div>
-                        <div className="text-center bg-[var(--color-bg-secondary)] rounded-xl py-2.5 sm:py-3 px-1">
-                          <p className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] uppercase mb-0.5">{t('trainerNotes.nutrition.compliancePct', 'Rate')}</p>
-                          <p className={`text-[16px] sm:text-[18px] font-bold ${compliancePct >= 70 ? 'text-emerald-400' : compliancePct >= 40 ? 'text-amber-400' : 'text-red-400'}`}>{compliancePct}%</p>
+                        <div className="text-center bg-[var(--tt-surface-2)] rounded-xl py-2.5 sm:py-3 px-1">
+                          <p className="text-[9px] sm:text-[10px] text-[#96A0AA] uppercase mb-0.5">{t('trainerNotes.nutrition.compliancePct', 'Rate')}</p>
+                          <p className={`text-[16px] sm:text-[18px] font-bold ${compliancePct >= 70 ? 'text-[var(--tt-good-ink)]' : compliancePct >= 40 ? 'text-[var(--tt-warn-ink)]' : 'text-[#FF5A2E]'}`}>{compliancePct}%</p>
                         </div>
                       </div>
                     );
@@ -2838,18 +2838,18 @@ export default function TrainerClientNotes() {
       {/* Log Follow-Up Modal */}
       {showFollowupModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-default)] w-full max-h-[90vh] overflow-y-auto sm:max-w-md p-5 sm:p-6">
+          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border-solid)] w-full max-h-[90vh] overflow-y-auto sm:max-w-md p-5 sm:p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[16px] sm:text-[17px] font-semibold text-[var(--color-text-primary)]">
+              <h3 className="text-[16px] sm:text-[17px] font-semibold text-[var(--tt-text)]">
                 {t('trainerNotes.followUp.logFollowUp')}
               </h3>
-              <button onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: false } })} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
+              <button onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: false } })} className="text-[#96A0AA] hover:text-[var(--tt-text)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
                 <X size={18} />
               </button>
             </div>
 
             {/* Method selector */}
-            <label className="text-[12px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 block">
+            <label className="text-[12px] text-[#96A0AA] uppercase tracking-wide mb-1.5 block">
               {t('trainerNotes.followUp.method')}
             </label>
             <div className="grid grid-cols-4 gap-2 mb-4">
@@ -2865,8 +2865,8 @@ export default function TrainerClientNotes() {
                   title={label}
                   className={`py-2.5 sm:py-2 rounded-lg flex flex-col items-center gap-1 text-[10px] sm:text-[11px] font-medium transition-colors min-h-[44px] ${
                     fuMethod === value
-                      ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/30'
-                      : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)] hover:text-[var(--color-text-secondary)]'
+                      ? 'bg-[#19B8B8]/10 text-[#19B8B8] border border-[#19B8B8]/30'
+                      : 'bg-[var(--tt-surface-2)] text-[#96A0AA] border border-[var(--tt-border)] hover:text-[var(--tt-text-sub)]'
                   }`}
                 >
                   <Icon size={14} />
@@ -2876,13 +2876,13 @@ export default function TrainerClientNotes() {
             </div>
 
             {/* Outcome */}
-            <label className="text-[12px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 block">
+            <label className="text-[12px] text-[#96A0AA] uppercase tracking-wide mb-1.5 block">
               {t('trainerNotes.followUp.outcomeLabel')}
             </label>
             <select
               value={fuOutcome}
               onChange={(e) => dispatch({ type: 'SET', payload: { fuOutcome: e.target.value } })}
-              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] mb-4 focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors min-h-[44px]"
+              className="w-full bg-[var(--tt-surface-2)] border border-[var(--tt-border-solid)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[14px] text-[var(--tt-text)] mb-4 focus:outline-none focus:border-[#19B8B8]/40 transition-colors min-h-[44px]"
             >
               <option value="no_answer">{t('trainerNotes.followUp.outcomes.noAnswer')}</option>
               <option value="rescheduled">{t('trainerNotes.followUp.outcomes.rescheduled')}</option>
@@ -2892,28 +2892,28 @@ export default function TrainerClientNotes() {
             </select>
 
             {/* Note */}
-            <label className="text-[12px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 block">
+            <label className="text-[12px] text-[#96A0AA] uppercase tracking-wide mb-1.5 block">
               {t('trainerNotes.followUp.noteLabel')}
             </label>
             <textarea
               value={fuNote}
               onChange={(e) => dispatch({ type: 'SET', payload: { fuNote: e.target.value } })}
               placeholder={t('trainerNotes.followUp.notePlaceholder')}
-              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors mb-4"
+              className="w-full bg-[var(--tt-surface-2)] border border-[var(--tt-border-solid)] rounded-lg p-3 text-[14px] text-[var(--tt-text)] placeholder-[#96A0AA] resize-none focus:outline-none focus:border-[#19B8B8]/40 transition-colors mb-4"
               rows={3}
             />
 
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: false } })}
-                className="flex-1 py-3 sm:py-2.5 rounded-xl border border-[var(--color-border-default)] text-[14px] sm:text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors min-h-[44px]"
+                className="flex-1 py-3 sm:py-2.5 rounded-xl border border-[var(--tt-border-solid)] text-[14px] sm:text-[13px] font-medium text-[var(--tt-text-sub)] hover:text-[var(--tt-text)] transition-colors min-h-[44px]"
               >
                 {t('trainerNotes.followUp.cancel')}
               </button>
               <button
                 onClick={handleSaveFollowup}
                 disabled={savingFollowup}
-                className="flex-1 py-3 sm:py-2.5 rounded-xl bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-text-on-accent)] text-[14px] sm:text-[13px] font-semibold transition-colors disabled:opacity-50 min-h-[44px]"
+                className="flex-1 py-3 sm:py-2.5 rounded-xl bg-[#19B8B8] hover:bg-[#0F9E9E] text-[#06363B] text-[14px] sm:text-[13px] font-semibold transition-colors disabled:opacity-50 min-h-[44px]"
               >
                 {savingFollowup ? t('trainerNotes.followUp.saving') : t('trainerNotes.followUp.save')}
               </button>

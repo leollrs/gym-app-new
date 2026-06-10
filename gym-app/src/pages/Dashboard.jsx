@@ -412,7 +412,7 @@ const Dashboard = () => {
     ? Object.values(activeSession.loggedSets).flat().length
     : 0;
 
-  useEffect(() => { document.title = t('pages.dashboard.title'); }, [t]);
+  useEffect(() => { document.title = `${t('dashboard.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // Scroll locking for modals
   useEffect(() => {
@@ -855,8 +855,11 @@ const Dashboard = () => {
 
       // Background cardio sync from health store (non-blocking, at most once/hour)
       try {
-        const healthSettings = JSON.parse(localStorage.getItem('tugympr_health_settings') || '{}');
-        if (healthSettings.enabled || healthSettings.sync_enabled) {
+        // Gate on the flag HealthSync actually writes — the old
+        // `enabled`/`sync_enabled` keys were never written by anything, so
+        // this hourly cardio import was unreachable code since it shipped.
+        const healthConnected = localStorage.getItem('tugympr_health_connected') === 'true';
+        if (healthConnected) {
           const SYNC_KEY = 'tugympr_cardio_sync_ts';
           const lastSync = parseInt(localStorage.getItem(SYNC_KEY) || '0', 10);
           if (Date.now() - lastSync >= 3600000) {
@@ -1706,7 +1709,7 @@ const Dashboard = () => {
                                     <Dumbbell size={13} style={{ color: 'var(--color-accent, #2EC4C4)' }} />
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
+                                    <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(session.name)}</p>
                                     <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
                                       <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
                                       <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
@@ -1842,10 +1845,10 @@ const Dashboard = () => {
                     <div className="flex gap-2">
                       <Link
                         to={`/session/${selectedRoutine.id}`}
-                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-full text-[12px] font-bold text-white active:scale-[0.98] transition-all min-w-0 overflow-hidden"
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-full text-[12px] font-bold text-[var(--color-text-on-accent,#fff)] active:scale-[0.98] transition-all min-w-0 overflow-hidden"
                         style={{ background: 'var(--color-accent, #2EC4C4)' }}
                       >
-                        <Play size={14} fill="white" className="flex-shrink-0" /> <span className="truncate">{t('dashboard.finishWorkout', { workout: workoutType })}</span>
+                        <Play size={14} fill="var(--color-text-on-accent, white)" className="flex-shrink-0" /> <span className="truncate">{t('dashboard.finishWorkout', { workout: workoutType })}</span>
                       </Link>
                       <button
                         onClick={handleSkipSuggestion}
@@ -1895,7 +1898,7 @@ const Dashboard = () => {
                             className="flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-[var(--color-surface-hover)] hover:bg-[var(--color-bg-deep)] transition-colors text-left"
                           >
                             <div className="flex-1 min-w-0">
-                              <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
+                              <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(session.name)}</p>
                               <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
                                 <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
                                 <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
@@ -1991,7 +1994,7 @@ const Dashboard = () => {
                               <Trophy size={16} style={{ color: 'var(--color-accent, #2EC4C4)' }} />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
+                              <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(session.name)}</p>
                               <div className="flex items-center gap-2 mt-0.5 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
                                 <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
                                 <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
@@ -2062,7 +2065,7 @@ const Dashboard = () => {
                       type="button"
                       onClick={() => navigate('/workouts')}
                       className="inline-flex items-center gap-2 py-3 px-5 rounded-2xl text-[13px] font-bold transition-colors"
-                      style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+                      style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
                     >
                       <Dumbbell size={15} />
                       {t('dashboard.trainOutsideGym', 'Want to train outside the gym?')}
@@ -2191,9 +2194,9 @@ const Dashboard = () => {
                     </p>
                     <Link
                       to="/workouts"
-                      className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl bg-[#10B981] text-white font-bold text-[13px]"
+                      className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] font-bold text-[13px]"
                     >
-                      <Play size={14} fill="white" />
+                      <Play size={14} fill="var(--color-text-on-secondary, white)" />
                       {t('dashboard.goToWorkouts')}
                     </Link>
                   </div>
@@ -2281,7 +2284,7 @@ const Dashboard = () => {
                         background: todayCardioSessions.length > 0
                           ? 'rgba(16,185,129,0.15)'
                           : 'var(--color-accent)',
-                        color: todayCardioSessions.length > 0 ? '#10B981' : '#fff',
+                        color: todayCardioSessions.length > 0 ? '#10B981' : 'var(--color-text-on-accent, #fff)',
                         fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif',
                       }}
                     >
@@ -2705,7 +2708,7 @@ const Dashboard = () => {
               <div className="shrink-0 px-6 pt-3 pb-5 flex gap-3 bg-gradient-to-t from-[var(--color-bg-card)] via-[var(--color-bg-card)] to-transparent">
                 <button
                   onClick={() => { setShowPlanInfo(false); navigate('/workouts'); }}
-                  className="flex-1 py-3.5 rounded-2xl font-bold text-[13px] text-white bg-[#10B981] hover:bg-[#0EA572] transition-colors"
+                  className="flex-1 py-3.5 rounded-2xl font-bold text-[13px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors"
                 >
                   {prog ? t('dashboard.managePrograms') : t('dashboard.browsePrograms')}
                 </button>
@@ -2846,7 +2849,7 @@ const Dashboard = () => {
                   className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
                   style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
                 >
-                  {t('common.cancel', { ns: 'common', defaultValue: 'Cancel' })}
+                  {t('cancel', { ns: 'common', defaultValue: 'Cancel' })}
                 </button>
                 <button
                   onClick={handleDeleteSession}

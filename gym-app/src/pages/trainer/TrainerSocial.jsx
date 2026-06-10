@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Users, Heart, MessageCircle } from 'lucide-react';
-import PageHeader from '../../components/PageHeader';
 import Skeleton from '../../components/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { subDays } from 'date-fns';
 import logger from '../../lib/logger';
+import { TT } from './components/designTokens';
+import { TEyebrow, TPageTitle } from './components/designPrimitives';
 import TrainerHero from './components/TrainerHero';
 import TrainerStatCard from './components/TrainerStatCard';
 
@@ -72,13 +73,14 @@ export default function TrainerSocial() {
   }, [profile?.id, profile?.gym_id]);
 
   return (
-    <div className="min-h-screen pb-28 md:pb-12" style={{ background: 'var(--color-bg-primary)' }}>
-      <PageHeader
-        title={t('trainerSocial.title', 'Activity')}
-        accentLabel={t('trainerSocial.accentLabel', 'Community')}
-      />
+    <div style={{ background: TT.bg, minHeight: '100%', paddingBottom: 112 }}>
+      {/* Header */}
+      <div className="max-w-[720px] md:max-w-5xl mx-auto" style={{ padding: '12px 16px 14px' }}>
+        <TEyebrow color={TT.accent}>{t('trainerSocial.accentLabel', 'Community')}</TEyebrow>
+        <TPageTitle>{t('trainerSocial.title', 'Activity')}</TPageTitle>
+      </div>
 
-      <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-4 space-y-4">
+      <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-1 space-y-4">
         {/* Hero engagement card */}
         <TrainerHero
           accentLabel={t('trainerSocial.heroLabel', 'Last 7 days')}

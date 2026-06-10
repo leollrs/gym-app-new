@@ -34,6 +34,7 @@ import RouteMap from '../components/cardio/RouteMap';
 import { startLiveActivity, updateLiveActivity, endLiveActivity } from '../lib/liveActivityBridge';
 import { App as CapApp } from '@capacitor/app';
 import { useWakeLock } from '../hooks/useWakeLock';
+import posthogClient from 'posthog-js';
 
 const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
 const FONT_BODY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
@@ -653,6 +654,7 @@ export default function LiveCardio() {
           unit,
         });
         showToast(t('cardio.loggedSuccess', 'Cardio logged!'), 'success');
+        posthogClient?.capture('cardio_logged', { source: 'live', type: cardioType, duration_seconds: Math.floor(elapsedSec), gps: !!useGps });
         setPhase('summary');
 
         // Pre-render the share-card map RIGHT NOW while we're still online and

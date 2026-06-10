@@ -48,6 +48,18 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
     setExercises(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Never render raw DB errors to members. supabase-js failures re-thrown by
+  // useRoutines carry a PG/PostgREST code (server reject); code-less errors
+  // are network-ish ("TypeError: Load failed").
+  const friendlySaveError = (err) => {
+    console.error('[create routine] save failed:', err);
+    const code = String(err?.code || '').trim();
+    const isServerReject = /^[0-9A-Z]{5}$/.test(code) || /^PGRST/i.test(code);
+    return isServerReject
+      ? t('createRoutine.failedToSave')
+      : t('progress.body.connectionError', 'No connection — try again when you’re back online.');
+  };
+
   const handleSave = async () => {
     const trimmed = name.trim();
     if (trimmed.length < 1) {
@@ -64,7 +76,7 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
       await onSave({ name: trimmed, exercises });
       // Parent navigates away; no need to call onClose (avoids setState on unmount)
     } catch (err) {
-      setError(err.message || t('createRoutine.failedToSave'));
+      setError(friendlySaveError(err));
     } finally {
       setSaving(false);
     }
@@ -85,7 +97,7 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
     try {
       await onSave({ name: trimmed, exercises: [] });
     } catch (err) {
-      setError(err.message || t('createRoutine.failedToSave'));
+      setError(friendlySaveError(err));
     } finally {
       setSaving(false);
     }
@@ -250,7 +262,7 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
               type="button"
               onClick={handleAutoGenerate}
               disabled={selectedMuscles.length === 0}
-              className="mt-3 flex items-center gap-2 px-4 py-2.5 rounded-full text-[13px] font-bold disabled:opacity-50 transition-all text-white"
+              className="mt-3 flex items-center gap-2 px-4 py-2.5 rounded-full text-[13px] font-bold disabled:opacity-50 transition-all text-[var(--color-text-on-accent,#fff)]"
               style={{ backgroundColor: 'var(--color-accent, #2EC4C4)' }}
             >
               <Zap size={16} />
@@ -330,7 +342,7 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 py-3 rounded-[16px] text-[14px] disabled:opacity-50 transition-all text-white focus:ring-2 focus:ring-[var(--color-accent,#2EC4C4)] focus:outline-none"
+            className="flex-1 py-3 rounded-[16px] text-[14px] disabled:opacity-50 transition-all text-[var(--color-text-on-accent,#fff)] focus:ring-2 focus:ring-[var(--color-accent,#2EC4C4)] focus:outline-none"
             style={{ backgroundColor: 'var(--color-accent, #2EC4C4)', fontWeight: 800 }}
           >
             {saving ? t('createRoutine.saving') : hasExercises ? (saveLabel || t('createRoutine.saveAndStart')) : t('createRoutine.saveAndEdit')}

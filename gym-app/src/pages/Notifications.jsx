@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotifications, useInvalidate } from '../hooks/useSupabaseQuery';
 import logger from '../lib/logger';
 import { formatDistanceToNow, differenceInDays } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { sanitize } from '../lib/sanitize';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
@@ -43,7 +44,8 @@ const ANN_ACCENT = {
 export default function Notifications() {
   const { user, profile, refreshNotifications } = useAuth();
   const navigate = useNavigate();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dfLocale = i18n.language?.startsWith('es') ? esLocale : undefined;
   const { showToast } = useToast();
   const { data: queryItems, isLoading: queryLoading } = useNotifications(user?.id, 'member');
   const { invalidateNotifications } = useInvalidate();
@@ -142,7 +144,7 @@ export default function Notifications() {
 
     if (error) {
       logger.error('Notifications: dismiss failed:', error);
-      showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
+      showToast(t('common:somethingWentWrong'), 'error');
       setItems(snapshot); // revert
     }
     invalidateNotifications(user.id);
@@ -173,7 +175,7 @@ export default function Notifications() {
 
     if (error) {
       logger.error('Notifications: clearAll failed:', error);
-      showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
+      showToast(t('common:somethingWentWrong'), 'error');
       setItems(snapshot); // revert
     }
     invalidateNotifications(user.id);
@@ -188,7 +190,7 @@ export default function Notifications() {
     const { error } = await supabase.from('notifications').update({ read_at: now }).eq('id', id);
     if (error) {
       logger.error('Notifications: markRead failed:', error);
-      showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
+      showToast(t('common:somethingWentWrong'), 'error');
       // Revert optimistic update on failure
       setItems(prev => prev.map(n => n.id === id ? { ...n, read_at: null } : n));
     }
@@ -208,7 +210,7 @@ export default function Notifications() {
       const { error } = await supabase.from('notifications').update({ read_at: now }).eq('profile_id', user.id).is('read_at', null);
       if (error) {
         logger.error('Notifications: markAllRead failed:', error);
-        showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
+        showToast(t('common:somethingWentWrong'), 'error');
         // Revert optimistic update on failure
         setItems(prev => prev.map(n => unread.includes(n.id) ? { ...n, read_at: null } : n));
       }
@@ -354,7 +356,7 @@ export default function Notifications() {
                       )}
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                          {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: dfLocale })}
                         </p>
                         <span className="text-[11px]" style={{ color: 'var(--color-text-faint)' }}>
                           · {t('notifications.expiresIn', { days: Math.max(0, 14 - differenceInDays(new Date(), new Date(n.created_at))) })}

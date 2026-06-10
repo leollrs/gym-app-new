@@ -44,7 +44,9 @@ export default function WorkoutOfTheDay() {
         const result = await generateAdaptiveWorkout(user.id, variant);
         if (!cancelled) setWorkout(result);
       } catch (err) {
-        if (!cancelled) setError(err.message || t('workoutOfDay.generateFailed', 'Failed to generate workout'));
+        // Never render raw error messages to members — log for diagnosis.
+        console.error('[workout of day] generate failed:', err);
+        if (!cancelled) setError(t('workoutOfDay.generateFailed', 'Failed to generate workout'));
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -100,7 +102,9 @@ export default function WorkoutOfTheDay() {
 
       navigate(`/session/${routine.id}`);
     } catch (err) {
-      setError(err.message || t('workoutOfDay.startFailed', 'Failed to start workout'));
+      // Never render raw error messages to members — log for diagnosis.
+      console.error('[workout of day] start failed:', err);
+      setError(t('workoutOfDay.startFailed', 'Failed to start workout'));
       setSaving(false);
     }
   };
@@ -237,7 +241,7 @@ export default function WorkoutOfTheDay() {
       <button
         onClick={handleStart}
         disabled={saving}
-        className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#B8962E] text-[var(--color-bg-primary)] font-bold text-sm py-3 rounded-xl transition-colors disabled:opacity-60"
+        className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#B8962E] text-[var(--color-text-on-accent,#000)] font-bold text-sm py-3 rounded-xl transition-colors disabled:opacity-60"
       >
         {saving ? (
           <>

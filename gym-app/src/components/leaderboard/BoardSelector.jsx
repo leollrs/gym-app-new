@@ -40,7 +40,7 @@ export default function BoardSelector({ active, onChange }) {
           onClick={() => onChange(b.key)}
           className={`flex-shrink-0 px-4 py-2 text-[12px] font-semibold transition-all whitespace-nowrap ${
             active === b.key
-              ? 'text-white'
+              ? 'text-[var(--color-text-on-accent,#fff)]'
               : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
           }`}
           style={{

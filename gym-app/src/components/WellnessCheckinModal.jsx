@@ -279,7 +279,7 @@ export default function WellnessCheckinModal({ open, onClose, onSaved }) {
                     className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-opacity disabled:opacity-40"
                     style={{
                       background: 'var(--color-accent)',
-                      color: '#000',
+                      color: 'var(--color-text-on-accent, #000)',
                     }}
                   >
                     {saving ? t('wellness.saving', 'Saving…') : t('wellness.save', 'Save')}

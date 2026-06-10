@@ -115,8 +115,10 @@ export function applyBranding({
   root.style.setProperty('--accent-emerald',   s);
   root.style.setProperty('--color-success',    s);
 
-  // Text-on-primary for components that read it from a CSS var
+  // Text-on-primary / text-on-secondary — black or white per WCAG luminance
+  // so member text stays readable on whatever brand colors the admin picks.
   root.style.setProperty('--color-text-on-accent', textOnColor(p));
+  root.style.setProperty('--color-text-on-secondary', textOnColor(s));
 
   // 2. Inject stylesheet to override hardcoded Tailwind arbitrary classes
   let el = document.getElementById('gym-branding-overrides');
@@ -295,6 +297,7 @@ export function resetToDefault() {
   root.style.setProperty('--accent-emerald',    DEFAULT_SECONDARY);
   root.style.setProperty('--color-success',     DEFAULT_SECONDARY);
   root.style.setProperty('--color-text-on-accent', textOnColor(DEFAULT_PRIMARY));
+  root.style.setProperty('--color-text-on-secondary', textOnColor(DEFAULT_SECONDARY));
 
   // Remove injected overrides so hardcoded Tailwind classes revert
   const el = document.getElementById('gym-branding-overrides');

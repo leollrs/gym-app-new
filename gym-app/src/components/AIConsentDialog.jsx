@@ -213,7 +213,7 @@ export default function AIConsentDialog({ open, onAgree, onCancel, featureName }
             className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
             style={{
               backgroundColor: 'var(--color-accent)',
-              color: '#001512',
+              color: 'var(--color-text-on-accent, #001512)',
             }}
           >
             {t('aiConsent.agree', 'I Agree')}

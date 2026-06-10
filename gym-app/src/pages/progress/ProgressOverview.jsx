@@ -285,7 +285,7 @@ export default function ProgressOverview() {
               {t('progress.overview.welcomeTitle', 'Your first session unlocks your stats')}
             </div>
             <button className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-bold active:scale-95"
-              style={{ background: TU_ACCENT, color: '#001512' }}
+              style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #001512)' }}
               onClick={() => navigate('/workouts')}>
               {t('progress.overview.startFirstWorkout', 'Start your first workout')} {'\u2192'}
             </button>
@@ -317,7 +317,7 @@ export default function ProgressOverview() {
                     background: item.done ? TU_ACCENT : 'transparent',
                     border: item.done ? 'none' : '1.5px solid var(--color-border-subtle)',
                   }}>
-                  {item.done && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>}
+                  {item.done && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" style={{ stroke: 'var(--color-text-on-accent, #fff)' }} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>}
                 </div>
                 <span className="flex-1 text-[14px] font-medium" style={{
                   color: item.done ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
@@ -1133,7 +1133,7 @@ function MonthlyTimeline({ userId }) {
                 <button onClick={() => setDeleteConfirm(null)}
                   className="flex-1 py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-95"
                   style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-primary)' }}>
-                  {t('common.cancel', { ns: 'common', defaultValue: 'Cancel' })}
+                  {t('cancel', { ns: 'common', defaultValue: 'Cancel' })}
                 </button>
                 <button onClick={handleDeleteSession}
                   className="flex-1 py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-95"

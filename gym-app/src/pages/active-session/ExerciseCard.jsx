@@ -191,7 +191,7 @@ const Stepper = ({ value, onChange, step = 1, big = false, min = 0, max = 9999, 
           width: 52,
           height: 52,
           backgroundColor: 'var(--color-accent)',
-          color: '#001512',
+          color: 'var(--color-text-on-accent, #001512)',
           border: 'none',
         }}
         aria-label={t?.('activeSession.increase') ?? 'Increase'}
@@ -507,7 +507,7 @@ const SetTracker = ({ currentSets, activeSetIndex, targetReps, t, groupType }) =
                   backgroundColor: `color-mix(in srgb, ${setTone} 95%, #000)`,
                 }}
               >
-                <Check size={10} color="#fff" strokeWidth={3} />
+                <Check size={10} strokeWidth={3} style={{ color: GROUP_TONE[s.groupType] ? '#fff' : 'var(--color-text-on-accent, #fff)' }} />
               </div>
               {s.isPR && (
                 <Trophy size={10} className="absolute bottom-2 right-2" style={{ color: setTone }} />
@@ -1035,7 +1035,7 @@ const ExerciseCard = ({
                     className="mt-3 mx-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors focus:outline-none"
                     style={
                       isSelected
-                        ? { backgroundColor: 'var(--color-accent)', color: '#001512' }
+                        ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }
                         : {
                             backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.06))',
                             border: '1px solid var(--color-border-subtle)',
@@ -1166,7 +1166,7 @@ const ExerciseCard = ({
                       className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
                       style={{ backgroundColor: `color-mix(in srgb, ${setTone} 85%, #000)` }}
                     >
-                      <Check size={12} color="#fff" strokeWidth={3} />
+                      <Check size={12} strokeWidth={3} style={{ color: GROUP_TONE[set.groupType] ? '#fff' : 'var(--color-text-on-accent, #fff)' }} />
                     </div>
                     <div className="flex items-center gap-1.5 flex-1 min-w-0">
                       <span className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -1347,7 +1347,7 @@ const ExerciseCard = ({
                             setEditingSet(null);
                           }}
                           className="flex-1 py-2 rounded-lg text-[12px] font-bold transition-colors"
-                          style={{ backgroundColor: 'var(--color-accent)', color: '#001512' }}
+                          style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }}
                         >
                           {t('activeSession.save', 'Save')}
                         </button>

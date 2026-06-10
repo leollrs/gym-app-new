@@ -11,6 +11,8 @@ import { Plus, Trash2, Zap } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { getTrainerAutomations, createAutomation, setAutomationActive, deleteAutomation } from '../../../lib/coaching';
+import { TT, TFont } from './designTokens';
+import { TPrimaryButton } from './designPrimitives';
 
 export default function TrainerAutomations() {
   const { t } = useTranslation('pages');
@@ -66,32 +68,32 @@ export default function TrainerAutomations() {
     if (error) { setRules(prev); showToast(t('trainerAutomations.saveError', { defaultValue: "Couldn't remove the automation." }), 'error'); }
   };
 
-  const inputStyle = { padding: '9px 11px', borderRadius: 9, border: '1px solid var(--color-border-subtle)', background: 'var(--color-surface-hover, transparent)', color: 'var(--color-text-primary)', fontSize: 13 };
+  const inputStyle = { padding: '9px 11px', borderRadius: 9, border: `1px solid ${TT.borderSolid}`, background: TT.surface, color: TT.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' };
 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <Zap size={16} style={{ color: 'var(--color-accent)' }} />
-        <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)' }}>
+        <Zap size={16} style={{ color: TT.accent }} />
+        <span style={{ fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
           {t('trainerAutomations.title', { defaultValue: 'Automations' })}
         </span>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: TT.textMute, marginBottom: 12 }}>
         {t('trainerAutomations.subtitle', { defaultValue: 'Get pinged when a client needs a nudge — so no one slips away unnoticed.' })}
       </div>
 
       {rules.map((r) => (
-        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: '11px 12px', borderRadius: 11, border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card, #fff)' }}>
-          <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: r.is_active ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: '11px 12px', borderRadius: 14, border: `1px solid ${TT.border}`, background: TT.surface, boxShadow: TT.shadow }}>
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: r.is_active ? TT.text : TT.textMute }}>
             {describe(r)}
           </span>
           {/* Active toggle */}
           <button type="button" role="switch" aria-checked={r.is_active} onClick={() => handleToggle(r)}
             style={{ position: 'relative', width: 40, height: 23, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
-              background: r.is_active ? 'var(--color-accent)' : 'var(--color-border-subtle)' }}>
-            <span style={{ position: 'absolute', top: 2, left: r.is_active ? 19 : 2, width: 19, height: 19, borderRadius: '50%', background: '#fff', transition: 'left 0.15s' }} />
+              background: r.is_active ? TT.accent : TT.borderSolid }}>
+            <span style={{ position: 'absolute', top: 2, left: r.is_active ? 19 : 2, width: 19, height: 19, borderRadius: '50%', background: '#fff', transition: 'left 0.15s', boxShadow: '0 1px 2px rgba(15,20,25,0.2)' }} />
           </button>
-          <button type="button" onClick={() => handleDelete(r.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-muted)' }}>
+          <button type="button" onClick={() => handleDelete(r.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: TT.textMute }}>
             <Trash2 size={15} />
           </button>
         </div>
@@ -99,12 +101,12 @@ export default function TrainerAutomations() {
 
       {!adding ? (
         <button type="button" onClick={() => setAdding(true)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, border: '1px dashed var(--color-border-subtle)', background: 'transparent', color: 'var(--color-accent)', fontWeight: 700, fontSize: 13, cursor: 'pointer', marginTop: 4 }}>
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, border: `1px dashed ${TT.borderStrong}`, background: 'transparent', color: TT.accentDark, fontWeight: 700, fontSize: 13, cursor: 'pointer', marginTop: 4 }}>
           <Plus size={15} /> {t('trainerAutomations.addRule', { defaultValue: 'Add automation' })}
         </button>
       ) : (
-        <div style={{ marginTop: 8, padding: 14, borderRadius: 12, border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card, #fff)' }}>
-          <label style={{ display: 'block', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>{t('trainerAutomations.when', { defaultValue: 'When' })}</label>
+        <div style={{ marginTop: 8, padding: 14, borderRadius: 14, border: `1px solid ${TT.border}`, background: TT.surface, boxShadow: TT.shadow }}>
+          <label style={{ display: 'block', fontSize: 11, color: TT.textMute, marginBottom: 4 }}>{t('trainerAutomations.when', { defaultValue: 'When' })}</label>
           <select value={triggerType} onChange={(e) => setTriggerType(e.target.value)} style={{ ...inputStyle, width: '100%', marginBottom: 10 }}>
             <option value="inactivity">{t('trainerAutomations.triggerInactivity', { defaultValue: 'A client stops training' })}</option>
             <option value="missed_checkin">{t('trainerAutomations.triggerMissedCheckin', { defaultValue: 'A client misses their check-in' })}</option>
@@ -112,26 +114,25 @@ export default function TrainerAutomations() {
 
           {triggerType === 'inactivity' && (
             <div style={{ marginBottom: 10 }}>
-              <label style={{ display: 'block', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>{t('trainerAutomations.afterDays', { defaultValue: 'After how many days?' })}</label>
+              <label style={{ display: 'block', fontSize: 11, color: TT.textMute, marginBottom: 4 }}>{t('trainerAutomations.afterDays', { defaultValue: 'After how many days?' })}</label>
               <select value={thresholdDays} onChange={(e) => setThresholdDays(Number(e.target.value))} style={{ ...inputStyle, width: '100%' }}>
                 {[3, 5, 7, 10, 14].map((n) => <option key={n} value={n}>{t('trainerAutomations.days', { count: n, defaultValue: `${n} days` })}</option>)}
               </select>
             </div>
           )}
 
-          <label style={{ display: 'block', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>{t('trainerAutomations.then', { defaultValue: 'Then' })}</label>
+          <label style={{ display: 'block', fontSize: 11, color: TT.textMute, marginBottom: 4 }}>{t('trainerAutomations.then', { defaultValue: 'Then' })}</label>
           <select value={action} onChange={(e) => setAction(e.target.value)} style={{ ...inputStyle, width: '100%', marginBottom: 12 }}>
             <option value="notify_trainer">{t('trainerAutomations.actionNotify', { defaultValue: 'Alert me' })}</option>
             <option value="nudge_member">{t('trainerAutomations.actionNudge', { defaultValue: 'Nudge the member' })}</option>
           </select>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={handleAdd}
-              style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: 'var(--color-accent)', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
+            <TPrimaryButton onClick={handleAdd} style={{ flex: 1, padding: '10px 0' }}>
               {t('trainerAutomations.save', { defaultValue: 'Save' })}
-            </button>
+            </TPrimaryButton>
             <button type="button" onClick={() => setAdding(false)}
-              style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid var(--color-border-subtle)', background: 'transparent', color: 'var(--color-text-muted)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+              style={{ padding: '10px 16px', borderRadius: 12, border: `1px solid ${TT.borderSolid}`, background: TT.surface2, color: TT.textSub, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: TFont.display }}>
               {t('trainerAutomations.cancel', { defaultValue: 'Cancel' })}
             </button>
           </div>

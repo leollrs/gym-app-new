@@ -6,8 +6,8 @@
  *
  * Exemptions so the platform can still be recovered:
  *   • super_admins are never blocked (they need to turn it back off)
- *   • the /login and /reset-password routes stay reachable (so an admin can
- *     sign in during maintenance, then they're exempt by role)
+ *   • the /login and /auth/reset-password routes stay reachable (so an admin
+ *     can sign in during maintenance, then they're exempt by role)
  *
  * Polls every 30s + on window focus/reconnect so it flips on/off quickly
  * without a realtime subscription (which RLS would block for members anyway).
@@ -19,7 +19,7 @@ import { Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-const AUTH_PATHS = ['/login', '/reset-password', '/signup'];
+const AUTH_PATHS = ['/login', '/auth/reset-password', '/signup'];
 
 export default function MaintenanceGate() {
   const { t } = useTranslation('common');

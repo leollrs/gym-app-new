@@ -15,7 +15,7 @@ import {
 import { usePostHog } from '@posthog/react';
 import { List as VirtualList } from 'react-window';
 import { Capacitor } from '@capacitor/core';
-import { supabase } from '../lib/supabase';
+import { supabase, ensureFreshSession, isSessionError } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateMacros } from '../lib/macroCalculator';
 import { format, subDays } from 'date-fns';
@@ -958,7 +958,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, onBarcodeRes
             <button
               onClick={() => { if (onBarcodeResult) onBarcodeResult('__open_scanner__'); }}
               className="w-full flex items-center justify-center gap-2.5 py-3.5 mb-3 rounded-[14px] active:scale-[0.97] transition-all"
-              style={{ background: TU.accent, color: '#001512' }}>
+              style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)' }}>
               <ScanLine size={18} strokeWidth={2.2} />
               <span className="text-[14px] font-bold" style={{ fontFamily: TU.display, letterSpacing: -0.2 }}>{t('nutrition.scanFood', 'Scan food')}</span>
             </button>
@@ -1142,7 +1142,7 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
         <div className="px-4 pt-3 pb-4" style={{ borderTop: '1px solid var(--color-border-subtle)', paddingBottom: 'max(16px, var(--safe-area-bottom, env(safe-area-inset-bottom)))' }}>
           <button onClick={handleLog} disabled={saving || s <= 0}
             className="w-full py-[14px] rounded-[14px] font-bold text-[15px] flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-40"
-            style={{ background: TU.accent, color: '#001512', fontFamily: TU.display, letterSpacing: -0.2 }}>
+            style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)', fontFamily: TU.display, letterSpacing: -0.2 }}>
             <Check size={16} strokeWidth={2.6} />
             {saving ? t('nutrition.logging', 'Logging...') : t('nutrition.logFood')}
           </button>
@@ -1268,7 +1268,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
             <p className="text-[12px] mb-5" style={{ color: 'var(--color-text-muted)', fontFamily: TU.display }}>{error}</p>
             <button onClick={onClose}
               className="px-6 py-2.5 rounded-[14px] text-[13px] font-bold active:scale-95 transition-transform"
-              style={{ background: TU.accent, color: '#001512', fontFamily: TU.display, letterSpacing: -0.1 }}>
+              style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)', fontFamily: TU.display, letterSpacing: -0.1 }}>
               {t('nutrition.tryAgain', 'Try again')}
             </button>
           </div>
@@ -1597,7 +1597,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
           {editing && (
             <button onClick={handleSave} disabled={saving}
               className="w-full py-[16px] rounded-[16px] font-bold text-[14px] active:scale-[0.97] transition-all disabled:opacity-40 mb-3"
-              style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)', color: '#000', boxShadow: '0 4px 16px color-mix(in srgb, var(--color-accent) 20%, transparent), inset 0 1px 0 rgba(255,255,255,0.2)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)', color: 'var(--color-text-on-accent, #000)', boxShadow: '0 4px 16px color-mix(in srgb, var(--color-accent) 20%, transparent), inset 0 1px 0 rgba(255,255,255,0.2)' }}>
               {saving ? t('nutrition.saving') : t('nutrition.saveChanges', 'Save Changes')}
             </button>
           )}
@@ -1769,7 +1769,7 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
         <div className="px-5 pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)', paddingBottom: 'max(28px, calc(var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12px))' }}>
           <button onClick={onSave} disabled={saving}
             className="w-full py-[16px] rounded-[14px] font-bold text-[15px] active:scale-[0.97] transition-all disabled:opacity-40"
-            style={{ background: TU.accent, color: '#001512', fontFamily: TU.display, letterSpacing: -0.2 }}>
+            style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)', fontFamily: TU.display, letterSpacing: -0.2 }}>
             {saving ? t('nutrition.saving') : t('nutrition.saveGoals', 'Save goals')}
           </button>
         </div>
@@ -1844,6 +1844,9 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
     const suggestions = suggestMeals({
       targets: { calories: Math.max(remaining.calories, 100), protein: Math.max(remaining.protein, 10), carbs: Math.max(remaining.carbs, 10), fat: Math.max(remaining.fat, 5) },
       consumed: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      // Replacements must fit the slot being replaced — swapping out the
+      // breakfast suggests breakfasts, not salmon.
+      mealType: meals[idx]?.slot || ['breakfast', 'lunch', 'dinner'][idx] || null,
       excludeIds: otherIds,
       lang,
     });
@@ -2541,8 +2544,11 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
       if (!newPlan[date]) newPlan[date] = {};
       const dayMeals = weekPlan[i]?.meals || [];
       PLANNER_SLOT_KEYS.forEach((slot, si) => {
-        if (!newPlan[date][slot] && dayMeals[si]) {
-          newPlan[date][slot] = dayMeals[si];
+        // Prefer the meal the generator tagged for this slot; index fallback
+        // for safety. Keeps breakfast dishes in the breakfast row.
+        const match = dayMeals.find(m => m?.slot === slot) || dayMeals[si];
+        if (!newPlan[date][slot] && match) {
+          newPlan[date][slot] = match;
         }
       });
     });
@@ -2595,7 +2601,9 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
       carbs: Math.max(macroTargets.carbs - planned.carbs, 10),
       fat: Math.max(macroTargets.fat - planned.fat, 5),
     };
-    const fillPlan = generateDayPlan({ targets: remainingTargets, slots: emptySlots.length, excludeIds: usedIds });
+    // slotTypes: the NAMED empty slots — an empty breakfast gets a breakfast
+    // dish, an empty dinner gets a dinner-appropriate one.
+    const fillPlan = generateDayPlan({ targets: remainingTargets, slots: emptySlots.length, slotTypes: emptySlots, excludeIds: usedIds });
     const newPlan = { ...plan };
     if (!newPlan[date]) newPlan[date] = {};
     emptySlots.forEach((slot, i) => {
@@ -3044,7 +3052,7 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
                         <span className="text-[13px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{m.label}</span>
                       </div>
                       <span className="flex-shrink-0 whitespace-nowrap" style={{ fontFamily: TU.display, fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                        {m.value}<span style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}> / {m.goal}g avg</span>
+                        {m.value}<span style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}> / {t('nutrition.gAvg', { n: m.goal, defaultValue: '{{n}}g avg' })}</span>
                       </span>
                     </div>
                     <div className="rounded-full overflow-hidden" style={{ height: 5, background: 'var(--color-border-subtle)' }}>
@@ -3225,7 +3233,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
       <div className="grid grid-cols-3 gap-2 px-4 pt-1 pb-4">
         <button onClick={() => setShowPlanner(true)}
           className="flex items-center justify-center gap-1.5 py-3 rounded-[14px] text-[13px] font-bold active:scale-95 transition-all"
-          style={{ background: TU.accent, color: '#001512', letterSpacing: -0.1 }}>
+          style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)', letterSpacing: -0.1 }}>
           <Calendar size={15} />
           {t('nutrition.myPlan', 'My Plan')}
         </button>
@@ -3785,7 +3793,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}>
@@ -3803,7 +3811,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                       className="px-3.5 py-[7px] rounded-[10px] text-[12.5px] font-medium flex-shrink-0 transition-all active:scale-95"
                       style={{
                         background: activeCategory === cat ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                        color: activeCategory === cat ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                        color: activeCategory === cat ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                         border: `1px solid ${activeCategory === cat ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                         fontWeight: activeCategory === cat ? 700 : 500,
                       }}>
@@ -4355,7 +4363,7 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
                       border: g.checked ? 'none' : '1.5px solid var(--color-border-subtle)',
                     }}
                     aria-label={g.checked ? t('nutrition.uncheckItem', 'Uncheck item') : t('nutrition.checkItem', 'Check item')}>
-                    {g.checked && <Check size={14} className="text-white" strokeWidth={3} />}
+                    {g.checked && <Check size={14} className="text-[var(--color-text-on-accent,#fff)]" strokeWidth={3} />}
                   </button>
                   <div className="flex-1 min-w-0">
                     <p className="text-[15px] font-medium truncate" style={{
@@ -4670,7 +4678,15 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
           const mealP = meal.protein || mealData.protein || 0;
           const mealC = meal.carbs || mealData.carbs || 0;
           const mealF = meal.fat || mealData.fat || 0;
-          const slot = SLOT_LABELS[mi] || SLOT_LABELS[3];
+          // Label from the meal's own slot tag (set by the generator). Legacy
+          // plans without tags fall back by position — 3-meal days are
+          // breakfast/lunch/DINNER (the old 4-label array called a 3-meal
+          // day's dinner a "snack").
+          const slotKey = meal.slot
+            || (dayMeals.length <= 3
+              ? ['breakfast', 'lunch', 'dinner'][mi]
+              : ['breakfast', 'lunch', 'snack', 'dinner'][mi]);
+          const slot = slotKey ? t(`nutrition.meals.${slotKey}`) : SLOT_LABELS[3];
           const isEaten = !!meal.eaten;
 
           const recipeForMeal = RECIPES.find(r => r.id === meal.id) || mealData;
@@ -5102,6 +5118,7 @@ export default function Nutrition({ embedded = false }) {
       setPhotoPreview(pendingThumb || null);
       (async () => {
         try {
+          await ensureFreshSession();
           const { data, error: fnError } = await withTimeout(
             supabase.functions.invoke('analyze-food-photo', {
               body: { image: pendingB64, language: i18n.language },
@@ -5120,7 +5137,7 @@ export default function Nutrition({ embedded = false }) {
           if (!result.items?.length) throw new Error(t('nutrition.errorCouldNotIdentify', 'Could not identify food items'));
           setPhotoResult(result);
         } catch (err) {
-          setPhotoError(err.message || t('nutrition.errorAnalyzeFailed', 'Failed to analyze food photo. Please try again.'));
+          setPhotoError(isSessionError(err) ? t('nutrition.sessionExpired', 'Please sign in again to continue.') : (err.message || t('nutrition.errorAnalyzeFailed', 'Failed to analyze food photo. Please try again.')));
         } finally {
           setPhotoAnalyzing(false);
         }
@@ -5633,6 +5650,7 @@ export default function Nutrition({ embedded = false }) {
         r.readAsDataURL(compressed);
       });
 
+      await ensureFreshSession();
       const { data, error: fnError } = await withTimeout(
         supabase.functions.invoke('analyze-menu-photo', {
           body: { imageBase64: base64, language: i18n.language },
@@ -5661,7 +5679,7 @@ export default function Nutrition({ embedded = false }) {
       });
     } catch (err) {
       console.error('[captureFrameForMenu] failed:', err);
-      setMenuError(err.message || t('nutrition.menuScan.errorGeneric', 'Failed to analyze menu.'));
+      setMenuError(isSessionError(err) ? t('nutrition.sessionExpired', 'Please sign in again to continue.') : (err.message || t('nutrition.menuScan.errorGeneric', 'Failed to analyze menu.')));
     } finally {
       setMenuAnalyzing(false);
     }
@@ -5844,6 +5862,7 @@ export default function Nutrition({ embedded = false }) {
       } catch {}
 
       // Call edge function (40s client-side cap so a hung request doesn't strand the spinner)
+      await ensureFreshSession();
       const { data, error: fnError } = await withTimeout(
         supabase.functions.invoke('analyze-food-photo', {
           body: { image: base64, language: i18n.language },
@@ -5871,7 +5890,7 @@ export default function Nutrition({ embedded = false }) {
         localStorage.removeItem('_pendingFoodTimestamp');
       } catch {}
     } catch (err) {
-      setPhotoError(err.message || t('nutrition.errorAnalyzeFailed', 'Failed to analyze food photo. Please try again.'));
+      setPhotoError(isSessionError(err) ? t('nutrition.sessionExpired', 'Please sign in again to continue.') : (err.message || t('nutrition.errorAnalyzeFailed', 'Failed to analyze food photo. Please try again.')));
       try {
         localStorage.removeItem('_pendingFoodBase64');
         localStorage.removeItem('_pendingFoodThumb');
@@ -6225,7 +6244,7 @@ export default function Nutrition({ embedded = false }) {
             aria-label={t('nutrition.scanFood', 'Scan food')}
             data-tour="tour-nutrition-scan"
           >
-            <ScanLine size={24} style={{ color: '#001512' }} strokeWidth={2.2} />
+            <ScanLine size={24} style={{ color: 'var(--color-text-on-accent, #001512)' }} strokeWidth={2.2} />
           </button>,
           document.body
         )}
@@ -6495,7 +6514,7 @@ export default function Nutrition({ embedded = false }) {
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[12px] font-bold transition-all active:scale-95"
                 style={{
                   background: scanMode === 'barcode' ? TU.accent : 'transparent',
-                  color: scanMode === 'barcode' ? '#001512' : 'var(--color-text-muted)',
+                  color: scanMode === 'barcode' ? 'var(--color-text-on-accent, #001512)' : 'var(--color-text-muted)',
                   border: 'none', cursor: 'pointer',
                   fontFamily: TU.display, letterSpacing: -0.1,
                 }}
@@ -6732,7 +6751,7 @@ export default function Nutrition({ embedded = false }) {
             <AlertCircle size={36} className="mx-auto mb-3" style={{ color: 'var(--color-danger, #EF4444)' }} />
             <p className="text-[14px] mb-4" style={{ color: 'var(--color-text-primary)' }}>{barcodeError}</p>
             <button onClick={closeBarcodeScanner} className="px-6 py-2.5 rounded-[14px] font-bold text-[14px] active:scale-95"
-              style={{ background: TU.accent, color: '#001512' }}>OK</button>
+              style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)' }}>OK</button>
           </div>
         </div>
       )}
@@ -6778,7 +6797,7 @@ export default function Nutrition({ embedded = false }) {
             <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{menuError}</p>
             <button onClick={() => setMenuError('')}
               className="mt-1 px-5 py-2.5 rounded-[12px] font-bold text-[14px] active:scale-95"
-              style={{ background: TU.accent, color: '#001512', border: 'none', cursor: 'pointer' }}>
+              style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)', border: 'none', cursor: 'pointer' }}>
               {t('nutrition.ok', 'OK')}
             </button>
           </div>

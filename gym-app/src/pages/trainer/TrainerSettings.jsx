@@ -103,7 +103,7 @@ export default function TrainerSettings() {
           onClick={() => navigate(-1)}
           size={36}
         >
-          <ChevronLeft size={18} color={TT.text} />
+          <ChevronLeft size={18} style={{ color: TT.text }} />
         </TIconButton>
         <div style={{ flex: 1, minWidth: 0 }}>
           <TEyebrow>{t('pages:trainerSettings.eyebrow', 'Account')}</TEyebrow>

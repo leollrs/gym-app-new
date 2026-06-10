@@ -135,10 +135,10 @@ const WarmUp = ({ onComplete, onSkip }) => {
             onClick={handlePlayPause}
             disabled={timeLeft === 0}
             className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-40"
-            style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
             aria-label={isRunning ? 'Pause' : 'Play'}
           >
-            {isRunning ? <Pause size={24} fill="#000" strokeWidth={0} /> : <Play size={24} fill="#000" strokeWidth={0} />}
+            {isRunning ? <Pause size={24} fill="currentColor" strokeWidth={0} /> : <Play size={24} fill="currentColor" strokeWidth={0} />}
           </button>
           <button
             onClick={handleSkipMovement}
@@ -189,7 +189,7 @@ const WarmUp = ({ onComplete, onSkip }) => {
           className="w-full py-4 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{
             backgroundColor: allDone ? 'var(--color-accent)' : 'var(--color-bg-card)',
-            color: allDone ? '#000' : 'var(--color-text-primary)',
+            color: allDone ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-primary)',
             border: allDone ? 'none' : '1px solid var(--color-border-default)',
           }}
         >

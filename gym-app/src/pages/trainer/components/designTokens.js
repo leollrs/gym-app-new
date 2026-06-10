@@ -3,36 +3,45 @@
 // branding; trainer side has its own visual identity (warm cream + teal).
 
 export const TT = {
-  bg:           '#f0eee9',
-  bgElev:       '#faf8f3',
-  surface:      '#ffffff',
-  surface2:     '#f7f5f0',
-  surfaceDk:    '#0E1316',
+  // ── Chrome — THEME-AWARE via --tt-* CSS vars (light in :root, dark in
+  //    html.dark; see index.css). The trainer side now follows the app's
+  //    dark/light toggle. These resolve fine in inline `style` / className,
+  //    but NOT in raw SVG/lucide attributes (var() doesn't resolve there) —
+  //    use the fixed hues below for `stroke=`/`fill=`/lucide `color=`. ──
+  bg:           'var(--tt-bg)',
+  bgElev:       'var(--tt-bg-elev)',
+  surface:      'var(--tt-surface)',
+  surface2:     'var(--tt-surface-2)',
+  border:       'var(--tt-border)',
+  borderSolid:  'var(--tt-border-solid)',
+  borderStrong: 'var(--tt-border-strong)',
+  text:         'var(--tt-text)',
+  textSub:      'var(--tt-text-sub)',
+  onInverse:    'var(--tt-on-inverse)',   // on a TT.text-colored button: white (light) / near-black (dark)
+  accentSoft:   'var(--tt-accent-soft)',
+  accentInk:    'var(--tt-accent-ink)',
+  hotSoft:      'var(--tt-hot-soft)',
+  warnSoft:     'var(--tt-warn-soft)',
+  warnInk:      'var(--tt-warn-ink)',
+  goodSoft:     'var(--tt-good-soft)',
+  goodInk:      'var(--tt-good-ink)',
+  coachSoft:    'var(--tt-coach-soft)',
+  shadow:       'var(--tt-shadow)',
+  shadowLg:     'var(--tt-shadow-lg)',
+
+  // ── Fixed hues — identical in BOTH themes (legible on light AND dark) and
+  //    safe inside SVG/lucide attributes + hex-alpha concat (`${TT.accent}25`).
+  surfaceDk:    '#0E1316',   // intentionally-dark hero block (THeroDark), both themes
   surfaceDk2:   '#161C20',
-  border:       'rgba(15,20,25,0.07)',
-  borderSolid:  '#e8e4db',
-  borderStrong: 'rgba(15,20,25,0.14)',
-  text:         '#0B0F12',
   textInv:      '#F5F2EC',
-  textSub:      '#5A6570',
-  textMute:     '#96A0AA',
+  textMute:     '#96A0AA',   // mid-grey — chart axes / icon strokes
   textFaint:    '#b8bec5',
   accent:       '#19B8B8',
   accentDark:   '#0F9E9E',
-  accentSoft:   '#D9F1F1',
-  accentInk:    '#08585A',
   hot:          '#FF5A2E',
-  hotSoft:      '#FFE3D6',
   warn:         '#E8A93A',
-  warnSoft:     '#FBEED4',
-  warnInk:      '#9A6C10',
   coach:        '#6D5FDB',
-  coachSoft:    '#EDEAFB',
   good:         '#2FA66B',
-  goodSoft:     '#DFF1E6',
-  goodInk:      '#1E7A4E',
-  shadow:       '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)',
-  shadowLg:     '0 2px 4px rgba(15,20,25,0.05), 0 16px 40px rgba(15,20,25,0.08)',
 };
 
 export const TFont = {

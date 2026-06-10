@@ -14,6 +14,7 @@ import {
   getClientCheckins, createCheckinTemplate, assignCheckin,
   getClientHabits, createHabitForClient, deactivateHabit,
 } from '../../../lib/coaching';
+import { TT } from './designTokens';
 
 const newId = () => (globalThis.crypto?.randomUUID?.() || `q_${Math.random().toString(36).slice(2)}`);
 
@@ -106,8 +107,8 @@ export default function TrainerClientCoaching({ clientId, gymId, trainerId }) {
     if (!respByTemplate.has(r.template_id)) respByTemplate.set(r.template_id, r); // latest (already desc)
   }
 
-  const inputStyle = { width: '100%', padding: '9px 11px', borderRadius: 9, border: '1px solid var(--color-border-subtle)', background: 'var(--color-surface-hover, transparent)', color: 'var(--color-text-primary)', fontSize: 13 };
-  const sectionTitle = { fontSize: 12, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--color-text-muted)', margin: '4px 0 10px' };
+  const inputStyle = { width: '100%', padding: '9px 11px', borderRadius: 9, border: `1px solid ${TT.borderSolid}`, background: TT.surface2, color: TT.text, fontSize: 13 };
+  const sectionTitle = { fontSize: 12, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: TT.textMute, margin: '4px 0 10px' };
 
   return (
     <div style={{ padding: '4px 2px 24px' }}>
@@ -115,7 +116,7 @@ export default function TrainerClientCoaching({ clientId, gymId, trainerId }) {
       <div style={sectionTitle}>{t('trainerCoaching.checkinsTitle', { defaultValue: 'Check-ins' })}</div>
 
       {checkins.templates.length === 0 && !building && (
-        <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: TT.textMute, marginBottom: 12 }}>
           {t('trainerCoaching.noCheckins', { defaultValue: 'No check-ins yet. Create one to track how this member is doing each week.' })}
         </div>
       )}
@@ -123,25 +124,25 @@ export default function TrainerClientCoaching({ clientId, gymId, trainerId }) {
       {checkins.templates.map((tpl) => {
         const latest = respByTemplate.get(tpl.id);
         return (
-          <div key={tpl.id} style={{ marginBottom: 10, padding: 12, borderRadius: 12, border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card, #fff)' }}>
+          <div key={tpl.id} style={{ marginBottom: 10, padding: 12, borderRadius: 12, border: `1px solid ${TT.border}`, background: TT.surface }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ClipboardList size={15} style={{ color: 'var(--color-accent)' }} />
-              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>{tpl.title}</span>
-              <span style={{ fontSize: 11, color: 'var(--color-text-muted)', marginLeft: 'auto' }}>{tpl.cadence}</span>
+              <ClipboardList size={15} style={{ color: TT.accent }} />
+              <span style={{ fontSize: 14, fontWeight: 700, color: TT.text }}>{tpl.title}</span>
+              <span style={{ fontSize: 11, color: TT.textMute, marginLeft: 'auto' }}>{tpl.cadence}</span>
             </div>
             {latest ? (
               <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {(tpl.questions || []).map((q) => latest.answers?.[q.id] !== undefined && latest.answers?.[q.id] !== '' ? (
-                  <span key={q.id} style={{ fontSize: 12, padding: '3px 8px', borderRadius: 8, background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-primary)' }}>
+                  <span key={q.id} style={{ fontSize: 12, padding: '3px 8px', borderRadius: 8, background: TT.surface2, color: TT.text }}>
                     <strong>{q.label}:</strong> {String(latest.answers[q.id])}{q.unit ? ` ${q.unit}` : ''}
                   </span>
                 ) : null)}
-                <span style={{ fontSize: 11, color: 'var(--color-text-muted)', width: '100%' }}>
+                <span style={{ fontSize: 11, color: TT.textMute, width: '100%' }}>
                   {t('trainerCoaching.lastResponse', { date: latest.period_start, defaultValue: `Week of ${latest.period_start}` })}
                 </span>
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 6 }}>
+              <div style={{ fontSize: 12, color: TT.textMute, marginTop: 6 }}>
                 {t('trainerCoaching.noResponseYet', { defaultValue: 'No response yet.' })}
               </div>
             )}
@@ -151,11 +152,11 @@ export default function TrainerClientCoaching({ clientId, gymId, trainerId }) {
 
       {!building ? (
         <button type="button" onClick={() => setBuilding(true)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, border: '1px dashed var(--color-border-subtle)', background: 'transparent', color: 'var(--color-accent)', fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 18 }}>
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, border: `1px dashed ${TT.border}`, background: 'transparent', color: TT.accent, fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 18 }}>
           <Plus size={15} /> {t('trainerCoaching.newCheckin', { defaultValue: 'New check-in' })}
         </button>
       ) : (
-        <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card, #fff)' }}>
+        <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, border: `1px solid ${TT.border}`, background: TT.surface }}>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('trainerCoaching.titlePlaceholder', { defaultValue: 'Title (e.g. Weekly check-in)' })} style={{ ...inputStyle, marginBottom: 8 }} />
           <select value={cadence} onChange={(e) => setCadence(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
             <option value="weekly">{t('trainerCoaching.weekly', { defaultValue: 'Weekly' })}</option>
@@ -163,30 +164,30 @@ export default function TrainerClientCoaching({ clientId, gymId, trainerId }) {
             <option value="monthly">{t('trainerCoaching.monthly', { defaultValue: 'Monthly' })}</option>
           </select>
 
-          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 6 }}>{t('trainerCoaching.addQuestions', { defaultValue: 'Add questions' })}</div>
+          <div style={{ fontSize: 11, color: TT.textMute, marginBottom: 6 }}>{t('trainerCoaching.addQuestions', { defaultValue: 'Add questions' })}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
             {PRESETS.map((p) => (
               <button key={p.key} type="button" onClick={() => addPreset(p)}
-                style={{ fontSize: 12, padding: '5px 10px', borderRadius: 999, border: '1px solid var(--color-border-subtle)', background: 'transparent', color: 'var(--color-text-primary)', cursor: 'pointer' }}>
+                style={{ fontSize: 12, padding: '5px 10px', borderRadius: 999, border: `1px solid ${TT.border}`, background: 'transparent', color: TT.text, cursor: 'pointer' }}>
                 + {t(`trainerCoaching.preset.${p.key}`, { defaultValue: p.label })}
               </button>
             ))}
           </div>
 
           {questions.map((q) => (
-            <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 13, color: 'var(--color-text-primary)' }}>
-              <span style={{ flex: 1 }}>{q.label} <span style={{ color: 'var(--color-text-muted)' }}>· {q.type}{q.unit ? ` (${q.unit})` : ''}</span></span>
-              <button type="button" onClick={() => removeQuestion(q.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-muted)' }}><Trash2 size={15} /></button>
+            <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 13, color: TT.text }}>
+              <span style={{ flex: 1 }}>{q.label} <span style={{ color: TT.textMute }}>· {q.type}{q.unit ? ` (${q.unit})` : ''}</span></span>
+              <button type="button" onClick={() => removeQuestion(q.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: TT.textMute }}><Trash2 size={15} /></button>
             </div>
           ))}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button type="button" onClick={handleSaveTemplate} disabled={savingTpl}
-              style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: 'var(--color-accent)', color: '#fff', fontWeight: 800, fontSize: 13, cursor: savingTpl ? 'default' : 'pointer', opacity: savingTpl ? 0.6 : 1 }}>
+              style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: TT.accent, color: '#06363B', fontWeight: 800, fontSize: 13, cursor: savingTpl ? 'default' : 'pointer', opacity: savingTpl ? 0.6 : 1 }}>
               {savingTpl ? t('trainerCoaching.saving', { defaultValue: 'Saving…' }) : t('trainerCoaching.saveAssign', { defaultValue: 'Save & assign' })}
             </button>
             <button type="button" onClick={() => { setBuilding(false); setQuestions([]); setTitle(''); }}
-              style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid var(--color-border-subtle)', background: 'transparent', color: 'var(--color-text-muted)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+              style={{ padding: '10px 16px', borderRadius: 10, border: `1px solid ${TT.border}`, background: 'transparent', color: TT.textMute, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
               {t('trainerCoaching.cancel', { defaultValue: 'Cancel' })}
             </button>
           </div>
@@ -197,19 +198,19 @@ export default function TrainerClientCoaching({ clientId, gymId, trainerId }) {
       <div style={sectionTitle}>{t('trainerCoaching.habitsTitle', { defaultValue: 'Habits' })}</div>
 
       {habits.map((h) => (
-        <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: '10px 12px', borderRadius: 11, border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card, #fff)' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', flex: 1 }}>{h.name}</span>
-          <span style={{ fontSize: 12, color: 'var(--color-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: '10px 12px', borderRadius: 11, border: `1px solid ${TT.border}`, background: TT.surface }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: TT.text, flex: 1 }}>{h.name}</span>
+          <span style={{ fontSize: 12, color: TT.textMute, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Flame size={12} />{h.recentCount}{h.target_per_week ? ` · ${t('trainerCoaching.perWeek', { count: h.target_per_week, defaultValue: `${h.target_per_week}/wk` })}` : ''}
           </span>
-          <button type="button" onClick={() => handleRemoveHabit(h.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-muted)' }}><Trash2 size={15} /></button>
+          <button type="button" onClick={() => handleRemoveHabit(h.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: TT.textMute }}><Trash2 size={15} /></button>
         </div>
       ))}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '6px 0 8px' }}>
         {HABIT_PRESETS.map((p) => (
           <button key={p} type="button" onClick={() => setHabitName(p)}
-            style={{ fontSize: 12, padding: '5px 10px', borderRadius: 999, border: '1px solid var(--color-border-subtle)', background: 'transparent', color: 'var(--color-text-primary)', cursor: 'pointer' }}>
+            style={{ fontSize: 12, padding: '5px 10px', borderRadius: 999, border: `1px solid ${TT.border}`, background: 'transparent', color: TT.text, cursor: 'pointer' }}>
             + {p}
           </button>
         ))}
@@ -220,7 +221,7 @@ export default function TrainerClientCoaching({ clientId, gymId, trainerId }) {
           {[3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>{n}/wk</option>)}
         </select>
         <button type="button" onClick={handleAddHabit}
-          style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: 'var(--color-accent)', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
+          style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: TT.accent, color: '#06363B', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
           {t('trainerCoaching.add', { defaultValue: 'Add' })}
         </button>
       </div>

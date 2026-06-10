@@ -10,6 +10,35 @@ import {
 const CALORIE_TOLERANCE = 0.10; // ±10%
 const MACRO_TOLERANCE = 0.15; // ±15% for protein/carbs/fat
 
+// ── Meal-time slots ──────────────────────────────────────────────────────────
+// The catalog has ONE time-of-day category: 'breakfast' (35 meals) — the rest
+// are program categories (high_protein, fat_loss, …). Generation used to be
+// type-blind, which produced "smoked salmon with broccoli" in the 7am slot.
+// Slot rules:
+//   breakfast → breakfast-category dishes only
+//   lunch/dinner → anything EXCEPT breakfast dishes
+//   snack → light + fast (≤400 kcal, ≤15 min prep), any category
+export function slotTypesFor(slots) {
+  if (slots === 1) return ['lunch'];
+  if (slots === 2) return ['lunch', 'dinner'];
+  if (slots === 3) return ['breakfast', 'lunch', 'dinner'];
+  if (slots === 4) return ['breakfast', 'lunch', 'snack', 'dinner'];
+  // 5+: extra snacks between lunch and dinner
+  return ['breakfast', 'lunch', ...Array(slots - 3).fill('snack'), 'dinner'];
+}
+
+export function mealFitsSlot(meal, slotKey) {
+  if (!slotKey) return true;
+  if (slotKey === 'breakfast') return meal.category === 'breakfast';
+  if (slotKey === 'snack') return (meal.calories || 0) <= 400 && (meal.prepTime || 99) <= 15;
+  // lunch / dinner: any real meal that isn't a breakfast dish
+  return meal.category !== 'breakfast';
+}
+
+// Realistic calorie distribution across the day (normalized over the slots
+// actually present, so totals still hit the daily target).
+const SLOT_SHARE = { breakfast: 0.28, lunch: 0.34, dinner: 0.38, snack: 0.14 };
+
 /**
  * Get the filtered meal pool based on user restrictions.
  * This is the single entry point — all functions use this.
@@ -80,8 +109,11 @@ export function suggestMeals({
 
   const pool = getFilteredMeals({ allergies, restrictions, excludeIds });
 
+  // Slot-aware: only meals that fit the requested meal time. (The old check
+  // compared against `category`, which only ever matched 'breakfast' — lunch/
+  // dinner/snack requests silently returned nothing.)
   return pool
-    .filter(m => !mealType || m.category === mealType || !m.category)
+    .filter(m => mealFitsSlot(m, mealType))
     .map(meal => {
       const macroScore = scoreMeal(meal, remaining);
       const isFavorite = favorites.includes(meal.id);
@@ -113,7 +145,7 @@ export function suggestMeals({
  * @returns object with meals array, totals, fits boolean, and accuracy percentages
  */
 export function generateDayPlan({
-  targets, slots = 3, excludeIds = [], favorites = [], recentMealIds = [],
+  targets, slots = 3, slotTypes = null, excludeIds = [], favorites = [], recentMealIds = [],
   allergies = [], restrictions = [], affinities = {}, planMealsSoFar = [],
 }) {
   excludeIds = Array.isArray(excludeIds) ? excludeIds : [...(excludeIds || [])];
@@ -122,11 +154,19 @@ export function generateDayPlan({
 
   const available = getFilteredMeals({ allergies, restrictions, excludeIds });
 
+  // One meal-time key per slot — callers with named slots (the weekly planner
+  // filling only "dinner", a trainer swapping a "snack") pass slotTypes
+  // explicitly; everyone else gets the standard day shape.
+  const types = (Array.isArray(slotTypes) && slotTypes.length === slots)
+    ? slotTypes
+    : slotTypesFor(slots);
+
   const plan = [];
   const used = new Set();
   let totalCal = 0, totalP = 0, totalC = 0, totalF = 0;
 
   for (let slot = 0; slot < slots; slot++) {
+    const slotKey = types[slot] || null;
     const remaining = {
       calories: targets.calories - totalCal,
       protein: targets.protein - totalP,
@@ -134,11 +174,17 @@ export function generateDayPlan({
       fat: targets.fat - totalF,
     };
 
+    // Weight the remaining budget by realistic meal-time shares (breakfast
+    // lighter, dinner heavier) instead of an equal split — normalized over
+    // the slots still to fill so the day total stays on target.
+    const remainingKeys = types.slice(slot);
     const slotsLeft = slots - slot;
-    const idealCal = remaining.calories / slotsLeft;
-    const idealP = remaining.protein / slotsLeft;
-    const idealC = remaining.carbs / slotsLeft;
-    const idealF = remaining.fat / slotsLeft;
+    const shareSum = remainingKeys.reduce((s, k) => s + (SLOT_SHARE[k] || 1 / slots), 0);
+    const myShare = shareSum > 0 ? (SLOT_SHARE[slotKey] || 1 / slots) / shareSum : 1 / slotsLeft;
+    const idealCal = remaining.calories * myShare;
+    const idealP = remaining.protein * myShare;
+    const idealC = remaining.carbs * myShare;
+    const idealF = remaining.fat * myShare;
 
     // Score candidates for this slot. `recentMealIds` is now enforced for ALL
     // slots (was previously only slots 0-1), with a graceful fallback below if
@@ -165,7 +211,12 @@ export function generateDayPlan({
     };
 
     const baseUnused = available.filter(m => !used.has(m.id));
-    let candidates = baseUnused
+    // Slot-appropriate pool first — breakfast dishes at breakfast, no salmon
+    // at 7am. Degrade gracefully if filters empty the pool (tiny catalogs
+    // after heavy allergy/restriction filtering).
+    const slotPool = baseUnused.filter(m => mealFitsSlot(m, slotKey));
+    const pool = slotPool.length > 0 ? slotPool : baseUnused;
+    let candidates = pool
       .filter(m => !recentSet.has(m.id))
       .map(m => ({ meal: m, score: scoreOf(m) }))
       .sort((a, b) => b.score - a.score);
@@ -173,7 +224,7 @@ export function generateDayPlan({
     // Fallback: if the strict (non-recent) pool is empty, allow recent meals
     // back in rather than producing an empty slot.
     if (candidates.length === 0) {
-      candidates = baseUnused
+      candidates = pool
         .map(m => ({ meal: m, score: scoreOf(m) }))
         .sort((a, b) => b.score - a.score);
     }
@@ -186,7 +237,9 @@ export function generateDayPlan({
       const TOP_N = Math.min(8, candidates.length);
       const idx = Math.floor(Math.random() * TOP_N);
       const pick = candidates[idx].meal;
-      plan.push(pick);
+      // Tag the pick with its meal-time so every consumer (member plan view,
+      // onboarding preview, trainer plans) labels it from DATA, not index.
+      plan.push({ ...pick, slot: slotKey });
       used.add(pick.id);
       totalCal += pick.calories || 0;
       totalP += pick.protein || 0;
@@ -219,7 +272,7 @@ export function generateDayPlan({
  * No meal repeats within 3 days.
  */
 export function generateWeekPlan({
-  targets, favorites = [], allergies = [], restrictions = [], affinities = {}, lang = 'en',
+  targets, slots = 3, favorites = [], allergies = [], restrictions = [], affinities = {}, lang = 'en',
 }) {
   favorites = Array.isArray(favorites) ? favorites : [...(favorites || [])];
   const days = [];
@@ -229,7 +282,7 @@ export function generateWeekPlan({
   for (let d = 0; d < 7; d++) {
     const dayPlan = generateDayPlan({
       targets,
-      slots: 3,
+      slots,
       excludeIds: [],
       favorites,
       // Penalize ALL meals already used earlier in the week so days don't

@@ -14,6 +14,7 @@ import { X, Image as ImageIcon, Camera as CameraIcon } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from '../../lib/supabase';
+import { PROD_WEB_URL } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
 import ShareTplCardio from './ShareTplCardio';
@@ -94,7 +95,7 @@ const MsgIcon = () => (
   </svg>
 );
 const TuShareIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-on-accent, #fff)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2" />
     <circle cx="10" cy="7" r="4" />
     <path d="M18 8v6M21 11h-6" />
@@ -318,7 +319,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         // Fall through — some destinations (link, tu, native share text-only)
         // don't require the blob, so we keep going instead of aborting.
       }
-      const link = `https://tugympr.app/share/cardio/${data?.sessionId || 'run'}`;
+      const link = `${PROD_WEB_URL}/share/cardio/${data?.sessionId || 'run'}`;
       const text = caption?.trim() || 'TuGymPR';
       const full = `${text}\n${link}`;
 

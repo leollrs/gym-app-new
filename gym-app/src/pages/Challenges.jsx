@@ -19,6 +19,7 @@ import EmptyState from '../components/EmptyState';
 import { sanitize } from '../lib/sanitize';
 import { useToast } from '../contexts/ToastContext';
 import { DAILY_CHALLENGES, seededIndex } from '../lib/dailyChallenges';
+import posthogClient from 'posthog-js';
 
 // ── Design tokens ─────────────────────────────────────────
 const DISPLAY_FONT = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
@@ -46,18 +47,47 @@ const MEDAL = ['🥇', '🥈', '🥉'];
 
 // ── Countdown ──────────────────────────────────────────────
 const Countdown = ({ date, prefix }) => {
+  const { i18n } = useTranslation('pages');
+  const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
   const [label, setLabel] = useState('');
   useEffect(() => {
-    const tick = () => setLabel(formatDistanceToNow(new Date(date), { addSuffix: false }));
+    const tick = () => setLabel(formatDistanceToNow(new Date(date), { addSuffix: false, locale: dfLocale }));
     tick();
     const id = setInterval(tick, 30_000);
     return () => clearInterval(id);
-  }, [date]);
+  }, [date, dfLocale]);
   return (
     <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
       <Clock size={11} /> {prefix} {label}
     </span>
   );
+};
+
+// ── Member-safe profile resolution ──────────────────────────
+// profiles RLS (migration 0289) lets a regular member read ONLY their own
+// row (admins/trainers see everyone) — so a `profiles!inner(...)` join on
+// challenge_participants silently drops every other participant and the
+// lists render empty for real members, while looking fine for an admin
+// testing in member view. Names/avatars must come from
+// gym_member_profiles_safe: the owner-read, same-gym-bounded view built
+// for member-to-member display (0225/0289). Staff exclusion: 0493's
+// trigger forces leaderboard_visible=false on every staff account, so
+// filtering on it replaces the old `profiles.is_staff = false` join filter
+// — and additionally respects members who opted out of leaderboards.
+const fetchMemberProfiles = async (profileIds) => {
+  const ids = [...new Set((profileIds || []).filter(Boolean))];
+  const byId = new Map();
+  // Batch the IN() — 500 uuids in one GET would blow past URL length limits.
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await supabase
+      .from('gym_member_profiles_safe')
+      .select('id, full_name, username, avatar_url, leaderboard_visible')
+      .in('id', ids.slice(i, i + 100));
+    (data || []).forEach(p => {
+      if (p.leaderboard_visible !== false) byId.set(p.id, p);
+    });
+  }
+  return byId;
 };
 
 // ── Participant List (upcoming challenges only) ─────────────
@@ -66,16 +96,19 @@ const ParticipantList = ({ challengeId, t }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from('challenge_participants')
-      .select('profiles!inner(full_name)')
-      .eq('challenge_id', challengeId)
-      .eq('profiles.is_staff', false) // staff don't appear in challenge participant lists
-      .limit(100)
-      .then(({ data }) => {
-        setNames((data || []).map(p => p.profiles?.full_name).filter(Boolean));
-        setLoading(false);
-      });
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('challenge_participants')
+        .select('profile_id')
+        .eq('challenge_id', challengeId)
+        .limit(100);
+      const profs = await fetchMemberProfiles((data || []).map(p => p.profile_id));
+      if (cancelled) return;
+      setNames([...profs.values()].map(p => p.full_name || p.username).filter(Boolean));
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [challengeId]);
 
   if (loading) return (
@@ -131,17 +164,19 @@ const PastChallengeParticipants = ({ challenge, t }) => {
         // Participants with null/0 score and their profile info
         const { data } = await supabase
           .from('challenge_participants')
-          .select('profile_id, score, profiles!inner(full_name, username, avatar_url)')
+          .select('profile_id, score')
           .eq('challenge_id', challenge.id)
-          .eq('profiles.is_staff', false) // staff excluded from challenge rankings
           .order('joined_at', { ascending: true })
           .limit(500);
+        // Member-safe name resolution — see fetchMemberProfiles.
+        const profs = await fetchMemberProfiles((data || []).map(p => p.profile_id));
         if (cancelled) return;
-        const dnf = (data || []).filter(p => !p.score || Math.round(p.score) === 0);
+        const dnf = (data || []).filter(p =>
+          (!p.score || Math.round(p.score) === 0) && profs.has(p.profile_id));
         setRows(dnf.map(p => ({
           id: p.profile_id,
-          name: p.profiles?.full_name ?? p.profiles?.username ?? '—',
-          avatar: p.profiles?.avatar_url || null,
+          name: profs.get(p.profile_id)?.full_name ?? profs.get(p.profile_id)?.username ?? '—',
+          avatar: profs.get(p.profile_id)?.avatar_url || null,
           isTeam: false,
         })));
       }
@@ -394,18 +429,23 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
   const fetch = useCallback(async () => {
     const { data } = await supabase
       .from('challenge_participants')
-      .select('profile_id, score, profiles!inner(full_name)')
+      .select('profile_id, score')
       .eq('challenge_id', challenge.id)
-      .eq('profiles.is_staff', false) // staff don't appear in challenge rankings
       .order('score', { ascending: false })
       .limit(100);
 
+    // Names via the member-safe view — see fetchMemberProfiles. Participants
+    // whose profile isn't visible (staff / leaderboard-hidden) drop out, the
+    // same effect the old !inner join + is_staff filter had.
+    const profs = await fetchMemberProfiles((data || []).map(p => p.profile_id));
     setEntries(
-      (data || []).map(p => ({
-        id:    p.profile_id,
-        name:  p.profiles?.full_name ?? '—',
-        score: Math.round(p.score ?? 0),
-      }))
+      (data || [])
+        .filter(p => profs.has(p.profile_id))
+        .map(p => ({
+          id:    p.profile_id,
+          name:  profs.get(p.profile_id)?.full_name ?? profs.get(p.profile_id)?.username ?? '—',
+          score: Math.round(p.score ?? 0),
+        }))
     );
     setLoading(false);
   }, [challenge.id]);
@@ -668,14 +708,19 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t }) => {
   const fetch = useCallback(async () => {
     const { data } = await supabase
       .from('challenge_participants')
-      .select('profile_id, score, profiles!inner(full_name)')
+      .select('profile_id, score')
       .eq('challenge_id', challenge.id)
-      .eq('profiles.is_staff', false) // staff don't appear in challenge rankings
       .order('score', { ascending: false })
       .limit(100);
-    setEntries((data || []).map(p => ({
-      id: p.profile_id, name: p.profiles?.full_name ?? '—', score: Math.round(p.score ?? 0),
-    })));
+    // Member-safe name resolution — see fetchMemberProfiles.
+    const profs = await fetchMemberProfiles((data || []).map(p => p.profile_id));
+    setEntries((data || [])
+      .filter(p => profs.has(p.profile_id))
+      .map(p => ({
+        id: p.profile_id,
+        name: profs.get(p.profile_id)?.full_name ?? profs.get(p.profile_id)?.username ?? '—',
+        score: Math.round(p.score ?? 0),
+      })));
     setLoading(false);
   }, [challenge.id]);
 
@@ -834,6 +879,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
     // 2. Join as participant with team_id
     const { error: joinErr } = await supabase.from('challenge_participants')
       .insert({ challenge_id: challenge.id, profile_id: userId, gym_id: gymId, team_id: team.id, score: 0 });
+    posthogClient?.capture('challenge_team_created');
     if (joinErr) {
       showToast(t('challenges.team.joinError', { defaultValue: 'Failed to join team' }), 'error');
       setSaving(false);
@@ -844,15 +890,23 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
       const invites = selectedFriends.map(fId => ({
         team_id: team.id, inviter_id: userId, invitee_id: fId,
       }));
-      await supabase.from('challenge_team_invites').insert(invites);
-      // Send notifications
-      for (const fId of selectedFriends) {
-        sendNotification({
-          profileId: fId, gymId, type: 'challenge',
-          title: t('challenges.team.inviteTitle', 'Team Invite!'),
-          body: t('challenges.team.inviteBody', { team: teamName.trim(), challenge: challenge.name }),
-          dedupKey: `team_invite_${team.id}_${fId}`,
-        }).catch(() => {});
+      const { error: inviteErr } = await supabase.from('challenge_team_invites').insert(invites);
+      if (inviteErr) {
+        // Team + join already succeeded — surface the invite failure but
+        // don't abort the flow (and don't notify about invites that
+        // never landed).
+        console.error('[team invites] insert failed:', inviteErr);
+        showToast(t('challenges.team.inviteError', { defaultValue: 'Failed to send invites' }), 'error');
+      } else {
+        // Send notifications
+        for (const fId of selectedFriends) {
+          sendNotification({
+            profileId: fId, gymId, type: 'challenge',
+            title: t('challenges.team.inviteTitle', 'Team Invite!'),
+            body: t('challenges.team.inviteBody', { team: teamName.trim(), challenge: challenge.name }),
+            dedupKey: `team_invite_${team.id}_${fId}`,
+          }).catch(() => {});
+        }
       }
     }
     setSaving(false);
@@ -872,6 +926,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
     // Join as participant with that team
     const { error: participantErr } = await supabase.from('challenge_participants')
       .insert({ challenge_id: challenge.id, profile_id: userId, gym_id: gymId, team_id: invite.team_id, score: 0 });
+    posthogClient?.capture('challenge_team_joined');
     if (participantErr) {
       showToast(t('challenges.team.joinError', { defaultValue: 'Failed to join team' }), 'error');
       setSaving(false);
@@ -917,7 +972,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => handleAcceptInvite(inv)} disabled={saving}
-                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[var(--color-accent,#2EC4C4)] text-black disabled:opacity-50">
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[var(--color-accent,#2EC4C4)] text-[var(--color-text-on-accent,#000)] disabled:opacity-50">
                     {t('challenges.team.accept', 'Accept')}
                   </button>
                   <button type="button" onClick={() => handleDeclineInvite(inv)}
@@ -985,7 +1040,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                 {t('common.back', 'Back')}
               </button>
               <button type="button" onClick={handleCreateTeam} disabled={!teamName.trim() || saving}
-                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-black bg-[var(--color-accent,#2EC4C4)] disabled:opacity-50">
+                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-on-accent,#000)] bg-[var(--color-accent,#2EC4C4)] disabled:opacity-50">
                 {saving ? '...' : t('challenges.team.create', 'Create & Join')}
               </button>
             </div>
@@ -1447,7 +1502,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
               style={{
                 fontSize: 13, fontWeight: 800, padding: '8px 18px',
                 borderRadius: 12, background: 'var(--color-accent, #2EC4C4)',
-                color: '#000', border: 'none', cursor: 'pointer',
+                color: 'var(--color-text-on-accent, #000)', border: 'none', cursor: 'pointer',
               }}
             >
               {joining ? '...' : t('challenges.join')}
@@ -1821,7 +1876,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
                   type="button"
                   onClick={() => handleAccept(duel)}
                   disabled={processing === duel.id}
-                  className="flex-1 py-2.5 rounded-xl text-[12px] font-bold text-white transition-all min-h-[44px] flex items-center justify-center gap-1.5 disabled:opacity-60"
+                  className="flex-1 py-2.5 rounded-xl text-[12px] font-bold text-[var(--color-text-on-accent,#fff)] transition-all min-h-[44px] flex items-center justify-center gap-1.5 disabled:opacity-60"
                   style={{ background: 'var(--color-accent)' }}
                 >
                   <CheckCircle2 size={13} /> {t('challenges.friendDuels.accept')}
@@ -1940,6 +1995,7 @@ export default function Challenges({ embedded = false }) {
   const { t, i18n } = useTranslation('pages');
   const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
   const { profile, user } = useAuth();
+  const { showToast } = useToast();
   const posthog = usePostHog();
   const chalCacheKey = `challenges-${profile?.gym_id}`;
   const [challenges, setChallenges]       = useCachedState(chalCacheKey, []);
@@ -2037,6 +2093,11 @@ export default function Challenges({ embedded = false }) {
           `Joined a challenge (${challengeId})`,
         ).catch(() => {});
       }
+    } else {
+      // Don't let a failed insert silently no-op — the button would just
+      // look dead. Raw DB errors are logged, never rendered.
+      console.error('[challenge join] failed:', error);
+      showToast(t('common:somethingWentWrong'), 'error');
     }
   };
 
@@ -2050,11 +2111,33 @@ export default function Challenges({ embedded = false }) {
     if (!error) {
       posthog?.capture('challenge_left', { challenge_name: challenge?.name });
       setParticipants(prev => prev.filter(p => !(p.challenge_id === challengeId && p.profile_id === user.id)));
+    } else {
+      console.error('[challenge leave] failed:', error);
+      showToast(t('common:somethingWentWrong'), 'error');
     }
   };
 
   const myJoinedIds = new Set(participants.filter(p => p.profile_id === user?.id).map(p => p.challenge_id));
+
+  // Card counts must obey the SAME visibility rules as the participant lists
+  // (staff + leaderboard-hidden members are excluded there) — otherwise the
+  // card says "2 joined" while the opened list shows 1 because a staff test
+  // account had joined. null = not yet resolved → count raw to avoid a 0
+  // flash; the resolved set corrects it a beat later. myJoinedIds above
+  // stays RAW on purpose: a staff account's own join state must still work.
+  const [visibleParticipantIds, setVisibleParticipantIds] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const ids = [...new Set(participants.map(p => p.profile_id))];
+    if (ids.length === 0) { setVisibleParticipantIds(new Set()); return undefined; }
+    fetchMemberProfiles(ids).then(profs => {
+      if (!cancelled) setVisibleParticipantIds(new Set(profs.keys()));
+    });
+    return () => { cancelled = true; };
+  }, [participants]);
+
   const countMap = participants.reduce((acc, p) => {
+    if (visibleParticipantIds && !visibleParticipantIds.has(p.profile_id)) return acc;
     acc[p.challenge_id] = (acc[p.challenge_id] ?? 0) + 1;
     return acc;
   }, {});
@@ -2115,7 +2198,7 @@ export default function Challenges({ embedded = false }) {
                   fontWeight: 700,
                   border: isActive ? 'none' : '1px solid var(--color-border-subtle, var(--color-border))',
                   background: isActive ? 'var(--color-accent, #2EC4C4)' : 'transparent',
-                  color: isActive ? '#000' : 'var(--color-text-muted)',
+                  color: isActive ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
                 }}

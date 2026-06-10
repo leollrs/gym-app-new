@@ -6,6 +6,7 @@ import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import UserAvatar from '../../../components/UserAvatar';
 import EmptyState from '../../../components/EmptyState';
 import UnderlineTabs from '../../../components/UnderlineTabs';
+import { TT } from './designTokens';
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 const ACTION_WIDTH = 80; // px per action button (Archive / Delete / Block)
@@ -165,15 +166,15 @@ function SwipeRow({ lang,
         dragElastic={0.04}
         onDragStart={() => { draggingRef.current = true; }}
         onDragEnd={handleDragEnd}
-        style={{ x, position: 'relative', background: 'var(--color-bg-primary)', touchAction: 'pan-y' }}
+        style={{ x, position: 'relative', background: TT.bg, touchAction: 'pan-y' }}
       >
         <button
           type="button"
           onClick={handleRowTap}
           className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors min-h-[64px]"
           style={{
-            background: isActive ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent',
-            borderLeft: isActive ? '3px solid var(--color-accent)' : '3px solid transparent',
+            background: isActive ? TT.accentSoft : 'transparent',
+            borderLeft: isActive ? `3px solid ${TT.accent}` : '3px solid transparent',
             border: 'none',
             cursor: 'pointer',
           }}
@@ -182,19 +183,19 @@ function SwipeRow({ lang,
             <UserAvatar user={u || {}} size={44} />
             {isOnline && (
               <span
-                className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 bg-emerald-500"
-                style={{ borderColor: 'var(--color-bg-primary)' }}
+                className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
+                style={{ borderColor: TT.bg, background: TT.good }}
                 aria-label={t('trainerMessages.list.onlineAria', 'Online')}
               />
             )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+              <p className="text-[14px] font-bold truncate" style={{ color: TT.text }}>
                 {name}
               </p>
-              {isPinned && <Pin size={11} style={{ color: 'var(--color-accent)' }} />}
-              <span className="ml-auto text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+              {isPinned && <Pin size={11} style={{ color: TT.accent }} />}
+              <span className="ml-auto text-[10px] shrink-0" style={{ color: TT.textMute }}>
                 {formatRelative(conv.last_message_at, t, lang)}
               </span>
             </div>
@@ -202,7 +203,7 @@ function SwipeRow({ lang,
               <p
                 className="text-[12px] truncate flex-1"
                 style={{
-                  color: conv.unreadCount > 0 ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                  color: conv.unreadCount > 0 ? TT.text : TT.textMute,
                   fontWeight: conv.unreadCount > 0 ? 600 : 400,
                 }}
               >
@@ -211,7 +212,7 @@ function SwipeRow({ lang,
               {conv.unreadCount > 0 && (
                 <span
                   className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold"
-                  style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+                  style={{ background: TT.accent, color: '#06363B' }}
                 >
                   {conv.unreadCount}
                 </span>
@@ -225,7 +226,7 @@ function SwipeRow({ lang,
             type="button"
             onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
             className="absolute top-1.5 right-1.5 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 focus:opacity-100"
-            style={{ color: isPinned ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
+            style={{ color: isPinned ? TT.accent : TT.textMute }}
             aria-label={isPinned
               ? t('trainerMessages.list.unpinAria', 'Unpin')
               : t('trainerMessages.list.pinAria', 'Pin')}
@@ -310,14 +311,14 @@ export default function ConversationList({
       {/* Search + tabs */}
       <div
         className="px-4 sm:px-5 pt-2 pb-3 flex-shrink-0"
-        style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+        style={{ borderBottom: `1px solid ${TT.border}` }}
       >
         {/* Search */}
         <div
           className="flex items-center gap-2 px-3 rounded-xl"
-          style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', border: '1px solid var(--color-border-subtle)' }}
+          style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}
         >
-          <Search size={14} style={{ color: 'var(--color-text-muted)' }} />
+          <Search size={14} style={{ color: TT.textMute }} />
           <input
             type="text"
             value={query}
@@ -325,7 +326,7 @@ export default function ConversationList({
             placeholder={t('trainerMessages.list.searchPlaceholder', 'Search conversations…')}
             maxLength={100}
             className="flex-1 bg-transparent outline-none text-[13px] py-2.5"
-            style={{ color: 'var(--color-text-primary)' }}
+            style={{ color: TT.text }}
             aria-label={t('trainerMessages.list.searchPlaceholder', 'Search conversations…')}
           />
         </div>
@@ -341,7 +342,7 @@ export default function ConversationList({
         {loading && (
           <div className="px-3 py-3 space-y-2">
             {[0, 1, 2, 3].map(i => (
-              <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }} />
+              <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: TT.surface2 }} />
             ))}
           </div>
         )}

@@ -862,12 +862,16 @@ export default function AdminChurn() {
                       padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: -0.1,
                       background: active ? 'var(--color-admin-text)' : 'var(--color-admin-panel)',
                       border: `1px solid ${active ? 'transparent' : 'var(--color-admin-border)'}`,
-                      color: active ? '#fff' : ink,
+                      // Active text/dot use the panel color (light in light mode,
+                      // dark in dark mode) — the inverse of the --color-admin-text
+                      // pill background — so the label stays readable in BOTH themes.
+                      // Hardcoded #fff went invisible on the light pill in dark mode.
+                      color: active ? 'var(--color-admin-panel)' : ink,
                     }}
                   >
-                    <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? '#fff' : dot }} />
+                    <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? 'var(--color-admin-panel)' : dot }} />
                     {f.label}
-                    <span className="admin-mono" style={{ fontWeight: 700, color: active ? 'rgba(255,255,255,0.85)' : 'var(--color-admin-text-muted)' }}>{f.count}</span>
+                    <span className="admin-mono" style={{ fontWeight: 700, color: active ? 'color-mix(in srgb, var(--color-admin-panel) 82%, transparent)' : 'var(--color-admin-text-muted)' }}>{f.count}</span>
                   </button>
                 );
               })}

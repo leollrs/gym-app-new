@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { classImageUrl } from '../lib/classImageUrl';
 import { format, addDays, startOfWeek, isSameDay, subDays, addWeeks } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
+import posthogClient from 'posthog-js';
 
 const DAY_LABELS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_LABELS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -26,6 +27,26 @@ const durationMinutes = (start, end) => {
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
   return (eh * 60 + em) - (sh * 60 + sm);
+};
+
+// Resolve class instructors in a second step: the `trainer:profiles!trainer_id`
+// embed is RLS-nulled for members (staff profile rows aren't directly
+// readable), which made the instructor line vanish from class cards. The
+// same-gym gym_member_profiles_safe view has no role filter, so trainer rows
+// come through it; attach them under the `trainer` key the renders already
+// expect (mutates each row's gym_classes in place to preserve shape).
+// `getClass` maps a fetched row to its gym_classes object.
+const attachClassTrainers = async (rows, getClass) => {
+  const classes = (rows || []).map(getClass).filter(Boolean);
+  const ids = [...new Set(classes.map((c) => c.trainer_id).filter(Boolean))];
+  if (!ids.length) return;
+  const { data } = await supabase
+    .from('gym_member_profiles_safe')
+    .select('id, full_name, avatar_url, avatar_type, avatar_value, role')
+    .in('id', ids);
+  const byId = {};
+  (data || []).forEach((p) => { byId[p.id] = p; });
+  classes.forEach((c) => { c.trainer = byId[c.trainer_id] ?? null; });
 };
 
 /* ---------- Star Rating Component ---------- */
@@ -79,6 +100,7 @@ function ClassRatingModal({ open, onClose, bookingId, className: classTitle, onS
       setError(t('classes.rateError', "Couldn't save your rating. Try again."));
       return;
     }
+    posthogClient?.capture('class_rated', { rating });
     onSubmitted?.();
     onClose();
   };
@@ -140,7 +162,7 @@ function ClassRatingModal({ open, onClose, bookingId, className: classTitle, onS
           onClick={handleSubmit}
           disabled={rating === 0 || submitting}
           className="w-full py-3 rounded-xl text-[14px] font-bold transition-all active:scale-[0.97] min-h-[44px] disabled:opacity-40"
-          style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+          style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
         >
           {submitting ? t('classes.submitting', 'Submitting…') : t('classes.submit')}
         </button>
@@ -177,7 +199,7 @@ function WorkoutPromptModal({ open, onClose, onStartWorkout, onJustCheckIn }) {
           <button
             onClick={onStartWorkout}
             className="w-full py-3 rounded-xl text-[14px] font-bold transition-all active:scale-[0.97] min-h-[44px]"
-            style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
           >
             {t('classes.startWorkout')}
           </button>
@@ -517,11 +539,13 @@ export default function Classes() {
     const myToken = ++schedulesTokenRef.current;
     const { data } = await supabase
       .from('gym_class_schedules')
-      .select('*, gym_classes(*, trainer:profiles!trainer_id(id, full_name, avatar_url, avatar_type, avatar_value, role))')
+      .select('*, gym_classes(*)')
       .eq('gym_id', profile.gym_id)
       .order('start_time');
+    const rows = data || [];
+    await attachClassTrainers(rows, (s) => s.gym_classes);
     if (myToken !== schedulesTokenRef.current) return; // stale — newer fetch in-flight
-    setAllSchedules(data || []);
+    setAllSchedules(rows);
   }, [profile?.gym_id]);
 
   // ── Fetch bookings + counts for the visible range ──
@@ -540,7 +564,7 @@ export default function Classes() {
       // All my bookings in [rangeStart-14d, rangeEnd+30d] including schedule + class.
       supabase
         .from('gym_class_bookings')
-        .select('id, schedule_id, booking_date, status, rating, notes, waitlist_position, gym_class_schedules(*, gym_classes(*, trainer:profiles!trainer_id(id, full_name, avatar_url, avatar_type, avatar_value, role)))')
+        .select('id, schedule_id, booking_date, status, rating, notes, waitlist_position, gym_class_schedules(*, gym_classes(*))')
         .eq('profile_id', user.id)
         .neq('status', 'cancelled')
         .gte('booking_date', pastStart)
@@ -556,6 +580,8 @@ export default function Classes() {
         p_date_to: rangeEnd,
       }),
     ]);
+
+    await attachClassTrainers(myBookingsRes.data, (b) => b.gym_class_schedules?.gym_classes);
 
     if (myToken !== bookingsTokenRef.current) return; // stale — drop the response
 
@@ -630,7 +656,8 @@ export default function Classes() {
       p_booking_date: dateToBook,
     });
     if (error) {
-      setToast({ msg: error.message, type: 'error' });
+      console.error('[Classes] book_class failed:', error);
+      setToast({ msg: t('classes.bookFailed', "Couldn't book the class. Try again."), type: 'error' });
     } else if (data?.status === 'waitlisted') {
       posthog?.capture('class_waitlisted', { class_id: classId });
       setToast({ msg: t('classes.classFull'), type: 'info' });
@@ -650,7 +677,8 @@ export default function Classes() {
     setActionLoading(bookingId);
     const { error } = await supabase.rpc('cancel_class_booking', { p_booking_id: bookingId });
     if (error) {
-      setToast({ msg: error.message, type: 'error' });
+      console.error('[Classes] cancel_class_booking failed:', error);
+      setToast({ msg: t('classes.cancelFailed', "Couldn't cancel the booking. Try again."), type: 'error' });
     } else {
       posthog?.capture('class_cancelled', { booking_id: bookingId });
       setToast({ msg: t('classes.bookingCancelled'), type: 'info' });
@@ -667,10 +695,12 @@ export default function Classes() {
   const handleCheckIn = async (bookingId, className) => {
     setActionLoading(bookingId);
     const { data, error } = await supabase.rpc('checkin_class', { p_booking_id: bookingId });
+    if (!error) posthogClient?.capture('class_checked_in');
     setActionLoading(null);
 
     if (error) {
-      setToast({ msg: error.message, type: 'error' });
+      console.error('[Classes] checkin_class failed:', error);
+      setToast({ msg: t('classes.checkinFailed', "Couldn't check you in. Try again."), type: 'error' });
       return;
     }
 
@@ -691,7 +721,12 @@ export default function Classes() {
     if (!workoutPrompt) return;
     const { templateId, bookingId } = workoutPrompt;
     setWorkoutPrompt(null);
-    navigate(`/workout?routineId=${templateId}&classBookingId=${bookingId}`);
+    // ActiveSession's route is /session/:routineId and it reads classBookingId
+    // from location.state — the old `/workout?routineId=...` URL wasn't a
+    // route at all (fell through to the Dashboard catch-all), so class
+    // workouts never started and never linked to the booking.
+    posthogClient?.capture('class_workout_started');
+    navigate(`/session/${templateId}`, { state: { classBookingId: bookingId } });
   };
 
   const handleJustCheckIn = () => {
@@ -771,7 +806,7 @@ export default function Classes() {
                 {totalActive > 0 && (
                   <span
                     className="px-1.5 rounded-full text-[10px] font-bold tabular-nums"
-                    style={{ background: 'var(--color-accent)', color: '#000', minWidth: 18, height: 18, lineHeight: '18px', textAlign: 'center' }}
+                    style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)', minWidth: 18, height: 18, lineHeight: '18px', textAlign: 'center' }}
                   >
                     {totalActive}
                   </span>
@@ -803,7 +838,7 @@ export default function Classes() {
                 className="py-2 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] min-h-[40px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
                 style={{
                   background: active ? 'var(--color-accent)' : 'transparent',
-                  color: active ? '#000' : 'var(--color-text-secondary)',
+                  color: active ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-secondary)',
                 }}
               >
                 {opt.label}
@@ -918,7 +953,7 @@ export default function Classes() {
                   <span
                     className="relative z-10 text-[14px] font-bold"
                     style={{
-                      color: isSelected ? '#000' : isToday ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
+                      color: isSelected ? 'var(--color-text-on-accent, #000)' : isToday ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
                       opacity: isPastDay && !isSelected ? 0.45 : 1,
                       textDecoration: isPastDay && !isSelected ? 'line-through' : 'none',
                     }}
@@ -1173,7 +1208,7 @@ export default function Classes() {
                         onClick={() => handleCheckIn(bookingId, cls.name)}
                         disabled={isActing}
                         className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none disabled:opacity-50"
-                        style={{ backgroundColor: 'var(--color-success)', color: '#000' }}
+                        style={{ backgroundColor: 'var(--color-success)', color: 'var(--color-text-on-secondary, #000)' }}
                       >
                         {isActing ? '...' : t('classes.checkIn')}
                       </button>
@@ -1324,7 +1359,7 @@ export default function Classes() {
                             onClick={(e) => { e.stopPropagation(); handleCheckIn(b.id, cls.name); }}
                             disabled={actionLoading === b.id}
                             className="text-[11px] px-3 py-1 rounded-full font-semibold flex-shrink-0 min-h-[32px] transition-all active:scale-95 disabled:opacity-50"
-                            style={{ backgroundColor: 'var(--color-success)', color: '#000' }}
+                            style={{ backgroundColor: 'var(--color-success)', color: 'var(--color-text-on-secondary, #000)' }}
                           >
                             {actionLoading === b.id ? '...' : t('classes.checkIn')}
                           </button>
@@ -1631,7 +1666,7 @@ export default function Classes() {
                     onClick={() => { handleCheckIn(booking.id, cls.name); closeModal(); }}
                     disabled={actionLoading === booking?.id}
                     className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-50"
-                    style={{ background: 'var(--color-success)', color: '#000' }}
+                    style={{ background: 'var(--color-success)', color: 'var(--color-text-on-secondary, #000)' }}
                   >
                     {t('classes.checkIn')}
                   </button>
@@ -1684,7 +1719,7 @@ export default function Classes() {
       {toast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-[13px] font-semibold shadow-lg" style={{
           backgroundColor: toast.type === 'error' ? 'var(--color-danger)' : toast.type === 'success' ? 'var(--color-success)' : 'var(--color-bg-card)',
-          color: toast.type === 'info' ? 'var(--color-text-primary)' : '#fff',
+          color: toast.type === 'info' ? 'var(--color-text-primary)' : toast.type === 'success' ? 'var(--color-text-on-secondary, #fff)' : '#fff',
           border: toast.type === 'info' ? '1px solid var(--color-border-default)' : 'none',
         }}>
           {toast.msg}

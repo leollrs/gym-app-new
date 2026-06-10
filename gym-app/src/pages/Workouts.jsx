@@ -216,7 +216,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
               <button onClick={handleLeave} disabled={acting} className="px-4 py-3 text-[12px] font-semibold rounded-xl border hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-40" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>{t('challenges.leave')}</button>
             </div>
           ) : (
-            <button onClick={handleEnroll} disabled={acting} className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-[#10B981] hover:bg-[#0EA572] transition-colors disabled:opacity-50">
+            <button onClick={handleEnroll} disabled={acting} className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors disabled:opacity-50">
               {acting ? t('workouts.enrolling') : t('workouts.startThisProgram')}
             </button>
           )}
@@ -304,7 +304,7 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => 
           to={`/session/${routineId}`}
           onClick={onStart}
           className="w-full flex items-center justify-center py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-[0.98]"
-          style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+          style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}
         >
           {t('workouts.startWorkout')}
         </Link>
@@ -438,6 +438,7 @@ const Workouts = () => {
   const [leaveProgramConfirm, setLeaveProgramConfirm] = useState(null); // { id, name, source } or null
   const [regenerateConfirm, setRegenerateConfirm] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [regenStartToday, setRegenStartToday] = useState(true);
   const [reactivateConfirm, setReactivateConfirm] = useState(null); // program object or null
   const [reactivating, setReactivating] = useState(false);
   const [deleteRoutineConfirm, setDeleteRoutineConfirm] = useState(null); // { id, name } or null
@@ -971,11 +972,21 @@ const Workouts = () => {
 
   // Handlers
   const handleEnroll = async (programId) => {
-    await supabase.from('gym_program_enrollments').insert({ program_id: programId, profile_id: user.id, gym_id: profile.gym_id });
+    const { error } = await supabase.from('gym_program_enrollments').insert({ program_id: programId, profile_id: user.id, gym_id: profile.gym_id });
+    if (error) {
+      console.error('[enroll program] failed:', error);
+      alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
+      return;
+    }
     setEnrolledIds(prev => new Set([...prev, programId]));
   };
   const handleLeave = async (programId) => {
-    await supabase.from('gym_program_enrollments').delete().eq('program_id', programId).eq('profile_id', user.id);
+    const { error } = await supabase.from('gym_program_enrollments').delete().eq('program_id', programId).eq('profile_id', user.id);
+    if (error) {
+      console.error('[leave program] failed:', error);
+      alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
+      return;
+    }
     setEnrolledIds(prev => { const s = new Set(prev); s.delete(programId); return s; });
   };
   // Regenerate the active personal program from the user's stored
@@ -984,12 +995,13 @@ const Workouts = () => {
   const handleRegenerateProgram = async () => {
     setRegenerating(true);
     try {
-      await regenerateMemberProgram({ supabase, user, posthog });
+      await regenerateMemberProgram({ supabase, user, posthog, startToday: regenStartToday });
       // Invalidate cached dashboard + routines payloads so the Home tab
       // hydrates with the new program (otherwise the home page sticks on the
       // stale cache snapshot until the next visibility-change refresh lands).
       try { clearCache(`dash:${user.id}`); } catch {}
       try { clearCache(`routines:${user.id}`); } catch {}
+      try { localStorage.removeItem(`qs_cache_v1_${user.id}`); } catch {}
       // Refetch programs + routines so the UI reflects the new program.
       const { data: allGp } = await supabase.from('generated_programs')
         .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
@@ -1018,7 +1030,7 @@ const Workouts = () => {
       setRegenerateConfirm(false);
     } catch (err) {
       console.error('[regenerate program] failed:', err);
-      alert(t('workouts.regenerateFailed', { defaultValue: 'Could not regenerate program: {{msg}}', msg: err.message || 'unknown' }));
+      alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
     } finally {
       setRegenerating(false);
     }
@@ -1063,7 +1075,7 @@ const Workouts = () => {
       setReactivateConfirm(null);
     } catch (err) {
       console.error('[reactivate program] failed:', err);
-      alert(t('workouts.reactivateFailed', { defaultValue: 'Could not reactivate program: {{msg}}', msg: err.message || 'unknown' }));
+      alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
     } finally {
       setReactivating(false);
     }
@@ -1105,7 +1117,7 @@ const Workouts = () => {
       await refetch();
     } catch (err) {
       logger.error(err);
-      alert(t('workouts.deleteRoutineFailed', { defaultValue: 'Could not add routine: {{msg}}', msg: err?.message || 'unknown' }));
+      alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
     } finally {
       setAddingStarter(null);
     }
@@ -1148,7 +1160,7 @@ const Workouts = () => {
       await deleteRoutine(id);
     } catch (err) {
       logger.error(err);
-      alert(t('workouts.deleteRoutineFailed', { defaultValue: 'Could not delete routine: {{msg}}', msg: err?.message || 'unknown' }));
+      alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
     } finally {
       setDeletingId(null);
       setDeleteRoutineConfirm(null);
@@ -1269,7 +1281,7 @@ const Workouts = () => {
       }
     } catch (err) {
       logger.error(err);
-      alert(t('workouts.deleteRoutineFailed', { defaultValue: 'Could not delete routine: {{msg}}', msg: err?.message || 'unknown' }));
+      alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
     } finally {
       setBulkDeleting(false);
       setBulkDeleteConfirm(null);
@@ -1657,7 +1669,7 @@ const Workouts = () => {
       setSelectedTemplate(null);
     } catch (err) {
       logger.error('Failed to enroll in template:', err);
-      alert(t('workouts.somethingWentWrong') + err.message);
+      alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
     } finally {
       setSwitchingProgram(false);
     }
@@ -1940,7 +1952,7 @@ const Workouts = () => {
                                   to={`/session/${routine.id}`}
                                   onClick={() => posthog?.capture('routine_started', { routine_name: routine.name })}
                                   className="px-5 py-2.5 rounded-[12px] text-[13px] font-bold flex-shrink-0 active:scale-95 transition-all"
-                                  style={{ background: TU_ACCENT, color: '#001512' }}
+                                  style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #001512)' }}
                                 >
                                   {t('workouts.start', 'START')}
                                 </Link>
@@ -2098,7 +2110,7 @@ const Workouts = () => {
         style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 18%, var(--color-bg-card)), var(--color-bg-card))', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }}
       >
         <div className="absolute pointer-events-none" style={{ top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'radial-gradient(circle, color-mix(in srgb, var(--color-accent) 40%, transparent) 0%, transparent 70%)' }} />
-        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 48, height: 48, borderRadius: 14, background: TU_ACCENT, color: 'var(--color-bg-primary)' }}>
+        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 48, height: 48, borderRadius: 14, background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))' }}>
           <BookOpen size={22} strokeWidth={2.4} />
         </div>
         <div className="relative flex-1 min-w-0">
@@ -2106,7 +2118,7 @@ const Workouts = () => {
           <p style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 19, letterSpacing: -0.5, marginTop: 3, color: 'var(--color-text-primary)' }}>{t('workouts.browsePrograms', 'Browse programs')}</p>
           <p style={{ fontSize: 11, marginTop: 2, color: 'var(--color-text-muted)' }}>{t('workouts.browseSubCount', { count: programTemplates.length || 0, defaultValue: '{{count}} available · 4 to 16 weeks' })}</p>
         </div>
-        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 38, height: 38, borderRadius: 999, background: TU_ACCENT, color: 'var(--color-bg-primary)' }}>
+        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 38, height: 38, borderRadius: 999, background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))' }}>
           <ChevronRight size={18} strokeWidth={2.6} />
         </div>
       </button>
@@ -2356,7 +2368,7 @@ const Workouts = () => {
               <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.goalsChanged')}</p>
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.goalsChangedDesc')}</p>
               <div className="flex gap-2 mt-3">
-                <button onClick={() => setShowGenerator(true)} className="px-3 py-1.5 min-h-[44px] rounded-lg text-[11px] font-semibold bg-[#10B981] text-white">
+                <button onClick={() => setShowGenerator(true)} className="px-3 py-1.5 min-h-[44px] rounded-lg text-[11px] font-semibold bg-[#10B981] text-[var(--color-text-on-secondary,#fff)]">
                   {t('workouts.newProgramBtn')}
                 </button>
                 <button onClick={() => setGoalsMismatch(false)} className="px-3 py-1.5 min-h-[44px] rounded-lg text-[11px] font-medium transition-colors" style={{ color: 'var(--color-text-subtle)' }}>
@@ -2374,7 +2386,7 @@ const Workouts = () => {
             <p className="text-[11px] mt-1 mb-4" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.createOneTailored')}</p>
             <button
               onClick={() => setShowGenerator(true)}
-              className="px-4 py-2.5 rounded-xl text-[12px] font-semibold bg-[#10B981] text-white hover:bg-[#0EA572] transition-colors"
+              className="px-4 py-2.5 rounded-xl text-[12px] font-semibold bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] hover:bg-[#0EA572] transition-colors"
             >
               {t('workouts.createYourFirstProgram')}
             </button>
@@ -2536,7 +2548,7 @@ const Workouts = () => {
                 )}
                 <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.88) 100%)' }} />
                 <div className="absolute" style={{ top: 14, left: 14 }}>
-                  <span style={{ background: TU_ACCENT, color: 'var(--color-bg-primary)', fontSize: 9, fontWeight: 900, letterSpacing: 1, padding: '5px 9px', borderRadius: 999 }}>{t('workouts.recommendedForYou')}</span>
+                  <span style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))', fontSize: 9, fontWeight: 900, letterSpacing: 1, padding: '5px 9px', borderRadius: 999 }}>{t('workouts.recommendedForYou')}</span>
                 </div>
                 <div className="absolute left-4 right-4" style={{ bottom: 14, color: '#fff' }}>
                   <p style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 24, letterSpacing: -0.7, lineHeight: 1.05 }}>{progName(recommendedTemplate)}</p>
@@ -2544,7 +2556,7 @@ const Workouts = () => {
                     <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>
                       {t(`workouts.programLevels.${recommendedTemplate.level}`, recommendedTemplate.level)} · {t('workouts.durationWk', { count: recommendedTemplate.durationWeeks })} · {t('workouts.xPerWeek', { count: recommendedTemplate.daysPerWeek })}
                     </span>
-                    <span className="flex items-center justify-center flex-shrink-0" style={{ width: 38, height: 38, borderRadius: 999, background: TU_ACCENT, color: 'var(--color-bg-primary)' }}>
+                    <span className="flex items-center justify-center flex-shrink-0" style={{ width: 38, height: 38, borderRadius: 999, background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))' }}>
                       <ChevronRight size={16} strokeWidth={2.4} />
                     </span>
                   </div>
@@ -2628,7 +2640,7 @@ const Workouts = () => {
                 <div className="absolute pointer-events-none" style={{ top: -40, right: -40, width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, color-mix(in srgb, var(--color-accent) 35%, transparent) 0%, transparent 70%)' }} />
                 <div className="relative flex items-center gap-2 mb-3">
                   <span className="flex items-center justify-center" style={{ width: 22, height: 22, borderRadius: 6, background: TU_ACCENT }}>
-                    <Zap size={12} style={{ color: 'var(--color-bg-primary)' }} fill="currentColor" strokeWidth={0} />
+                    <Zap size={12} style={{ color: 'var(--color-text-on-accent, var(--color-bg-primary))' }} fill="currentColor" strokeWidth={0} />
                   </span>
                   <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: 1.4, color: TU_ACCENT }}>{t('workouts.exclusiveOfYourGym', 'Exclusive to your gym')}</span>
                 </div>
@@ -2645,7 +2657,7 @@ const Workouts = () => {
                     </div>
                   ))}
                 </div>
-                <span className="relative flex items-center justify-center gap-1.5 mt-3.5 w-full" style={{ padding: '11px 14px', borderRadius: 12, background: TU_ACCENT, color: 'var(--color-bg-primary)', fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 12, letterSpacing: 0.5 }}>
+                <span className="relative flex items-center justify-center gap-1.5 mt-3.5 w-full" style={{ padding: '11px 14px', borderRadius: 12, background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))', fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 12, letterSpacing: 0.5 }}>
                   {t('workouts.seeAllGymPrograms', { count: gymPrograms.length, defaultValue: 'See all {{count}} programs' })}
                   <ChevronRight size={13} strokeWidth={2.6} />
                 </span>
@@ -3085,8 +3097,8 @@ const Workouts = () => {
                   {prog.schedule_map?.routine_ids?.length > 0 && (
                     <button
                       onClick={() => setReactivateConfirm(prog)}
-                      className="w-full py-4 rounded-2xl font-bold text-[15px] transition-colors flex items-center justify-center gap-2 text-white"
-                      style={{ backgroundColor: '#10B981' }}
+                      className="w-full py-4 rounded-2xl font-bold text-[15px] transition-colors flex items-center justify-center gap-2 text-[var(--color-text-on-secondary,#fff)]"
+                      style={{ backgroundColor: 'var(--color-success, #10B981)' }}
                     >
                       <RotateCcw size={15} strokeWidth={2.4} />
                       {t('workouts.resumeProgram', 'Resume Program')}
@@ -3278,7 +3290,7 @@ const Workouts = () => {
               <button
                 onClick={handleStartTemplate}
                 disabled={switchingProgram}
-                className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.98] transition-all text-white bg-[#10B981] hover:bg-[#0EA572] disabled:opacity-50"
+                className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.98] transition-all text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] disabled:opacity-50"
               >
                 {switchingProgram ? t('workouts.settingUp') : t('workouts.startThisProgram')}
               </button>
@@ -3332,7 +3344,7 @@ const Workouts = () => {
           <div className="space-y-2.5">
             <button
               onClick={() => proceedWithStartMode('today')}
-              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-black transition-colors"
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-accent,#000)] transition-colors"
               style={{ backgroundColor: 'var(--color-accent)' }}
             >
               {t('workouts.startFromToday', 'Start from today')}
@@ -3372,7 +3384,7 @@ const Workouts = () => {
               <div className="space-y-2.5">
                 <button
                   onClick={() => setSwitchStep('final')}
-                  className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-[#10B981] hover:bg-[#0EA572] transition-colors"
+                  className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors"
                 >
                   {t('workouts.yesSwitchProgram')}
                 </button>
@@ -3434,7 +3446,7 @@ const Workouts = () => {
           <div className="space-y-2.5">
             <button
               onClick={proceedAfterWarnings}
-              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-[#10B981] hover:bg-[#0EA572] transition-colors"
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors"
             >
               {t('workouts.dayCompressionContinue')}
             </button>
@@ -3476,7 +3488,7 @@ const Workouts = () => {
                   proceedAfterWarnings();
                 }
               }}
-              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-[#10B981] hover:bg-[#0EA572] transition-colors"
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors"
             >
               {t('workouts.goalMismatchContinue')}
             </button>
@@ -3516,7 +3528,7 @@ const Workouts = () => {
               <button
                 onClick={() => setLeaveProgramConfirm(null)}
                 className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors"
-                style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
               >
                 {t(cancelKey)}
               </button>
@@ -3541,15 +3553,41 @@ const Workouts = () => {
           <h3 className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
             {t('workouts.regenerateTitle', 'Regenerar tu programa?')}
           </h3>
-          <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-[13px] text-center leading-relaxed mb-4" style={{ color: 'var(--color-text-muted)' }}>
             {t('workouts.regenerateDesc', 'Crearemos un programa nuevo desde tus respuestas de onboarding. Tu programa actual quedará en el historial y los entrenamientos que ya registraste se mantienen.')}
           </p>
+          {/* When should the new program start? */}
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] mb-2" style={{ color: 'var(--color-text-subtle)' }}>
+            {t('workouts.regenWhenStart', '¿Cuándo empezar?')}
+          </p>
+          <div className="grid grid-cols-2 gap-2 mb-5">
+            {[
+              { v: true,  label: t('workouts.regenStartToday', 'Empezar hoy') },
+              { v: false, label: t('workouts.regenStartPreferred', 'En mis días') },
+            ].map((opt) => {
+              const sel = regenStartToday === opt.v;
+              return (
+                <button
+                  key={String(opt.v)}
+                  type="button"
+                  onClick={() => setRegenStartToday(opt.v)}
+                  disabled={regenerating}
+                  className="py-2.5 rounded-xl text-[13px] font-bold border transition-all disabled:opacity-50"
+                  style={sel
+                    ? { background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 45%, transparent)', color: 'var(--color-accent)' }
+                    : { background: 'var(--color-surface-hover)', borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
           <div className="space-y-2.5">
             <button
               onClick={handleRegenerateProgram}
               disabled={regenerating}
               className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors disabled:opacity-60"
-              style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+              style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
             >
               {regenerating
                 ? t('workouts.regenerating', 'Regenerando…')
@@ -3565,6 +3603,13 @@ const Workouts = () => {
             </button>
           </div>
         </div>
+      </div>
+    )}
+    {regenerating && (
+      <div className="fixed inset-0 z-[210] flex flex-col items-center justify-center gap-4 px-6 text-center" style={{ background: 'rgba(8,11,18,0.82)', backdropFilter: 'blur(3px)' }}>
+        <div className="w-12 h-12 rounded-full border-[3px] animate-spin" style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: 'var(--color-accent)' }} />
+        <p className="text-[15px] font-bold" style={{ color: '#fff' }}>{t('workouts.regenerating', 'Regenerando…')}</p>
+        <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.6)' }}>{t('workouts.regenWait', 'Creando tu nuevo programa…')}</p>
       </div>
     )}
     {/* ── Reactivate (resume) Program confirm ─────────────────── */}
@@ -3600,8 +3645,8 @@ const Workouts = () => {
               <button
                 onClick={() => handleReactivateProgram(src)}
                 disabled={reactivating}
-                className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors disabled:opacity-60 text-white"
-                style={{ backgroundColor: '#10B981' }}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors disabled:opacity-60 text-[var(--color-text-on-secondary,#fff)]"
+                style={{ backgroundColor: 'var(--color-success, #10B981)' }}
               >
                 {reactivating
                   ? t('workouts.reactivating', 'Resuming…')
@@ -3636,7 +3681,7 @@ const Workouts = () => {
           <button
             onClick={() => setDeleteBlockedInfo(null)}
             className="w-full py-3.5 rounded-2xl font-bold text-[14px]"
-            style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
           >
             {t('workouts.gotIt', 'Got it')}
           </button>
@@ -3662,7 +3707,7 @@ const Workouts = () => {
               onClick={() => setDeleteRoutineConfirm(null)}
               disabled={deletingId === deleteRoutineConfirm.id}
               className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors disabled:opacity-50"
-              style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+              style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
             >
               {t('workouts.keepIt', 'Keep it')}
             </button>
@@ -3700,7 +3745,7 @@ const Workouts = () => {
               onClick={() => setBulkDeleteConfirm(null)}
               disabled={bulkDeleting}
               className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors disabled:opacity-50"
-              style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+              style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
             >
               {t('workouts.cancel', 'Cancel')}
             </button>

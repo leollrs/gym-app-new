@@ -70,7 +70,7 @@ export default function PermissionExplainerModal({ open, type, onAgree, onCancel
         <div className="flex flex-col gap-2">
           <button type="button" onClick={onAgree}
             className="w-full py-3 rounded-[14px] text-[14px] font-bold"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-bg-primary)' }}>
+            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}>
             {t('permissionExplainer.continue', 'Continue')}
           </button>
           <button type="button" onClick={onCancel}

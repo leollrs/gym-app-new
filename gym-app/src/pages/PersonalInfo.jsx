@@ -267,7 +267,9 @@ export default function PersonalInfo() {
       showToast(t('personalInfo.saved', 'Saved'), 'success');
       try { await refreshProfile?.(); } catch {}
     } catch (err) {
-      showToast(err.message || t('personalInfo.saveFailed', 'Failed to save'), 'error');
+      // Raw DB messages never render to members — console only.
+      console.warn('[PersonalInfo] save failed', err?.message);
+      showToast(t('personalInfo.saveFailed', 'Failed to save'), 'error');
     } finally {
       setSaving(false);
     }

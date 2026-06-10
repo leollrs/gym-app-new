@@ -132,7 +132,15 @@
     "loadError": "We could not load your dashboard right now. Pull to refresh or try again in a moment.",
     "qrError": "Could not open QR",
     "scheduleSaveError": "Couldn't save your schedule. Check your connection and try again.",
-    "scheduleClearError": "Couldn't clear that day. Check your connection and try again."
+    "scheduleClearError": "Couldn't clear that day. Check your connection and try again.",
+    "completed": "Done",
+    "pickAProgram": "Pick a program",
+    "switchProgram": "Switch program",
+    "customRoutine": "Custom routine",
+    "nWeeksXDays": "{{weeks}} weeks · {{days}} days/week",
+    "birthdayTitle": "Happy birthday, {{name}}!",
+    "birthdayFallbackName": "friend",
+    "birthdayBody": "Have a great workout — today is your day. 🎉"
   },
   "workoutHeroCard": {
     "startWorkout": "Start Workout",
@@ -221,7 +229,21 @@
       "calorieVolumeInsight": "On days you hit your calorie target, your next workout volume was {{pct}}% higher",
       "prProteinInsight": "Your best PRs came after days with {{grams}}g+ protein",
       "now": "NOW",
-      "report": "Report"
+      "report": "Report",
+      "welcomeLabel": "Welcome to Progress",
+      "welcomeTitle": "Your first session unlocks your stats",
+      "startFirstWorkout": "Start your first workout",
+      "getStarted": "Get started",
+      "checkSetUpProfile": "Set up your profile",
+      "checkLogWorkout": "Log your first workout",
+      "checkSetGoal": "Set a goal",
+      "checkAddBody": "Add body measurements",
+      "next": "NEXT",
+      "workouts": "Workouts",
+      "startToday": "Start today",
+      "log1set": "Log 1 set",
+      "records": "Records",
+      "beatALift": "Beat a lift"
     },
     "body": {
       "enterTodaysWeight": "Enter today's weight",
@@ -260,7 +282,8 @@
       "bodyFat": "Body Fat",
       "initialWeightNote": "Initial weight at signup",
       "currentWeight": "Current weight",
-      "logWeightCta": "Log today's weight"
+      "logWeightCta": "Log today's weight",
+      "connectionError": "No connection — try again when you’re back online."
     },
     "report": "Report"
   },
@@ -479,7 +502,53 @@
     "pointsPerWorkout": "+50/workout",
     "availableRewards": "Available rewards",
     "activePunchCards": "Active punch cards",
-    "rewardCard": "REWARD CARD"
+    "rewardCard": "REWARD CARD",
+    "redemptionQRCode": "Redemption QR code",
+    "qrSignFailed": "Couldn't generate QR",
+    "tapToRetry": "Tap to retry",
+    "signingQR": "Signing QR…",
+    "showChallengeQR": "Show challenge prize QR code",
+    "challengePrizeQRCode": "Challenge prize QR code",
+    "earnedSourceBirthday": "Birthday gift",
+    "earnedSourceMilestone": "Referral milestone",
+    "earnedSourceManual": "Gift",
+    "earnedSourceGeneric": "Earned",
+    "claimableEarned": "Rewards to claim",
+    "showEarnedQR": "Show earned reward QR",
+    "claiming": "Claiming…",
+    "claim": "Claim",
+    "earnedRewardQRCode": "Earned reward QR code",
+    "pendingRedemptions": "Pending Redemptions",
+    "giftFromGym": "Gift from your gym",
+    "showRedemptionQR": "Show redemption QR code",
+    "cancelRedemption": "Cancel redemption",
+    "noRewardsAvailable": "No rewards available yet",
+    "featured": "Featured reward",
+    "youHave": "You have",
+    "total": "total",
+    "locked": "Locked",
+    "yourReward": "Your reward",
+    "punchCard": "Punch Card",
+    "toGo": "{{count}} to go",
+    "yourPrize": "YOUR PRIZE",
+    "buyXGetY": "Buy {{count}} to unlock your free reward",
+    "progress": "Progress",
+    "scanAtBar": "SCAN AT THE BAR TO PUNCH",
+    "qrUnavailable": "QR unavailable",
+    "addToWallet": "Add to wallet",
+    "product": "Product",
+    "otherCards": "OTHER CARDS",
+    "activeCount": "{{count}} active",
+    "heldPending": "held pending",
+    "tabNavigation": "Rewards navigation",
+    "alreadyClaimed": "This reward was already claimed and cannot be cancelled.",
+    "cancelFailed": "Failed to cancel. Please try again.",
+    "redeemFailed": "Couldn't redeem. Try again.",
+    "claimFailed": "Couldn't claim this reward. Try again.",
+    "rewardChosen": "Reward chosen!",
+    "pickYourReward": "Pick your reward",
+    "pickSubtitle": "Choose one of the options below",
+    "skipForNow": "Skip for now"
   },
   "challenges": {
     "title": "Challenges",
@@ -584,7 +653,36 @@
       "clubMember": "Club member",
       "clubLine": "Club"
     },
-    "loading": "Loading"
+    "loading": "Loading",
+    "participants": "Participants",
+    "didntPost": "Didn't post",
+    "featured": "Featured",
+    "team": {
+      "yourTeam": "Your Team",
+      "combinedScore": "Combined Score",
+      "noTeamsYet": "No teams yet",
+      "members": "members",
+      "member": "Team member",
+      "createError": "Failed to create team",
+      "joinError": "Failed to join team",
+      "inviteTitle": "Team Invite!",
+      "acceptInviteError": "Failed to accept invite",
+      "inviteError": "Failed to send invites",
+      "joinTeam": "Join Team Challenge",
+      "createTeam": "Create Team",
+      "pendingInvites": "Pending Invites",
+      "invitedYou": "Invited you to join",
+      "accept": "Accept",
+      "decline": "Decline",
+      "createNew": "Create a New Team",
+      "createNewDesc": "Name your team and invite friends",
+      "teamName": "Team Name",
+      "teamNamePlaceholder": "e.g. Iron Warriors",
+      "inviteFriends": "Invite Friends",
+      "noFriends": "Add friends first to invite them",
+      "create": "Create & Join",
+      "inviteBody": "You've been invited to join {{team}} in {{challenge}}!"
+    }
   },
   "community": {
     "title": "Community",
@@ -716,7 +814,23 @@
     "statSets": "SETS",
     "statDist": "DIST",
     "statKcal": "KCAL",
-    "statBpm": "BPM"
+    "statBpm": "BPM",
+    "commentRateLimit": "Please wait a few seconds between comments",
+    "commentTooLong": "Comment must be 500 characters or less",
+    "mention": "Mention",
+    "searching": "Searching",
+    "photoPreview": "Photo preview for post",
+    "removePhoto": "Remove photo",
+    "removeWorkout": "Remove tagged workout",
+    "viewProfile": "View {{name}}'s profile",
+    "postImage": "Post image",
+    "customize": "Customize",
+    "save": "Save",
+    "template": "Template",
+    "brandingLabel": "Show {{gym}} branding",
+    "accentColor": "Accent color",
+    "photoFilter": "Photo filter",
+    "mentionedNotifTitle": "You were mentioned"
   },
   "nutrition": {
     "title": "Nutrition",
@@ -1011,6 +1125,7 @@
     "streak": "Streak",
     "goal": "Goal",
     "macroAverages": "Macro averages",
+    "gAvg": "{{n}}g avg",
     "insight": "Insight",
     "searchFoodsRecipes": "Search foods, recipes…",
     "basedOnRemaining": "Based on your remaining macros",
@@ -1079,8 +1194,27 @@
       "matchHeavy": "Heavy",
       "errorTimeout": "Menu analysis timed out. Please try again.",
       "errorService": "Menu analysis failed",
-      "errorGeneric": "Failed to analyze menu."
-    }
+      "errorGeneric": "Failed to analyze menu.",
+      "pillTitle": "Scan menu",
+      "analyzing": "Analyzing menu…",
+      "analyzingHint": "Reading items and estimating macros",
+      "errorTitle": "Could not read menu"
+    },
+    "sessionExpired": "Please sign in again to continue.",
+    "noPlanYet": "No meal plan yet",
+    "noPlanDesc": "Generate a plan from your profile settings",
+    "regenerateWeekDone": "Week regenerated",
+    "regenerateWeekFailed": "Could not regenerate week",
+    "regeneratingWeek": "Regenerating week…",
+    "sort": "Sort",
+    "clearFilters": "Clear",
+    "loggedToday": "Logged",
+    "logFailed": "Couldn't log that food. Try again.",
+    "deleteFailed": "Couldn't remove that entry. Try again.",
+    "updateFailed": "Couldn't update that entry. Try again.",
+    "targetsFailed": "Couldn't save your targets. Try again.",
+    "errorAnalysisTimeout": "Analysis timed out. Please try again.",
+    "weeks": "weeks"
   },
   "sessionSummary": {
     "workoutComplete": "Workout Complete",
@@ -1224,6 +1358,7 @@
     "supersetPickerAddNew": "Add a new exercise",
     "ungroup": "Ungroup",
     "loadError": "Failed to load workout data.",
+    "loadFailed": "Couldn't load this workout. Go back and try again.",
     "finishWorkout": "Finish workout",
     "discard": "Discard",
     "resume": "Resume",
@@ -1412,7 +1547,24 @@
     "muscleAlternatives": "{{muscle}} alternatives",
     "swapSameMuscle": "{{muscle}} alternatives",
     "finishWorkoutNow": "Finish Workout",
-    "finishWorkoutNowDesc": "End here and see the summary."
+    "finishWorkoutNowDesc": "End here and see the summary.",
+    "cue": {
+      "restExtended": "Coach extended rest by {{seconds}}s",
+      "restQueued": "Coach added {{seconds}}s to your next rest",
+      "reduceWeight": "Coach: drop weight by {{pct}}% on this set",
+      "bumpWeight": "Coach: bump weight by {{pct}}% on this set",
+      "dropSet": "Coach: do a drop set after this set",
+      "notePrefix": "Coach",
+      "noteEmpty": "Coach left a note",
+      "coachLabel": "Coach",
+      "dismiss": "Dismiss"
+    },
+    "groupSelectedCount": "{{count}} selected — group as:",
+    "supersetHint": "Tap the checkbox on 2+ exercises to group them as a Superset or Circuit.",
+    "ariaDeselect": "Deselect",
+    "ariaSelect": "Select to group",
+    "removeExercise": "Remove",
+    "swapOtherMuscles": "Other muscles"
   },
   "blocking": {
     "gymDeactivatedTitle": "Account Deactivated",
@@ -1432,7 +1584,9 @@
     "profileUnavailableBody": "This usually means your profile has not loaded yet or the network request failed.",
     "signOut": "Sign Out",
     "retry": "Retry",
-    "retrying": "Retrying…"
+    "retrying": "Retrying…",
+    "resumeMembership": "Reactivate my membership",
+    "resuming": "Reactivating…"
   },
   "ageVerify": {
     "title": "Confirm your age",
@@ -1443,7 +1597,10 @@
     "tooYoung": "You must be {{min}} or older to use TuGymPR.",
     "saveFailed": "Could not save. Please try again.",
     "saving": "Saving…",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "month": "Month",
+    "day": "Day",
+    "year": "Year"
   },
   "settings": {
     "title": "Settings",
@@ -1532,6 +1689,7 @@
     "regenerateConfirm": "Yes, regenerate",
     "regenerating": "Regenerating…",
     "regenerateFailed": "Could not regenerate program: {{msg}}",
+    "actionFailed": "That didn't go through. Check your connection and try again.",
     "currentProgram": "Current Program",
     "getStarted": "Get started",
     "programEndedWhatsNext": "Program ended — what's next?",
@@ -1749,7 +1907,22 @@
     "keepIt": "Keep it",
     "noGymExclusives": "No gym exclusive programs available",
     "noGymExclusivesHint": "Check back later for programs from your gym",
-    "communityPrograms": "Programs"
+    "communityPrograms": "Programs",
+    "regenWhenStart": "When to start?",
+    "regenStartToday": "Start today",
+    "regenStartPreferred": "On my days",
+    "regenWait": "Building your new program…",
+    "deleteRoutineFailed": "Could not delete routine: {{msg}}",
+    "gymExclusive": "Gym Exclusive",
+    "closingTimeWarning": "Your workout on {{day}} may run past closing time ({{closeTime}}). Plan to start earlier.",
+    "adaptDeloadTitle": "Consider a deload week",
+    "adaptIncreaseTitle": "You're progressing well!",
+    "adaptInsightTitle": "Program insight",
+    "adaptDeloadBody": "Your volume has dropped recently. A lighter week may help you recover and come back stronger.",
+    "adaptIncreaseBody": "Your volume is trending up. Keep pushing and trust the process.",
+    "adaptUnderperformBody": "{{count}} exercise(s) have low completion. Consider reducing weight or swapping them.",
+    "adaptGeneralBody": "Your program is on track. Keep showing up.",
+    "gotIt": "Got it"
   },
   "quickStart": {
     "startWorkout": "Start Workout",
@@ -2048,7 +2221,15 @@
     "filterPull": "Pull",
     "filterArms": "Arms",
     "filterMobility": "Mobility",
-    "filterHIIT": "HIIT"
+    "filterHIIT": "HIIT",
+    "saveTimeout": "The server didn't respond. Check your connection and try again.",
+    "noMuscleData": "No muscle data for this exercise",
+    "primaryRequired": "Select at least one primary muscle",
+    "tapToSetPrimary": "Tap a muscle in Primary mode to get started.",
+    "notReady": "Profile not ready, try again in a moment.",
+    "deleteError": "Failed to delete exercise. Please try again.",
+    "backToWorkouts": "Back to Workouts",
+    "seeAllInFilter": "See all {{filter}}"
   },
   "leaderboard": {
     "title": "Leaderboard",
@@ -2157,7 +2338,10 @@
         "workouts": "Workouts",
         "prs": "Personal Records"
       }
-    }
+    },
+    "emptySlot": "—",
+    "viewSlide": "View {{slide}}",
+    "friendRequestExists": "You already have a request with this member"
   },
   "navigation": {
     "legend": {
@@ -2250,7 +2434,20 @@
     "somethingWentWrong": "Something went wrong. Please try again.",
     "ariaPreviousWeek": "Previous week",
     "ariaNextWeek": "Next week",
-    "ariaCloseDialog": "Close dialog"
+    "ariaCloseDialog": "Close dialog",
+    "typeStrength": "Strength",
+    "typeStrengthDesc": "Weight training",
+    "typeCardio": "Cardio",
+    "typeCardioDesc": "Cardio sessions",
+    "typeHybrid": "Hybrid",
+    "typeHybridDesc": "Lifting + Cardio",
+    "cardioFocus": "Focus",
+    "cardioMixed": "Mixed",
+    "cardioMachines": "Machines",
+    "cardioSports": "Sports",
+    "hybridDesc": "Hybrid program",
+    "hybridDescBody": "Combines weight training with cardio finishers. Each session ends with 10-15 min cardio.",
+    "closingTimeWarning": "Your workout on {{day}} may run past closing time ({{closeTime}}). Consider starting earlier."
   },
   "createRoutine": {
     "duration": {
@@ -2277,7 +2474,11 @@
     "saving": "Saving…",
     "saveAndStart": "Save & Start Workout",
     "saveAndEdit": "Save & Edit Exercises",
-    "ariaCloseDialog": "Close dialog"
+    "ariaCloseDialog": "Close dialog",
+    "nameTooLong": "Routine name must be 100 characters or less",
+    "eyebrow": "New routine",
+    "dismissError": "Dismiss error",
+    "removeExercise": "Remove exercise"
   },
   "nutrition_ingredients": {
     "categoryNames": {
@@ -2780,7 +2981,8 @@
     "zoomPhoto": "View larger",
     "closePhotoZoom": "Close photo viewer",
     "progressPhotoFullAlt": "Progress photo (fullscreen)",
-    "takenOn": "Taken on"
+    "takenOn": "Taken on",
+    "sessionExpired": "Please sign in again to continue."
   },
   "muscleGroups": {
     "All": "All",
@@ -5327,7 +5529,8 @@
       "printBtn": "Print",
       "previewLoading": "Loading…",
       "previewBatchEmpty": "No cards to preview. Go back and select cards to print.",
-      "cardForLabel": "for"
+      "cardForLabel": "for",
+      "loadMore": "Show {{count}} more"
     },
     "morningQueue": {
       "title": "Today's conversations",
@@ -8091,7 +8294,11 @@
     "bodyPhotos": "Body composition photos",
     "foodPhotos": "Food photos",
     "menuPhotos": "Menu photos",
-    "failedToRevoke": "Failed to revoke consent"
+    "failedToRevoke": "Failed to revoke consent",
+    "consentGranted": "Consent granted",
+    "failedToGrant": "Failed to grant consent",
+    "toggleFailed": "Could not save. Try again.",
+    "saved": "Saved"
   },
   "milestones": {
     "noMilestonesYet": "No milestones yet",
@@ -8220,7 +8427,12 @@
     "volume_1m": {
       "label": "Million Pound Club",
       "desc": "Lift 1,000,000 lbs total"
-    }
+    },
+    "firstWorkout": "Completed their first workout!",
+    "workoutCount": "Completed {{count}} workouts!",
+    "dayStreak": "{{days}}-day streak!",
+    "firstPR": "First PR on {{exercise}}!",
+    "totalPRs": "{{count}} personal records total!"
   },
   "dayStrip": {
     "days": [
@@ -8405,6 +8617,8 @@
     "personalInfoUpdated": "Personal info updated",
     "failedToSave": "Failed to save: {{message}}",
     "failedToUploadAvatar": "Failed to upload avatar: {{message}}",
+    "reasonNoConnection": "no connection",
+    "reasonTryAgain": "please try again",
     "failedToDeleteAccount": "Failed to delete account",
     "nameCannotBeEmpty": "Name cannot be empty",
     "usernameCannotBeEmpty": "Username cannot be empty",
@@ -8483,7 +8697,13 @@
     "connectDesc": "Connect to sync weight, workouts, steps, and calories automatically.",
     "settingsHint": "To manage health data permissions or disconnect, go to your device Settings > Health > TuGymPR.",
     "goBack": "Go back",
-    "refreshActivityData": "Refresh activity data"
+    "refreshActivityData": "Refresh activity data",
+    "permissionUnsupported": "Health data isn’t available on this device.",
+    "permissionDenied": "Permission denied. Open Settings to enable Health access.",
+    "permissionFailed": "Could not enable Health sync.",
+    "dataFromAppleHealth": "Data from Apple Health",
+    "dataFromHealthConnect": "Data from Health Connect",
+    "poweredByHealthKit": "Powered by Apple HealthKit"
   },
   "appTour": {
     "step1Title": "Your Daily Plan",
@@ -8580,7 +8800,12 @@
     "goBack": "Go back",
     "ptsShort": "pts",
     "ptsLong": "points",
-    "rewardLoading": "..."
+    "rewardLoading": "...",
+    "codeError": "Couldn't generate your referral code. Pull to refresh or try again later.",
+    "walletUnsupported": "Wallet passes not yet configured for this gym",
+    "walletFailed": "Could not add to wallet",
+    "addToWallet": "Add to Wallet",
+    "wallet": "Wallet"
   },
   "goals": {
     "title": "Goals",
@@ -8627,6 +8852,7 @@
     "back": "Back",
     "confirmDelete": "Delete this goal? This cannot be undone.",
     "tooAggressiveTitle": "That date is too aggressive",
+    "saveFailed": "Couldn't save your goal. Please try again.",
     "suggestRealistic": "Realistic target: {{date}}",
     "suggestedPlan": "+{{rate}} {{unit}}/week × {{weeks}} weeks",
     "useRealisticDate": "Use this date instead",
@@ -9100,7 +9326,10 @@
       "defaultNextSession": "See you at our next session!",
       "defaultRecovery": "Make sure you rest and hydrate today.",
       "defaultMotivation": "You're crushing it. Stay consistent."
-    }
+    },
+    "deleted": "Conversation removed.",
+    "blocked": "{{name}} blocked.",
+    "blockError": "Could not block user."
   },
   "trainerAnalytics": {
     "title": "Analytics",
@@ -9146,7 +9375,17 @@
     "habitError": "Couldn't update that habit.",
     "yes": "Yes",
     "no": "No",
-    "close": "Close"
+    "close": "Close",
+    "plateau": "{{exercise}} has stalled around {{weight}} lbs for {{weeks}} weeks. Try a deload week or new rep ranges.",
+    "volumeUp": "Training volume is up {{pct}}% vs your 4-week average. Great momentum!",
+    "volumeDown": "Training volume is down {{pct}}% from your 4-week average. Try to get back on track this week.",
+    "imbalance": "You've trained {{highMuscle}} {{highCount}} times in the last 4 weeks, but {{lowMuscle}} only {{lowCount}}. Consider balancing your split.",
+    "consistency": "You've completed {{completed}} of {{scheduled}} scheduled days this week ({{pct}}%). Keep pushing!",
+    "consistencyPerfect": "Perfect week — you hit all {{completed}} scheduled days!",
+    "prCelebration": "New PR! You hit {{weight}} lbs on {{exercise}}. Keep it up!",
+    "deload": "Your volume has climbed {{weeks}} weeks in a row. Consider a deload week to recover.",
+    "streakChase": "You're on a {{current}}-day streak. Your record is {{longest}} days — go beat it!",
+    "streakRecord": "{{current}}-day streak — your longest ever. Don't let it go!"
   },
   "adminChurn": {
     "searchPlaceholder": "Search members...",
@@ -9310,7 +9549,10 @@
     "goBack": "Go back",
     "starRating": "{{count}} star",
     "today": "Today",
-    "starRating_plural": "{{count}} stars"
+    "starRating_plural": "{{count}} stars",
+    "bookFailed": "Couldn't book the class. Try again.",
+    "cancelFailed": "Couldn't cancel the booking. Try again.",
+    "checkinFailed": "Couldn't check you in. Try again."
   },
   "trainerClasses": {
     "title": "Classes",
@@ -9387,7 +9629,8 @@
     "minutesShort": "min",
     "noBookingsDesc": "No bookings for this class yet",
     "noDataDesc": "Not enough data yet",
-    "takeAttendance": "Take attendance"
+    "takeAttendance": "Take attendance",
+    "close": "Close"
   },
   "adminAnalytics": {
     "onboardingCompletion": "Onboarding Completion",
@@ -9478,6 +9721,17 @@
       "success": "Report submitted — our team will review within 24 hours.",
       "complianceShort": "Reports are reviewed within 24 hours.",
       "abuseEmailFooter": "For urgent abuse reports, email <1>abuse@tugympr.com</1>"
+    },
+    "unknownUser": "this user",
+    "block": {
+      "title": "Block user",
+      "titleWithHandle": "Block {{handle}}?",
+      "body": "You won't see their posts, comments, or messages, and they won't be able to message you. You can unblock anytime in Settings.",
+      "cancel": "Cancel",
+      "confirm": "Block",
+      "submitting": "Blocking…",
+      "success": "Blocked {{name}}",
+      "error": "Could not block user. Please try again."
     }
   },
   "platformSettings": {
@@ -10217,7 +10471,9 @@
     },
     "activeWorkout": "Active workout",
     "adhAbbr": "Adh.",
-    "coachPinned": "Pinned by coach"
+    "coachPinned": "Pinned by coach",
+    "injuriesPinned": "Injuries · Pinned",
+    "pinnedNotes": "Pinned notes"
   },
   "trainerProfile": {
     "title": "Profile",
@@ -10559,7 +10815,39 @@
     "splits": "Splits",
     "acquiringGps": "Waiting for GPS…",
     "gpsUnavailableTimerOnly": "GPS unavailable — tracking time only",
-    "logQueued": "Saved locally — will sync when online"
+    "logQueued": "Saved locally — will sync when online",
+    "tapToStart": "Tap to start",
+    "share": {
+      "editorial": "Editorial",
+      "bold": "Bold",
+      "poster": "Poster",
+      "photo": "Photo",
+      "shareRun": "Share run",
+      "style": "Style",
+      "takePhoto": "Take photo",
+      "changePhoto": "Change photo",
+      "pickPhoto": "Pick photo",
+      "clearBackground": "Clear background",
+      "format": "Format",
+      "story": "Story",
+      "feed": "Feed",
+      "portrait": "Portrait",
+      "showGym": "Show gym",
+      "showMap": "Show map",
+      "customize": "Customize",
+      "titlePlaceholder": "Custom title (optional)",
+      "accentColor": "Accent {{c}}",
+      "resetAccent": "Reset",
+      "themeDark": "Dark",
+      "themeLight": "Light",
+      "shareTo": "Share to",
+      "save": "Save",
+      "copyLink": "Copy link",
+      "generating": "Generating…",
+      "shareNow": "Share now",
+      "pickDestination": "Pick a destination"
+    },
+    "inProgress": "in progress"
   },
   "liveCardio": {
     "back": "Back"
@@ -11792,7 +12080,25 @@
     "accentGold": "Gold",
     "accentCoachPurple": "Coach purple",
     "accentInk": "Ink",
-    "preview": "Preview"
+    "preview": "Preview",
+    "prCaption": "New PR — {{ex}} · {{val}} {{unit}}",
+    "titlePR": "Share PR",
+    "streakCaption": "{{n}}-day streak on TuGymPR 🔥",
+    "titleStreak": "Share streak",
+    "bodyCompCaption": "{{dir}} {{n}} lb in {{d}} days on TuGymPR",
+    "bodyCompCaptionShort": "Progress on TuGymPR",
+    "titleBodyComp": "Share progress",
+    "monthlyCaption": "{{label}} on TuGymPR — {{n}} workouts",
+    "titleMonthly": "Share month",
+    "composeSticker": "Compose sticker",
+    "composing": "Composing…",
+    "done": "Done",
+    "composeAddPhoto": "Add a background photo to start",
+    "takePhoto": "Take photo",
+    "pickPhoto": "Pick photo",
+    "retake": "Retake",
+    "changePhoto": "Change",
+    "composeHint": "Drag to move · Pinch to resize"
   },
   "achievementToast": {
     "dismiss": "Dismiss"
@@ -12253,7 +12559,10 @@
     "skip": "Skip",
     "save": "Save",
     "saving": "Saving…",
-    "saved": "Got it — thanks!"
+    "saved": "Got it — thanks!",
+    "errorSave": "Saved locally — we'll sync when reconnected",
+    "errorTitle": "Saved offline",
+    "errorBody": "We couldn't reach the server. Your check-in is stored locally."
   },
   "adminTour": {
     "ariaLabel": "Guided tour",
@@ -12414,5 +12723,18 @@
       "desc": "You know your dashboard now. The routine that matters: check the Overview every morning and message 3 at-risk members. That’s the difference between 70% and 85% annual retention.",
       "f1": "Reopen this guide anytime from your profile."
     }
-  }
+  },
+  "common": {
+    "close": "Close",
+    "back": "Back",
+    "loading": "Loading…"
+  },
+  "workout": {
+    "saveFailedRetry": "Couldn't save your workout. Tap retry.",
+    "retry": "Retry"
+  },
+  "progressOverview": {
+    "barAriaLabel": "{{week}}: {{volume}} lbs"
+  },
+  "_lang": "en"
 }

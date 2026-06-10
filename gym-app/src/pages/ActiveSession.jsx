@@ -216,7 +216,7 @@ const InSessionCardio = ({ exercise, onComplete, onSkip, t, i18n }) => {
                 className="px-8 py-3 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
                 style={phase === 'running'
                   ? { backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444' }
-                  : { backgroundColor: '#10B981', color: '#fff' }
+                  : { backgroundColor: 'var(--color-success, #10B981)', color: 'var(--color-text-on-secondary, #fff)' }
                 }
               >
                 {phase === 'running' ? t('cardio.pause', 'Pause') : elapsed > 0 ? t('cardio.resume', 'Resume') : t('cardio.start', 'Start')}
@@ -225,7 +225,7 @@ const InSessionCardio = ({ exercise, onComplete, onSkip, t, i18n }) => {
                 <button
                   onClick={handleFinish}
                   className="px-6 py-3 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
-                  style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+                  style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
                 >
                   {t('cardio.finish', 'Finish')}
                 </button>
@@ -276,7 +276,7 @@ const InSessionCardio = ({ exercise, onComplete, onSkip, t, i18n }) => {
               <button
                 onClick={() => onComplete(Math.floor(accumRef.current))}
                 className="w-full py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
-                style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
               >
                 {t('activeSession.completeCardio', 'Complete')}
               </button>
@@ -327,7 +327,7 @@ class ActiveSessionErrorBoundary extends Component {
             </pre>
             <button
               onClick={() => window.history.back()}
-              className="mt-2 px-6 py-3 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px]"
+              className="mt-2 px-6 py-3 rounded-2xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[14px]"
             >
               {i18n.t('pages:activeSession.goBack')}
             </button>
@@ -1610,7 +1610,7 @@ const ActiveSession = () => {
 
       setDataLoading(false);
       } catch (err) {
-
+        console.error('ActiveSession load failed', err);
         // Attempt to recover from offline cache
         const cached = getCachedWorkoutData(id);
         if (cached?.exercises?.length) {
@@ -1625,7 +1625,7 @@ const ActiveSession = () => {
           setLoggedSets(initialSets);
           setDataLoading(false);
         } else {
-          setError(err.message || t('activeSession.loadError'));
+          setError(t('activeSession.loadFailed', "Couldn't load this workout. Go back and try again."));
           setDataLoading(false);
         }
       }
@@ -2744,10 +2744,10 @@ const ActiveSession = () => {
       // localStorage.removeItem only runs after a successful RPC, but we persist
       // explicitly here as a safety net in case anything in the try block touched it.
       try { localStorage.setItem(sessionKey, JSON.stringify(saveRef.current)); } catch { }
-      setSaveError(err.message || t('activeSession.saveErrorMessage'));
+      console.error('Workout save failed', err);
+      setSaveError(t('workout.saveFailedRetry', "Couldn't save your workout. Tap retry."));
       setSaving(false);
       // Surface a non-dismissable toast with a Retry CTA so the user can re-run save.
-      // TODO(i18n): add `workout.saveFailedRetry` and `workout.retry` keys to locales.
       try {
         showToast(
           t('workout.saveFailedRetry', "Couldn't save your workout. Tap retry."),
@@ -2774,7 +2774,7 @@ const ActiveSession = () => {
           <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{error}</p>
           <button
             onClick={() => navigate(-1)}
-            className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-black font-bold text-[15px]"
+            className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[15px]"
           >
             {t('activeSession.goBack')}
           </button>
@@ -2804,7 +2804,7 @@ const ActiveSession = () => {
           <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('activeSession.workoutModified')}</p>
           <button
             onClick={() => navigate(-1)}
-            className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-black font-bold text-[15px]"
+            className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[15px]"
           >
             {t('activeSession.goBack')}
           </button>
@@ -2852,7 +2852,7 @@ const ActiveSession = () => {
           <button
             onClick={() => { setWarmUpPhase('active'); setWarmUpIndex(0); }}
             className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform"
-            style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
           >
             {t('activeSession.enterWarmUp', 'Start Warm-Up')}
           </button>
@@ -3183,7 +3183,7 @@ const ActiveSession = () => {
             <div className="space-y-2.5">
               <button
                 onClick={() => setShowWrongDay(false)}
-                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-[#D4AF37] hover:bg-[#C4A030] transition-colors"
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-accent,#000)] bg-[#D4AF37] hover:bg-[#C4A030] transition-colors"
               >
                 {t('activeSession.startAnyway', 'Yes, Start Anyway')}
               </button>
@@ -3236,7 +3236,7 @@ const ActiveSession = () => {
             <div className="space-y-2.5">
               <button
                 onClick={() => { autoEndPromptDismissed.current = true; setShowAutoEndPrompt(false); }}
-                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-accent,#000)] bg-[#D4AF37] hover:bg-[#C4A030] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               >
                 {t('activeSession.keepGoing', 'Yes, keep going')}
               </button>
@@ -3384,7 +3384,7 @@ const ActiveSession = () => {
                   } catch { /* non-critical */ }
                 }}
                 className="w-full py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
-                style={{ backgroundColor: 'var(--color-accent)', color: '#001512' }}
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }}
               >
                 {t('activeSession.resume', 'Resume')}
               </button>
@@ -3535,7 +3535,7 @@ const ActiveSession = () => {
             className="px-3 py-1 rounded-full text-[12px] font-bold active:scale-95 transition-transform"
             style={{
               background: 'var(--color-accent)',
-              color: '#001512',
+              color: 'var(--color-text-on-accent, #001512)',
             }}
           >
             {t('activeSession.undo', 'Undo')}
@@ -3676,7 +3676,7 @@ const ActiveSession = () => {
             <p className="text-[13px] mb-6" style={{ color: 'var(--color-text-subtle)' }}>{t('activeSession.tapToAddExercises')}</p>
             <button
               onClick={() => setShowAddExercise(true)}
-              className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px] active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[14px] active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             >
               <Plus size={18} />
               {t('activeSession.addExercise')}
@@ -3942,7 +3942,7 @@ const ActiveSession = () => {
                           className="text-[12px] font-bold px-3.5 py-1.5 rounded-full transition-all active:scale-95"
                           style={{
                             background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                            color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                            color: active ? 'var(--color-text-on-accent, #0A0D14)' : 'var(--color-text-muted)',
                             border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           }}
                         >
@@ -4069,7 +4069,7 @@ const ActiveSession = () => {
                               width: 26,
                               height: 26,
                               background: 'var(--color-accent)',
-                              color: '#0A0D14',
+                              color: 'var(--color-text-on-accent, #0A0D14)',
                             }}
                           >
                             <Plus size={14} strokeWidth={2.6} />
@@ -4078,7 +4078,7 @@ const ActiveSession = () => {
                             className="absolute top-2 right-2 inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded tabular-nums"
                             style={{
                               background: 'var(--color-accent)',
-                              color: '#0A0D14',
+                              color: 'var(--color-text-on-accent, #0A0D14)',
                               letterSpacing: 0.4,
                             }}
                             aria-label={t('activeSession.suggestionMatchAria', { pct: Math.round(ex._suggestionMatch || 0), defaultValue: `${Math.round(ex._suggestionMatch || 0)}% match` })}
@@ -4156,7 +4156,7 @@ const ActiveSession = () => {
                             width: 26,
                             height: 26,
                             background: 'var(--color-accent)',
-                            color: '#0A0D14',
+                            color: 'var(--color-text-on-accent, #0A0D14)',
                           }}
                         >
                           <Plus size={14} strokeWidth={2.6} />
@@ -4204,7 +4204,7 @@ const ActiveSession = () => {
                     <div className="grid grid-cols-3 gap-2 mb-5">
                       <button
                         onClick={() => setSelectedMuscle('')}
-                        className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${!selectedMuscle ? 'bg-[#D4AF37] text-black' : ''}`}
+                        className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${!selectedMuscle ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]' : ''}`}
                         style={selectedMuscle ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : {}}
                       >
                         {t('muscleGroups.All', 'All')}
@@ -4213,7 +4213,7 @@ const ActiveSession = () => {
                         <button
                           key={mg}
                           onClick={() => setSelectedMuscle(selectedMuscle === mg ? '' : mg)}
-                          className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${selectedMuscle === mg ? 'bg-[#D4AF37] text-black' : ''}`}
+                          className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${selectedMuscle === mg ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]' : ''}`}
                           style={selectedMuscle !== mg ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : {}}
                         >
                           {t(`muscleGroups.${mg}`, mg)}
@@ -4246,7 +4246,7 @@ const ActiveSession = () => {
                     {/* Apply */}
                     <button
                       onClick={() => setShowFilters(false)}
-                      className="w-full py-3 rounded-xl font-bold text-[14px] bg-[#D4AF37] text-black active:scale-[0.97] transition-transform"
+                      className="w-full py-3 rounded-xl font-bold text-[14px] bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] active:scale-[0.97] transition-transform"
                     >
                       {t('activeSession.applyFilters', 'Apply')}
                     </button>
@@ -4375,7 +4375,7 @@ const ActiveSession = () => {
                       style={{
                         background: isSelectedForGroup ? tone : 'transparent',
                         borderColor: isSelectedForGroup ? tone : 'var(--color-border-strong, rgba(255,255,255,0.25))',
-                        color: '#000',
+                        color: ROW_TONE[rowGroupType] ? '#000' : 'var(--color-text-on-accent, #000)',
                       }}
                     >
                       {isSelectedForGroup && <span className="text-[12px] font-bold leading-none">&#10003;</span>}
@@ -4386,7 +4386,7 @@ const ActiveSession = () => {
                       className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[12px] font-bold tabular-nums"
                       style={{
                         background: isActive ? tone : 'color-mix(in srgb, var(--color-text-primary) 8%, transparent)',
-                        color: isActive ? '#000' : 'var(--color-text-muted)',
+                        color: isActive ? (ROW_TONE[rowGroupType] ? '#000' : 'var(--color-text-on-accent, #000)') : 'var(--color-text-muted)',
                       }}
                     >
                       {idx + 1}
@@ -4532,7 +4532,7 @@ const ActiveSession = () => {
                   onClick={() => setSwapSelectedReason(swapSelectedReason === r.key ? null : r.key)}
                   className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors ${
                     swapSelectedReason === r.key
-                      ? 'bg-[#D4AF37] text-black'
+                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
                       : 'bg-white/[0.06] hover:bg-white/[0.1]'
                   }`}
                   style={swapSelectedReason !== r.key ? { color: 'var(--color-text-muted)' } : undefined}
@@ -4630,7 +4630,7 @@ const ActiveSession = () => {
                         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0) 100%)' }} />
                         <span
                           className="absolute top-2 left-2 inline-flex items-center justify-center rounded-full"
-                          style={{ width: 26, height: 26, background: 'var(--color-accent)', color: '#0A0D14' }}
+                          style={{ width: 26, height: 26, background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #0A0D14)' }}
                         >
                           <ArrowLeftRight size={13} strokeWidth={2.6} />
                         </span>
@@ -4639,7 +4639,7 @@ const ActiveSession = () => {
                             className="absolute top-2 right-2 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded tabular-nums"
                             style={{
                               background: 'var(--color-accent)',
-                              color: '#0A0D14',
+                              color: 'var(--color-text-on-accent, #0A0D14)',
                               letterSpacing: 0.4,
                             }}
                             aria-label={t('activeSession.swapMatchAria', { pct: ex._swapMatch, defaultValue: `${ex._swapMatch}% match` })}
@@ -4783,8 +4783,8 @@ const ActiveSession = () => {
                   onClick={hasNextExercise ? handleNext : () => setShowFinishModal(true)}
                   className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:outline-none ${
                     hasNextExercise
-                      ? 'bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
-                      : 'bg-[#10B981] text-white shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
+                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
+                      : 'bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
                   }`}
                 >
                   {hasNextExercise ? `${t('activeSession.nextExerciseButton')} →` : `${t('activeSession.finishWorkoutButton')} →`}
@@ -4795,7 +4795,7 @@ const ActiveSession = () => {
                   disabled={!canComplete}
                   className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                     canComplete
-                      ? 'bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
+                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
                       : 'cursor-not-allowed'
                   }`}
                   style={!canComplete ? { backgroundColor: 'var(--color-border-subtle)', color: 'var(--color-text-subtle)' } : undefined}
@@ -4820,7 +4820,7 @@ const ActiveSession = () => {
                     if (isLast) { setCooldownPhase('done'); } else { setCooldownIndex(i => i + 1); }
                   }}
                   className="w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:outline-none flex items-center justify-center gap-2"
-                  style={isLast ? { backgroundColor: '#10B981', color: '#fff' } : { backgroundColor: 'var(--color-accent)', color: '#000' }}
+                  style={isLast ? { backgroundColor: 'var(--color-success, #10B981)', color: 'var(--color-text-on-secondary, #fff)' } : { backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
                 >
                   <SkipForward size={16} strokeWidth={2.4} />
                   {isLast
@@ -4850,7 +4850,7 @@ const ActiveSession = () => {
             </button>
             <button
               onClick={() => setShowFinishModal(true)}
-              className="flex-1 font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-[#10B981] text-white shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-2 focus:ring-[#10B981] focus:outline-none"
+              className="flex-1 font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-2 focus:ring-[#10B981] focus:outline-none"
             >
               {t('activeSession.finishWorkoutButton')} →
             </button>
@@ -4871,8 +4871,8 @@ const ActiveSession = () => {
                   onClick={hasNextExercise ? handleNext : () => setShowFinishModal(true)}
                   className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:outline-none ${
                     hasNextExercise
-                      ? 'bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
-                      : 'bg-[#10B981] text-white shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
+                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
+                      : 'bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
                   }`}
                 >
                   {hasNextExercise ? `${t('activeSession.nextExerciseButton')} →` : `${t('activeSession.finishWorkoutButton')} →`}
@@ -4883,7 +4883,7 @@ const ActiveSession = () => {
                   disabled={!canComplete}
                   className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                     canComplete
-                      ? 'bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
+                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
                       : 'bg-white/[0.06] cursor-not-allowed'
                   }`}
                   style={!canComplete ? { color: 'var(--color-text-muted)' } : undefined}

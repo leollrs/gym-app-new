@@ -111,7 +111,7 @@ export default function UpdateRequiredModal() {
           type="button"
           onClick={handleUpdate}
           className="w-full py-3.5 rounded-[14px] text-[15px] font-bold"
-          style={{ background: 'var(--color-accent)', color: 'var(--color-bg-primary)' }}
+          style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
         >
           {platform === 'web'
             ? t('updateRequired.reload', 'Reload now')

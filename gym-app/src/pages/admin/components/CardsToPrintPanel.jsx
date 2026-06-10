@@ -52,7 +52,9 @@ function SectionTabs({ items, active, onChange }) {
               padding: '6px 13px', borderRadius: 7, border: 'none', cursor: 'pointer',
               fontSize: 12.5, fontWeight: 700, letterSpacing: -0.1,
               background: isActive ? 'var(--color-admin-text)' : 'transparent',
-              color: isActive ? '#fff' : 'var(--color-admin-text-sub)',
+              // Inverse (panel) so the active label reads on the inverted pill in
+              // BOTH themes — hardcoded #fff went invisible on the light dark-mode pill.
+              color: isActive ? 'var(--color-admin-panel)' : 'var(--color-admin-text-sub)',
             }}
           >
             {it.label}
@@ -61,8 +63,8 @@ function SectionTabs({ items, active, onChange }) {
                 className="admin-mono"
                 style={{
                   fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999,
-                  background: isActive ? 'rgba(255,255,255,0.16)' : 'var(--color-admin-panel)',
-                  color: isActive ? 'rgba(255,255,255,0.9)' : 'var(--color-admin-text-muted)',
+                  background: isActive ? 'color-mix(in srgb, var(--color-admin-panel) 20%, transparent)' : 'var(--color-admin-panel)',
+                  color: isActive ? 'var(--color-admin-panel)' : 'var(--color-admin-text-muted)',
                 }}
               >
                 {it.count}

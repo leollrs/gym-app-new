@@ -19,7 +19,7 @@ export default function TierFilter({ active, onChange }) {
           onClick={() => onChange(tp.key)}
           className={`px-3.5 py-1.5 min-h-[44px] min-w-[44px] text-[11px] font-semibold transition-all ${
             active === tp.key
-              ? 'text-white'
+              ? 'text-[var(--color-text-on-accent,#fff)]'
               : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
           }`}
           style={{

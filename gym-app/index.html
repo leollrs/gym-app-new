@@ -20,12 +20,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800;900&family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <script>
-      // Global error overlay — shows JS errors visibly so we can diagnose
-      // the "infinite loading" boot issue. Safe to ship; only renders when
-      // a real error fires.
+      // Boot-failure overlay — shows JS errors visibly so we can diagnose
+      // blank-screen boot issues. STRICTLY pre-mount: once React has rendered
+      // anything into #root, this never fires again. Without that guard, any
+      // unhandled rejection mid-session (e.g. a recoverable DB error) painted
+      // a full-screen black overlay over a perfectly working app — the in-app
+      // ErrorBoundary + errorTracker own everything post-mount.
       (function() {
         function showError(label, err) {
           try {
+            var root = document.getElementById('root');
+            if (root && root.childElementCount > 0) return; // app booted — stay silent
             var overlay = document.getElementById('__boot_error__');
             if (!overlay) {
               overlay = document.createElement('div');
@@ -38,6 +43,19 @@
         }
         window.addEventListener('error', function(e){ showError('error', e.error || e.message); });
         window.addEventListener('unhandledrejection', function(e){ showError('reject', e.reason); });
+        // If an early error drew the overlay but the app still managed to
+        // mount, tear the overlay down — the boot recovered.
+        try {
+          var mo = new MutationObserver(function(){
+            var root = document.getElementById('root');
+            if (root && root.childElementCount > 0) {
+              var ov = document.getElementById('__boot_error__');
+              if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+              mo.disconnect();
+            }
+          });
+          mo.observe(document.documentElement, { childList: true, subtree: true });
+        } catch(_){}
       })();
       // Apply theme before first paint — always follow system preference
       (function() {

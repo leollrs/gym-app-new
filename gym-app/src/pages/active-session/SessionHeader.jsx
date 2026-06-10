@@ -76,9 +76,9 @@ const SessionHeader = ({
             <button
               onClick={onResume}
               className="w-full py-4 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-transform duration-200 focus:outline-none"
-              style={{ backgroundColor: 'var(--color-accent)', color: '#001512' }}
+              style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }}
             >
-              <Play size={18} fill="#001512" strokeWidth={0} />
+              <Play size={18} fill="currentColor" strokeWidth={0} />
               {t('activeSession.resume')}
             </button>
             <button

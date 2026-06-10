@@ -163,7 +163,7 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
 
               <span
                 className={`relative z-30 text-[15px] font-extrabold ${
-                  isSelected ? 'text-white'
+                  isSelected ? 'text-[var(--color-text-on-accent,#fff)]'
                   : hasCompleted ? 'text-[var(--color-accent)]'
                   : ''
                 }`}

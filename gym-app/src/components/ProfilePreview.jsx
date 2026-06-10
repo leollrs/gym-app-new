@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
 import UserAvatar from './UserAvatar';
 import ReportContentModal from './ReportContentModal';
+import posthogClient from 'posthog-js';
 
 // Goal display config
 const GOAL_META = {
@@ -55,12 +56,25 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
   const handleBlock = async () => {
     if (!userId || !user?.id || blocking) return;
     setBlocking(true);
-    await supabase.from('blocked_users').upsert(
+    const { error: blockError } = await supabase.from('blocked_users').upsert(
       { blocker_id: user.id, blocked_id: userId },
       { onConflict: 'blocker_id,blocked_id' }
     );
-    await supabase.from('friendships').delete()
+    if (blockError) {
+      // Block didn't persist — keep the confirm modal open so the user can retry
+      showToast(t('common:somethingWentWrong'), 'error');
+      setBlocking(false);
+      return;
+    }
+    const { error: friendshipError } = await supabase.from('friendships').delete()
       .or(`and(requester_id.eq.${user.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${user.id})`);
+    if (friendshipError) {
+      // Block is in place but the friendship removal failed — retry is idempotent
+      showToast(t('common:somethingWentWrong'), 'error');
+      setBlocking(false);
+      return;
+    }
+    posthogClient?.capture('user_blocked', { source: 'profile_preview' });
     showToast(t('social.userBlocked', { name: profileData?.full_name?.split(' ')[0] ?? '' }), 'success');
     setBlocking(false);
     setConfirmBlock(false);
@@ -307,7 +321,7 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
                   if (convId) navigate(`/messages/${convId}`);
                 }}
                 className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-center transition-colors active:scale-[0.98] flex items-center justify-center gap-2"
-                style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: '#000' }}
+                style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent, #000)' }}
               >
                 <MessageCircle size={16} />
                 {t('messages.message', { ns: 'pages' })}

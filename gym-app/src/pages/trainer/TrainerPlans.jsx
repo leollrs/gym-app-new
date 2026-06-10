@@ -76,22 +76,23 @@ const fmtTime = (secs, t) => {
     : t('trainerPlans.timeHoursMinutes', '{{h}}h {{m}}m', { h: Math.floor(m / 60), m: m % 60 });
 };
 
-// ── Muscle group color pills ────────────────────────────
+// ── Muscle group color pills (tuned for the light trainer surface) ──────
 const MUSCLE_GROUP_COLORS = {
-  chest: { bg: 'rgba(239,68,68,0.15)', text: '#f87171' },
-  back: { bg: 'rgba(59,130,246,0.15)', text: '#60a5fa' },
-  shoulders: { bg: 'rgba(251,146,60,0.15)', text: '#fb923c' },
-  legs: { bg: 'rgba(34,197,94,0.15)', text: '#4ade80' },
-  arms: { bg: 'rgba(168,85,247,0.15)', text: '#a78bfa' },
-  core: { bg: 'rgba(250,204,21,0.15)', text: '#facc15' },
-  cardio: { bg: 'rgba(236,72,153,0.15)', text: '#f472b6' },
-  glutes: { bg: 'rgba(20,184,166,0.15)', text: '#2dd4bf' },
-  full_body: { bg: 'rgba(148,163,184,0.15)', text: '#94a3b8' },
+  chest: { bg: 'rgba(239,68,68,0.12)', text: '#C2410C' },
+  back: { bg: 'rgba(59,130,246,0.12)', text: '#1D4ED8' },
+  shoulders: { bg: 'rgba(251,146,60,0.14)', text: '#B45309' },
+  legs: { bg: 'rgba(34,197,94,0.12)', text: '#15803D' },
+  arms: { bg: 'rgba(168,85,247,0.12)', text: '#7E22CE' },
+  core: { bg: 'rgba(234,179,8,0.16)', text: '#A16207' },
+  cardio: { bg: 'rgba(236,72,153,0.12)', text: '#BE185D' },
+  glutes: { bg: 'rgba(20,184,166,0.14)', text: '#0F766E' },
+  full_body: { bg: 'rgba(100,116,139,0.12)', text: '#475569' },
 };
+const MUSCLE_FALLBACK = { bg: 'rgba(100,116,139,0.1)', text: '#64748B' };
 const getMuscleColor = (group) => {
-  if (!group) return { bg: 'rgba(148,163,184,0.12)', text: '#94a3b8' };
+  if (!group) return MUSCLE_FALLBACK;
   const key = group.toLowerCase().replace(/\s+/g, '_');
-  return MUSCLE_GROUP_COLORS[key] || { bg: 'rgba(148,163,184,0.12)', text: '#94a3b8' };
+  return MUSCLE_GROUP_COLORS[key] || MUSCLE_FALLBACK;
 };
 
 // ── Exercise Search Panel ────────────────────────────────
@@ -107,17 +108,21 @@ const ExerciseSearchPanel = ({ exercises, exSearch, setExSearch, onAdd, t }) => 
   return (
     <div className="space-y-2">
       <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: TT.textMute }} />
         <input
           value={exSearch}
           onChange={e => setExSearch(e.target.value)}
           placeholder={t('trainerPlans.searchExercises', 'Search exercises...')}
-          className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl pl-9 pr-10 py-3 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)]/40"
+          className="w-full rounded-xl pl-9 pr-10 py-3 text-[16px] sm:text-[13px] outline-none"
+          style={{ background: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }}
+          onFocus={e => { e.target.style.borderColor = TT.accent; }}
+          onBlur={e => { e.target.style.borderColor = TT.border; }}
         />
         {exSearch && (
           <button
             onClick={() => setExSearch('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-white/10 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full transition-colors"
+            style={{ background: TT.surface, color: TT.textMute }}
           >
             <X size={10} />
           </button>
@@ -125,7 +130,7 @@ const ExerciseSearchPanel = ({ exercises, exSearch, setExSearch, onAdd, t }) => 
       </div>
       <div className="space-y-0.5 max-h-[320px] overflow-y-auto overscroll-contain">
         {filteredExercises.length === 0 && (
-          <p className="text-[12px] text-[var(--color-text-muted)] text-center py-4">{t('trainerPlans.noExercisesFound', 'No exercises found')}</p>
+          <p className="text-[12px] text-center py-4" style={{ color: TT.textMute }}>{t('trainerPlans.noExercisesFound', 'No exercises found')}</p>
         )}
         {filteredExercises.map(ex => {
           const mc = getMuscleColor(ex.muscle_group);
@@ -133,11 +138,13 @@ const ExerciseSearchPanel = ({ exercises, exSearch, setExSearch, onAdd, t }) => 
             <button
               key={ex.id}
               onClick={() => onAdd(ex.id)}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/6 active:scale-[0.98] transition-all group min-h-[48px]"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left active:scale-[0.98] transition-all group min-h-[48px]"
+              onMouseEnter={e => { e.currentTarget.style.background = TT.surface2; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             >
-              <Plus size={14} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)] flex-shrink-0 transition-colors" />
+              <Plus size={14} className="flex-shrink-0 transition-colors" style={{ color: TT.textMute }} />
               <div className="min-w-0 flex-1 flex items-center gap-2">
-                <p className="text-[13px] text-[var(--color-text-primary)] truncate">{ex.name}</p>
+                <p className="text-[13px] truncate" style={{ color: TT.text }}>{ex.name}</p>
                 {ex.muscle_group && (
                   <span
                     className="flex-shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
@@ -168,22 +175,23 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
   const toggleNote = (ei) => setExpandedNotes(prev => ({ ...prev, [ei]: !prev[ei] }));
 
   return (
-    <div className="border border-[var(--color-border-subtle)] rounded-2xl overflow-visible bg-[var(--color-bg-card)]/60">
+    <div className="rounded-2xl overflow-visible" style={{ border: `1px solid ${TT.border}`, background: TT.surface }}>
       {/* Day header - whole header tappable for expand/collapse */}
       <div
-        className="flex items-center gap-1 md:gap-2 px-3 md:px-4 py-3 bg-[var(--color-bg-secondary)]/40 rounded-t-2xl cursor-pointer active:bg-[var(--color-bg-secondary)]/60 transition-colors"
+        className="flex items-center gap-1 md:gap-2 px-3 md:px-4 py-3 rounded-t-2xl cursor-pointer transition-colors"
+        style={{ background: TT.surface2 }}
         onClick={() => setExpanded(!expanded)}
       >
         {/* Drag handle hint */}
-        <div className="flex-shrink-0 w-5 flex items-center justify-center -ml-1 text-[var(--color-text-subtle)]">
+        <div className="flex-shrink-0 w-5 flex items-center justify-center -ml-1" style={{ color: TT.textFaint }}>
           <GripVertical size={14} />
         </div>
-        <ChevronDown size={14} className={`text-[var(--color-text-muted)] transition-transform flex-shrink-0 ${expanded ? '' : '-rotate-90'}`} />
+        <ChevronDown size={14} className={`transition-transform flex-shrink-0 ${expanded ? '' : '-rotate-90'}`} style={{ color: TT.textMute }} />
         <input value={day.name} onChange={e => updateDayName(wk, di, e.target.value)}
           onClick={e => e.stopPropagation()}
           placeholder={t('trainerPlans.dayPrefix', 'Day {{num}}', { num: di + 1 })}
-          className="flex-1 bg-transparent text-[14px] font-semibold text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none min-w-0" />
-        <span className="text-[11px] text-[var(--color-text-muted)] flex-shrink-0 flex items-center gap-1.5">
+          className="flex-1 bg-transparent text-[14px] font-semibold outline-none min-w-0" style={{ color: TT.text }} />
+        <span className="text-[11px] flex-shrink-0 flex items-center gap-1.5" style={{ color: TT.textMute }}>
           <span>{day.exercises.length} {t('trainerPlans.ex', 'ex')}</span>
           {dayTime > 0 && (
             <>
@@ -195,15 +203,17 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
         <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
           <button
             onClick={() => { setCopyDayMenu(showCopyDay ? null : { wk, di }); setCopyWeekMenu(null); }}
-            className="min-w-[36px] min-h-[44px] md:min-w-[44px] flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors" title={t('trainerPlans.copyDay', 'Copy day')}>
+            className="min-w-[36px] min-h-[44px] md:min-w-[44px] flex items-center justify-center transition-colors" style={{ color: TT.textMute }} title={t('trainerPlans.copyDay', 'Copy day')}>
             <Copy size={13} />
           </button>
           {showCopyDay && (
-            <div className="absolute right-0 top-full mt-1 z-20 bg-[var(--color-bg-elevated)] border border-[var(--color-border-default)] rounded-xl shadow-xl overflow-hidden min-w-[180px] max-w-[calc(100vw-2rem)] max-h-48 overflow-y-auto">
-              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-widest px-3 pt-2 pb-1">{t('trainerPlans.copyDayTo', 'Copy day to...')}</p>
+            <div className="absolute right-0 top-full mt-1 z-20 rounded-xl shadow-xl overflow-hidden min-w-[180px] max-w-[calc(100vw-2rem)] max-h-48 overflow-y-auto" style={{ background: TT.bgElev, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest px-3 pt-2 pb-1" style={{ color: TT.textMute }}>{t('trainerPlans.copyDayTo', 'Copy day to...')}</p>
               {dayTargets.map((target, idx) => (
                 <button key={idx} onClick={() => copyDayTo(wk, di, target.wk, target.di)}
-                  className="w-full text-left px-3 py-2 text-[12px] text-[var(--color-text-primary)] hover:bg-white/6 transition-colors min-h-[44px] flex items-center">
+                  className="w-full text-left px-3 py-2 text-[12px] transition-colors min-h-[44px] flex items-center" style={{ color: TT.text }}
+                  onMouseEnter={e => { e.currentTarget.style.background = TT.surface2; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                   {target.label}
                 </button>
               ))}
@@ -211,7 +221,9 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
           )}
         </div>
         <button onClick={e => { e.stopPropagation(); removeDay(wk, di); }}
-          className="min-w-[36px] min-h-[44px] md:min-w-[44px] flex items-center justify-center text-[var(--color-text-muted)] hover:text-red-400 transition-colors flex-shrink-0">
+          className="min-w-[36px] min-h-[44px] md:min-w-[44px] flex items-center justify-center transition-colors flex-shrink-0" style={{ color: TT.textMute }}
+          onMouseEnter={e => { e.currentTarget.style.color = TT.hot; }}
+          onMouseLeave={e => { e.currentTarget.style.color = TT.textMute; }}>
           <Trash2 size={13} />
         </button>
       </div>
@@ -222,19 +234,21 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
           {/* Empty state */}
           {day.exercises.length === 0 && (
             <div className="py-8 text-center">
-              <Dumbbell size={24} className="mx-auto mb-2" style={{ color: 'var(--color-text-subtle)' }} />
-              <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('trainerPlans.noExercisesYet', 'No exercises yet')}</p>
-              <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.addExercisesHint', 'Add exercises or auto-generate')}</p>
+              <Dumbbell size={24} className="mx-auto mb-2" style={{ color: TT.textMute }} />
+              <p className="text-[12px]" style={{ color: TT.textMute }}>{t('trainerPlans.noExercisesYet', 'No exercises yet')}</p>
+              <p className="text-[10px] mt-0.5" style={{ color: TT.textMute }}>{t('trainerPlans.addExercisesHint', 'Add exercises or auto-generate')}</p>
             </div>
           )}
 
           {day.exercises.map((ex, ei) => (
-            <div key={ei} className="bg-[var(--color-bg-deep)] rounded-xl px-3 py-3">
+            <div key={ei} className="rounded-xl px-3 py-3" style={{ background: TT.surface2 }}>
               {/* Exercise name + delete */}
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[13px] font-semibold text-[var(--color-text-primary)] flex-1 min-w-0 truncate">{exName(ex.id)}</span>
+                <span className="text-[13px] font-semibold flex-1 min-w-0 truncate" style={{ color: TT.text }}>{exName(ex.id)}</span>
                 <button onClick={() => removeExercise(wk, di, ei)}
-                  className="min-w-[36px] min-h-[36px] flex items-center justify-center text-[var(--color-text-muted)] hover:text-red-400 transition-colors flex-shrink-0 -mr-1">
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center transition-colors flex-shrink-0 -mr-1" style={{ color: TT.textMute }}
+                  onMouseEnter={e => { e.currentTarget.style.color = TT.hot; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = TT.textMute; }}>
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -242,29 +256,29 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
               <div className="flex items-center gap-2 flex-wrap pb-0.5">
                 {/* Sets */}
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <span className="text-[10px] text-[var(--color-text-muted)] mr-0.5">{t('trainerPlans.sets', 'Sets')}:</span>
+                  <span className="text-[10px] mr-0.5" style={{ color: TT.textMute }}>{t('trainerPlans.sets', 'Sets')}:</span>
                   <button onClick={() => updateExercise(wk, di, ei, 'sets', Math.max(1, (ex.sets ?? DEFAULT_SETS) - 1))}
-                    className="min-w-[36px] min-h-[36px] rounded-lg bg-white/6 text-[var(--color-text-secondary)] hover:bg-white/10 text-[12px] flex items-center justify-center active:scale-95 transition-all">&minus;</button>
-                  <span className="text-[12px] font-medium text-[var(--color-text-primary)] w-5 text-center">{ex.sets ?? DEFAULT_SETS}</span>
+                    className="min-w-[36px] min-h-[36px] rounded-lg text-[12px] flex items-center justify-center active:scale-95 transition-all" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}>&minus;</button>
+                  <span className="text-[12px] font-medium w-5 text-center" style={{ color: TT.text }}>{ex.sets ?? DEFAULT_SETS}</span>
                   <button onClick={() => updateExercise(wk, di, ei, 'sets', Math.min(10, (ex.sets ?? DEFAULT_SETS) + 1))}
-                    className="min-w-[36px] min-h-[36px] rounded-lg bg-white/6 text-[var(--color-text-secondary)] hover:bg-white/10 text-[12px] flex items-center justify-center active:scale-95 transition-all">+</button>
+                    className="min-w-[36px] min-h-[36px] rounded-lg text-[12px] flex items-center justify-center active:scale-95 transition-all" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}>+</button>
                 </div>
                 {/* Reps */}
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <span className="text-[10px] text-[var(--color-text-muted)] mr-0.5">{t('trainerPlans.reps', 'Reps')}:</span>
+                  <span className="text-[10px] mr-0.5" style={{ color: TT.textMute }}>{t('trainerPlans.reps', 'Reps')}:</span>
                   <input value={ex.reps ?? DEFAULT_REPS}
                     onChange={e => updateExercise(wk, di, ei, 'reps', e.target.value)}
-                    className="w-16 bg-white/6 rounded-lg px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] text-center outline-none focus:bg-white/10 min-h-[36px]"
+                    className="w-16 rounded-lg px-2 py-1.5 text-[12px] text-center outline-none min-h-[36px]" style={{ background: TT.surface, color: TT.text, border: `1px solid ${TT.border}` }}
                     placeholder={t('trainerPlans.repsPlaceholder', '8-12')} />
                 </div>
                 {/* Rest */}
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <span className="text-[10px] text-[var(--color-text-muted)] mr-0.5">{t('trainerPlans.rest', 'Rest')}:</span>
+                  <span className="text-[10px] mr-0.5" style={{ color: TT.textMute }}>{t('trainerPlans.rest', 'Rest')}:</span>
                   <button onClick={() => updateExercise(wk, di, ei, 'rest_seconds', Math.max(0, (ex.rest_seconds ?? DEFAULT_REST) - 15))}
-                    className="min-w-[36px] min-h-[36px] rounded-lg bg-white/6 text-[var(--color-text-secondary)] hover:bg-white/10 text-[12px] flex items-center justify-center active:scale-95 transition-all">&minus;</button>
-                  <span className="text-[12px] font-medium text-[var(--color-text-primary)] w-8 text-center">{ex.rest_seconds ?? DEFAULT_REST}s</span>
+                    className="min-w-[36px] min-h-[36px] rounded-lg text-[12px] flex items-center justify-center active:scale-95 transition-all" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}>&minus;</button>
+                  <span className="text-[12px] font-medium w-8 text-center" style={{ color: TT.text }}>{ex.rest_seconds ?? DEFAULT_REST}s</span>
                   <button onClick={() => updateExercise(wk, di, ei, 'rest_seconds', Math.min(600, (ex.rest_seconds ?? DEFAULT_REST) + 15))}
-                    className="min-w-[36px] min-h-[36px] rounded-lg bg-white/6 text-[var(--color-text-secondary)] hover:bg-white/10 text-[12px] flex items-center justify-center active:scale-95 transition-all">+</button>
+                    className="min-w-[36px] min-h-[36px] rounded-lg text-[12px] flex items-center justify-center active:scale-95 transition-all" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}>+</button>
                 </div>
               </div>
               {/* Exercise notes - collapsible */}
@@ -275,12 +289,13 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
                   maxLength={500}
                   rows={2}
                   placeholder={t('trainerPlans.trainerNotesPlaceholder', 'e.g., Tempo 3-1-2, pause at bottom')}
-                  className="mt-2 w-full bg-white/4 rounded-lg px-2.5 py-2 text-[16px] sm:text-[13px] text-[var(--color-text-secondary)] placeholder-[var(--color-text-faint)] outline-none focus:bg-white/6 resize-none transition-colors"
+                  className="mt-2 w-full rounded-lg px-2.5 py-2 text-[16px] sm:text-[13px] outline-none resize-none transition-colors" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}
                 />
               ) : (
                 <button
                   onClick={() => toggleNote(ei)}
-                  className="mt-2 flex items-center gap-1 text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+                  className="mt-2 flex items-center gap-1 text-[11px] transition-colors"
+                  style={{ color: TT.textMute }}
                 >
                   <StickyNote size={10} />
                   {t('trainerPlans.addNote', 'Add note')}
@@ -291,11 +306,11 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
 
           {/* Add exercise - searchable panel */}
           {showExSearch ? (
-            <div className="mt-1 border border-[var(--color-border-default)] rounded-xl p-3 bg-[var(--color-bg-secondary)]/60">
+            <div className="mt-1 rounded-xl p-3" style={{ border: `1px solid ${TT.borderSolid}`, background: TT.surface2 }}>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('trainerPlans.addExercise', 'Add Exercise')}</p>
+                <p className="text-[12px] font-semibold" style={{ color: TT.textSub }}>{t('trainerPlans.addExercise', 'Add Exercise')}</p>
                 <button onClick={() => { setShowExSearch(false); setExSearch(''); }}
-                  className="min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] -mr-2">
+                  className="min-w-[44px] min-h-[44px] flex items-center justify-center -mr-2" style={{ color: TT.textMute }}>
                   <X size={14} />
                 </button>
               </div>
@@ -309,8 +324,10 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
             </div>
           ) : (
             <button onClick={() => setShowExSearch(true)}
-              className="w-full py-4 rounded-xl border-2 border-dashed transition-colors flex flex-col items-center justify-center gap-1 min-h-[44px] hover:border-[var(--color-accent)]/30 active:scale-[0.98]"
-              style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+              className="w-full py-4 rounded-xl border-2 border-dashed transition-colors flex flex-col items-center justify-center gap-1 min-h-[44px] active:scale-[0.98]"
+              style={{ borderColor: TT.borderSolid, color: TT.textMute }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = TT.accent; e.currentTarget.style.color = TT.accent; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = TT.borderSolid; e.currentTarget.style.color = TT.textMute; }}>
               <Plus size={18} />
               <span className="text-[12px] font-medium">{t('trainerPlans.addExercise', 'Add Exercise')}</span>
             </button>
@@ -569,15 +586,18 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg-card)] overflow-x-hidden" onClick={closeMenus}>
+    <div className="min-h-screen overflow-x-hidden" style={{ background: TT.bg }} onClick={closeMenus}>
       {/* ── Sticky top header ── */}
-      <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ background: 'color-mix(in srgb, var(--color-bg-card) 92%, transparent)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+      <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ background: 'rgba(250,248,243,0.92)', borderBottom: `1px solid ${TT.border}` }}>
         {/* Row 1: Back + Name + Actions */}
         <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pt-3 pb-2 flex items-center gap-2 md:gap-3">
           <button onClick={onClose}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl hover:bg-white/6 transition-colors flex-shrink-0"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors flex-shrink-0"
+            style={{ background: 'transparent' }}
+            onMouseEnter={e => { e.currentTarget.style.background = TT.surface2; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             aria-label={t('trainerPlans.backToList', 'Back to plans')}>
-            <ArrowLeft size={20} style={{ color: 'var(--color-text-secondary)' }} />
+            <ArrowLeft size={20} style={{ color: TT.textSub }} />
           </button>
           <div className="flex-1 min-w-0">
             <input
@@ -585,12 +605,12 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
               onChange={e => setName(e.target.value)}
               placeholder={t('trainerPlans.planNamePlaceholder', 'Plan name...')}
               className="w-full bg-transparent text-[18px] font-bold outline-none truncate"
-              style={{ color: 'var(--color-text-primary)' }}
+              style={{ color: TT.text }}
             />
           </div>
           <button onClick={handleSave} disabled={saving || !name?.trim()}
-            className="px-4 py-2.5 rounded-xl font-bold text-[13px] text-black disabled:opacity-50 transition-colors whitespace-nowrap min-h-[44px]"
-            style={{ backgroundColor: 'var(--color-accent)' }}>
+            className="px-4 py-2.5 rounded-xl font-bold text-[13px] disabled:opacity-50 transition-colors whitespace-nowrap min-h-[44px]"
+            style={{ backgroundColor: TT.accent, color: '#06363B' }}>
             {saving ? t('trainerPlans.saving', 'Saving...') : isEdit ? t('trainerPlans.saveChanges', 'Save') : t('trainerPlans.createPlan', 'Create')}
           </button>
         </div>
@@ -599,20 +619,21 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
         <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pb-2 flex items-center gap-2 flex-wrap">
           <select value={clientId} onChange={e => setClientId(e.target.value)} disabled={isEdit}
             className="bg-transparent text-[13px] outline-none disabled:opacity-60 max-w-[200px] sm:max-w-[180px] truncate cursor-pointer py-2 min-h-[44px]"
-            style={{ color: 'var(--color-text-secondary)' }}>
+            style={{ color: TT.textSub }}>
             <option value="">{t('trainerPlans.selectClient', 'Select client...')}</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
           </select>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
-            (plan?.is_active ?? true) ? 'bg-emerald-500/15 text-emerald-400' : 'bg-white/4'
-          }`} style={(plan?.is_active ?? true) ? undefined : { color: 'var(--color-text-muted)' }}>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+            style={(plan?.is_active ?? true)
+              ? { background: TT.goodSoft, color: TT.goodInk }
+              : { background: TT.surface2, color: TT.textMute }}>
             {(plan?.is_active ?? true) ? t('trainerPlans.active', 'Active') : t('trainerPlans.inactive', 'Inactive')}
           </span>
           <div className="flex-1" />
           {clientId && clientProfile?.onboarding && (
             <button onClick={handleAutoGenerate} disabled={generating}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-[11px] transition-colors whitespace-nowrap disabled:opacity-40"
-              style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }}>
+              style={{ backgroundColor: TT.accentSoft, color: TT.accentInk }}>
               {generating ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
               {generating ? t('trainerPlans.generating', 'Generating…') : t('trainerPlans.autoGenerate', 'Auto-Generate')}
             </button>
@@ -626,14 +647,14 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
               <textarea value={description} onChange={e => setDesc(e.target.value)} rows={2}
                 placeholder={t('trainerPlans.descPlaceholder', 'Goals and approach for this plan...')}
                 className="w-full rounded-xl px-4 py-2.5 text-[16px] sm:text-[13px] outline-none resize-none"
-                style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
             </div>
           )}
         </div>
 
         {error && (
           <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pb-2">
-            <p className="text-[12px] text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
+            <p className="text-[12px] rounded-lg px-3 py-2" style={{ color: TT.hot, background: TT.hotSoft }}>{error}</p>
           </div>
         )}
       </div>
@@ -642,48 +663,48 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
       <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pt-4">
         {/* Client context + Generation overrides */}
         {clientProfile?.onboarding && (
-          <div className="mb-4 rounded-2xl p-4" style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)' }}>
+          <div className="mb-4 rounded-2xl p-4" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--color-accent)' }}>
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: TT.accent }}>
                 {t('trainerPlans.clientProfile', 'Client Profile')}
               </p>
               <button onClick={() => setShowDetails(!showDetails)}
                 className="flex items-center gap-1 text-[10px] font-medium transition-colors"
-                style={{ color: 'var(--color-text-muted)' }}>
+                style={{ color: TT.textMute }}>
                 <FileText size={10} />
                 {showDetails ? t('trainerPlans.hideNotes', 'Hide notes') : t('trainerPlans.addNotes', 'Add notes')}
               </button>
             </div>
             {/* Compact client info */}
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] mb-3">
-              <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.level', 'Level')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{clientProfile.onboarding.fitness_level || '—'}</span></span>
-              <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{clientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${clientProfile.onboarding.primary_goal}`, clientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'}</span></span>
+              <span><span style={{ color: TT.textMute }}>{t('trainerPlans.level', 'Level')}:</span> <span className="font-semibold capitalize" style={{ color: TT.text }}>{clientProfile.onboarding.fitness_level || '—'}</span></span>
+              <span><span style={{ color: TT.textMute }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: TT.text }}>{clientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${clientProfile.onboarding.primary_goal}`, clientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'}</span></span>
               {clientProfile.onboarding.injuries_notes && (
-                <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.injuries', 'Injuries')}:</span> <span className="font-semibold text-red-400">{clientProfile.onboarding.injuries_notes}</span></span>
+                <span><span style={{ color: TT.textMute }}>{t('trainerPlans.injuries', 'Injuries')}:</span> <span className="font-semibold" style={{ color: TT.hot }}>{clientProfile.onboarding.injuries_notes}</span></span>
               )}
             </div>
             {/* Equipment + goals tags */}
             <div className="flex flex-wrap gap-1.5 mb-4">
               {clientProfile.onboarding.available_equipment?.map(eq => (
-                <span key={eq} className="px-2 py-0.5 rounded-md text-[10px] font-medium" style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }}>{eq}</span>
+                <span key={eq} className="px-2 py-0.5 rounded-md text-[10px] font-medium" style={{ backgroundColor: TT.surface2, color: TT.textMute }}>{eq}</span>
               ))}
               {clientProfile.goals.map((g, i) => (
-                <span key={`g${i}`} className="px-2 py-0.5 rounded-md text-[10px] font-medium" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }}>
+                <span key={`g${i}`} className="px-2 py-0.5 rounded-md text-[10px] font-medium" style={{ backgroundColor: TT.accentSoft, color: TT.accentInk }}>
                   {t(`trainerNotes.goals.${g.goal_type}`, g.goal_type.replace(/_/g, ' '))}{g.target_value ? ` → ${g.target_value}` : ''}
                 </span>
               ))}
             </div>
 
             {/* ── Trainer overrides for auto-generation ── */}
-            <div className="pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--color-text-subtle)' }}>
+            <div className="pt-3" style={{ borderTop: `1px solid ${TT.border}` }}>
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-3" style={{ color: TT.textMute }}>
                 {t('trainerPlans.generateSettings', 'Generation Settings')}
               </p>
 
               {/* Days per week override */}
               <div className="mb-3">
-                <p className="text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                <p className="text-[11px] font-medium mb-1.5" style={{ color: TT.textMute }}>
                   {t('trainerPlans.daysPerWeek', 'Days per week')}
                 </p>
                 <div className="flex gap-1.5 flex-wrap">
@@ -693,22 +714,20 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                     const isClientDefault = !overrideDays && clientDays === d;
                     return (
                       <button key={d} onClick={() => setOverrideDays(d === clientDays ? null : d)}
-                        className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-all min-h-[44px] min-w-[44px] relative ${
-                          isActive ? 'text-black' : ''
-                        }`}
+                        className="px-3 py-2 rounded-lg text-[12px] font-semibold transition-all min-h-[44px] min-w-[44px] relative"
                         style={isActive
-                          ? { backgroundColor: 'var(--color-accent)' }
-                          : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }
+                          ? { backgroundColor: TT.accent, color: '#06363B' }
+                          : { backgroundColor: TT.surface2, color: TT.textMute }
                         }>
                         {d}
-                        {isClientDefault && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-400" title={t('trainerPlans.clientPreference', "Client's preference")} />}
+                        {isClientDefault && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full" style={{ background: TT.good }} title={t('trainerPlans.clientPreference', "Client's preference")} />}
                       </button>
                     );
                   })}
                   {overrideDays && (
                     <button onClick={() => setOverrideDays(null)}
                       className="px-3 py-2 rounded-lg text-[11px] font-medium transition-colors min-h-[44px]"
-                      style={{ color: 'var(--color-text-muted)' }}>
+                      style={{ color: TT.textMute }}>
                       {t('trainerPlans.reset', 'Reset')}
                     </button>
                   )}
@@ -717,7 +736,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
 
               {/* Target muscles override */}
               <div>
-                <p className="text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                <p className="text-[11px] font-medium mb-1.5" style={{ color: TT.textMute }}>
                   {t('trainerPlans.targetMuscles', 'Focus muscles')} <span className="opacity-50">({t('trainerPlans.optional', 'optional')})</span>
                 </p>
                 <div className="flex flex-wrap gap-1.5">
@@ -726,22 +745,20 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                     const isClientPriority = clientProfile.onboarding.priority_muscles?.map(p => p.toLowerCase()).includes(m);
                     return (
                       <button key={m} onClick={() => toggleMuscle(m)}
-                        className={`px-3 py-2 rounded-lg text-[11px] font-semibold transition-all relative min-h-[44px] ${
-                          isSelected ? 'text-black' : ''
-                        }`}
+                        className="px-3 py-2 rounded-lg text-[11px] font-semibold transition-all relative min-h-[44px]"
                         style={isSelected
-                          ? { backgroundColor: '#10B981' }
-                          : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }
+                          ? { backgroundColor: TT.good, color: '#fff' }
+                          : { backgroundColor: TT.surface2, color: TT.textMute }
                         }>
                         {muscleLabel(m)}
-                        {isClientPriority && !isSelected && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-400" title={t('trainerPlans.clientPriority', "Client's priority")} />}
+                        {isClientPriority && !isSelected && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full" style={{ background: TT.good }} title={t('trainerPlans.clientPriority', "Client's priority")} />}
                       </button>
                     );
                   })}
                   {overrideMuscles.length > 0 && (
                     <button onClick={() => setOverrideMuscles([])}
                       className="px-3 py-2 rounded-lg text-[11px] font-medium transition-colors min-h-[44px]"
-                      style={{ color: 'var(--color-text-muted)' }}>
+                      style={{ color: TT.textMute }}>
                       {t('trainerPlans.clearAll', 'Clear')}
                     </button>
                   )}
@@ -755,16 +772,14 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
         <div className="md:hidden mb-4">
           {/* Duration pills */}
           <div className="flex items-center gap-2 mb-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider shrink-0" style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.duration', 'Duration')}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider shrink-0" style={{ color: TT.textMute }}>{t('trainerPlans.duration', 'Duration')}</p>
             <div className="flex gap-1.5 flex-wrap">
               {[4, 6, 8, 10, 12].map(w => (
                 <button key={w} onClick={() => setDuration(w)}
-                  className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors min-h-[44px] min-w-[44px] ${
-                    durationWeeks === w ? 'text-black' : ''
-                  }`}
+                  className="px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors min-h-[44px] min-w-[44px]"
                   style={durationWeeks === w
-                    ? { backgroundColor: 'var(--color-accent)' }
-                    : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }
+                    ? { backgroundColor: TT.accent, color: '#06363B' }
+                    : { backgroundColor: TT.surface2, color: TT.textMute }
                   }>
                   {w}{t('trainerPlans.wSuffix', 'w')}
                 </button>
@@ -777,12 +792,10 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
               const stats = weekStats(wk);
               return (
                 <button key={wk} onClick={() => setSelectedWeek(wk)}
-                  className={`shrink-0 px-4 py-2 rounded-xl text-[12px] font-semibold transition-all min-h-[44px] ${
-                    selectedWeek === wk ? 'text-black shadow-sm' : ''
-                  }`}
+                  className="shrink-0 px-4 py-2 rounded-xl text-[12px] font-semibold transition-all min-h-[44px]"
                   style={selectedWeek === wk
-                    ? { backgroundColor: 'var(--color-accent)' }
-                    : { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
+                    ? { backgroundColor: TT.accent, color: '#06363B', boxShadow: TT.shadow }
+                    : { backgroundColor: TT.surface2, color: TT.textMute, border: `1px solid ${TT.border}` }
                   }>
                   {t('trainerPlans.weekAbbrev', 'Wk')} {wk}
                   <span className="text-[10px] ml-1 opacity-70">({stats.dayCount}{t('trainerPlans.dShort', 'd')} · {stats.exCount}{t('trainerPlans.exShort', 'ex')})</span>
@@ -796,26 +809,30 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
       {/* ── Main content: 2 col desktop, 1 col mobile ── */}
       <div className="max-w-[480px] mx-auto md:max-w-5xl md:flex md:min-h-[calc(100vh-140px)] pb-24 md:pb-0">
         {/* ── Left rail (desktop only) ── */}
-        <div className="hidden md:block w-64 flex-shrink-0 border-r border-[var(--color-border-subtle)] bg-[var(--color-bg-secondary)]/60 sticky top-[140px] self-start max-h-[calc(100vh-140px)] overflow-y-auto">
+        <div className="hidden md:block w-64 flex-shrink-0 sticky top-[140px] self-start max-h-[calc(100vh-140px)] overflow-y-auto" style={{ borderRight: `1px solid ${TT.border}`, background: TT.surface2 }}>
           <div className="p-4 space-y-4">
             {/* Duration selector */}
             <div>
-              <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">{t('trainerPlans.duration', 'Duration')}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: TT.textMute }}>{t('trainerPlans.duration', 'Duration')}</p>
               <div className="flex gap-1.5">
-                {[4, 6, 8, 10, 12].map(w => (
-                  <button key={w} onClick={() => setDuration(w)}
-                    className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors min-h-[44px] ${
-                      durationWeeks === w ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]' : 'bg-[var(--color-bg-card)]/60 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
-                    }`}>
-                    {w}{t('trainerPlans.wSuffix', 'w')}
-                  </button>
-                ))}
+                {[4, 6, 8, 10, 12].map(w => {
+                  const active = durationWeeks === w;
+                  return (
+                    <button key={w} onClick={() => setDuration(w)}
+                      className="flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors min-h-[44px]"
+                      style={active
+                        ? { background: TT.accentSoft, color: TT.accentInk }
+                        : { background: TT.surface, color: TT.textMute, border: `1px solid ${TT.border}` }}>
+                      {w}{t('trainerPlans.wSuffix', 'w')}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             {/* Week list */}
             <div>
-              <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">{t('trainerPlans.weeks', 'Weeks')}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: TT.textMute }}>{t('trainerPlans.weeks', 'Weeks')}</p>
               <div className="space-y-1">
                 {allWeekNums.map(wk => {
                   const stats = weekStats(wk);
@@ -824,35 +841,36 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                     <div key={wk} className="flex items-center gap-1">
                       <button
                         onClick={() => setSelectedWeek(wk)}
-                        className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl text-left transition-colors min-h-[44px] ${
-                          isActive
-                            ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] border-l-2 border-[var(--color-accent)]'
-                            : 'text-[var(--color-text-secondary)] hover:bg-white/4 border-l-2 border-transparent'
-                        }`}
+                        className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl text-left transition-colors min-h-[44px]"
+                        style={isActive
+                          ? { background: TT.accentSoft, color: TT.accentInk, borderLeft: `2px solid ${TT.accent}` }
+                          : { color: TT.textSub, borderLeft: '2px solid transparent' }}
                       >
-                        <Calendar size={13} className={isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'} />
+                        <Calendar size={13} style={{ color: isActive ? TT.accent : TT.textMute }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-[13px] font-medium">{t('trainerPlans.weekLabel', 'Week')} {wk}</p>
-                          <p className="text-[10px] text-[var(--color-text-muted)]">{stats.dayCount} {t('trainerPlans.daysAbbrev', 'days')} · {stats.exCount} {t('trainerPlans.ex', 'ex')}</p>
+                          <p className="text-[10px]" style={{ color: TT.textMute }}>{stats.dayCount} {t('trainerPlans.daysAbbrev', 'days')} · {stats.exCount} {t('trainerPlans.ex', 'ex')}</p>
                         </div>
                       </button>
                       <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
                         <button
                           onClick={() => { setCopyWeekMenu(copyWeekMenu === wk ? null : wk); setCopyDayMenu(null); }}
-                          className="min-w-[36px] min-h-[36px] flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] rounded-lg hover:bg-white/6 transition-colors"
+                          className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg transition-colors" style={{ color: TT.textMute }}
                           title={t('trainerPlans.copyWeek', 'Copy week')}>
                           <Copy size={11} />
                         </button>
                         {copyWeekMenu === wk && (
-                          <div className="absolute left-0 top-full mt-1 z-20 bg-[var(--color-bg-elevated)] border border-[var(--color-border-default)] rounded-xl shadow-xl overflow-hidden min-w-[140px]">
-                            <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-widest px-3 pt-2 pb-1">
+                          <div className="absolute left-0 top-full mt-1 z-20 rounded-xl shadow-xl overflow-hidden min-w-[140px]" style={{ background: TT.bgElev, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
+                            <p className="text-[10px] font-bold uppercase tracking-widest px-3 pt-2 pb-1" style={{ color: TT.textMute }}>
                               {t('trainerPlans.copyWkTo', 'Copy Wk {{wk}} to...', { wk })}
                             </p>
                             {allWeekNums.filter(w => w !== wk).map(targetWk => (
                               <button key={targetWk} onClick={() => copyWeekTo(wk, targetWk)}
-                                className="w-full text-left px-3 py-2 text-[12px] text-[var(--color-text-primary)] hover:bg-white/6 transition-colors min-h-[44px] flex items-center">
+                                className="w-full text-left px-3 py-2 text-[12px] transition-colors min-h-[44px] flex items-center" style={{ color: TT.text }}
+                                onMouseEnter={e => { e.currentTarget.style.background = TT.surface2; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                                 {t('trainerPlans.weekLabel', 'Week')} {targetWk}
-                                {(weeks[targetWk] || []).length > 0 && <span className="text-[var(--color-text-muted)] ml-1">({t('trainerPlans.overwrite', 'overwrite')})</span>}
+                                {(weeks[targetWk] || []).length > 0 && <span className="ml-1" style={{ color: TT.textMute }}>({t('trainerPlans.overwrite', 'overwrite')})</span>}
                               </button>
                             ))}
                           </div>
@@ -871,8 +889,8 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
           {/* Week heading + copy action (mobile shows selected week, desktop shows too) */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-[16px] font-bold text-[var(--color-text-primary)] truncate">{t('trainerPlans.weekLabel', 'Week')} {selectedWeek}</h2>
-              <span className="text-[12px] text-[var(--color-text-muted)]">
+              <h2 className="text-[16px] font-bold truncate" style={{ color: TT.text }}>{t('trainerPlans.weekLabel', 'Week')} {selectedWeek}</h2>
+              <span className="text-[12px]" style={{ color: TT.textMute }}>
                 {currentDays.length} {t('trainerPlans.daysAbbrev', 'days')}
               </span>
             </div>
@@ -880,19 +898,21 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
             <div className="relative md:hidden" onClick={e => e.stopPropagation()}>
               <button
                 onClick={() => { setCopyWeekMenu(showCopyWeek ? null : selectedWeek); setCopyDayMenu(null); }}
-                className="flex items-center gap-1 text-[12px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] px-3 py-2 rounded-xl hover:bg-white/6 transition-colors min-h-[44px]">
+                className="flex items-center gap-1 text-[12px] font-semibold px-3 py-2 rounded-xl transition-colors min-h-[44px]" style={{ color: TT.textMute }}>
                 <Copy size={12} /> {t('trainerPlans.copy', 'Copy')}
               </button>
               {showCopyWeek && (
-                <div className="absolute right-0 top-full mt-1 z-20 bg-[var(--color-bg-elevated)] border border-[var(--color-border-default)] rounded-xl shadow-xl overflow-hidden min-w-[140px]">
-                  <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-widest px-3 pt-2 pb-1">
+                <div className="absolute right-0 top-full mt-1 z-20 rounded-xl shadow-xl overflow-hidden min-w-[140px]" style={{ background: TT.bgElev, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest px-3 pt-2 pb-1" style={{ color: TT.textMute }}>
                     {t('trainerPlans.copyWkTo', 'Copy Wk {{wk}} to...', { wk: selectedWeek })}
                   </p>
                   {allWeekNums.filter(w => w !== selectedWeek).map(targetWk => (
                     <button key={targetWk} onClick={() => copyWeekTo(selectedWeek, targetWk)}
-                      className="w-full text-left px-3 py-2 text-[12px] text-[var(--color-text-primary)] hover:bg-white/6 transition-colors min-h-[44px] flex items-center">
+                      className="w-full text-left px-3 py-2 text-[12px] transition-colors min-h-[44px] flex items-center" style={{ color: TT.text }}
+                      onMouseEnter={e => { e.currentTarget.style.background = TT.surface2; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                       {t('trainerPlans.weekLabel', 'Week')} {targetWk}
-                      {(weeks[targetWk] || []).length > 0 && <span className="text-[var(--color-text-muted)] ml-1">({t('trainerPlans.overwrite', 'overwrite')})</span>}
+                      {(weeks[targetWk] || []).length > 0 && <span className="ml-1" style={{ color: TT.textMute }}>({t('trainerPlans.overwrite', 'overwrite')})</span>}
                     </button>
                   ))}
                 </div>
@@ -904,13 +924,14 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
           <div className="space-y-3">
             {currentDays.length === 0 && (
               <div className="text-center py-12">
-                <ClipboardList size={28} className="text-[var(--color-text-faint)] mx-auto mb-2" />
-                <p className="text-[13px] text-[var(--color-text-muted)] mb-4">{t('trainerPlans.noDaysYet', 'No days yet — add one below')}</p>
+                <ClipboardList size={28} className="mx-auto mb-2" style={{ color: TT.textFaint }} />
+                <p className="text-[13px] mb-4" style={{ color: TT.textMute }}>{t('trainerPlans.noDaysYet', 'No days yet — add one below')}</p>
                 {clientId && (
                   <button
                     onClick={handleAutoGenerate}
                     disabled={generating}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/30 text-[var(--color-accent)] font-semibold text-[13px] rounded-xl hover:bg-[var(--color-accent)]/20 transition-colors min-h-[44px] disabled:opacity-40"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 font-semibold text-[13px] rounded-xl transition-colors min-h-[44px] disabled:opacity-40"
+                    style={{ background: TT.accentSoft, border: `1px solid ${TT.accent}`, color: TT.accentInk }}
                   >
                     {generating ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
                     {t('trainerPlans.autoGenerateFromGoals', 'Auto-Generate from Client Goals')}
@@ -943,7 +964,8 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
             ))}
 
             <button onClick={() => addDay(selectedWeek)}
-              className="w-full py-3 text-[13px] font-semibold text-[var(--color-accent)] border border-[var(--color-accent)]/20 rounded-2xl hover:bg-[var(--color-accent)]/5 transition-colors min-h-[44px] flex items-center justify-center gap-1.5">
+              className="w-full py-3 text-[13px] font-semibold rounded-2xl transition-colors min-h-[44px] flex items-center justify-center gap-1.5"
+              style={{ color: TT.accentInk, border: `1px solid ${TT.accent}`, background: TT.accentSoft }}>
               <Plus size={15} /> {t('trainerPlans.addDay', 'Add Day')}
             </button>
           </div>
@@ -1031,16 +1053,21 @@ export default function TrainerPlans() {
     if (!cal || !pro) return;
     setGeneratingMeals(true);
     setTimeout(() => {
+      // 4 slots to match this view's breakfast/lunch/snack/dinner rows —
+      // the generator fills each with slot-appropriate dishes (no more
+      // salmon labeled 07:00) and the old 3-meal output left the dinner
+      // row permanently empty here.
       const plan = generateWeekPlan({
         targets: { calories: cal, protein: pro, carbs: carb || 200, fat: fat || 60 },
+        slots: 4,
         lang: i18n?.language || 'en',
       });
-      // Enrich each meal with slot type and time
+      // Slot type comes from the generator's tag; index fallback for safety.
       const enriched = plan.map(day => ({
         ...day,
         meals: (day.meals || []).map((meal, mi) => ({
           ...meal,
-          slotType: MEAL_SLOTS[mi]?.type || 'snack',
+          slotType: meal.slot || MEAL_SLOTS[mi]?.type || 'snack',
         })),
       }));
       setGeneratedMeals(enriched);
@@ -1065,6 +1092,8 @@ export default function TrainerPlans() {
     const replacement = generateDayPlan({
       targets: slotBudget,
       slots: 1,
+      // Replacement must fit the slot being swapped (breakfast stays breakfast)
+      slotTypes: [day.meals[mealIdx]?.slotType || 'lunch'],
       excludeIds: otherMealIds,
     });
     if (replacement.meals[0]) {
@@ -1707,7 +1736,7 @@ export default function TrainerPlans() {
                               style={{
                                 padding: '6px 10px', borderRadius: 8,
                                 border: `1px solid ${TT.borderSolid}`,
-                                background: '#fff', fontSize: 11, fontWeight: 700,
+                                background: TT.surface2, fontSize: 11, fontWeight: 700,
                                 color: TT.text, cursor: 'pointer',
                               }}
                             >
@@ -1815,12 +1844,12 @@ export default function TrainerPlans() {
 
           {mealPlansLoading ? (
             <div className="flex justify-center py-20">
-              <div className="w-8 h-8 rounded-full animate-spin" style={{ border: '2px solid var(--color-border-subtle)', borderTopColor: 'var(--color-accent)' }} />
+              <div className="w-8 h-8 rounded-full animate-spin" style={{ border: `2px solid ${TT.border}`, borderTopColor: TT.accent }} />
             </div>
           ) : filteredMealPlans.length === 0 ? (
             <div className="text-center py-20">
-              <UtensilsCrossed size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-muted)' }} />
-              <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>
+              <UtensilsCrossed size={32} className="mx-auto mb-3" style={{ color: TT.textMute }} />
+              <p className="text-[14px]" style={{ color: TT.textMute }}>
                 {mealPlans.length === 0
                   ? t('trainerPlans.noMealPlans', 'No meal plans yet')
                   : t('trainerPlans.noMealPlansFiltered', 'No meal plans match this filter')}
@@ -1830,32 +1859,33 @@ export default function TrainerPlans() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {filteredMealPlans.map(plan => (
                 <div key={plan.id} className="rounded-2xl p-4 sm:p-5 transition-all"
-                  style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                  style={{ background: TT.surface, border: `1px solid ${TT.border}` }}>
                   <div className="flex items-start justify-between mb-2">
                     <div className="min-w-0 flex-1">
-                      <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{plan.name}</p>
+                      <p className="text-[14px] font-semibold truncate" style={{ color: TT.text }}>{plan.name}</p>
                       {plan.profiles?.full_name && (
-                        <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                        <p className="text-[12px] mt-0.5" style={{ color: TT.textMute }}>
                           {t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: plan.profiles.full_name })}
                         </p>
                       )}
                     </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                      plan.is_active ? 'text-emerald-400 bg-emerald-500/10' : 'text-[var(--color-text-muted)]'
-                    }`} style={!plan.is_active ? { background: 'var(--color-bg-subtle)' } : undefined}>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                      style={plan.is_active
+                        ? { color: TT.goodInk, background: TT.goodSoft }
+                        : { color: TT.textMute, background: TT.surface2 }}>
                       {plan.is_active ? t('trainerPlans.active', 'Active') : t('trainerPlans.past', 'Past')}
                     </span>
                   </div>
                   {plan.description && (
-                    <p className="text-[12px] mb-2 line-clamp-2" style={{ color: 'var(--color-text-secondary)' }}>{plan.description}</p>
+                    <p className="text-[12px] mb-2 line-clamp-2" style={{ color: TT.textSub }}>{plan.description}</p>
                   )}
-                  <div className="flex items-center gap-4 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                  <div className="flex items-center gap-4 text-[11px]" style={{ color: TT.textMute }}>
                     {plan.target_calories && <span>{plan.target_calories} {t('common:cal', 'cal')}</span>}
                     {plan.target_protein_g && <span>{t('trainerPlans.proteinShort', 'P:')} {plan.target_protein_g}g</span>}
                     {plan.target_carbs_g && <span>{t('trainerPlans.carbsShort', 'C:')} {plan.target_carbs_g}g</span>}
                     {plan.target_fat_g && <span>{t('trainerPlans.fatShort', 'F:')} {plan.target_fat_g}g</span>}
                   </div>
-                  <p className="text-[10px] mt-2" style={{ color: 'var(--color-text-faint)' }}>
+                  <p className="text-[10px] mt-2" style={{ color: TT.textFaint }}>
                     {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
                   </p>
                 </div>
@@ -1869,20 +1899,20 @@ export default function TrainerPlans() {
       {/* ── Meal Plan Creation Modal (2-step: Settings → Meals) ── */}
       {showMealModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => { setShowMealModal(false); setMealStep('settings'); setGeneratedMeals(null); }}>
-          <div className="rounded-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }} onClick={e => e.stopPropagation()}>
+          <div className="rounded-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
             {/* Header */}
-            <div className="flex items-center justify-between p-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+            <div className="flex items-center justify-between p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
               <div className="flex items-center gap-2">
                 {mealStep === 'meals' && (
-                  <button onClick={() => setMealStep('settings')} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg" style={{ color: 'var(--color-text-muted)' }}>
+                  <button onClick={() => setMealStep('settings')} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg" style={{ color: TT.textMute }}>
                     <ArrowLeft size={18} />
                   </button>
                 )}
-                <h2 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                <h2 className="text-[16px] font-bold" style={{ color: TT.text }}>
                   {mealStep === 'settings' ? t('trainerPlans.createMealPlan', 'Create Meal Plan') : t('trainerPlans.weeklyMeals', 'Weekly Meals')}
                 </h2>
               </div>
-              <button onClick={() => { setShowMealModal(false); setMealStep('settings'); setGeneratedMeals(null); }} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style={{ color: 'var(--color-text-muted)' }}>
+              <button onClick={() => { setShowMealModal(false); setMealStep('settings'); setGeneratedMeals(null); }} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style={{ color: TT.textMute }}>
                 <X size={18} />
               </button>
             </div>
@@ -1893,10 +1923,10 @@ export default function TrainerPlans() {
                 <div className="p-4 space-y-4 flex-1 overflow-y-auto">
                   {/* Client */}
                   <div>
-                    <label className="text-[12px] font-medium mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>{t('trainerPlans.client', 'Client')}</label>
+                    <label className="text-[12px] font-medium mb-1 block" style={{ color: TT.textSub }}>{t('trainerPlans.client', 'Client')}</label>
                     <select value={mealForm.client_id} onChange={e => { setMealForm(f => ({ ...f, client_id: e.target.value })); setMealGoalOverride(null); setGeneratedMeals(null); }}
                       className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none min-h-[44px]"
-                      style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+                      style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }}>
                       <option value="">{t('trainerPlans.selectClient', 'Select client...')}</option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
                     </select>
@@ -1904,28 +1934,28 @@ export default function TrainerPlans() {
 
                   {/* Client profile + goal override + auto-calculate */}
                   {mealClientProfile?.onboarding && (
-                    <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)' }}>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-accent)' }}>{t('trainerPlans.clientProfile', 'Client Profile')}</p>
+                    <div className="rounded-xl p-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: TT.accent }}>{t('trainerPlans.clientProfile', 'Client Profile')}</p>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] mb-3">
-                        <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.level', 'Level')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{mealClientProfile.onboarding.fitness_level || '—'}</span></span>
-                        <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{mealClientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${mealClientProfile.onboarding.primary_goal}`, mealClientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'}</span></span>
-                        <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.daysWeek', 'Days/wk')}:</span> <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{mealClientProfile.onboarding.training_days_per_week || '—'}</span></span>
+                        <span><span style={{ color: TT.textMute }}>{t('trainerPlans.level', 'Level')}:</span> <span className="font-semibold capitalize" style={{ color: TT.text }}>{mealClientProfile.onboarding.fitness_level || '—'}</span></span>
+                        <span><span style={{ color: TT.textMute }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: TT.text }}>{mealClientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${mealClientProfile.onboarding.primary_goal}`, mealClientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'}</span></span>
+                        <span><span style={{ color: TT.textMute }}>{t('trainerPlans.daysWeek', 'Days/wk')}:</span> <span className="font-semibold" style={{ color: TT.text }}>{mealClientProfile.onboarding.training_days_per_week || '—'}</span></span>
                         {mealClientProfile.latestWeight && (
-                          <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.weight', 'Weight')}:</span> <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{Math.round(mealClientProfile.latestWeight)} {t('common:lbs', 'lbs')}</span></span>
+                          <span><span style={{ color: TT.textMute }}>{t('trainerPlans.weight', 'Weight')}:</span> <span className="font-semibold" style={{ color: TT.text }}>{Math.round(mealClientProfile.latestWeight)} {t('common:lbs', 'lbs')}</span></span>
                         )}
                       </div>
-                      <div className="pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-                        <p className="text-[10px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('trainerPlans.nutritionGoal', 'Nutrition goal')}</p>
+                      <div className="pt-2" style={{ borderTop: `1px solid ${TT.border}` }}>
+                        <p className="text-[10px] font-medium mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.nutritionGoal', 'Nutrition goal')}</p>
                         <div className="flex flex-wrap gap-1.5">
                           {GOAL_OPTIONS.map(g => {
                             const clientGoal = mealClientProfile.onboarding.primary_goal;
                             const isActive = mealGoalOverride ? mealGoalOverride === g : clientGoal === g;
                             return (
                               <button key={g} onClick={() => setMealGoalOverride(g === clientGoal ? null : g)}
-                                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all relative ${isActive ? 'text-black' : ''}`}
-                                style={isActive ? { backgroundColor: 'var(--color-accent)' } : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }}>
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all relative"
+                                style={isActive ? { backgroundColor: TT.accent, color: '#06363B' } : { backgroundColor: TT.surface2, color: TT.textMute }}>
                                 {t(`trainerNotes.goals.${g}`, g.replace(/_/g, ' '))}
-                                {!mealGoalOverride && clientGoal === g && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                                {!mealGoalOverride && clientGoal === g && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full" style={{ background: TT.good }} />}
                               </button>
                             );
                           })}
@@ -1933,7 +1963,7 @@ export default function TrainerPlans() {
                       </div>
                       <button onClick={handleAutoCalculateMacros}
                         className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-bold transition-colors min-h-[44px]"
-                        style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }}>
+                        style={{ backgroundColor: TT.accentSoft, color: TT.accentInk }}>
                         <Zap size={14} />
                         {t('trainerPlans.autoCalculateMacros', 'Auto-Calculate Macros')}
                       </button>
@@ -1942,36 +1972,36 @@ export default function TrainerPlans() {
 
                   {/* Name */}
                   <div>
-                    <label className="text-[12px] font-medium mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>{t('trainerPlans.planName', 'Plan Name')}</label>
+                    <label className="text-[12px] font-medium mb-1 block" style={{ color: TT.textSub }}>{t('trainerPlans.planName', 'Plan Name')}</label>
                     <input value={mealForm.name} onChange={e => setMealForm(f => ({ ...f, name: e.target.value }))}
                       placeholder={t('trainerPlans.mealPlanNamePlaceholder', 'e.g. Cutting Phase, Bulking Plan')}
                       className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none min-h-[44px]"
-                      style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                      style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
                   </div>
 
                   {/* Description */}
                   <div>
-                    <label className="text-[12px] font-medium mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>{t('trainerPlans.description', 'Description')}</label>
+                    <label className="text-[12px] font-medium mb-1 block" style={{ color: TT.textSub }}>{t('trainerPlans.description', 'Description')}</label>
                     <textarea value={mealForm.description} onChange={e => setMealForm(f => ({ ...f, description: e.target.value }))} rows={2}
                       placeholder={t('trainerPlans.mealDescPlaceholder', 'Optional notes about the plan...')}
                       className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none resize-none"
-                      style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                      style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
                   </div>
 
                   {/* Macro targets */}
                   <div>
-                    <label className="text-[12px] font-medium mb-2 block" style={{ color: 'var(--color-text-secondary)' }}>{t('trainerPlans.macroTargets', 'Macro Targets')}</label>
+                    <label className="text-[12px] font-medium mb-2 block" style={{ color: TT.textSub }}>{t('trainerPlans.macroTargets', 'Macro Targets')}</label>
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { key: 'target_calories', label: t('trainerPlans.calories', 'Calories'), placeholder: '2200', color: 'var(--color-accent)' },
+                        { key: 'target_calories', label: t('trainerPlans.calories', 'Calories'), placeholder: '2200', color: TT.accent },
                         { key: 'target_protein_g', label: t('trainerPlans.proteinG', 'Protein (g)'), placeholder: '180', color: '#60A5FA' },
                         { key: 'target_carbs_g', label: t('trainerPlans.carbsG', 'Carbs (g)'), placeholder: '250', color: '#34D399' },
                         { key: 'target_fat_g', label: t('trainerPlans.fatG', 'Fat (g)'), placeholder: '65', color: '#F472B6' },
                       ].map(({ key, label, placeholder, color }) => (
-                        <div key={key} className="rounded-xl p-3" style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)' }}>
+                        <div key={key} className="rounded-xl p-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
                           <span className="text-[10px] font-bold uppercase tracking-wider block mb-1" style={{ color }}>{label}</span>
                           <input type="number" inputMode="numeric" value={mealForm[key]} onChange={e => setMealForm(f => ({ ...f, [key]: e.target.value }))}
-                            placeholder={placeholder} className="w-full bg-transparent text-[20px] font-bold outline-none" style={{ color: 'var(--color-text-primary)' }} />
+                            placeholder={placeholder} className="w-full bg-transparent text-[20px] font-bold outline-none" style={{ color: TT.text }} />
                         </div>
                       ))}
                     </div>
@@ -1979,16 +2009,16 @@ export default function TrainerPlans() {
                 </div>
 
                 {/* Footer — Step 1 */}
-                <div className="flex items-center gap-3 p-4 shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+                <div className="flex items-center gap-3 p-4 shrink-0" style={{ borderTop: `1px solid ${TT.border}`, paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
                   <button onClick={() => { setShowMealModal(false); setMealStep('settings'); }}
                     className="flex-1 py-3 sm:py-2.5 rounded-xl text-[14px] font-medium min-h-[44px]"
-                    style={{ backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}>
+                    style={{ backgroundColor: TT.surface2, color: TT.textSub }}>
                     {t('trainerPlans.cancel', 'Cancel')}
                   </button>
                   <button onClick={handleGenerateMeals}
                     disabled={generatingMeals || !mealForm.target_calories || !mealForm.target_protein_g || !mealForm.client_id || !mealForm.name.trim()}
                     className="flex-1 py-3 sm:py-2.5 rounded-xl text-[14px] font-bold min-h-[44px] transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
-                    style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
+                    style={{ background: TT.accent, color: '#06363B' }}>
                     {generatingMeals ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
                     {generatingMeals ? t('trainerPlans.generating', 'Generating…') : t('trainerPlans.generateMeals', 'Generate Meals')}
                   </button>
@@ -2001,11 +2031,11 @@ export default function TrainerPlans() {
               <>
                 <div className="flex-1 overflow-y-auto">
                   {/* Day selector */}
-                  <div className="flex gap-1.5 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+                  <div className="flex gap-1.5 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
                     {DAY_LABELS.map((label, i) => (
                       <button key={i} onClick={() => setMealPreviewDay(i)}
-                        className={`shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all ${mealPreviewDay === i ? 'text-black' : ''}`}
-                        style={mealPreviewDay === i ? { backgroundColor: 'var(--color-accent)' } : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }}>
+                        className="shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all"
+                        style={mealPreviewDay === i ? { backgroundColor: TT.accent, color: '#06363B' } : { backgroundColor: TT.surface2, color: TT.textMute }}>
                         {label}
                       </button>
                     ))}
@@ -2015,30 +2045,32 @@ export default function TrainerPlans() {
                   {generatedMeals[mealPreviewDay] && (
                     <div className="px-4 pt-3">
                       <div className="flex items-center gap-3 mb-3 text-[11px]">
-                        <span style={{ color: 'var(--color-accent)' }} className="font-bold">{generatedMeals[mealPreviewDay].totals?.calories || 0} {t('common:cal', 'cal')}</span>
+                        <span style={{ color: TT.accent }} className="font-bold">{generatedMeals[mealPreviewDay].totals?.calories || 0} {t('common:cal', 'cal')}</span>
                         <span style={{ color: '#60A5FA' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.protein || 0}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
                         <span style={{ color: '#34D399' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.carbs || 0}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
                         <span style={{ color: '#F472B6' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.fat || 0}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
                         {generatedMeals[mealPreviewDay].fits && (
-                          <span className="text-emerald-400 text-[10px] font-bold ml-auto">✓ {t('trainerPlans.macrosFit', 'Macros fit')}</span>
+                          <span className="text-[10px] font-bold ml-auto" style={{ color: TT.goodInk }}>✓ {t('trainerPlans.macrosFit', 'Macros fit')}</span>
                         )}
                       </div>
 
                       {/* Meal cards */}
                       <div className="space-y-2.5 pb-4">
                         {(generatedMeals[mealPreviewDay].meals || []).map((meal, mi) => {
-                          const slot = MEAL_SLOTS[mi] || MEAL_SLOTS[3];
+                          // Match the slot row by the meal's own tag (set at
+                          // generation/swap) — index only as a fallback.
+                          const slot = MEAL_SLOTS.find(s => s.type === meal.slotType) || MEAL_SLOTS[mi] || MEAL_SLOTS[3];
                           const mealLabel = slot.label;
                           const mealColor = slot.color;
                           const mealTitle = i18n.language === 'es' && meal.title_es ? meal.title_es : meal.title;
                           return (
-                            <div key={mi} className="rounded-xl p-3 flex gap-3" style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)' }}>
+                            <div key={mi} className="rounded-xl p-3 flex gap-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
                               {/* Meal image */}
                               {foodImageUrl(meal.image) ? (
-                                <img src={foodImageUrl(meal.image)} alt={mealTitle} className="w-16 h-16 rounded-xl object-cover shrink-0" style={{ backgroundColor: 'var(--color-bg-deep)' }} loading="lazy" />
+                                <img src={foodImageUrl(meal.image)} alt={mealTitle} className="w-16 h-16 rounded-xl object-cover shrink-0" style={{ backgroundColor: TT.surface2 }} loading="lazy" />
                               ) : (
-                                <div className="w-16 h-16 rounded-xl shrink-0 flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-deep)' }}>
-                                  <UtensilsCrossed size={20} style={{ color: 'var(--color-text-subtle)' }} />
+                                <div className="w-16 h-16 rounded-xl shrink-0 flex items-center justify-center" style={{ backgroundColor: TT.surface2 }}>
+                                  <UtensilsCrossed size={20} style={{ color: TT.textMute }} />
                                 </div>
                               )}
                               {/* Content */}
@@ -2048,21 +2080,21 @@ export default function TrainerPlans() {
                                   <div className="flex items-center gap-1 shrink-0">
                                     <button onClick={() => swapMeal(mealPreviewDay, mi)}
                                       className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded-lg transition-colors"
-                                      style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }}
+                                      style={{ backgroundColor: TT.surface2, color: TT.textMute }}
                                       title={t('trainerPlans.swapMeal', 'Swap meal')}>
                                       <RefreshCw size={11} />
                                     </button>
                                     <button onClick={() => { setMealPickerSlot({ dayIdx: mealPreviewDay, mealIdx: mi }); setMealSearch(''); }}
                                       className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded-lg transition-colors"
-                                      style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }}
+                                      style={{ backgroundColor: TT.accentSoft, color: TT.accent }}
                                       title={t('trainerPlans.chooseMeal', 'Choose meal')}>
                                       <Pencil size={11} />
                                     </button>
                                   </div>
                                 </div>
-                                <p className="text-[13px] font-semibold truncate mb-1" style={{ color: 'var(--color-text-primary)' }}>{mealTitle}</p>
+                                <p className="text-[13px] font-semibold truncate mb-1" style={{ color: TT.text }}>{mealTitle}</p>
                                 <div className="flex items-center gap-2.5 text-[10px]">
-                                  <span style={{ color: 'var(--color-accent)' }}>{meal.calories} {t('common:cal', 'cal')}</span>
+                                  <span style={{ color: TT.accent }}>{meal.calories} {t('common:cal', 'cal')}</span>
                                   <span style={{ color: '#60A5FA' }}>{meal.protein}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
                                   <span style={{ color: '#34D399' }}>{meal.carbs}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
                                   <span style={{ color: '#F472B6' }}>{meal.fat}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
@@ -2076,23 +2108,23 @@ export default function TrainerPlans() {
                       {/* ── Meal Picker Overlay ── */}
                       {mealPickerSlot && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => setMealPickerSlot(null)}>
-                          <div className="rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }} onClick={e => e.stopPropagation()}>
-                            <div className="p-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+                          <div className="rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
+                            <div className="p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
                               <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                                <h3 className="text-[15px] font-bold" style={{ color: TT.text }}>
                                   {t('trainerPlans.chooseMeal', 'Choose Meal')}
                                 </h3>
-                                <button onClick={() => setMealPickerSlot(null)} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg" style={{ color: 'var(--color-text-muted)' }}>
+                                <button onClick={() => setMealPickerSlot(null)} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg" style={{ color: TT.textMute }}>
                                   <X size={16} />
                                 </button>
                               </div>
                               <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-muted)' }} />
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: TT.textMute }} />
                                 <input value={mealSearch} onChange={e => setMealSearch(e.target.value)}
                                   placeholder={t('trainerPlans.searchMeals', 'Search meals...')}
                                   autoFocus
                                   className="w-full rounded-xl pl-10 pr-4 py-2.5 text-[16px] sm:text-[14px] outline-none"
-                                  style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                                  style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
                               </div>
                             </div>
                             <div className="flex-1 overflow-y-auto p-2">
@@ -2101,23 +2133,23 @@ export default function TrainerPlans() {
                                 return (
                                   <button key={meal.id} onClick={() => pickMeal(meal)}
                                     className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl transition-colors active:scale-[0.98]"
-                                    style={{ color: 'var(--color-text-primary)' }}>
+                                    style={{ color: TT.text }}>
                                     {foodImageUrl(meal.image) ? (
-                                      <img src={foodImageUrl(meal.image)} alt={title} className="w-12 h-12 rounded-lg object-cover shrink-0" style={{ backgroundColor: 'var(--color-bg-deep)' }} loading="lazy" />
+                                      <img src={foodImageUrl(meal.image)} alt={title} className="w-12 h-12 rounded-lg object-cover shrink-0" style={{ backgroundColor: TT.surface2 }} loading="lazy" />
                                     ) : (
-                                      <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-deep)' }}>
-                                        <UtensilsCrossed size={16} style={{ color: 'var(--color-text-subtle)' }} />
+                                      <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center" style={{ backgroundColor: TT.surface2 }}>
+                                        <UtensilsCrossed size={16} style={{ color: TT.textMute }} />
                                       </div>
                                     )}
                                     <div className="flex-1 min-w-0">
                                       <p className="text-[13px] font-semibold truncate">{title}</p>
                                       <div className="flex items-center gap-2.5 mt-0.5 text-[10px]">
-                                        <span style={{ color: 'var(--color-accent)' }}>{meal.calories} {t('common:cal', 'cal')}</span>
+                                        <span style={{ color: TT.accent }}>{meal.calories} {t('common:cal', 'cal')}</span>
                                         <span style={{ color: '#60A5FA' }}>{meal.protein}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
                                         <span style={{ color: '#34D399' }}>{meal.carbs}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
                                         <span style={{ color: '#F472B6' }}>{meal.fat}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
                                       </div>
-                                      <span className="text-[9px] font-medium capitalize mt-0.5 block" style={{ color: 'var(--color-text-muted)' }}>
+                                      <span className="text-[9px] font-medium capitalize mt-0.5 block" style={{ color: TT.textMute }}>
                                         {meal.category ? t(`trainerClientDetail.mealCategories.${meal.category}`, meal.category.replace(/_/g, ' ')) : ''}
                                       </span>
                                     </div>
@@ -2125,7 +2157,7 @@ export default function TrainerPlans() {
                                 );
                               })}
                               {filteredMeals.length === 0 && (
-                                <p className="text-center py-8 text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('trainerPlans.noMealsFound', 'No meals found')}</p>
+                                <p className="text-center py-8 text-[13px]" style={{ color: TT.textMute }}>{t('trainerPlans.noMealsFound', 'No meals found')}</p>
                               )}
                             </div>
                           </div>
@@ -2136,16 +2168,16 @@ export default function TrainerPlans() {
                 </div>
 
                 {/* Footer — Step 2 */}
-                <div className="flex items-center gap-3 p-4 shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+                <div className="flex items-center gap-3 p-4 shrink-0" style={{ borderTop: `1px solid ${TT.border}`, paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
                   <button onClick={handleGenerateMeals} disabled={generatingMeals}
                     className="py-3 sm:py-2.5 px-4 rounded-xl text-[13px] font-semibold min-h-[44px] flex items-center gap-1.5"
-                    style={{ backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}>
+                    style={{ backgroundColor: TT.surface2, color: TT.textSub }}>
                     {generatingMeals ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
                     {t('trainerPlans.regenerate', 'Regenerate')}
                   </button>
                   <button onClick={saveMealPlan} disabled={mealSaving}
                     className="flex-1 py-3 sm:py-2.5 rounded-xl text-[14px] font-bold min-h-[44px] transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
-                    style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
+                    style={{ background: TT.accent, color: '#06363B' }}>
                     {mealSaving ? <Loader2 size={16} className="animate-spin" /> : <UtensilsCrossed size={16} />}
                     {mealSaving ? t('trainerPlans.saving', 'Saving...') : t('trainerPlans.assignMealPlan', 'Assign Meal Plan')}
                   </button>
@@ -2160,23 +2192,25 @@ export default function TrainerPlans() {
       {confirmDeletePlan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeletePlan(null)} />
-          <div className="relative w-full max-w-sm bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-default)] p-6 space-y-4">
-            <h3 className="text-[16px] font-bold text-[var(--color-text-primary)]">
+          <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
+            <h3 className="text-[16px] font-bold" style={{ color: TT.text }}>
               {t('trainerPlans.confirmDelete', 'Delete "{{name}}"?', { name: confirmDeletePlan.name })}
             </h3>
-            <p className="text-[13px] text-[var(--color-text-secondary)]">
+            <p className="text-[13px]" style={{ color: TT.textSub }}>
               {t('trainerPlans.confirmDeleteDescription', 'This action cannot be undone. The plan will be permanently removed.')}
             </p>
             <div className="flex items-center gap-3 pt-2">
               <button
                 onClick={() => setConfirmDeletePlan(null)}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-white/8 transition-colors min-h-[44px]"
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
+                style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}
               >
                 {t('trainerPlans.cancel', 'Cancel')}
               </button>
               <button
                 onClick={() => deletePlan(confirmDeletePlan)}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors min-h-[44px]"
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
+                style={{ background: TT.hotSoft, color: TT.hot }}
               >
                 {t('trainerPlans.deleteConfirm', 'Delete')}
               </button>

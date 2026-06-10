@@ -199,7 +199,7 @@ export default function TrainerNotifications() {
       <div className="max-w-3xl mx-auto"
         style={{ padding: '12px 16px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <TIconButton ariaLabel={t('common:back', 'Back')} onClick={() => navigate(-1)} size={36}>
-          <ChevronLeft size={18} color={TT.text} />
+          <ChevronLeft size={18} style={{ color: TT.text }} />
         </TIconButton>
         <div style={{ flex: 1, minWidth: 0 }}>
           <TEyebrow>{t('pages:trainerNotifications.eyebrow', 'Coaching alerts')}</TEyebrow>

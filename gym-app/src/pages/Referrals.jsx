@@ -12,6 +12,7 @@ import { Share } from '@capacitor/share';
 import { WalletPass } from '../lib/walletPass';
 import { supabase } from '../lib/supabase';
 import { rewardLabelText } from '../lib/rewardSymbols';
+import { PROD_WEB_URL } from '../lib/appUrls';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
@@ -20,7 +21,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale';
 import { usePostHog } from '@posthog/react';
 
-const REFERRAL_BASE_URL = 'https://tugympr.app/referral';
+const REFERRAL_BASE_URL = `${PROD_WEB_URL}/referral`;
 
 // Allow-list of hostnames we are willing to open in the in-app browser /
 // system browser. Prevents arbitrary navigation if a server response ever
@@ -33,7 +34,7 @@ const ALLOWED_EXTERNAL_HOSTS = new Set([
   'www.apple.com',
   'tugympr.com',
   'www.tugympr.com',
-  'tugympr.app',
+  new URL(PROD_WEB_URL).hostname, // app.tugympr.com — canonical web host
 ]);
 
 // Open an external URL using SFSafariViewController (via @capacitor/browser)
@@ -146,12 +147,27 @@ export default function Referrals() {
       }
 
       try {
+        // Two-step fetch: the profiles embed is RLS-nulled unless the
+        // referred member happens to be an accepted friend, so history rows
+        // read "Unknown user". Fetch bare rows, resolve names through the
+        // same-gym gym_member_profiles_safe view, and reattach them under
+        // the `referred_profile` key the render already expects.
         const { data: refs } = await supabase
           .from('referrals')
-          .select('id, status, created_at, referred_id, points_awarded, referred_profile:profiles!referrals_referred_id_fkey(full_name)')
+          .select('id, status, created_at, referred_id, points_awarded')
           .eq('referrer_id', user.id)
           .order('created_at', { ascending: false });
-        setReferrals(refs ?? []);
+        const rows = refs ?? [];
+        const referredIds = [...new Set(rows.map(r => r.referred_id).filter(Boolean))];
+        const profileById = {};
+        if (referredIds.length) {
+          const { data: profs } = await supabase
+            .from('gym_member_profiles_safe')
+            .select('id, full_name')
+            .in('id', referredIds);
+          (profs ?? []).forEach(p => { profileById[p.id] = p; });
+        }
+        setReferrals(rows.map(r => ({ ...r, referred_profile: profileById[r.referred_id] ?? null })));
       } catch { /* table not ready */ }
     } catch {
       /* silent */
@@ -376,7 +392,7 @@ export default function Referrals() {
             className="relative overflow-hidden rounded-3xl p-6 mb-4"
             style={{
               background: 'linear-gradient(135deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 65%, #000 35%) 120%)',
-              color: '#fff',
+              color: 'var(--color-text-on-accent, #fff)',
               boxShadow: '0 10px 30px -10px color-mix(in srgb, var(--color-accent) 45%, transparent)',
             }}
           >
@@ -479,7 +495,7 @@ export default function Referrals() {
                 className="px-4 py-3 rounded-2xl flex items-center gap-1.5 transition-all duration-200 active:scale-95 disabled:opacity-40"
                 style={{
                   background: 'var(--color-accent)',
-                  color: '#000',
+                  color: 'var(--color-text-on-accent, #000)',
                   fontSize: 12,
                   fontWeight: 800,
                   letterSpacing: '0.3px',

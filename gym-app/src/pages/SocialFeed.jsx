@@ -29,6 +29,7 @@ import { validateImageFile } from '../lib/validateImage';
 import { stripExif } from '../lib/stripExif';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
 import { exName } from '../lib/exerciseName';
+import posthogClient from 'posthog-js';
 
 // ── Muted users (localStorage) ──────────────────────────────────────────────
 const MUTED_KEY = 'social_muted_users';
@@ -462,7 +463,7 @@ const FriendButton = ({ status, onAdd, onAccept, t }) => {
     <button
       type="button"
       onClick={onAdd}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 bg-[#D4AF37] text-black hover:opacity-90"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] hover:opacity-90"
     >
       <UserPlus size={12} strokeWidth={2} /> {t('social.friendStatus.add')}
     </button>
@@ -587,14 +588,30 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
 
   const loadComments = async () => {
     if (comments !== null) return;
+    // Two-step fetch: the `profiles(...)` embed is RLS-nulled for anyone who
+    // isn't an accepted friend, so non-friend commenters all rendered as
+    // "Member". Fetch the comments bare, then resolve display data through
+    // the same-gym gym_member_profiles_safe view (same pattern as the
+    // friends list below) and reattach it under the `profiles` key the
+    // render already expects.
     const { data } = await supabase
       .from('feed_comments')
-      .select('id, content, created_at, profile_id, profiles(id, full_name, username, avatar_url, avatar_type, avatar_value)')
+      .select('id, content, created_at, profile_id')
       .eq('feed_item_id', item.id)
       .eq('is_deleted', false)
       .order('created_at', { ascending: true })
       .limit(50);
-    setComments(data ?? []);
+    const rows = data ?? [];
+    const commenterIds = [...new Set(rows.map((c) => c.profile_id).filter(Boolean))];
+    const profileMap = {};
+    if (commenterIds.length) {
+      const { data: profs } = await supabase
+        .from('gym_member_profiles_safe')
+        .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
+        .in('id', commenterIds);
+      (profs ?? []).forEach((p) => { profileMap[p.id] = p; });
+    }
+    setComments(rows.map((c) => ({ ...c, profiles: profileMap[c.profile_id] ?? null })));
   };
 
   const handleToggleComments = () => {
@@ -633,6 +650,13 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
       .single();
     if (error && (error.code === '23514' || error.message?.includes('community guidelines'))) {
       showToast(t('moderation.contentBlocked', { defaultValue: 'Comment blocked: content violates community guidelines.' }), 'error');
+    } else if (error) {
+      // Non-moderation failure (network, RLS, …) — the input was cleared
+      // optimistically above, so put the typed text back instead of losing
+      // it silently, and tell the member the comment didn't go through.
+      console.error('[SocialFeed] failed to post comment:', error);
+      setCommentText(content);
+      showToast(t('common:somethingWentWrong'), 'error');
     }
     if (!error && newComment) {
       posthogCard?.capture('social_comment_added');
@@ -650,7 +674,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
             supabase.from('notifications').insert({
               profile_id: mu.id,
               type: 'mention',
-              title: 'You were mentioned',
+              title: t('social.mentionedNotifTitle', 'You were mentioned'),
               body: content.slice(0, 100),
               data: { feed_item_id: item.id, commenter_id: currentUserId },
               dedup_key: `mention_${newComment.id}_${mu.id}`,
@@ -864,7 +888,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
                 onClick={handleSubmitComment}
                 disabled={!commentText.trim() || submitting}
                 aria-label={t('social.sendComment', 'Send comment')}
-                className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-[#D4AF37] text-black font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               >
                 <Send size={16} />
               </button>
@@ -993,7 +1017,8 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
 
   const handleAccept = async (friendshipId) => {
     setAcceptingId(friendshipId);
-    await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
+    const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
+    if (!error) posthogClient?.capture('friend_request_accepted');
     await loadFriendships();
     setAcceptingId(null);
   };
@@ -1001,12 +1026,13 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
   const handleAddFriend = async (addresseeId) => {
     if (!gymId) return;
     setAddingId(addresseeId);
-    await supabase.from('friendships').insert({
+    const { error } = await supabase.from('friendships').insert({
       requester_id: userId,
       addressee_id: addresseeId,
       gym_id: gymId,
       status: 'pending',
     });
+    if (!error) posthogClient?.capture('friend_request_sent', { source: 'social' });
     await loadFriendships();
     setAddingId(null);
   };
@@ -1093,7 +1119,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
                           type="button"
                           onClick={() => handleAddFriend(p.id)}
                           disabled={isAdding}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-[#D4AF37] text-black hover:opacity-90"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] hover:opacity-90"
                         >
                           <UserPlus size={12} strokeWidth={2} /> {isAdding ? '…' : t('social.friendStatus.add')}
                         </button>
@@ -1517,14 +1543,25 @@ const SocialFeed = ({ embedded = false }) => {
   const confirmBlock = useCallback(async () => {
     if (!blockTarget || !user?.id) return;
     const { id: targetId, name } = blockTarget;
-    await supabase.from('blocked_users').upsert(
+    const { error: blockError } = await supabase.from('blocked_users').upsert(
       { blocker_id: user.id, blocked_id: targetId },
       { onConflict: 'blocker_id,blocked_id' }
     );
+    if (blockError) {
+      // Block didn't persist — keep the confirm modal open so the user can retry
+      showToast(t('common:somethingWentWrong'), 'error');
+      return;
+    }
     setBlockedUsers(prev => new Set([...prev, targetId]));
     // Also remove from friends if they were friends
-    await supabase.from('friendships').delete()
+    const { error: friendshipError } = await supabase.from('friendships').delete()
       .or(`and(requester_id.eq.${user.id},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${user.id})`);
+    if (friendshipError) {
+      // Block is in place but the friendship removal failed — retry is idempotent
+      showToast(t('common:somethingWentWrong'), 'error');
+      return;
+    }
+    posthogClient?.capture('user_blocked', { source: 'feed' });
     showToast(t('social.userBlocked', { name: name?.split(' ')[0] ?? '' }), 'success');
     setBlockTarget(null);
   }, [blockTarget, user?.id, showToast, t]);
@@ -1729,7 +1766,7 @@ const SocialFeed = ({ embedded = false }) => {
             onClick={() => setShowFriends(s => !s)}
             className={`relative flex items-center gap-2 px-5 py-2.5 rounded-full text-[14px] font-semibold whitespace-nowrap active:scale-95 transition-all flex-shrink-0 ${
               showFriends
-                ? 'bg-[#D4AF37] text-black'
+                ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
                 : 'border border-white/[0.06]'
             }`}
             style={!showFriends ? { background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' } : undefined}
@@ -1779,7 +1816,7 @@ const SocialFeed = ({ embedded = false }) => {
                     navigator.clipboard?.writeText(text);
                   }
                 }}
-                className="px-4 py-2 rounded-xl bg-[#D4AF37] text-black text-[12px] font-bold whitespace-nowrap flex-shrink-0 active:scale-95 transition-transform"
+                className="px-4 py-2 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] text-[12px] font-bold whitespace-nowrap flex-shrink-0 active:scale-95 transition-transform"
               >
                 {t('social.invite')}
               </button>
@@ -1880,8 +1917,8 @@ const SocialFeed = ({ embedded = false }) => {
                 className="w-full flex items-center justify-center gap-2 py-3 mb-5 rounded-2xl active:scale-[0.98] transition-all"
                 style={{ backgroundColor: 'var(--color-accent, #D4AF37)' }}
               >
-                <PenSquare size={16} className="text-black" />
-                <span className="text-[14px] font-semibold text-black">{t('social.createPost')}</span>
+                <PenSquare size={16} className="text-[var(--color-text-on-accent,#000)]" />
+                <span className="text-[14px] font-semibold text-[var(--color-text-on-accent,#000)]">{t('social.createPost')}</span>
               </button>
               {myFeed.length === 0 ? (
                 <EmptyState
@@ -2105,7 +2142,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
             type="button"
             onClick={handleSubmit}
             disabled={submitting || (!body.trim() && !photoFile)}
-            className="w-full py-3 rounded-xl bg-[#D4AF37] text-black font-bold text-[15px] disabled:opacity-40 active:scale-[0.98] transition-all"
+            className="w-full py-3 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[15px] disabled:opacity-40 active:scale-[0.98] transition-all"
           >
             {submitting ? t('social.posting') : t('social.post')}
           </button>

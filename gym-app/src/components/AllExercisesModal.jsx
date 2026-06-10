@@ -172,7 +172,7 @@ export default function AllExercisesModal({
                           className="text-[12px] font-bold px-3.5 py-1.5 rounded-full transition-all active:scale-95"
                           style={{
                             background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                            color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                            color: active ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                             border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           }}
                         >

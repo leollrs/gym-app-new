@@ -136,10 +136,29 @@ export default function MyGym() {
         // Fetch schedules for all days of the week, then sort client-side by proximity
         const classRes = await supabase
           .from('gym_class_schedules')
-          .select('id, day_of_week, start_time, end_time, gym_classes(name, color, instructor_name, trainer:profiles!trainer_id(id, full_name))')
+          .select('id, day_of_week, start_time, end_time, gym_classes(name, color, instructor_name, trainer_id)')
           .eq('gym_id', profile.gym_id)
           .order('start_time');
         const allSchedules = classRes.data || [];
+        // Resolve instructor names in a second step: the
+        // `trainer:profiles!trainer_id(...)` embed is RLS-nulled for members
+        // (staff profile rows aren't directly readable), which hid the
+        // instructor link entirely. The same-gym gym_member_profiles_safe
+        // view has no role filter, so trainer rows come through; reattach
+        // them under the `trainer` key the render already expects. On any
+        // failure the render falls back to gym_classes.instructor_name.
+        const trainerIds = [...new Set(allSchedules.map(s => s.gym_classes?.trainer_id).filter(Boolean))];
+        if (trainerIds.length) {
+          const { data: trainerProfs } = await supabase
+            .from('gym_member_profiles_safe')
+            .select('id, full_name')
+            .in('id', trainerIds);
+          const trainerById = {};
+          (trainerProfs || []).forEach(p => { trainerById[p.id] = p; });
+          allSchedules.forEach(s => {
+            if (s.gym_classes) s.gym_classes.trainer = trainerById[s.gym_classes.trainer_id] ?? null;
+          });
+        }
         // Sort by how many days away each class is (today first, then tomorrow, etc.)
         const sorted = allSchedules
           .map(s => ({

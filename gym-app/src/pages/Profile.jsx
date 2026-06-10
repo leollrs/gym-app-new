@@ -16,6 +16,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../lib/supabase';
+import { PROD_WEB_URL } from '../lib/appUrls';
 import { validateImageFile } from '../lib/validateImage';
 import { stripExif } from '../lib/stripExif';
 import logger from '../lib/logger';
@@ -86,7 +87,7 @@ const DISPLAY_FONT = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const buildWeeklyChart = (sessions) => {
+const buildWeeklyChart = (sessions, locale = 'en') => {
   const now = new Date();
   const sunday = new Date(now);
   sunday.setDate(now.getDate() - now.getDay());
@@ -102,9 +103,22 @@ const buildWeeklyChart = (sessions) => {
       .filter(s => { const d = new Date(s.completed_at); return d >= weekStart && d < weekEnd; })
       .reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
 
-    const label = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const label = weekStart.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
     return { week: label, volume: Math.round(volume) };
   });
+};
+
+// supabase-js never throws on network loss — it resolves { error } whose
+// message is then "TypeError: Load failed". Raw DB/PostgREST messages must
+// never render to members (same classification as Onboarding handleFinish):
+// a PG/PostgREST error.code means the server rejected the write; anything
+// code-less is connection trouble.
+const isServerReject = (err) => {
+  const code = String(err?.code || '').trim();
+  if (/^[0-9A-Z]{5}$/.test(code) || /^PGRST/i.test(code)) return true;
+  // Storage/edge errors carry an HTTP status instead of a PG code.
+  const status = Number(err?.status ?? err?.statusCode);
+  return Number.isFinite(status) && status >= 400;
 };
 
 const MUSCLE_COLORS = {
@@ -192,7 +206,10 @@ const Profile = () => {
   // `prs` arrays that feed the strip above, so the share matches what the
   // user sees on screen.
   const [monthlyShareOpen, setMonthlyShareOpen] = useState(false);
-  const [monthlyCheckIns, setMonthlyCheckIns]     = useCachedState(`${cacheKey}-checkins`, 0);
+  // True lifetime totals for the stats strip. The sessions/prs arrays above
+  // are capped at 50 rows (chart + lists only) — counting them would freeze
+  // the strip at "50" forever.
+  const [lifetimeStats, setLifetimeStats]         = useCachedState(`${cacheKey}-lifetimeStats`, null);
   const [showGymInfo, setShowGymInfo] = useState(false);
   const [deleteInput, setDeleteInput] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -279,7 +296,7 @@ const Profile = () => {
 
       const allSessions = sessionData ?? [];
       setSessions(allSessions);
-      setWeeklyChart(buildWeeklyChart(allSessions));
+      setWeeklyChart(buildWeeklyChart(allSessions, i18n.language || 'en'));
 
       // 3. Personal records
       const { data: prData } = await supabase
@@ -321,15 +338,36 @@ const Profile = () => {
         .maybeSingle();
       setOnboarding(ob ?? null);
 
-      // 5b. Check-ins this month
-      const monthStart = new Date();
-      monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-      const { count: ciCount } = await supabase
-        .from('check_ins')
-        .select('id', { count: 'exact', head: true })
-        .eq('profile_id', user.id)
-        .gte('checked_in_at', monthStart.toISOString());
-      setMonthlyCheckIns(ciCount ?? 0);
+      // 5b. Lifetime totals for the stats strip. head:true count queries
+      // transfer zero rows; volume has no count shortcut and no lifetime RPC
+      // exists (get_dashboard_data only returns the last 50 sessions), so we
+      // pull just the total_volume_lbs column — capped at the 2000 most
+      // recent sessions — and sum client-side.
+      const [
+        { count: workoutCount },
+        { count: prCount },
+        { count: checkInCount },
+        { data: volRows },
+      ] = await Promise.all([
+        supabase.from('workout_sessions').select('id', { count: 'exact', head: true })
+          .eq('profile_id', user.id).eq('status', 'completed'),
+        supabase.from('personal_records').select('id', { count: 'exact', head: true })
+          .eq('profile_id', user.id),
+        supabase.from('check_ins').select('id', { count: 'exact', head: true })
+          .eq('profile_id', user.id),
+        supabase.from('workout_sessions').select('total_volume_lbs')
+          .eq('profile_id', user.id).eq('status', 'completed')
+          .order('completed_at', { ascending: false }).limit(2000),
+      ]);
+      // null = query failed → render falls back to the capped-array numbers.
+      setLifetimeStats({
+        workouts: workoutCount ?? null,
+        prs: prCount ?? null,
+        checkIns: checkInCount ?? null,
+        volumeLbs: volRows
+          ? volRows.reduce((sum, r) => sum + (parseFloat(r.total_volume_lbs) || 0), 0)
+          : null,
+      });
 
       // 6. Award any missing achievements, then load earned + stats
       await awardAchievements(user.id, profile.gym_id, supabase);
@@ -360,7 +398,10 @@ const Profile = () => {
   // ── Derived values ──────────────────────────────────────────────────────────
   const { level, xpIntoLevel, xpForNext, progress: levelProgress } = getLevel(userPoints);
   const tier = getRewardTier(userPoints);
-  const totalVolume = sessions.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
+  // Lifetime numbers from the dedicated stat queries; fall back to the capped
+  // 50-row arrays only while they haven't loaded yet (or a query failed).
+  const totalVolume = lifetimeStats?.volumeLbs
+    ?? sessions.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
   const volumeStr   = formatStatNumber(Math.round(totalVolume));
 
   const prGroups = prs.reduce((acc, pr) => {
@@ -375,6 +416,12 @@ const Profile = () => {
     ? new Date(profile.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
     : '';
   const maxMuscleSets = muscleBalance[0]?.sets ?? 1;
+
+  // Short, member-safe reason for "Failed to …: {{message}}" toast templates.
+  // The raw error stays in the console (logger) only.
+  const friendlyReason = (err) => (isServerReject(err)
+    ? t('toasts.reasonTryAgain', 'please try again')
+    : t('toasts.reasonNoConnection', 'no connection'));
 
   // ── Save goals ──────────────────────────────────────────────────────────────
   const saveGoals = async () => {
@@ -397,7 +444,7 @@ const Profile = () => {
       ]);
       if (error || profileErr) {
         logger.error('saveGoals error:', error || profileErr);
-        showToast(t('toasts.failedToSave', { message: (error || profileErr).message }), 'error');
+        showToast(t('toasts.failedToSave', { message: friendlyReason(error || profileErr) }), 'error');
       } else {
         setOnboarding({ ...dbFields, injuries_notes });
         refreshProfile();
@@ -415,7 +462,13 @@ const Profile = () => {
     try {
       await deleteAccount();
     } catch (err) {
-      showToast(err.message || t('toasts.failedToDeleteAccount'), 'error');
+      // deleteAccount re-wraps the RPC error (code stripped), so sniff the
+      // message for network markers; never surface the raw DB text.
+      logger.error('Delete account error:', err);
+      const offline = !navigator.onLine || /load failed|failed to fetch|network/i.test(String(err?.message || ''));
+      showToast(offline
+        ? t('progress.body.connectionError', 'No connection — try again when you’re back online.')
+        : t('toasts.failedToDeleteAccount'), 'error');
       setDeleting(false);
     }
   };
@@ -477,7 +530,7 @@ const Profile = () => {
       refreshProfile();
     } catch (err) {
       logger.error('Avatar upload error:', err);
-      showToast(t('toasts.failedToUploadAvatar', { message: err.message ?? 'Unknown error' }), 'error');
+      showToast(t('toasts.failedToUploadAvatar', { message: friendlyReason(err) }), 'error');
     } finally {
       setUploadingAvatar(false);
     }
@@ -528,7 +581,8 @@ const Profile = () => {
         if (error.message?.includes('unique') || error.code === '23505') {
           showToast(t('profile.usernameTaken'), 'error');
         } else {
-          showToast(t('profile.saveFailed') + ': ' + error.message, 'error');
+          logger.error('saveIdentity error:', error);
+          showToast(t('profile.saveFailed') + ': ' + friendlyReason(error), 'error');
         }
         return;
       }
@@ -536,14 +590,15 @@ const Profile = () => {
       setEditingIdentity(false);
       showToast(t('profile.saved'), 'success');
     } catch (err) {
-      showToast(t('profile.saveFailed') + ': ' + (err.message ?? 'Unknown error'), 'error');
+      logger.error('saveIdentity error:', err);
+      showToast(t('profile.saveFailed') + ': ' + friendlyReason(err), 'error');
     } finally {
       setSavingIdentity(false);
     }
   };
 
   // ── Share friend link ──────────────────────────────────────────────────────
-  const friendLink = friendCode ? `https://tugympr.app/add-friend/${friendCode}` : '';
+  const friendLink = friendCode ? `${PROD_WEB_URL}/add-friend/${friendCode}` : '';
 
   const handleShareFriendLink = async () => {
     if (!friendLink) return;
@@ -653,7 +708,7 @@ const Profile = () => {
                     type="button"
                     onClick={saveIdentity}
                     disabled={savingIdentity}
-                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-[12px] font-semibold bg-[var(--color-accent)] text-black disabled:opacity-50 hover:opacity-90 transition-colors"
+                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-[12px] font-semibold bg-[var(--color-accent)] text-[var(--color-text-on-accent,#000)] disabled:opacity-50 hover:opacity-90 transition-colors"
                   >
                     {savingIdentity ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
                     {t('profile.save')}
@@ -791,10 +846,10 @@ const Profile = () => {
 
       {/* ── Lifetime stats strip (Profile A): colored values, dividers ─────── */}
       <div className="rounded-[22px] bg-[var(--color-bg-card)] mb-4 p-4 grid grid-cols-4 gap-2" style={{ boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
-        <HeroStat isFirst label={t('profile.workouts')} value={loading ? '—' : sessions.length} color="var(--color-accent)" />
-        <HeroStat label={t('profile.checkIns')} value={loading ? '—' : monthlyCheckIns} color="#6D5FDB" />
+        <HeroStat isFirst label={t('profile.workouts')} value={loading ? '—' : (lifetimeStats?.workouts ?? sessions.length)} color="var(--color-accent)" />
+        <HeroStat label={t('profile.checkIns')} value={loading ? '—' : (lifetimeStats?.checkIns ?? 0)} color="#6D5FDB" />
         <HeroStat label={t('profile.volume')} value={loading ? '—' : volumeStr} sub={t('common:lbs')} color="var(--color-accent)" />
-        <HeroStat label={t('profile.records')} value={loading ? '—' : prs.length} color="#FF5A2E" />
+        <HeroStat label={t('profile.records')} value={loading ? '—' : (lifetimeStats?.prs ?? prs.length)} color="#FF5A2E" />
       </div>
 
       {/* Share-month pill — produces a recap card with the current month's
@@ -1169,7 +1224,7 @@ const Profile = () => {
                             {/* Earned date */}
                             {earned && earnedAt && (
                               <p className="text-[11px] mt-1" style={{ color: `${a.color}99` }}>
-                                {t('profile.earned')} {new Date(earnedAt).toLocaleDateString('en-US', {
+                                {t('profile.earned')} {new Date(earnedAt).toLocaleDateString(i18n.language || 'en', {
                                   month: 'short', day: 'numeric', year: 'numeric',
                                 })}
                               </p>
@@ -1520,7 +1575,7 @@ const Profile = () => {
               <button type="button"
                 onClick={saveGoals}
                 disabled={savingGoals}
-                className="flex-1 py-3.5 rounded-xl text-[15px] font-bold bg-[var(--color-accent)] text-black disabled:opacity-50">
+                className="flex-1 py-3.5 rounded-xl text-[15px] font-bold bg-[var(--color-accent)] text-[var(--color-text-on-accent,#000)] disabled:opacity-50">
                 {savingGoals ? t('profile.savingEllipsis') : t('profile.saveChanges')}
               </button>
             </div>

@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { estimateCardioCalories } from '../lib/cardioCalories';
+import posthogClient from 'posthog-js';
 
 const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
 const FONT_BODY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
@@ -138,6 +139,7 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
         },
       });
       if (error) throw error;
+      posthogClient?.capture('cardio_logged', { source: 'manual' });
       showToast(t('cardio.loggedSuccess', 'Cardio logged!'), 'success');
       onLogged?.();
       onClose();

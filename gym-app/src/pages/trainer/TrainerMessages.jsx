@@ -9,6 +9,7 @@ import {
 import { motion } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { encryptMessage, decryptMessage } from '../../lib/messageEncryption';
@@ -120,37 +121,37 @@ function WorkoutShareCard({ planId, dayIndex, t }) {
     <div
       className="rounded-2xl p-3 max-w-[280px]"
       style={{
-        background: 'color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-card))',
-        border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)',
+        background: TT.accentSoft,
+        border: `1px solid ${TT.accent}`,
       }}
     >
       <div className="flex items-center gap-2 mb-2">
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center"
-          style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)' }}
+          style={{ background: '#fff' }}
         >
-          <Dumbbell size={13} style={{ color: 'var(--color-accent)' }} />
+          <Dumbbell size={13} style={{ color: TT.accent }} />
         </div>
-        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
+        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: TT.accentInk }}>
           {t('trainerMessages.share.cardLabel')}
         </p>
       </div>
       {loading ? (
         <div className="space-y-2">
-          <div className="h-3 w-3/4 rounded animate-pulse" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.06))' }} />
-          <div className="h-3 w-1/2 rounded animate-pulse" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.06))' }} />
+          <div className="h-3 w-3/4 rounded animate-pulse" style={{ background: 'rgba(15,20,25,0.08)' }} />
+          <div className="h-3 w-1/2 rounded animate-pulse" style={{ background: 'rgba(15,20,25,0.08)' }} />
         </div>
       ) : plan ? (
         <>
-          <p className="text-[14px] font-bold leading-snug" style={{ color: 'var(--color-text-primary)' }}>
+          <p className="text-[14px] font-bold leading-snug" style={{ color: TT.text }}>
             {plan.name}
           </p>
-          <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-[12px] mt-0.5" style={{ color: TT.accentInk }}>
             {dayName} · {t('trainerMessages.share.exerciseCount', { count: exerciseCount })}
           </p>
         </>
       ) : (
-        <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-[12px]" style={{ color: TT.textSub }}>
           {t('trainerMessages.share.cardMissing')}
         </p>
       )}
@@ -193,19 +194,19 @@ function ScheduleSoonModal({ open, onClose, t }) {
         exit={{ opacity: 0, y: 20 }}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-sm rounded-3xl overflow-hidden"
-        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+        style={{ background: TT.surface, border: `1px solid ${TT.border}`, boxShadow: TT.shadowLg }}
       >
         <div className="px-5 py-5 text-center">
           <div
             className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center"
-            style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}
+            style={{ background: TT.accentSoft }}
           >
-            <CalendarPlus size={22} style={{ color: 'var(--color-accent)' }} />
+            <CalendarPlus size={22} style={{ color: TT.accent }} />
           </div>
-          <h3 className="text-[16px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          <h3 className="text-[16px] font-bold mb-1" style={{ color: TT.text }}>
             {t('trainerMessages.scheduleSoon.title')}
           </h3>
-          <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-[13px]" style={{ color: TT.textSub }}>
             {t('trainerMessages.scheduleSoon.body')}
           </p>
           <div className="mt-4 flex gap-2">
@@ -213,7 +214,7 @@ function ScheduleSoonModal({ open, onClose, t }) {
               type="button"
               onClick={onClose}
               className="flex-1 min-h-[44px] rounded-xl text-[13px] font-semibold"
-              style={{ border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}
+              style={{ border: `1px solid ${TT.borderSolid}`, color: TT.textSub }}
             >
               {t('trainerMessages.scheduleSoon.cancel')}
             </button>
@@ -221,7 +222,7 @@ function ScheduleSoonModal({ open, onClose, t }) {
               type="button"
               onClick={() => { onClose(); navigate('/trainer/calendar'); }}
               className="flex-1 min-h-[44px] rounded-xl text-[13px] font-bold"
-              style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+              style={{ background: TT.accent, color: '#06363B' }}
             >
               {t('trainerMessages.scheduleSoon.openCalendar')}
             </button>
@@ -286,17 +287,17 @@ function ClientPicker({ open, onClose, trainerId, onPick, t }) {
         animate={{ opacity: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md max-h-[70vh] flex flex-col rounded-2xl overflow-hidden"
-        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+        style={{ background: TT.surface, border: `1px solid ${TT.border}`, boxShadow: TT.shadowLg }}
       >
-        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          <h3 className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
+          <h3 className="text-[15px] font-bold" style={{ color: TT.text }}>
             {t('trainerMessages.picker.title')}
           </h3>
           <button
             type="button"
             onClick={onClose}
             className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg"
-            style={{ color: 'var(--color-text-muted)' }}
+            style={{ color: TT.textMute }}
             aria-label={t('trainerMessages.picker.close')}
           >
             <X size={18} />
@@ -305,9 +306,9 @@ function ClientPicker({ open, onClose, trainerId, onPick, t }) {
         <div className="px-4 py-3">
           <div
             className="flex items-center gap-2 px-3 rounded-xl"
-            style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', border: '1px solid var(--color-border-subtle)' }}
+            style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}
           >
-            <Search size={14} style={{ color: 'var(--color-text-muted)' }} />
+            <Search size={14} style={{ color: TT.textMute }} />
             <input
               type="text"
               value={query}
@@ -316,7 +317,7 @@ function ClientPicker({ open, onClose, trainerId, onPick, t }) {
               autoFocus
               maxLength={100}
               className="flex-1 bg-transparent outline-none text-[13px] py-2.5"
-              style={{ color: 'var(--color-text-primary)' }}
+              style={{ color: TT.text }}
             />
           </div>
         </div>
@@ -324,12 +325,12 @@ function ClientPicker({ open, onClose, trainerId, onPick, t }) {
           {loading && (
             <div className="space-y-2 px-2">
               {[0, 1, 2].map(i => (
-                <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }} />
+                <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: TT.surface2 }} />
               ))}
             </div>
           )}
           {!loading && filtered.length === 0 && (
-            <p className="text-center text-[13px] py-6" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-center text-[13px] py-6" style={{ color: TT.textMute }}>
               {t('trainerMessages.picker.empty')}
             </p>
           )}
@@ -342,11 +343,11 @@ function ClientPicker({ open, onClose, trainerId, onPick, t }) {
             >
               <UserAvatar user={c} size={36} />
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                <p className="text-[13px] font-bold truncate" style={{ color: TT.text }}>
                   {c.full_name || c.username || t('trainerMessages.list.clientFallback')}
                 </p>
                 {c.username && (
-                  <p className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>@{c.username}</p>
+                  <p className="text-[11px] truncate" style={{ color: TT.textMute }}>@{c.username}</p>
                 )}
               </div>
             </button>
@@ -363,6 +364,7 @@ export default function TrainerMessages() {
   const { t, i18n } = useTranslation('pages');
   const navigate = useNavigate();
   const { conversationId: routeConvId } = useParams();
+  const { showToast } = useToast();
 
   const [conversations, setConversations] = useState([]);
   const [convsLoading, setConvsLoading] = useState(true);
@@ -891,13 +893,13 @@ export default function TrainerMessages() {
                 {/* Thread header */}
                 <div
                   className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
-                  style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}
+                  style={{ borderBottom: `1px solid ${TT.border}`, background: TT.surface }}
                 >
                   <button
                     type="button"
                     onClick={handleBack}
                     className="lg:hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl"
-                    style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-accent)' }}
+                    style={{ background: TT.surface2, color: TT.accent }}
                     aria-label={t('trainerMessages.thread.back')}
                   >
                     <ChevronLeft size={18} />
@@ -906,7 +908,7 @@ export default function TrainerMessages() {
                     {otherUser && <UserAvatar user={otherUser} size={40} />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[15px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                    <p className="text-[15px] font-bold truncate" style={{ color: TT.text }}>
                       {otherUser?.full_name || otherUser?.username || t('trainerMessages.list.clientFallback')}
                     </p>
                     {otherUser && (
@@ -914,7 +916,7 @@ export default function TrainerMessages() {
                         type="button"
                         onClick={() => navigate(`/trainer/clients/${otherUser.id}`)}
                         className="inline-flex items-center gap-1 text-[11px] font-semibold transition-colors"
-                        style={{ color: 'var(--color-accent)' }}
+                        style={{ color: TT.accent }}
                       >
                         {t('trainerMessages.thread.viewProfile')}
                         <ExternalLink size={11} />
@@ -926,16 +928,16 @@ export default function TrainerMessages() {
                 {/* Quick actions strip */}
                 <div
                   className="flex items-center gap-2 px-3 py-2 overflow-x-auto flex-shrink-0"
-                  style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}
+                  style={{ borderBottom: `1px solid ${TT.border}`, background: TT.surface }}
                 >
                   <button
                     type="button"
                     onClick={() => setShowShare(true)}
                     className="shrink-0 min-h-[36px] h-9 px-3 rounded-xl flex items-center gap-1.5 text-[12px] font-semibold transition-colors"
                     style={{
-                      background: 'var(--color-surface-hover, rgba(0,0,0,0.04))',
-                      color: 'var(--color-text-secondary)',
-                      border: '1px solid var(--color-border-subtle)',
+                      background: TT.surface2,
+                      color: TT.textSub,
+                      border: `1px solid ${TT.borderSolid}`,
                     }}
                   >
                     <Dumbbell size={13} />
@@ -946,9 +948,9 @@ export default function TrainerMessages() {
                     onClick={() => setShowSchedule(true)}
                     className="shrink-0 min-h-[36px] h-9 px-3 rounded-xl flex items-center gap-1.5 text-[12px] font-semibold transition-colors"
                     style={{
-                      background: 'var(--color-surface-hover, rgba(0,0,0,0.04))',
-                      color: 'var(--color-text-secondary)',
-                      border: '1px solid var(--color-border-subtle)',
+                      background: TT.surface2,
+                      color: TT.textSub,
+                      border: `1px solid ${TT.borderSolid}`,
                     }}
                   >
                     <CalendarPlus size={13} />
@@ -962,7 +964,7 @@ export default function TrainerMessages() {
                 >
                   {threadLoading ? (
                     <div className="flex items-center justify-center py-16">
-                      <Loader2 size={20} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
+                      <Loader2 size={20} className="animate-spin" style={{ color: TT.accent }} />
                     </div>
                   ) : messages.length === 0 ? (
                     <EmptyState
@@ -976,7 +978,7 @@ export default function TrainerMessages() {
                       if (item.type === 'timestamp') {
                         return (
                           <div key={item.key} className="flex items-center justify-center py-2">
-                            <span className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                            <span className="text-[10px] font-medium" style={{ color: TT.textMute }}>
                               {item.label}
                             </span>
                           </div>
@@ -1030,8 +1032,8 @@ export default function TrainerMessages() {
                 <div
                   className="flex items-end gap-2 px-3 py-2 flex-shrink-0"
                   style={{
-                    borderTop: '1px solid var(--color-border-subtle)',
-                    background: 'var(--color-bg-card)',
+                    borderTop: `1px solid ${TT.border}`,
+                    background: TT.surface,
                     paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
                   }}
                 >
@@ -1045,12 +1047,12 @@ export default function TrainerMessages() {
                     maxLength={5000}
                     className="flex-1 resize-none px-4 py-3 text-[14px] outline-none transition-colors"
                     style={{
-                      color: 'var(--color-text-primary)',
+                      color: TT.text,
                       maxHeight: '120px',
                       minHeight: '44px',
                       borderRadius: 22,
-                      background: 'var(--color-surface-hover, rgba(0,0,0,0.04))',
-                      border: '1px solid var(--color-border-subtle)',
+                      background: TT.surface2,
+                      border: `1px solid ${TT.borderSolid}`,
                     }}
                     onInput={(e) => {
                       e.target.style.height = 'auto';
@@ -1066,8 +1068,8 @@ export default function TrainerMessages() {
                       width: 44,
                       height: 44,
                       borderRadius: 14,
-                      background: 'var(--color-accent)',
-                      color: 'var(--color-text-on-accent)',
+                      background: TT.accent,
+                      color: '#06363B',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',

@@ -17,8 +17,21 @@ import Skeleton from '../../components/Skeleton';
 import TrainerEmptyState from './components/TrainerEmptyState';
 import { TT, TFont } from './components/designTokens';
 import {
-  TCard, TEyebrow, TPageTitle, TDarkButton,
+  TCard, TEyebrow, TPageTitle, TDarkButton, TPrimaryButton, TPill,
 } from './components/designPrimitives';
+
+// Shared form styles (match TrainerProfile)
+const inputStyle = {
+  width: '100%', padding: '10px 12px', borderRadius: 10,
+  fontSize: 13.5, border: `1px solid ${TT.borderSolid}`,
+  background: TT.surface, color: TT.text, outline: 'none',
+  fontFamily: 'inherit',
+};
+const labelStyle = {
+  fontSize: 11.5, fontWeight: 800, color: TT.textSub,
+  letterSpacing: 0.4, textTransform: 'uppercase',
+  marginBottom: 6, display: 'block',
+};
 
 const DAYS_OF_WEEK = [
   { value: 0, labelKey: 'days.sunday' },
@@ -36,8 +49,8 @@ const TABS = ['myClasses', 'bookings', 'analytics'];
 function Spinner({ label }) {
   return (
     <div className="flex items-center gap-2 py-6 justify-center">
-      <div className="w-4 h-4 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
-      <span className="text-[12px] text-[var(--color-text-muted)]">{label}</span>
+      <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: TT.accent, borderTopColor: 'transparent' }} />
+      <span style={{ fontSize: 12, color: TT.textMute }}>{label}</span>
     </div>
   );
 }
@@ -77,38 +90,67 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
     queryClient.invalidateQueries({ queryKey: ['trainer', 'my-classes'] });
   };
 
+  const accentColor = cls.accent_color || TT.accent;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="relative w-full max-w-[480px] max-h-[85vh] bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-default)] overflow-y-auto">
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: TT.surface, borderRadius: 18,
+          width: '100%', maxWidth: 480, maxHeight: '90vh',
+          overflow: 'hidden', display: 'flex', flexDirection: 'column',
+          boxShadow: TT.shadowLg,
+        }}
+      >
         {/* Header */}
-        <div className="sticky top-0 bg-[var(--color-bg-card)] border-b border-[var(--color-border-subtle)] px-4 py-3 flex items-center justify-between z-10">
-          <h3 className="text-[15px] font-bold text-[var(--color-text-primary)]">{t('trainerClasses.classDetails')}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
-            <X size={18} className="text-[var(--color-text-muted)]" />
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px', borderBottom: `1px solid ${TT.border}`, flexShrink: 0,
+        }}>
+          <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
+            {t('trainerClasses.classDetails')}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('trainerClasses.close', 'Close')}
+            style={{
+              width: 32, height: 32, borderRadius: 999, border: 'none',
+              background: TT.surface2, color: TT.textSub,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
+          >
+            <X size={16} />
           </button>
         </div>
 
-        <div className="p-4 space-y-5 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 'calc(16px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Class info */}
-          <div className="flex items-center gap-3">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {cls.image_url ? (
-              <img src={cls.image_url} alt={cls.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-[var(--color-border-subtle)]" />
+              <img src={cls.image_url} alt={cls.name} style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flexShrink: 0, border: `1px solid ${TT.border}` }} />
             ) : (
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 border border-[var(--color-border-subtle)]"
-                style={{ backgroundColor: (cls.accent_color || '#D4AF37') + '20' }}
-              >
-                <CalendarDays size={22} style={{ color: cls.accent_color || '#D4AF37' }} />
+              <div style={{ width: 56, height: 56, borderRadius: 14, display: 'grid', placeItems: 'center', flexShrink: 0, background: accentColor + '20' }}>
+                <CalendarDays size={22} style={{ color: accentColor }} />
               </div>
             )}
-            <div className="flex-1 min-w-0">
-              <h4 className="text-[15px] font-bold text-[var(--color-text-primary)] truncate">{cls.name}</h4>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
-                  <Clock size={12} /> {cls.duration_minutes} min
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cls.name}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 3 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: TT.textSub, fontWeight: 600 }}>
+                  <Clock size={12} /> {cls.duration_minutes} {t('trainerClasses.minutesShort', 'min')}
                 </span>
-                <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: TT.textSub, fontWeight: 600 }}>
                   <Users size={12} /> {cls.max_capacity}
                 </span>
               </div>
@@ -117,14 +159,15 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
 
           {/* Schedule slots */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h5 className="text-[13px] font-semibold text-[var(--color-text-primary)]">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2 }}>
                 {t('trainerClasses.schedule')} ({schedules.length})
-              </h5>
+              </div>
               {!adding && (
                 <button
+                  type="button"
                   onClick={() => setAdding(true)}
-                  className="flex items-center gap-1 text-[12px] text-[var(--color-accent)] hover:text-[#C4A030] transition-colors font-medium min-h-[44px] px-1"
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, color: TT.accentDark, background: 'transparent', border: 'none', cursor: 'pointer', minHeight: 44, padding: '0 2px' }}
                 >
                   <Plus size={13} /> {t('trainerClasses.addSlot')}
                 </button>
@@ -132,18 +175,20 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
             </div>
 
             {schedules.length > 0 && (
-              <div className="space-y-1.5 mb-3">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
                 {schedules.map(slot => (
-                  <div key={slot.id} className="flex items-center justify-between gap-2 p-2.5 bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border-subtle)]">
-                    <span className="text-[12px] text-[var(--color-text-primary)] flex-shrink-0">
+                  <div key={slot.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 10px', background: TT.surface2, borderRadius: 10, border: `1px solid ${TT.border}` }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: TT.text, flexShrink: 0 }}>
                       {tc(DAYS_OF_WEEK.find(d => d.value === slot.day_of_week)?.labelKey || '')}
                     </span>
-                    <span className="text-[12px] text-[var(--color-text-secondary)] flex-1 text-right">
+                    <span style={{ fontFamily: TFont.mono, fontSize: 12, color: TT.textSub, flex: 1, textAlign: 'right', letterSpacing: -0.3 }}>
                       {slot.start_time?.slice(0, 5)} – {slot.end_time?.slice(0, 5)}
                     </span>
                     <button
+                      type="button"
                       onClick={() => handleDeleteSlot(slot.id)}
-                      className="p-1.5 rounded hover:bg-red-500/10 text-[var(--color-text-muted)] hover:text-red-400 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                      aria-label={t('trainerClasses.errorDeleteSlot', 'Failed to delete slot')}
+                      style={{ minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: TT.textMute, cursor: 'pointer' }}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -153,13 +198,13 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
             )}
 
             {adding && (
-              <div className="p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)] space-y-3">
+              <div style={{ padding: 12, background: TT.surface2, borderRadius: 12, border: `1px solid ${TT.border}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div>
-                  <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.day')}</label>
+                  <label style={labelStyle}>{t('trainerClasses.day')}</label>
                   <select
                     value={newSlot.day_of_week}
                     onChange={e => setNewSlot(s => ({ ...s, day_of_week: Number(e.target.value) }))}
-                    className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                    style={inputStyle}
                   >
                     {DAYS_OF_WEEK.map(d => (
                       <option key={d.value} value={d.value}>{tc(d.labelKey)}</option>
@@ -168,34 +213,32 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.start')}</label>
+                    <label style={labelStyle}>{t('trainerClasses.start')}</label>
                     <input
                       type="time"
                       value={newSlot.start_time}
                       onChange={e => setNewSlot(s => ({ ...s, start_time: e.target.value }))}
-                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                      style={inputStyle}
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.end')}</label>
+                    <label style={labelStyle}>{t('trainerClasses.end')}</label>
                     <input
                       type="time"
                       value={newSlot.end_time}
                       onChange={e => setNewSlot(s => ({ ...s, end_time: e.target.value }))}
-                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                      style={inputStyle}
                     />
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleAddSlot}
-                    className="px-3 py-3 sm:py-2.5 bg-[var(--color-accent)] text-[var(--color-text-on-accent)] text-[12px] font-semibold rounded-xl hover:bg-[var(--color-accent-dark)] transition-colors min-h-[44px]"
-                  >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <TPrimaryButton onClick={handleAddSlot} style={{ minHeight: 44 }}>
                     {t('trainerClasses.save')}
-                  </button>
+                  </TPrimaryButton>
                   <button
+                    type="button"
                     onClick={() => setAdding(false)}
-                    className="px-3 py-3 sm:py-2.5 text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors min-h-[44px]"
+                    style={{ padding: '10px 14px', borderRadius: 10, background: 'transparent', color: TT.textSub, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', minHeight: 44 }}
                   >
                     {t('trainerClasses.cancel')}
                   </button>
@@ -204,7 +247,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
             )}
 
             {schedules.length === 0 && !adding && (
-              <p className="text-[12px] text-[var(--color-text-muted)] italic">{t('trainerClasses.noScheduleSlots')}</p>
+              <p style={{ fontSize: 12, color: TT.textMute, fontStyle: 'italic' }}>{t('trainerClasses.noScheduleSlots')}</p>
             )}
           </div>
         </div>
@@ -362,7 +405,7 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
           const on = view === k;
           return (
             <button key={k} type="button" onClick={() => setView(k)}
-              style={{ flex: 1, padding: '8px 0', borderRadius: 11, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? '#fff' : TT.textSub }}>
+              style={{ flex: 1, padding: '8px 0', borderRadius: 11, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? TT.onInverse : TT.textSub }}>
               {label}
             </button>
           );
@@ -475,32 +518,36 @@ function BookingsTab({ classes, t, dateLocale }) {
       <div className="space-y-4">
         {Object.entries(grouped).map(([classId, classBookings]) => {
           const cls = classMap[classId];
+          const accentColor = cls?.accent_color || TT.accent;
           return (
             <div key={classId}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ backgroundColor: (cls?.accent_color || '#D4AF37') + '20' }}>
-                  <CalendarDays size={12} style={{ color: cls?.accent_color || '#D4AF37' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ width: 24, height: 24, borderRadius: 8, display: 'grid', placeItems: 'center', flexShrink: 0, background: accentColor + '20' }}>
+                  <CalendarDays size={12} style={{ color: accentColor }} />
                 </div>
-                <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{cls?.name || t('trainerClasses.unknown')}</span>
-                <span className="text-[11px] text-[var(--color-text-muted)] ml-auto">{classBookings.length}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: TT.text }}>{cls?.name || t('trainerClasses.unknown')}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: TT.textMute, marginLeft: 'auto' }}>{classBookings.length}</span>
               </div>
-              <div className="space-y-1.5">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {classBookings.map(b => (
-                  <div key={b.id} className="flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)] overflow-hidden">
+                  <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: TT.surface, borderRadius: 12, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, overflow: 'hidden' }}>
                     {b.profiles?.avatar_url ? (
-                      <img src={b.profiles.avatar_url} alt={b.profiles?.full_name || t('trainerClasses.members')} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                      <img src={b.profiles.avatar_url} alt={b.profiles?.full_name || t('trainerClasses.members')} style={{ width: 32, height: 32, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
-                        <span className="text-[11px] font-bold text-[var(--color-accent)]">{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
+                      <div style={{ width: 32, height: 32, borderRadius: 999, display: 'grid', placeItems: 'center', flexShrink: 0, background: TT.accentSoft }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: TT.accentInk }}>{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
                       </div>
                     )}
-                    <span className="flex-1 text-[13px] text-[var(--color-text-primary)] truncate">{b.profiles?.full_name || t('trainerClasses.unknown')}</span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.profiles?.full_name || t('trainerClasses.unknown')}</span>
                     {b.attended ? (
-                      <span className="flex items-center gap-1 text-[11px] text-[#10B981] bg-[#10B981]/10 px-2.5 py-1 rounded-full font-medium">
-                        <Check size={11} /> {t('trainerClasses.attended')}
-                      </span>
+                      <TPill tone="good" size="m"><Check size={11} /> {t('trainerClasses.attended')}</TPill>
                     ) : (
-                      <button onClick={() => handleMarkAttended(b.id)} className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-2.5 py-2 sm:py-1.5 rounded-full font-medium hover:bg-[var(--color-accent)]/20 transition-colors min-h-[44px] sm:min-h-[32px]">
+                      <button
+                        type="button"
+                        onClick={() => handleMarkAttended(b.id)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: TT.accentInk, background: TT.accentSoft, padding: '7px 11px', borderRadius: 999, border: 'none', cursor: 'pointer', minHeight: 44, whiteSpace: 'nowrap' }}
+                        className="sm:!min-h-[32px]"
+                      >
                         <UserCheck size={11} /> {t('trainerClasses.markAttended')}
                       </button>
                     )}
@@ -593,7 +640,7 @@ function BookingsTab({ classes, t, dateLocale }) {
           const on = view === k;
           return (
             <button key={k} type="button" onClick={() => setView(k)}
-              style={{ flex: 1, padding: '8px 0', borderRadius: 11, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? '#fff' : TT.textSub }}>
+              style={{ flex: 1, padding: '8px 0', borderRadius: 11, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? TT.onInverse : TT.textSub }}>
               {label}
             </button>
           );
@@ -702,90 +749,87 @@ function AnalyticsTab({ classes, t, dateLocale }) {
         <>
           {/* Attendance rate + avg rating cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-4 bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)]">
-              <p className="text-[11px] font-medium text-[var(--color-text-muted)] mb-1.5">{t('trainerClasses.attendanceRate')}</p>
-              <p className="text-[22px] font-bold text-[var(--color-text-primary)]">{analytics.attendanceRate}%</p>
-              <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
+            <TCard padded={16} style={{ borderRadius: 18 }}>
+              <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: TT.textMute, marginBottom: 6 }}>{t('trainerClasses.attendanceRate')}</p>
+              <p style={{ fontFamily: TFont.display, fontSize: 26, fontWeight: 800, color: TT.text, letterSpacing: -1, lineHeight: 1 }}>{analytics.attendanceRate}%</p>
+              <p style={{ fontFamily: TFont.mono, fontSize: 11, color: TT.textMute, marginTop: 4 }}>
                 {analytics.attended}/{analytics.total}
               </p>
-            </div>
-            <div className="p-4 bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)]">
-              <p className="text-[11px] font-medium text-[var(--color-text-muted)] mb-1.5">{t('trainerClasses.avgRating')}</p>
+            </TCard>
+            <TCard padded={16} style={{ borderRadius: 18 }}>
+              <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: TT.textMute, marginBottom: 6 }}>{t('trainerClasses.avgRating')}</p>
               {analytics.avgRating ? (
                 <>
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-[22px] font-bold text-[var(--color-text-primary)]">{analytics.avgRating}</p>
-                    <Star size={18} className="text-[var(--color-accent)] fill-[var(--color-accent)]" />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <p style={{ fontFamily: TFont.display, fontSize: 26, fontWeight: 800, color: TT.text, letterSpacing: -1, lineHeight: 1 }}>{analytics.avgRating}</p>
+                    <Star size={18} style={{ color: TT.accent, fill: TT.accent }} />
                   </div>
-                  <div className="mt-2.5 space-y-1">
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {[5, 4, 3, 2, 1].map(star => {
                       const count = analytics.starDist[star - 1];
                       const maxCount = Math.max(...analytics.starDist, 1);
                       return (
-                        <div key={star} className="flex items-center gap-1.5">
-                          <span className="text-[9px] text-[var(--color-text-muted)] w-3 text-right">{star}</span>
-                          <Star size={8} className="text-[var(--color-accent)] fill-[var(--color-accent)]" />
-                          <div className="flex-1 h-1.5 bg-white/6 rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-[var(--color-accent)]"
-                              style={{ width: `${(count / maxCount) * 100}%` }}
-                            />
+                        <div key={star} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontFamily: TFont.mono, fontSize: 9, color: TT.textMute, width: 12, textAlign: 'right' }}>{star}</span>
+                          <Star size={8} style={{ color: TT.accent, fill: TT.accent, flexShrink: 0 }} />
+                          <div style={{ flex: 1, height: 6, background: TT.surface2, borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', borderRadius: 999, background: TT.accent, width: `${(count / maxCount) * 100}%` }} />
                           </div>
-                          <span className="text-[9px] text-[var(--color-text-muted)] w-4">{count}</span>
+                          <span style={{ fontFamily: TFont.mono, fontSize: 9, color: TT.textMute, width: 16 }}>{count}</span>
                         </div>
                       );
                     })}
                   </div>
                 </>
               ) : (
-                <p className="text-[14px] text-[var(--color-text-muted)]">--</p>
+                <p style={{ fontSize: 14, color: TT.textMute }}>--</p>
               )}
-            </div>
+            </TCard>
           </div>
 
           {/* Recent attendees */}
           {hasTemplate && analytics.recentResults.length > 0 && (
             <div>
-              <p className="text-[12px] font-semibold text-[var(--color-text-muted)] mb-2.5">{t('trainerClasses.recentAttendees')}</p>
-              <div className="space-y-1.5">
+              <p style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2, marginBottom: 10 }}>{t('trainerClasses.recentAttendees')}</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {analytics.recentResults.map((r, i) => (
                   <div
                     key={`${r.profile_id}-${i}`}
-                    className="flex flex-wrap items-center gap-2 sm:gap-2.5 p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)] overflow-hidden"
+                    style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: 12, background: TT.surface, borderRadius: 12, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, overflow: 'hidden' }}
                   >
                     {r.profiles?.avatar_url ? (
-                      <img src={r.profiles.avatar_url} alt={r.profiles?.full_name || t('trainerClasses.members')} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                      <img src={r.profiles.avatar_url} alt={r.profiles?.full_name || t('trainerClasses.members')} style={{ width: 32, height: 32, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
-                        <span className="text-[11px] font-bold text-[var(--color-accent)]">
+                      <div style={{ width: 32, height: 32, borderRadius: 999, display: 'grid', placeItems: 'center', flexShrink: 0, background: TT.accentSoft }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: TT.accentInk }}>
                           {r.profiles?.full_name?.[0]?.toUpperCase() || '?'}
                         </span>
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <span className="block text-[13px] text-[var(--color-text-primary)] truncate">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {r.profiles?.full_name || t('trainerClasses.unknown')}
                       </span>
                       {r.attended_at && (
-                        <span className="text-[10px] text-[var(--color-text-muted)]">
+                        <span style={{ fontSize: 10, color: TT.textMute }}>
                           {format(new Date(r.attended_at), 'MMM d', { locale: dateLocale })}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                       {r.workout_sessions?.total_volume_lbs != null && (
-                        <span className="text-[11px] text-[var(--color-text-secondary)] flex items-center gap-1">
+                        <span style={{ fontSize: 11, color: TT.textSub, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
                           <Dumbbell size={11} />
-                          {Number(r.workout_sessions.total_volume_lbs).toLocaleString()} {t('trainerClasses.lbs')}
+                          <span style={{ fontFamily: TFont.mono }}>{Number(r.workout_sessions.total_volume_lbs).toLocaleString()}</span> {t('trainerClasses.lbs')}
                         </span>
                       )}
                       {r.rating != null && (
-                        <div className="flex items-center gap-0.5">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           {[1, 2, 3, 4, 5].map(s => (
                             <Star
                               key={s}
                               size={10}
-                              className={s <= Math.round(r.rating) ? 'text-[var(--color-accent)] fill-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}
+                              style={s <= Math.round(r.rating) ? { color: TT.accent, fill: TT.accent } : { color: TT.textFaint }}
                             />
                           ))}
                         </div>
@@ -829,54 +873,54 @@ function RoutineSelector({ gymId, value, onChange, t }) {
   return (
     <div>
       {selected ? (
-        <div className="flex flex-wrap items-center gap-2 p-3 bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-xl overflow-hidden">
-          <Dumbbell size={14} className="text-[var(--color-accent)] flex-shrink-0" />
-          <span className="flex-1 text-[13px] text-[var(--color-text-primary)] truncate min-w-0 break-words">
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: 12, background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 12, overflow: 'hidden' }}>
+          <Dumbbell size={14} style={{ color: TT.accent, flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TT.text, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {selected.name}
-            <span className="text-[var(--color-text-muted)] ml-1.5">
+            <span style={{ color: TT.textMute, marginLeft: 6 }}>
               ({t('trainerClasses.exerciseCount', { count: selected.routine_exercises?.[0]?.count || 0 })})
             </span>
           </span>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             <button
               type="button"
               onClick={() => onChange(null)}
-              className="text-[11px] text-[var(--color-accent)] hover:text-[#C4A030] font-medium transition-colors min-h-[44px] min-w-[44px] px-2 flex items-center justify-center"
+              style={{ fontSize: 11, fontWeight: 700, color: TT.accentDark, background: 'transparent', border: 'none', cursor: 'pointer', minHeight: 44, minWidth: 44, padding: '0 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               {t('trainerClasses.changeTemplate')}
             </button>
             <button
               type="button"
               onClick={() => onChange(null)}
-              className="text-[11px] text-red-400 hover:text-red-300 font-medium transition-colors min-h-[44px] min-w-[44px] px-2 flex items-center justify-center"
+              style={{ fontSize: 11, fontWeight: 700, color: TT.hot, background: 'transparent', border: 'none', cursor: 'pointer', minHeight: 44, minWidth: 44, padding: '0 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               {t('trainerClasses.removeTemplate')}
             </button>
           </div>
         </div>
       ) : (
-        <div className="space-y-1.5">
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: TT.textMute }} />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={t('trainerClasses.changeTemplate')}
-              className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-xl pl-8 pr-3 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+              style={{ ...inputStyle, paddingLeft: 32 }}
             />
           </div>
           {search && filtered.length > 0 && (
-            <div className="max-h-48 sm:max-h-40 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-card)]">
+            <div style={{ maxHeight: 192, overflowY: 'auto', borderRadius: 12, border: `1px solid ${TT.border}`, background: TT.surface }}>
               {filtered.map(r => (
                 <button
                   key={r.id}
                   type="button"
                   onClick={() => { onChange(r.id); setSearch(''); }}
-                  className="w-full text-left px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] hover:bg-white/[0.04] transition-colors flex items-center gap-2 min-h-[44px]"
+                  style={{ width: '100%', textAlign: 'left', padding: '10px 12px', fontSize: 12, color: TT.text, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}
                 >
-                  <Dumbbell size={12} className="text-[var(--color-text-muted)]" />
-                  <span className="truncate">{r.name}</span>
-                  <span className="text-[var(--color-text-muted)] ml-auto flex-shrink-0">
+                  <Dumbbell size={12} style={{ color: TT.textMute, flexShrink: 0 }} />
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+                  <span style={{ color: TT.textMute, marginLeft: 'auto', flexShrink: 0, fontFamily: TFont.mono }}>
                     {r.routine_exercises?.[0]?.count || 0}
                   </span>
                 </button>
@@ -884,7 +928,7 @@ function RoutineSelector({ gymId, value, onChange, t }) {
             </div>
           )}
           {search && filtered.length === 0 && (
-            <p className="text-[11px] text-[var(--color-text-muted)] italic px-1">{t('trainerClasses.noTemplatesFound')}</p>
+            <p style={{ fontSize: 11, color: TT.textMute, fontStyle: 'italic', paddingLeft: 2 }}>{t('trainerClasses.noTemplatesFound')}</p>
           )}
         </div>
       )}
@@ -912,16 +956,16 @@ function TemplatePreview({ templateId, t }) {
   if (isLoading) return <Spinner label={t('trainerClasses.loading')} />;
 
   return (
-    <div className="space-y-1 mt-2">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
       {exercises.map((ex, i) => (
-        <div key={ex.id} className="flex items-center gap-2 p-2.5 bg-[var(--color-bg-card)] rounded-lg border border-[var(--color-border-subtle)]">
-          <span className="text-[10px] text-[var(--color-text-muted)] w-4 text-right">{i + 1}.</span>
-          <span className="flex-1 text-[12px] text-[var(--color-text-primary)] truncate">{ex.exercises?.name || t('trainerClasses.unknown')}</span>
-          <span className="text-[10px] text-[var(--color-text-muted)]">{ex.sets}x{ex.reps}</span>
+        <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: TT.surface, borderRadius: 10, border: `1px solid ${TT.border}` }}>
+          <span style={{ fontFamily: TFont.mono, fontSize: 10, color: TT.textMute, width: 16, textAlign: 'right' }}>{i + 1}.</span>
+          <span style={{ flex: 1, fontSize: 12, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ex.exercises?.name || t('trainerClasses.unknown')}</span>
+          <span style={{ fontFamily: TFont.mono, fontSize: 10, color: TT.textMute }}>{ex.sets}x{ex.reps}</span>
         </div>
       ))}
       {exercises.length === 0 && (
-        <p className="text-[11px] text-[var(--color-text-muted)] italic">{t('trainerClasses.noExercises')}</p>
+        <p style={{ fontSize: 11, color: TT.textMute, fontStyle: 'italic' }}>{t('trainerClasses.noExercises')}</p>
       )}
     </div>
   );
@@ -967,9 +1011,9 @@ function TemplatesTab({ classes, gymId, t }) {
 
   if (classes.length === 0) {
     return (
-      <div className="text-center py-16">
-        <Dumbbell size={40} className="mx-auto text-[var(--color-text-muted)] mb-3" />
-        <p className="text-[15px] text-[var(--color-text-muted)]">{t('trainerClasses.noClasses')}</p>
+      <div style={{ textAlign: 'center', padding: '64px 0' }}>
+        <Dumbbell size={40} style={{ margin: '0 auto 12px', color: TT.textMute }} />
+        <p style={{ fontSize: 15, color: TT.textMute }}>{t('trainerClasses.noClasses')}</p>
       </div>
     );
   }
@@ -981,38 +1025,37 @@ function TemplatesTab({ classes, gymId, t }) {
         const templateName = cls.workout_template_id
           ? (routineNames[cls.workout_template_id] || t('trainerClasses.template'))
           : null;
+        const accentColor = cls.accent_color || TT.accent;
 
         return (
-          <div key={cls.id} className="bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
+          <div key={cls.id} style={{ background: TT.surface, borderRadius: 18, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, overflow: 'hidden' }}>
             <button
+              type="button"
               onClick={() => setExpandedClass(isExpanded ? null : cls.id)}
-              className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/[0.02] transition-colors"
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: 16, textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer' }}
             >
               {cls.image_url ? (
-                <img src={cls.image_url} alt={cls.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0 border border-[var(--color-border-subtle)]" />
+                <img src={cls.image_url} alt={cls.name} style={{ width: 40, height: 40, borderRadius: 12, objectFit: 'cover', flexShrink: 0, border: `1px solid ${TT.border}` }} />
               ) : (
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border border-[var(--color-border-subtle)]"
-                  style={{ backgroundColor: (cls.accent_color || '#D4AF37') + '20' }}
-                >
-                  <CalendarDays size={16} style={{ color: cls.accent_color || '#D4AF37' }} />
+                <div style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', flexShrink: 0, background: accentColor + '20' }}>
+                  <CalendarDays size={16} style={{ color: accentColor }} />
                 </div>
               )}
-              <div className="flex-1 min-w-0">
-                <h4 className="text-[13px] font-bold text-[var(--color-text-primary)] truncate">{cls.name}</h4>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cls.name}</div>
                 {templateName ? (
-                  <span className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] mt-0.5">
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: TT.accentDark, marginTop: 2 }}>
                     <Dumbbell size={11} /> {templateName}
                   </span>
                 ) : (
-                  <span className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{t('trainerClasses.noTemplate')}</span>
+                  <span style={{ fontSize: 11, color: TT.textMute, marginTop: 2, display: 'block' }}>{t('trainerClasses.noTemplate')}</span>
                 )}
               </div>
-              <ChevronRight size={16} className={`text-[var(--color-text-muted)] transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+              <ChevronRight size={16} style={{ color: TT.textMute, flexShrink: 0, transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'none' }} />
             </button>
 
             {isExpanded && (
-              <div className="px-4 pb-4 space-y-3 border-t border-[var(--color-border-subtle)] pt-3">
+              <div style={{ padding: '12px 16px 16px', borderTop: `1px solid ${TT.border}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <RoutineSelector
                   gymId={gymId}
                   value={cls.workout_template_id}
@@ -1064,52 +1107,76 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
       <div
-        role="dialog"
-        aria-modal="true"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto mx-auto"
         onClick={e => e.stopPropagation()}
+        style={{
+          background: TT.surface, borderRadius: 18,
+          width: '100%', maxWidth: 420, maxHeight: '90vh',
+          overflow: 'hidden', display: 'flex', flexDirection: 'column',
+          boxShadow: TT.shadowLg,
+        }}
       >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <h2 className="text-[16px] font-bold text-[var(--color-text-primary)]">
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px', borderBottom: `1px solid ${TT.border}`, flexShrink: 0,
+        }}>
+          <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
             {t('trainerClasses.proposeClass', 'Propose New Class')}
-          </h2>
-          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg">
-            <X size={18} />
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('trainerClasses.close', 'Close')}
+            style={{
+              width: 32, height: 32, borderRadius: 999, border: 'none',
+              background: TT.surface2, color: TT.textSub,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
+          >
+            <X size={16} />
           </button>
         </div>
-        <div className="px-5 pb-5 space-y-3">
+        <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* Class name */}
           <div>
-            <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.className', 'Class Name')}</label>
+            <label style={labelStyle}>{t('trainerClasses.className', 'Class Name')}</label>
             <input
               value={form.name}
               onChange={e => setForm(s => ({ ...s, name: e.target.value }))}
               placeholder={t('trainerClasses.classNamePlaceholder', 'e.g. HIIT Cardio')}
               autoFocus
-              className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              style={inputStyle}
             />
           </div>
           {/* Description */}
           <div>
-            <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.classDescription', 'Description')}</label>
+            <label style={labelStyle}>{t('trainerClasses.classDescription', 'Description')}</label>
             <textarea
               value={form.description}
               onChange={e => setForm(s => ({ ...s, description: e.target.value }))}
               placeholder={t('trainerClasses.classDescPlaceholder', 'Describe the class...')}
               rows={3}
-              className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none"
+              style={{ ...inputStyle, resize: 'none' }}
             />
           </div>
           {/* Day + Time */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.suggestedDay', 'Day')}</label>
+              <label style={labelStyle}>{t('trainerClasses.suggestedDay', 'Day')}</label>
               <select
                 value={form.day_of_week}
                 onChange={e => setForm(s => ({ ...s, day_of_week: Number(e.target.value) }))}
-                className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+                style={inputStyle}
               >
                 {DAYS_OF_WEEK.map(d => (
                   <option key={d.value} value={d.value}>{tc(d.labelKey)}</option>
@@ -1117,43 +1184,42 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.suggestedTime', 'Time')}</label>
+              <label style={labelStyle}>{t('trainerClasses.suggestedTime', 'Time')}</label>
               <input
                 type="time"
                 value={form.start_time}
                 onChange={e => setForm(s => ({ ...s, start_time: e.target.value }))}
-                className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+                style={inputStyle}
               />
             </div>
           </div>
           {/* Duration */}
           <div>
-            <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.duration', 'Duration (min)')}</label>
+            <label style={labelStyle}>{t('trainerClasses.duration', 'Duration (min)')}</label>
             <input
               type="number"
               value={form.duration}
               onChange={e => setForm(s => ({ ...s, duration: Number(e.target.value) }))}
               min={15}
               max={180}
-              className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              style={inputStyle}
             />
           </div>
           {/* Submit */}
-          <button
+          <TPrimaryButton
             onClick={handleSubmit}
             disabled={!form.name.trim() || submitting}
-            className="w-full py-3 font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2 hover:brightness-110"
-            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+            style={{ width: '100%', padding: '13px 14px', fontSize: 14, minHeight: 48, marginTop: 4 }}
           >
             {submitting ? (
-              <div className="w-4 h-4 border-2 rounded-full animate-spin border-white/30 border-t-white" />
+              <div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(6,54,59,0.3)', borderTopColor: '#06363B' }} />
             ) : (
               <>
                 <Plus size={16} />
                 {t('trainerClasses.submitProposal', 'Submit Proposal')}
               </>
             )}
-          </button>
+          </TPrimaryButton>
         </div>
       </div>
     </div>

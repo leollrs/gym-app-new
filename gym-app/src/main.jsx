@@ -606,11 +606,23 @@ if (isNative) {
           localStorage.setItem('pendingInviteCode', inviteMatch[1].toUpperCase());
           window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: '/signup' } }));
         }
-        // /friend/CODE → store code for post-login processing
-        const friendMatch = path.match(/\/friend\/([A-Z0-9]+)$/i);
+        // /add-friend/CODE (legacy alias: /friend/CODE) → store code for
+        // post-login processing. Friend codes are lowercase md5 hex matched
+        // with an exact .eq() in App.jsx — preserve original case, never
+        // uppercase them.
+        const friendMatch = path.match(/\/(?:add-)?friend\/([A-Za-z0-9]+)$/i);
         if (friendMatch) {
-          localStorage.setItem('pendingFriendCode', friendMatch[1].toUpperCase());
+          localStorage.setItem('pendingFriendCode', friendMatch[1]);
           window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: '/' } }));
+        }
+        // /referral/CODE → store code and push to signup (mirrors the web
+        // /referral/:code route in App.jsx, which stashes pendingReferralCode
+        // for Signup to consume). Referral codes are uppercase REF-XXXX-XXXX,
+        // so normalizing to uppercase is correct here.
+        const referralMatch = path.match(/\/referral\/([A-Z0-9-]+)$/i);
+        if (referralMatch) {
+          localStorage.setItem('pendingReferralCode', referralMatch[1].toUpperCase());
+          window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: '/signup' } }));
         }
       } catch {}
     });

@@ -18,8 +18,8 @@ const BASE_NAV = [
 const sidebarLinkClass = (active) =>
   `flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium transition-colors ${
     active
-      ? 'text-[var(--color-accent)]'
-      : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]'
+      ? 'text-[#19B8B8]'
+      : 'text-[var(--tt-text-sub)] hover:text-[var(--tt-text)] hover:bg-[var(--tt-surface-2)]'
   }`;
 
 export default function TrainerLayout({ children }) {
@@ -75,22 +75,22 @@ export default function TrainerLayout({ children }) {
   };
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--color-bg-primary)' }}>
+    <div className="min-h-screen flex" style={{ background: 'var(--tt-bg)' }}>
       <a href="#main-content" className="skip-to-content">{t('trainerNav.skipToContent')}</a>
 
       {/* ── Desktop sidebar ─────────────────────────── */}
       <aside
         className="hidden md:flex flex-col w-[220px] flex-shrink-0 min-h-screen sticky top-0 h-screen"
-        style={{ borderRight: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-secondary)' }}
+        style={{ borderRight: '1px solid var(--tt-border)', background: 'var(--tt-surface)' }}
       >
-        <Link to="/my-gym" className="px-5 py-5 no-underline" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'var(--color-accent)' }}>{t('trainerNav.trainer')}</p>
+        <Link to="/my-gym" className="px-5 py-5 no-underline" style={{ borderBottom: '1px solid var(--tt-border)' }}>
+          <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#19B8B8' }}>{t('trainerNav.trainer')}</p>
           <div className="flex items-center gap-2.5">
             {gymLogoUrl && (
               <img src={gymLogoUrl} alt={gymName || 'Gym'} className="w-7 h-7 rounded-lg object-contain flex-shrink-0"
-                style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border-default)' }} />
+                style={{ background: 'var(--tt-bg-elev)', border: '1px solid var(--tt-border-solid)' }} />
             )}
-            <p className="text-[16px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{gymName || 'My Gym'}</p>
+            <p className="text-[16px] font-bold truncate" style={{ color: 'var(--tt-text)' }}>{gymName || 'My Gym'}</p>
           </div>
         </Link>
 
@@ -98,29 +98,29 @@ export default function TrainerLayout({ children }) {
           {NAV.map(({ to, labelKey, icon: Icon, exact }) => (
             <NavLink key={to} to={to} end={exact}
               className={({ isActive }) => sidebarLinkClass(isActive)}
-              style={({ isActive }) => isActive ? { background: 'var(--color-accent-glow)' } : undefined}>
+              style={({ isActive }) => isActive ? { background: 'var(--tt-accent-soft)' } : undefined}>
               <Icon size={17} /> {t(labelKey)}
             </NavLink>
           ))}
         </nav>
 
-        <div className="px-3 py-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+        <div className="px-3 py-4" style={{ borderTop: '1px solid var(--tt-border)' }}>
           <button
             onClick={() => navigate('/trainer/profile')}
             aria-label={`${profile?.full_name ?? 'Trainer'} profile`}
             className="w-full flex items-center gap-3 px-3 py-2 mb-1 rounded-xl hover:bg-white/[0.04] transition-colors text-left"
           >
-            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--color-accent-glow)' }}>
-              <span className="text-[11px] font-bold" style={{ color: 'var(--color-accent)' }}>{profile?.full_name?.[0]?.toUpperCase() ?? 'T'}</span>
+            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--tt-accent-soft)' }}>
+              <span className="text-[11px] font-bold" style={{ color: '#19B8B8' }}>{profile?.full_name?.[0]?.toUpperCase() ?? 'T'}</span>
             </div>
             <div className="min-w-0">
-              <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{profile?.full_name ?? 'Trainer'}</p>
-              <p className="text-[11px] capitalize" style={{ color: 'var(--color-text-muted)' }}>{profile?.role}</p>
+              <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--tt-text)' }}>{profile?.full_name ?? 'Trainer'}</p>
+              <p className="text-[11px] capitalize" style={{ color: '#96A0AA' }}>{profile?.role}</p>
             </div>
           </button>
           <button onClick={handleSignOut}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium hover:bg-red-500/5 transition-colors"
-            style={{ color: 'var(--color-text-muted)' }}>
+            style={{ color: '#96A0AA' }}>
             <LogOut size={15} /> {t('trainerNav.signOut', 'Sign out')}
           </button>
         </div>
@@ -132,8 +132,8 @@ export default function TrainerLayout({ children }) {
         <header
           className="md:hidden fixed top-0 left-0 right-0 z-50 backdrop-blur-2xl px-4 flex items-center justify-between"
           style={{
-            backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)',
-            borderBottom: '1px solid var(--color-border-subtle)',
+            backgroundColor: 'color-mix(in srgb, var(--tt-bg) 90%, transparent)',
+            borderBottom: '1px solid var(--tt-border)',
             paddingTop: 'env(safe-area-inset-top)',
             height: 'calc(52px + env(safe-area-inset-top))',
           }}
@@ -142,10 +142,10 @@ export default function TrainerLayout({ children }) {
           <Link to="/my-gym" className="flex items-center gap-2.5 min-w-0 no-underline">
             {gymLogoUrl && (
               <img src={gymLogoUrl} alt={gymName || 'Gym'} className="h-8 w-8 rounded-lg object-contain flex-shrink-0"
-                style={{ border: '1px solid var(--color-border-default)', background: 'var(--color-bg-subtle)' }} />
+                style={{ border: '1px solid var(--tt-border-solid)', background: 'var(--tt-surface-2)' }} />
             )}
             <span className="text-[22px] font-black tracking-tight truncate"
-              style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
+              style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--tt-text)' }}>
               {gymName || 'GymApp'}
             </span>
           </Link>
@@ -154,27 +154,27 @@ export default function TrainerLayout({ children }) {
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => navigate('/trainer/social')}
               className="relative w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform focus:ring-2 focus:outline-none"
-              style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-primary)' }}
+              style={{ background: 'var(--tt-surface-2)', color: 'var(--tt-text)' }}
               aria-label={t('trainerNav.social', 'Social')}>
               <Users size={16} />
             </button>
             <button type="button" onClick={() => navigate('/trainer/notifications')}
               className="relative w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform focus:ring-2 focus:outline-none"
-              style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-primary)' }}
+              style={{ background: 'var(--tt-surface-2)', color: 'var(--tt-text)' }}
               aria-label={t('trainerNav.notifications', 'Notifications')}>
               <Bell size={16} />
               {unreadNotifs > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full text-[10px] font-bold flex items-center justify-center"
-                  style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
+                  style={{ background: '#19B8B8', color: '#06363B' }}>
                   {unreadNotifs > 9 ? '9+' : unreadNotifs}
                 </span>
               )}
             </button>
             <button type="button" onClick={() => navigate('/trainer/profile')}
               className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform focus:ring-2 focus:outline-none"
-              style={{ background: 'var(--color-accent-glow)' }}
+              style={{ background: 'var(--tt-accent-soft)' }}
               aria-label={t('trainerNav.profile', 'Profile')}>
-              <span className="text-[14px] font-bold" style={{ color: 'var(--color-accent)' }}>
+              <span className="text-[14px] font-bold" style={{ color: '#19B8B8' }}>
                 {profile?.full_name?.[0]?.toUpperCase() ?? 'T'}
               </span>
             </button>
@@ -191,8 +191,8 @@ export default function TrainerLayout({ children }) {
         aria-label="Trainer mobile navigation"
         className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex backdrop-blur-2xl"
         style={{
-          backgroundColor: 'var(--color-bg-nav)',
-          borderTop: '1px solid var(--color-border-subtle)',
+          backgroundColor: '#0E1316',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
@@ -203,13 +203,13 @@ export default function TrainerLayout({ children }) {
                 isActive ? '' : ''
               }`
             }
-            style={({ isActive }) => ({ color: isActive ? 'var(--color-accent)' : 'var(--color-text-subtle)' })}
+            style={({ isActive }) => ({ color: isActive ? '#19B8B8' : '#96A0AA' })}
           >
             <span className="relative">
               <Icon size={20} />
               {to === '/trainer/messages' && unreadMessages > 0 && (
                 <span className="absolute -top-1 -right-2 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center"
-                  style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
+                  style={{ background: '#19B8B8', color: '#06363B' }}>
                   {unreadMessages > 9 ? '9+' : unreadMessages}
                 </span>
               )}

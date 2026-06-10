@@ -87,7 +87,7 @@ const SessionSummary = ({ workout, sessionPRs, totalVolume, duration, completedS
       <button
         onClick={onConfirm}
         disabled={saving}
-        className="w-full disabled:opacity-50 font-black text-[14px] py-4 rounded-2xl transition-colors mb-3 bg-[#D4AF37] text-black"
+        className="w-full disabled:opacity-50 font-black text-[14px] py-4 rounded-2xl transition-colors mb-3 bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]"
       >
         {saving ? t('sessionSummary.savingEllipsis') : t('sessionSummary.saveAndFinish')}
       </button>

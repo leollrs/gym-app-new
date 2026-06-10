@@ -172,7 +172,7 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
                 onClick={handleCustomApply}
                 disabled={!customFrom || !customTo}
                 className="w-full py-2 text-sm font-medium rounded-xl transition-colors cursor-pointer
-                           bg-[#D4AF37] text-[#05070B] hover:bg-[#D4AF37]/90
+                           bg-[#D4AF37] text-[var(--color-text-on-accent,#05070B)] hover:bg-[#D4AF37]/90
                            disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {t('dateRange.apply')}

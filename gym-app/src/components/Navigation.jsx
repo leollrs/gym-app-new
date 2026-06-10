@@ -482,7 +482,7 @@ const Navigation = () => {
           onClick={() => navigate('/record')}
           onMouseEnter={() => prefetchRoute('/record')}
           aria-label={t('nav.start')}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#D4AF37] text-black text-[13px] font-bold shadow-sm hover:bg-[#f2d36b] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] text-[13px] font-bold shadow-sm hover:bg-[#f2d36b] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
         >
           <PlayCircle size={16} className="flex-shrink-0" />
           {t('nav.start')}
@@ -518,7 +518,7 @@ const Navigation = () => {
                       <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
                       <span className="flex-1">{t(labelKey, { defaultValue: defaultLabel })}</span>
                       {itemId === 'messages' && unreadMessages > 0 && (
-                        <span className="min-w-[18px] h-[18px] rounded-full bg-[#D4AF37] text-black text-[10px] font-bold flex items-center justify-center">
+                        <span className="min-w-[18px] h-[18px] rounded-full bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] text-[10px] font-bold flex items-center justify-center">
                           {unreadMessages > 9 ? '9+' : unreadMessages}
                         </span>
                       )}
@@ -545,7 +545,7 @@ const Navigation = () => {
           <Bell size={16} />
           <span className="flex-1">{t('nav.notifications', { defaultValue: 'Notifications' })}</span>
           {unreadNotifications > 0 && (
-            <span className="min-w-[18px] h-[18px] rounded-full bg-[#D4AF37] text-white text-[10px] font-bold flex items-center justify-center">
+            <span className="min-w-[18px] h-[18px] rounded-full bg-[#D4AF37] text-[var(--color-text-on-accent,#fff)] text-[10px] font-bold flex items-center justify-center">
               {unreadNotifications > 9 ? '9+' : unreadNotifications}
             </span>
           )}
@@ -633,7 +633,7 @@ const Navigation = () => {
             onMouseEnter={() => prefetchRoute('/record')}
             onTouchStart={() => prefetchRoute('/record')}
             aria-label={t('nav.start')}
-            className="ml-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#D4AF37] text-black text-[13px] font-semibold shadow-sm hover:bg-[#f2d36b] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            className="ml-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] text-[13px] font-semibold shadow-sm hover:bg-[#f2d36b] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           >
             <PlayCircle size={16} className="flex-shrink-0" />
             {t('nav.start')}
@@ -650,7 +650,7 @@ const Navigation = () => {
             >
               <MessageCircle size={16} />
               {unreadMessages > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-black text-[10px] font-bold flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] text-[10px] font-bold flex items-center justify-center">
                   {unreadMessages > 9 ? '9+' : unreadMessages}
                 </span>
               )}
@@ -664,7 +664,7 @@ const Navigation = () => {
             >
               <Bell size={16} />
               {unreadNotifications > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-white text-[10px] font-bold flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-[var(--color-text-on-accent,#fff)] text-[10px] font-bold flex items-center justify-center">
                   {unreadNotifications > 9 ? '9+' : unreadNotifications}
                 </span>
               )}
@@ -741,7 +741,7 @@ const Navigation = () => {
         >
           <Bell size={16} />
           {unreadNotifications > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-white text-[10px] font-bold flex items-center justify-center">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-[var(--color-text-on-accent,#fff)] text-[10px] font-bold flex items-center justify-center">
               {unreadNotifications > 9 ? '9+' : unreadNotifications}
             </span>
           )}
@@ -790,7 +790,7 @@ const Navigation = () => {
                     : '0 10px 15px -3px color-mix(in srgb, var(--color-secondary, #8B5CF6) 30%, transparent)',
                 }}
               >
-                <PlayCircle size={24} className="text-white" strokeWidth={2.5} />
+                <PlayCircle size={24} className="text-[var(--color-text-on-secondary,#fff)]" strokeWidth={2.5} />
               </div>
               <span
                 className="text-[10px] font-semibold mt-1 tracking-wide"

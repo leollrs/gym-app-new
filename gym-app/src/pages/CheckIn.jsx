@@ -9,6 +9,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import { addPoints } from '../lib/rewardsEngine';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import QRCodeModal from '../components/QRCodeModal';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 
@@ -23,7 +24,8 @@ export default function CheckIn() {
   const navigate  = useNavigate();
   const { user, profile, gymName, gymConfig } = useAuth();
   const { showToast } = useToast();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dfLocale = i18n.language?.startsWith('es') ? esLocale : undefined;
   const posthog = usePostHog();
 
   const checkinsCacheKey = `checkin-list-${user?.id || 'anon'}`;
@@ -72,11 +74,11 @@ export default function CheckIn() {
   // ── Group history by date label ──────────────────────────────────────────────
   const grouped = useMemo(() => checkins.reduce((acc, c) => {
     const d   = new Date(c.checked_in_at);
-    const key = isToday(d) ? t('checkIn.today') : isYesterday(d) ? t('checkIn.yesterday') : format(d, 'MMMM d, yyyy');
+    const key = isToday(d) ? t('checkIn.today') : isYesterday(d) ? t('checkIn.yesterday') : format(d, 'MMMM d, yyyy', { locale: dfLocale });
     if (!acc[key]) acc[key] = [];
     acc[key].push(c);
     return acc;
-  }, {}), [checkins, t]);
+  }, {}), [checkins, t, dfLocale]);
 
   return (
     <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in">
@@ -111,7 +113,7 @@ export default function CheckIn() {
             </div>
             <p className="text-[15px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>{t('checkIn.youreIn')}</p>
             <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-              {t('checkIn.checkedInAt', { time: format(new Date(todayCheckIn.checked_in_at), 'h:mm a') })}
+              {t('checkIn.checkedInAt', { time: format(new Date(todayCheckIn.checked_in_at), 'h:mm a', { locale: dfLocale }) })}
             </p>
           </>
         ) : (
@@ -182,14 +184,14 @@ export default function CheckIn() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {format(new Date(c.checked_in_at), 'h:mm a')}
+                        {format(new Date(c.checked_in_at), 'h:mm a', { locale: dfLocale })}
                       </p>
                       <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                         {t(`checkIn.methods.${c.method}`) ?? c.method}
                       </p>
                     </div>
                     <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                      {formatDistanceToNow(new Date(c.checked_in_at), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(c.checked_in_at), { addSuffix: true, locale: dfLocale })}
                     </p>
                   </div>
                 ))}

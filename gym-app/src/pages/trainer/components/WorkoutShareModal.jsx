@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
 import useFocusTrap from '../../../hooks/useFocusTrap';
+import { TT } from './designTokens';
 
 /**
  * Picker that lists the trainer's `trainer_workout_plans` so they can drop a
@@ -114,28 +115,28 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
         transition={{ duration: 0.2 }}
         onClick={(e) => e.stopPropagation()}
         className="w-full sm:max-w-md max-h-[90vh] flex flex-col overflow-hidden rounded-3xl sm:rounded-3xl"
-        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+        style={{ background: TT.surface, border: `1px solid ${TT.border}`, boxShadow: TT.shadowLg }}
       >
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${TT.border}` }}>
           <div className="flex items-center gap-2.5">
             <div
               className="w-8 h-8 rounded-xl flex items-center justify-center"
-              style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}
+              style={{ background: TT.accentSoft }}
             >
-              <Dumbbell size={16} style={{ color: 'var(--color-accent)' }} />
+              <Dumbbell size={16} style={{ color: TT.accent }} />
             </div>
             <div>
-              <h3 id="workout-share-title" className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+              <h3 id="workout-share-title" className="text-[16px] font-bold" style={{ color: TT.text }}>
                 {t('trainerMessages.share.title', 'Share workout')}
               </h3>
-              <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('trainerMessages.share.subtitle', 'Pick a plan to share with your client')}</p>
+              <p className="text-[11px]" style={{ color: TT.textSub }}>{t('trainerMessages.share.subtitle', 'Pick a plan to share with your client')}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl"
-            style={{ color: 'var(--color-text-muted)' }}
+            style={{ color: TT.textMute }}
             aria-label={t('trainerMessages.share.close', 'Close')}
           >
             <X size={18} />
@@ -146,9 +147,9 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
         <div className="px-4 pt-3">
           <div
             className="flex items-center gap-2 px-3 rounded-xl"
-            style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', border: '1px solid var(--color-border-subtle)' }}
+            style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}
           >
-            <Search size={14} style={{ color: 'var(--color-text-muted)' }} />
+            <Search size={14} style={{ color: TT.textMute }} />
             <input
               type="text"
               value={query}
@@ -156,7 +157,7 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
               placeholder={t('trainerMessages.share.searchPlaceholder', 'Search plans…')}
               maxLength={100}
               className="flex-1 bg-transparent outline-none text-[13px] py-2.5"
-              style={{ color: 'var(--color-text-primary)' }}
+              style={{ color: TT.text }}
             />
           </div>
         </div>
@@ -166,12 +167,12 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
           {loading && (
             <div className="space-y-2">
               {[0, 1, 2].map(i => (
-                <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }} />
+                <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: TT.surface2 }} />
               ))}
             </div>
           )}
           {!loading && filtered.length === 0 && (
-            <p className="text-center text-[13px] py-8" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-center text-[13px] py-8" style={{ color: TT.textMute }}>
               {t('trainerMessages.share.empty', 'No plans yet')}
             </p>
           )}
@@ -183,7 +184,7 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
               <div
                 key={plan.id}
                 className="rounded-xl mb-2 overflow-hidden"
-                style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', border: '1px solid var(--color-border-subtle)' }}
+                style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}
               >
                 <button
                   type="button"
@@ -191,14 +192,14 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
                   className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 min-h-[56px]"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{plan.name}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                    <p className="text-[14px] font-semibold truncate" style={{ color: TT.text }}>{plan.name}</p>
+                    <p className="text-[11px]" style={{ color: TT.textSub }}>
                       {plan.duration_weeks
                         ? t('trainerMessages.share.weeksAndDays', { weeks: plan.duration_weeks, days: dayCount || 0, defaultValue: '{{weeks}} weeks · {{days}} days/week' })
                         : t('trainerMessages.share.daysOnly', { days: dayCount || 0, defaultValue: '{{days}} days' })}
                     </p>
                   </div>
-                  <span className="text-[11px] font-bold" style={{ color: 'var(--color-accent)' }}>
+                  <span className="text-[11px] font-bold" style={{ color: TT.accent }}>
                     {isExpanded ? t('trainerMessages.share.collapse', 'Collapse') : t('trainerMessages.share.pickDay', 'Pick a day')}
                   </span>
                 </button>
@@ -213,16 +214,14 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
                           onClick={() => setSelected({ plan, dayIndex: idx })}
                           className="min-h-[44px] rounded-lg px-3 py-2 text-left transition-colors"
                           style={{
-                            background: isPicked
-                              ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
-                              : 'var(--color-bg-card)',
+                            background: isPicked ? TT.accentSoft : TT.surface,
                             border: '1px solid',
-                            borderColor: isPicked ? 'var(--color-accent)' : 'var(--color-border-subtle)',
-                            color: 'var(--color-text-primary)',
+                            borderColor: isPicked ? TT.accent : TT.border,
+                            color: TT.text,
                           }}
                         >
                           <p className="text-[12px] font-bold truncate">{dayLabel(plan, idx)}</p>
-                          <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                          <p className="text-[10px] mt-0.5" style={{ color: TT.textSub }}>
                             {t('trainerMessages.share.exerciseCount', { count: Array.isArray(d?.exercises) ? d.exercises.length : 0, defaultValue: '{{count}} exercises' })}
                           </p>
                         </button>
@@ -236,13 +235,13 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
         </div>
 
         {/* Send footer */}
-        <div className="px-3 py-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+        <div className="px-3 py-3" style={{ borderTop: `1px solid ${TT.border}` }}>
           <button
             type="button"
             onClick={handleSend}
             disabled={!selected}
             className="w-full min-h-[48px] rounded-xl flex items-center justify-center gap-2 text-[14px] font-bold disabled:opacity-50"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+            style={{ background: TT.accent, color: '#06363B' }}
           >
             <Send size={15} />
             {t('trainerMessages.share.sendBtn', 'Send')}

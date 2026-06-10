@@ -130,7 +130,7 @@ export default function Support() {
                 <a
                   href={emailMailto}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                  style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+                  style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
                 >
                   <Mail size={14} />
                   {t('support.emailUs')}

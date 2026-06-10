@@ -1,23 +1,21 @@
 {
   "title": "Let's set you up",
   "subtitle": "A few quick questions so we can build your perfect plan",
-
   "stepLabels": {
-    "invite":    "INVITE",
-    "language":  "LANGUAGE",
-    "level":     "LEVEL",
-    "goal":      "GOAL",
-    "training":  "EQUIPMENT",
-    "schedule":  "SCHEDULE",
-    "privacy":   "PRIVACY",
-    "health":    "HEALTH",
-    "body":      "BODY",
-    "phone":     "PHONE",
-    "squad":     "SQUAD",
-    "program":   "PROGRAM",
+    "invite": "INVITE",
+    "language": "LANGUAGE",
+    "level": "LEVEL",
+    "goal": "GOAL",
+    "training": "EQUIPMENT",
+    "schedule": "SCHEDULE",
+    "privacy": "PRIVACY",
+    "health": "HEALTH",
+    "body": "BODY",
+    "phone": "PHONE",
+    "squad": "SQUAD",
+    "program": "PROGRAM",
     "nutrition": "NUTRITION"
   },
-
   "inviteCode": {
     "title": "Do you have an invite code?",
     "subtitle": "If your gym gave you a code, enter it to link your account.",
@@ -32,24 +30,21 @@
       "expired": "This code has expired. Ask your gym for a new one.",
       "wrongGym": "This code is for a different gym.",
       "rateLimited": "Too many attempts. Please wait and try again."
-    }
+    },
+    "enterNow": "Enter invite code"
   },
-
   "stepHead": {
     "lets": "Let's set you up",
-    "takes": "Takes 2 minutes · you can edit later"
+    "takes": "A few quick steps · you can edit later"
   },
-
   "healthRationale": {
     "title": "Connect {{healthPlatformName}}",
     "body": "We use {{healthPlatformName}} to auto-fill your weight and height, sync workouts, and pull heart-rate data during sessions. We never write data without your permission, and you can disconnect any time in Settings."
   },
-
   "langStep": {
     "title": "Choose your language",
     "subtitle": "You can change this anytime in settings"
   },
-
   "fitnessLevel": {
     "title": "How experienced are you?",
     "subtitle": "Pick the one that sounds most like you.",
@@ -79,18 +74,31 @@
       "hint": "Leave blank if unsure — we'll estimate from your workouts"
     }
   },
-
   "goal": {
     "title": "What's your main goal?",
     "subtitle": "This shapes your rep ranges and progression style.",
     "hint": "Your goal changes how we program your sets and reps. For example, strength training uses lower reps with heavier weight, while muscle building uses moderate weight with more volume. You can always change this later.",
-    "muscle_gain": { "label": "Build Muscle", "desc": "Get bigger and more defined" },
-    "fat_loss": { "label": "Lose Fat", "desc": "Burn fat while keeping your muscle" },
-    "strength": { "label": "Get Stronger", "desc": "Lift heavier, hit new personal bests" },
-    "endurance": { "label": "Build Endurance", "desc": "Improve cardio and stamina" },
-    "general_fitness": { "label": "Stay in Shape", "desc": "Stay active, healthy and consistent" }
+    "muscle_gain": {
+      "label": "Build Muscle",
+      "desc": "Get bigger and more defined"
+    },
+    "fat_loss": {
+      "label": "Lose Fat",
+      "desc": "Burn fat while keeping your muscle"
+    },
+    "strength": {
+      "label": "Get Stronger",
+      "desc": "Lift heavier, hit new personal bests"
+    },
+    "endurance": {
+      "label": "Build Endurance",
+      "desc": "Improve cardio and stamina"
+    },
+    "general_fitness": {
+      "label": "Stay in Shape",
+      "desc": "Stay active, healthy and consistent"
+    }
   },
-
   "training": {
     "title": "Training setup",
     "subtitle": "How often do you train, and what equipment do you have?",
@@ -117,10 +125,9 @@
     "pulledFrom": "Pulled from",
     "updatedByYourGym": " — updated by your gym."
   },
-
   "schedule": {
     "title": "Lock In Your Schedule",
-    "subtitle": "Members who commit to specific days are 2x more likely to stick with it",
+    "subtitle": "Members who lock in specific days are far more likely to stick with it",
     "whichDays": "Which days will you train?",
     "daysPrefilled": "Pre-filled based on your frequency — adjust as needed.",
     "selectAtLeast": "Select at least one day to continue.",
@@ -154,10 +161,9 @@
     "closeLabel": "close",
     "gymLabel": "Gym"
   },
-
   "bodyStats": {
     "title": "Almost done",
-    "subtitle": "Skip anything you don't want to fill in — you can always add it later.",
+    "subtitle": "Sex is required for accurate numbers — everything else is optional.",
     "weight": "Current Weight (lbs)",
     "weightHint": "Used to track your progress over time.",
     "weightPlaceholder": "e.g. 175",
@@ -181,9 +187,13 @@
     "other": "Other",
     "sexHint": "Used for accurate calorie calculations",
     "age": "Age",
-    "height": "Height"
+    "height": "Height",
+    "sexRequired": "Required — your calories and weight suggestions depend on it.",
+    "ageAutoBadge": "AUTO",
+    "unitsLabel": "Units",
+    "unitsImperial": "English · lb, ft",
+    "unitsMetric": "International · kg, cm"
   },
-
   "health": {
     "title": "Connect Your Health Data",
     "subtitle": "Sync steps, heart rate, and more to get a complete picture of your fitness.",
@@ -208,19 +218,17 @@
     "prefillSex": "Sex: {{value}}",
     "prefillHint": "Go back to Body Stats to review or change these values."
   },
-
   "phoneStep": {
     "title": "Your phone number",
-    "subtitle": "Optional. Used for streak reminders, won't be shared.",
+    "subtitle": "Optional. Your gym may use it to reach you about your membership and reminders — never shared outside your gym.",
     "countryCode": "Country code",
     "phonePlaceholder": "787 555 1234",
     "skip": "Skip",
     "continue": "Continue"
   },
-
   "social": {
     "title": "Find Your Gym Squad",
-    "subtitle": "Members with 3+ gym friends stay 56% longer",
+    "subtitle": "Training with friends is the easiest way to stay consistent",
     "hint": "Head to the Social tab after setup to add friends — members who train together, stay together.",
     "feedPreview": "What you'll see in your social feed",
     "mockPR": "hit a new PR",
@@ -243,16 +251,16 @@
     "referralApplied": "Friend added via referral",
     "referralCode": "Referral Code",
     "referralCodePlaceholder": "e.g. REF-ALEX",
-    "referralWillConnect": "You'll be connected as friends and both earn rewards!"
+    "referralValidNamed": "You'll be connected with {{name}} — you both earn rewards!",
+    "referralInvalid": "We couldn't find that code — double-check it with your friend."
   },
-
   "generatePlan": {
     "title": "Want a personalized workout plan?",
     "desc": "We'll generate a training program based on your goals, experience level, and schedule. Ready in seconds.",
     "generate": "Generate My Plan",
     "generating": "Building your plan...",
-    "preparing": "Preparing your plan\u2026",
-    "ready": "Your plan is ready! \ud83c\udf89",
+    "preparing": "Preparing your plan…",
+    "ready": "Your plan is ready! 🎉",
     "readyDesc": "We've created personalized routines based on your profile. You can view and start them from your dashboard.",
     "readyHeadline": "Here's your week.",
     "looksGood": "Looks good",
@@ -261,9 +269,9 @@
     "dayCounter": "DAY {{current}} / {{total}}",
     "programMeta": "{{days}}-day · {{minutes}} min · {{weeks}}-week program",
     "goToDashboard": "Let's go",
-    "skip": "I'll set up later"
+    "skip": "I'll set up later",
+    "weekN": "Week {{n}}"
   },
-
   "mealPlan": {
     "askTitle": "Want a weekly meal plan?",
     "askDesc": "We'll create a personalized 7-day meal plan that hits your macro targets based on your goals and body metrics.",
@@ -297,7 +305,7 @@
     "noDislikes": "No dislikes selected — we'll include everything.",
     "continueToGenerate": "Generate My Meal Plan",
     "generating": "Creating your personalized meal plan...",
-    "ready": "Your meal plan is ready! \ud83c\udf7d\ufe0f",
+    "ready": "Your meal plan is ready! 🍽️",
     "readyDesc": "We've built a 7-day plan that matches your macros, respects your preferences, and keeps grocery shopping simple.",
     "readyMacros": "Daily target: {{calories}} cal · {{protein}}g protein · {{carbs}}g carbs · {{fat}}g fat",
     "viewPlan": "View Meal Plan",
@@ -316,7 +324,6 @@
     "pill": "MEAL PLAN READY · 7 DAYS",
     "readyHeadline": "Ready to cook."
   },
-
   "dataConsent": {
     "title": "How We Use Your Data",
     "subtitle": "We're committed to protecting your privacy",
@@ -335,9 +342,14 @@
     "declineWarning": "Some features like health sync and auto check-in won't be available without these permissions.",
     "changeAnytime": "You can change these permissions anytime in Settings"
   },
-
   "disclaimer": "This app provides fitness tracking tools only and does not constitute medical advice. Consult a healthcare professional before beginning any exercise program.",
   "finish": "Got it, let's go!",
   "initialWeightNote": "Initial weight at signup",
-  "onboardingAgeUnder13": "You must be at least 13 to use TuGymPR. Please contact your gym for assistance."
+  "onboardingAgeUnder13": "You must be at least 13 to use TuGymPR. Please contact your gym for assistance.",
+  "planTeaser": "Your {{days}}-day plan is already being built",
+  "finishError": "We couldn't save your setup. Please try again — your answers are safe.",
+  "finishOffline": "No connection — check your internet and try again. Your answers are safe.",
+  "onboarding": {
+    "gymRequired": "A gym is required to finish onboarding. Please enter an invite code."
+  }
 }

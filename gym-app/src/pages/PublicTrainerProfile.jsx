@@ -287,6 +287,10 @@ export default function PublicTrainerProfile() {
   const [reviews, setReviews] = useState([]);
   const [clientCount, setClientCount] = useState(0);
   const [sessionCount, setSessionCount] = useState(0);
+  // False until get_trainer_public_stats resolves — when the RPC isn't
+  // deployed (or errors) we hide the client/session tiles entirely rather
+  // than showing a misleading 0 on an upsell page.
+  const [statsAvailable, setStatsAvailable] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [hasEverBeenClient, setHasEverBeenClient] = useState(false);
   const [nextSessionAt, setNextSessionAt] = useState(null);
@@ -324,29 +328,26 @@ export default function PublicTrainerProfile() {
     const [
       summaryRes,
       reviewsRes,
-      clientCountRes,
-      sessionCountRes,
+      statsRes,
       relRes,
       anyRelRes,
       nextSessionRes,
     ] = await Promise.all([
       supabase.rpc('get_trainer_review_summary', { p_trainer_id: trainerId }),
+      // Reviews are fetched bare — the `reviewer:profiles!reviewer_id(...)`
+      // embed is RLS-nulled for non-friends, so every reviewer rendered as
+      // "Member". Reviewer display data is resolved below through the
+      // same-gym gym_member_profiles_safe view instead.
       supabase
         .from('trainer_reviews')
-        .select('id, rating, body, created_at, reviewer:profiles!reviewer_id(id, full_name, avatar_url, avatar_type, avatar_value)')
+        .select('id, rating, body, created_at, reviewer_id')
         .eq('trainer_id', trainerId)
         .order('created_at', { ascending: false })
         .limit(3),
-      supabase
-        .from('trainer_clients')
-        .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', trainerId)
-        .eq('is_active', true),
-      supabase
-        .from('trainer_sessions')
-        .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', trainerId)
-        .eq('status', 'completed'),
+      // Client/session counts via SECURITY DEFINER RPC — counting
+      // trainer_clients / trainer_sessions directly returns 0 for members
+      // because RLS hides rows that aren't their own.
+      supabase.rpc('get_trainer_public_stats', { p_trainer_id: trainerId }),
       supabase
         .from('trainer_clients')
         .select('id, is_active')
@@ -374,9 +375,30 @@ export default function PublicTrainerProfile() {
     // RPC returns array
     const summaryRow = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
     setReviewSummary(summaryRow || { review_count: 0, avg_rating: 0, five_pct: 0 });
-    setReviews(reviewsRes.data || []);
-    setClientCount(clientCountRes.count || 0);
-    setSessionCount(sessionCountRes.count || 0);
+
+    // Resolve reviewer names/avatars via the safe view and reattach them
+    // under the `reviewer` key the render already expects.
+    const reviewRows = reviewsRes.data || [];
+    const reviewerIds = [...new Set(reviewRows.map((r) => r.reviewer_id).filter(Boolean))];
+    const reviewerById = {};
+    if (reviewerIds.length) {
+      const { data: reviewerProfs } = await supabase
+        .from('gym_member_profiles_safe')
+        .select('id, full_name, avatar_url, avatar_type, avatar_value')
+        .in('id', reviewerIds);
+      (reviewerProfs || []).forEach((p) => { reviewerById[p.id] = p; });
+    }
+    setReviews(reviewRows.map((r) => ({ ...r, reviewer: reviewerById[r.reviewer_id] ?? null })));
+
+    const statsRow = Array.isArray(statsRes.data) ? statsRes.data[0] : statsRes.data;
+    if (!statsRes.error && statsRow) {
+      setClientCount(Number(statsRow.client_count) || 0);
+      setSessionCount(Number(statsRow.completed_sessions) || 0);
+      setStatsAvailable(true);
+    } else {
+      // RPC missing (migration not applied yet) or failed — hide the tiles.
+      setStatsAvailable(false);
+    }
     setIsClient(!!relRes.data);
     setHasEverBeenClient(!!anyRelRes.data);
     setNextSessionAt(nextSessionRes.data?.scheduled_at || null);
@@ -468,7 +490,9 @@ export default function PublicTrainerProfile() {
       );
     setSubmittingReview(false);
     if (error) {
-      showToast(error.message || t('publicTrainerProfile.reviewFailed', 'Could not save review'), 'error');
+      // Keep the raw error for debugging, but never surface it to the member.
+      console.error('[PublicTrainerProfile] review submit failed:', error);
+      showToast(t('publicTrainerProfile.reviewFailed', "Couldn't submit your review. Try again."), 'error');
       return;
     }
     setReviewOpen(false);
@@ -755,10 +779,14 @@ export default function PublicTrainerProfile() {
       </div>
 
       {/* ── Stats strip ──────────────────────────── */}
+      {/* Client/session tiles only render when get_trainer_public_stats
+          resolved — a hidden tile beats a misleading "0" on an upsell page. */}
       <div style={{ padding: '0 16px 14px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statsAvailable ? 3 : 1}, 1fr)`, gap: 6 }}>
           {[
-            { v: String(clientCount), l: t('publicTrainerProfile.activeClients', 'Active clients'), tone: TT.accent },
+            ...(statsAvailable
+              ? [{ v: String(clientCount), l: t('publicTrainerProfile.activeClients', 'Active clients'), tone: TT.accent }]
+              : []),
             {
               v: yearsExp != null
                 ? t('publicTrainerProfile.yrsExp', '{{n}} yrs', { n: yearsExp })
@@ -766,7 +794,9 @@ export default function PublicTrainerProfile() {
               l: t('publicTrainerProfile.coaching', 'Coaching'),
               tone: TT.coach,
             },
-            { v: String(sessionCount), l: t('publicTrainerProfile.sessionsLabel', 'Sessions'), tone: TT.hot },
+            ...(statsAvailable
+              ? [{ v: String(sessionCount), l: t('publicTrainerProfile.sessionsLabel', 'Sessions'), tone: TT.hot }]
+              : []),
           ].map((s, i) => (
             <div key={i} style={{
               padding: '10px 6px', borderRadius: 10,

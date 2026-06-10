@@ -76,7 +76,7 @@ function CheckinModal({ template, profileId, gymId, period, existing, onClose, o
                         width: 34, height: 34, borderRadius: 9, cursor: 'pointer', fontWeight: 800, fontSize: 13,
                         border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                         background: active ? 'var(--color-accent)' : 'transparent',
-                        color: active ? '#fff' : 'var(--color-text-primary)',
+                        color: active ? 'var(--color-text-on-accent, #fff)' : 'var(--color-text-primary)',
                       }}>
                       {v}
                     </button>
@@ -105,7 +105,7 @@ function CheckinModal({ template, profileId, gymId, period, existing, onClose, o
                         flex: 1, padding: '9px 0', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13,
                         border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                         background: active ? 'var(--color-accent)' : 'transparent',
-                        color: active ? '#fff' : 'var(--color-text-primary)',
+                        color: active ? 'var(--color-text-on-accent, #fff)' : 'var(--color-text-primary)',
                       }}>
                       {l}
                     </button>
@@ -119,7 +119,7 @@ function CheckinModal({ template, profileId, gymId, period, existing, onClose, o
         <button type="button" onClick={handleSubmit} disabled={saving}
           style={{
             width: '100%', padding: '13px 0', borderRadius: 12, border: 'none', marginTop: 4,
-            background: 'var(--color-accent)', color: '#fff', fontWeight: 800, fontSize: 15,
+            background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)', fontWeight: 800, fontSize: 15,
             cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1,
           }}>
           {saving ? t('coaching.saving', { defaultValue: 'Saving…' }) : t('coaching.submit', { defaultValue: 'Submit check-in' })}

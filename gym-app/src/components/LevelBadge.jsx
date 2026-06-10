@@ -82,7 +82,7 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '', onRepor
         {onReport && (
           <button onClick={onReport}
             className="flex-shrink-0 flex items-center gap-1.5 text-[12px] font-bold px-3 py-1.5 rounded-full active:scale-95 transition-all"
-            style={{ background: 'var(--color-accent, #2EC4C4)12', color: 'var(--color-accent, #2EC4C4)' }}>
+            style={{ background: 'color-mix(in srgb, var(--color-accent, #2EC4C4) 7%, transparent)', color: 'var(--color-accent, #2EC4C4)' }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>
             {t('progress.overview.report', 'Report')}
           </button>

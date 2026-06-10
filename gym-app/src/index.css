@@ -97,6 +97,9 @@
      fixed pairing). Keeping this value identical in :root and html.dark guarantees
      accent buttons are never invisible in light mode. */
   --color-text-on-accent: #000000;
+  /* Black on the default mint secondary; recomputed per-gym at runtime
+     (lib/themeGenerator applyGymTheme → textOnColor). */
+  --color-text-on-secondary: #000000;
 
   /* ── Borders (warm) ──────────────────────── */
   --color-border-subtle:  rgba(0, 0, 0, 0.055);
@@ -169,6 +172,32 @@
   --success:          var(--color-success);
   --warning:          var(--color-warning);
   --danger:           var(--color-danger);
+
+  /* ── Trainer side ("warm cream + teal") — theme-aware chrome ───────────────
+     The trainer kit (src/pages/trainer/components/designTokens.js) reads these
+     so every trainer page follows the dark/light toggle. Only chrome switches;
+     base accent/semantic HUES + chart-safe greys stay fixed hex in the JS kit
+     (var() can't resolve inside SVG/lucide attributes). Light values: */
+  --tt-bg:            #f0eee9;
+  --tt-bg-elev:       #faf8f3;
+  --tt-surface:       #ffffff;
+  --tt-surface-2:     #f7f5f0;
+  --tt-text:          #0B0F12;
+  --tt-text-sub:      #5A6570;
+  --tt-on-inverse:    #ffffff;            /* text/icons sitting on a TT.text-colored (dark) button */
+  --tt-border:        rgba(15,20,25,0.07);
+  --tt-border-solid:  #e8e4db;
+  --tt-border-strong: rgba(15,20,25,0.14);
+  --tt-accent-soft:   #D9F1F1;
+  --tt-accent-ink:    #08585A;
+  --tt-hot-soft:      #FFE3D6;
+  --tt-warn-soft:     #FBEED4;
+  --tt-warn-ink:      #9A6C10;
+  --tt-good-soft:     #DFF1E6;
+  --tt-good-ink:      #1E7A4E;
+  --tt-coach-soft:    #EDEAFB;
+  --tt-shadow:        0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05);
+  --tt-shadow-lg:     0 2px 4px rgba(15,20,25,0.05), 0 16px 40px rgba(15,20,25,0.08);
 }
 
 /* ── Dark theme (Matte Obsidian & Amber — luxury control room) ─────────── */
@@ -202,6 +231,7 @@ html.dark {
 
   /* Text on accent — pure black on warm gold (matches :root for theme parity) */
   --color-text-on-accent: #000000;
+  --color-text-on-secondary: #000000;
 
   /* Admin-scoped text (dark) — matches primary hierarchy */
   --color-admin-text:         #E8E6E1;
@@ -249,6 +279,28 @@ html.dark {
 
   /* Legacy */
   --glass-bg: rgba(20, 20, 31, 0.96);
+
+  /* ── Trainer side — dark variant (charcoal + teal) ── */
+  --tt-bg:            #0A0E11;
+  --tt-bg-elev:       #0E1316;
+  --tt-surface:       #161C20;
+  --tt-surface-2:     #1C2329;
+  --tt-text:          #F5F2EC;
+  --tt-text-sub:      #9BA7B2;
+  --tt-on-inverse:    #0A0E11;
+  --tt-border:        rgba(255,255,255,0.08);
+  --tt-border-solid:  rgba(255,255,255,0.12);
+  --tt-border-strong: rgba(255,255,255,0.18);
+  --tt-accent-soft:   rgba(25,184,184,0.15);
+  --tt-accent-ink:    #7FE3E3;
+  --tt-hot-soft:      rgba(255,90,46,0.16);
+  --tt-warn-soft:     rgba(232,169,58,0.16);
+  --tt-warn-ink:      #F0C168;
+  --tt-good-soft:     rgba(47,166,107,0.16);
+  --tt-good-ink:      #6FD79E;
+  --tt-coach-soft:    rgba(109,95,219,0.20);
+  --tt-shadow:        0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+  --tt-shadow-lg:     0 2px 4px rgba(0,0,0,0.35), 0 16px 40px rgba(0,0,0,0.5);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

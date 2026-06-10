@@ -1,55 +1,50 @@
 {
   "title": "Vamos a configurarte",
   "subtitle": "Unas preguntas rápidas para crear tu plan perfecto",
-
   "stepLabels": {
-    "invite":    "INVITACIÓN",
-    "language":  "IDIOMA",
-    "level":     "NIVEL",
-    "goal":      "OBJETIVO",
-    "training":  "EQUIPO",
-    "schedule":  "HORARIO",
-    "privacy":   "PRIVACIDAD",
-    "health":    "SALUD",
-    "body":      "CUERPO",
-    "phone":     "TELÉFONO",
-    "squad":     "EQUIPO SOCIAL",
-    "program":   "PROGRAMA",
+    "invite": "INVITACIÓN",
+    "language": "IDIOMA",
+    "level": "NIVEL",
+    "goal": "OBJETIVO",
+    "training": "EQUIPO",
+    "schedule": "HORARIO",
+    "privacy": "PRIVACIDAD",
+    "health": "SALUD",
+    "body": "CUERPO",
+    "phone": "TELÉFONO",
+    "squad": "EQUIPO SOCIAL",
+    "program": "PROGRAMA",
     "nutrition": "NUTRICIÓN"
   },
-
   "inviteCode": {
-    "title": "\u00bfTienes un c\u00f3digo de invitaci\u00f3n?",
-    "subtitle": "Si tu gym te dio un c\u00f3digo, ingr\u00e9salo para vincular tu cuenta.",
-    "verify": "Verificar C\u00f3digo",
+    "title": "¿Tienes un código de invitación?",
+    "subtitle": "Si tu gym te dio un código, ingrésalo para vincular tu cuenta.",
+    "verify": "Verificar Código",
     "verifying": "Verificando...",
-    "success": "\u00a1Cuenta vinculada!",
-    "skip": "Saltar \u2014 no tengo un c\u00f3digo",
+    "success": "¡Cuenta vinculada!",
+    "skip": "Saltar — no tengo un código",
     "placeholder": "ej. ABC123",
     "errors": {
-      "invalidCode": "C\u00f3digo inv\u00e1lido. Revisa e intenta de nuevo.",
-      "alreadyUsed": "Este c\u00f3digo ya fue utilizado.",
-      "expired": "Este c\u00f3digo ha expirado. Pide uno nuevo en tu gym.",
-      "wrongGym": "Este c\u00f3digo es para otro gym.",
+      "invalidCode": "Código inválido. Revisa e intenta de nuevo.",
+      "alreadyUsed": "Este código ya fue utilizado.",
+      "expired": "Este código ha expirado. Pide uno nuevo en tu gym.",
+      "wrongGym": "Este código es para otro gym.",
       "rateLimited": "Demasiados intentos. Espera un momento e intenta de nuevo."
-    }
+    },
+    "enterNow": "Ingresar código de invitación"
   },
-
   "stepHead": {
     "lets": "Vamos a configurarte",
-    "takes": "Toma 2 minutos \u00b7 puedes editarlo despu\u00e9s"
+    "takes": "Unos pasos rápidos · puedes editar después"
   },
-
   "healthRationale": {
     "title": "Conectar {{healthPlatformName}}",
-    "body": "Usamos {{healthPlatformName}} para autocompletar tu peso y estatura, sincronizar entrenamientos y leer tu ritmo card\u00edaco durante las sesiones. Nunca escribimos datos sin tu permiso, y puedes desconectarlo cuando quieras en Ajustes."
+    "body": "Usamos {{healthPlatformName}} para autocompletar tu peso y estatura, sincronizar entrenamientos y leer tu ritmo cardíaco durante las sesiones. Nunca escribimos datos sin tu permiso, y puedes desconectarlo cuando quieras en Ajustes."
   },
-
   "langStep": {
     "title": "Elige tu idioma",
     "subtitle": "Puedes cambiarlo en cualquier momento en ajustes"
   },
-
   "fitnessLevel": {
     "title": "¿Cuál es tu nivel de experiencia?",
     "subtitle": "Escoge la opción que mejor te describa.",
@@ -79,18 +74,31 @@
       "hint": "Déjalo en blanco si no estás seguro — lo estimaremos con tus entrenamientos"
     }
   },
-
   "goal": {
     "title": "¿Cuál es tu objetivo principal?",
     "subtitle": "Esto define tus rangos de repeticiones y estilo de progresión.",
     "hint": "Tu objetivo cambia cómo programamos tus series y repeticiones. Por ejemplo, el entrenamiento de fuerza usa menos repeticiones con más peso, mientras que el desarrollo muscular usa peso moderado con más volumen. Siempre puedes cambiar esto después.",
-    "muscle_gain": { "label": "Ganar Músculo", "desc": "Crecer y definirte más" },
-    "fat_loss": { "label": "Perder Grasa", "desc": "Quemar grasa manteniendo tu músculo" },
-    "strength": { "label": "Más Fuerte", "desc": "Levantar más peso, lograr nuevos récords" },
-    "endurance": { "label": "Resistencia", "desc": "Mejorar cardio y aguante" },
-    "general_fitness": { "label": "Mantenerme en Forma", "desc": "Estar activo, saludable y consistente" }
+    "muscle_gain": {
+      "label": "Ganar Músculo",
+      "desc": "Crecer y definirte más"
+    },
+    "fat_loss": {
+      "label": "Perder Grasa",
+      "desc": "Quemar grasa manteniendo tu músculo"
+    },
+    "strength": {
+      "label": "Más Fuerte",
+      "desc": "Levantar más peso, lograr nuevos récords"
+    },
+    "endurance": {
+      "label": "Resistencia",
+      "desc": "Mejorar cardio y aguante"
+    },
+    "general_fitness": {
+      "label": "Mantenerme en Forma",
+      "desc": "Estar activo, saludable y consistente"
+    }
   },
-
   "training": {
     "title": "Configuración de entrenamiento",
     "subtitle": "¿Con qué frecuencia entrenas y qué equipo tienes?",
@@ -117,10 +125,9 @@
     "pulledFrom": "Desde",
     "updatedByYourGym": " — actualizado por tu gimnasio."
   },
-
   "schedule": {
     "title": "Establece Tu Horario",
-    "subtitle": "Los miembros que se comprometen con días específicos tienen 2x más probabilidades de mantenerse",
+    "subtitle": "Los miembros que se comprometen con días específicos son mucho más consistentes",
     "whichDays": "¿Qué días vas a entrenar?",
     "daysPrefilled": "Pre-seleccionado según tu frecuencia — ajusta según necesites.",
     "selectAtLeast": "Selecciona al menos un día para continuar.",
@@ -154,10 +161,9 @@
     "closeLabel": "cierre",
     "gymLabel": "Gimnasio"
   },
-
   "bodyStats": {
     "title": "Casi listo",
-    "subtitle": "Omite lo que no quieras llenar — siempre puedes agregarlo después.",
+    "subtitle": "El sexo es obligatorio para cálculos precisos — todo lo demás es opcional.",
     "weight": "Peso Actual (lbs)",
     "weightHint": "Se usa para rastrear tu progreso.",
     "weightPlaceholder": "ej. 175",
@@ -181,9 +187,13 @@
     "other": "Otro",
     "sexHint": "Se usa para cálculos precisos de calorías",
     "age": "Edad",
-    "height": "Estatura"
+    "height": "Estatura",
+    "sexRequired": "Obligatorio — tus calorías y sugerencias de peso dependen de esto.",
+    "ageAutoBadge": "AUTO",
+    "unitsLabel": "Unidades",
+    "unitsImperial": "Inglés · lb, pies",
+    "unitsMetric": "Internacional · kg, cm"
   },
-
   "health": {
     "title": "Conecta Tus Datos de Salud",
     "subtitle": "Sincroniza pasos, ritmo cardíaco y más para tener una imagen completa de tu fitness.",
@@ -208,19 +218,17 @@
     "prefillSex": "Sexo: {{value}}",
     "prefillHint": "Regresa a Datos Corporales para revisar o cambiar estos valores."
   },
-
   "phoneStep": {
     "title": "Tu número de teléfono",
-    "subtitle": "Opcional. Para recordatorios de racha, no se comparte.",
+    "subtitle": "Opcional. Tu gym puede usarlo para contactarte sobre tu membresía y recordatorios — nunca se comparte fuera de tu gym.",
     "countryCode": "Código de país",
     "phonePlaceholder": "787 555 1234",
     "skip": "Saltar",
     "continue": "Continuar"
   },
-
   "social": {
     "title": "Encuentra Tu Grupo del Gym",
-    "subtitle": "Los miembros con 3+ amigos en el gym se quedan un 56% más",
+    "subtitle": "Entrenar con amigos es la forma más fácil de mantenerte constante",
     "hint": "Ve a la pestaña Social después de la configuración para agregar amigos — los que entrenan juntos, permanecen juntos.",
     "feedPreview": "Lo que verás en tu feed social",
     "mockPR": "logró un nuevo PR",
@@ -243,35 +251,35 @@
     "referralApplied": "Amigo agregado por referido",
     "referralCode": "Código de Referido",
     "referralCodePlaceholder": "ej. REF-ALEX",
-    "referralWillConnect": "¡Quedarán conectados como amigos y ambos ganarán recompensas!"
+    "referralValidNamed": "Te conectaremos con {{name}} — ¡ambos ganan recompensas!",
+    "referralInvalid": "No encontramos ese código — verifícalo con tu amigo."
   },
-
   "generatePlan": {
-    "title": "\u00bfQuieres un plan de entrenamiento personalizado?",
+    "title": "¿Quieres un plan de entrenamiento personalizado?",
     "desc": "Generaremos un programa de entrenamiento basado en tus objetivos, nivel de experiencia y horario. Listo en segundos.",
     "generate": "Generar Mi Plan",
     "generating": "Creando tu plan...",
-    "preparing": "Preparando tu plan\u2026",
-    "ready": "\u00a1Tu plan est\u00e1 listo! \ud83c\udf89",
+    "preparing": "Preparando tu plan…",
+    "ready": "¡Tu plan está listo! 🎉",
     "readyDesc": "Hemos creado rutinas personalizadas basadas en tu perfil. Puedes verlas e iniciarlas desde tu panel principal.",
-    "readyHeadline": "Aqu\u00ed est\u00e1 tu semana.",
+    "readyHeadline": "Aquí está tu semana.",
     "looksGood": "Se ve bien",
     "pill": "PLAN GENERADO",
-    "dayFallback": "D\u00eda {{n}}",
-    "dayCounter": "D\u00cdA {{current}} / {{total}}",
-    "programMeta": "{{days}} d\u00edas/sem \u00b7 {{minutes}} min \u00b7 programa de {{weeks}} semanas",
+    "dayFallback": "Día {{n}}",
+    "dayCounter": "DÍA {{current}} / {{total}}",
+    "programMeta": "{{days}} días/sem · {{minutes}} min · programa de {{weeks}} semanas",
     "goToDashboard": "Vamos",
-    "skip": "Lo configuro despu\u00e9s"
+    "skip": "Lo configuro después",
+    "weekN": "Semana {{n}}"
   },
-
   "mealPlan": {
-    "askTitle": "\u00bfQuieres un plan de comidas semanal?",
-    "askDesc": "Crearemos un plan de 7 d\u00edas personalizado que cumple con tus macros seg\u00fan tus objetivos y m\u00e9tricas corporales.",
-    "generate": "S\u00ed, config\u00faralo",
-    "skip": "No gracias, yo manejo mi nutrici\u00f3n",
+    "askTitle": "¿Quieres un plan de comidas semanal?",
+    "askDesc": "Crearemos un plan de 7 días personalizado que cumple con tus macros según tus objetivos y métricas corporales.",
+    "generate": "Sí, configúralo",
+    "skip": "No gracias, yo manejo mi nutrición",
     "prefsTitle": "Preferencias Alimentarias",
-    "prefsSubtitle": "Cu\u00e9ntanos sobre tu dieta para personalizar tu plan de comidas.",
-    "restrictionsLabel": "RESTRICCIONES DIET\u00c9TICAS",
+    "prefsSubtitle": "Cuéntanos sobre tu dieta para personalizar tu plan de comidas.",
+    "restrictionsLabel": "RESTRICCIONES DIETÉTICAS",
     "restrictionsHint": "Selecciona las que apliquen a tu dieta.",
     "none": "Ninguna",
     "vegan": "Vegano",
@@ -279,13 +287,13 @@
     "pescatarian": "Pescatariano",
     "keto": "Keto",
     "gluten_free": "Sin Gluten",
-    "dairy_free": "Sin L\u00e1cteos",
+    "dairy_free": "Sin Lácteos",
     "halal": "Halal",
     "allergiesLabel": "ALERGIAS ALIMENTARIAS",
-    "allergiesHint": "Excluiremos todas las comidas que contengan estos al\u00e9rgenos.",
+    "allergiesHint": "Excluiremos todas las comidas que contengan estos alérgenos.",
     "allergyNuts": "Frutos Secos",
     "allergyShellfish": "Mariscos",
-    "allergyDairy": "L\u00e1cteos",
+    "allergyDairy": "Lácteos",
     "allergyEggs": "Huevos",
     "allergySoy": "Soja",
     "allergyWheat": "Trigo/Gluten",
@@ -294,50 +302,54 @@
     "dislikesHint": "Evitaremos comidas con estos ingredientes.",
     "dislikePlaceholder": "Buscar ingredientes...",
     "selectedDislikes": "{{count}} ingrediente(s) excluido(s)",
-    "noDislikes": "Sin aversiones seleccionadas \u2014 incluiremos todo.",
+    "noDislikes": "Sin aversiones seleccionadas — incluiremos todo.",
     "continueToGenerate": "Generar Mi Plan de Comidas",
     "generating": "Creando tu plan de comidas personalizado...",
-    "ready": "\u00a1Tu plan de comidas est\u00e1 listo! \ud83c\udf7d\ufe0f",
-    "readyDesc": "Hemos creado un plan de 7 d\u00edas que cumple tus macros, respeta tus preferencias y simplifica las compras.",
-    "readyMacros": "Meta diaria: {{calories}} cal \u00b7 {{protein}}g prote\u00edna \u00b7 {{carbs}}g carbos \u00b7 {{fat}}g grasa",
+    "ready": "¡Tu plan de comidas está listo! 🍽️",
+    "readyDesc": "Hemos creado un plan de 7 días que cumple tus macros, respeta tus preferencias y simplifica las compras.",
+    "readyMacros": "Meta diaria: {{calories}} cal · {{protein}}g proteína · {{carbs}}g carbos · {{fat}}g grasa",
     "viewPlan": "Ver Plan de Comidas",
     "goToDashboard": "Ir al Panel",
     "mealsAvailable": "{{count}} comidas coinciden con tus preferencias",
-    "tooFewMeals": "Muy pocas comidas coinciden \u2014 considera relajar algunas restricciones.",
-    "dayLabel": "D\u00eda {{day}}",
-    "mealCount": "{{count}} comidas por d\u00eda",
+    "tooFewMeals": "Muy pocas comidas coinciden — considera relajar algunas restricciones.",
+    "dayLabel": "Día {{day}}",
+    "mealCount": "{{count}} comidas por día",
     "clearSearch": "Limpiar",
     "mealFallback": "Comida {{n}}",
     "breakfast": "Desayuno",
     "lunch": "Almuerzo",
     "snack": "Merienda",
     "dinner": "Cena",
-    "caloriesLabel": "Calor\u00edas",
-    "pill": "PLAN DE COMIDAS LISTO \u00b7 7 D\u00cdAS",
+    "caloriesLabel": "Calorías",
+    "pill": "PLAN DE COMIDAS LISTO · 7 DÍAS",
     "readyHeadline": "Listo para cocinar."
   },
-
   "dataConsent": {
-    "title": "C\u00f3mo Usamos Tus Datos",
+    "title": "Cómo Usamos Tus Datos",
     "subtitle": "Estamos comprometidos con proteger tu privacidad",
     "heroTitle": "Tus datos, tus reglas.",
-    "heroSub": "Tres cosas que usaremos. Rechaza lo que quieras, c\u00e1mbialo cuando sea.",
+    "heroSub": "Tres cosas que usaremos. Rechaza lo que quieras, cámbialo cuando sea.",
     "healthTitle": "Salud y Fitness",
-    "cameraTitle": "C\u00e1mara y Fotos",
-    "analyticsTitle": "Anal\u00edtica",
+    "cameraTitle": "Cámara y Fotos",
+    "analyticsTitle": "Analítica",
     "health": "Registramos tus entrenamientos y medidas corporales para personalizar tu entrenamiento. Los datos de salud se sincronizan con Apple Health / Google Fit.",
-    "location": "Usamos tu ubicaci\u00f3n para registrar tus sesiones de cardio en vivo (distancia, ritmo y ruta). Solo se activa cuando t\u00fa inicias la sesi\u00f3n.",
-    "camera": "Usamos tu c\u00e1mara para escanear c\u00f3digos QR y analizar fotos de comida. Las fotos se procesan de forma segura y se eliminan los metadatos.",
-    "analytics": "Recopilamos datos de uso an\u00f3nimos para mejorar la app. Nunca vendemos tus datos ni los usamos para publicidad.",
-    "privacyLink": "Lee nuestra Pol\u00edtica de Privacidad completa",
+    "location": "Usamos tu ubicación para registrar tus sesiones de cardio en vivo (distancia, ritmo y ruta). Solo se activa cuando tú inicias la sesión.",
+    "camera": "Usamos tu cámara para escanear códigos QR y analizar fotos de comida. Las fotos se procesan de forma segura y se eliminan los metadatos.",
+    "analytics": "Recopilamos datos de uso anónimos para mejorar la app. Nunca vendemos tus datos ni los usamos para publicidad.",
+    "privacyLink": "Lee nuestra Política de Privacidad completa",
     "agree": "Acepto",
     "decline": "Ahora No",
-    "declineWarning": "Algunas funciones como sincronizaci\u00f3n de salud y check-in autom\u00e1tico no estar\u00e1n disponibles sin estos permisos.",
-    "changeAnytime": "Puedes cambiar estos permisos en cualquier momento en Configuraci\u00f3n"
+    "declineWarning": "Algunas funciones como sincronización de salud y check-in automático no estarán disponibles sin estos permisos.",
+    "changeAnytime": "Puedes cambiar estos permisos en cualquier momento en Configuración"
   },
-
-  "disclaimer": "Esta aplicaci\u00f3n provee herramientas de seguimiento fitness \u00fanicamente y no constituye consejo m\u00e9dico. Consulta a un profesional de salud antes de comenzar cualquier programa de ejercicios.",
-  "finish": "\u00a1Listo, vamos!",
+  "disclaimer": "Esta aplicación provee herramientas de seguimiento fitness únicamente y no constituye consejo médico. Consulta a un profesional de salud antes de comenzar cualquier programa de ejercicios.",
+  "finish": "¡Listo, vamos!",
   "initialWeightNote": "Peso inicial al registrarse",
-  "onboardingAgeUnder13": "Debes tener al menos 13 a\u00f1os para usar TuGymPR. Por favor contacta a tu gimnasio para asistencia."
+  "onboardingAgeUnder13": "Debes tener al menos 13 años para usar TuGymPR. Por favor contacta a tu gimnasio para asistencia.",
+  "planTeaser": "Tu plan de {{days}} días ya se está preparando",
+  "finishError": "No pudimos guardar tu configuración. Inténtalo de nuevo — tus respuestas están guardadas.",
+  "finishOffline": "Sin conexión — verifica tu internet e inténtalo de nuevo. Tus respuestas están guardadas.",
+  "onboarding": {
+    "gymRequired": "Necesitas un gym para completar el registro. Ingresa un código de invitación."
+  }
 }

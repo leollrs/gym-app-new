@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import AnimatedCounter from '../../../components/AnimatedCounter';
+import { TT, TFont } from './designTokens';
 
 /**
  * Trainer-side stat card. Mirrors the member-side stat row pattern:
@@ -29,7 +30,7 @@ export default function TrainerStatCard({
   sub,
   onClick,
 }) {
-  const accentColor = accent || 'var(--color-accent)';
+  const accentColor = accent || TT.accent;
   const Container = onClick ? motion.button : motion.div;
 
   return (
@@ -40,10 +41,11 @@ export default function TrainerStatCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay }}
       whileTap={onClick ? { scale: 0.97 } : undefined}
-      className="rounded-2xl p-4 text-left w-full focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+      className="rounded-2xl p-4 text-left w-full focus:outline-none"
       style={{
-        background: 'var(--color-bg-card)',
-        border: '1px solid var(--color-border-subtle)',
+        background: TT.surface,
+        border: `1px solid ${TT.border}`,
+        boxShadow: TT.shadow,
       }}
     >
       <div className="flex items-center gap-2.5 mb-2">
@@ -57,7 +59,7 @@ export default function TrainerStatCard({
         )}
         <p
           className="text-[11px] font-semibold uppercase tracking-[0.08em] truncate"
-          style={{ color: 'var(--color-text-muted)' }}
+          style={{ color: TT.textMute }}
         >
           {label}
         </p>
@@ -66,11 +68,11 @@ export default function TrainerStatCard({
       <p
         className="leading-none"
         style={{
-          fontFamily: '"Familjen Grotesk", "Archivo", system-ui',
+          fontFamily: TFont.display,
           fontWeight: 800,
           letterSpacing: -0.6,
           fontSize: 26,
-          color: 'var(--color-text-primary)',
+          color: TT.text,
           fontVariantNumeric: 'tabular-nums',
         }}
       >
@@ -86,7 +88,7 @@ export default function TrainerStatCard({
       </p>
 
       {sub && (
-        <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-[11px] mt-1 truncate" style={{ color: TT.textMute }}>
           {sub}
         </p>
       )}

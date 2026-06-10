@@ -12,6 +12,7 @@ import logger from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { exName } from '../lib/exerciseName';
 import Confetti from './Confetti';
+import posthogClient from 'posthog-js';
 
 // ── Warm-paper onboarding-aligned design tokens ───────────────────────────
 const OB_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
@@ -166,19 +167,26 @@ export default function GoalsSection() {
   const handleDelete = async (goalId) => {
     const { error } = await supabase.from('member_goals').delete().eq('id', goalId);
     if (error) { logger.error('GoalsSection delete error', error); return; }
+    posthogClient?.capture('goal_deleted');
     setGoals(prev => prev.filter(g => g.id !== goalId));
     setEditGoal(null);
   };
 
+  // Returns the supabase error (null on success) so the detail modal can show
+  // feedback instead of silently staying open when the update fails.
   const handleUpdate = async (goalId, updates) => {
     const { error } = await supabase
       .from('member_goals')
       .update(updates)
       .eq('id', goalId);
-    if (!error) {
-      setEditGoal(null);
-      loadGoals();
+    if (error) {
+      logger.error('GoalsSection update error', error);
+      return error;
     }
+    posthogClient?.capture('goal_updated');
+    setEditGoal(null);
+    loadGoals();
+    return null;
   };
 
   if (loading) return null;
@@ -492,6 +500,7 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
   const [targetDate, setTargetDate] = useState(goal.target_date ?? '');
   const [title, setTitle] = useState(goal.title);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [dateWarning, setDateWarning] = useState(null);
   const [realisticCaption, setRealisticCaption] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -549,12 +558,22 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
   const handleSave = async () => {
     if (!targetValue || !title.trim()) return;
     setSaving(true);
-    await onUpdate(goal.id, {
+    setSaveError('');
+    const err = await onUpdate(goal.id, {
       target_value: parseFloat(targetValue),
       target_date: targetDate || null,
       title: title.trim(),
     });
     setSaving(false);
+    if (err) {
+      // Never render raw DB errors — PG/PostgREST code = server reject,
+      // code-less = network ("TypeError: Load failed").
+      const code = String(err?.code || '').trim();
+      const isServerReject = /^[0-9A-Z]{5}$/.test(code) || /^PGRST/i.test(code);
+      setSaveError(isServerReject
+        ? t('goals.saveFailed', "Couldn't save your goal. Please try again.")
+        : t('progress.body.connectionError', 'No connection — try again when you’re back online.'));
+    }
   };
 
   return (
@@ -741,6 +760,13 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
         </div>
       )}
 
+      {/* Save error (kept inline so the modal stays open with feedback) */}
+      {saveError && editing && !confirmDelete && (
+        <p className="text-[12px] font-semibold mb-2.5 text-center" style={{ color: OB_ORANGE }}>
+          {saveError}
+        </p>
+      )}
+
       {/* Actions */}
       {!confirmDelete && (
         <div className="flex gap-2">
@@ -806,6 +832,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
   const [targetDate, setTargetDate] = useState('');
   const [title, setTitle] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [loadingExercises, setLoadingExercises] = useState(false);
@@ -973,6 +1000,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     if (!targetValue || !title.trim()) return;
     if (needsExercise && !exerciseId) return;
     setSaving(true);
+    setSaveError('');
 
     const payload = {
       profile_id: user.id,
@@ -991,7 +1019,19 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     });
 
     setSaving(false);
-    if (!error) onCreated();
+    if (!error) {
+      posthogClient?.capture('goal_created', { goal_type: goalType });
+      onCreated();
+      return;
+    }
+    // Never render raw DB errors — PG/PostgREST code = server reject,
+    // code-less = network ("TypeError: Load failed").
+    logger.error('GoalsSection create error', error);
+    const code = String(error?.code || '').trim();
+    const isServerReject = /^[0-9A-Z]{5}$/.test(code) || /^PGRST/i.test(code);
+    setSaveError(isServerReject
+      ? t('goals.saveFailed', "Couldn't save your goal. Please try again.")
+      : t('progress.body.connectionError', 'No connection — try again when you’re back online.'));
   };
 
   const canSave = targetValue && title.trim() && (!needsExercise || exerciseId);
@@ -1259,6 +1299,13 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
               style={OB_INPUT_STYLE}
             />
           </div>
+
+          {/* Save error (kept inline so the modal stays open with feedback) */}
+          {saveError && (
+            <p className="text-[12px] font-semibold mb-2.5 text-center" style={{ color: OB_ORANGE }}>
+              {saveError}
+            </p>
+          )}
 
           {/* Actions */}
           <div className="flex gap-2">

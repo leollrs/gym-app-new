@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { clearCache } from '../lib/queryCache';
 import logger from '../lib/logger';
 import { generateProgram } from '../lib/workoutGenerator';
+import { generateRoutineName } from '../lib/programNaming';
 import useFocusTrap from '../hooks/useFocusTrap';
 import { exercises as ALL_EXERCISES } from '../data/exercises';
 import { exName, localizeRoutineName } from '../lib/exerciseName';
@@ -603,12 +604,21 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
       // Save all routines (A + B sets)
       const allRoutines = [...result.routinesA, ...result.routinesB];
       const savedRoutineAIds = [];
+      // Creative names ("Auto: Apex Build") to match the regenerate path instead
+      // of the generator's raw "Auto: Upper A" labels. Cardio routines (no
+      // slotsKey) keep their themed names. Variant B's name index is bumped past
+      // the half-pool so A/B pull different names (Apex Build vs Steel Build).
+      const nameSeed = result.seed || Math.floor(Math.random() * 100000);
       for (let ri = 0; ri < allRoutines.length; ri++) {
         const routine = allRoutines[ri];
+        const isVariantB = ri >= result.routinesA.length;
+        const routineName = routine.slotsKey
+          ? `Auto: ${generateRoutineName(routine.slotsKey, (routine.variantIndex || 0) + (isVariantB ? 5 : 0), nameSeed)}`
+          : routine.name;
         const { data: saved, error: rErr } = await supabase
           .from('routines')
           .insert({
-            name:       routine.name,
+            name:       routineName,
             gym_id:     profile.gym_id,
             created_by: user.id,
           })
@@ -664,11 +674,33 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         template_weeks: result.template_weeks,
       });
 
+      // Persist the chosen day count + duration to onboarding so a later
+      // "Regenerate" honors them (regenerate reads member_onboarding) instead of
+      // reverting to the goal-derived default. Best-effort, non-fatal.
+      try {
+        await supabase.from('member_onboarding').update({
+          training_days_per_week: form.training_days,
+          workout_duration_min: form.session_duration_min || 60,
+        }).eq('profile_id', user.id);
+      } catch { /* non-fatal */ }
+
       clearCache(`dash:${user.id}`);
+      try { clearCache(`routines:${user.id}`); } catch {}
+      try { localStorage.removeItem(`qs_cache_v1_${user.id}`); } catch {}
+      // Keep the Home tab + QuickStart (/record) in sync — both listen for this.
+      try { window.dispatchEvent(new CustomEvent('tugympr:programs-changed')); } catch {}
       onGenerated?.();
       onClose();
     } catch (err) {
-      setError(err.message || t('generateWorkout.somethingWentWrong'));
+      // Never render raw DB errors to members. supabase-js failures re-thrown
+      // by useRoutines carry a PG/PostgREST code (server reject); code-less
+      // errors are network-ish ("TypeError: Load failed").
+      console.error('[generate workout] save failed:', err);
+      const code = String(err?.code || '').trim();
+      const isServerReject = /^[0-9A-Z]{5}$/.test(code) || /^PGRST/i.test(code);
+      setError(isServerReject
+        ? t('generateWorkout.somethingWentWrong')
+        : t('progress.body.connectionError', 'No connection — try again when you’re back online.'));
     } finally {
       setSaving(false);
     }
@@ -687,10 +719,16 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="generate-workout-title"
-        className="rounded-[22px] w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden"
+        className="rounded-[22px] w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden relative"
         style={{ background: 'var(--color-bg-card)' }}
         onClick={e => e.stopPropagation()}
       >
+        {saving && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3" style={{ background: 'color-mix(in srgb, var(--color-bg-card) 92%, transparent)', backdropFilter: 'blur(2px)' }}>
+            <div className="w-10 h-10 rounded-full border-[3px] animate-spin" style={{ borderColor: 'var(--color-border-subtle)', borderTopColor: 'var(--color-accent)' }} />
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.generating')}</p>
+          </div>
+        )}
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div style={{ width: 36, height: 4, borderRadius: 999, background: 'var(--color-border-subtle)' }} />

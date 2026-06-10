@@ -270,6 +270,9 @@ interface Member {
   language: string | null;
   // English day names: ['Monday','Wednesday','Friday'] — see migration 0059.
   preferred_training_days: string[] | null;
+  // 'morning' | 'afternoon' | 'evening' | null — collected at onboarding
+  // with the promise "we'll time your reminders to match".
+  preferred_training_time: string | null;
   last_active_at: string | null;
   created_at: string;
   // Resolved timezone for quiet-hours computation. Pulled from
@@ -290,6 +293,21 @@ interface Member {
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// Spanish display names. DAY_NAMES (English) doubles as the STORAGE format of
+// preferred_training_days (migration 0059) — comparisons must always use the
+// English list; only message TEXT may use this one.
+const DAY_NAMES_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+function dayLabel(lang: string, dayIdx: number): string {
+  const name = (lang === 'es' ? DAY_NAMES_ES : DAY_NAMES)[dayIdx] || '';
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// Generated routines are stored as "Auto: <name>" — the prefix is a machine
+// marker (the app filters program routines by it), never member-facing copy.
+function displayRoutineName(raw: string | null | undefined): string | null {
+  const cleaned = (raw || '').replace(/^Auto:\s*/i, '').trim();
+  return cleaned || null;
+}
 
 async function checkWorkoutReminder(supabase: ReturnType<typeof createClient>, member: Member, today: string, dayOfWeek: number) {
   if (member.notif_workout_reminders === false) return;
@@ -314,7 +332,7 @@ async function checkWorkoutReminder(supabase: ReturnType<typeof createClient>, m
   if (todaySched?.routine_id) {
     const { data: r } = await supabase.from('routines')
       .select('name').eq('id', todaySched.routine_id).maybeSingle();
-    routineName = r?.name || null;
+    routineName = displayRoutineName(r?.name); // "Auto: Fuerza Total" → "Fuerza Total"
   } else {
     // Nothing scheduled today. If they have a program schedule at all, today simply
     // isn't a training day → skip. Otherwise (no generated schedule) fall back to
@@ -526,21 +544,38 @@ async function checkRestDay(supabase: ReturnType<typeof createClient>, member: M
 
   // Find next training day + matching routine
   let nextTrainingDay: string | null = null;
+  let nextDow = -1;
   for (let offset = 1; offset <= 7; offset++) {
-    const candidate = DAY_NAMES[(dayOfWeek + offset) % 7];
-    if (trainingDays.includes(candidate)) { nextTrainingDay = candidate; break; }
+    const idx = (dayOfWeek + offset) % 7;
+    const candidate = DAY_NAMES[idx];
+    if (trainingDays.includes(candidate)) { nextTrainingDay = candidate; nextDow = idx; break; }
   }
 
   let nextRoutineName: string | null = null;
-  if (nextTrainingDay) {
-    const { data: routines } = await supabase.from('routines')
-      .select('id, name')
-      .eq('created_by', member.id)
-      .eq('is_template', false)
-      .order('created_at', { ascending: true });
-    if (routines?.length) {
-      const dayIdx = trainingDays.indexOf(nextTrainingDay);
-      nextRoutineName = routines[dayIdx % routines.length]?.name || null;
+  if (nextTrainingDay && nextDow >= 0) {
+    // Prefer the LIVE program schedule (same source checkWorkoutReminder uses)
+    // — the created_at rotation below silently shows stale names after a
+    // regenerate. Keep it only as a fallback for members without a schedule.
+    const { data: nextSched } = await supabase.from('workout_schedule')
+      .select('routine_id')
+      .eq('profile_id', member.id)
+      .eq('day_of_week', nextDow)
+      .maybeSingle();
+    if (nextSched?.routine_id) {
+      const { data: r } = await supabase.from('routines')
+        .select('name').eq('id', nextSched.routine_id).maybeSingle();
+      nextRoutineName = displayRoutineName(r?.name);
+    }
+    if (!nextRoutineName) {
+      const { data: routines } = await supabase.from('routines')
+        .select('id, name')
+        .eq('created_by', member.id)
+        .eq('is_template', false)
+        .order('created_at', { ascending: true });
+      if (routines?.length) {
+        const dayIdx = trainingDays.indexOf(nextTrainingDay);
+        nextRoutineName = displayRoutineName(routines[dayIdx % routines.length]?.name);
+      }
     }
   }
 
@@ -553,10 +588,11 @@ async function checkRestDay(supabase: ReturnType<typeof createClient>, member: M
   );
 
   let body: string;
-  if (nextRoutineName && nextTrainingDay) {
+  if (nextRoutineName && nextTrainingDay && nextDow >= 0) {
+    // Day name localized per language — "Monday toca Pecho" read half-English.
     body = msg(lang,
-      `${nextTrainingDay} is ${nextRoutineName} day — eat well, sleep deep.`,
-      `${nextTrainingDay} toca ${nextRoutineName} — come bien, duerme profundo.`,
+      `${dayLabel('en', nextDow)} is ${nextRoutineName} day — eat well, sleep deep.`,
+      `${dayLabel('es', nextDow)} toca ${nextRoutineName} — come bien, duerme profundo.`,
     );
   } else {
     body = msg(lang,
@@ -663,7 +699,7 @@ Deno.serve(async (req) => {
       // entire edge function to silently skip every gym.
       const { data: rawMembers, error: profErr } = await supabase
         .from('profiles')
-        .select('id, gym_id, full_name, preferred_language, preferred_training_days, last_active_at, created_at, notif_workout_reminders, notif_streak_alerts, notif_friend_activity, notif_push_enabled')
+        .select('id, gym_id, full_name, preferred_language, preferred_training_days, preferred_training_time, last_active_at, created_at, notif_workout_reminders, notif_streak_alerts, notif_friend_activity, notif_push_enabled')
         .eq('gym_id', gym.id)
         .eq('role', 'member')
         .eq('membership_status', 'active');
@@ -709,9 +745,24 @@ Deno.serve(async (req) => {
             year: 'numeric', month: '2-digit', day: '2-digit', timeZone: member.timezone,
           }).format(now);
 
-          // Morning window (8–10am local): workout reminder OR rest day
-          if (memberHour >= 8 && memberHour <= 10) {
+          // Workout-reminder windows now honor preferred_training_time —
+          // onboarding REQUIRES this answer and promises "we'll time your
+          // reminders to match", but it was a dead write: everyone got the
+          // 8-10am ping. Morning (or unset) keeps the original windows;
+          // afternoon/evening members get their first nudge in their own
+          // window. checkWorkoutReminder dedups to max 2/day internally.
+          const prefTime = member.preferred_training_time;
+          const firstWindow  = prefTime === 'afternoon' ? [12, 13, 14]
+                             : prefTime === 'evening'   ? [16, 17, 18]
+                             : [8, 9, 10];
+          const secondWindow = prefTime === 'evening'   ? [19, 20]
+                             : [16, 17, 18];
+          if (firstWindow.includes(memberHour)) {
             await checkWorkoutReminder(supabase, member, memberToday, memberDow);
+          }
+
+          // Morning window (8–10am local): rest-day acknowledgement
+          if (memberHour >= 8 && memberHour <= 10) {
             await checkRestDay(supabase, member, memberToday, memberDow);
           }
 
@@ -720,9 +771,13 @@ Deno.serve(async (req) => {
             await checkNutritionReminder(supabase, member, memberToday);
           }
 
-          // Late afternoon (4–6pm local): second workout reminder + streak warning
-          if (memberHour >= 16 && memberHour <= 18) {
+          // Second workout reminder in the member's secondary window
+          if (secondWindow.includes(memberHour)) {
             await checkWorkoutReminder(supabase, member, memberToday, memberDow);
+          }
+
+          // Late afternoon (4–6pm local): streak warning
+          if (memberHour >= 16 && memberHour <= 18) {
             await checkStreakAtRisk(supabase, member, memberToday);
           }
 

@@ -686,7 +686,10 @@ export default function MemberSettings() {
                         await deleteAccount();
                       } catch (err) {
                         setDeleting(false);
-                        alert(err.message || t('settings.failedToDelete'));
+                        // Raw DB message stays in the console — members get
+                        // the friendly toast only.
+                        logger.error('Delete account error:', err);
+                        showToast(t('settings.failedToDelete'), 'error');
                       }
                     }}
                     className="flex-1 py-3.5 rounded-xl text-[14px] font-semibold transition-all"

@@ -75,7 +75,7 @@ function Toggle({ on, onClick, children }) {
         border: on ? 'none' : '1.5px solid var(--color-border, rgba(255,255,255,0.14))',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        {on && <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 4l1.8 1.8L6.5 2.5" stroke="#fff" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        {on && <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 4l1.8 1.8L6.5 2.5" stroke="var(--color-text-on-accent, #fff)" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
       </div>
       {children}
     </button>

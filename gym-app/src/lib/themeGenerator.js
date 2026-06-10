@@ -415,6 +415,9 @@ export function applyGymTheme(brandConfig) {
   root.style.setProperty('--color-secondary',        palette.secondary);
   root.style.setProperty('--color-secondary-light',  palette.secondaryLight);
   root.style.setProperty('--color-secondary-dark',   palette.secondaryDark);
+  // Text on the secondary/success color (Record button, success chips):
+  // black or white by WCAG luminance, mirroring --color-text-on-accent.
+  root.style.setProperty('--color-text-on-secondary', textOnColor(palette.secondary));
 }
 
 /**
@@ -447,4 +450,5 @@ export function resetToDefault() {
   root.style.setProperty('--color-secondary',        DEFAULT_SECONDARY);
   root.style.setProperty('--color-secondary-light',  palette.secondaryLight);
   root.style.setProperty('--color-secondary-dark',   palette.secondaryDark);
+  root.style.setProperty('--color-text-on-secondary', textOnColor(DEFAULT_SECONDARY));
 }

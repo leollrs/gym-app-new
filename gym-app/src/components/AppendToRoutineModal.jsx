@@ -179,7 +179,7 @@ export default function AppendToRoutineModal({ open, onClose, exercise }) {
             className="w-full rounded-xl py-3 text-[14px] font-extrabold uppercase tracking-wider transition-all disabled:opacity-40"
             style={{
               background: 'var(--color-accent)',
-              color: '#0A0D14',
+              color: 'var(--color-text-on-accent, #0A0D14)',
             }}
           >
             {submitting

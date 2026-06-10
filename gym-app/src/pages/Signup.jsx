@@ -142,6 +142,34 @@ const computeAge = (isoDate) => {
   return age;
 };
 
+// Best-effort split of a stored full name into the PR-convention name parts
+// (first / middle / first surname / second surname). Used only to PRE-FILL
+// the split inputs when a gym invite carries a full_name — the user can fix
+// any mis-split before submitting. Heuristic favors two surnames over a
+// middle name (the common case in Puerto Rico):
+//   2 tokens → first + last1; 3 → first + last1 + last2;
+//   4+ → first + middle(joined) + last1 + last2.
+const splitFullName = (full) => {
+  const tokens = String(full || '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return { firstName: '', middleName: '', lastName1: '', lastName2: '' };
+  if (tokens.length === 1) return { firstName: tokens[0], middleName: '', lastName1: '', lastName2: '' };
+  if (tokens.length === 2) return { firstName: tokens[0], middleName: '', lastName1: tokens[1], lastName2: '' };
+  if (tokens.length === 3) return { firstName: tokens[0], middleName: '', lastName1: tokens[1], lastName2: tokens[2] };
+  return {
+    firstName: tokens[0],
+    middleName: tokens.slice(1, -2).join(' '),
+    lastName1: tokens[tokens.length - 2],
+    lastName2: tokens[tokens.length - 1],
+  };
+};
+
+// Compose the canonical profiles.full_name from the split inputs.
+const composeFullName = (f) =>
+  [f.firstName, f.middleName, f.lastName1, f.lastName2]
+    .map(s => (s || '').trim())
+    .filter(Boolean)
+    .join(' ');
+
 // Today as YYYY-MM-DD for the date picker `max` attribute.
 const todayISO = () => {
   const d = new Date();
@@ -200,7 +228,8 @@ const Signup = () => {
   const [scanError, setScanError] = useState('');
 
   const [form, setForm] = useState({
-    fullName: '', username: '', email: '',
+    firstName: '', middleName: '', lastName1: '', lastName2: '',
+    username: '', email: '',
     password: '', gymSlug: inviteSlug,
     referralCode: initialRefCode,
   });
@@ -356,7 +385,8 @@ const Signup = () => {
 
         setForm(f => ({
           ...f,
-          fullName: f.fullName || lookupResult.full_name || '',
+          // Seed the split name inputs only when the user hasn't typed one yet
+          ...((!f.firstName && !f.lastName1) ? splitFullName(lookupResult.full_name) : {}),
           gymSlug: gym?.slug || f.gymSlug,
         }));
         setGymName(gym?.name || '');
@@ -388,7 +418,7 @@ const Signup = () => {
 
         setForm(f => ({
           ...f,
-          fullName: f.fullName || gymLookup.full_name || '',
+          ...((!f.firstName && !f.lastName1) ? splitFullName(gymLookup.full_name) : {}),
           email: f.email || gymLookup.email || '',
           gymSlug: gym?.slug || f.gymSlug,
         }));
@@ -519,7 +549,8 @@ const Signup = () => {
 
   const validate = () => {
     const errs = {};
-    if (!form.fullName.trim()) errs.fullName = t('common:required');
+    if (!form.firstName.trim()) errs.firstName = t('common:required');
+    if (!form.lastName1.trim()) errs.lastName1 = t('common:required');
     if (!form.username.trim()) errs.username = t('common:required');
     else if (!/^[a-zA-Z0-9_]{3,20}$/.test(form.username.trim()))
       errs.username = t('usernameFormat', { defaultValue: 'Username must be 3-20 characters: letters, numbers, or underscores only' });
@@ -584,7 +615,8 @@ const Signup = () => {
       setGlobalError(t('tooManyAttempts', { defaultValue: 'Too many attempts. Please try again later.' }));
       return;
     }
-    if (form.fullName.trim().length > 100 || form.fullName.trim().length < 1) {
+    const composedFullName = composeFullName(form);
+    if (composedFullName.length > 100 || composedFullName.length < 1) {
       setGlobalError(t('fullNameLength', { defaultValue: 'Full name must be between 1 and 100 characters' }));
       return;
     }
@@ -613,7 +645,7 @@ const Signup = () => {
       const signUpResult = await signUp({
         email:    form.email,
         password: form.password,
-        fullName: form.fullName,
+        fullName: composedFullName,
         username: form.username,
         gymSlug,
         gymId: inviteData?.gym_id || null,
@@ -1129,23 +1161,81 @@ const Signup = () => {
             )}
 
             <form onSubmit={handleSubmit} style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Full name */}
+              {/* Name — split into PR-convention parts: first + optional middle,
+                  first surname required + optional second surname. Composed
+                  into profiles.full_name at submit. */}
               <div>
-                <label htmlFor="su-name" style={labelStyle}>{t('fullName')}</label>
-                <div style={inputWrap(!!errors.fullName)}>
-                  <User size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
-                  <input
-                    id="su-name"
-                    type="text"
-                    value={form.fullName}
-                    onChange={set('fullName')}
-                    placeholder={t('fullNamePlaceholder', { defaultValue: 'Alex Rivera' })}
-                    maxLength={100}
-                    autoComplete="name"
-                    style={inputStyle}
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label htmlFor="su-first-name" style={labelStyle}>{t('firstName', 'First name')}</label>
+                    <div style={inputWrap(!!errors.firstName)}>
+                      <User size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
+                      <input
+                        id="su-first-name"
+                        type="text"
+                        value={form.firstName}
+                        onChange={set('firstName')}
+                        placeholder={t('firstNamePlaceholder', { defaultValue: 'Alex' })}
+                        maxLength={40}
+                        autoComplete="given-name"
+                        style={inputStyle}
+                      />
+                    </div>
+                    {errors.firstName && <p style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>{errors.firstName}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="su-middle-name" style={labelStyle}>
+                      {t('middleName', 'Middle name')} <span style={{ fontWeight: 500, textTransform: 'none', color: OB.mute }}>· {t('common:optional')}</span>
+                    </label>
+                    <div style={inputWrap(false)}>
+                      <input
+                        id="su-middle-name"
+                        type="text"
+                        value={form.middleName}
+                        onChange={set('middleName')}
+                        placeholder={t('middleNamePlaceholder', { defaultValue: 'J.' })}
+                        maxLength={40}
+                        autoComplete="additional-name"
+                        style={{ ...inputStyle, paddingLeft: 16 }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                {errors.fullName && <p style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>{errors.fullName}</p>}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+                  <div>
+                    <label htmlFor="su-last-name-1" style={labelStyle}>{t('lastName1', 'Last name')}</label>
+                    <div style={inputWrap(!!errors.lastName1)}>
+                      <input
+                        id="su-last-name-1"
+                        type="text"
+                        value={form.lastName1}
+                        onChange={set('lastName1')}
+                        placeholder={t('lastName1Placeholder', { defaultValue: 'Rivera' })}
+                        maxLength={40}
+                        autoComplete="family-name"
+                        style={{ ...inputStyle, paddingLeft: 16 }}
+                      />
+                    </div>
+                    {errors.lastName1 && <p style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>{errors.lastName1}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="su-last-name-2" style={labelStyle}>
+                      {t('lastName2', 'Second last name')} <span style={{ fontWeight: 500, textTransform: 'none', color: OB.mute }}>· {t('common:optional')}</span>
+                    </label>
+                    <div style={inputWrap(false)}>
+                      <input
+                        id="su-last-name-2"
+                        type="text"
+                        value={form.lastName2}
+                        onChange={set('lastName2')}
+                        placeholder={t('lastName2Placeholder', { defaultValue: 'Santos' })}
+                        maxLength={40}
+                        autoComplete="family-name"
+                        style={{ ...inputStyle, paddingLeft: 16 }}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Username */}

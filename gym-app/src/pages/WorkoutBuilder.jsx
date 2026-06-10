@@ -40,7 +40,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
           aria-label={isSelected ? t('workoutBuilder.ariaDeselect', 'Deselect exercise') : t('workoutBuilder.ariaSelect', 'Select exercise')}
           className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
             isSelected
-              ? 'bg-[#D4AF37] border-[#D4AF37] text-black'
+              ? 'bg-[#D4AF37] border-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
               : 'text-transparent'
           }`}
           style={!isSelected ? { borderColor: 'var(--color-border-strong)' } : undefined}
@@ -493,9 +493,10 @@ const WorkoutBuilder = () => {
         showToast(t('workoutBuilder.routineSaved'), 'success');
       }
     } catch (err) {
+      console.error('WorkoutBuilder save failed', err);
       const failMsg = t('workoutBuilder.saveFailed', 'Save failed');
-      setError(err.message || failMsg);
-      showToast(err.message || failMsg, 'error');
+      setError(failMsg);
+      showToast(failMsg, 'error');
     } finally {
       setSaving(false);
     }
@@ -709,7 +710,7 @@ const WorkoutBuilder = () => {
                     <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0) 100%)' }} />
                     <span
                       className="absolute top-2 left-2 inline-flex items-center justify-center rounded-full"
-                      style={{ width: 26, height: 26, background: accent ? 'var(--color-accent)' : 'rgba(0,0,0,0.55)', color: accent ? '#0A0D14' : 'var(--color-text-primary)' }}
+                      style={{ width: 26, height: 26, background: accent ? 'var(--color-accent)' : 'rgba(0,0,0,0.55)', color: accent ? 'var(--color-text-on-accent, #0A0D14)' : 'var(--color-text-primary)' }}
                     >
                       <ArrowLeftRight size={13} strokeWidth={2.6} />
                     </span>
@@ -718,7 +719,7 @@ const WorkoutBuilder = () => {
                         className="absolute top-2 right-2 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded tabular-nums"
                         style={{
                           background: accent ? 'var(--color-accent)' : 'rgba(0,0,0,0.55)',
-                          color: accent ? '#0A0D14' : '#fff',
+                          color: accent ? 'var(--color-text-on-accent, #0A0D14)' : '#fff',
                           letterSpacing: 0.4,
                         }}
                         aria-label={t('activeSession.swapMatchAria', { pct: ex._swapMatch, defaultValue: `${ex._swapMatch}% match` })}
@@ -757,7 +758,7 @@ const WorkoutBuilder = () => {
                           className="shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors active:scale-95"
                           style={{
                             background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                            color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                            color: active ? 'var(--color-text-on-accent, #0A0D14)' : 'var(--color-text-muted)',
                             border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           }}
                         >
@@ -980,7 +981,7 @@ const WorkoutBuilder = () => {
           <button
             onClick={() => handleSave({ andExit: true })}
             disabled={saving}
-            className="hidden md:flex w-full mt-4 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-black font-bold text-[14px] py-4 rounded-2xl transition-all items-center justify-center gap-2"
+            className="hidden md:flex w-full mt-4 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-[var(--color-text-on-accent,#000)] font-bold text-[14px] py-4 rounded-2xl transition-all items-center justify-center gap-2"
           >
             {saving ? '…' : t('workoutBuilder.saveAndDone')}
           </button>
@@ -1021,7 +1022,7 @@ const WorkoutBuilder = () => {
           <button
             onClick={() => handleSave({ andExit: true })}
             disabled={saving}
-            className="flex-1 bg-[#D4AF37] disabled:opacity-50 text-black font-bold text-[13px] py-2.5 rounded-xl active:scale-95 transition-all flex items-center justify-center"
+            className="flex-1 bg-[#D4AF37] disabled:opacity-50 text-[var(--color-text-on-accent,#000)] font-bold text-[13px] py-2.5 rounded-xl active:scale-95 transition-all flex items-center justify-center"
           >
             {saving ? '…' : t('workoutBuilder.saveAndDone')}
           </button>

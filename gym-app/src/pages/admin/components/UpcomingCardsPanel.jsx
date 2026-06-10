@@ -60,7 +60,7 @@ export default function UpcomingCardsPanel({ gymId }) {
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
   const dateLocale = isEs ? { locale: esLocale } : undefined;
-  const pager = usePagedVisible({ initial: 6, step: 6 });
+  const pager = usePagedVisible({ initial: 3, step: 3 });
   // ids currently open in the print preview modal — null when modal closed
   const [previewIds, setPreviewIds] = useState(null);
 

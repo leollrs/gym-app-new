@@ -189,13 +189,24 @@ export function useLeaderboard(gymId, metric, startDate, tier = null) {
     ['leaderboard', gymId, metric, startDate, tier],
     () => {
       if (metric === 'streak') {
+        // Members can only read their OWN streak_cache row (RLS, migration
+        // 0354) — the old direct read rendered a one-person board for every
+        // regular member while admins saw the full gym. The SECURITY DEFINER
+        // RPC (0524) mirrors the other six categories. Falls back to the
+        // direct read while the migration isn't applied (old behavior, never
+        // worse). normalizeStreak in Leaderboard.jsx handles both row shapes.
         return supabase
-          .from('streak_cache')
-          .select('profile_id, current_streak_days, profiles!profile_id(full_name, username, avatar_url)')
-          .eq('gym_id', gymId)
-          .gt('current_streak_days', 0)
-          .order('current_streak_days', { ascending: false })
-          .limit(20);
+          .rpc('get_leaderboard_streaks', { p_gym_id: gymId, p_tier: tier, p_limit: 20 })
+          .then((res) => {
+            if (!res.error) return res;
+            return supabase
+              .from('streak_cache')
+              .select('profile_id, current_streak_days, profiles!profile_id(full_name, username, avatar_url)')
+              .eq('gym_id', gymId)
+              .gt('current_streak_days', 0)
+              .order('current_streak_days', { ascending: false })
+              .limit(20);
+          });
       }
       return supabase.rpc('get_leaderboard_volume', {
         p_gym_id: gymId,

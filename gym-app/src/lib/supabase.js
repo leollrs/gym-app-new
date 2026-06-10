@@ -120,7 +120,9 @@ async function inMemoryLock(name, _acquireTimeout, fn) {
 //     stays logged in across cold-starts and offline launches.
 //   • autoRefreshToken: refresh the access token in the background as it
 //     nears expiry — only when online.
-//   • detectSessionInUrl: false — we don't use OAuth magic-link redirects.
+//   • detectSessionInUrl: false — Capacitor deep links must not be auto-parsed.
+//     The password-reset email link DOES carry recovery tokens in its hash;
+//     ResetPassword.jsx parses them itself and calls setSession().
 //   • storage: secureStorage — Capacitor-aware adapter (native KV on device,
 //     localStorage on web, in-memory as last-ditch fallback).
 //   • lock: inMemoryLock — see above; avoids the navigator.locks orphan crash.
@@ -135,3 +137,46 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     // users don't get silently signed out when this config rolls out.
   },
 });
+
+// ── Session guard for authenticated edge-function calls ──────────────────────
+// Authenticated edge functions (analyze-body/food/menu-photo) validate the
+// caller's JWT via supabase.auth.getUser(); an expired or missing token makes
+// them return a raw 401 'Unauthorized'. Call ensureFreshSession() right before
+// invoke() to proactively refresh a near-expiry token (self-heals the common
+// case), and to surface a truly-dead session as a typed SESSION_EXPIRED error
+// so the UI can prompt "please sign in again" instead of leaking 'Unauthorized'.
+export async function ensureFreshSession() {
+  let session = null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    session = data?.session ?? null;
+  } catch { /* treat as no session below */ }
+
+  if (!session) {
+    const e = new Error('SESSION_EXPIRED');
+    e.code = 'SESSION_EXPIRED';
+    throw e;
+  }
+
+  // Refresh if the access token expires within the next 60s so the edge
+  // function never sees a token that lapses mid-flight.
+  const expMs = (session.expires_at || 0) * 1000;
+  if (expMs && expMs - Date.now() < 60_000) {
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error || !data?.session) throw error || new Error('refresh failed');
+    } catch {
+      const e = new Error('SESSION_EXPIRED');
+      e.code = 'SESSION_EXPIRED';
+      throw e;
+    }
+  }
+}
+
+// True when an error is an auth/session failure — either our typed
+// SESSION_EXPIRED (from ensureFreshSession) or a raw 'Unauthorized' bubbled up
+// from an edge-function 401. Lets call sites show one friendly re-login message.
+export function isSessionError(err) {
+  const m = err?.message;
+  return err?.code === 'SESSION_EXPIRED' || m === 'SESSION_EXPIRED' || m === 'Unauthorized';
+}

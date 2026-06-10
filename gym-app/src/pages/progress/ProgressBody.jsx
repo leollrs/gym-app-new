@@ -10,7 +10,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { supabase } from '../../lib/supabase';
+import { supabase, ensureFreshSession, isSessionError } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, parseISO, subDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -447,6 +447,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
             try {
               const reqBody = { image: frontBase64, language: i18n.language };
               if (sideBase64) reqBody.sideImage = sideBase64;
+              await ensureFreshSession();
               const { data, error: fnError } = await supabase.functions.invoke('analyze-body-photo', { body: reqBody });
               if (fnError) {
                 let msg = fnError.message || 'Analysis failed';
@@ -459,7 +460,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                 setScanResult(data.estimates);
               }
             } catch (err) {
-              dispatch({ type: 'SET_ERROR', payload: err.message || 'Photo analysis failed' });
+              dispatch({ type: 'SET_ERROR', payload: isSessionError(err) ? t('progressBody.sessionExpired', 'Please sign in again to continue.') : (err.message || 'Photo analysis failed') });
             } finally {
               dispatch({ type: 'SET_SCANNING', payload: false });
             }
@@ -563,6 +564,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
       if (sideBase64) body.sideImage = sideBase64;
       posthog?.capture('ai_body_analysis_requested');
 
+      await ensureFreshSession();
       const { data, error: fnError } = await supabase.functions.invoke('analyze-body-photo', { body });
 
       if (fnError) {
@@ -581,7 +583,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
       }
     } catch (err) {
       try { localStorage.removeItem('_pendingBodyScan'); } catch {}
-      dispatch({ type: 'SET_ERROR', payload: err.message || 'Photo analysis failed' });
+      dispatch({ type: 'SET_ERROR', payload: isSessionError(err) ? t('progressBody.sessionExpired', 'Please sign in again to continue.') : (err.message || 'Photo analysis failed') });
       setScanMode(false);
     } finally {
       dispatch({ type: 'SET_SCANNING', payload: false });
@@ -720,7 +722,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                 }
               }}
               className="w-full py-[16px] rounded-[16px] font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-all mb-3"
-              style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)', color: '#000', boxShadow: '0 4px 16px color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)', color: 'var(--color-text-on-accent, #000)', boxShadow: '0 4px 16px color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
               <Camera size={18} /> {t('progressBody.takePhoto', { view: t(currentStep.labelKey) })}
             </button>
             {scanStep === 1 && (
@@ -859,7 +861,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
         <div className="px-5 pb-5">
           <button onClick={handleSave} disabled={saving}
             className="w-full py-[14px] rounded-[16px] font-bold text-[14px] active:scale-[0.97] transition-all disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)', color: '#000', boxShadow: '0 4px 16px color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
+            style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)', color: 'var(--color-text-on-accent, #000)', boxShadow: '0 4px 16px color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
             {saving ? t('progress.body.saving') : t('progress.body.saveMeasurements')}
           </button>
         </div>
@@ -1133,8 +1135,13 @@ export default function ProgressBody() {
     }
   }, [showWeightHistory, showMeasurements, zoomPhoto]);
 
-  const handleLogWeight = async () => {
-    const w = parseFloat(weightInput);
+  // Accepts the value directly (from the prompt button) — reading weightInput
+  // from state here was a stale-closure bug: the prompt flow dispatched
+  // SET_WEIGHT_INPUT and then called this via setTimeout, but the captured
+  // closure still saw the PREVIOUS render's (empty) weightInput, so the first
+  // attempt always failed with "Enter a valid weight".
+  const handleLogWeight = async (value) => {
+    const w = parseFloat(value ?? weightInput);
     if (!w || w <= 0) {
       dispatch({ type: 'SET_WEIGHT_ERROR', payload: t('progress.body.enterValidWeight') });
       return;
@@ -1150,7 +1157,16 @@ export default function ProgressBody() {
       );
 
     if (error) {
-      dispatch({ type: 'SET_WEIGHT_ERROR', payload: error.message });
+      // Network failures surface from supabase as raw "TypeError: Load failed"
+      // with no PG/PostgREST error code — show a human message instead.
+      const code = String(error.code || '').trim();
+      const isServerReject = /^[0-9A-Z]{5}$/.test(code) || /^PGRST/i.test(code);
+      dispatch({
+        type: 'SET_WEIGHT_ERROR',
+        payload: isServerReject
+          ? error.message
+          : t('progress.body.connectionError', 'No connection — try again when you’re back online.'),
+      });
       dispatch({ type: 'SET_LOGGING_WEIGHT', payload: false });
       return;
     }
@@ -1271,7 +1287,7 @@ export default function ProgressBody() {
             }}
             disabled={uploadingPhoto}
             className="flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-bold active:scale-95 transition-all"
-            style={{ background: TU_ACCENT, color: '#001512' }}>
+            style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #001512)' }}>
             <Camera size={14} /> {t('progressBody.takePhotoButton', 'Take Photo')}
           </button>
         </div>
@@ -1301,8 +1317,7 @@ export default function ProgressBody() {
               onClick={() => {
                 const w = prompt(t('progress.body.enterTodaysWeight', 'Enter weight (lbs)'));
                 if (w && !isNaN(parseFloat(w)) && parseFloat(w) > 0) {
-                  dispatch({ type: 'SET_WEIGHT_INPUT', payload: w });
-                  setTimeout(() => handleLogWeight(), 50);
+                  handleLogWeight(w);
                 }
               }}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] font-bold active:scale-95 transition-all whitespace-nowrap"
@@ -1346,7 +1361,7 @@ export default function ProgressBody() {
                 className="px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors"
                 style={
                   period === opt.days
-                    ? { background: TU_ACCENT, color: '#001512' }
+                    ? { background: TU_ACCENT, color: 'var(--color-text-on-accent, #001512)' }
                     : { background: 'transparent', color: 'var(--color-text-muted)' }
                 }
               >

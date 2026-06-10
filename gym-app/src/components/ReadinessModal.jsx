@@ -1209,7 +1209,7 @@ function ConnectHealthCard({ t, onConnect }) {
             borderRadius: 999,
             border: 'none',
             background: 'var(--color-accent, #2EC4C4)',
-            color: '#001512',
+            color: 'var(--color-text-on-accent, #001512)',
             fontFamily: FONT_BODY,
             fontSize: 12,
             fontWeight: 800,

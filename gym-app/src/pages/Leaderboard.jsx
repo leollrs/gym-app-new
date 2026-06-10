@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase';
 import { sendNotification, NOTIFICATION_TYPES } from '../lib/notifications';
 import { usePostHog } from '@posthog/react';
 import { useQueryClient } from '@tanstack/react-query';
+import posthogClient from 'posthog-js';
 
 // ── Helpers ─────────────────────────────────────────────────
 const DISPLAY_FONT = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
@@ -171,7 +172,7 @@ const ChallengeModal = ({ entry, metric, metricLabel, gymId, userId, userName, i
             <button
               onClick={handleChallenge}
               disabled={sending || sent}
-              className="flex-1 py-3 rounded-full text-[13px] font-bold text-white transition-all min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-60"
+              className="flex-1 py-3 rounded-full text-[13px] font-bold text-[var(--color-text-on-accent,#fff)] transition-all min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-60"
               style={{ background: sent ? ACCENT : GOLD }}
             >
               {sent ? (
@@ -585,13 +586,24 @@ const Leaderboard = ({ embedded = false }) => {
     if (!/^[0-9a-f-]{36}$/i.test(uid)) return;
     supabase
       .from('friendships')
-      .select('requester_id, addressee_id')
+      .select('requester_id, addressee_id, status')
       .or(`requester_id.eq.${uid},addressee_id.eq.${uid}`)
-      .eq('status', 'accepted')
+      .in('status', ['accepted', 'pending'])
       .then(({ data }) => {
         if (!data) return;
-        const ids = new Set(data.map(f => f.requester_id === uid ? f.addressee_id : f.requester_id));
-        setFriendIds(ids);
+        const accepted = new Set();
+        const pending = new Set();
+        for (const f of data) {
+          const other = f.requester_id === uid ? f.addressee_id : f.requester_id;
+          if (f.status === 'accepted') accepted.add(other);
+          else pending.add(other);
+        }
+        setFriendIds(accepted);
+        // Seed PRE-EXISTING pending requests (either direction). The
+        // optimistic set only knew about requests sent THIS session, so
+        // members with an older pending row still showed "Add friend" and
+        // tapping it blew up on friendships_unique (23505).
+        setPendingFriendRequests(prev => new Set([...prev, ...pending]));
       });
   }, [uid]);
 
@@ -688,12 +700,19 @@ const Leaderboard = ({ embedded = false }) => {
         status: 'pending',
       });
       if (error) throw error;
+      posthogClient?.capture('friend_request_sent', { source: 'leaderboard' });
       showToast(t('leaderboard.friendRequestSent', 'Friend request sent'));
     } catch (err) {
       // RLS or unique-constraint violations land here. Surface the underlying
-      // error to the console so RLS misconfigurations are debuggable, then
-      // show the user a generic toast and roll back the optimistic state.
+      // error to the console so RLS misconfigurations are debuggable.
       console.error('[leaderboard] friend request insert failed:', err);
+      if (String(err?.code) === '23505') {
+        // A friendship row for this pair already exists (a pending request in
+        // either direction). KEEP the row marked pending — rolling back just
+        // re-offers a button that can never succeed.
+        showToast(t('leaderboard.friendRequestExists', 'You already have a request with this member'));
+        return;
+      }
       setPendingFriendRequests(prev => {
         const next = new Set(prev);
         next.delete(targetId);

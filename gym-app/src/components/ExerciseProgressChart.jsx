@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import logger from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { format, parseISO } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import Skeleton from './Skeleton';
 import FadeIn from './FadeIn';
 
@@ -55,7 +56,7 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { user } = useAuth();
   const [data, setData]       = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +76,7 @@ function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
       if (error) logger.error('ExerciseProgressChart fetch error', error);
 
       setData((rows || []).map(r => ({
-        date:   format(parseISO(r.achieved_at), 'MMM d'),
+        date:   format(parseISO(r.achieved_at), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined }),
         orm:    Math.round(r.estimated_1rm),
         weight: r.weight_lbs,
         reps:   r.reps,
@@ -83,7 +84,7 @@ function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
       setLoading(false);
     };
     load();
-  }, [user, exerciseId]);
+  }, [user, exerciseId, i18n.language]);
 
   const latestOrm = data[data.length - 1]?.orm;
   const firstOrm  = data[0]?.orm;

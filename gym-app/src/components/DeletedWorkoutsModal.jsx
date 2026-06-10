@@ -345,7 +345,7 @@ export default function DeletedWorkoutsModal({ open, onClose, onRestored }) {
                       style={{
                         flex: 1, padding: '10px 12px', borderRadius: 12,
                         background: 'var(--color-accent)',
-                        color: '#000', border: 'none',
+                        color: 'var(--color-text-on-accent, #000)', border: 'none',
                         fontFamily: FONT_DISPLAY, fontWeight: 800, fontSize: 12, letterSpacing: 0.3,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                         opacity: busyId === b.id ? 0.6 : 1,

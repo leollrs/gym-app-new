@@ -897,7 +897,7 @@ const RewardsTab = ({ points, gymRewards, gymRewardsLoading, onRedeem, challenge
                         ? `${t('rewards.redeem', 'Redeem')} · ${formatStatNumber(featured.cost)} pts`
                         : t('rewards.needMore', { count: formatStatNumber(featured.cost - points), defaultValue: 'Need {{count}} more pts' })}
                     </button>
-                    <div className="text-[11px] font-extrabold" style={{ color: 'rgba(0,0,0,0.65)' }}>
+                    <div className="text-[11px] font-extrabold" style={{ color: 'color-mix(in srgb, var(--color-text-on-accent, #000) 65%, transparent)' }}>
                       {t('rewards.youHave', 'You have')} {formatStatNumber(points)} pts
                     </div>
                   </div>
@@ -1779,9 +1779,11 @@ export default function Rewards() {
     });
 
     if (error) {
+      // Raw DB message/details/hint stay in the console — members get the
+      // friendly translated message only.
       logger.error('Redemption error:', error);
       console.error('redeem_reward full error:', JSON.stringify(error));
-      setRedeemError(error.message || error.details || error.hint || 'Redemption failed. Please try again.');
+      setRedeemError(t('rewards.redeemFailed', "Couldn't redeem. Try again."));
       setRedeemTarget(null);
       setTimeout(() => setRedeemError(null), 3000);
       return;
@@ -1808,7 +1810,7 @@ export default function Rewards() {
       posthog?.capture('earned_reward_claimed', { source: earned.source });
     } catch (err) {
       logger.error('claim_earned_reward error:', err);
-      setRedeemError(err.message || 'Failed to claim reward');
+      setRedeemError(t('rewards.claimFailed', "Couldn't claim this reward. Try again."));
       setTimeout(() => setRedeemError(null), 3000);
     } finally {
       setClaimingEarnedId(null);

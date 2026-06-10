@@ -1150,14 +1150,14 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
                 className="flex-[1.4] h-11 rounded-full flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
                 style={{
                   background: 'var(--color-accent)',
-                  color: '#fff',
+                  color: 'var(--color-text-on-accent, #fff)',
                   fontSize: 13,
                   fontWeight: 800,
                   letterSpacing: '-0.005em',
                   boxShadow: '0 6px 18px color-mix(in srgb, var(--color-accent) 30%, transparent)',
                 }}
               >
-                <Play size={14} strokeWidth={2.6} fill="#fff" />
+                <Play size={14} strokeWidth={2.6} fill="var(--color-text-on-accent, #fff)" />
                 {t('exerciseLibrary.startNow', 'Start now')}
               </button>
             )}
@@ -1313,7 +1313,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           >
             <SlidersHorizontal size={16} />
             {activeFilterCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-black text-[9px] font-bold flex items-center justify-center" style={{ background: 'var(--color-accent, #2EC4C4)' }}>
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-[var(--color-text-on-accent,#000)] text-[9px] font-bold flex items-center justify-center" style={{ background: 'var(--color-accent, #2EC4C4)' }}>
                 {activeFilterCount}
               </span>
             )}
@@ -1500,7 +1500,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
@@ -1525,7 +1525,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
@@ -1550,7 +1550,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
@@ -1564,7 +1564,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
 
               <button
                 onClick={() => setShowAdvancedFilters(false)}
-                className="w-full py-3.5 rounded-full font-bold text-[14px] active:scale-[0.98] transition-all text-white"
+                className="w-full py-3.5 rounded-full font-bold text-[14px] active:scale-[0.98] transition-all text-[var(--color-text-on-accent,#fff)]"
                 style={{ background: 'var(--color-accent, #2EC4C4)' }}
               >
                 {t('exerciseLibrary.showExercises', { count: filtered.length })}
@@ -1861,19 +1861,27 @@ const AddExerciseModal = ({ onSave, onClose }) => {
     const secondaryRegions = Array.from(new Set(
       form.secondaryBuckets.flatMap((b) => MUSCLE_BUCKET_BY_ID.get(b)?.regionIds || [])
     ));
-    const result = await onSave({
-      ...form,
-      muscle:          muscleGroup,
-      secondaryMuscles: Array.from(new Set(form.secondaryBuckets.map((b) => bucketGroup(b)).filter(Boolean))),
-      primaryRegions,
-      secondaryRegions,
-      name:        form.name.trim(),
-      defaultSets: parseInt(form.defaultSets) || 3,
-      defaultReps: reps,
-      instructions: form.instructions?.trim() || '',
-    });
-    if (result?.error) setError(result.error);
-    setSaving(false);
+    // try/finally: if anything in the save path throws, the button MUST
+    // come back from "Saving…" — an un-guarded rejection here left it
+    // spinning forever.
+    try {
+      const result = await onSave({
+        ...form,
+        muscle:          muscleGroup,
+        secondaryMuscles: Array.from(new Set(form.secondaryBuckets.map((b) => bucketGroup(b)).filter(Boolean))),
+        primaryRegions,
+        secondaryRegions,
+        name:        form.name.trim(),
+        defaultSets: parseInt(form.defaultSets) || 3,
+        defaultReps: reps,
+        instructions: form.instructions?.trim() || '',
+      });
+      if (result?.error) setError(result.error);
+    } catch (err) {
+      setError(err?.message || t('common:somethingWentWrong', 'Something went wrong'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -2283,7 +2291,7 @@ const AddExerciseModal = ({ onSave, onClose }) => {
             style={{
               padding: '16px 18px',
               background: canSave ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-              color: canSave ? '#001512' : 'var(--color-text-muted)',
+              color: canSave ? 'var(--color-text-on-accent, #001512)' : 'var(--color-text-muted)',
               fontFamily: DISPLAY_FONT,
               fontSize: 15,
               fontWeight: 800,
@@ -2425,7 +2433,7 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
                   className="flex-1 py-2.5 rounded-xl text-[12.5px] transition-all active:scale-[0.98]"
                   style={{
                     background: active ? 'var(--color-accent)' : 'var(--color-bg-card)',
-                    color: active ? '#001512' : 'var(--color-text-subtle)',
+                    color: active ? 'var(--color-text-on-accent, #001512)' : 'var(--color-text-subtle)',
                     border: `1.5px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                     fontWeight: active ? 800 : 500,
                   }}
@@ -2493,12 +2501,17 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
           onClick={async () => {
             if (!form.name.trim()) { setError(t('exerciseLibrary.nameRequired')); return; }
             setSaving(true); setError('');
-            const result = await onSave(exercise, form);
-            if (result?.error) setError(result.error);
-            setSaving(false);
+            try {
+              const result = await onSave(exercise, form);
+              if (result?.error) setError(result.error);
+            } catch (err) {
+              setError(err?.message || t('common:somethingWentWrong', 'Something went wrong'));
+            } finally {
+              setSaving(false);
+            }
           }}
           disabled={saving || !form.name.trim()}
-          className="w-full py-3.5 rounded-full font-bold text-[14px] text-white disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
+          className="w-full py-3.5 rounded-full font-bold text-[14px] text-[var(--color-text-on-accent,#fff)] disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
             style={{ background: 'var(--color-accent, #2EC4C4)' }}
         >
           {saving ? t('exerciseLibrary.saving') : t('exerciseLibrary.saveChanges')}
@@ -2669,6 +2682,20 @@ export const ExerciseLibraryPage = () => {
       });
   }, [user?.id]);
 
+  // Hung-write guard: WKWebView fetches can pend FOREVER on a zombie socket
+  // after an app resume — neither resolving nor rejecting (the auth boot path
+  // already has watchdogs for exactly this). Without a timeout the save
+  // button spins "Saving…" indefinitely. Abort after 20s so the user gets a
+  // visible, retryable error instead.
+  const SAVE_TIMEOUT_MS = 20000;
+  const saveTimeoutGuard = () => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), SAVE_TIMEOUT_MS);
+    return { signal: ctrl.signal, done: () => clearTimeout(timer) };
+  };
+  const timeoutMessage = () =>
+    t('exerciseLibrary.saveTimeout', "The server didn't respond. Check your connection and try again.");
+
   const handleCreateExercise = async (form) => {
     if (!user?.id || !profile?.gym_id) {
       return { error: t('exerciseLibrary.notReady', 'Profile not ready, try again in a moment.') };
@@ -2690,6 +2717,7 @@ export const ExerciseLibraryPage = () => {
     const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     let error;
+    const guard = saveTimeoutGuard();
     try {
       ({ error } = await supabase
         .from('exercises')
@@ -2708,16 +2736,26 @@ export const ExerciseLibraryPage = () => {
           primary_regions:   Array.isArray(form.primaryRegions)   ? form.primaryRegions   : null,
           secondary_regions: Array.isArray(form.secondaryRegions) ? form.secondaryRegions : null,
           is_active:    true,
-        }));
+        })
+        .abortSignal(guard.signal));
     } catch (err) {
-      // iOS WebKit surfaces network-layer fetch failures as TypeError "Load failed".
+      // iOS WebKit surfaces network-layer fetch failures as TypeError "Load
+      // failed"; our 20s watchdog surfaces hung sockets as AbortError.
       logger.error('Create exercise threw:', err);
-      return { error: err?.message || 'Network error — please try again.' };
+      const aborted = err?.name === 'AbortError' || /abort/i.test(String(err?.message || ''));
+      return { error: aborted ? timeoutMessage() : (err?.message || 'Network error — please try again.') };
+    } finally {
+      guard.done();
     }
 
     if (error) {
       logger.error('Create exercise error:', error);
-      return { error: error.message || error.hint || 'Failed to save exercise' };
+      const aborted = String(error.code || '') === '20' || /abort/i.test(String(error.message || ''));
+      if (aborted) return { error: timeoutMessage() };
+      // Include the PG code — when a member screenshots the error we can
+      // identify the exact server rejection (RLS vs enum vs constraint).
+      const base = error.message || error.hint || 'Failed to save exercise';
+      return { error: error.code ? `${base} (${error.code})` : base };
     }
 
     posthog?.capture('custom_exercise_created');
@@ -2790,17 +2828,27 @@ export const ExerciseLibraryPage = () => {
     // unsupported values to the closest valid enum so the UPDATE doesn't fail.
     const VALID_CATEGORY = new Set(['Strength', 'Hypertrophy', 'Power', 'Endurance', 'Mobility']);
     const category = VALID_CATEGORY.has(updates.category) ? updates.category : (exercise.category || 'Strength');
-    const { error } = await supabase.from('exercises').update({
-      name: updates.name,
-      muscle_group: updates.muscle,
-      equipment: updates.equipment,
-      category,
-      default_sets: parseInt(updates.defaultSets) || 3,
-      default_reps: updates.defaultReps,
-      rest_seconds: restSeconds,
-      instructions: updates.instructions || null,
-    }).eq('id', exercise.id);
-    if (error) { logger.error('Edit exercise error:', error); return { error: error.message }; }
+    let error;
+    const guard = saveTimeoutGuard();
+    try {
+      ({ error } = await supabase.from('exercises').update({
+        name: updates.name,
+        muscle_group: updates.muscle,
+        equipment: updates.equipment,
+        category,
+        default_sets: parseInt(updates.defaultSets) || 3,
+        default_reps: updates.defaultReps,
+        rest_seconds: restSeconds,
+        instructions: updates.instructions || null,
+      }).eq('id', exercise.id).abortSignal(guard.signal));
+    } catch (err) {
+      logger.error('Edit exercise threw:', err);
+      const aborted = err?.name === 'AbortError' || /abort/i.test(String(err?.message || ''));
+      return { error: aborted ? timeoutMessage() : (err?.message || 'Network error — please try again.') };
+    } finally {
+      guard.done();
+    }
+    if (error) { logger.error('Edit exercise error:', error); return { error: error.code ? `${error.message} (${error.code})` : error.message }; }
     setCustom(prev => prev.map(e => e.id === exercise.id ? {
       ...e,
       name: updates.name,
@@ -3015,7 +3063,7 @@ export const ExerciseLibraryPage = () => {
               className="inline-flex items-center gap-1 px-3.5 py-2.5 rounded-full active:scale-95 transition-all whitespace-nowrap"
               style={{
                 background: 'var(--color-accent)',
-                color: '#fff',
+                color: 'var(--color-text-on-accent, #fff)',
                 fontSize: 13,
                 fontWeight: 800,
                 letterSpacing: '-0.1px',
@@ -3127,7 +3175,7 @@ export const ExerciseLibraryPage = () => {
             </div>
             <button
               className="px-3 py-2 rounded-full text-[11px] font-extrabold active:scale-95 transition-all"
-              style={{ background: 'var(--color-accent)', color: '#001512', letterSpacing: '-0.1px', border: 'none' }}
+              style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)', letterSpacing: '-0.1px', border: 'none' }}
             >
               {t('exerciseLibrary.resume', 'Resume')}
             </button>
@@ -3285,7 +3333,7 @@ export const ExerciseLibraryPage = () => {
               {t('exerciseLibrary.noCustomHint')}
             </p>
             <button onClick={() => setShowAddModal(true)}
-              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all text-white"
+              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all text-[var(--color-text-on-accent,#fff)]"
               style={{ background: 'var(--color-accent, #2EC4C4)' }}>
               <Plus size={14} /> {t('exerciseLibrary.newExercise')}
             </button>
@@ -3409,7 +3457,7 @@ export const ExerciseLibraryPage = () => {
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
@@ -3437,7 +3485,7 @@ export const ExerciseLibraryPage = () => {
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-full transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
@@ -3452,7 +3500,7 @@ export const ExerciseLibraryPage = () => {
               <button
                 type="button"
                 onClick={() => setShowFilters(false)}
-                className="w-full py-3.5 rounded-full font-bold text-[14px] active:scale-[0.98] transition-all text-white"
+                className="w-full py-3.5 rounded-full font-bold text-[14px] active:scale-[0.98] transition-all text-[var(--color-text-on-accent,#fff)]"
                 style={{ background: 'var(--color-accent)' }}
               >
                 {t('exerciseLibrary.showExercises', { count: filteredRows.length })}

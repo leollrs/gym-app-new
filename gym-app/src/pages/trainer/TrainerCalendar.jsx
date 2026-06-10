@@ -919,7 +919,7 @@ export default function TrainerSchedule() {
                 </div>
               </div>
               <div style={{
-                width: 56, height: 56, borderRadius: 16, background: '#fff',
+                width: 56, height: 56, borderRadius: 16, background: TT.surface2,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <CalendarIcon size={28} color={TT.accent} strokeWidth={2} />

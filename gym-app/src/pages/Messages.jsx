@@ -15,6 +15,7 @@ import { checkContentBeforeSend } from '../lib/moderationFilter';
 import { sanitize } from '../lib/sanitize';
 import { Capacitor } from '@capacitor/core';
 import { usePostHog } from '@posthog/react';
+import posthogClient from 'posthog-js';
 
 // Keyboard plugin — only available on native platforms
 let Keyboard = null;
@@ -331,13 +332,24 @@ const ChatView = ({ conversationId, onBack }) => {
 
   const handleBlockOther = useCallback(async () => {
     if (!otherUser?.id || !user?.id) return;
-    await supabase.from('blocked_users').upsert(
+    const { error: blockError } = await supabase.from('blocked_users').upsert(
       { blocker_id: user.id, blocked_id: otherUser.id },
       { onConflict: 'blocker_id,blocked_id' }
     );
+    if (blockError) {
+      // Block didn't persist — keep the confirm modal open so the user can retry
+      showToast(t('common:somethingWentWrong'), 'error');
+      return;
+    }
     // Drop friendship if any (mirrors SocialFeed behavior)
-    await supabase.from('friendships').delete()
+    const { error: friendshipError } = await supabase.from('friendships').delete()
       .or(`and(requester_id.eq.${user.id},addressee_id.eq.${otherUser.id}),and(requester_id.eq.${otherUser.id},addressee_id.eq.${user.id})`);
+    if (friendshipError) {
+      // Block is in place but the friendship removal failed — retry is idempotent
+      showToast(t('common:somethingWentWrong'), 'error');
+      return;
+    }
+    posthogClient?.capture('user_blocked', { source: 'dm' });
     showToast(t('social.userBlocked', { name: otherUser?.full_name?.split(' ')[0] ?? '' }), 'success');
     setConfirmBlock(false);
     onBack();
@@ -769,7 +781,7 @@ const ChatView = ({ conversationId, onBack }) => {
                   <div
                     className={`px-3.5 py-2 text-[15px] leading-relaxed break-words max-w-[75%] ${
                       isSent
-                        ? 'bg-[var(--color-accent,#D4AF37)] text-black rounded-2xl rounded-br-sm'
+                        ? 'bg-[var(--color-accent,#D4AF37)] text-[var(--color-text-on-accent,#000)] rounded-2xl rounded-br-sm'
                         : 'bg-white/[0.08] rounded-2xl rounded-bl-sm'
                     } ${msg._pending ? 'opacity-60' : ''}`}
                     style={isSent ? undefined : { color: 'var(--color-text-primary)' }}
@@ -819,7 +831,7 @@ const ChatView = ({ conversationId, onBack }) => {
           style={{ backgroundColor: 'var(--color-accent, #D4AF37)' }}
           aria-label={t('messages.send')}
         >
-          <Send size={18} className="text-black ml-0.5" />
+          <Send size={18} className="text-[var(--color-text-on-accent,#000)] ml-0.5" />
         </button>
       </div>
     </div>
@@ -1252,7 +1264,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
                 className="px-3 py-1.5 rounded-full text-[12.5px] font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 flex-shrink-0"
                 style={{
                   background: selected ? 'var(--color-accent, #D4AF37)' : 'rgba(255,255,255,0.05)',
-                  color: selected ? '#000' : 'var(--color-text-muted)',
+                  color: selected ? 'var(--color-text-on-accent, #000)' : 'var(--color-text-muted)',
                 }}
               >
                 {label}
@@ -1398,7 +1410,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
                   <div className="relative flex-shrink-0">
                     {other && <UserAvatar user={other} size={48} />}
                     {hasUnread && (
-                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-[var(--color-accent,#D4AF37)] text-black text-[10px] font-bold flex items-center justify-center">
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-[var(--color-accent,#D4AF37)] text-[var(--color-text-on-accent,#000)] text-[10px] font-bold flex items-center justify-center">
                         {conv.unreadCount > 9 ? '9+' : conv.unreadCount}
                       </span>
                     )}

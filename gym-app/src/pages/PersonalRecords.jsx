@@ -205,7 +205,7 @@ export default function PersonalRecords({ embedded = false }) {
             <SlidersHorizontal size={16} />
             {activeFilterCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center"
-                style={{ background: TU_ACCENT, color: '#001512' }}>{activeFilterCount}</span>
+                style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #001512)' }}>{activeFilterCount}</span>
             )}
           </button>
         </div>
@@ -302,7 +302,7 @@ export default function PersonalRecords({ embedded = false }) {
                       className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] active:scale-95 transition-all"
                       style={{
                         background: filterGroup === g ? TU_ACCENT : 'var(--color-bg-card)',
-                        color: filterGroup === g ? '#001512' : 'var(--color-text-muted)',
+                        color: filterGroup === g ? 'var(--color-text-on-accent, #001512)' : 'var(--color-text-muted)',
                         border: `1px solid ${filterGroup === g ? TU_ACCENT : 'var(--color-border-subtle)'}`,
                         fontWeight: filterGroup === g ? 700 : 500,
                       }}>
@@ -323,7 +323,7 @@ export default function PersonalRecords({ embedded = false }) {
                       className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] active:scale-95 transition-all"
                       style={{
                         background: filterEquipment === eq ? TU_ACCENT : 'var(--color-bg-card)',
-                        color: filterEquipment === eq ? '#001512' : 'var(--color-text-muted)',
+                        color: filterEquipment === eq ? 'var(--color-text-on-accent, #001512)' : 'var(--color-text-muted)',
                         border: `1px solid ${filterEquipment === eq ? TU_ACCENT : 'var(--color-border-subtle)'}`,
                         fontWeight: filterEquipment === eq ? 700 : 500,
                       }}>
@@ -335,7 +335,7 @@ export default function PersonalRecords({ embedded = false }) {
 
               <button onClick={() => setShowFilters(false)}
                 className="w-full py-3.5 rounded-[14px] font-bold text-[14px] active:scale-[0.98] transition-all"
-                style={{ background: TU_ACCENT, color: '#001512', fontFamily: TU_DISPLAY, letterSpacing: -0.2 }}>
+                style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #001512)', fontFamily: TU_DISPLAY, letterSpacing: -0.2 }}>
                 {t('personalRecords.showResults', { count: filtered.length, defaultValue: `Show ${filtered.length} Results` })}
               </button>
             </div>

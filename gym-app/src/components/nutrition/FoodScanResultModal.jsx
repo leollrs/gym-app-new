@@ -359,7 +359,7 @@ export default function FoodScanResultModal({
         }}>
           <button onClick={handleLog} disabled={saving || s <= 0}
             className="w-full py-[14px] rounded-[14px] font-bold text-[15px] flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-40"
-            style={{ background: TU.accent, color: '#001512', fontFamily: TU.display, letterSpacing: -0.2 }}>
+            style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)', fontFamily: TU.display, letterSpacing: -0.2 }}>
             <Check size={16} strokeWidth={2.6} />
             {saving ? t('nutrition.logging', 'Logging…') : t('nutrition.addToLog', 'Add to log')}
           </button>

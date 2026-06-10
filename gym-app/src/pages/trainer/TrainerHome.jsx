@@ -283,8 +283,14 @@ export default function TrainerHome() {
     return h > 0 ? (m > 0 ? `${h} h ${m} m` : `${h} h`) : `${m} m`;
   })();
   const todayUpcoming = todaySessions.filter(s => s.status !== 'completed'); // not-yet-done today
-  const allUpcoming = [...todayUpcoming, ...upcomingSessions];               // chronological
-  const heroSession = allUpcoming[0] || null;                               // never empty if anything's booked
+  const allUpcoming = [...todayUpcoming, ...upcomingSessions];               // chronological (today's open, then future)
+  // Feature the next session that hasn't finished yet — otherwise an earlier
+  // session of the day that's already past but never marked complete keeps
+  // hogging the hero, pushing a just-scheduled later session down into the list.
+  const sessionEndMs = (s) => new Date(s.scheduled_at).getTime() + (s.duration_mins || 60) * 60000;
+  const nextUpcomingIdx = allUpcoming.findIndex(s => sessionEndMs(s) >= Date.now());
+  const heroIdx = nextUpcomingIdx >= 0 ? nextUpcomingIdx : 0;
+  const heroSession = allUpcoming[heroIdx] || null;                         // never empty if anything's booked
   const heroIsToday = !!(heroSession && todayUpcoming.some(s => s.id === heroSession.id));
   const heroClientId = heroSession ? (heroSession.profiles?.id || heroSession.client_id) : null;
   const heroName = heroSession ? (heroSession.profiles?.full_name || heroSession.profiles?.username || t('trainerCalendar.client', 'Client')) : '';
@@ -294,7 +300,7 @@ export default function TrainerHome() {
   const heroWhen = !heroSession ? '' : (heroIsToday
     ? (minsUntilNext != null && minsUntilNext > 0 ? t('trainerHome.nextIn', 'Next · in {{n}} min', { n: minsUntilNext }) : t('trainerHome.nextNow', 'Up next'))
     : t('trainerHome.nextOn', 'Next · {{when}}', { when: isTomorrow(new Date(heroSession.scheduled_at)) ? t('trainerHome.tomorrow', 'tomorrow') : format(new Date(heroSession.scheduled_at), 'EEE d', { locale: dateFnsLocale }) }));
-  const upcomingList = allUpcoming.slice(1); // everything after the hero (today's rest + future)
+  const upcomingList = allUpcoming.slice(heroIdx + 1); // everything after the hero (today's rest + future)
   const cobrosPending = Number(moneyOverview?.pending_total || 0);
   const cobrosPendingCount = moneyOverview?.pending_count || 0;
   const cobrosAvatars = (Array.isArray(moneyOverview?.clients) ? moneyOverview.clients : [])
@@ -568,22 +574,22 @@ export default function TrainerHome() {
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 {heroIsToday ? (
                   <button type="button" onClick={() => navigate(`/trainer/live/${heroClientId}`)}
-                    style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: TT.text, color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', letterSpacing: 0.2 }}>
+                    style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: TT.text, color: TT.onInverse, fontFamily: TFont.display, fontWeight: 800, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', letterSpacing: 0.2 }}>
                     <Play size={15} strokeWidth={2.6} fill="#fff" /> {t('trainerHome.startSession', 'Start session')}
                   </button>
                 ) : (
                   <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)}
-                    style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: TT.text, color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', letterSpacing: 0.2 }}>
+                    style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: TT.text, color: TT.onInverse, fontFamily: TFont.display, fontWeight: 800, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', letterSpacing: 0.2 }}>
                     {t('trainerHome.openClientCta', 'Open client')}
                   </button>
                 )}
                 <button type="button" onClick={() => openConversation(heroClientId)} aria-label={t('trainerHome.message', 'Message')}
-                  style={{ width: 46, height: 46, borderRadius: 12, border: `1px solid ${TT.borderSolid}`, background: '#fff', color: TT.text, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                  style={{ width: 46, height: 46, borderRadius: 12, border: `1px solid ${TT.borderSolid}`, background: TT.surface2, color: TT.text, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                   <MessageSquare size={18} />
                 </button>
                 {heroIsToday && (
                   <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)} aria-label={t('trainerHome.openClientShort', 'Open client')}
-                    style={{ width: 46, height: 46, borderRadius: 12, border: `1px solid ${TT.borderSolid}`, background: '#fff', color: TT.text, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                    style={{ width: 46, height: 46, borderRadius: 12, border: `1px solid ${TT.borderSolid}`, background: TT.surface2, color: TT.text, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                     <FileText size={18} />
                   </button>
                 )}
@@ -598,7 +604,7 @@ export default function TrainerHome() {
                 {noClients ? t('trainerHome.noClientsYetSub', 'Add a client to start scheduling sessions and tracking payments.') : t('trainerHome.noUpcomingSub', 'Schedule a session with a client to see it here.')}
               </div>
               <button type="button" onClick={() => navigate(noClients ? '/trainer/clients' : '/trainer/calendar')}
-                style={{ marginTop: 12, padding: '9px 16px', borderRadius: 11, border: 'none', background: TT.text, color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 12.5, cursor: 'pointer' }}>
+                style={{ marginTop: 12, padding: '9px 16px', borderRadius: 11, border: 'none', background: TT.text, color: TT.onInverse, fontFamily: TFont.display, fontWeight: 800, fontSize: 12.5, cursor: 'pointer' }}>
                 {noClients ? t('trainerHome.addClients', 'Add clients') : t('trainerHome.viewAgenda', 'View calendar')}
               </button>
             </TCard>
@@ -668,7 +674,7 @@ export default function TrainerHome() {
                         <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>{reason}</div>
                       </div>
                       <button type="button" onClick={() => openConversation(c.id)}
-                        style={{ padding: '7px 11px', borderRadius: 9, background: TT.text, color: '#fff', border: 'none', fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                        style={{ padding: '7px 11px', borderRadius: 9, background: TT.text, color: TT.onInverse, border: 'none', fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer' }}>
                         {t('trainerHome.greet', 'Say hi')}
                       </button>
                     </TCard>
@@ -865,7 +871,7 @@ export default function TrainerHome() {
                     const dur = (s.duration_mins || 60) / 60;
                     const left = Math.max(0, ((startHr - 2) / 14) * 100);
                     const width = Math.min(20, (dur / 14) * 100);
-                    const isNext = i === todaySessions.findIndex(x => x.status !== 'completed');
+                    const isNext = i === todaySessions.findIndex(x => x.status !== 'completed' && sessionEndMs(x) >= Date.now());
                     const status = s.status === 'completed' ? 'on_track' : 'on_track';
                     const tone = statusTone(status);
                     const name = (s.profiles?.full_name || s.profiles?.username || t('trainerCalendar.client', 'Client')).split(' ')[0];

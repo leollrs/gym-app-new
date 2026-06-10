@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { TT, TFont } from './designTokens';
 
 /**
  * Trainer empty state with optional action and Lucide icon.
@@ -25,7 +26,7 @@ export default function TrainerEmptyState({
   compact = false,
   accent,
 }) {
-  const accentColor = accent || 'var(--color-accent)';
+  const accentColor = accent || TT.accent;
 
   return (
     <motion.div
@@ -38,22 +39,25 @@ export default function TrainerEmptyState({
         <div
           className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
           style={{
-            background: `color-mix(in srgb, ${accentColor} 12%, var(--color-bg-card))`,
-            border: '1px solid var(--color-border-subtle)',
+            background: `color-mix(in srgb, ${accentColor} 12%, ${TT.surface})`,
+            border: `1px solid ${TT.border}`,
           }}
         >
           <Icon size={28} strokeWidth={1.5} style={{ color: accentColor }} />
         </div>
       )}
       {title && (
-        <h3 className="text-[16px] font-semibold leading-snug" style={{ color: 'var(--color-text-primary)' }}>
+        <h3
+          className="text-[16px] font-bold leading-snug"
+          style={{ color: TT.text, fontFamily: TFont.display, letterSpacing: -0.3 }}
+        >
           {title}
         </h3>
       )}
       {description && (
         <p
           className="text-[13px] mt-1.5 max-w-[300px] leading-relaxed"
-          style={{ color: 'var(--color-text-muted)' }}
+          style={{ color: TT.textMute }}
         >
           {description}
         </p>
@@ -62,8 +66,8 @@ export default function TrainerEmptyState({
         <button
           type="button"
           onClick={onAction}
-          className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-          style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+          className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold active:scale-95 transition-transform focus:outline-none"
+          style={{ background: TT.accent, color: '#06363B', fontFamily: TFont.display }}
         >
           {ActionIcon && <ActionIcon size={14} strokeWidth={2.4} />}
           {actionLabel}

@@ -159,7 +159,7 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                   onClick={() => setTab(tk.key)}
                   className={`flex-1 py-2.5 text-[13px] font-semibold rounded-lg transition-all ${
                     tab === tk.key
-                      ? 'bg-[#D4AF37] text-black'
+                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
                       : 'text-[var(--color-text-muted)] hover:text-white'
                   }`}
                 >
@@ -231,7 +231,7 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                         </span>
                         {isSelected && (
                           <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#D4AF37] flex items-center justify-center shadow-lg">
-                            <Check size={12} className="text-black" />
+                            <Check size={12} className="text-[var(--color-text-on-accent,#000)]" />
                           </div>
                         )}
                         {isSelected && (
@@ -269,7 +269,7 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                         )}
                         {isSelected && (
                           <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#D4AF37] flex items-center justify-center shadow-lg">
-                            <Check size={12} className="text-black" />
+                            <Check size={12} className="text-[var(--color-text-on-accent,#000)]" />
                           </div>
                         )}
                         {isSelected && (
@@ -288,7 +288,7 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                 type="button"
                 onClick={handleSave}
                 disabled={uploading}
-                className="w-full py-3.5 rounded-xl bg-[#D4AF37] text-black font-bold text-[15px] hover:bg-[#C9A430] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[48px]"
+                className="w-full py-3.5 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[15px] hover:bg-[#C9A430] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[48px]"
               >
                 {uploading ? (
                   <>

@@ -507,7 +507,7 @@ export default function AdminPrograms() {
                 const on = durationFilter === f.key;
                 return (
                   <button key={f.key} type="button" onClick={() => { setDurationFilter(f.key); setPage(1); }}
-                    style={{ flexShrink: 0, padding: '10px 16px', borderRadius: 999, cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5, fontWeight: on ? 700 : 600, letterSpacing: 0.4, textTransform: 'uppercase', color: on ? '#fff' : TK.textSub, background: on ? TK.text : TK.surface, border: `1px solid ${on ? TK.text : TK.borderSolid}` }}>
+                    style={{ flexShrink: 0, padding: '10px 16px', borderRadius: 999, cursor: 'pointer', fontFamily: FK.body, fontSize: 12.5, fontWeight: on ? 700 : 600, letterSpacing: 0.4, textTransform: 'uppercase', color: on ? TK.surface : TK.textSub, background: on ? TK.text : TK.surface, border: `1px solid ${on ? TK.text : TK.borderSolid}` }}>
                     {f.label}
                   </button>
                 );

@@ -287,7 +287,7 @@ export default function CancellationSaveModal({
                 className="w-full py-3 rounded-[14px] text-[14px] font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 style={{
                   background: 'var(--color-accent)',
-                  color: 'var(--color-bg-primary)',
+                  color: 'var(--color-text-on-accent, #000)',
                 }}
               >
                 {submitting ? <Loader2 size={16} className="animate-spin" /> : <Heart size={16} />}

@@ -1402,7 +1402,7 @@ export default function TrainerProfile() {
               style={{
                 position: 'absolute', bottom: -2, right: -2,
                 width: 28, height: 28, borderRadius: 999,
-                background: TT.text, color: '#fff',
+                background: TT.text, color: TT.onInverse,
                 border: `3px solid ${TT.bg === '#f0eee9' ? '#FAF7F0' : TT.bg}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer',
@@ -1727,7 +1727,7 @@ export default function TrainerProfile() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <div style={{ fontSize: 13, fontWeight: 800, color: TT.text }}>{c.name}</div>
-                        {c.verified && <Check size={12} color={TT.goodInk} strokeWidth={3} />}
+                        {c.verified && <Check size={12} style={{ color: TT.goodInk }} strokeWidth={3} />}
                       </div>
                       {c.issuer && (
                         <div style={{ fontSize: 11, color: TT.textSub, marginTop: 1 }}>{c.issuer}</div>

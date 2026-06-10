@@ -32,6 +32,7 @@ import {
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from '../../lib/supabase';
+import { PROD_WEB_URL } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
 import { rasterizeNode } from './ShareSheet';
@@ -68,7 +69,7 @@ const MsgIcon = () => (
   </svg>
 );
 const TuShareIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-on-accent, #fff)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2" />
     <circle cx="10" cy="7" r="4" />
     <path d="M18 8v6M21 11h-6" />
@@ -358,7 +359,7 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
       setBusy(true);
       try {
         const blob = await buildCard();
-        const link = `https://tugympr.app/share/achievement/${achievement.key || ''}`;
+        const link = `${PROD_WEB_URL}/share/achievement/${achievement.key || ''}`;
         const text = `${achievement.label} — TuGymPR`;
         const full = `${text}\n${link}`;
 

@@ -421,7 +421,7 @@ export default function MenuScanResultModal({
               className="w-full py-3 rounded-[14px] flex items-center justify-center gap-2 text-[14px] font-extrabold active:scale-[0.98] transition-transform"
               style={{
                 background: TU.accent,
-                color: '#001512',
+                color: 'var(--color-text-on-accent, #001512)',
                 fontFamily: TU.display,
                 letterSpacing: -0.1,
                 opacity: saving ? 0.7 : 1,

@@ -33,9 +33,9 @@ const PILL_TONES = {
   warn:    { bg: TT.warnSoft, fg: TT.warnInk, bd: 'transparent' },
   good:    { bg: TT.goodSoft, fg: TT.goodInk, bd: 'transparent' },
   coach:   { bg: TT.coachSoft, fg: TT.coach, bd: 'transparent' },
-  dark:    { bg: TT.text, fg: '#fff', bd: 'transparent' },
+  dark:    { bg: TT.text, fg: TT.onInverse, bd: 'transparent' },
   outline: { bg: 'transparent', fg: TT.textSub, bd: TT.borderSolid },
-  invert:  { bg: '#fff', fg: TT.text, bd: 'transparent' },
+  invert:  { bg: '#fff', fg: '#0B0F12', bd: 'transparent' },
 };
 const PILL_SIZES = {
   s: { padding: '2px 7px', fontSize: 9.5 },
@@ -89,7 +89,7 @@ export function TAvatar({ name = '?', size = 36, idx = 0, src, style = {} }) {
 // ────────────────────────────────────────────────────────────────────
 // TSparkBars — tiny activity bar chart
 // ────────────────────────────────────────────────────────────────────
-export function TSparkBars({ data, w = 80, h = 28, color = TT.accent, track = '#E8E4DB' }) {
+export function TSparkBars({ data, w = 80, h = 28, color = TT.accent, track = 'var(--tt-border-solid)' }) {
   const safe = Array.isArray(data) && data.length ? data : [0];
   const max = Math.max(...safe, 1);
   const bw = w / safe.length;
@@ -102,7 +102,7 @@ export function TSparkBars({ data, w = 80, h = 28, color = TT.accent, track = '#
             x={i * bw + 1} y={h - bh}
             width={bw - 2} height={bh}
             rx={1.5}
-            fill={v === 0 ? track : color}
+            style={{ fill: v === 0 ? track : color }}
             opacity={v === 0 ? 0.4 : 1}
           />
         );
@@ -114,15 +114,15 @@ export function TSparkBars({ data, w = 80, h = 28, color = TT.accent, track = '#
 // ────────────────────────────────────────────────────────────────────
 // TRing — adherence ring with optional label
 // ────────────────────────────────────────────────────────────────────
-export function TRing({ value = 0.75, size = 44, stroke = 5, color = TT.accent, track = '#E8E4DB', label }) {
+export function TRing({ value = 0.75, size = 44, stroke = 5, color = TT.accent, track = 'var(--tt-border-solid)', label }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const v = Math.max(0, Math.min(1, value));
   return (
     <div style={{ position: 'relative', width: size, height: size }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={track} strokeWidth={stroke}/>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color}
+        <circle cx={size/2} cy={size/2} r={r} fill="none" style={{ stroke: track }} strokeWidth={stroke}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" style={{ stroke: color }}
           strokeWidth={stroke} strokeLinecap="round"
           strokeDasharray={`${c * v} ${c}`}/>
       </svg>
@@ -228,7 +228,7 @@ export function TDarkButton({ children, onClick, style = {}, type = 'button', ..
       onClick={onClick}
       style={{
         padding: '10px 14px', borderRadius: 12, border: 'none',
-        background: TT.text, color: '#fff', fontSize: 13, fontWeight: 800,
+        background: TT.text, color: TT.onInverse, fontSize: 13, fontWeight: 800,
         display: 'inline-flex', alignItems: 'center', gap: 6,
         cursor: 'pointer',
         ...style,
@@ -284,7 +284,7 @@ export function TTabPill({ children, active, onClick, count, accent = false, sty
       style={{
         padding: '7px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700,
         background: active ? (accent ? TT.accent : TT.text) : 'transparent',
-        color: active ? (accent ? '#06363B' : '#fff') : TT.textSub,
+        color: active ? (accent ? '#06363B' : TT.onInverse) : TT.textSub,
         border: active ? 'none' : `1px solid ${TT.borderSolid}`,
         whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
         cursor: 'pointer',
@@ -319,7 +319,7 @@ export function TSegmented({ options, value, onChange, style = {} }) {
             style={{
               flex: 1, padding: '8px 4px', borderRadius: 8, textAlign: 'center',
               background: active ? TT.text : 'transparent',
-              color: active ? '#fff' : TT.textSub,
+              color: active ? TT.onInverse : TT.textSub,
               border: 'none', fontSize: 12, fontWeight: 700,
               textTransform: 'capitalize', cursor: 'pointer',
             }}

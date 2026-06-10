@@ -65,26 +65,53 @@ const GymPulse = () => {
       const gymId = profile.gym_id;
       const { start, end } = todayRange();
 
-      // Fetch today's workout sessions for this gym via a join on profiles
-      const { data: sessions } = await supabase
-        .from('workout_sessions')
-        .select('profile_id, status, total_volume_lbs, completed_at, started_at, profiles!inner(gym_id, is_staff, full_name, avatar_url, avatar_type, avatar_value)')
-        .eq('profiles.gym_id', gymId)
-        .eq('profiles.is_staff', false) // staff who train don't show in who's-here
-        .gte('started_at', start)
-        .lt('started_at', end);
-
-      // Fetch today's check-ins for this gym
-      const { data: checkIns } = await supabase
-        .from('check_ins')
-        .select('profile_id, checked_in_at, profiles!inner(gym_id, is_staff, full_name, avatar_url, avatar_type, avatar_value)')
-        .eq('profiles.gym_id', gymId)
-        .eq('profiles.is_staff', false) // staff check-ins don't show in who's-here
-        .gte('checked_in_at', start)
-        .lt('checked_in_at', end);
-
-      const allSessions = sessions || [];
-      const allCheckIns = checkIns || [];
+      // SECURITY DEFINER RPC (migration 0523). Members can't read other
+      // members' workout_sessions/check_ins (own-rows-only, 0002) nor their
+      // profiles rows (PII protection, 0289) — so the old profiles!inner
+      // joins returned only the viewer's own activity and every member saw
+      // "1 trained today: me". The RPC returns today's gym-wide activity
+      // with safe display fields only; staff + leaderboard-hidden members
+      // are excluded server-side.
+      let allSessions = [];
+      let allCheckIns = [];
+      const { data: pulse, error: pulseErr } = await supabase.rpc('get_gym_pulse', {
+        p_start: start,
+        p_end: end,
+      });
+      if (!pulseErr && pulse) {
+        allSessions = pulse.sessions || [];
+        allCheckIns = pulse.check_ins || [];
+      } else {
+        // Legacy fallback (DB without 0523 yet): direct joins. Admins still
+        // get full data; members see only their own rows — exactly the
+        // pre-RPC behavior, so shipping this before the migration is safe.
+        const [{ data: sessions }, { data: checkIns }] = await Promise.all([
+          supabase
+            .from('workout_sessions')
+            .select('profile_id, status, total_volume_lbs, completed_at, started_at, profiles!inner(gym_id, is_staff, full_name, avatar_url, avatar_type, avatar_value)')
+            .eq('profiles.gym_id', gymId)
+            .eq('profiles.is_staff', false)
+            .gte('started_at', start)
+            .lt('started_at', end),
+          supabase
+            .from('check_ins')
+            .select('profile_id, checked_in_at, profiles!inner(gym_id, is_staff, full_name, avatar_url, avatar_type, avatar_value)')
+            .eq('profiles.gym_id', gymId)
+            .eq('profiles.is_staff', false)
+            .gte('checked_in_at', start)
+            .lt('checked_in_at', end),
+        ]);
+        // Flatten to the RPC row shape so the aggregation below has ONE path.
+        const flat = (row) => ({
+          ...row,
+          full_name:    row.profiles?.full_name,
+          avatar_url:   row.profiles?.avatar_url,
+          avatar_type:  row.profiles?.avatar_type,
+          avatar_value: row.profiles?.avatar_value,
+        });
+        allSessions = (sessions || []).map(flat);
+        allCheckIns = (checkIns || []).map(flat);
+      }
 
       if (allSessions.length === 0 && allCheckIns.length === 0) {
         setLoading(false);
@@ -117,20 +144,20 @@ const GymPulse = () => {
       const combined = [
         ...allSessions.map(s => ({
           id: s.profile_id,
-          full_name: s.profiles?.full_name,
-          avatar_url: s.profiles?.avatar_url,
-          avatar_type: s.profiles?.avatar_type,
-          avatar_value: s.profiles?.avatar_value,
+          full_name: s.full_name,
+          avatar_url: s.avatar_url,
+          avatar_type: s.avatar_type,
+          avatar_value: s.avatar_value,
           sortDate: s.completed_at || s.started_at || '1970-01-01',
           volume: s.total_volume_lbs,
           status: s.status,
         })),
         ...allCheckIns.map(c => ({
           id: c.profile_id,
-          full_name: c.profiles?.full_name,
-          avatar_url: c.profiles?.avatar_url,
-          avatar_type: c.profiles?.avatar_type,
-          avatar_value: c.profiles?.avatar_value,
+          full_name: c.full_name,
+          avatar_url: c.avatar_url,
+          avatar_type: c.avatar_type,
+          avatar_value: c.avatar_value,
           sortDate: c.checked_in_at,
           volume: null,
           status: activeProfileIds.has(c.profile_id) ? 'checked_in' : 'completed',
@@ -152,10 +179,10 @@ const GymPulse = () => {
       for (const s of allSessions) {
         sessionMap.set(s.profile_id, {
           id: s.profile_id,
-          name: s.profiles?.full_name || t('dashboard.memberFallback', 'Member'),
-          avatar: s.profiles?.avatar_url,
-          avatar_type: s.profiles?.avatar_type,
-          avatar_value: s.profiles?.avatar_value,
+          name: s.full_name || t('dashboard.memberFallback', 'Member'),
+          avatar: s.avatar_url,
+          avatar_type: s.avatar_type,
+          avatar_value: s.avatar_value,
           volume: s.total_volume_lbs,
           status: s.status,
           completedAt: s.completed_at,
@@ -165,10 +192,10 @@ const GymPulse = () => {
         if (!sessionMap.has(c.profile_id)) {
           sessionMap.set(c.profile_id, {
             id: c.profile_id,
-            name: c.profiles?.full_name || 'Member',
-            avatar: c.profiles?.avatar_url,
-            avatar_type: c.profiles?.avatar_type,
-            avatar_value: c.profiles?.avatar_value,
+            name: c.full_name || 'Member',
+            avatar: c.avatar_url,
+            avatar_type: c.avatar_type,
+            avatar_value: c.avatar_value,
             volume: null,
             status: c.checked_in_at >= ninetyMinAgo ? 'checked_in' : 'completed',
             completedAt: c.checked_in_at,

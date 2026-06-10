@@ -69,14 +69,14 @@ export default function AdminPrintCards() {
               onClick={() => pendingIds.length && setPreviewIds(pendingIds)}
               disabled={pendingIds.length === 0}
               className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12.5px] font-bold transition active:scale-[0.98] disabled:opacity-40"
-              style={{ background: 'var(--color-admin-text)', color: '#fff' }}
+              style={{ background: 'var(--color-admin-text)', color: 'var(--color-admin-panel)' }}
             >
               <Printer size={14} />
               {t('admin.printCards.printSheetBtn', { defaultValue: 'Print sheet' })}
               {pendingIds.length > 0 && (
                 <span
                   className="admin-mono"
-                  style={{ fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: 'rgba(255,255,255,0.18)', color: '#fff' }}
+                  style={{ fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: 'color-mix(in srgb, var(--color-admin-panel) 22%, transparent)', color: 'var(--color-admin-panel)' }}
                 >
                   {pendingIds.length}
                 </span>

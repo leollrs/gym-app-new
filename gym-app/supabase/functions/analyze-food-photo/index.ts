@@ -265,25 +265,13 @@ serve(async (req) => {
       }
       // ── END AI CONSENT CHECK ───────────────────────────────────
 
-      const gymId = profile?.gym_id;
-      if (gymId) {
-        const { data: cap } = await supabase
-          .from('gym_usage_caps').select('*').eq('gym_id', gymId).maybeSingle();
-        const limit = cap?.ai_vision_monthly_cap ?? 5000;
-        const { data: ok } = await supabase.rpc('check_and_increment_gym_usage', {
-          p_gym_id: gymId,
-          p_endpoint: 'analyze-food-photo',
-          p_profile_id: user.id,
-          p_window: '30 days',
-          p_limit: limit,
-        });
-        if (!ok) {
-          return new Response(
-            JSON.stringify({ error: 'gym_monthly_cap_exceeded' }),
-            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-      }
+      // ── GYM MONTHLY CAP CHECK — DISABLED ─────────────────────────
+      // The `check_and_increment_gym_usage` RPC is buggy: it ignores p_limit and
+      // returns !ok on the very FIRST request, fail-closing every call to a 429
+      // ("gym_monthly_cap_exceeded") even at zero real usage — the same issue
+      // already disabled in send-sms / send-admin-email. Cost stays bounded by
+      // the per-user 15/hour AI rate limit below. Re-enable once the RPC is fixed.
+      // ── END (DISABLED) ──────────────────────────────────────────
     }
     // ── END GYM USAGE CAP CHECK ─────────────────────────────────
 

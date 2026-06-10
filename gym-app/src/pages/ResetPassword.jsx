@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -22,30 +22,68 @@ const ResetPassword = () => {
   const { t } = useTranslation(['auth', 'common']);
 
   const [recoveryReady, setRecoveryReady] = useState(false);
+  const [linkInvalid, setLinkInvalid] = useState(false);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const readyRef = useRef(false);
 
   useEffect(() => {
-    // Supabase auto-parses the recovery token from the URL hash and emits
-    // PASSWORD_RECOVERY. We mark the form ready as soon as we see the event,
-    // OR if a session already exists (page loaded after the SDK initialized).
+    // The global supabase client pins detectSessionInUrl:false (required so
+    // Capacitor deep links aren't auto-parsed), which means the SDK will NEVER
+    // read the recovery tokens out of the email link's URL hash — the form
+    // would wait on PASSWORD_RECOVERY forever. Parse the hash ourselves and
+    // install the session explicitly.
     let active = true;
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        if (active && session) setRecoveryReady(true);
-      })
-      .catch(() => {
-        // Transport failure — the auth-state listener below will still fire
-        // PASSWORD_RECOVERY when Supabase parses the URL hash.
-      });
+    const markReady = () => { readyRef.current = true; setRecoveryReady(true); };
+
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const accessToken  = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const linkError    = params.get('error_description') || params.get('error_code') || params.get('error');
+
+    if (accessToken && refreshToken) {
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(({ error: sessErr }) => {
+          if (!active) return;
+          if (sessErr) {
+            setLinkInvalid(true);
+          } else {
+            markReady();
+            // Drop the tokens from the address bar / browser history.
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          }
+        })
+        .catch(() => { if (active) setLinkInvalid(true); });
+    } else if (linkError) {
+      // Supabase's verify endpoint redirects used/expired links with
+      // #error=access_denied&error_code=otp_expired&error_description=…
+      setLinkInvalid(true);
+    } else {
+      // No tokens in the URL (reload after the hash was consumed, or a direct
+      // visit): fall back to an existing session.
+      supabase.auth.getSession()
+        .then(({ data: { session } }) => { if (active && session) markReady(); })
+        .catch(() => { /* timeout below handles it */ });
+    }
+
+    // Belt-and-braces: still honor the SDK event in case detectSessionInUrl
+    // is ever flipped back on.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') setRecoveryReady(true);
+      if (event === 'PASSWORD_RECOVERY') markReady();
     });
-    return () => { active = false; subscription.unsubscribe(); };
+
+    // Never strand the user on "Verifying…" — if nothing produced a session
+    // within 8s (direct visit, dead link, hung request), surface the
+    // invalid-link state with a way back to login.
+    const timeout = setTimeout(() => {
+      if (active && !readyRef.current) setLinkInvalid(true);
+    }, 8000);
+
+    return () => { active = false; clearTimeout(timeout); subscription.unsubscribe(); };
   }, []);
 
   const handleSubmit = async (e) => {
@@ -133,6 +171,28 @@ const ResetPassword = () => {
             </div>
           )}
 
+          {linkInvalid && !recoveryReady && !success ? (
+            <>
+              <div role="alert" style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                background: '#FDECE7', border: `1px solid #FF5A2E33`,
+                borderRadius: 14, padding: '12px 14px', marginBottom: 18,
+              }}>
+                <AlertCircle size={15} color="#C13B14" />
+                <p style={{ fontSize: 13, color: '#C13B14', margin: 0 }}>
+                  {t('resetLinkInvalid', 'This reset link is invalid or has expired. Request a new one from the sign-in screen.')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/login', { replace: true })}
+                style={primaryBtn(false)}
+              >
+                {t('backToLogin', 'Back to login')}
+              </button>
+            </>
+          ) : (
+          <>
           {!recoveryReady && !success && (
             <p style={{ fontSize: 13, color: OB.mute, marginBottom: 18 }}>
               {t('verifyingResetLink', 'Verifying your reset link…')}
@@ -195,6 +255,20 @@ const ResetPassword = () => {
               {loading ? t('saving', 'Saving…') : t('updatePassword', 'Update password')}
             </button>
           </form>
+
+          <button
+            type="button"
+            onClick={() => navigate('/login', { replace: true })}
+            style={{
+              display: 'block', margin: '18px auto 0', background: 'transparent',
+              border: 'none', cursor: 'pointer', fontFamily: FONT_BODY,
+              fontSize: 13, fontWeight: 600, color: OB.sub, textDecoration: 'underline',
+            }}
+          >
+            {t('backToLogin', 'Back to login')}
+          </button>
+          </>
+          )}
         </div>
       </div>
     </main>

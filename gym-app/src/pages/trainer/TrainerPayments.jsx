@@ -159,7 +159,7 @@ export default function TrainerPayments() {
           return (
             <button key={o.k} type="button" onClick={() => setMode(o.k)}
               style={{ flex: 1, padding: '9px 12px', borderRadius: 12, fontSize: 13, fontWeight: 800, cursor: 'pointer',
-                border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? '#fff' : TT.textSub }}>
+                border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? TT.onInverse : TT.textSub }}>
               {o.l}
             </button>
           );
@@ -224,7 +224,7 @@ export default function TrainerPayments() {
                 return (
                   <button key={tab.key} type="button" onClick={() => setFilter(tab.key)}
                     style={{ padding: '7px 13px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                      border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? '#fff' : TT.textSub,
+                      border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.text : TT.surface, color: on ? TT.onInverse : TT.textSub,
                       display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     {tab.label}<span style={{ fontSize: 11, fontWeight: 800, opacity: 0.7 }}>{tab.count}</span>
                   </button>
@@ -305,7 +305,7 @@ export default function TrainerPayments() {
                               {METHODS.map(m => {
                                 const on = editMethod === m;
                                 return <button key={m} onClick={() => setEditMethod(m)}
-                                  style={{ padding: '6px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.accent : TT.surface2, color: on ? '#fff' : TT.textSub }}>{methodLabel(m)}</button>;
+                                  style={{ padding: '6px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.accent : TT.surface2, color: on ? TT.onInverse : TT.textSub }}>{methodLabel(m)}</button>;
                               })}
                             </div>
                             <input value={editNote} onChange={e => setEditNote(e.target.value)} placeholder={t('trainerPayment.notePlaceholder', 'Note (optional)')}

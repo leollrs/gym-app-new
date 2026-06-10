@@ -26,6 +26,7 @@ import AppTour from './components/AppTour';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import posthogClient from 'posthog-js';
 // Onboarding is lazy: most launches are returning users who skip it. It
 // transitively pulls ~280 KB of meal data + a 100 KB exercise library; keeping
 // it out of the boot bundle is the single biggest TTI win.
@@ -354,8 +355,53 @@ const GymDeactivatedScreen = () => {
 
 // ── MEMBER BLOCKED SCREEN (individual deactivation/ban) ───
 const MemberBlockedScreen = () => {
-  const { signOut, memberBlocked, gymName } = useAuth();
+  const { signOut, memberBlocked, gymName, user, refreshProfile } = useAuth();
   const { t } = useTranslation('pages');
+
+  // SELF-SERVE RESUME: the cancellation-save flow lets a member "pause"
+  // their own membership (MemberSettings writes membership_status='frozen'
+  // + membership_status_reason='member_self_paused'). Without this, that
+  // retention offer instantly locked them out behind a front-desk-only
+  // screen — the opposite of "come back anytime". Admin-initiated freezes
+  // (different reason) still require the front desk.
+  const [selfPaused, setSelfPaused] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  useEffect(() => {
+    if (memberBlocked !== 'frozen' || !user?.id) return undefined;
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('membership_status_reason')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data?.membership_status_reason === 'member_self_paused') {
+          setSelfPaused(true);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [memberBlocked, user?.id]);
+
+  const handleResume = async () => {
+    if (resuming || !user?.id) return;
+    setResuming(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          membership_status: 'active',
+          membership_status_updated_at: new Date().toISOString(),
+          membership_status_reason: 'member_self_resumed',
+        })
+        .eq('id', user.id);
+      if (!error) {
+        posthogClient?.capture('membership_resumed_by_member');
+        await refreshProfile?.();
+      }
+    } finally {
+      setResuming(false);
+    }
+  };
   // 3 variants: banned (permanent), deactivated (revoked), frozen (paused).
   // Each gets its own copy + tone so the member knows whether this is
   // permanent (banned/deactivated) or a hold they can resolve in person (frozen).
@@ -391,6 +437,18 @@ const MemberBlockedScreen = () => {
         <p className="text-[13px] text-[#6B7280] mb-8">
           {t(`blocking.${variant.detailKey}`, { gymName: gymName || '' })}
         </p>
+        {memberBlocked === 'frozen' && selfPaused && (
+          <button
+            onClick={handleResume}
+            disabled={resuming}
+            className="block w-full max-w-[260px] mx-auto mb-3 rounded-xl px-6 py-3 text-[13px] font-semibold transition-colors disabled:opacity-60"
+            style={{ background: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent, #000)' }}
+          >
+            {resuming
+              ? t('blocking.resuming', 'Reactivating…')
+              : t('blocking.resumeMembership', 'Reactivate my membership')}
+          </button>
+        )}
         <button
           onClick={signOut}
           className="bg-white/6 hover:bg-white/10 border border-white/8 text-[#E5E7EB] rounded-xl px-6 py-3 text-[13px] font-medium transition-colors"
@@ -613,23 +671,25 @@ const ProfileUnavailableScreen = () => {
     }
   }, [retrying, refreshProfile]);
 
+  // Auto-reload when we come back online — the next boot will hydrate the
+  // profile from a fresh getSession + fetchProfile. safeReload uses navigate(0)
+  // on Capacitor to avoid the WebView teardown that can leave a black screen
+  // when the service worker isn't yet in scope. Declared BEFORE the grace
+  // early-return below: hooks must run on every render, or the false→true
+  // flip of graceElapsed changes the hook count and React throws.
+  useEffect(() => {
+    if (!offline) return undefined;
+    const onOnline = () => safeReload();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [offline]);
+
   // Still within the grace window and online → the profile fetch is almost
   // certainly just in flight. Show the same neutral splash the rest of the
   // boot uses, NOT the error card. This component unmounts the instant the
   // profile arrives (ProtectedRoute re-renders children), so the user never
   // sees this on a normal login.
   if (!graceElapsed) return <LoadingScreen />;
-
-  // Auto-reload when we come back online — the next boot will hydrate the
-  // profile from a fresh getSession + fetchProfile. safeReload uses navigate(0)
-  // on Capacitor to avoid the WebView teardown that can leave a black screen
-  // when the service worker isn't yet in scope.
-  useEffect(() => {
-    if (!offline) return;
-    const onOnline = () => safeReload();
-    window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
-  }, [offline]);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--color-bg-primary, #05070B)' }}>
@@ -1326,7 +1386,8 @@ function App() {
       const siriRoutes = {
         'start-workout': '/record',
         'check-in':      '/checkin',
-        'gym-card':      '/profile?showQR=1',
+        // /checkin owns the member QR display — Profile never implemented showQR
+        'gym-card':      '/checkin',
         'streak':        '/profile',
         'log-food':      '/progress?tab=nutrition',
       };

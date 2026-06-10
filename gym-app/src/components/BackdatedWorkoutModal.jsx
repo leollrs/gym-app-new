@@ -402,8 +402,16 @@ export default function BackdatedWorkoutModal({ open, onClose, onSaved, routines
       onSaved?.(data);
       onClose?.();
     } catch (err) {
+      // Never render raw DB errors to members — log for diagnosis, show a
+      // human message. Server rejections carry a PG/PostgREST code; anything
+      // else is network-ish ("TypeError: Load failed").
+      console.error('[backdated workout] save failed:', err);
+      const code = String(err?.code || '').trim();
+      const isServerReject = /^[0-9A-Z]{5}$/.test(code) || /^PGRST/i.test(code);
       // eslint-disable-next-line no-alert
-      alert(err.message || t('backdatedWorkout.saveFailed', { defaultValue: 'Failed to save' }));
+      alert(isServerReject
+        ? t('backdatedWorkout.saveFailed', { defaultValue: 'Failed to save' })
+        : t('progress.body.connectionError', 'No connection — try again when you’re back online.'));
     } finally {
       setSubmitting(false);
     }
@@ -801,7 +809,7 @@ export default function BackdatedWorkoutModal({ open, onClose, onSaved, routines
               width: '100%', padding: '14px',
               borderRadius: 999, border: 'none',
               background: 'var(--color-accent)',
-              color: '#001512',
+              color: 'var(--color-text-on-accent, #001512)',
               fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 14, letterSpacing: 0.4,
               opacity: !canSave ? 0.45 : 1,
               boxShadow: '0 6px 18px color-mix(in srgb, var(--color-accent) 35%, transparent)',

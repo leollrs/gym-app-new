@@ -216,7 +216,7 @@ const HealthSync = () => {
                   </p>
                   <button type="button" onClick={handleConnect} disabled={connecting}
                     className="w-full py-3 rounded-xl text-[14px] font-bold transition-colors disabled:opacity-50"
-                    style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
+                    style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}>
                     {connecting ? t('healthSync.connecting') : t('healthSync.connect')}
                   </button>
                 </>

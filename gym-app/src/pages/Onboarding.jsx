@@ -358,7 +358,7 @@ const OBStepHead = ({ label, step, total, title, sub, onBack, rightAction, t }) 
           {t ? t('stepHead.lets', "Let's set you up") : "Let's set you up"}
         </div>
         <div style={{ fontSize: 12, color: OB.sub }}>
-          {t ? t('stepHead.takes', 'Takes 2 minutes · you can edit later') : 'Takes 2 minutes · you can edit later'}
+          {t ? t('stepHead.takes', 'A few quick steps · you can edit later') : 'A few quick steps · you can edit later'}
         </div>
       </div>
     </div>
@@ -424,6 +424,19 @@ const TIME_PREFERENCES = [
   { value: 'afternoon', key: 'afternoon', subKey: 'afternoonSub', icon: Sun },
   { value: 'evening',   key: 'evening',   subKey: 'eveningSub',   icon: Moon },
 ];
+
+// Whole-years age from an ISO date string (profiles.date_of_birth, collected
+// at signup). Returns null when missing/invalid so callers can fall back.
+function ageFromDobString(isoDate) {
+  if (!isoDate) return null;
+  const dob = new Date(isoDate);
+  if (Number.isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age >= 0 && age < 130 ? age : null;
+}
 
 // Returns a pre-selected set of day keys based on training frequency.
 function getDefaultDays(freq, closedDays) {
@@ -531,7 +544,7 @@ const Onboarding = () => {
 
     supabase
       .from('profiles')
-      .select('fitness_level, primary_goal, training_days_per_week, height_inches, initial_weight_lbs, age, sex')
+      .select('fitness_level, primary_goal, training_days_per_week, height_inches, initial_weight_lbs, age, sex, date_of_birth')
       .eq('id', user.id)
       .maybeSingle()
       .then(({ data: row }) => {
@@ -558,6 +571,35 @@ const Onboarding = () => {
       });
   }, [user?.id, savedDraft]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Age from the signup date of birth — its OWN effect, NOT part of the
+  // prefill above: that one bails whenever a saved draft exists, which is
+  // exactly the common case (backgrounded mid-flow, retried onboarding), so
+  // the age never auto-filled. DOB is authoritative and the input locks when
+  // derived, so it's safe to override whatever the draft carried.
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let cancelled = false;
+    const apply = (dobStr) => {
+      const dobAge = ageFromDobString(dobStr);
+      if (dobAge == null || dobAge < 13 || cancelled) return;
+      setAgeFromDob(true);
+      setData(d => (d.age === String(dobAge) ? d : { ...d, age: String(dobAge) }));
+    };
+    // The auth context profile usually already carries date_of_birth — use it
+    // and skip the round-trip; otherwise fetch the one column.
+    if (profile?.date_of_birth) {
+      apply(profile.date_of_birth);
+      return undefined;
+    }
+    supabase
+      .from('profiles')
+      .select('date_of_birth')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data: row }) => apply(row?.date_of_birth));
+    return () => { cancelled = true; };
+  }, [user?.id, profile?.date_of_birth]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Guard: wait for i18n translations to load before rendering
   if (!i18nReady) return null;
 
@@ -571,6 +613,22 @@ const Onboarding = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const [onboardingDone, setOnboardingDone] = useState(false);
+  // Age is derived from profiles.date_of_birth (mandatory at signup) — when
+  // present the age input is locked to the computed value.
+  const [ageFromDob, setAgeFromDob] = useState(false);
+  // Finish failed because the account has no gym — the error box gets an
+  // "enter invite code" CTA, and inviteReturnStep jumps the user straight
+  // back here after a successful claim instead of replaying all 10 steps.
+  const [gymMissing, setGymMissing] = useState(false);
+  const [inviteReturnStep, setInviteReturnStep] = useState(null);
+  // Live workout-plan preload indicator — powers the "your plan is being
+  // built" teaser on the steps between Schedule and Finish.
+  const [planTeaserOn, setPlanTeaserOn] = useState(false);
+  // Squad-step referral code validation (lookup_referral_code, same flow as
+  // signup). 'idle' | 'checking' | 'valid' | 'invalid'.
+  const [refStatus, setRefStatus] = useState('idle');
+  const [refData, setRefData] = useState(null);
+  const refTimerRef = useRef(null);
   // MEALS data — lazy-loaded on mount so the meal preview / allergy step has it
   // ready by the time the user reaches them, but the boot bundle stays slim.
   const [MEALS, setMEALSState] = useState(() => mealsCache || []);
@@ -785,6 +843,7 @@ const Onboarding = () => {
     if (planCacheRef.current.key === key) return; // already preloading / loaded
 
     // Invalidate + kick off new background fetch
+    setPlanTeaserOn(true); // surfaces the "plan in progress" teaser chip
     const snapshot = { ...buildPlanSnapshot(), _preloaded: true };
     const promise = runGeneratePlanCore(snapshot)
       .then(result => {
@@ -939,18 +998,57 @@ const Onboarding = () => {
         return;
       }
       setInviteStatus('success');
+      setGymMissing(false);
       await refreshProfile();
 
       if (result?.has_referral && result?.referred_reward_id) {
         setReferredRewardId(result.referred_reward_id);
         setTimeout(() => setShowRewardPicker(true), 1000);
       } else {
-        setTimeout(() => setStep(1), 1500);
+        // inviteReturnStep: the user came here from the no-gym finish error —
+        // jump straight back to where they were instead of replaying the flow.
+        setTimeout(() => {
+          setStep(inviteReturnStep ?? 1);
+          setInviteReturnStep(null);
+        }, 1500);
       }
     } catch (err) {
       setInviteStatus('error');
       setInviteError(err.message || t('inviteCode.errors.invalidCode'));
     }
+  };
+
+  // ── Squad-step referral code (REAL pipeline — lookup_referral_code to
+  // validate, register_referral at finish; mirrors Signup.jsx) ──
+  const validateObReferral = async (code) => {
+    const trimmed = (code || '').trim().toUpperCase();
+    if (!trimmed) { setRefStatus('idle'); setRefData(null); return; }
+    setRefStatus('checking');
+    try {
+      const { data: lookup, error: lookErr } = await supabase.rpc('lookup_referral_code', { p_code: trimmed });
+      const row = Array.isArray(lookup) ? lookup[0] : lookup;
+      if (lookErr || !row) { setRefStatus('invalid'); setRefData(null); return; }
+      setRefStatus('valid');
+      setRefData({ referrer_name: row.referrer_name || 'Member' });
+    } catch {
+      setRefStatus('invalid');
+      setRefData(null);
+    }
+  };
+
+  const handleObReferralChange = (raw) => {
+    // REF-XXXX-XXXX auto-format (same as signup): strip non-alphanumerics,
+    // uppercase, dashes at 3 and 7.
+    const cleaned = raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 11);
+    let formatted;
+    if (cleaned.length <= 3) formatted = cleaned;
+    else if (cleaned.length <= 7) formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+    else formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
+    set('workout_buddy_username', formatted);
+    if (refTimerRef.current) clearTimeout(refTimerRef.current);
+    if (!formatted.trim()) { setRefStatus('idle'); setRefData(null); return; }
+    setRefStatus('checking');
+    refTimerRef.current = setTimeout(() => validateObReferral(formatted), 600);
   };
 
   const toggleEquipment = (val) =>
@@ -1088,6 +1186,8 @@ const Onboarding = () => {
 
   const handleConsentDecline = () => setConsentDeclined(true);
   const handleConsentDeclineContinue = () => {
+    // Record the decline (it used to vanish — neither DB nor analytics knew).
+    posthog?.capture('onboarding_consent_declined');
     setConsentDeclined(false);
     setStep(s => s + 1);
   };
@@ -1110,20 +1210,28 @@ const Onboarding = () => {
     if (step === 3) return !!data.primary_goal;
     if (step === 4) return data.available_equipment.length > 0;
     if (step === 5) return data.preferred_training_days.length > 0 && !!data.preferred_training_time;
-    if (step === 8) return !isAgeUnder13;
+    // Sex is required — macros and the overload engine are wrong without it
+    // (we used to silently default to 'male', which broke calorie math for
+    // anyone who skipped). Age stays optional but must pass the COPPA floor.
+    if (step === 8) return !isAgeUnder13 && !!data.sex;
     return true;
   };
 
   const handleFinish = async () => {
     if (saving) return; // idempotency: ignore double-tap
     setError('');
+    setGymMissing(false);
     setSaving(true);
     try {
       const { data: profileRow } = await supabase
         .from('profiles').select('gym_id').eq('id', user.id).single();
       const gymId = profileRow?.gym_id;
       if (!gymId) {
-        throw new Error(t('onboarding.gymRequired', { defaultValue: 'A gym is required to finish onboarding. Please enter an invite code.' }));
+        // Not an exception — a recoverable state. The error box renders an
+        // "enter invite code" button that jumps to step 0 and back.
+        setError(t('onboarding.gymRequired', { defaultValue: 'A gym is required to finish onboarding. Please enter an invite code.' }));
+        setGymMissing(true);
+        return;
       }
 
       const injuriesNotes = data.injury_areas.length > 0
@@ -1140,7 +1248,9 @@ const Onboarding = () => {
           training_days_per_week: data.training_days_per_week,
           available_equipment:    data.available_equipment,
           injuries_notes:         injuriesNotes,
-          sex:                    data.sex || 'male',
+          // Required by canAdvance(step 8) — no silent 'male' default anymore;
+          // skipped-sex used to corrupt macro math for everyone who skipped.
+          sex:                    data.sex,
           // Defensive COPPA gate: never persist an age below 13 even if the
           // input somehow gets past the canAdvance() check.
           age:                    (() => {
@@ -1159,7 +1269,7 @@ const Onboarding = () => {
 
       if (onboardingErr) throw onboardingErr;
 
-      try { localStorage.setItem('tugympr_user_sex', data.sex || 'male'); } catch {}
+      try { localStorage.setItem('tugympr_user_sex', data.sex); } catch {}
       try { localStorage.setItem('tugympr_workout_duration', String(data.workout_duration_min || 60)); } catch {}
 
       // Normalize phone: strip non-digits, prepend country code prefix.
@@ -1174,7 +1284,6 @@ const Onboarding = () => {
       const profileUpdate = {
         preferred_training_days:  data.preferred_training_days,
         preferred_training_time:  data.preferred_training_time,
-        workout_buddy_username:   data.workout_buddy_username?.trim() || null,
         preferred_language:       data.language,
         phone_number:             normalizedPhone,
         metric_units:             !!data.metric_units,
@@ -1186,6 +1295,26 @@ const Onboarding = () => {
         .eq('id', user.id);
 
       if (profileErr) throw profileErr;
+
+      // Claim the referral code entered on the Squad step through the REAL
+      // referral pipeline (same RPC signup uses) — this used to be saved to
+      // the dead profiles.workout_buddy_username column, which nothing read,
+      // while the UI promised "you'll both earn rewards". Best-effort: a
+      // failed claim must not block finishing onboarding.
+      const obRefCode = (data.workout_buddy_username || '').trim().toUpperCase();
+      if (refStatus === 'valid' && obRefCode) {
+        try {
+          const { data: refResult, error: refErr } = await supabase.rpc('register_referral', {
+            p_code: obRefCode,
+            p_referred_id: user.id,
+          });
+          if (refErr || !refResult?.success) {
+            console.warn('[onboarding] referral claim failed:', refErr?.message || refResult);
+          }
+        } catch (refEx) {
+          console.warn('[onboarding] referral claim failed:', refEx?.message);
+        }
+      }
 
       if (data.initial_weight_lbs) {
         // Enhancement seed data (feeds the overload engine + macro calc). The
@@ -1236,7 +1365,15 @@ const Onboarding = () => {
       setOnboardingDone(true);
       setStep(11);
     } catch (err) {
-      setError(err.message || t('common:somethingWentWrong'));
+      // Never render raw DB errors ("permission denied for function …") to a
+      // member — log for diagnosis, show a human message. Server rejections
+      // carry a PG/PostgREST code; anything else is network-ish.
+      console.warn('[onboarding] finish failed:', err);
+      const code = String(err?.code || '').trim();
+      const isServerReject = /^[0-9A-Z]{5}$/.test(code) || /^PGRST/i.test(code);
+      setError(isServerReject
+        ? t('finishError', "We couldn't save your setup. Please try again — your answers are safe.")
+        : t('finishOffline', 'No connection — check your internet and try again. Your answers are safe.'));
     } finally {
       setSaving(false);
     }
@@ -1846,6 +1983,26 @@ const Onboarding = () => {
           paddingTop: 8,
         }}>
 
+        {/* Value teaser: the plan started preloading after Schedule — tell the
+            user something is already being built for them while they answer
+            the remaining setup questions. */}
+        {planTeaserOn && step >= 7 && step <= 9 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 12px', borderRadius: 999,
+            background: OB.greenSoft, width: 'fit-content',
+            marginBottom: 14,
+          }}>
+            <Sparkles size={13} color={OB.green} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#2d5a2d' }}>
+              {t('planTeaser', {
+                defaultValue: 'Your {{days}}-day plan is already being built',
+                days: data.training_days_per_week,
+              })}
+            </span>
+          </div>
+        )}
+
         {/* ══════════════════════════════════════════════════════
             STEP 0 · INVITE CODE
             ══════════════════════════════════════════════════════ */}
@@ -1890,8 +2047,8 @@ const Onboarding = () => {
               <RewardPicker
                 rewardId={referredRewardId}
                 gymId={profile?.gym_id}
-                onChosen={() => { setShowRewardPicker(false); setTimeout(() => setStep(1), 800); }}
-                onSkip={() => { setShowRewardPicker(false); setStep(1); }}
+                onChosen={() => { setShowRewardPicker(false); setTimeout(() => { setStep(inviteReturnStep ?? 1); setInviteReturnStep(null); }, 800); }}
+                onSkip={() => { setShowRewardPicker(false); setStep(inviteReturnStep ?? 1); setInviteReturnStep(null); }}
                 className="w-full"
               />
             )}
@@ -1926,12 +2083,14 @@ const Onboarding = () => {
             ══════════════════════════════════════════════════════ */}
         {step === 1 && (
           <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* No unit claims here — language ≠ units. Units are chosen at the
+                Body step (and PR lifts in lb regardless of language). */}
             <OBOption
               tall
               selected={data.language === 'en'}
               onClick={() => selectLanguage('en')}
               title="English"
-              sub="United States · Imperial units"
+              sub="United States"
               icon={<span style={{ fontSize: 24 }}>🇺🇸</span>}
               iconBg={OB.surface2}
             />
@@ -1940,7 +2099,7 @@ const Onboarding = () => {
               selected={data.language === 'es'}
               onClick={() => selectLanguage('es')}
               title="Español"
-              sub="Puerto Rico · Unidades métricas"
+              sub="Puerto Rico"
               icon={<span style={{ fontSize: 24 }}>🇵🇷</span>}
               iconBg={OB.surface2}
             />
@@ -1978,11 +2137,36 @@ const Onboarding = () => {
                   background: OB.surface, borderRadius: 18, padding: 18,
                   border: `1px solid ${OB.line}`, boxShadow: OB.shadow,
                 }}>
-                  <div style={{
-                    fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 14,
-                    color: OB.ink, letterSpacing: -0.2,
-                  }}>
-                    {t('fitnessLevel.maxes.title')} <span style={{ color: OB.sub, fontWeight: 500 }}>· {t('common:optional')}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{
+                      fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 14,
+                      color: OB.ink, letterSpacing: -0.2,
+                    }}>
+                      {t('fitnessLevel.maxes.title')} <span style={{ color: OB.sub, fontWeight: 500 }}>· {t('common:optional')}</span>
+                    </div>
+                    {/* lb/kg — same metric_units the Body step uses, so the
+                        choice carries through the whole flow. Stored lb. */}
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      {[{ v: false, l: 'lb' }, { v: true, l: 'kg' }].map(u => {
+                        const sel = !!data.metric_units === u.v;
+                        return (
+                          <button
+                            key={u.l}
+                            type="button"
+                            onClick={() => set('metric_units', u.v)}
+                            aria-pressed={sel}
+                            style={{
+                              height: 26, padding: '0 10px', borderRadius: 999,
+                              border: `1.5px solid ${sel ? OB.teal : OB.lineStrong}`,
+                              background: sel ? OB.teal : 'transparent',
+                              color: sel ? '#0A2A2A' : OB.sub,
+                              fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 11,
+                              cursor: 'pointer',
+                            }}
+                          >{u.l}</button>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div style={{ fontSize: 12, color: OB.sub, marginTop: 3, marginBottom: 14 }}>
                     {t('fitnessLevel.maxes.subtitle')}
@@ -2009,8 +2193,19 @@ const Onboarding = () => {
                             max="1500"
                             placeholder="—"
                             aria-label={lift.label}
-                            value={data.known_maxes[lift.id]}
-                            onChange={e => setMax(lift.id, e.target.value)}
+                            value={
+                              data.metric_units
+                                ? (data.known_maxes[lift.id]
+                                    ? (parseFloat(data.known_maxes[lift.id]) * 0.453592).toFixed(1)
+                                    : '')
+                                : data.known_maxes[lift.id]
+                            }
+                            onChange={e => {
+                              const v = e.target.value;
+                              // Canonical store is lb (personal_records.weight_lbs)
+                              if (data.metric_units) setMax(lift.id, v ? (parseFloat(v) * 2.20462).toFixed(1) : '');
+                              else setMax(lift.id, v);
+                            }}
                             style={{
                               flex: 1, minWidth: 0, width: '100%',
                               background: 'transparent', border: 'none', outline: 'none',
@@ -2018,7 +2213,7 @@ const Onboarding = () => {
                               color: OB.ink, letterSpacing: -0.5,
                             }}
                           />
-                          <div style={{ fontSize: 11, color: OB.mute, fontWeight: 600 }}>lb</div>
+                          <div style={{ fontSize: 11, color: OB.mute, fontWeight: 600 }}>{data.metric_units ? 'kg' : 'lb'}</div>
                         </div>
                       </div>
                     ))}
@@ -2822,13 +3017,26 @@ const Onboarding = () => {
                 );
               })}
             </div>
+            {!data.sex && (
+              <p style={{ fontSize: 11, color: OB.sub, marginTop: 6 }}>
+                {t('bodyStats.sexRequired', 'Required — your calories and weight suggestions depend on it.')}
+              </p>
+            )}
 
             {/* Age + Weight */}
             <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <OBLabel>{t('bodyStats.age')}</OBLabel>
+                <OBLabel
+                  badge={ageFromDob ? (
+                    <span style={{ padding: '2px 6px', borderRadius: 999, background: OB.tealSoft, color: OB.tealDeep, fontSize: 9, letterSpacing: 0.4 }}>
+                      {t('bodyStats.ageAutoBadge', 'AUTO')}
+                    </span>
+                  ) : null}
+                >
+                  {t('bodyStats.age')}
+                </OBLabel>
                 <div style={{
-                  height: 54, borderRadius: 14, background: OB.surface,
+                  height: 54, borderRadius: 14, background: ageFromDob ? OB.surface2 : OB.surface,
                   border: `1.5px solid ${OB.line}`, padding: '0 16px',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
@@ -2839,11 +3047,13 @@ const Onboarding = () => {
                     aria-invalid={isAgeUnder13 || undefined}
                     value={data.age}
                     onChange={e => set('age', e.target.value)}
+                    disabled={ageFromDob}
                     style={{
                       flex: 1, minWidth: 0, width: '100%',
                       background: 'transparent', border: 'none', outline: 'none',
                       fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 22,
                       color: OB.ink, letterSpacing: -0.5,
+                      opacity: ageFromDob ? 0.75 : 1,
                     }}
                   />
                   <div style={{ fontSize: 11, color: OB.mute, fontWeight: 700 }}>yrs</div>
@@ -3175,28 +3385,34 @@ const Onboarding = () => {
               </div>
             )}
 
-            {/* Referral code input (if no referrer applied yet) */}
+            {/* Referral code input (if no referrer applied yet). Validated live
+                against lookup_referral_code; claimed via register_referral at
+                Finish — the same real pipeline signup uses. */}
             {!referrerBuddy?.name && (
               <div style={{ marginBottom: 22 }}>
                 <OBLabel>{t('social.referralCode', 'Referral Code')}</OBLabel>
                 <OBInput
                   value={data.workout_buddy_username || ''}
-                  onChange={e => {
-                    const raw = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 11);
-                    let formatted;
-                    if (raw.length <= 3) formatted = raw;
-                    else if (raw.length <= 7) formatted = `${raw.slice(0, 3)}-${raw.slice(3)}`;
-                    else formatted = `${raw.slice(0, 3)}-${raw.slice(3, 7)}-${raw.slice(7)}`;
-                    set('workout_buddy_username', formatted);
-                  }}
+                  onChange={e => handleObReferralChange(e.target.value)}
                   placeholder="REF-XXXX-XXXX"
                   maxLength={13}
                   icon={<Users size={18} color={OB.mute}/>}
                   monospace
+                  right={refStatus === 'checking' ? <Loader2 size={16} color={OB.mute} className="animate-spin"/> :
+                         refStatus === 'valid' ? <Check size={16} color={OB.green} strokeWidth={3}/> :
+                         refStatus === 'invalid' ? <X size={16} color={OB.orange}/> : null}
                 />
-                {data.workout_buddy_username && (
-                  <p style={{ fontSize: 11, color: OB.green, marginTop: 6, textAlign: 'center' }}>
-                    {t('social.referralWillConnect', "You'll be connected as friends and both earn rewards!")}
+                {refStatus === 'valid' && (
+                  <p style={{ fontSize: 11, color: OB.green, marginTop: 6, textAlign: 'center', fontWeight: 700 }}>
+                    {t('social.referralValidNamed', {
+                      defaultValue: "You'll be connected with {{name}} — you both earn rewards!",
+                      name: refData?.referrer_name || 'Member',
+                    })}
+                  </p>
+                )}
+                {refStatus === 'invalid' && (
+                  <p style={{ fontSize: 11, color: OB.orange, marginTop: 6, textAlign: 'center' }}>
+                    {t('social.referralInvalid', "We couldn't find that code — double-check it with your friend.")}
                   </p>
                 )}
               </div>
@@ -3255,6 +3471,20 @@ const Onboarding = () => {
                 borderRadius: 14, padding: '12px 14px', marginTop: 14,
               }}>
                 <p style={{ fontSize: 13, color: OB.orange, margin: 0 }}>{error}</p>
+                {gymMissing && (
+                  <button
+                    type="button"
+                    onClick={() => { setInviteReturnStep(10); setGymMissing(false); setError(''); setStep(0); }}
+                    style={{
+                      marginTop: 10, width: '100%', height: 44, borderRadius: 999,
+                      border: 'none', background: OB.orange, color: '#fff',
+                      fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 14,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t('inviteCode.enterNow', 'Enter invite code')}
+                  </button>
+                )}
               </div>
             )}
 
@@ -3875,12 +4105,12 @@ const Onboarding = () => {
                   const title = i18n.language === 'es' && (mealData.title_es || mealData.name_es)
                     ? (mealData.title_es || mealData.name_es)
                     : (mealData.title || mealData.name || t('mealPlan.mealFallback', { defaultValue: 'Meal {{n}}', n: mi + 1 }));
-                  const typeLabels = [
-                    t('mealPlan.breakfast', 'Breakfast'),
-                    t('mealPlan.lunch', 'Lunch'),
-                    t('mealPlan.snack', 'Snack'),
-                    t('mealPlan.dinner', 'Dinner'),
-                  ];
+                  // Label from the generator's slot tag — the old index-mod-4
+                  // mapping called a 3-meal day's dinner a "Snack".
+                  const slotKey = meal.slot
+                    || (['breakfast', 'lunch', 'dinner'][mi] ?? 'snack');
+                  const slotLabel = t(`mealPlan.${slotKey}`,
+                    slotKey.charAt(0).toUpperCase() + slotKey.slice(1));
                   const initial = (title || '?').trim()[0]?.toUpperCase() || '?';
                   const palettes = [
                     ['#FFB86B', '#FF7A3D'],
@@ -3924,7 +4154,7 @@ const Onboarding = () => {
                         <div style={{
                           fontSize: 10, color: OB.mute, fontWeight: 800,
                           letterSpacing: 0.5, textTransform: 'uppercase',
-                        }}>{typeLabels[mi % typeLabels.length]}</div>
+                        }}>{slotLabel}</div>
                         <div style={{
                           fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 14,
                           color: OB.ink, letterSpacing: -0.2,
@@ -3999,8 +4229,9 @@ const Onboarding = () => {
           </OBBottomBar>
         )}
 
-        {/* Skip link for Health / Body steps */}
-        {(step === 7 || step === 8) && (
+        {/* Skip link for the Health step only. Body stats (8) lost its skip:
+            sex is now required and the link bypassed canAdvance(). */}
+        {step === 7 && (
           <button
             type="button"
             onClick={() => setStep(s => s + 1)}
@@ -4011,7 +4242,7 @@ const Onboarding = () => {
               textAlign: 'center', width: '100%',
             }}
           >
-            {step === 7 ? t('health.skip') : t('common:skip')}
+            {t('health.skip')}
           </button>
         )}
 

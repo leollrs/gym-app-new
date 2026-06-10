@@ -133,7 +133,9 @@ function GymWOD() {
           }
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || t('gymWOD.loadFailed', 'Failed to load workout'));
+        // Never render raw error messages to members — log for diagnosis.
+        console.error('[gym wod] load failed:', err);
+        if (!cancelled) setError(t('gymWOD.loadFailed', 'Failed to load workout'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -271,7 +273,9 @@ function GymWOD() {
 
       navigate(`/session/${routine.id}`);
     } catch (err) {
-      setError(err.message || t('gymWOD.startFailed', 'Failed to start workout'));
+      // Never render raw error messages to members — log for diagnosis.
+      console.error('[gym wod] start failed:', err);
+      setError(t('gymWOD.startFailed', 'Failed to start workout'));
       setSaving(false);
     }
   };
@@ -526,7 +530,7 @@ function GymWOD() {
             style={{
               padding: '13px', borderRadius: 14,
               background: 'var(--color-accent)',
-              color: 'var(--color-bg-card, #0A0D10)',
+              color: 'var(--color-text-on-accent, var(--color-bg-card, #0A0D10))',
               fontWeight: 800, fontSize: 13, letterSpacing: 0.2,
               border: 'none',
               boxShadow: '0 4px 14px color-mix(in srgb, var(--color-accent) 35%, transparent)',
