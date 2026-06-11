@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import logger from '../../lib/logger';
 import i18n from 'i18next';
 import ViewSwitcherModal from '../../components/ViewSwitcherModal';
 import { TT, TFont } from './components/designTokens';
@@ -78,7 +79,8 @@ export default function TrainerSettings() {
     try {
       await deleteAccount();
     } catch (err) {
-      showToast(err.message || t('pages:settings.failedToDelete', 'Failed to delete account'), 'error');
+      logger.error('TrainerSettings deleteAccount failed', err);
+      showToast(t('pages:settings.failedToDelete', 'Failed to delete account'), 'error');
       setDeleting(false);
     }
   };

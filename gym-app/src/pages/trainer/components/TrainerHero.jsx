@@ -49,7 +49,7 @@ export default function TrainerHero({
         className="pointer-events-none absolute -top-12 -right-12 w-48 h-48 rounded-full opacity-50"
         style={{
           background:
-            'radial-gradient(circle, color-mix(in srgb, #19B8B8 20%, transparent), transparent 65%)',
+            'radial-gradient(circle, color-mix(in srgb, #1E9C8E 20%, transparent), transparent 65%)',
           filter: 'blur(2px)',
         }}
       />

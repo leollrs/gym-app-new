@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
+import { PROD_WEB_URL } from '../lib/appUrls';
 import UserAvatar from '../components/UserAvatar';
 import ContentActionMenu from '../components/ContentActionMenu';
 import { TT, TFont, avatarIdx } from './trainer/components/designTokens';
@@ -276,7 +277,7 @@ function ReviewModal({ open, onClose, trainerName, onSubmit, submitting }) {
 export default function PublicTrainerProfile() {
   const navigate = useNavigate();
   const { trainerId } = useParams();
-  const { user, profile } = useAuth();
+  const { user, profile, activeView } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation(['pages', 'common']);
 
@@ -433,7 +434,9 @@ export default function PublicTrainerProfile() {
 
   // ── Share ──────────────────────────────────────────────
   const handleShare = useCallback(async () => {
-    const url = `${window.location.origin}/trainers/${trainerId}`;
+    // PROD_WEB_URL, not window.location.origin — on Capacitor the origin is
+    // capacitor://localhost, which is dead for recipients.
+    const url = `${PROD_WEB_URL}/trainers/${trainerId}`;
     const title = trainer?.full_name || t('publicTrainerProfile.title', 'Trainer profile');
     if (typeof navigator !== 'undefined' && navigator.share) {
       try { await navigator.share({ title, url }); return; } catch { /* user cancelled */ }
@@ -456,8 +459,11 @@ export default function PublicTrainerProfile() {
       showToast(t('publicTrainerProfile.messageFailed', 'Could not open messages'), 'error');
       return;
     }
-    navigate(`/messages/${convId}`);
-  }, [user, trainer, navigate, showToast, t]);
+    // This page is reachable from every role. A viewer in trainer view gets
+    // bounced off the member /messages route by ProtectedRoute, so send them
+    // to the trainer chat instead (same conversation table underneath).
+    navigate(activeView === 'trainer' ? `/trainer/messages/${convId}` : `/messages/${convId}`);
+  }, [user, trainer, navigate, showToast, t, activeView]);
 
   // ── Tap-to-call when the trainer has shared their phone ──
   // Falls back to a "coming soon" toast if no number is on file so the
@@ -1016,7 +1022,9 @@ export default function PublicTrainerProfile() {
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         padding: `12px 16px calc(12px + env(safe-area-inset-bottom, 0px))`,
-        background: 'rgba(250, 247, 240, 0.95)',
+        // Theme-aware translucent bar — the old hardcoded cream rgba glowed
+        // in dark mode. color-mix keeps the 95% opacity on top of --tt-bg.
+        background: 'color-mix(in srgb, var(--tt-bg) 95%, transparent)',
         borderTop: `1px solid ${TT.border}`,
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',

@@ -83,7 +83,7 @@ export default function TrainerLayout({ children }) {
         className="hidden md:flex flex-col w-[220px] flex-shrink-0 min-h-screen sticky top-0 h-screen"
         style={{ borderRight: '1px solid var(--tt-border)', background: 'var(--tt-surface)' }}
       >
-        <Link to="/my-gym" className="px-5 py-5 no-underline" style={{ borderBottom: '1px solid var(--tt-border)' }}>
+        <Link to="/trainer" className="px-5 py-5 no-underline" style={{ borderBottom: '1px solid var(--tt-border)' }}>
           <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#19B8B8' }}>{t('trainerNav.trainer')}</p>
           <div className="flex items-center gap-2.5">
             {gymLogoUrl && (
@@ -138,8 +138,8 @@ export default function TrainerLayout({ children }) {
             height: 'calc(52px + env(safe-area-inset-top))',
           }}
         >
-          {/* Left: Gym branding → MyGym */}
-          <Link to="/my-gym" className="flex items-center gap-2.5 min-w-0 no-underline">
+          {/* Left: Gym branding → trainer home (members' /my-gym bounces trainers) */}
+          <Link to="/trainer" className="flex items-center gap-2.5 min-w-0 no-underline">
             {gymLogoUrl && (
               <img src={gymLogoUrl} alt={gymName || 'Gym'} className="h-8 w-8 rounded-lg object-contain flex-shrink-0"
                 style={{ border: '1px solid var(--tt-border-solid)', background: 'var(--tt-surface-2)' }} />

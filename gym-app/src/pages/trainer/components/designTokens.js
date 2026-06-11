@@ -36,8 +36,8 @@ export const TT = {
   textInv:      '#F5F2EC',
   textMute:     '#96A0AA',   // mid-grey — chart axes / icon strokes
   textFaint:    '#b8bec5',
-  accent:       '#19B8B8',
-  accentDark:   '#0F9E9E',
+  accent:       '#1E9C8E',   // Atelier brand teal (deeper, greener than the old cyan)
+  accentDark:   '#178C7E',
   hot:          '#FF5A2E',
   warn:         '#E8A93A',
   coach:        '#6D5FDB',
@@ -58,7 +58,7 @@ export const statusTone = (status) => STATUS_TONE[status] || TT.accent;
 
 export const AVATAR_PALETTES = [
   ['#FFB86B', '#FF7A3D'],
-  ['#7FE3C4', '#19B8B8'],
+  ['#7FE0CE', '#1E9C8E'],
   ['#D0C6FF', '#6D5FDB'],
   ['#FFD166', '#F2A23A'],
   ['#B8E8A8', '#5EAA5E'],

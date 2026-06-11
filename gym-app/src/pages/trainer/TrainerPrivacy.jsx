@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft, Eye, Lock, Download, Star, MessageSquare,
+  ChevronLeft, Lock, Download, Star, MessageSquare,
   Loader2, Check, AlertTriangle, Users,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import logger from '../../lib/logger';
 import { TT, TFont } from './components/designTokens';
 import { TCard, TEyebrow, TPageTitle, TIconButton, TPrimaryButton } from './components/designPrimitives';
 
@@ -66,7 +67,6 @@ export default function TrainerPrivacy() {
   const { profile, patchProfile } = useAuth();
   const { showToast } = useToast();
 
-  const [publicProfile, setPublicProfile] = useState(profile?.privacy_public ?? false);
   // Default TRUE so existing trainers without the column (pre-migration) still
   // show up in the directory. Matches the DB default.
   const [directoryVisible, setDirectoryVisible] = useState(profile?.trainer_directory_visible ?? true);
@@ -75,18 +75,14 @@ export default function TrainerPrivacy() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    setPublicProfile(profile?.privacy_public ?? false);
-  }, [profile?.privacy_public]);
-
-  useEffect(() => {
     setDirectoryVisible(profile?.trainer_directory_visible ?? true);
   }, [profile?.trainer_directory_visible]);
 
-  // The shared `get_auth_context` RPC doesn't return privacy_public or
+  // The shared `get_auth_context` RPC doesn't return
   // trainer_directory_visible, so `profile.*` from useAuth() is undefined
-  // on cold load and the toggles would always paint with the fallback
-  // value (false/true) instead of the saved DB state. Pull them directly
-  // on mount and patch them into AuthContext so the rest of the app
+  // on cold load and the toggle would always paint with the fallback
+  // value (true) instead of the saved DB state. Pull it directly
+  // on mount and patch it into AuthContext so the rest of the app
   // (MyGym filter, PublicTrainerProfile gate) reads the right value too.
   useEffect(() => {
     if (!profile?.id) return;
@@ -94,16 +90,10 @@ export default function TrainerPrivacy() {
     (async () => {
       const { data } = await supabase
         .from('profiles')
-        .select('privacy_public, trainer_directory_visible')
+        .select('trainer_directory_visible')
         .eq('id', profile.id)
         .maybeSingle();
       if (cancelled || !data) return;
-      if (typeof data.privacy_public === 'boolean') {
-        setPublicProfile(data.privacy_public);
-        if (data.privacy_public !== profile.privacy_public) {
-          patchProfile({ privacy_public: data.privacy_public });
-        }
-      }
       if (typeof data.trainer_directory_visible === 'boolean') {
         setDirectoryVisible(data.trainer_directory_visible);
         if (data.trainer_directory_visible !== profile.trainer_directory_visible) {
@@ -131,9 +121,9 @@ export default function TrainerPrivacy() {
     } catch (err) {
       // Roll back optimistic update on failure
       patchProfile({ [column]: prev });
-      if (column === 'privacy_public') setPublicProfile(prev);
       if (column === 'trainer_directory_visible') setDirectoryVisible(prev);
-      showToast(err.message || t('pages:trainerPrivacy.saveFailed', 'Failed to save'), 'error');
+      logger.error('TrainerPrivacy save failed', err);
+      showToast(t('pages:trainerPrivacy.saveFailed', 'Failed to save'), 'error');
     } finally {
       setSavingKey(null);
     }
@@ -143,14 +133,23 @@ export default function TrainerPrivacy() {
     setExporting(true);
     try {
       const [
-        { data: profileRow },
-        { data: reviews },
-        { data: clients },
+        { data: profileRow, error: profileErr },
+        { data: reviews, error: reviewsErr },
+        { data: clients, error: clientsErr },
       ] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', profile.id).single(),
         supabase.from('trainer_reviews').select('*').eq('trainer_id', profile.id),
         supabase.from('trainer_clients').select('*').eq('trainer_id', profile.id),
       ]);
+
+      // Abort on any read error — exporting nulls + toasting success would
+      // hand the trainer an empty "backup" they might rely on.
+      const readErr = profileErr || reviewsErr || clientsErr;
+      if (readErr) {
+        logger.error('TrainerPrivacy export read failed', readErr);
+        showToast(t('pages:trainerPrivacy.exportFailed', 'Export failed.'), 'error');
+        return;
+      }
 
       const payload = {
         exported_at: new Date().toISOString(),
@@ -170,7 +169,8 @@ export default function TrainerPrivacy() {
       URL.revokeObjectURL(url);
       showToast(t('pages:trainerPrivacy.exportDone', 'Export downloaded.'), 'success');
     } catch (err) {
-      showToast(err.message || t('pages:trainerPrivacy.exportFailed', 'Export failed.'), 'error');
+      logger.error('TrainerPrivacy export failed', err);
+      showToast(t('pages:trainerPrivacy.exportFailed', 'Export failed.'), 'error');
     } finally {
       setExporting(false);
     }
@@ -233,14 +233,6 @@ export default function TrainerPrivacy() {
             value={directoryVisible}
             disabled={savingKey === 'trainer_directory_visible'}
             onChange={(v) => { setDirectoryVisible(v); updateField('trainer_directory_visible', v); }}
-          />
-          <PrivacyToggleRow
-            Icon={Eye}
-            title={t('pages:trainerPrivacy.publicProfile', 'Public profile')}
-            desc={t('pages:trainerPrivacy.publicProfileDesc', 'Allow anyone in your gym to view your trainer profile, services, and reviews.')}
-            value={publicProfile}
-            disabled={savingKey === 'privacy_public'}
-            onChange={(v) => { setPublicProfile(v); updateField('privacy_public', v); }}
           />
         </TCard>
         <div style={{
@@ -333,7 +325,6 @@ export default function TrainerPrivacy() {
           {[
             { label: t('pages:trainerPrivacy.privacyPolicy', 'Privacy policy'), href: '/legal/privacy' },
             { label: t('pages:trainerPrivacy.terms', 'Terms of service'), href: '/legal/terms' },
-            { label: t('pages:trainerPrivacy.dataProcessing', 'Data processing'), href: '/legal/dpa' },
           ].map((row, i) => (
             <button
               key={i}

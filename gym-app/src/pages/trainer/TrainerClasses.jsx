@@ -55,6 +55,29 @@ function Spinner({ label }) {
   );
 }
 
+// ── Safe-profile backfill ──
+// RLS on profiles (migration 0289) only lets trainers read their assigned 1:1
+// clients, so the embedded profiles(...) join comes back null for everyone else.
+// Backfill names/avatars for those rows from the gym_member_profiles_safe view
+// (migration 0289), which any same-gym user can read.
+async function mergeSafeProfiles(rows) {
+  const missingIds = [...new Set(
+    rows.filter(r => !r.profiles && r.profile_id).map(r => r.profile_id),
+  )];
+  if (missingIds.length === 0) return rows;
+  const { data: safeProfiles, error } = await supabase
+    .from('gym_member_profiles_safe')
+    .select('id, full_name, avatar_url')
+    .in('id', missingIds);
+  if (error) {
+    logger.error('TrainerClasses: safe profiles fetch error', error);
+    return rows;
+  }
+  const byId = {};
+  for (const p of safeProfiles || []) byId[p.id] = p;
+  return rows.map(r => (!r.profiles && byId[r.profile_id]) ? { ...r, profiles: byId[r.profile_id] } : r);
+}
+
 // ── Class Detail Drawer (for My Classes tab) ──
 function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
   const [adding, setAdding] = useState(false);
@@ -73,7 +96,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
     });
     if (error) {
       logger.error('TrainerClasses: add slot error', error);
-      showToast(error.message, 'error');
+      showToast(t('trainerClasses.errorAddSlot', 'Could not add the slot'), 'error');
     } else {
       queryClient.invalidateQueries({ queryKey: ['trainer', 'my-classes'] });
       setAdding(false);
@@ -81,9 +104,15 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
     }
   };
 
+  // Deleting a schedule slot cascades to its bookings (attendance + ratings),
+  // so it always goes through the confirm dialog below.
+  const [confirmDeleteSlot, setConfirmDeleteSlot] = useState(null);
+
   const handleDeleteSlot = async (slotId) => {
     const { error } = await supabase.from('gym_class_schedules').delete().eq('id', slotId);
+    setConfirmDeleteSlot(null);
     if (error) {
+      logger.error('TrainerClasses: delete slot error', error);
       showToast(t('trainerClasses.errorDeleteSlot', 'Failed to delete slot'), 'error');
       return;
     }
@@ -186,8 +215,8 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
                     </span>
                     <button
                       type="button"
-                      onClick={() => handleDeleteSlot(slot.id)}
-                      aria-label={t('trainerClasses.errorDeleteSlot', 'Failed to delete slot')}
+                      onClick={() => setConfirmDeleteSlot(slot)}
+                      aria-label={t('trainerClasses.deleteSlot', 'Delete slot')}
                       style={{ minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: TT.textMute, cursor: 'pointer' }}
                     >
                       <Trash2 size={14} />
@@ -251,6 +280,42 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
             )}
           </div>
         </div>
+
+        {/* Delete-slot confirmation (bookings cascade with the slot) */}
+        {confirmDeleteSlot && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteSlot(null)} />
+            <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
+              <h3 className="text-[16px] font-bold" style={{ color: TT.text }}>
+                {t('trainerClasses.confirmDeleteSlot', 'Delete this schedule slot?')}
+              </h3>
+              <p className="text-[13px]" style={{ color: TT.textSub }}>
+                <span style={{ display: 'block', fontWeight: 700, color: TT.text, marginBottom: 4 }}>
+                  {tc(DAYS_OF_WEEK.find(d => d.value === confirmDeleteSlot.day_of_week)?.labelKey || '')} · {confirmDeleteSlot.start_time?.slice(0, 5)} – {confirmDeleteSlot.end_time?.slice(0, 5)}
+                </span>
+                {t('trainerClasses.confirmDeleteSlotDescription', 'Bookings and attendance history for this slot will also be deleted. This cannot be undone.')}
+              </p>
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteSlot(null)}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
+                  style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}
+                >
+                  {t('trainerClasses.cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSlot(confirmDeleteSlot.id)}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
+                  style={{ background: TT.hotSoft, color: TT.hot }}
+                >
+                  {t('trainerClasses.deleteSlot', 'Delete slot')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -445,18 +510,22 @@ function BookingsTab({ classes, t, dateLocale }) {
   const rangeStartStr = format(rangeStart, 'yyyy-MM-dd');
   const rangeEndStr = format(rangeEnd, 'yyyy-MM-dd');
 
-  const { data: bookings = [], isLoading } = useQuery({
+  const { data: bookings = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['trainer', 'all-class-bookings', rangeStartStr, rangeEndStr, classIds],
     queryFn: async () => {
       if (classIds.length === 0) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('gym_class_bookings')
-        .select('id, status, attended, booked_date, class_id, profiles(id, full_name, avatar_url)')
+        .select('id, status, attended, booking_date, class_id, profile_id, profiles(id, full_name, avatar_url)')
         .in('class_id', classIds)
-        .gte('booked_date', rangeStartStr)
-        .lte('booked_date', rangeEndStr)
-        .order('booked_date');
-      return data || [];
+        .gte('booking_date', rangeStartStr)
+        .lte('booking_date', rangeEndStr)
+        .order('booking_date');
+      if (error) {
+        logger.error('TrainerClasses: bookings fetch error', error);
+        throw error;
+      }
+      return mergeSafeProfiles(data || []);
     },
     enabled: classIds.length > 0,
     staleTime: 30 * 1000,
@@ -468,7 +537,8 @@ function BookingsTab({ classes, t, dateLocale }) {
       .update({ attended: true, attended_at: new Date().toISOString() })
       .eq('id', bookingId);
     if (error) {
-      showToast(error.message, 'error');
+      logger.error('TrainerClasses: mark attended error', error);
+      showToast(t('trainerClasses.errorMarkAttended', 'Could not mark attendance'), 'error');
     } else {
       queryClient.invalidateQueries({ queryKey: ['trainer', 'all-class-bookings'] });
     }
@@ -479,7 +549,7 @@ function BookingsTab({ classes, t, dateLocale }) {
 
   const byDate = useMemo(() => {
     const m = {};
-    for (const b of bookings) { (m[b.booked_date] = m[b.booked_date] || []).push(b); }
+    for (const b of bookings) { (m[b.booking_date] = m[b.booking_date] || []).push(b); }
     return m;
   }, [bookings]);
 
@@ -653,6 +723,15 @@ function BookingsTab({ classes, t, dateLocale }) {
 
       {isLoading ? (
         <Spinner label={t('trainerClasses.loading')} />
+      ) : isError ? (
+        <TrainerEmptyState
+          icon={Users}
+          title={t('trainerClasses.bookingsLoadError', 'Could not load bookings')}
+          description={t('trainerClasses.bookingsLoadErrorDesc', 'Something went wrong. Check your connection and try again.')}
+          actionLabel={t('trainerClasses.retry', 'Retry')}
+          onAction={() => refetch()}
+          compact
+        />
       ) : view === 'day' ? renderDayBookings(format(anchorDate, 'yyyy-MM-dd'))
         : view === 'week' ? renderWeek()
         : renderMonth()}
@@ -697,14 +776,15 @@ function AnalyticsTab({ classes, t, dateLocale }) {
 
       let recentResults = [];
       if (hasTemplate) {
-        const { data: resultBookings } = await supabase
+        const { data: resultBookings, error: resultsError } = await supabase
           .from('gym_class_bookings')
           .select('profile_id, rating, attended_at, workout_session_id, profiles(full_name, avatar_url), workout_sessions(total_volume_lbs, completed_at)')
           .eq('class_id', selectedClassId)
           .eq('attended', true)
           .order('attended_at', { ascending: false })
           .limit(20);
-        recentResults = resultBookings || [];
+        if (resultsError) logger.error('TrainerClasses: recent results fetch error', resultsError);
+        recentResults = await mergeSafeProfiles(resultBookings || []);
       }
 
       return { total, attended, attendanceRate, avgRating, starDist, recentResults };
@@ -1100,7 +1180,7 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
       onClose();
     } catch (err) {
       logger.error('ProposeClass: error', err);
-      showToast(err.message, 'error');
+      showToast(t('trainerClasses.errorProposal', 'Could not send the proposal'), 'error');
     } finally {
       setSubmitting(false);
     }

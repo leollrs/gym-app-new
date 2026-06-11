@@ -1029,8 +1029,9 @@ const MemberRoutes = () => {
           <Route path="/session-summary"   element={<SessionSummary />} />
           <Route path="/cardio-live"       element={<LiveCardio />} />
           <Route path="/cardio/:id"        element={<CardioSessionDetail />} />
-          <Route path="/legal/privacy"     element={<LegalViewer page="privacy" />} />
-          <Route path="/legal/terms"       element={<LegalViewer page="terms" />} />
+          {/* /legal/privacy + /legal/terms moved to top-level AuthenticatedRoute
+              registrations — inside this member-gated group, trainer-view users
+              got bounced back to /trainer before the page could render. */}
           <Route path="/messages/:conversationId" element={<Messages />} />
           {/* Redirects */}
           <Route path="/workout-log"       element={<Navigate to="/progress?tab=log" replace />} />
@@ -1633,6 +1634,35 @@ function App() {
             <ErrorBoundary>
               <Suspense fallback={<Skeleton variant="page" />}>
                 <PublicTrainerProfile />
+              </Suspense>
+            </ErrorBoundary>
+          </AuthenticatedRoute>
+        }
+      />
+
+      {/* Legal pages — static iframe content, viewable by ANY authenticated
+          user (member, trainer, admin). Previously registered inside the
+          member ProtectedRoute group, which bounced trainer-view users back
+          to /trainer, killing the legal links on /trainer/privacy. */}
+      <Route
+        path="/legal/privacy"
+        element={
+          <AuthenticatedRoute>
+            <ErrorBoundary>
+              <Suspense fallback={<Skeleton variant="page" />}>
+                <LegalViewer page="privacy" />
+              </Suspense>
+            </ErrorBoundary>
+          </AuthenticatedRoute>
+        }
+      />
+      <Route
+        path="/legal/terms"
+        element={
+          <AuthenticatedRoute>
+            <ErrorBoundary>
+              <Suspense fallback={<Skeleton variant="page" />}>
+                <LegalViewer page="terms" />
               </Suspense>
             </ErrorBoundary>
           </AuthenticatedRoute>

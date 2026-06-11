@@ -7,6 +7,7 @@ import UserAvatar from '../../../components/UserAvatar';
 import EmptyState from '../../../components/EmptyState';
 import UnderlineTabs from '../../../components/UnderlineTabs';
 import { TT } from './designTokens';
+import { TCard } from './designPrimitives';
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 const ACTION_WIDTH = 80; // px per action button (Archive / Delete / Block)
@@ -47,6 +48,7 @@ function SwipeRow({ lang,
   isOnline,
   isArchived,
   isOpen,
+  isFirst,
   onOpenSwipe,
   onCollapseSwipe,
   onSelect,
@@ -60,8 +62,11 @@ function SwipeRow({ lang,
   const u = conv.otherUser;
   const name = u?.full_name || u?.username || t('trainerMessages.list.clientFallback', 'Client');
   const lastBody = conv.lastMessage?.body || '';
+  const hadWorkoutToken = /\[workout:[^\]]+\]/.test(lastBody);
   const cleanedPreview = lastBody.replace(/\[workout:[^\]]+\]/g, '').trim()
-    || t('trainerMessages.list.noMessages', 'No messages');
+    || (hadWorkoutToken
+      ? t('trainerMessages.list.workoutShared', 'Workout plan')
+      : t('trainerMessages.list.noMessages', 'No messages'));
 
   const x = useMotionValue(0);
   const draggingRef = useRef(false);
@@ -93,7 +98,10 @@ function SwipeRow({ lang,
   };
 
   return (
-    <div className="relative" style={{ overflow: 'hidden' }}>
+    <div
+      className="relative"
+      style={{ overflow: 'hidden', borderTop: isFirst ? 'none' : '1px solid var(--tt-border)' }}
+    >
       {/* Action layer (sits behind the row, revealed on swipe) */}
       <div
         className="absolute top-0 right-0 bottom-0 flex"
@@ -166,16 +174,18 @@ function SwipeRow({ lang,
         dragElastic={0.04}
         onDragStart={() => { draggingRef.current = true; }}
         onDragEnd={handleDragEnd}
-        style={{ x, position: 'relative', background: TT.bg, touchAction: 'pan-y' }}
+        style={{ x, position: 'relative', background: TT.surface, touchAction: 'pan-y' }}
       >
         <button
           type="button"
           onClick={handleRowTap}
-          className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors min-h-[64px]"
+          className="w-full flex items-center gap-3 text-left transition-colors"
           style={{
             background: isActive ? TT.accentSoft : 'transparent',
-            borderLeft: isActive ? `3px solid ${TT.accent}` : '3px solid transparent',
+            boxShadow: isActive ? `inset 3px 0 0 ${TT.accent}` : 'none',
             border: 'none',
+            padding: '13px 15px',
+            minHeight: 64,
             cursor: 'pointer',
           }}
         >
@@ -184,26 +194,26 @@ function SwipeRow({ lang,
             {isOnline && (
               <span
                 className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
-                style={{ borderColor: TT.bg, background: TT.good }}
+                style={{ borderColor: TT.surface, background: TT.good }}
                 aria-label={t('trainerMessages.list.onlineAria', 'Online')}
               />
             )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className="text-[14px] font-bold truncate" style={{ color: TT.text }}>
+              <p className="text-[14.5px] font-bold truncate" style={{ color: TT.text }}>
                 {name}
               </p>
               {isPinned && <Pin size={11} style={{ color: TT.accent }} />}
-              <span className="ml-auto text-[10px] shrink-0" style={{ color: TT.textMute }}>
+              <span className="ml-auto text-[11px] shrink-0" style={{ color: TT.textMute }}>
                 {formatRelative(conv.last_message_at, t, lang)}
               </span>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <p
-                className="text-[12px] truncate flex-1"
+                className="text-[12.5px] truncate flex-1"
                 style={{
-                  color: conv.unreadCount > 0 ? TT.text : TT.textMute,
+                  color: conv.unreadCount > 0 ? TT.text : TT.textSub,
                   fontWeight: conv.unreadCount > 0 ? 600 : 400,
                 }}
               >
@@ -211,8 +221,8 @@ function SwipeRow({ lang,
               </p>
               {conv.unreadCount > 0 && (
                 <span
-                  className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold"
-                  style={{ background: TT.accent, color: '#06363B' }}
+                  className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold"
+                  style={{ background: TT.accent, color: '#063B36' }}
                 >
                   {conv.unreadCount}
                 </span>
@@ -358,37 +368,44 @@ export default function ConversationList({
           />
         )}
 
-        {!loading && conversations.map((conv) => {
-          const u = conv.otherUser;
-          const isActive = activeId === conv.id;
-          const isOnline = u?.last_active_at
-            && (renderTime - new Date(u.last_active_at).getTime()) < ONLINE_WINDOW_MS;
-          const isPinned = pinnedIds.has(conv.id);
-          const isArchived = archivedIds.has(conv.id);
-          const isOpen = swipedConvId === conv.id;
+        {!loading && conversations.length > 0 && (
+          <div style={{ padding: '12px 20px 28px' }}>
+            <TCard padded={0} style={{ overflow: 'hidden' }}>
+              {conversations.map((conv, i) => {
+                const u = conv.otherUser;
+                const isActive = activeId === conv.id;
+                const isOnline = u?.last_active_at
+                  && (renderTime - new Date(u.last_active_at).getTime()) < ONLINE_WINDOW_MS;
+                const isPinned = pinnedIds.has(conv.id);
+                const isArchived = archivedIds.has(conv.id);
+                const isOpen = swipedConvId === conv.id;
 
-          return (
-            <SwipeRow
-              key={conv.id}
-              conv={conv}
-              isActive={isActive}
-              isPinned={isPinned}
-              isOnline={isOnline}
-              isArchived={isArchived}
-              isOpen={isOpen}
-              onOpenSwipe={() => onSwipeOpen(conv.id)}
-              onCollapseSwipe={() => onSwipeOpen(null)}
-              onSelect={onSelect}
-              onTogglePin={() => onTogglePin(conv.id)}
-              onArchive={() => onArchive(conv.id)}
-              onDelete={() => onDelete(conv.id)}
-              onBlock={() => onBlock(conv)}
-              renderTime={renderTime}
-              t={t}
-              lang={lang}
-            />
-          );
-        })}
+                return (
+                  <SwipeRow
+                    key={conv.id}
+                    conv={conv}
+                    isActive={isActive}
+                    isPinned={isPinned}
+                    isOnline={isOnline}
+                    isArchived={isArchived}
+                    isOpen={isOpen}
+                    isFirst={i === 0}
+                    onOpenSwipe={() => onSwipeOpen(conv.id)}
+                    onCollapseSwipe={() => onSwipeOpen(null)}
+                    onSelect={onSelect}
+                    onTogglePin={() => onTogglePin(conv.id)}
+                    onArchive={() => onArchive(conv.id)}
+                    onDelete={() => onDelete(conv.id)}
+                    onBlock={() => onBlock(conv)}
+                    renderTime={renderTime}
+                    t={t}
+                    lang={lang}
+                  />
+                );
+              })}
+            </TCard>
+          </div>
+        )}
       </div>
     </div>
   );

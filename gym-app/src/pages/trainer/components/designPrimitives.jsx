@@ -9,7 +9,7 @@ export function TCard({ children, dark = false, padded = 16, style = {}, classNa
       className={className}
       style={{
         background: dark ? TT.surfaceDk : TT.surface,
-        borderRadius: 18,
+        borderRadius: 'var(--tt-card-radius, 20px)',
         border: dark ? '1px solid rgba(255,255,255,0.06)' : `1px solid ${TT.border}`,
         boxShadow: dark ? 'none' : TT.shadow,
         padding: padded,
@@ -199,18 +199,18 @@ export function TSectionHeader({ title, accent, action, color = TT.text }) {
 // ────────────────────────────────────────────────────────────────────
 // TPrimaryButton — solid teal CTA
 // ────────────────────────────────────────────────────────────────────
-export function TPrimaryButton({ children, onClick, style = {}, type = 'button', disabled = false, ...rest }) {
+export function TPrimaryButton({ children, onClick, style = {}, type = 'button', disabled = false, className = '', ...rest }) {
+  // Tactile gradient CTA — gradient body, 1px top highlight, tinted layered
+  // shadow + press motion all live in `.tt-btn--primary` (index.css), so this
+  // upgrade rides through every trainer page that uses the primitive.
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
+      className={['tt-btn', 'tt-btn--primary', className].filter(Boolean).join(' ')}
       style={{
-        padding: '10px 14px', borderRadius: 12, border: 'none',
-        background: TT.accent, color: '#06363B',
-        fontFamily: TFont.display, fontWeight: 800, fontSize: 13,
-        display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center',
-        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1,
+        padding: '11px 16px', borderRadius: 14, fontSize: 14,
         ...style,
       }}
       {...rest}
@@ -221,16 +221,14 @@ export function TPrimaryButton({ children, onClick, style = {}, type = 'button',
 // ────────────────────────────────────────────────────────────────────
 // TDarkButton — solid dark CTA
 // ────────────────────────────────────────────────────────────────────
-export function TDarkButton({ children, onClick, style = {}, type = 'button', ...rest }) {
+export function TDarkButton({ children, onClick, style = {}, type = 'button', className = '', ...rest }) {
   return (
     <button
       type={type}
       onClick={onClick}
+      className={['tt-btn', 'tt-btn--dark', className].filter(Boolean).join(' ')}
       style={{
-        padding: '10px 14px', borderRadius: 12, border: 'none',
-        background: TT.text, color: TT.onInverse, fontSize: 13, fontWeight: 800,
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        cursor: 'pointer',
+        padding: '11px 16px', borderRadius: 14, fontSize: 13,
         ...style,
       }}
       {...rest}
@@ -241,7 +239,7 @@ export function TDarkButton({ children, onClick, style = {}, type = 'button', ..
 // ────────────────────────────────────────────────────────────────────
 // TIconButton — square icon button with optional badge
 // ────────────────────────────────────────────────────────────────────
-export function TIconButton({ children, onClick, badge, style = {}, dark = false, size = 38, ariaLabel, ...rest }) {
+export function TIconButton({ children, onClick, badge, style = {}, dark = false, size = 38, ariaLabel, className = '', ...rest }) {
   const surf = dark ? 'rgba(255,255,255,0.07)' : TT.surface2;
   const bd = dark ? 'rgba(255,255,255,0.08)' : TT.borderSolid;
   return (
@@ -249,6 +247,7 @@ export function TIconButton({ children, onClick, badge, style = {}, dark = false
       type="button"
       aria-label={ariaLabel}
       onClick={onClick}
+      className={['tt-tap', className].filter(Boolean).join(' ')}
       style={{
         width: size, height: size, borderRadius: 12,
         background: surf, border: `1px solid ${bd}`,
@@ -281,10 +280,11 @@ export function TTabPill({ children, active, onClick, count, accent = false, sty
     <button
       type="button"
       onClick={onClick}
+      className="tt-tap"
       style={{
         padding: '7px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700,
         background: active ? (accent ? TT.accent : TT.text) : 'transparent',
-        color: active ? (accent ? '#06363B' : TT.onInverse) : TT.textSub,
+        color: active ? (accent ? '#063B36' : TT.onInverse) : TT.textSub,
         border: active ? 'none' : `1px solid ${TT.borderSolid}`,
         whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
         cursor: 'pointer',
@@ -316,6 +316,7 @@ export function TSegmented({ options, value, onChange, style = {} }) {
             key={v}
             type="button"
             onClick={() => onChange(v)}
+            className="tt-tap"
             style={{
               flex: 1, padding: '8px 4px', borderRadius: 8, textAlign: 'center',
               background: active ? TT.text : 'transparent',

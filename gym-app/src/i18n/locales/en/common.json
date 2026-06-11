@@ -455,5 +455,6 @@
     "reload": "Reload now",
     "versionLabel": "Version {{client}} → {{required}}"
   },
-  "errorBoundaryRestart": "Restart"
+  "errorBoundaryRestart": "Restart",
+  "deleting": "Deleting..."
 }

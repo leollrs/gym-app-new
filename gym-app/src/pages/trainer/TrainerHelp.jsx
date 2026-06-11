@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft, ChevronDown, Mail, MessageSquare, BookOpen,
-  Search, ExternalLink,
+  ChevronLeft, ChevronDown, Mail, MessageSquare,
+  Search,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -43,7 +43,7 @@ export default function TrainerHelp() {
     },
     {
       q: t('pages:trainerHelp.faq.payments.q', 'How do payments work?'),
-      a: t('pages:trainerHelp.faq.payments.a', 'Payment management is handled directly by your gym, outside the app. Your services and rates listed here are informational only.'),
+      a: t('pages:trainerHelp.faq.payments.a', 'Clients pay you directly (cash, ATH Móvil, etc.) — the app never processes money. Use the Payments page to track each client\'s monthly fee and mark who has paid and who\'s pending.'),
     },
     {
       q: t('pages:trainerHelp.faq.cover.q', 'How do I change my cover image?'),
@@ -71,9 +71,10 @@ export default function TrainerHelp() {
     try {
       const subject = encodeURIComponent(`[Trainer feedback] ${profile?.full_name || profile?.username || 'Trainer'}`);
       const mailBody = encodeURIComponent(`From: ${profile?.full_name || ''} (${profile?.username || ''})\nGym: ${profile?.gym_id || ''}\n\n${body}`);
+      // Handing off to the mail app — we can't know whether the draft was
+      // actually sent, so keep the textarea intact and don't claim success.
       window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${mailBody}`;
-      setFeedback('');
-      showToast(t('pages:trainerHelp.feedback.opened', 'Email draft opened.'), 'success');
+      showToast(t('pages:trainerHelp.feedback.opening', 'Opening your email app…'), 'info');
     } finally {
       setSending(false);
     }
@@ -123,7 +124,8 @@ export default function TrainerHelp() {
         }}>
           {t('pages:trainerHelp.contact', 'Get in touch')}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {/* Documentation card removed — docs.tugympr.com doesn't exist (404). */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
           <button
             type="button"
             onClick={() => { window.location.href = `mailto:${SUPPORT_EMAIL}`; }}
@@ -146,32 +148,6 @@ export default function TrainerHelp() {
             </div>
             <div style={{ fontSize: 10.5, color: TT.textSub }}>{SUPPORT_EMAIL}</div>
           </button>
-          <a
-            href="https://docs.tugympr.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6,
-              padding: 14, borderRadius: 14,
-              background: TT.surface, border: `1px solid ${TT.border}`,
-              cursor: 'pointer', textDecoration: 'none',
-            }}
-          >
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: TT.coachSoft, color: TT.coach,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <BookOpen size={16} />
-            </div>
-            <div style={{ fontSize: 12.5, fontWeight: 800, color: TT.text, display: 'flex', alignItems: 'center', gap: 4 }}>
-              {t('pages:trainerHelp.docs', 'Documentation')}
-              <ExternalLink size={11} />
-            </div>
-            <div style={{ fontSize: 10.5, color: TT.textSub }}>
-              {t('pages:trainerHelp.docsSub', 'Guides and walkthroughs')}
-            </div>
-          </a>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft, Archive, ArchiveRestore, RotateCcw, Trash2, MoreHorizontal, Ban, Lock } from 'lucide-react';
+import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft, ChevronDown, Archive, ArchiveRestore, RotateCcw, Trash2, MoreHorizontal, Ban, Lock, Dumbbell } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -76,6 +76,175 @@ const shouldShowTimestamp = (prevDateStr, currDateStr) => {
   if (!prevDateStr) return true;
   const diff = Math.abs(new Date(currDateStr) - new Date(prevDateStr));
   return diff >= 5 * 60 * 1000;
+};
+
+// ── Trainer workout-share token ──────────────────────────────────
+// Trainers drop a `[workout:<planId>:<dayIndex>]` token into a DM
+// (TrainerMessages → WorkoutShareModal). Members must see a friendly card,
+// never the raw token. Mirrors the WORKOUT_TOKEN renderer on the trainer side.
+const WORKOUT_TOKEN = /\[workout:([0-9a-fA-F-]{36}):(\d+)\]/;
+
+// Member-themed share card. The plan row is readable by the assigned client
+// via the `trainer_plans_client_select` RLS policy (migration 0036); any
+// fetch failure (deleted plan, RLS-denied, offline) falls back to a
+// detail-less "shared with you" card. Tapping the card expands that day's
+// exercise list inline — there is no member-side trainer-plan viewer page
+// to navigate to.
+const WorkoutShareCard = ({ planId, dayIndex }) => {
+  const { t, i18n } = useTranslation('pages');
+  const [plan, setPlan] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  // id → localized exercise name; null until the first expand resolves them.
+  const [exNames, setExNames] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // supabase-js v2 never throws — failures land on { error }.
+      const { data, error } = await supabase
+        .from('trainer_workout_plans')
+        .select('id, name, weeks')
+        .eq('id', planId)
+        .maybeSingle();
+      if (cancelled) return;
+      setPlan(error ? null : data);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [planId]);
+
+  // weeks JSONB: { "1": [{ name, exercises: [{ id, sets, reps, ... }] }] }.
+  // dayIndex indexes week 1's day array.
+  const day = plan?.weeks?.['1']?.[dayIndex] || null;
+  const exercises = Array.isArray(day?.exercises) ? day.exercises : [];
+  const dayName = day?.name || t('messages.workoutShare.dayN', { n: dayIndex + 1, defaultValue: 'Day {{n}}' });
+  const interactive = !!plan && exercises.length > 0;
+
+  // Plan JSONB stores exercise ids only — lazily resolve names from the
+  // exercises table on first expand. On failure, rows fall back to
+  // "Exercise N" labels (sets×reps still shown).
+  useEffect(() => {
+    if (!expanded || exNames) return;
+    let cancelled = false;
+    (async () => {
+      const ids = [...new Set(exercises.map(ex => ex?.id).filter(Boolean))];
+      if (ids.length === 0) { setExNames({}); return; }
+      const { data, error } = await supabase
+        .from('exercises')
+        .select('id, name, name_es')
+        .in('id', ids);
+      if (cancelled) return;
+      const map = {};
+      if (!error) {
+        const useEs = (i18n.language || '').startsWith('es');
+        (data || []).forEach(e => { map[e.id] = (useEs && e.name_es) || e.name; });
+      }
+      setExNames(map);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, exNames, plan, dayIndex, i18n.language]);
+
+  if (loading) {
+    return (
+      <div
+        className="rounded-xl p-3 w-[230px] max-w-full space-y-2"
+        style={{ background: 'color-mix(in srgb, var(--color-accent, #D4AF37) 10%, transparent)' }}
+      >
+        <div className="h-3 w-3/4 rounded animate-pulse bg-white/[0.12]" />
+        <div className="h-3 w-1/2 rounded animate-pulse bg-white/[0.12]" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden w-[240px] max-w-full"
+      style={{
+        background: 'var(--color-bg-card)',
+        border: '1px solid color-mix(in srgb, var(--color-accent, #D4AF37) 40%, transparent)',
+      }}
+    >
+      <button
+        type="button"
+        onClick={interactive ? () => setExpanded(v => !v) : undefined}
+        disabled={!interactive}
+        className="w-full text-left p-3"
+      >
+        <div className="flex items-center gap-2 mb-1.5">
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: 'color-mix(in srgb, var(--color-accent, #D4AF37) 18%, transparent)' }}
+          >
+            <Dumbbell size={13} style={{ color: 'var(--color-accent, #D4AF37)' }} />
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent, #D4AF37)' }}>
+            {t('messages.workoutShare.cardLabel', { defaultValue: 'Workout plan' })}
+          </p>
+        </div>
+        {plan ? (
+          <>
+            <p className="text-[14px] font-bold leading-snug" style={{ color: 'var(--color-text-primary)' }}>
+              {sanitize(plan.name || '')}
+            </p>
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {sanitize(dayName)} · {t('messages.workoutShare.exerciseCount', { count: exercises.length, defaultValue: '{{count}} exercises' })}
+            </p>
+            {interactive && (
+              <p className="text-[11px] font-semibold mt-1.5 flex items-center gap-1" style={{ color: 'var(--color-accent, #D4AF37)' }}>
+                {expanded
+                  ? t('messages.workoutShare.hideExercises', { defaultValue: 'Hide exercises' })
+                  : t('messages.workoutShare.showExercises', { defaultValue: 'See exercises' })}
+                <ChevronDown size={12} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-[12px] leading-snug" style={{ color: 'var(--color-text-muted)' }}>
+            {t('messages.workoutShare.fallback', { defaultValue: 'Your trainer shared a workout plan with you.' })}
+          </p>
+        )}
+      </button>
+      {expanded && interactive && (
+        <div className="px-3 pb-3 space-y-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          {exercises.map((ex, i) => (
+            <div key={i} className="flex items-baseline justify-between gap-2 pt-1.5">
+              <p className="text-[12px] min-w-0 flex-1 leading-snug" style={{ color: 'var(--color-text-primary)' }}>
+                {sanitize(
+                  (exNames && ex?.id && exNames[ex.id])
+                    || t('messages.workoutShare.exerciseFallback', { n: i + 1, defaultValue: 'Exercise {{n}}' })
+                )}
+              </p>
+              {(ex?.sets || ex?.reps) && (
+                <p className="text-[11px] flex-shrink-0 font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                  {ex?.sets ?? '–'}×{ex?.reps ?? '–'}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Splits a message body around the workout token: surrounding text renders
+// sanitized as before, the token itself renders as the share card. Bodies
+// without a token render exactly as they always did.
+const MessageBody = ({ body }) => {
+  const match = WORKOUT_TOKEN.exec(body || '');
+  if (!match) return sanitize(body || '');
+  const [token, planId, dayIdx] = match;
+  const before = body.slice(0, match.index).trim();
+  const after = body.slice(match.index + token.length).trim();
+  return (
+    <div className="space-y-2">
+      {before && <p className="whitespace-pre-wrap">{sanitize(before)}</p>}
+      <WorkoutShareCard planId={planId} dayIndex={parseInt(dayIdx, 10) || 0} />
+      {after && <p className="whitespace-pre-wrap">{sanitize(after)}</p>}
+    </div>
+  );
 };
 
 // ── Block User Confirm Modal (center-aligned) ──────────────────────
@@ -786,7 +955,7 @@ const ChatView = ({ conversationId, onBack }) => {
                     } ${msg._pending ? 'opacity-60' : ''}`}
                     style={isSent ? undefined : { color: 'var(--color-text-primary)' }}
                   >
-                    {sanitize(msg.body)}
+                    <MessageBody body={msg.body} />
                   </div>
                   {/* Per-message Report lives in the header overflow now —
                       the per-bubble dots felt cluttered on every message. */}
@@ -812,7 +981,9 @@ const ChatView = ({ conversationId, onBack }) => {
         <textarea
           ref={inputRef}
           value={input}
-          maxLength={5000}
+          // direct_messages.body CHECK caps the ENCRYPTED ciphertext at 2000
+          // chars (≈1450 plaintext) — 1400 keeps every send under the limit.
+          maxLength={1400}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t('messages.typeMessage', { defaultValue: 'Message...' })}
@@ -1350,10 +1521,13 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
           {filteredConversations.map((conv, idx) => {
             const other = conv.otherUser;
             const displayName = other?.full_name || other?.username || t('messages.member', { defaultValue: 'Member' });
-            const preview = conv.lastMessage?.body
-              ? sanitize(conv.lastMessage.body.length > 60
-                ? conv.lastMessage.body.slice(0, 60) + '...'
-                : conv.lastMessage.body)
+            // Replace a raw workout-share token with a friendly label so the
+            // list preview never shows `[workout:<uuid>:<n>]` gibberish.
+            const previewSrc = (conv.lastMessage?.body || '')
+              .replace(WORKOUT_TOKEN, t('messages.workoutShare.cardLabel', { defaultValue: 'Workout plan' }))
+              .trim();
+            const preview = previewSrc
+              ? sanitize(previewSrc.length > 60 ? previewSrc.slice(0, 60) + '...' : previewSrc)
               : '';
             const isSentByMe = conv.lastMessage?.sender_id === user.id;
             const hasUnread = conv.unreadCount > 0;

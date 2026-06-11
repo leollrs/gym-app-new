@@ -1,10 +1,10 @@
 import { useEffect, useReducer, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Save, Scale, Ruler, TrendingUp, TrendingDown, Minus, StickyNote, Calendar, BarChart3,
+  ArrowLeft, Save, TrendingUp, TrendingDown, Minus, StickyNote, Calendar, BarChart3,
   MessageSquare, Bell, Phone, Mail, UserCheck, Plus, X, Dumbbell, Trophy,
-  Target, Activity, Clock, AlertTriangle, BookOpen, ChevronRight, ChevronDown, Flame,
-  ClipboardList, Heart, Zap, RefreshCw, Apple, Camera, MapPin, UtensilsCrossed,
+  AlertTriangle, BookOpen, ChevronRight, ChevronDown, ChevronLeft, Flame,
+  Heart, Zap, RefreshCw, Apple, MapPin, UtensilsCrossed, ClipboardList, Ruler,
   Loader2, MoreHorizontal, Play, Eye, History as HistoryIcon, User as UserIcon,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -28,8 +28,8 @@ import TrainerClientPayment from './components/TrainerClientPayment';
 import TrainerClientSchedule from './components/TrainerClientSchedule';
 import TrainerClientAttendance from './components/TrainerClientAttendance';
 import TrainerClientCoaching from './components/TrainerClientCoaching';
-import { TT, TFont, avatarIdx, avatarGradient } from './components/designTokens';
-import { TCard, TPill, TPrimaryButton } from './components/designPrimitives';
+import { TT, TFont, avatarIdx } from './components/designTokens';
+import { TCard, TPill, TPrimaryButton, TAvatar, TIconButton, TSectionHeader } from './components/designPrimitives';
 import CheckinPhotoEditor from '../../components/CheckinPhotoEditor';
 
 const TAB_KEYS = ['overview', 'history', 'body', 'notesFollowUp', 'programNutrition', 'coaching'];
@@ -49,6 +49,7 @@ const initialState = {
   programName: null,
   enrollment: null,
   streak: null,
+  nextSession: null, // next upcoming trainer_session (scheduled/confirmed)
 
   // Workout data
   recentSessions: [],
@@ -93,8 +94,6 @@ const initialState = {
   // UI state
   activeTab: 'overview',
   showReport: false,
-  showMeasurements: false,
-  showPhotos: false,
 
   // Live session indicator
   liveDraft: null, // { profile_id, started_at, is_paused, ... } when client has an active draft
@@ -135,17 +134,20 @@ export default function TrainerClientNotes() {
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const [state, dispatch] = useReducer(reducer, initialState);
   const notesSavedTimerRef = useRef(null);
+  // Tab-swipe gesture state (declared here with other hooks — must run before
+  // the loading/notFound early returns to keep hook order stable).
+  const swipeRef = useRef({ x: 0, y: 0, active: false });
 
   // Destructure for readability in JSX
   const {
-    loading, accessDenied, isAssigned, client, onboarding, stats, programName, enrollment, streak,
+    loading, accessDenied, isAssigned, client, onboarding, stats, programName, enrollment, streak, nextSession,
     recentSessions, personalRecords, weeklyWorkouts, workoutsThisWeek,
     weights, measurements, progressPhotos, checkIns,
     notesData, notesSaved, savingNotes,
     followups, showFollowupModal, fuMethod, fuNote, fuOutcome, savingFollowup,
     availablePrograms, assigningProgram,
     nutritionTargets, foodLogSummary, activeMealPlan, savingMealPlan, mealPlanForm, showMealPlanForm, nutritionLoaded, sampleMeals, generatingMeals,
-    activeTab, showReport, showMeasurements, showPhotos,
+    activeTab, showReport,
     liveDraft, bodyPeriod, viewingPhoto,
     historyLoaded, allSessions, expandedSessionId,
   } = state;
@@ -194,7 +196,7 @@ export default function TrainerClientNotes() {
 
       const [
         clientRes, statsRes, weightsRes, measRes, streakRes, followupsRes,
-        recentRes, prsRes, weeklyRes, onbRes, thisWeekRes,
+        recentRes, prsRes, weeklyRes, onbRes, thisWeekRes, nextSessionRes,
       ] = await Promise.all([
         supabase
           .from('profiles')
@@ -265,6 +267,17 @@ export default function TrainerClientNotes() {
           .eq('profile_id', clientId)
           .eq('status', 'completed')
           .gte('started_at', weekStart.toISOString()),
+        // Next genuinely-scheduled upcoming session (drives the "Next session" card)
+        supabase
+          .from('trainer_sessions')
+          .select('id, title, scheduled_at, duration_mins, status')
+          .eq('trainer_id', profile.id)
+          .eq('client_id', clientId)
+          .in('status', ['scheduled', 'confirmed'])
+          .gte('scheduled_at', new Date().toISOString())
+          .order('scheduled_at', { ascending: true })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       // Resolve the assigned program id now; the program name + enrollment are
@@ -343,10 +356,10 @@ export default function TrainerClientNotes() {
         assignedProgramId
           ? supabase
               .from('gym_program_enrollments')
-              .select('started_at, gym_programs(name, duration_weeks, weeks)')
+              .select('enrolled_at, gym_programs(name, duration_weeks, weeks)')
               .eq('profile_id', clientId)
               .eq('program_id', assignedProgramId)
-              .order('started_at', { ascending: false })
+              .order('enrolled_at', { ascending: false })
               .limit(1)
               .maybeSingle()
           : Promise.resolve({ data: null }),
@@ -383,6 +396,7 @@ export default function TrainerClientNotes() {
           recentSessions: recentRes.data || [],
           personalRecords: prsRes.data || [],
           onboarding: onbRes.data || null,
+          nextSession: nextSessionRes.data || null,
           workoutsThisWeek: thisWeekRes.data?.length || 0,
           weeklyWorkouts: processedWeeklyWorkouts,
           availablePrograms: progsRes.data || [],
@@ -440,22 +454,23 @@ export default function TrainerClientNotes() {
 
   // Realtime: pick up the live indicator the moment the client starts a
   // session — without this, the trainer has to refresh the page to see it.
+  // Any received event just re-runs the authoritative check instead of
+  // patching state from the payload: DELETE payloads only carry the PK (no
+  // profile_id), so they can't be trusted to clear/patch the pill — and with
+  // the profile_id filter they may not be delivered at all. A 60s poll
+  // backstops both that and session_drafts not being in the realtime
+  // publication yet (added in migration 0527).
   useEffect(() => {
     if (!isAssigned || !clientId) return;
     const channel = supabase
       .channel(`trainer-client-live-${clientId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'session_drafts', filter: `profile_id=eq.${clientId}` },
-        (payload) => {
-          if (payload.eventType === 'DELETE') {
-            dispatch({ type: 'SET', payload: { liveDraft: null } });
-          } else {
-            dispatch({ type: 'SET', payload: { liveDraft: payload.new || null } });
-          }
-        })
+        () => { checkLiveDraft(); })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [isAssigned, clientId]);
+    const pollId = setInterval(() => { checkLiveDraft(); }, 60000);
+    return () => { supabase.removeChannel(channel); clearInterval(pollId); };
+  }, [isAssigned, clientId, checkLiveDraft]);
 
   // Bug 3: Start/Watch live session — precheck draft first.
   // - If a draft exists -> navigate to /trainer/live/:clientId (spectator)
@@ -584,13 +599,16 @@ export default function TrainerClientNotes() {
     }
   }, [activeTab, clientId, profile?.id, loadNutritionData]);
 
-  // Auto-calculate macro targets from real client data
+  // Auto-calculate macro targets from real client data.
+  // The app writes `sex` + `height_inches` to member_onboarding (see
+  // PersonalInfo.jsx); `gender` / `height_cm` are legacy fallbacks only.
+  // Weight: latest body_weight_logs entry (weights[0], desc-ordered), then kg.
   function handleAutoCalculate() {
     const weightLbs = weights[0]?.weight_lbs || (onboarding?.weight_kg ? onboarding.weight_kg * 2.20462 : null);
     if (!weightLbs) return;
-    const heightInches = onboarding?.height_cm ? onboarding.height_cm / 2.54 : 68;
+    const heightInches = onboarding?.height_inches || (onboarding?.height_cm ? onboarding.height_cm / 2.54 : 68);
     const age = onboarding?.age || 30;
-    const sex = onboarding?.gender === 'female' ? 'female' : 'male';
+    const sex = (onboarding?.sex || onboarding?.gender) === 'female' ? 'female' : 'male';
     const trainingDays = onboarding?.training_days_per_week || 4;
     const goal = onboarding?.primary_goal || 'general_fitness';
 
@@ -712,12 +730,13 @@ export default function TrainerClientNotes() {
     dispatch({ type: 'SET', payload: { savingNotes: true } });
     try {
       const serialized = JSON.stringify(notesData);
-      await supabase.from('trainer_clients').upsert({
+      const { error } = await supabase.from('trainer_clients').upsert({
         gym_id: profile.gym_id,
         trainer_id: profile.id,
         client_id: clientId,
         notes: serialized,
       }, { onConflict: 'trainer_id,client_id' });
+      if (error) throw error; // don't flash "Saved ✓" on a failed write
       dispatch({ type: 'SET', payload: { notesSaved: true } });
       if (notesSavedTimerRef.current) clearTimeout(notesSavedTimerRef.current);
       notesSavedTimerRef.current = setTimeout(() => {
@@ -762,17 +781,47 @@ export default function TrainerClientNotes() {
     dispatch({ type: 'SET', payload: { assigningProgram: true } });
     try {
       // Update profile's assigned_program_id via secure RPC
-      await supabase.rpc('trainer_assign_program', { p_member_id: clientId, p_program_id: programId });
+      const { error: rpcErr } = await supabase.rpc('trainer_assign_program', { p_member_id: clientId, p_program_id: programId });
+      if (rpcErr) {
+        logger.error('Error assigning program:', rpcErr);
+        showToast(t('trainerNotes.errors.assignProgramFailed', 'Could not update the program'), 'error');
+        return;
+      }
 
-      // Upsert enrollment
-      await supabase
-        .from('gym_program_enrollments')
-        .upsert({
-          program_id: programId,
-          profile_id: clientId,
-          gym_id: profile.gym_id,
-          started_at: new Date().toISOString(),
-        }, { onConflict: 'program_id,profile_id' });
+      if (programId) {
+        // Upsert enrollment. The conflict path (re-assigning a program the client
+        // already enrolled in) is an UPDATE under RLS — policy gpe_update_trainer
+        // ships in migration 0526. Until it's applied, fall back to keeping the
+        // existing row (ignoreDuplicates → ON CONFLICT DO NOTHING, insert-only RLS).
+        const { error: enrollErr } = await supabase
+          .from('gym_program_enrollments')
+          .upsert({
+            program_id: programId,
+            profile_id: clientId,
+            gym_id: profile.gym_id,
+            enrolled_at: new Date().toISOString(),
+          }, { onConflict: 'program_id,profile_id' });
+        if (enrollErr) {
+          await supabase
+            .from('gym_program_enrollments')
+            .upsert({
+              program_id: programId,
+              profile_id: clientId,
+              gym_id: profile.gym_id,
+            }, { onConflict: 'program_id,profile_id', ignoreDuplicates: true });
+        }
+      } else if (client?.assigned_program_id) {
+        // "Remove program": never upsert program_id NULL (NOT NULL → 23502).
+        // Delete the now-stale enrollment instead. The trainer DELETE policy
+        // ships in migration 0527 — pre-migration this fails under RLS, which
+        // is non-fatal (the RPC above already cleared assigned_program_id).
+        const { error: delErr } = await supabase
+          .from('gym_program_enrollments')
+          .delete()
+          .eq('profile_id', clientId)
+          .eq('program_id', client.assigned_program_id);
+        if (delErr) logger.error('Error removing enrollment (non-fatal pre-0527):', delErr);
+      }
 
       // Reload data
       await loadClientData();
@@ -790,9 +839,25 @@ export default function TrainerClientNotes() {
     in_person: UserCheck,
   };
 
+  // Follow-up method → fixed accent hue (for the tinted icon-box in the
+  // history rows) + i18n key suffix (method values use snake_case; the
+  // locale keys are camelCase under trainerNotes.followUp.methods).
+  const METHOD_TONES = {
+    call: TT.accent,
+    in_person: TT.good,
+    push: TT.coach,
+    email: TT.warn,
+  };
+  const FU_METHOD_KEY = {
+    call: 'call',
+    in_person: 'inPerson',
+    push: 'push',
+    email: 'email',
+  };
+
   const OUTCOME_STYLES = {
     no_answer: { label: t('trainerNotes.followUp.outcomes.noAnswer'), color: 'text-[var(--tt-text-sub)]', bg: 'bg-[var(--tt-bg)]' },
-    rescheduled: { label: t('trainerNotes.followUp.outcomes.rescheduled'), color: 'text-[#19B8B8]', bg: 'bg-[#19B8B8]/10' },
+    rescheduled: { label: t('trainerNotes.followUp.outcomes.rescheduled'), color: 'text-[var(--tt-accent-ink)]', bg: 'bg-[var(--tt-accent-soft)]' },
     coming_back: { label: t('trainerNotes.followUp.outcomes.comingBack'), color: 'text-[var(--tt-good-ink)]', bg: 'bg-[var(--tt-good-soft)]' },
     not_interested: { label: t('trainerNotes.followUp.outcomes.notInterested'), color: 'text-[#FF5A2E]', bg: 'bg-[var(--tt-hot-soft)]' },
     other: { label: t('trainerNotes.followUp.outcomes.other'), color: 'text-[var(--tt-text-sub)]', bg: 'bg-[var(--tt-bg)]' },
@@ -825,9 +890,9 @@ export default function TrainerClientNotes() {
   // day count as representative; programs may technically vary week-to-week
   // but for a simple progress card this is enough.
   const programProgress = useMemo(() => {
-    if (!enrollment?.gym_programs || !enrollment.started_at) return null;
+    if (!enrollment?.gym_programs || !enrollment.enrolled_at) return null;
     const { duration_weeks, weeks, name } = enrollment.gym_programs;
-    const started = new Date(enrollment.started_at);
+    const started = new Date(enrollment.enrolled_at);
     const now = new Date();
     const currentWeek = Math.min(Math.max(differenceInWeeks(now, started) + 1, 1), duration_weeks || 1);
     const totalWeeks = duration_weeks || 0;
@@ -836,15 +901,6 @@ export default function TrainerClientNotes() {
     const daysPerWeek = Array.isArray(week1) ? week1.length : (week1?.days?.length ?? 3);
     return { name, currentWeek, totalWeeks, daysPerWeek, progressPct };
   }, [enrollment]);
-
-  // Weight chart data (reversed so chart goes left-to-right chronologically)
-  const weightChartData = useMemo(() => {
-    if (weights.length === 0) return [];
-    return [...weights].reverse().map(w => ({
-      date: format(new Date(w.logged_at), 'MMM d', { locale: dateFnsLocale }),
-      weight: w.weight_lbs,
-    }));
-  }, [weights, dateFnsLocale]);
 
   // Body tab — period-filtered weight chart data
   const bodyWeightChart = useMemo(() => {
@@ -1045,9 +1101,8 @@ export default function TrainerClientNotes() {
     );
   }
 
-  // ── Hero gradient + status pill mapping ─────────────────
+  // ── Avatar + status pill mapping ────────────────────────
   const heroIdx = avatarIdx(client.id);
-  const [heroA, heroB] = avatarGradient(heroIdx);
   const daysQuiet = client.last_active_at
     ? Math.floor((Date.now() - new Date(client.last_active_at).getTime()) / 86400000)
     : null;
@@ -1061,11 +1116,6 @@ export default function TrainerClientNotes() {
       : t('trainerClientDetail.statusOnTrack', 'On track');
   const heroStatusTone = heroStatus === 'churn' ? 'hot' : heroStatus === 'risk' ? 'warn' : 'invert';
 
-  // Split name for two-line hero display
-  const nameParts = (client.full_name || t('trainerNotes.unnamedClient', 'Client')).trim().split(/\s+/);
-  const firstName = nameParts[0] || '';
-  const lastName = nameParts.slice(1).join(' ');
-
   // Pinned note from notesData (if any text present)
   const pinnedNote = (notesData?.notes || '').trim();
   const injuriesNote = (notesData?.injuries || '').trim();
@@ -1073,183 +1123,200 @@ export default function TrainerClientNotes() {
   // Map first 3 PRs into the "Personal records" grid
   const topPRs = (personalRecords || []).slice(0, 4);
 
+  // Pinned-notes warm gradient is light-only; in dark mode fall back to the
+  // theme-aware surface so it doesn't blow out. Read the toggle at render time
+  // (ThemeContext re-renders the tree when the OS preference flips).
+  const isDarkTheme = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  const pinnedNoteBg = isDarkTheme ? TT.surface2 : 'linear-gradient(160deg,#FFFBEF,#FFFDF7)';
+  const pinnedNoteBorder = isDarkTheme ? TT.border : '#F1E6C8';
+
+  // Member-since label for the identity meta line.
+  const memberSince = client?.created_at
+    ? format(new Date(client.created_at), 'MMM yyyy', { locale: dateFnsLocale })
+    : null;
+
+  // Open DM thread with this client (shared by the back-bar + identity CTA).
+  const openConversation = async () => {
+    try {
+      const { data: convId, error } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
+      if (error || !convId) {
+        logger.error('Error opening conversation:', error);
+        showToast(t('trainerNotes.errors.openConversationFailed', 'Could not open the chat'), 'error');
+        return;
+      }
+      navigate(`/trainer/messages/${convId}`);
+    } catch (err) { logger.error('Error opening conversation:', err); }
+  };
+
+  // ── Swipe left/right to move between tabs (in tab-bar order) ──────────
+  // (swipeRef is declared up top with the other hooks; these are plain handlers.)
+  const MEMBER_TAB_ORDER = ['overview', 'programNutrition', 'history', 'notesFollowUp', 'body', 'coaching'];
+  const onTabSwipeStart = (e) => {
+    const tch = e.touches && e.touches[0];
+    // Don't hijack text fields or explicitly-ignored scrollers (the tab bar, charts).
+    if (!tch || (e.target.closest && e.target.closest('[data-swipe-ignore], input, textarea, select'))) {
+      swipeRef.current.active = false;
+      return;
+    }
+    swipeRef.current = { x: tch.clientX, y: tch.clientY, active: true };
+  };
+  const onTabSwipeEnd = (e) => {
+    const s = swipeRef.current;
+    if (!s.active) return;
+    s.active = false;
+    const tch = e.changedTouches && e.changedTouches[0];
+    if (!tch) return;
+    const dx = tch.clientX - s.x;
+    const dy = tch.clientY - s.y;
+    // Require a dominant horizontal swipe so vertical scrolling never switches tabs.
+    if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+    const i = MEMBER_TAB_ORDER.indexOf(activeTab);
+    if (i < 0) return;
+    const next = dx < 0 ? i + 1 : i - 1;
+    if (next < 0 || next >= MEMBER_TAB_ORDER.length) return;
+    dispatch({ type: 'SET', payload: { activeTab: MEMBER_TAB_ORDER[next] } });
+  };
+
   return (
-    <div style={{ background: TT.bg, minHeight: '100%' }}>
-      {/* ── Hero header (gradient) ──────────────────────────── */}
-      <div
-        style={{
-          background: `linear-gradient(135deg, ${heroA} 0%, ${heroB} 100%)`,
-          padding: '12px 16px 90px',
-          position: 'relative',
-          zIndex: 1,
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+    <div style={{ background: TT.bg, minHeight: '100%' }} onTouchStart={onTabSwipeStart} onTouchEnd={onTabSwipeEnd}>
+      {/* ── Back bar (Atelier) ──────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 16px 4px' }}>
+        <TIconButton
+          ariaLabel={t('trainerNotes.backToClients', 'Back')}
+          onClick={() => navigate('/trainer/clients')}
+        >
+          <ChevronLeft size={18} strokeWidth={2.4} color={TT.text} />
+        </TIconButton>
+        <div style={{ fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: TT.text, letterSpacing: -0.2 }}>
+          {t('trainerClientDetail.clientLabel', 'Client')}
+        </div>
+        <TIconButton
+          ariaLabel={t('trainerNotes.actions.monthlyReport', 'More')}
+          onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
+        >
+          <MoreHorizontal size={18} strokeWidth={2.2} color={TT.text} />
+        </TIconButton>
+      </div>
+
+      {/* ── Identity header (centered) — exact Atelier reference sizes ── */}
+      <div style={{ padding: '6px 20px 10px', textAlign: 'center' }}>
+        <div style={{ display: 'inline-block', position: 'relative' }}>
+          <TAvatar name={client.full_name || '?'} size={64} idx={heroIdx} />
+          {liveDraft && (
+            <span style={{
+              position: 'absolute', bottom: 1, right: 1,
+              width: 15, height: 15, borderRadius: 999,
+              background: TT.hot, border: `2.5px solid ${TT.bg}`,
+              animation: 'pulse 1.6s ease-in-out infinite',
+            }} aria-hidden="true" />
+          )}
+        </div>
+        <div style={{ fontFamily: TFont.display, fontSize: 22, fontWeight: 800, color: TT.text, letterSpacing: -0.6, marginTop: 9, lineHeight: 1.1 }}>
+          {client.full_name || t('trainerNotes.unnamedClient', 'Client')}
+        </div>
+        <div style={{ fontSize: 12.5, color: TT.textSub, marginTop: 3 }}>
+          {programName || t('trainerClientDetail.noProgram', 'No program')}
+          {programProgress && <> · {t('trainerClientDetail.weekN', 'Week {{w}}', { w: programProgress.currentWeek })}</>}
+          {memberSince && <> · {t('trainerClientDetail.memberSince', 'Member since {{m}}', { m: memberSince })}</>}
+        </div>
+
+        {/* Status + live pills */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', justifyContent: 'center', marginTop: 9 }}>
+          <TPill tone={heroStatusTone === 'invert' ? 'good' : heroStatusTone} size="m">
+            {heroStatusLabel} · {adherencePercent}% {t('trainerClientDetail.adhAbbr', 'adh')}
+          </TPill>
+          {liveDraft && (
+            <button
+              type="button"
+              onClick={() => navigate(`/trainer/live/${clientId}`)}
+              aria-label={t('trainerClientDetail.live.watchLive', '● Live')}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '3px 10px', borderRadius: 999,
+                background: TT.hot, color: '#fff',
+                fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4,
+                textTransform: 'uppercase', border: 'none', cursor: 'pointer',
+                animation: 'pulse 1.6s ease-in-out infinite',
+                whiteSpace: 'nowrap', minHeight: 22,
+              }}
+            >
+              {t('trainerClientDetail.live.watchLive', '● Live')}
+            </button>
+          )}
+        </div>
+
+        {/* CTAs */}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 13 }}>
+          <TPrimaryButton onClick={openConversation} aria-label={t('trainerNotes.actions.messageClient', 'Message')}>
+            <MessageSquare size={16} strokeWidth={2.4} />
+            {t('trainerNotes.actions.messageClient', 'Message')}
+          </TPrimaryButton>
           <button
             type="button"
-            onClick={() => navigate('/trainer/clients')}
-            aria-label={t('trainerNotes.backToClients', 'Back')}
-            style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: 'rgba(255,255,255,0.25)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: 'none', cursor: 'pointer', color: '#fff',
-            }}
+            onClick={handleStartLiveSession}
+            aria-label={t('trainerClientDetail.live.startSession', 'Log session')}
+            className="tt-btn tt-btn--secondary"
+            style={{ padding: '11px 16px', borderRadius: 14, fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            <ArrowLeft size={18} strokeWidth={2.2} />
+            <Play size={16} strokeWidth={2.2} />
+            {t('trainerClientDetail.live.startSession', 'Log session')}
           </button>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
-                  if (convId) navigate(`/trainer/messages/${convId}`);
-                } catch (err) { logger.error('Error opening conversation:', err); }
-              }}
-              aria-label={t('trainerNotes.actions.messageClient', 'Message')}
-              style={{
-                width: 36, height: 36, borderRadius: 10,
-                background: 'rgba(255,255,255,0.25)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: 'none', cursor: 'pointer', color: '#fff',
-              }}
-            >
-              <MessageSquare size={18} strokeWidth={2.2} />
-            </button>
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
-              aria-label={t('trainerNotes.actions.monthlyReport', 'More')}
-              style={{
-                width: 36, height: 36, borderRadius: 10,
-                background: 'rgba(255,255,255,0.25)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: 'none', cursor: 'pointer', color: '#fff',
-              }}
-            >
-              <MoreHorizontal size={18} strokeWidth={2.2} />
-            </button>
-          </div>
         </div>
-        <div style={{ color: '#fff' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-            <TPill tone={heroStatusTone} size="s">
-              {heroStatusLabel} · {adherencePercent}% {t('trainerClientDetail.adhAbbr', 'adh')}
-            </TPill>
-            {liveDraft && (
-              <button
-                type="button"
-                onClick={() => navigate(`/trainer/live/${clientId}`)}
-                aria-label={t('trainerClientDetail.live.watchLive', '● Live')}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  padding: '3px 10px', borderRadius: 999,
-                  background: TT.hot, color: '#fff',
-                  fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4,
-                  textTransform: 'uppercase', border: 'none', cursor: 'pointer',
-                  animation: 'pulse 1.6s ease-in-out infinite',
-                  whiteSpace: 'nowrap',
-                  minHeight: 22,
-                }}
-              >
-                {t('trainerClientDetail.live.watchLive', '● Live')}
-              </button>
-            )}
-          </div>
-          <div style={{
-            fontFamily: TFont.display, fontSize: 32, fontWeight: 800,
-            letterSpacing: -1.2, lineHeight: 1.05, marginTop: 12,
-          }}>
-            {firstName}{lastName ? <><br/>{lastName}</> : null}
-          </div>
-          {client?.username && (
-            <div style={{
-              fontSize: 13, fontWeight: 500, marginTop: 4,
-              color: 'rgba(255,255,255,0.7)',
-            }}>
-              @{client.username}
+      </div>
+
+      {/* ── Stat trio (Atelier) — exact reference sizes ─────── */}
+      <div style={{ padding: '4px 16px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        {[
+          { l: t('trainerClientDetail.snapshot.adherence', 'Adherence'), big: `${adherencePercent}`, unit: '%', tone: TT.accent },
+          { l: t('trainerClientDetail.snapshot.streak', 'Streak'), big: `${streak?.current_streak_days || 0}`, unit: 'd', tone: '#F08A3C' },
+          { l: t('trainerClientDetail.snapshot.sessions', 'Sessions'), big: `${workoutsThisWeek}`, unit: `/${stats.count}`, tone: TT.text },
+        ].map((s, i) => (
+          <TCard key={i} padded={0} style={{ padding: '11px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: TT.textMute, letterSpacing: 0.7, textTransform: 'uppercase' }}>{s.l}</div>
+            <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: s.tone, letterSpacing: -1, lineHeight: 1, marginTop: 5 }}>
+              {s.big}<span style={{ fontSize: 12, color: TT.textMute }}>{s.unit}</span>
             </div>
-          )}
-          <div style={{ fontSize: 13, marginTop: 6, opacity: 0.85, fontWeight: 600 }}>
-            {programName || t('trainerClientDetail.noProgram', 'No program')}
-            {programProgress && (
-              <> · {t('trainerClientDetail.weekOf', 'Week {{w}} of {{t}}', {
-                w: programProgress.currentWeek,
-                t: programProgress.totalWeeks,
-              })}</>
-            )}
-          </div>
-        </div>
+          </TCard>
+        ))}
       </div>
 
-      {/* ── Snapshot card overlapping ──────────────────────── */}
-      <div style={{ padding: '0 16px', marginTop: -70, position: 'relative', zIndex: 2 }}>
-        <TCard padded={16}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-            {[
-              { l: t('trainerClientDetail.snapshot.adherence', 'Adherence'), v: `${adherencePercent}%`, sub: t('trainerClientDetail.snapshot.last30d', 'Last 30d'), tone: TT.good },
-              { l: t('trainerClientDetail.snapshot.sessions', 'Sessions'), v: `${workoutsThisWeek}/${stats.count}`, sub: t('trainerClientDetail.snapshot.thisBlock', 'This block'), tone: TT.accent },
-              { l: t('trainerClientDetail.snapshot.streak', 'Streak'), v: `${streak?.current_streak_days || 0}d`, sub: t('trainerClientDetail.snapshot.active', 'Active'), tone: TT.hot },
-            ].map((s, i) => (
-              <div key={i} style={{
-                padding: 10, borderRadius: 12, background: TT.surface2,
-                textAlign: 'center',
-              }}>
-                <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: s.tone, letterSpacing: -0.5 }}>
-                  {s.v}
-                </div>
-                <div style={{ fontSize: 10, color: TT.textSub, fontWeight: 700, marginTop: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                  {s.l}
-                </div>
-                <div style={{ fontSize: 9, color: TT.textMute, marginTop: 2 }}>{s.sub}</div>
-              </div>
-            ))}
-          </div>
-        </TCard>
-      </div>
-
-      {/* ── Tab strip ──────────────────────────────────────── */}
-      <div style={{ padding: '14px 16px 0' }}>
-        <div style={{
-          display: 'flex', gap: 4, padding: 4, background: TT.surface,
-          borderRadius: 12, border: `1px solid ${TT.border}`, marginBottom: 14,
-        }}>
-          {[
-            { l: t('trainerClientDetail.tabs.overview', 'Overview'), tab: 'overview' },
-            { l: t('trainerClientDetail.tabs.plan', 'Plan'), tab: 'programNutrition' },
-            { l: t('trainerClientDetail.tabs.history', 'History'), tab: 'history' },
-            { l: t('trainerClientDetail.tabs.notes', 'Notes'), tab: 'notesFollowUp' },
-            { l: t('trainerClientDetail.tabs.body', 'Body'), tab: 'body' },
-            { l: t('trainerClientDetail.tabs.coaching', 'Check-ins'), tab: 'coaching' },
-          ].map((t2) => {
-            const isActive = activeTab === t2.tab;
-            return (
-              <button
-                key={t2.tab}
-                type="button"
-                onClick={() => dispatch({ type: 'SET', payload: { activeTab: t2.tab } })}
-                style={{
-                  flex: 1, padding: '8px 4px', borderRadius: 8, textAlign: 'center',
-                  background: isActive ? TT.text : 'transparent',
-                  color: isActive ? '#fff' : TT.textSub,
-                  fontSize: 11.5, fontWeight: 700,
-                  border: 'none', cursor: 'pointer',
-                  minHeight: 36,
-                }}
-              >
-                {t2.l}
-              </button>
-            );
-          })}
-        </div>
+      {/* ── Tab chips (Atelier, horizontal scroll) ──────────── */}
+      <div data-swipe-ignore style={{ display: 'flex', gap: 7, padding: '0 16px 12px', overflowX: 'auto' }}>
+        {[
+          { l: t('trainerClientDetail.tabs.overview', 'Overview'), tab: 'overview' },
+          { l: t('trainerClientDetail.tabs.plan', 'Plan'), tab: 'programNutrition' },
+          { l: t('trainerClientDetail.tabs.history', 'History'), tab: 'history' },
+          { l: t('trainerClientDetail.tabs.notes', 'Notes'), tab: 'notesFollowUp' },
+          { l: t('trainerClientDetail.tabs.body', 'Body'), tab: 'body' },
+          { l: t('trainerClientDetail.tabs.coaching', 'Check-ins'), tab: 'coaching' },
+        ].map((t2) => {
+          const isActive = activeTab === t2.tab;
+          return (
+            <button
+              key={t2.tab}
+              type="button"
+              onClick={() => dispatch({ type: 'SET', payload: { activeTab: t2.tab } })}
+              className="tt-tap"
+              style={{
+                padding: '8px 14px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0,
+                fontFamily: TFont.display, fontSize: 13, fontWeight: 700,
+                background: isActive ? TT.text : TT.surface,
+                color: isActive ? TT.onInverse : TT.textSub,
+                boxShadow: isActive ? '0 2px 6px -2px rgba(20,16,10,.4)' : 'inset 0 0 0 1px var(--tt-border)',
+                border: 'none', cursor: 'pointer', minHeight: 36,
+              }}
+            >
+              {t2.l}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Overview tab content (new visual layer) ────────── */}
       {activeTab === 'overview' && (
-        <div style={{ padding: '0 16px 14px' }} className="md:max-w-[860px] md:mx-auto">
+        <div style={{ padding: '16px 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
           {/* Check-in reference photo (staff-managed) */}
-          <TCard padded={14} style={{ marginBottom: 14 }}>
+          <TCard padded={14} style={{ marginBottom: 22 }}>
             <CheckinPhotoEditor
               subjectId={clientId}
               path={client.checkin_photo_path}
@@ -1266,22 +1333,19 @@ export default function TrainerClientNotes() {
           {/* Next session */}
           {(programName || recentSessions.length > 0) && (
             <>
-              <div style={{
-                fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-                letterSpacing: -0.2, marginBottom: 8,
-              }}>
-                {t('trainerClientDetail.nextSession', 'Next session')}
-              </div>
-              <TCard padded={14} style={{ marginBottom: 14, borderLeft: `3px solid ${TT.accent}` }}>
+              <TSectionHeader title={t('trainerClientDetail.nextSession', 'Next session')} />
+              <TCard padded={14} style={{ marginBottom: 22, boxShadow: `inset 3px 0 0 ${TT.accent}, ${TT.shadow}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ fontFamily: TFont.display, fontSize: 22, fontWeight: 800, color: TT.text, letterSpacing: -0.5, lineHeight: 1 }}>
-                      {recentSessions[0]?.duration_seconds
-                        ? formatDuration(recentSessions[0].duration_seconds)
-                        : t('trainerClientDetail.scheduled', 'Soon')}
+                      {nextSession
+                        ? format(new Date(nextSession.scheduled_at), 'EEE p', { locale: dateFnsLocale })
+                        : '—'}
                     </div>
                     <div style={{ fontSize: 11, color: TT.textSub, marginTop: 2 }}>
-                      {t('trainerClientDetail.sessionMins', '{{m}} min', { m: 60 })}
+                      {nextSession
+                        ? t('trainerClientDetail.sessionMins', '{{m}} min', { m: nextSession.duration_mins || 60 })
+                        : t('trainerClientDetail.noUpcomingSession', 'No upcoming session')}
                     </div>
                   </div>
                   <div style={{ flex: 1, paddingLeft: 14, borderLeft: `1px solid ${TT.border}`, marginLeft: 8, minWidth: 0 }}>
@@ -1303,136 +1367,207 @@ export default function TrainerClientNotes() {
             </>
           )}
 
-          {/* Recent log */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.recentLog', 'Recent log')}
-          </div>
+          {/* Current plan (Atelier) */}
+          {programName && (
+            <>
+              <TSectionHeader
+                title={t('trainerClientDetail.currentPlan', 'Current plan')}
+                action={
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'programNutrition' } })}
+                    className="tt-tap"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: TT.textSub, padding: 0 }}
+                  >
+                    {t('trainerClientDetail.adjust', 'Adjust')}
+                  </button>
+                }
+              />
+              <TCard padded={16} style={{ marginBottom: 22 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {programName}
+                    </div>
+                    {programProgress && (
+                      <div style={{ fontSize: 12.5, color: TT.textSub, marginTop: 2 }}>
+                        {t('trainerClientDetail.weekProgram', '{{n}}-week program', { n: programProgress.totalWeeks })}
+                        {' · '}
+                        {t('trainerClientDetail.daysWeekN', '{{d}} days/week', { d: programProgress.daysPerWeek })}
+                      </div>
+                    )}
+                  </div>
+                  {programProgress && (
+                    <TPill tone="teal" size="l" style={{ flexShrink: 0 }}>
+                      {t('trainerClientDetail.weekOfPill', 'Week {{w}} / {{t}}', { w: programProgress.currentWeek, t: programProgress.totalWeeks })}
+                    </TPill>
+                  )}
+                </div>
+                {programProgress && (
+                  <>
+                    <div style={{ height: 6, background: TT.surface2, borderRadius: 999, marginTop: 14, overflow: 'hidden', boxShadow: 'inset 0 0 0 1px var(--tt-border)' }}>
+                      <div style={{ width: `${programProgress.progressPct}%`, height: '100%', background: 'linear-gradient(90deg,#27B0A0,#178C7E)', borderRadius: 999 }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11.5, color: TT.textSub, fontWeight: 600 }}>
+                      <span>{t('trainerClientDetail.weekProgressLabel', 'Week {{w}} of {{t}}', { w: programProgress.currentWeek, t: programProgress.totalWeeks })}</span>
+                      <span>
+                        {nextSession
+                          ? t('trainerClientDetail.nextColon', 'Next: {{d}}', { d: format(new Date(nextSession.scheduled_at), 'EEE p', { locale: dateFnsLocale }) })
+                          : t('trainerClientDetail.progressPct', '{{p}}% complete', { p: programProgress.progressPct })}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </TCard>
+            </>
+          )}
+
+          {/* Recent log — dumbbell icon-box rows (Atelier) */}
+          <TSectionHeader title={t('trainerClientDetail.recentLog', 'Recent log')} />
           {recentSessions.length === 0 ? (
-            <TCard padded={14} style={{ marginBottom: 14 }}>
+            <TCard padded={14} style={{ marginBottom: 22 }}>
               <p style={{ fontSize: 13, color: TT.textMute }}>
                 {t('trainerNotes.overview.noRecentWorkouts', 'No recent workouts')}
               </p>
             </TCard>
           ) : (
-            <TCard padded={0} style={{ marginBottom: 14 }}>
-              {recentSessions.slice(0, 5).map((s, i) => (
-                <div
-                  key={s.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-                    borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
-                  }}
-                >
-                  <div style={{ width: 36, textAlign: 'center', flexShrink: 0 }}>
+            <TCard padded={0} style={{ marginBottom: 22, overflow: 'hidden' }}>
+              {recentSessions.slice(0, 5).map((s, i) => {
+                const mins = s.duration_seconds ? Math.round(s.duration_seconds / 60) : null;
+                return (
+                  <div
+                    key={s.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px',
+                      borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
+                    }}
+                  >
                     <div style={{
-                      fontSize: 10, fontWeight: 700, color: TT.textMute,
-                      letterSpacing: 0.4, textTransform: 'uppercase',
+                      width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                      background: 'color-mix(in srgb, #1E9C8E 12%, transparent)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      {format(new Date(s.started_at), 'EEE', { locale: dateFnsLocale })}
+                      <Dumbbell size={17} color={TT.accent} strokeWidth={2.1} />
                     </div>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {s.name || t('trainerNotes.overview.workout', 'Workout')}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {s.name || t('trainerNotes.overview.workout', 'Workout')}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>
+                        {format(new Date(s.started_at), 'MMM d', { locale: dateFnsLocale })}
+                        {mins != null && ` · ${t('trainerClientDetail.sessionMins', '{{m}} min', { m: mins })}`}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 11, color: TT.textSub, marginTop: 1 }}>
-                      {format(new Date(s.started_at), 'MMM d', { locale: dateFnsLocale })}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 11.5, fontFamily: TFont.mono, fontWeight: 700, color: TT.text }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: TT.text, fontFamily: TFont.mono, flexShrink: 0 }}>
                       {s.total_volume_lbs >= 1000
                         ? `${(s.total_volume_lbs / 1000).toFixed(1)}${t('trainerClientDetail.body.kLbs', 'k lbs')}`
                         : `${s.total_volume_lbs || 0} ${t('common:lb', 'lb')}`}
                     </div>
-                    <div style={{ fontSize: 10, color: TT.textMute, marginTop: 1 }}>
-                      {formatDuration(s.duration_seconds)}
+                  </div>
+                );
+              })}
+            </TCard>
+          )}
+
+          {/* Recent PRs (Atelier) */}
+          <TSectionHeader title={t('trainerClientDetail.recentPrs', 'Recent PRs')} />
+          {topPRs.length === 0 ? (
+            <TCard padded={14} style={{ marginBottom: 22 }}>
+              <p style={{ fontSize: 13, color: TT.textMute }}>
+                {t('trainerNotes.progress.noPRs', 'No PRs yet')}
+              </p>
+            </TCard>
+          ) : (
+            <TCard padded={0} style={{ marginBottom: 22, overflow: 'hidden' }}>
+              {topPRs.map((pr, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 15px',
+                    borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
+                  }}
+                >
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                    background: 'rgba(240,138,60,.14)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Trophy size={16} color="#E08A2E" strokeWidth={2.2} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {pr.exercises?.name || t('trainerNotes.overview.unknownExercise', 'Lift')}
                     </div>
+                    <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>
+                      {format(new Date(pr.achieved_at), 'MMM d', { locale: dateFnsLocale })}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, fontFamily: TFont.mono }}>
+                      {pr.weight_lbs} {t('common:lb', 'lb')}{pr.reps ? ` × ${pr.reps}` : ''}
+                    </div>
+                    {pr.estimated_1rm ? (
+                      <div style={{ fontSize: 11, color: TT.accent, fontWeight: 800, marginTop: 1 }}>
+                        {t('trainerClientDetail.oneRmShort', '1RM {{v}}', { v: Math.round(pr.estimated_1rm) })}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: TT.accent, fontWeight: 800, marginTop: 1 }}>
+                        {t('trainerClientDetail.pr.up', '↑ PR')}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
             </TCard>
           )}
 
-          {/* Personal records */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.prs', 'Personal records')}
-          </div>
-          {topPRs.length === 0 ? (
-            <TCard padded={14} style={{ marginBottom: 14 }}>
-              <p style={{ fontSize: 13, color: TT.textMute }}>
-                {t('trainerNotes.progress.noPRs', 'No PRs yet')}
-              </p>
-            </TCard>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-              {topPRs.map((pr, i) => (
-                <TCard key={i} padded={12}>
-                  <div style={{
-                    fontSize: 10, color: TT.textMute, fontWeight: 700,
-                    letterSpacing: 0.5, textTransform: 'uppercase',
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  }}>
-                    {pr.exercises?.name || t('trainerNotes.overview.unknownExercise', 'Lift')}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-                    <div style={{
-                      fontFamily: TFont.display, fontSize: 18, fontWeight: 800,
-                      color: TT.text, letterSpacing: -0.5,
-                    }}>
-                      {pr.weight_lbs} {t('common:lb', 'lb')}
-                    </div>
-                    <span style={{ fontSize: 10, color: TT.good, fontWeight: 800 }}>
-                      {t('trainerClientDetail.pr.up', '↑ PR')}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 10, color: TT.textMute, marginTop: 2 }}>
-                    {format(new Date(pr.achieved_at), 'MMM d', { locale: dateFnsLocale })}
-                  </div>
-                </TCard>
-              ))}
-            </div>
-          )}
-
-          {/* Pinned notes (post-it style) */}
+          {/* Pinned notes (warm gradient, Atelier) */}
           {(pinnedNote || injuriesNote) && (
             <>
-              <div style={{
-                fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-                letterSpacing: -0.2, marginBottom: 8,
-              }}>
-                {t('trainerClientDetail.pinnedNotes', 'Pinned notes')}
-              </div>
-              {injuriesNote && (
-                <TCard padded={14} style={{
-                  background: '#FEF4A8', borderColor: '#F2DC6E', marginBottom: 8,
-                }}>
-                  <div style={{ fontSize: 12.5, color: '#5A4A2A', lineHeight: 1.5, fontFamily: TFont.body, fontStyle: 'italic' }}>
-                    "{injuriesNote}"
-                  </div>
-                  <div style={{ fontSize: 10, color: '#8A7A4A', marginTop: 6, fontWeight: 700 }}>
-                    {t('trainerClientDetail.injuriesPinned', 'Injuries · Pinned')}
-                  </div>
-                </TCard>
-              )}
-              {pinnedNote && (
-                <TCard padded={14} style={{
-                  background: '#FEF4A8', borderColor: '#F2DC6E', marginBottom: 14,
-                }}>
-                  <div style={{ fontSize: 12.5, color: '#5A4A2A', lineHeight: 1.5, fontFamily: TFont.body, fontStyle: 'italic' }}>
-                    "{pinnedNote.length > 240 ? pinnedNote.slice(0, 240) + '…' : pinnedNote}"
-                  </div>
-                  <div style={{ fontSize: 10, color: '#8A7A4A', marginTop: 6, fontWeight: 700 }}>
-                    {t('trainerClientDetail.coachPinned', 'Coach notes · Pinned')}
-                  </div>
-                </TCard>
-              )}
+              <TSectionHeader
+                title={t('trainerClientDetail.pinnedNotes', 'Pinned notes')}
+                action={
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'notesFollowUp' } })}
+                    className="tt-tap"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: TT.textSub, padding: 0 }}
+                  >
+                    {t('trainerClientDetail.edit', 'Edit')}
+                  </button>
+                }
+              />
+              <TCard padded={14} style={{ marginBottom: 22, background: pinnedNoteBg, borderColor: pinnedNoteBorder }}>
+                {[
+                  injuriesNote && {
+                    ico: AlertTriangle,
+                    iconHue: '#D97A2E', iconBg: 'rgba(240,138,60,.14)',
+                    label: t('trainerClientDetail.notesWatch', 'Watch'),
+                    labelColor: isDarkTheme ? TT.warnInk : '#B07A28',
+                    value: injuriesNote,
+                  },
+                  pinnedNote && {
+                    ico: StickyNote,
+                    iconHue: TT.accent, iconBg: 'color-mix(in srgb, #1E9C8E 14%, transparent)',
+                    label: t('trainerClientDetail.notesCoach', 'Coach notes'),
+                    labelColor: isDarkTheme ? TT.accentInk : '#1E8276',
+                    value: pinnedNote.length > 240 ? pinnedNote.slice(0, 240) + '…' : pinnedNote,
+                  },
+                ].filter(Boolean).map((n, i) => {
+                  const Ico = n.ico;
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', marginTop: i ? 12 : 0 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 9, background: n.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Ico size={15} color={n.iconHue} strokeWidth={2.2} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, color: n.labelColor, letterSpacing: 0.5, textTransform: 'uppercase' }}>{n.label}</div>
+                        <div style={{ fontSize: 13.5, color: isDarkTheme ? TT.text : '#5A4A2A', fontWeight: 600, marginTop: 2, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{n.value}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </TCard>
             </>
           )}
 
@@ -1441,12 +1576,8 @@ export default function TrainerClientNotes() {
             <button
               type="button"
               onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'notesFollowUp', showFollowupModal: true } })}
-              style={{
-                padding: '10px 14px', borderRadius: 12,
-                border: `1px solid ${TT.borderSolid}`, background: TT.surface,
-                fontSize: 12, fontWeight: 700, color: TT.text, cursor: 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-              }}
+              className="tt-btn tt-btn--secondary"
+              style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <Phone size={13} />
               {t('trainerNotes.actions.logFollowUp', 'Log follow-up')}
@@ -1454,12 +1585,8 @@ export default function TrainerClientNotes() {
             <button
               type="button"
               onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
-              style={{
-                padding: '10px 14px', borderRadius: 12,
-                border: `1px solid ${TT.borderSolid}`, background: TT.surface,
-                fontSize: 12, fontWeight: 700, color: TT.text, cursor: 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-              }}
+              className="tt-btn tt-btn--secondary"
+              style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <BarChart3 size={13} />
               {t('trainerNotes.actions.monthlyReport', 'Monthly report')}
@@ -1467,12 +1594,8 @@ export default function TrainerClientNotes() {
             <button
               type="button"
               onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'programNutrition' } })}
-              style={{
-                padding: '10px 14px', borderRadius: 12,
-                border: `1px solid ${TT.borderSolid}`, background: TT.surface,
-                fontSize: 12, fontWeight: 700, color: TT.text, cursor: 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-              }}
+              className="tt-btn tt-btn--secondary"
+              style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <BookOpen size={13} />
               {t('trainerNotes.actions.assignProgram', 'Assign program')}
@@ -1487,7 +1610,7 @@ export default function TrainerClientNotes() {
           additional backend scope; this read-only mirror satisfies the v1 requirement and is safe to ship.
           Trainer still sees the full picture (weight trend, body comp, measurements grid, photo timeline). */}
       {activeTab === 'body' && (
-        <div style={{ padding: '0 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
+        <div style={{ padding: '16px 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
           {/* Recovery + what-to-train (trainer tool) */}
           <TrainerClientRecovery clientId={clientId} />
           {/* Attendance calendar (with-you vs alone) */}
@@ -1495,71 +1618,64 @@ export default function TrainerClientNotes() {
           {/* View-only banner */}
           <div style={{
             background: TT.warnSoft, color: TT.warnInk,
-            borderRadius: 12, padding: '8px 12px', marginBottom: 14,
+            borderRadius: 12, padding: '8px 12px', marginBottom: 22,
             fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8,
           }}>
             <Eye size={14} />
             {t('trainerClientDetail.body.viewOnly', 'View only — client owns these records.')}
           </div>
 
-          {/* Body composition summary */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.body.composition', 'Body composition')}
-          </div>
-          <TCard padded={14} style={{ marginBottom: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-              {[
-                {
-                  l: t('trainerClientDetail.body.weight', 'Weight'),
-                  v: bodyWeightStats.current != null ? `${bodyWeightStats.current.toFixed(1)}` : '—',
-                  u: t('common:lb', 'lb'),
-                },
-                {
-                  l: t('trainerClientDetail.body.age', 'Age'),
-                  v: onboarding?.age || '—',
-                  u: '',
-                },
-                {
-                  l: t('trainerClientDetail.body.height', 'Height'),
-                  v: onboarding?.height_inches
-                    ? `${Math.floor(onboarding.height_inches / 12)}'${onboarding.height_inches % 12}"`
-                    : (onboarding?.height_cm ? `${onboarding.height_cm}` : '—'),
-                  u: onboarding?.height_inches ? '' : (onboarding?.height_cm ? t('common:cm', 'cm') : ''),
-                },
-                {
-                  l: t('trainerClientDetail.body.bodyFat', 'Body fat'),
-                  v: measurements?.body_fat_pct != null ? `${parseFloat(measurements.body_fat_pct).toFixed(1)}` : '—',
-                  u: measurements?.body_fat_pct != null ? '%' : '',
-                },
-              ].map((s, i) => (
-                <div key={i} style={{ padding: 10, borderRadius: 12, background: TT.surface2, textAlign: 'center' }}>
-                  <div style={{
-                    fontFamily: TFont.display, fontSize: 18, fontWeight: 800,
-                    color: TT.text, letterSpacing: -0.5,
-                  }}>
-                    {s.v}{s.u && <span style={{ fontSize: 11, fontWeight: 700, color: TT.textSub, marginLeft: 2 }}>{s.u}</span>}
-                  </div>
-                  <div style={{
-                    fontSize: 9.5, color: TT.textMute, fontWeight: 700,
-                    letterSpacing: 0.4, textTransform: 'uppercase', marginTop: 4,
-                  }}>{s.l}</div>
+          {/* Body composition summary — 4 stat cards (Atelier) */}
+          <TSectionHeader title={t('trainerClientDetail.body.composition', 'Body composition')} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 22 }}>
+            {[
+              {
+                l: t('trainerClientDetail.body.weight', 'Weight'),
+                v: bodyWeightStats.current != null ? `${bodyWeightStats.current.toFixed(1)}` : '—',
+                u: t('common:lb', 'lb'),
+              },
+              {
+                l: t('trainerClientDetail.body.age', 'Age'),
+                v: onboarding?.age || '—',
+                u: '',
+              },
+              {
+                l: t('trainerClientDetail.body.height', 'Height'),
+                v: onboarding?.height_inches
+                  ? `${Math.floor(onboarding.height_inches / 12)}'${onboarding.height_inches % 12}"`
+                  : (onboarding?.height_cm ? `${onboarding.height_cm}` : '—'),
+                u: onboarding?.height_inches ? '' : (onboarding?.height_cm ? t('common:cm', 'cm') : ''),
+              },
+              {
+                l: t('trainerClientDetail.body.bodyFat', 'Body fat'),
+                v: measurements?.body_fat_pct != null ? `${parseFloat(measurements.body_fat_pct).toFixed(1)}` : '—',
+                u: measurements?.body_fat_pct != null ? '%' : '',
+              },
+            ].map((s, i) => (
+              <TCard key={i} padded={0} style={{ padding: '12px 8px', textAlign: 'center' }}>
+                <div style={{
+                  fontFamily: TFont.display, fontSize: 19, fontWeight: 800,
+                  color: TT.text, letterSpacing: -0.6, lineHeight: 1,
+                }}>
+                  {s.v}{s.u && <span style={{ fontSize: 11, fontWeight: 700, color: TT.textMute, marginLeft: 1 }}>{s.u}</span>}
                 </div>
-              ))}
-            </div>
-          </TCard>
+                <div style={{
+                  fontSize: 9.5, color: TT.textMute, fontWeight: 800,
+                  letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 5,
+                }}>{s.l}</div>
+              </TCard>
+            ))}
+          </div>
 
           {/* Weight trend with period selector */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
             <div style={{
-              fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-              letterSpacing: -0.2,
+              fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text,
+              letterSpacing: -0.3,
             }}>
               {t('trainerClientDetail.body.weightTrend', 'Weight trend')}
             </div>
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div style={{ display: 'flex', gap: 4, background: TT.surface, padding: 3, borderRadius: 10, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }}>
               {[
                 { l: '30d', v: 30 },
                 { l: '90d', v: 90 },
@@ -1571,101 +1687,91 @@ export default function TrainerClientNotes() {
                   type="button"
                   onClick={() => dispatch({ type: 'SET', payload: { bodyPeriod: p.v } })}
                   aria-pressed={bodyPeriod === p.v}
+                  className="tt-tap"
                   style={{
-                    padding: '4px 9px', borderRadius: 8,
+                    padding: '5px 9px', borderRadius: 7,
                     background: bodyPeriod === p.v ? TT.text : 'transparent',
-                    color: bodyPeriod === p.v ? '#fff' : TT.textSub,
-                    fontSize: 10.5, fontWeight: 700,
-                    border: bodyPeriod === p.v ? 'none' : `1px solid ${TT.borderSolid}`,
-                    cursor: 'pointer', minHeight: 28,
+                    color: bodyPeriod === p.v ? TT.onInverse : TT.textMute,
+                    fontFamily: TFont.display, fontSize: 11, fontWeight: 700,
+                    border: 'none', cursor: 'pointer', minHeight: 28,
                   }}
                 >{p.l}</button>
               ))}
             </div>
           </div>
-          <TCard padded={14} style={{ marginBottom: 14 }}>
+          <TCard padded={16} style={{ marginBottom: 22 }}>
             {bodyWeightStats.current != null && (
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontFamily: TFont.display, fontSize: 28, fontWeight: 800, color: TT.text, letterSpacing: -1 }}>
-                  {bodyWeightStats.current.toFixed(1)}
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontFamily: TFont.display, fontSize: 26, fontWeight: 800, color: TT.text, letterSpacing: -1, lineHeight: 1 }}>
+                  {bodyWeightStats.current.toFixed(1)} <span style={{ fontSize: 13, color: TT.textMute }}>{t('common:lb', 'lb')}</span>
                 </span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: TT.textSub }}>{t('common:lb', 'lb')}</span>
                 {bodyWeightStats.delta != null && (
                   <span style={{
-                    fontSize: 12, fontWeight: 700,
-                    color: bodyWeightStats.delta > 0 ? TT.hot : bodyWeightStats.delta < 0 ? TT.good : TT.textMute,
-                    marginLeft: 6,
+                    fontSize: 12, fontWeight: 800,
+                    color: bodyWeightStats.delta > 0 ? TT.hot : bodyWeightStats.delta < 0 ? TT.good : TT.accent,
                   }}>
-                    {bodyWeightStats.delta > 0 ? '+' : ''}{bodyWeightStats.delta.toFixed(1)} {t('common:lb', 'lb')}
+                    {bodyWeightStats.delta > 0 ? '+' : ''}{bodyWeightStats.delta.toFixed(1)} {t('common:lb', 'lb')} · {bodyPeriod}d
                   </span>
                 )}
               </div>
             )}
-            {bodyWeightChart.length > 1 ? (
-              <div style={{ height: 180, marginLeft: -10 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={bodyWeightChart} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                    <defs>
-                      <linearGradient id="bodyWeightGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={TT.accent} stopOpacity={0.3} />
-                        <stop offset="100%" stopColor={TT.accent} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,134,140,0.22)" />
-                    <XAxis dataKey="date" tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-                    <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fill: TT.textMute, fontSize: 10 }} axisLine={false} tickLine={false} width={32} />
-                    <Tooltip content={<ChartTooltip formatter={(v) => `${v} lb`} nameLabel={t('trainerClientDetail.body.weight', 'Weight')} />} />
-                    <Area type="monotone" dataKey="weight" stroke={TT.accent} strokeWidth={2} fill="url(#bodyWeightGrad)" name={t('trainerClientDetail.body.weight', 'Weight')} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p style={{ fontSize: 13, color: TT.textMute }}>
+            {bodyWeightChart.length > 1 ? (() => {
+              // Compact Atelier sparkline (matches the reference) — area + line, no axes.
+              const ws = bodyWeightChart.map(d => Number(d.weight)).filter(n => !Number.isNaN(n));
+              const min = Math.min(...ws), max = Math.max(...ws), range = (max - min) || 1;
+              const W = 300, H = 80, padY = 8;
+              const pt = (v, i) => {
+                const x = ws.length === 1 ? W : (i / (ws.length - 1)) * W;
+                const y = H - padY - ((v - min) / range) * (H - padY * 2);
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+              };
+              const line = ws.map(pt).join(' ');
+              return (
+                <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 80, marginTop: 10, display: 'block' }} preserveAspectRatio="none" aria-hidden="true">
+                  <polygon points={`${line} ${W},${H} 0,${H}`} fill="rgba(240,138,60,.10)" />
+                  <polyline points={line} fill="none" stroke="#F08A3C" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              );
+            })() : (
+              <p style={{ fontSize: 13, color: TT.textMute, marginTop: 10 }}>
                 {t('trainerClientDetail.body.notEnoughLogs', 'Not enough weight logs to show a trend yet.')}
               </p>
             )}
           </TCard>
 
-          {/* Measurements grid */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.body.measurements', 'Measurements')}
-          </div>
+          {/* Measurements — ruler-icon rows (Atelier) */}
+          <TSectionHeader
+            title={t('trainerClientDetail.body.measurements', 'Measurements')}
+            action={measurements ? `${t('trainerClientDetail.body.lastUpdated', 'Last updated')} ${format(new Date(measurements.measured_at), 'MMM d', { locale: dateFnsLocale })}` : null}
+          />
           {measurements ? (
-            <TCard padded={14} style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 11, color: TT.textMute, fontWeight: 600, marginBottom: 8 }}>
-                {t('trainerClientDetail.body.lastUpdated', 'Last updated')}{' '}
-                {format(new Date(measurements.measured_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                {[
-                  { k: 'chest_cm', l: t('trainerClientDetail.body.chest', 'Chest') },
-                  { k: 'waist_cm', l: t('trainerClientDetail.body.waist', 'Waist') },
-                  { k: 'hips_cm', l: t('trainerClientDetail.body.hips', 'Hips') },
-                  { k: 'left_arm_cm', l: t('trainerClientDetail.body.leftArm', 'Left arm') },
-                  { k: 'right_arm_cm', l: t('trainerClientDetail.body.rightArm', 'Right arm') },
-                  { k: 'left_thigh_cm', l: t('trainerClientDetail.body.leftThigh', 'Left thigh') },
-                  { k: 'right_thigh_cm', l: t('trainerClientDetail.body.rightThigh', 'Right thigh') },
-                ]
-                  .filter(m => measurements[m.k] != null)
-                  .map(m => (
-                    <div key={m.k} style={{
-                      padding: 10, borderRadius: 12, background: TT.surface2,
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                    }}>
-                      <span style={{ fontSize: 11.5, color: TT.textSub, fontWeight: 600 }}>{m.l}</span>
-                      <span style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text }}>
-                        {parseFloat(measurements[m.k]).toFixed(1)}
-                        <span style={{ fontSize: 10, fontWeight: 600, color: TT.textMute, marginLeft: 2 }}>{t('common:cm', 'cm')}</span>
-                      </span>
+            <TCard padded={0} style={{ marginBottom: 22, overflow: 'hidden' }}>
+              {[
+                { k: 'chest_cm', l: t('trainerClientDetail.body.chest', 'Chest') },
+                { k: 'waist_cm', l: t('trainerClientDetail.body.waist', 'Waist') },
+                { k: 'hips_cm', l: t('trainerClientDetail.body.hips', 'Hips') },
+                { k: 'left_arm_cm', l: t('trainerClientDetail.body.leftArm', 'Left arm') },
+                { k: 'right_arm_cm', l: t('trainerClientDetail.body.rightArm', 'Right arm') },
+                { k: 'left_thigh_cm', l: t('trainerClientDetail.body.leftThigh', 'Left thigh') },
+                { k: 'right_thigh_cm', l: t('trainerClientDetail.body.rightThigh', 'Right thigh') },
+              ]
+                .filter(m => measurements[m.k] != null)
+                .map((m, i) => (
+                  <div key={m.k} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 15px',
+                    borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
+                  }}>
+                    <Ruler size={16} color={TT.textMute} strokeWidth={2} />
+                    <div style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: TT.text }}>{m.l}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, fontFamily: TFont.mono }}>
+                      {parseFloat(measurements[m.k]).toFixed(1)}
+                      <span style={{ fontSize: 10, fontWeight: 600, color: TT.textMute, marginLeft: 2 }}>{t('common:cm', 'cm')}</span>
                     </div>
-                  ))}
-              </div>
+                  </div>
+                ))}
             </TCard>
           ) : (
-            <TCard padded={14} style={{ marginBottom: 14 }}>
+            <TCard padded={14} style={{ marginBottom: 22 }}>
               <p style={{ fontSize: 13, color: TT.textMute }}>
                 {t('trainerClientDetail.body.noMeasurements', 'No measurements recorded yet.')}
               </p>
@@ -1673,12 +1779,7 @@ export default function TrainerClientNotes() {
           )}
 
           {/* Progress photos timeline (month-grouped, read-only) */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.body.photos', 'Progress photos')}
-          </div>
+          <TSectionHeader title={t('trainerClientDetail.body.photos', 'Progress photos')} />
           {photosByMonth.length === 0 ? (
             <TCard padded={14}>
               <p style={{ fontSize: 13, color: TT.textMute }}>
@@ -1687,7 +1788,7 @@ export default function TrainerClientNotes() {
             </TCard>
           ) : (
             photosByMonth.map(grp => (
-              <div key={grp.key} style={{ marginBottom: 14 }}>
+              <div key={grp.key} style={{ marginBottom: 22 }}>
                 <div style={{
                   fontSize: 11, fontWeight: 700, color: TT.textSub,
                   letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6,
@@ -1732,41 +1833,32 @@ export default function TrainerClientNotes() {
 
       {/* ===================== TAB: HISTORY (full client history) ===================== */}
       {activeTab === 'history' && (
-        <div style={{ padding: '0 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
-          {/* Streak summary */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.history.streaks', 'Streaks')}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-            <TCard padded={12}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                {t('trainerClientDetail.history.currentStreak', 'Current streak')}
-              </div>
-              <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.hot, letterSpacing: -0.5, marginTop: 2 }}>
-                {streakStats.current}<span style={{ fontSize: 13, color: TT.textSub, fontWeight: 700, marginLeft: 4 }}>d</span>
-              </div>
-            </TCard>
-            <TCard padded={12}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                {t('trainerClientDetail.history.longestStreak', 'Longest streak')}
-              </div>
-              <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.accent, letterSpacing: -0.5, marginTop: 2 }}>
-                {streakStats.longest}<span style={{ fontSize: 13, color: TT.textSub, fontWeight: 700, marginLeft: 4 }}>d</span>
-              </div>
-            </TCard>
+        <div style={{ padding: '16px 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
+          {/* Streak summary — flame / trophy stat cards (Atelier) */}
+          <TSectionHeader title={t('trainerClientDetail.history.streaks', 'Streaks')} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 22 }}>
+            {[
+              { ico: Flame, hue: '#F08A3C', l: t('trainerClientDetail.history.currentStreak', 'Current streak'), big: streakStats.current },
+              { ico: Trophy, hue: TT.accent, l: t('trainerClientDetail.history.longestStreak', 'Longest streak'), big: streakStats.longest },
+            ].map((s, i) => {
+              const Ico = s.ico;
+              return (
+                <TCard key={i} padded={15}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Ico size={15} color={s.hue} strokeWidth={2.2} />
+                    <span style={{ fontSize: 10, fontWeight: 800, color: TT.textMute, letterSpacing: 0.7, textTransform: 'uppercase' }}>{s.l}</span>
+                  </div>
+                  <div style={{ fontFamily: TFont.display, fontSize: 30, fontWeight: 800, color: s.hue, letterSpacing: -1.2, lineHeight: 1, marginTop: 9 }}>
+                    {s.big}<span style={{ fontSize: 15, color: TT.textMute }}> {t('trainerClientDetail.history.daysUnit', 'days')}</span>
+                  </div>
+                </TCard>
+              );
+            })}
           </div>
 
           {/* PR timeline */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.history.prTimeline', 'PR timeline')}
-          </div>
-          <TCard padded={14} style={{ marginBottom: 14 }}>
+          <TSectionHeader title={t('trainerClientDetail.history.prTimeline', 'PR timeline')} />
+          <TCard padded={14} style={{ marginBottom: 22 }}>
             {prTimelineData.series.length > 1 ? (
               <div style={{ height: 200, marginLeft: -10 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -1801,13 +1893,8 @@ export default function TrainerClientNotes() {
           </TCard>
 
           {/* Volume trend */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.history.volumeTrend', 'Volume trend')}
-          </div>
-          <TCard padded={14} style={{ marginBottom: 14 }}>
+          <TSectionHeader title={t('trainerClientDetail.history.volumeTrend', 'Volume trend')} />
+          <TCard padded={14} style={{ marginBottom: 22 }}>
             {volumeTrendData.some(d => d.volume > 0) ? (
               <div style={{ height: 180, marginLeft: -10 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -1834,20 +1921,14 @@ export default function TrainerClientNotes() {
           </TCard>
 
           {/* Attendance heatmap (90-day) */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.history.attendance', 'Attendance')}
-          </div>
-          <TCard padded={14} style={{ marginBottom: 14 }}>
+          <TSectionHeader title={t('trainerClientDetail.history.attendance', 'Attendance')} />
+          <TCard padded={16} style={{ marginBottom: 22 }}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(15, 1fr)',
-              gap: 3,
-              maxWidth: 360,
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: 5,
             }}>
-              {attendanceHeatmap.map((d, i) => {
+              {attendanceHeatmap.slice(-35).map((d, i) => {
                 const intensity = d.value === 0 ? 0 : Math.min(d.value, 3);
                 const colors = [TT.surface2, TT.accentSoft, '#7FE3C4', TT.accent];
                 return (
@@ -1857,30 +1938,25 @@ export default function TrainerClientNotes() {
                     aria-label={`${d.label}: ${t('trainerClientDetail.heatmap.event', '{{count}} events', { count: d.value })}`}
                     style={{
                       aspectRatio: '1/1',
-                      borderRadius: 3,
+                      borderRadius: 5,
                       background: colors[intensity],
-                      border: `1px solid ${TT.border}`,
+                      boxShadow: intensity === 0 ? 'inset 0 0 0 1px var(--tt-border)' : 'none',
                     }}
                   />
                 );
               })}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 10, color: TT.textMute, fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 10.5, color: TT.textMute, fontWeight: 700 }}>
               <span>{t('trainerClientDetail.history.less', 'Less')}</span>
               {[TT.surface2, TT.accentSoft, '#7FE3C4', TT.accent].map((c, i) => (
-                <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: c, border: `1px solid ${TT.border}` }} />
+                <div key={i} style={{ width: 11, height: 11, borderRadius: 3, background: c, boxShadow: i === 0 ? 'inset 0 0 0 1px var(--tt-border)' : 'none' }} />
               ))}
               <span>{t('trainerClientDetail.history.more', 'More')}</span>
             </div>
           </TCard>
 
           {/* Workouts log */}
-          <div style={{
-            fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text,
-            letterSpacing: -0.2, marginBottom: 8,
-          }}>
-            {t('trainerClientDetail.history.workouts', 'Workouts')}
-          </div>
+          <TSectionHeader title={t('trainerClientDetail.history.workouts', 'Workouts')} />
           {!historyLoaded ? (
             <TCard padded={14}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
@@ -1993,463 +2069,139 @@ export default function TrainerClientNotes() {
       )}
 
       {/* ── Existing legacy tab content for non-overview tabs ── */}
-      <div style={{ padding: '0 16px 14px' }} className="md:max-w-[860px] md:mx-auto">
+      <div className="md:max-w-[860px] md:mx-auto">
         <div style={{
           display: (activeTab === 'overview' || activeTab === 'body' || activeTab === 'history') ? 'none' : 'block',
         }}>
 
-      {/* ===================== TAB 1: OVERVIEW (merged Overview + Progress) ===================== */}
-      {activeTab === 'overview' && (
-        <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-          {/* Client stats strip */}
-          {onboarding && (
-            <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
-              <div className="flex items-center gap-2 mb-3">
-                <Target className="w-4 h-4 text-[#19B8B8]" />
-                <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.overview.clientSummary')}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
-                {onboarding.primary_goal && (
-                  <div className="bg-[var(--tt-surface-2)]/60 rounded-xl px-3 py-2.5">
-                    <p className="text-[11px] text-[#96A0AA] uppercase tracking-wide">{t('trainerNotes.overview.goal')}</p>
-                    <p className="text-[13px] text-[var(--tt-text)] capitalize mt-0.5">{t(`trainerNotes.goals.${onboarding.primary_goal}`, onboarding.primary_goal.replace(/_/g, ' '))}</p>
-                  </div>
-                )}
-                {onboarding.fitness_level && (
-                  <div className="bg-[var(--tt-surface-2)]/60 rounded-xl px-3 py-2.5">
-                    <p className="text-[11px] text-[#96A0AA] uppercase tracking-wide">{t('trainerNotes.overview.fitnessLevel')}</p>
-                    <p className="text-[13px] text-[var(--tt-text)] capitalize mt-0.5">{t(`trainerNotes.fitnessLevels.${onboarding.fitness_level}`, onboarding.fitness_level)}</p>
-                  </div>
-                )}
-                {onboarding.available_equipment && onboarding.available_equipment.length > 0 && (
-                  <div className="bg-[var(--tt-surface-2)]/60 rounded-xl px-3 py-2.5">
-                    <p className="text-[11px] text-[#96A0AA] uppercase tracking-wide">{t('trainerNotes.overview.equipment')}</p>
-                    <p className="text-[13px] text-[var(--tt-text)] mt-0.5 truncate">
-                      {Array.isArray(onboarding.available_equipment)
-                        ? onboarding.available_equipment.join(', ')
-                        : onboarding.available_equipment}
-                    </p>
-                  </div>
-                )}
-              </div>
-              {onboarding.injuries_notes && (
-                <div className="mt-3 bg-[var(--tt-hot-soft)] rounded-xl px-3 py-2.5 border border-[var(--tt-hot-soft)]">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <AlertTriangle className="w-3 h-3 text-[#FF5A2E]" />
-                    <p className="text-[11px] text-[#FF5A2E] uppercase tracking-wide">{t('trainerNotes.overview.injuries')}</p>
-                  </div>
-                  <p className="text-[13px] text-[var(--tt-text)]">{onboarding.injuries_notes}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Recent 5 workouts */}
-          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Activity className="w-4 h-4 text-[#19B8B8]" />
-              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.overview.recentActivity')}</span>
-            </div>
-            {recentSessions.length === 0 ? (
-              <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.overview.noRecentWorkouts')}</p>
-            ) : (
-              <div className="space-y-2">
-                {recentSessions.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-[var(--tt-surface-2)]/60">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] text-[var(--tt-text)] truncate">{s.name || t('trainerNotes.overview.workout')}</p>
-                      <p className="text-[11px] text-[#96A0AA]">
-                        {format(new Date(s.started_at), 'MMM d', { locale: dateFnsLocale })}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 text-right shrink-0">
-                      <span className="text-[12px] text-[var(--tt-text-sub)]">
-                        <Clock className="w-3 h-3 inline mr-0.5" />
-                        {formatDuration(s.duration_seconds)}
-                      </span>
-                      <span className="text-[12px] text-[var(--tt-text-sub)]">
-                        {s.total_volume_lbs >= 1000
-                          ? `${(s.total_volume_lbs / 1000).toFixed(1)}k`
-                          : s.total_volume_lbs || 0} {t('common:lbs', 'lbs')}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Top PRs */}
-          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Trophy className="w-4 h-4 text-[#19B8B8]" />
-              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.personalRecords')}</span>
-              {personalRecords.length > 0 && (
-                <span className="text-[11px] text-[#96A0AA] ml-auto">({personalRecords.length})</span>
-              )}
-            </div>
-            {personalRecords.length === 0 ? (
-              <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.progress.noPRs')}</p>
-            ) : (
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {personalRecords.map((pr, i) => (
-                  <div key={i} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-[var(--tt-surface-2)]/60">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] text-[var(--tt-text)] truncate">{pr.exercises?.name || t('trainerNotes.overview.unknownExercise')}</p>
-                      <p className="text-[11px] text-[#96A0AA]">{format(new Date(pr.achieved_at), 'MMM d, yyyy', { locale: dateFnsLocale })}</p>
-                    </div>
-                    <div className="text-right shrink-0 ml-3">
-                      <p className="text-[13px] font-semibold text-[var(--tt-text)]">{pr.weight_lbs} {t('common:lbs', 'lbs')} x {pr.reps}</p>
-                      {pr.estimated_1rm && (
-                        <p className="text-[11px] text-[#19B8B8]">1RM: {Math.round(pr.estimated_1rm)} {t('common:lbs', 'lbs')}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Weekly volume chart */}
-          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-4 h-4 text-[#19B8B8]" />
-              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.trainingTrend')}</span>
-            </div>
-            {weeklyWorkouts.length > 0 ? (
-              <div className="h-[160px] sm:h-[180px] overflow-hidden -mx-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={weeklyWorkouts}>
-                    <defs>
-                      <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#19B8B8" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#19B8B8" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis
-                      dataKey="week"
-                      tick={{ fill: '#96A0AA', fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                      interval="preserveStartEnd"
-                    />
-                    <YAxis
-                      allowDecimals={false}
-                      tick={{ fill: '#96A0AA', fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={20}
-                    />
-                    <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#19B8B8', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.4 }} />
-                    <Area
-                      type="monotone"
-                      dataKey="count"
-                      stroke="#19B8B8"
-                      strokeWidth={2}
-                      fill="url(#goldGrad)"
-                      name={t('trainerNotes.progress.workouts')}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.progress.noData')}</p>
-            )}
-          </div>
-
-          {/* Weight trend — chart only with latest weight summary */}
-          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
-            <div className="flex items-center gap-2 mb-4">
-              <Scale className="w-4 h-4 text-[#19B8B8]" />
-              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.weightHistory')}</span>
-            </div>
-            {weights.length === 0 ? (
-              <p className="text-[14px] text-[#96A0AA]">{t('trainerNotes.progress.noWeightLogs')}</p>
-            ) : (
-              <>
-                {/* Latest weight summary line */}
-                <div className="bg-[var(--tt-surface-2)] rounded-xl p-4 mb-4 border border-[#19B8B8]/15">
-                  <p className="text-[11px] text-[#96A0AA] uppercase tracking-wide mb-1">{t('trainerNotes.progress.latestWeight')}</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-[20px] sm:text-[24px] font-bold text-[var(--tt-text)]">{weights[0].weight_lbs}</span>
-                    <span className="text-[14px] text-[#96A0AA]">{t('common:lbs', 'lbs')}</span>
-                    {weights.length >= 2 && (
-                      <span className={`text-[13px] font-medium ml-2 ${
-                        weights[0].weight_lbs - weights[1].weight_lbs > 0
-                          ? 'text-[#FF5A2E]'
-                          : weights[0].weight_lbs - weights[1].weight_lbs < 0
-                            ? 'text-[var(--tt-good-ink)]'
-                            : 'text-[#96A0AA]'
-                      }`}>
-                        {weights[0].weight_lbs - weights[1].weight_lbs > 0 ? '+' : ''}
-                        {(weights[0].weight_lbs - weights[1].weight_lbs).toFixed(1)} {t('common:lbs', 'lbs')}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[12px] text-[#96A0AA] mt-1">
-                    {format(new Date(weights[0].logged_at), 'EEEE, MMM d, yyyy', { locale: dateFnsLocale })}
-                  </p>
-                </div>
-                {/* Weight trend chart */}
-                {weightChartData.length > 1 && (
-                  <div className="h-[160px] sm:h-[180px] overflow-hidden -mx-1">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={weightChartData}>
-                        <defs>
-                          <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#19B8B8" stopOpacity={0.3} />
-                            <stop offset="100%" stopColor="#19B8B8" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fill: '#96A0AA', fontSize: 10 }}
-                          axisLine={false}
-                          tickLine={false}
-                          interval="preserveStartEnd"
-                        />
-                        <YAxis
-                          domain={['dataMin - 2', 'dataMax + 2']}
-                          tick={{ fill: '#96A0AA', fontSize: 10 }}
-                          axisLine={false}
-                          tickLine={false}
-                          width={35}
-                        />
-                        <Tooltip
-                          content={<ChartTooltip formatter={(val) => `${val} lbs`} nameLabel={t('trainerNotes.progress.weight', 'Weight')} />}
-                          cursor={{ stroke: '#19B8B8', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.4 }}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="weight"
-                          stroke="#19B8B8"
-                          strokeWidth={2}
-                          fill="url(#weightGrad)"
-                          name={t('trainerNotes.progress.weight', 'Weight')}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Body measurements (collapsible) */}
-          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
-            <button
-              onClick={() => dispatch({ type: 'SET', payload: { showMeasurements: !showMeasurements } })}
-              className="flex items-center justify-between w-full min-h-[44px]"
-            >
-              <div className="flex items-center gap-2">
-                <Ruler className="w-4 h-4 text-[#19B8B8]" />
-                <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.bodyMeasurements')}</span>
-              </div>
-              <ChevronDown className={`w-4 h-4 text-[#96A0AA] transition-transform ${showMeasurements ? 'rotate-180' : ''}`} />
-            </button>
-            {showMeasurements && (
-              <div className="mt-3">
-                {!measurements ? (
-                  <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.progress.noMeasurements')}</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {measurements.measured_at && (
-                      <p className="text-[11px] text-[#96A0AA] mb-2">
-                        {t('trainerNotes.progress.measuredOn')} {format(new Date(measurements.measured_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
-                      </p>
-                    )}
-                    {[
-                      { label: t('trainerNotes.progress.chest'), value: measurements.chest_cm },
-                      { label: t('trainerNotes.progress.waist'), value: measurements.waist_cm },
-                      { label: t('trainerNotes.progress.hips'), value: measurements.hips_cm },
-                      { label: t('trainerNotes.progress.leftArm'), value: measurements.left_arm_cm },
-                      { label: t('trainerNotes.progress.rightArm'), value: measurements.right_arm_cm },
-                      { label: t('trainerNotes.progress.leftThigh'), value: measurements.left_thigh_cm },
-                      { label: t('trainerNotes.progress.rightThigh'), value: measurements.right_thigh_cm },
-                    ]
-                      .filter((m) => m.value != null)
-                      .map((m, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--tt-surface-2)]/50"
-                        >
-                          <span className="text-[13px] text-[var(--tt-text-sub)]">{m.label}</span>
-                          <span className="text-[14px] font-medium text-[var(--tt-text)]">
-                            {m.value} {t('common:cm', 'cm')}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Progress Photos (collapsible) */}
-          {progressPhotos.length > 0 && (
-            <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 md:col-span-2">
-              <button
-                onClick={() => dispatch({ type: 'SET', payload: { showPhotos: !showPhotos } })}
-                className="flex items-center justify-between w-full min-h-[44px]"
-              >
-                <div className="flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-[#19B8B8]" />
-                  <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.progress.photos', 'Progress Photos')}</span>
-                  <span className="text-[11px] text-[#96A0AA]">({progressPhotos.length})</span>
-                </div>
-                <ChevronDown className={`w-4 h-4 text-[#96A0AA] transition-transform ${showPhotos ? 'rotate-180' : ''}`} />
-              </button>
-              {showPhotos && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 mt-3">
-                  {progressPhotos.map(photo => (
-                    <div key={photo.id} className="aspect-square rounded-xl overflow-hidden bg-[var(--tt-surface-2)] relative">
-                      <img
-                        src={photo.signedUrl}
-                        alt={photo.view_angle || t('trainerNotes.progress.progressAlt')}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                      <span className="absolute bottom-1 left-1 text-[9px] font-medium bg-black/60 text-white px-1.5 py-0.5 rounded">
-                        {format(new Date(photo.taken_at), 'MMM d', { locale: dateFnsLocale })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Monthly Report */}
-          <button
-            onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
-            className="w-full bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4 flex items-center gap-3 hover:border-[#19B8B8]/30 transition-colors min-h-[44px] md:col-span-2"
-          >
-            <div className="w-10 h-10 rounded-xl bg-[#19B8B8]/10 flex items-center justify-center">
-              <BarChart3 className="w-5 h-5 text-[#19B8B8]" />
-            </div>
-            <div className="text-left">
-              <p className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.overview.monthlyReport')}</p>
-              <p className="text-[12px] text-[#96A0AA]">{t('trainerNotes.overview.monthlyReportDesc')}</p>
-            </div>
-          </button>
-        </div>
-      )}
-
       {/* ===================== TAB 2: NOTES & FOLLOW-UP ===================== */}
       {activeTab === 'notesFollowUp' && (
-        <div className="space-y-4">
-          {/* Notes editor — 2 textareas: Coach Notes (merged) and Injuries */}
-          <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-            {/* Coach Notes (merged: notes + preferences + goal reminders) */}
-            <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <StickyNote className="w-4 h-4 text-[#19B8B8]" />
-                <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.notes.coachNotes')}</span>
+        <div style={{ padding: '16px 16px 24px' }} className="md:grid md:grid-cols-2 md:gap-4">
+          {/* Coach Notes (merged: notes + preferences + goal reminders) */}
+          <TCard padded={16} style={{ marginBottom: 22 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 9, background: 'color-mix(in srgb, #1E9C8E 14%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <StickyNote size={15} color={TT.accent} strokeWidth={2.2} />
               </div>
-              <textarea
-                value={notesData.notes}
-                onChange={(e) => {
-                  if (e.target.value.length <= 5000) {
-                    dispatch({ type: 'SET_NOTES_FIELD', field: 'notes', value: e.target.value });
-                  }
-                }}
-                placeholder={t('trainerNotes.notes.notesPlaceholder')}
-                className="w-full bg-[var(--tt-surface-2)] border border-[var(--tt-border-solid)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--tt-text)] placeholder-[#96A0AA] resize-none focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
-                rows={10}
-              />
-              <span className="text-[11px] text-[#96A0AA] mt-1 block">
-                {notesData.notes.length} / 5000
-              </span>
+              <span style={{ fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: TT.text, letterSpacing: -0.2 }}>{t('trainerNotes.notes.coachNotes')}</span>
             </div>
+            <textarea
+              value={notesData.notes}
+              onChange={(e) => {
+                if (e.target.value.length <= 5000) {
+                  dispatch({ type: 'SET_NOTES_FIELD', field: 'notes', value: e.target.value });
+                }
+              }}
+              placeholder={t('trainerNotes.notes.notesPlaceholder')}
+              onFocus={(e) => { e.target.style.boxShadow = `inset 0 0 0 1.5px ${TT.accent}`; }}
+              onBlur={(e) => { e.target.style.boxShadow = 'inset 0 0 0 1px var(--tt-border)'; }}
+              style={{
+                width: '100%', background: TT.surface2, borderRadius: 12, padding: 12,
+                fontSize: 14, color: TT.text, resize: 'none', border: 'none',
+                boxShadow: 'inset 0 0 0 1px var(--tt-border)', outline: 'none',
+              }}
+              rows={10}
+            />
+            <span style={{ fontSize: 11, color: TT.textMute, marginTop: 6, display: 'block' }}>
+              {notesData.notes.length} / 5000
+            </span>
+          </TCard>
 
-            {/* Injuries / Limitations — kept separate (safety-critical) */}
-            <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="w-4 h-4 text-[#FF5A2E]" />
-                <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.notes.injuriesLimitations')}</span>
+          {/* Injuries / Limitations — kept separate (safety-critical) */}
+          <TCard padded={16} style={{ marginBottom: 22 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 9, background: 'color-mix(in srgb, #FF5A2E 14%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <AlertTriangle size={15} color={TT.hot} strokeWidth={2.2} />
               </div>
-              <textarea
-                value={notesData.injuries}
-                onChange={(e) => {
-                  if (e.target.value.length <= 1000) {
-                    dispatch({ type: 'SET_NOTES_FIELD', field: 'injuries', value: e.target.value });
-                  }
-                }}
-                placeholder={t('trainerNotes.notes.injuriesPlaceholder')}
-                className="w-full bg-[var(--tt-surface-2)] border border-[var(--tt-border-solid)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--tt-text)] placeholder-[#96A0AA] resize-none focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
-                rows={5}
-              />
+              <span style={{ fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: TT.text, letterSpacing: -0.2 }}>{t('trainerNotes.notes.injuriesLimitations')}</span>
             </div>
+            <textarea
+              value={notesData.injuries}
+              onChange={(e) => {
+                if (e.target.value.length <= 1000) {
+                  dispatch({ type: 'SET_NOTES_FIELD', field: 'injuries', value: e.target.value });
+                }
+              }}
+              placeholder={t('trainerNotes.notes.injuriesPlaceholder')}
+              onFocus={(e) => { e.target.style.boxShadow = `inset 0 0 0 1.5px ${TT.accent}`; }}
+              onBlur={(e) => { e.target.style.boxShadow = 'inset 0 0 0 1px var(--tt-border)'; }}
+              style={{
+                width: '100%', background: TT.surface2, borderRadius: 12, padding: 12,
+                fontSize: 14, color: TT.text, resize: 'none', border: 'none',
+                boxShadow: 'inset 0 0 0 1px var(--tt-border)', outline: 'none',
+              }}
+              rows={5}
+            />
+          </TCard>
 
-            {/* Save button */}
-            <div className="flex items-center justify-end gap-3 md:col-span-2">
-              {notesSaved && (
-                <span className="text-[13px] text-[var(--tt-good-ink)]">{t('trainerNotes.notes.saved')}</span>
-              )}
-              <button
-                onClick={handleSaveNotes}
-                disabled={savingNotes}
-                className="flex items-center gap-2 bg-[#19B8B8] hover:bg-[#0F9E9E] text-[#06363B] text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50 min-h-[44px]"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {savingNotes ? t('trainerNotes.notes.saving') : t('trainerNotes.notes.saveNotes')}
-              </button>
-            </div>
+          {/* Save button */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginBottom: 22 }} className="md:col-span-2">
+            {notesSaved && (
+              <span style={{ fontSize: 13, color: TT.goodInk, fontWeight: 700 }}>{t('trainerNotes.notes.saved')}</span>
+            )}
+            <TPrimaryButton onClick={handleSaveNotes} disabled={savingNotes}>
+              <Save size={14} strokeWidth={2.4} />
+              {savingNotes ? t('trainerNotes.notes.saving') : t('trainerNotes.notes.saveNotes')}
+            </TPrimaryButton>
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-[var(--tt-border)]" />
-
           {/* Follow-up section */}
-          <button
-            onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: true } })}
-            className="w-full flex items-center justify-center gap-2 bg-[#19B8B8] hover:bg-[#0F9E9E] text-[#06363B] text-[14px] font-semibold px-4 py-3 rounded-xl transition-colors min-h-[44px]"
-          >
-            <Plus className="w-4 h-4" />
-            {t('trainerNotes.followUp.logFollowUp')}
-          </button>
-
-          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Phone className="w-4 h-4 text-[#19B8B8]" />
-              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.followUp.title')}</span>
-              {followups.length > 0 && (
-                <span className="text-[11px] text-[#96A0AA]">({followups.length})</span>
-              )}
-            </div>
-
+          <div className="md:col-span-2">
+            <TSectionHeader
+              title={t('trainerNotes.followUp.title')}
+              action={
+                <button
+                  type="button"
+                  onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: true } })}
+                  className="tt-tap"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: TT.accent, padding: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                >
+                  <Plus size={13} strokeWidth={2.6} />
+                  {t('trainerNotes.followUp.logFollowUp')}
+                </button>
+              }
+            />
             {followups.length === 0 ? (
-              <div className="text-center py-8">
-                <Phone className="w-8 h-8 text-[#96A0AA] mx-auto mb-2 opacity-40" />
-                <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.followUp.noFollowUps')}</p>
-                <p className="text-[12px] text-[#96A0AA]/60 mt-1">{t('trainerNotes.followUp.noFollowUpsHint')}</p>
-              </div>
+              <TCard padded={16}>
+                <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                  <Phone size={32} color={TT.textMute} strokeWidth={1.6} style={{ margin: '0 auto 8px', opacity: 0.4 }} />
+                  <p style={{ fontSize: 13, color: TT.textSub }}>{t('trainerNotes.followUp.noFollowUps')}</p>
+                  <p style={{ fontSize: 12, color: TT.textMute, marginTop: 2 }}>{t('trainerNotes.followUp.noFollowUpsHint')}</p>
+                </div>
+              </TCard>
             ) : (
-              <div className="space-y-2 max-h-[500px] overflow-y-auto">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, maxHeight: 520, overflowY: 'auto' }}>
                 {followups.map((fu) => {
                   const MethodIcon = METHOD_ICONS[fu.method] || Phone;
+                  const tone = METHOD_TONES[fu.method] || TT.accent;
                   const outcomeStyle = fu.outcome ? OUTCOME_STYLES[fu.outcome] : null;
+                  const methodLabel = t(`trainerNotes.followUp.methods.${FU_METHOD_KEY[fu.method] || 'call'}`);
                   return (
-                    <div key={fu.id} className="flex items-start gap-3 py-3 px-3 rounded-xl bg-[var(--tt-surface-2)]/60">
-                      <div className="w-7 h-7 rounded-lg bg-[var(--tt-bg)] flex items-center justify-center shrink-0 mt-0.5">
-                        <MethodIcon size={13} className="text-[var(--tt-text-sub)]" />
+                    <TCard key={fu.id} padded={13} style={{ display: 'flex', gap: 12 }}>
+                      <div style={{
+                        width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                        background: `color-mix(in srgb, ${tone} 14%, transparent)`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <MethodIcon size={16} color={tone} strokeWidth={2.1} />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[12px] text-[var(--tt-text-sub)]">
-                            {format(new Date(fu.created_at), 'MMM d, yyyy h:mm a', { locale: dateFnsLocale })}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: TT.text, fontFamily: TFont.display }}>{methodLabel}</span>
+                          <span style={{ fontSize: 11, color: TT.textMute, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            {format(new Date(fu.created_at), 'MMM d, h:mm a', { locale: dateFnsLocale })}
                           </span>
-                          {outcomeStyle && (
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${outcomeStyle.bg} ${outcomeStyle.color}`}>
-                              {outcomeStyle.label}
-                            </span>
-                          )}
                         </div>
+                        {outcomeStyle && (
+                          <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full mt-1 ${outcomeStyle.bg} ${outcomeStyle.color}`}>
+                            {outcomeStyle.label}
+                          </span>
+                        )}
                         {fu.note && (
-                          <p className="text-[13px] text-[var(--tt-text)] mt-1">{fu.note}</p>
+                          <p style={{ fontSize: 12.5, color: TT.textSub, marginTop: 3, lineHeight: 1.45 }}>{fu.note}</p>
                         )}
                       </div>
-                    </div>
+                    </TCard>
                   );
                 })}
               </div>
@@ -2465,260 +2217,284 @@ export default function TrainerClientNotes() {
 
       {/* ===================== TAB 3: PROGRAM & NUTRITION ===================== */}
       {activeTab === 'programNutrition' && (
-        <div className="space-y-4">
+        <div style={{ padding: '16px 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
           {/* Current assigned program */}
-          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <BookOpen className="w-4 h-4 text-[#19B8B8]" />
-              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.program.currentProgram')}</span>
-            </div>
-
+          <TSectionHeader title={t('trainerNotes.program.currentProgram')} />
+          <TCard padded={16} style={{ marginBottom: 22 }}>
             {programName ? (
               <div>
-                <div className="bg-[var(--tt-surface-2)] rounded-xl p-4 border border-[#19B8B8]/15">
-                  <p className="text-[16px] font-semibold text-[var(--tt-text)]">{programName}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 13, flexShrink: 0,
+                      background: 'linear-gradient(160deg,#27B0A0,#178C7E)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 4px 10px -4px rgba(10,90,82,.5), inset 0 1px 0 rgba(255,255,255,.25)',
+                    }}>
+                      <Dumbbell size={22} color="#fff" strokeWidth={2.1} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{programName}</div>
+                      {programProgress && (
+                        <div style={{ fontSize: 12, color: TT.textSub, marginTop: 2 }}>
+                          {t('trainerClientDetail.weekProgram', '{{n}}-week program', { n: programProgress.totalWeeks })}
+                          {' · '}
+                          {programProgress.daysPerWeek} {t('trainerNotes.program.daysPerWeek')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   {programProgress && (
-                    <>
-                      <div className="flex items-center gap-4 mt-3 text-[12px] text-[var(--tt-text-sub)]">
-                        <span>{t('trainerNotes.program.week')} {programProgress.currentWeek} / {programProgress.totalWeeks}</span>
-                        <span>{programProgress.daysPerWeek} {t('trainerNotes.program.daysPerWeek')}</span>
-                      </div>
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between text-[11px] text-[#96A0AA] mb-1.5">
-                          <span>{t('trainerNotes.program.progress')}</span>
-                          <span>{programProgress.progressPct}%</span>
-                        </div>
-                        <div className="w-full h-2 bg-[var(--tt-border-solid)] rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-[#19B8B8] rounded-full transition-all"
-                            style={{ width: `${programProgress.progressPct}%` }}
-                          />
-                        </div>
-                      </div>
-                    </>
+                    <TPill tone="teal" size="l" style={{ flexShrink: 0 }}>
+                      {t('trainerClientDetail.weekOfPill', 'Week {{w}} / {{t}}', { w: programProgress.currentWeek, t: programProgress.totalWeeks })}
+                    </TPill>
                   )}
                 </div>
+                {programProgress && (
+                  <>
+                    <div style={{ height: 6, background: TT.surface2, borderRadius: 999, marginTop: 14, overflow: 'hidden', boxShadow: 'inset 0 0 0 1px var(--tt-border)' }}>
+                      <div style={{ width: `${programProgress.progressPct}%`, height: '100%', background: 'linear-gradient(90deg,#27B0A0,#178C7E)', borderRadius: 999 }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11.5, color: TT.textSub, fontWeight: 600 }}>
+                      <span>{t('trainerClientDetail.weekProgressLabel', 'Week {{w}} of {{t}}', { w: programProgress.currentWeek, t: programProgress.totalWeeks })}</span>
+                      <span>
+                        {nextSession
+                          ? t('trainerClientDetail.nextColon', 'Next: {{d}}', { d: format(new Date(nextSession.scheduled_at), 'EEE p', { locale: dateFnsLocale }) })
+                          : t('trainerClientDetail.progressPct', '{{p}}% complete', { p: programProgress.progressPct })}
+                      </span>
+                    </div>
+                  </>
+                )}
                 <button
                   onClick={() => handleAssignProgram(null)}
-                  className="mt-3 text-[12px] text-[#FF5A2E] hover:text-[#E0431C] transition-colors min-h-[44px] py-2"
+                  className="tt-tap"
+                  style={{ marginTop: 14, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: TT.hot, padding: '6px 0', minHeight: 36 }}
                 >
                   {t('trainerNotes.program.removeProgram')}
                 </button>
               </div>
             ) : (
-              <div className="text-center py-6">
-                <BookOpen className="w-8 h-8 text-[#96A0AA] mx-auto mb-2 opacity-40" />
-                <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.program.noProgram')}</p>
+              <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                <BookOpen size={32} color={TT.textMute} strokeWidth={1.6} style={{ margin: '0 auto 8px', opacity: 0.4 }} />
+                <p style={{ fontSize: 13, color: TT.textSub }}>{t('trainerNotes.program.noProgram')}</p>
               </div>
             )}
-          </div>
+          </TCard>
 
           {/* Available programs to assign */}
-          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <ClipboardList className="w-4 h-4 text-[#19B8B8]" />
-              <span className="text-[14px] font-medium text-[var(--tt-text)]">{t('trainerNotes.program.availablePrograms')}</span>
-            </div>
-
-            {availablePrograms.length === 0 ? (
-              <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.program.noProgramsAvailable')}</p>
-            ) : (
-              <div className="space-y-2">
-                {availablePrograms.map((prog) => {
-                  const isAssigned = client.assigned_program_id === prog.id;
-                  return (
-                    <div
-                      key={prog.id}
-                      className={`flex items-center justify-between py-3 px-4 rounded-xl transition-colors ${
-                        isAssigned
-                          ? 'bg-[#19B8B8]/10 border border-[#19B8B8]/20'
-                          : 'bg-[var(--tt-surface-2)]/60 hover:bg-[var(--tt-surface-2)]'
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium text-[var(--tt-text)] truncate">{prog.name}</p>
-                        <p className="text-[11px] text-[#96A0AA]">
-                          {prog.duration_weeks ? `${prog.duration_weeks} ${t('trainerNotes.program.weeks')}` : ''}
-                          {prog.days_per_week ? ` · ${prog.days_per_week} ${t('trainerNotes.program.daysWk')}` : ''}
-                        </p>
-                      </div>
-                      {isAssigned ? (
-                        <span className="text-[11px] font-medium text-[#19B8B8] px-2.5 py-1 rounded-lg bg-[#19B8B8]/10">
-                          {t('trainerNotes.program.assigned')}
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleAssignProgram(prog.id)}
-                          disabled={assigningProgram}
-                          className="text-[12px] font-medium text-[#19B8B8] hover:text-[#D9F1F1] px-3 py-2 sm:py-1.5 rounded-lg border border-[#19B8B8]/30 hover:bg-[#19B8B8]/10 transition-colors disabled:opacity-50 min-h-[44px] sm:min-h-[36px]"
-                        >
-                          {t('trainerNotes.program.assign')}
-                        </button>
-                      )}
+          <TSectionHeader title={t('trainerNotes.program.availablePrograms')} />
+          {availablePrograms.length === 0 ? (
+            <TCard padded={16} style={{ marginBottom: 22 }}>
+              <p style={{ fontSize: 13, color: TT.textMute }}>{t('trainerNotes.program.noProgramsAvailable')}</p>
+            </TCard>
+          ) : (
+            <TCard padded={0} style={{ marginBottom: 22, overflow: 'hidden' }}>
+              {availablePrograms.map((prog, idx) => {
+                const isAssigned = client.assigned_program_id === prog.id;
+                const tone = ['#7A6BE0', '#F08A3C', '#27B0A0'][idx % 3];
+                return (
+                  <div
+                    key={prog.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '13px 15px', borderTop: idx > 0 ? `1px solid ${TT.border}` : 'none',
+                      background: isAssigned ? TT.accentSoft : 'transparent',
+                    }}
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                      background: `color-mix(in srgb, ${tone} 14%, transparent)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <ClipboardList size={18} color={tone} strokeWidth={2.1} />
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Divider */}
-          <div className="border-t border-[var(--tt-border)]" />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prog.name}</p>
+                      <p style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>
+                        {prog.duration_weeks ? `${prog.duration_weeks} ${t('trainerNotes.program.weeks')}` : ''}
+                        {prog.days_per_week ? ` · ${prog.days_per_week} ${t('trainerNotes.program.daysWk')}` : ''}
+                      </p>
+                    </div>
+                    {isAssigned ? (
+                      <TPill tone="teal" size="m" style={{ flexShrink: 0 }}>{t('trainerNotes.program.assigned')}</TPill>
+                    ) : (
+                      <button
+                        onClick={() => handleAssignProgram(prog.id)}
+                        disabled={assigningProgram}
+                        className="tt-btn tt-btn--secondary"
+                        style={{ flexShrink: 0, padding: '7px 13px', borderRadius: 10, fontSize: 12, opacity: assigningProgram ? 0.5 : 1 }}
+                      >
+                        {t('trainerNotes.program.assign')}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </TCard>
+          )}
 
           {/* Nutrition section */}
           {!nutritionLoaded ? (
-            <div className="flex justify-center py-16">
-              <div className="w-8 h-8 border-2 border-[#19B8B8]/30 border-t-[#19B8B8] rounded-full animate-spin" />
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
+              <Loader2 size={28} color={TT.accent} className="animate-spin" />
             </div>
           ) : (
             <>
               {/* Active Meal Plan / Macro Targets */}
-              <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                  <h3 className="text-[14px] font-semibold text-[var(--tt-text)] flex items-center gap-2">
-                    <UtensilsCrossed className="w-4 h-4 text-[#19B8B8] shrink-0" />
-                    {t('trainerNotes.nutrition.mealPlan', 'Assigned Meal Plan')}
-                  </h3>
-                  {!showMealPlanForm && (
-                    <div className="flex items-center gap-2 shrink-0">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <UtensilsCrossed size={16} color={TT.accent} strokeWidth={2.2} />
+                  {t('trainerNotes.nutrition.mealPlan', 'Assigned Meal Plan')}
+                </div>
+                {!showMealPlanForm && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                     <button
                       onClick={handleAutoGenerateMeals}
                       disabled={generatingMeals}
-                      className="flex items-center gap-1.5 text-[12px] font-medium text-[#19B8B8] hover:text-[#D9F1F1] px-3 py-1.5 rounded-lg border border-[#19B8B8]/30 hover:bg-[#19B8B8]/10 transition-colors min-h-[36px] disabled:opacity-40"
+                      className="tt-btn tt-btn--secondary"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 10, fontSize: 12, opacity: generatingMeals ? 0.4 : 1 }}
                     >
-                      {generatingMeals ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                      {generatingMeals ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} color={TT.accent} />}
                       {t('trainerNotes.nutrition.autoGenerate', 'Auto-Generate')}
                     </button>
                     <button
                       onClick={() => dispatch({ type: 'SET', payload: { showMealPlanForm: true } })}
-                      className="text-[12px] font-medium text-[#19B8B8] hover:text-[#D9F1F1] px-3 py-1.5 rounded-lg border border-[#19B8B8]/30 hover:bg-[#19B8B8]/10 transition-colors min-h-[36px]"
+                      className="tt-btn tt-btn--secondary"
+                      style={{ padding: '7px 12px', borderRadius: 10, fontSize: 12 }}
                     >
                       {activeMealPlan ? t('trainerNotes.nutrition.editPlan', 'Edit Plan') : t('trainerNotes.nutrition.assignPlan', 'Assign Plan')}
                     </button>
-                    </div>
-                  )}
-                </div>
-
-                {activeMealPlan && !showMealPlanForm ? (
-                  <div className="bg-[var(--tt-surface-2)] rounded-xl p-4 border border-[#19B8B8]/15">
-                    <p className="text-[15px] font-semibold text-[var(--tt-text)]">{activeMealPlan.name}</p>
-                    {activeMealPlan.description && (
-                      <p className="text-[12px] text-[var(--tt-text-sub)] mt-1">{activeMealPlan.description}</p>
-                    )}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-                      {[
-                        { label: t('trainerNotes.nutrition.cal', 'Cal'), val: activeMealPlan.target_calories, color: 'text-[var(--tt-text)]' },
-                        { label: t('trainerNotes.nutrition.protein', 'Protein'), val: activeMealPlan.target_protein_g ? `${activeMealPlan.target_protein_g}g` : '--', color: 'text-[#6D5FDB]' },
-                        { label: t('trainerNotes.nutrition.carbs', 'Carbs'), val: activeMealPlan.target_carbs_g ? `${activeMealPlan.target_carbs_g}g` : '--', color: 'text-[var(--tt-warn-ink)]' },
-                        { label: t('trainerNotes.nutrition.fat', 'Fat'), val: activeMealPlan.target_fat_g ? `${activeMealPlan.target_fat_g}g` : '--', color: 'text-[#FF5A2E]' },
-                      ].map((m, i) => (
-                        <div key={i} className="text-center py-1 sm:py-0">
-                          <p className="text-[10px] text-[#96A0AA] uppercase">{m.label}</p>
-                          <p className={`text-[14px] font-semibold ${m.color}`}>{m.val || '--'}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--tt-border)]">
-                      <p className="text-[11px] text-[#96A0AA]">
-                        {t('trainerNotes.nutrition.since', 'Since')} {format(new Date(activeMealPlan.start_date), 'MMM d, yyyy', { locale: dateFnsLocale })}
-                      </p>
-                      <button
-                        onClick={handleDeactivateMealPlan}
-                        className="text-[11px] text-[#FF5A2E] hover:text-[#E0431C] transition-colors py-2 min-h-[44px] flex items-center"
-                      >
-                        {t('trainerNotes.nutrition.deactivate', 'Deactivate')}
-                      </button>
-                    </div>
-                  </div>
-                ) : !showMealPlanForm ? (
-                  <div className="text-center py-6">
-                    <UtensilsCrossed className="w-8 h-8 text-[#96A0AA] mx-auto mb-2 opacity-40" />
-                    <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.nutrition.noPlan', 'No meal plan assigned yet')}</p>
-                  </div>
-                ) : null}
-
-                {/* Meal Plan Form */}
-                {showMealPlanForm && (
-                  <div className="bg-[var(--tt-surface-2)] rounded-xl p-4 border border-[var(--tt-border-solid)] space-y-3">
-                    <div>
-                      <label className="text-[11px] text-[#96A0AA] uppercase tracking-wide mb-1 block">{t('trainerNotes.nutrition.planName', 'Plan Name')}</label>
-                      <input
-                        value={mealPlanForm.name}
-                        onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: 'name', value: e.target.value })}
-                        placeholder={t('trainerNotes.nutrition.planNamePlaceholder', 'e.g. Cutting Phase, Lean Bulk')}
-                        className="w-full bg-[var(--tt-surface)] border border-[var(--tt-border-solid)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--tt-text)] placeholder-[#96A0AA] focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-[#96A0AA] uppercase tracking-wide mb-1 block">{t('trainerNotes.nutrition.description', 'Description')}</label>
-                      <textarea
-                        value={mealPlanForm.description}
-                        onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: 'description', value: e.target.value })}
-                        placeholder={t('trainerNotes.nutrition.descPlaceholder', 'Optional notes for the client…')}
-                        className="w-full bg-[var(--tt-surface)] border border-[var(--tt-border-solid)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--tt-text)] placeholder-[#96A0AA] resize-none focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
-                        rows={2}
-                      />
-                    </div>
-
-                    {/* Macro targets */}
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] text-[#96A0AA] uppercase tracking-wide">{t('trainerNotes.nutrition.macroTargets', 'Daily Macro Targets')}</label>
-                      <button
-                        onClick={handleAutoCalculate}
-                        disabled={!weights.length}
-                        className="text-[11px] font-medium text-[#19B8B8] hover:text-[#D9F1F1] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        {t('trainerNotes.nutrition.autoCalc', 'Auto-Calculate')}
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {[
-                        { key: 'calories', label: t('trainerNotes.nutrition.cal', 'Cal'), placeholder: '2200' },
-                        { key: 'protein', label: t('trainerNotes.nutrition.protein', 'Protein'), placeholder: '160g' },
-                        { key: 'carbs', label: t('trainerNotes.nutrition.carbs', 'Carbs'), placeholder: '250g' },
-                        { key: 'fat', label: t('trainerNotes.nutrition.fat', 'Fat'), placeholder: '60g' },
-                      ].map(({ key, label, placeholder }) => (
-                        <div key={key}>
-                          <p className="text-[10px] text-[#96A0AA] text-center mb-1">{label}</p>
-                          <input
-                            type="number"
-                            value={mealPlanForm[key]}
-                            onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: key, value: e.target.value })}
-                            placeholder={placeholder}
-                            className="w-full bg-[var(--tt-surface)] border border-[var(--tt-border-solid)] rounded-lg px-2 py-2.5 text-[16px] sm:text-[13px] text-[var(--tt-text)] text-center placeholder-[#96A0AA] focus:outline-none focus:border-[#19B8B8]/40 transition-colors"
-                          />
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex gap-3 pt-2">
-                      <button
-                        onClick={() => dispatch({ type: 'SET', payload: { showMealPlanForm: false } })}
-                        className="flex-1 py-3 sm:py-2.5 rounded-xl border border-[var(--tt-border-solid)] text-[14px] sm:text-[13px] font-medium text-[var(--tt-text-sub)] hover:text-[var(--tt-text)] transition-colors min-h-[44px]"
-                      >
-                        {t('trainerNotes.nutrition.cancel', 'Cancel')}
-                      </button>
-                      <button
-                        onClick={handleSaveMealPlan}
-                        disabled={savingMealPlan || (!mealPlanForm.calories && !mealPlanForm.protein)}
-                        className="flex-1 py-3 sm:py-2.5 rounded-xl bg-[#19B8B8] hover:bg-[#0F9E9E] text-[#06363B] text-[14px] sm:text-[13px] font-semibold transition-colors disabled:opacity-50 min-h-[44px]"
-                      >
-                        {savingMealPlan ? t('trainerNotes.nutrition.saving', 'Saving…') : t('trainerNotes.nutrition.savePlan', 'Save Plan')}
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>
 
+              {activeMealPlan && !showMealPlanForm ? (
+                <TCard padded={16} style={{ marginBottom: 22 }}>
+                  <p style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.2 }}>{activeMealPlan.name}</p>
+                  {activeMealPlan.description && (
+                    <p style={{ fontSize: 12, color: TT.textSub, marginTop: 2, whiteSpace: 'pre-wrap' }}>{activeMealPlan.description}</p>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 14 }}>
+                    {[
+                      { label: t('trainerNotes.nutrition.cal', 'Cal'), val: activeMealPlan.target_calories, color: TT.text },
+                      { label: t('trainerNotes.nutrition.protein', 'Protein'), val: activeMealPlan.target_protein_g ? `${activeMealPlan.target_protein_g}g` : '--', color: TT.coach },
+                      { label: t('trainerNotes.nutrition.carbs', 'Carbs'), val: activeMealPlan.target_carbs_g ? `${activeMealPlan.target_carbs_g}g` : '--', color: TT.warn },
+                      { label: t('trainerNotes.nutrition.fat', 'Fat'), val: activeMealPlan.target_fat_g ? `${activeMealPlan.target_fat_g}g` : '--', color: TT.hot },
+                    ].map((m, i) => (
+                      <div key={i} style={{ textAlign: 'center', padding: 10, borderRadius: 12, background: TT.surface2 }}>
+                        <p style={{ fontSize: 9.5, color: TT.textMute, textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.4 }}>{m.label}</p>
+                        <p style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: m.color, marginTop: 4 }}>{m.val || '--'}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 12, borderTop: `1px solid ${TT.border}` }}>
+                    <p style={{ fontSize: 11, color: TT.textMute }}>
+                      {t('trainerNotes.nutrition.since', 'Since')} {format(new Date(activeMealPlan.start_date), 'MMM d, yyyy', { locale: dateFnsLocale })}
+                    </p>
+                    <button
+                      onClick={handleDeactivateMealPlan}
+                      className="tt-tap"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: TT.hot, padding: '6px 0', minHeight: 36, display: 'flex', alignItems: 'center' }}
+                    >
+                      {t('trainerNotes.nutrition.deactivate', 'Deactivate')}
+                    </button>
+                  </div>
+                </TCard>
+              ) : !showMealPlanForm ? (
+                <TCard padded={16} style={{ marginBottom: 22 }}>
+                  <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                    <UtensilsCrossed size={32} color={TT.textMute} strokeWidth={1.6} style={{ margin: '0 auto 8px', opacity: 0.4 }} />
+                    <p style={{ fontSize: 13, color: TT.textSub }}>{t('trainerNotes.nutrition.noPlan', 'No meal plan assigned yet')}</p>
+                  </div>
+                </TCard>
+              ) : null}
+
+              {/* Meal Plan Form */}
+              {showMealPlanForm && (
+                <TCard padded={16} style={{ marginBottom: 22 }}>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 11, color: TT.textMute, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, marginBottom: 5, display: 'block' }}>{t('trainerNotes.nutrition.planName', 'Plan Name')}</label>
+                    <input
+                      value={mealPlanForm.name}
+                      onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: 'name', value: e.target.value })}
+                      placeholder={t('trainerNotes.nutrition.planNamePlaceholder', 'e.g. Cutting Phase, Lean Bulk')}
+                      onFocus={(e) => { e.target.style.boxShadow = `inset 0 0 0 1.5px ${TT.accent}`; }}
+                      onBlur={(e) => { e.target.style.boxShadow = 'inset 0 0 0 1px var(--tt-border)'; }}
+                      style={{ width: '100%', background: TT.surface2, borderRadius: 12, padding: '10px 12px', fontSize: 14, color: TT.text, border: 'none', boxShadow: 'inset 0 0 0 1px var(--tt-border)', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 11, color: TT.textMute, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, marginBottom: 5, display: 'block' }}>{t('trainerNotes.nutrition.description', 'Description')}</label>
+                    <textarea
+                      value={mealPlanForm.description}
+                      onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: 'description', value: e.target.value })}
+                      placeholder={t('trainerNotes.nutrition.descPlaceholder', 'Optional notes for the client…')}
+                      onFocus={(e) => { e.target.style.boxShadow = `inset 0 0 0 1.5px ${TT.accent}`; }}
+                      onBlur={(e) => { e.target.style.boxShadow = 'inset 0 0 0 1px var(--tt-border)'; }}
+                      style={{ width: '100%', background: TT.surface2, borderRadius: 12, padding: '10px 12px', fontSize: 14, color: TT.text, resize: 'none', border: 'none', boxShadow: 'inset 0 0 0 1px var(--tt-border)', outline: 'none' }}
+                      rows={2}
+                    />
+                  </div>
+
+                  {/* Macro targets */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <label style={{ fontSize: 11, color: TT.textMute, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700 }}>{t('trainerNotes.nutrition.macroTargets', 'Daily Macro Targets')}</label>
+                    <button
+                      onClick={handleAutoCalculate}
+                      disabled={!weights.length}
+                      className="tt-tap"
+                      style={{ background: 'none', border: 'none', cursor: weights.length ? 'pointer' : 'not-allowed', fontSize: 11, fontWeight: 700, color: TT.accent, opacity: weights.length ? 1 : 0.3, padding: 0 }}
+                    >
+                      {t('trainerNotes.nutrition.autoCalc', 'Auto-Calculate')}
+                    </button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                    {[
+                      { key: 'calories', label: t('trainerNotes.nutrition.cal', 'Cal'), placeholder: '2200' },
+                      { key: 'protein', label: t('trainerNotes.nutrition.protein', 'Protein'), placeholder: '160g' },
+                      { key: 'carbs', label: t('trainerNotes.nutrition.carbs', 'Carbs'), placeholder: '250g' },
+                      { key: 'fat', label: t('trainerNotes.nutrition.fat', 'Fat'), placeholder: '60g' },
+                    ].map(({ key, label, placeholder }) => (
+                      <div key={key}>
+                        <p style={{ fontSize: 10, color: TT.textMute, textAlign: 'center', marginBottom: 4 }}>{label}</p>
+                        <input
+                          type="number"
+                          value={mealPlanForm[key]}
+                          onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: key, value: e.target.value })}
+                          placeholder={placeholder}
+                          onFocus={(e) => { e.target.style.boxShadow = `inset 0 0 0 1.5px ${TT.accent}`; }}
+                          onBlur={(e) => { e.target.style.boxShadow = 'inset 0 0 0 1px var(--tt-border)'; }}
+                          style={{ width: '100%', background: TT.surface2, borderRadius: 10, padding: '9px 6px', fontSize: 14, color: TT.text, textAlign: 'center', border: 'none', boxShadow: 'inset 0 0 0 1px var(--tt-border)', outline: 'none' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, paddingTop: 14 }}>
+                    <button
+                      onClick={() => dispatch({ type: 'SET', payload: { showMealPlanForm: false } })}
+                      className="tt-btn tt-btn--secondary"
+                      style={{ flex: 1, padding: '11px 12px', borderRadius: 12, fontSize: 13 }}
+                    >
+                      {t('trainerNotes.nutrition.cancel', 'Cancel')}
+                    </button>
+                    <TPrimaryButton
+                      onClick={handleSaveMealPlan}
+                      disabled={savingMealPlan || (!mealPlanForm.calories && !mealPlanForm.protein)}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      {savingMealPlan ? t('trainerNotes.nutrition.saving', 'Saving…') : t('trainerNotes.nutrition.savePlan', 'Save Plan')}
+                    </TPrimaryButton>
+                  </div>
+                </TCard>
+              )}
+
               {/* 7-Day Food Log Compliance */}
-              <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-                <h3 className="text-[14px] font-semibold text-[var(--tt-text)] mb-3 flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-[#19B8B8]" />
-                  {t('trainerNotes.nutrition.weeklyIntake', '7-Day Intake')}
-                </h3>
+              <TSectionHeader title={t('trainerNotes.nutrition.weeklyIntake', '7-Day Intake')} />
+              <TCard padded={16} style={{ marginBottom: 22 }}>
                 {foodLogSummary.length === 0 ? (
-                  <div className="text-center py-6">
-                    <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.nutrition.noLogs', 'No food logs in the last 7 days')}</p>
+                  <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                    <p style={{ fontSize: 13, color: TT.textMute }}>{t('trainerNotes.nutrition.noLogs', 'No food logs in the last 7 days')}</p>
                   </div>
                 ) : (
                   <>
@@ -2740,7 +2516,7 @@ export default function TrainerClientNotes() {
                                 <div className="bg-[var(--tt-surface)] border border-[var(--tt-border)] rounded-2xl px-4 py-3 shadow-xl shadow-black/10 backdrop-blur-sm text-[12px] min-w-[120px]">
                                   {label && <p className="text-[#96A0AA] text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-70">{format(new Date(label + 'T00:00:00'), 'EEE, MMM d', { locale: dateFnsLocale })}</p>}
                                   {payload.map((entry, i) => (
-                                    <p key={entry.dataKey || i} className="font-semibold leading-snug" style={{ color: entry.color || '#19B8B8' }}>
+                                    <p key={entry.dataKey || i} className="font-semibold leading-snug" style={{ color: entry.color || TT.accent }}>
                                       {entry.name === 'calories' ? t('trainerNotes.nutrition.cal') : `${entry.name} (g)`}: {Math.round(entry.value)}
                                     </p>
                                   ))}
@@ -2748,7 +2524,7 @@ export default function TrainerClientNotes() {
                               );
                             }}
                           />
-                          <Bar dataKey="calories" fill="#19B8B8" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                          <Bar dataKey="calories" fill={TT.accent} radius={[4, 4, 0, 0]} maxBarSize={32} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -2783,43 +2559,43 @@ export default function TrainerClientNotes() {
                     </div>
                   </>
                 )}
-              </div>
+              </TCard>
 
               {/* Compliance Summary */}
               {foodLogSummary.length > 0 && (activeMealPlan || nutritionTargets) && (
-                <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border)] p-4">
-                  <h3 className="text-[14px] font-semibold text-[var(--tt-text)] mb-3 flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-[#19B8B8]" />
-                    {t('trainerNotes.nutrition.compliance', 'Compliance')}
-                  </h3>
-                  {(() => {
-                    const targets = activeMealPlan || nutritionTargets;
-                    const calTarget = targets?.target_calories || targets?.daily_calories;
-                    if (!calTarget) return <p className="text-[13px] text-[#96A0AA]">{t('trainerNotes.nutrition.noTargetsSet', 'No targets set to compare against')}</p>;
-                    const onTrack = foodLogSummary.filter(d => {
-                      const pct = (d.calories / calTarget) * 100;
-                      return pct >= 85 && pct <= 115;
-                    }).length;
-                    const daysLogged = foodLogSummary.length;
-                    const compliancePct = Math.round((onTrack / daysLogged) * 100);
-                    return (
-                      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                        <div className="text-center bg-[var(--tt-surface-2)] rounded-xl py-2.5 sm:py-3 px-1">
-                          <p className="text-[9px] sm:text-[10px] text-[#96A0AA] uppercase mb-0.5">{t('trainerNotes.nutrition.daysLogged', 'Days Logged')}</p>
-                          <p className="text-[16px] sm:text-[18px] font-bold text-[var(--tt-text)]">{daysLogged}<span className="text-[11px] sm:text-[12px] text-[#96A0AA]">/7</span></p>
+                <>
+                  <TSectionHeader title={t('trainerNotes.nutrition.compliance', 'Compliance')} />
+                  <TCard padded={16} style={{ marginBottom: 22 }}>
+                    {(() => {
+                      const targets = activeMealPlan || nutritionTargets;
+                      const calTarget = targets?.target_calories || targets?.daily_calories;
+                      if (!calTarget) return <p style={{ fontSize: 13, color: TT.textMute }}>{t('trainerNotes.nutrition.noTargetsSet', 'No targets set to compare against')}</p>;
+                      const onTrack = foodLogSummary.filter(d => {
+                        const pct = (d.calories / calTarget) * 100;
+                        return pct >= 85 && pct <= 115;
+                      }).length;
+                      const daysLogged = foodLogSummary.length;
+                      const compliancePct = Math.round((onTrack / daysLogged) * 100);
+                      const rateColor = compliancePct >= 70 ? TT.goodInk : compliancePct >= 40 ? TT.warnInk : TT.hot;
+                      return (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                          {[
+                            { l: t('trainerNotes.nutrition.daysLogged', 'Days Logged'), big: `${daysLogged}`, unit: '/7', color: TT.text },
+                            { l: t('trainerNotes.nutrition.onTarget', 'On Target'), big: `${onTrack}`, unit: `/${daysLogged}`, color: TT.goodInk },
+                            { l: t('trainerNotes.nutrition.compliancePct', 'Rate'), big: `${compliancePct}%`, unit: '', color: rateColor },
+                          ].map((s, i) => (
+                            <div key={i} style={{ textAlign: 'center', padding: '12px 4px', borderRadius: 12, background: TT.surface2 }}>
+                              <p style={{ fontSize: 9.5, color: TT.textMute, textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.4, marginBottom: 4 }}>{s.l}</p>
+                              <p style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: s.color }}>
+                                {s.big}{s.unit && <span style={{ fontSize: 12, color: TT.textMute }}>{s.unit}</span>}
+                              </p>
+                            </div>
+                          ))}
                         </div>
-                        <div className="text-center bg-[var(--tt-surface-2)] rounded-xl py-2.5 sm:py-3 px-1">
-                          <p className="text-[9px] sm:text-[10px] text-[#96A0AA] uppercase mb-0.5">{t('trainerNotes.nutrition.onTarget', 'On Target')}</p>
-                          <p className="text-[16px] sm:text-[18px] font-bold text-[var(--tt-good-ink)]">{onTrack}<span className="text-[11px] sm:text-[12px] text-[#96A0AA]">/{daysLogged}</span></p>
-                        </div>
-                        <div className="text-center bg-[var(--tt-surface-2)] rounded-xl py-2.5 sm:py-3 px-1">
-                          <p className="text-[9px] sm:text-[10px] text-[#96A0AA] uppercase mb-0.5">{t('trainerNotes.nutrition.compliancePct', 'Rate')}</p>
-                          <p className={`text-[16px] sm:text-[18px] font-bold ${compliancePct >= 70 ? 'text-[var(--tt-good-ink)]' : compliancePct >= 40 ? 'text-[var(--tt-warn-ink)]' : 'text-[#FF5A2E]'}`}>{compliancePct}%</p>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
+                      );
+                    })()}
+                  </TCard>
+                </>
               )}
             </>
           )}
@@ -2837,52 +2613,61 @@ export default function TrainerClientNotes() {
 
       {/* Log Follow-Up Modal */}
       {showFollowupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[var(--tt-surface)] rounded-2xl border border-[var(--tt-border-solid)] w-full max-h-[90vh] overflow-y-auto sm:max-w-md p-5 sm:p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[16px] sm:text-[17px] font-semibold text-[var(--tt-text)]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: TT.surface, borderRadius: 'var(--tt-card-radius, 20px)', border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg, width: '100%', maxWidth: 448, maxHeight: '90vh', overflowY: 'auto', padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ fontFamily: TFont.display, fontSize: 17, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
                 {t('trainerNotes.followUp.logFollowUp')}
               </h3>
-              <button onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: false } })} className="text-[#96A0AA] hover:text-[var(--tt-text)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
-                <X size={18} />
-              </button>
+              <TIconButton ariaLabel={t('trainerNotes.followUp.cancel', 'Close')} onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: false } })}>
+                <X size={18} color={TT.text} />
+              </TIconButton>
             </div>
 
             {/* Method selector */}
-            <label className="text-[12px] text-[#96A0AA] uppercase tracking-wide mb-1.5 block">
+            <label style={{ fontSize: 11, color: TT.textMute, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, marginBottom: 6, display: 'block' }}>
               {t('trainerNotes.followUp.method')}
             </label>
-            <div className="grid grid-cols-4 gap-2 mb-4">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
               {[
                 { value: 'call', icon: Phone, label: t('trainerNotes.followUp.methods.call') },
                 { value: 'push', icon: Bell, label: t('trainerNotes.followUp.methods.push') },
                 { value: 'email', icon: Mail, label: t('trainerNotes.followUp.methods.email') },
                 { value: 'in_person', icon: UserCheck, label: t('trainerNotes.followUp.methods.inPerson') },
-              ].map(({ value, icon: Icon, label }) => (
-                <button
-                  key={value}
-                  onClick={() => dispatch({ type: 'SET', payload: { fuMethod: value } })}
-                  title={label}
-                  className={`py-2.5 sm:py-2 rounded-lg flex flex-col items-center gap-1 text-[10px] sm:text-[11px] font-medium transition-colors min-h-[44px] ${
-                    fuMethod === value
-                      ? 'bg-[#19B8B8]/10 text-[#19B8B8] border border-[#19B8B8]/30'
-                      : 'bg-[var(--tt-surface-2)] text-[#96A0AA] border border-[var(--tt-border)] hover:text-[var(--tt-text-sub)]'
-                  }`}
-                >
-                  <Icon size={14} />
-                  {label}
-                </button>
-              ))}
+              ].map(({ value, icon: Icon, label }) => {
+                const sel = fuMethod === value;
+                return (
+                  <button
+                    key={value}
+                    onClick={() => dispatch({ type: 'SET', payload: { fuMethod: value } })}
+                    title={label}
+                    className="tt-tap"
+                    style={{
+                      padding: '10px 4px', borderRadius: 10, minHeight: 44,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                      background: sel ? TT.accentSoft : TT.surface2,
+                      color: sel ? TT.accentInk : TT.textSub,
+                      border: sel ? `1px solid ${TT.accent}` : `1px solid ${TT.border}`,
+                    }}
+                  >
+                    <Icon size={14} color={sel ? TT.accent : TT.textMute} />
+                    {label}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Outcome */}
-            <label className="text-[12px] text-[#96A0AA] uppercase tracking-wide mb-1.5 block">
+            <label style={{ fontSize: 11, color: TT.textMute, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, marginBottom: 6, display: 'block' }}>
               {t('trainerNotes.followUp.outcomeLabel')}
             </label>
             <select
               value={fuOutcome}
               onChange={(e) => dispatch({ type: 'SET', payload: { fuOutcome: e.target.value } })}
-              className="w-full bg-[var(--tt-surface-2)] border border-[var(--tt-border-solid)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[14px] text-[var(--tt-text)] mb-4 focus:outline-none focus:border-[#19B8B8]/40 transition-colors min-h-[44px]"
+              onFocus={(e) => { e.target.style.boxShadow = `inset 0 0 0 1.5px ${TT.accent}`; }}
+              onBlur={(e) => { e.target.style.boxShadow = 'inset 0 0 0 1px var(--tt-border)'; }}
+              style={{ width: '100%', background: TT.surface2, borderRadius: 12, padding: '11px 12px', fontSize: 14, color: TT.text, marginBottom: 16, border: 'none', boxShadow: 'inset 0 0 0 1px var(--tt-border)', outline: 'none', minHeight: 44 }}
             >
               <option value="no_answer">{t('trainerNotes.followUp.outcomes.noAnswer')}</option>
               <option value="rescheduled">{t('trainerNotes.followUp.outcomes.rescheduled')}</option>
@@ -2892,31 +2677,30 @@ export default function TrainerClientNotes() {
             </select>
 
             {/* Note */}
-            <label className="text-[12px] text-[#96A0AA] uppercase tracking-wide mb-1.5 block">
+            <label style={{ fontSize: 11, color: TT.textMute, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, marginBottom: 6, display: 'block' }}>
               {t('trainerNotes.followUp.noteLabel')}
             </label>
             <textarea
               value={fuNote}
               onChange={(e) => dispatch({ type: 'SET', payload: { fuNote: e.target.value } })}
               placeholder={t('trainerNotes.followUp.notePlaceholder')}
-              className="w-full bg-[var(--tt-surface-2)] border border-[var(--tt-border-solid)] rounded-lg p-3 text-[14px] text-[var(--tt-text)] placeholder-[#96A0AA] resize-none focus:outline-none focus:border-[#19B8B8]/40 transition-colors mb-4"
+              onFocus={(e) => { e.target.style.boxShadow = `inset 0 0 0 1.5px ${TT.accent}`; }}
+              onBlur={(e) => { e.target.style.boxShadow = 'inset 0 0 0 1px var(--tt-border)'; }}
+              style={{ width: '100%', background: TT.surface2, borderRadius: 12, padding: 12, fontSize: 14, color: TT.text, resize: 'none', marginBottom: 16, border: 'none', boxShadow: 'inset 0 0 0 1px var(--tt-border)', outline: 'none' }}
               rows={3}
             />
 
-            <div className="flex gap-3 pt-1">
+            <div style={{ display: 'flex', gap: 10 }}>
               <button
                 onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: false } })}
-                className="flex-1 py-3 sm:py-2.5 rounded-xl border border-[var(--tt-border-solid)] text-[14px] sm:text-[13px] font-medium text-[var(--tt-text-sub)] hover:text-[var(--tt-text)] transition-colors min-h-[44px]"
+                className="tt-btn tt-btn--secondary"
+                style={{ flex: 1, padding: '11px 12px', borderRadius: 12, fontSize: 13 }}
               >
                 {t('trainerNotes.followUp.cancel')}
               </button>
-              <button
-                onClick={handleSaveFollowup}
-                disabled={savingFollowup}
-                className="flex-1 py-3 sm:py-2.5 rounded-xl bg-[#19B8B8] hover:bg-[#0F9E9E] text-[#06363B] text-[14px] sm:text-[13px] font-semibold transition-colors disabled:opacity-50 min-h-[44px]"
-              >
+              <TPrimaryButton onClick={handleSaveFollowup} disabled={savingFollowup} style={{ flex: 1, justifyContent: 'center' }}>
                 {savingFollowup ? t('trainerNotes.followUp.saving') : t('trainerNotes.followUp.save')}
-              </button>
+              </TPrimaryButton>
             </div>
           </div>
         </div>

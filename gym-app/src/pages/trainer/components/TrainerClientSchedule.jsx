@@ -108,18 +108,21 @@ export default function TrainerClientSchedule({ clientId }) {
 
   return (
     <>
-      <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2, marginBottom: 8 }}>
+      <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, marginBottom: 11 }}>
         {t('trainerSchedule.title', 'Weekly schedule')}
       </div>
-      <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 18, boxShadow: TT.shadow, padding: 14, marginBottom: 14 }}>
+      <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 'var(--tt-card-radius, 20px)', boxShadow: TT.shadow, padding: 16, marginBottom: 22 }}>
         {/* Day pills */}
         <div style={{ display: 'flex', gap: 6, justifyContent: 'space-between' }}>
           {DOWS.map(d => {
             const on = days.has(d);
             return (
-              <button key={d} onClick={() => toggleDay(d)} aria-pressed={on}
-                style={{ flex: 1, height: 40, borderRadius: 11, fontSize: 13, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer',
-                  border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.accent : TT.surface2, color: on ? '#fff' : TT.textSub }}>
+              <button key={d} onClick={() => toggleDay(d)} aria-pressed={on} className="tt-tap"
+                style={{ flex: 1, height: 38, borderRadius: 11, fontFamily: TFont.display, fontSize: 13, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer',
+                  border: on ? 'none' : `1px solid ${TT.border}`,
+                  background: on ? 'linear-gradient(180deg,#27B0A0,#178C7E)' : TT.surface2,
+                  color: on ? '#fff' : TT.textMute,
+                  boxShadow: on ? '0 4px 10px -3px rgba(10,90,82,.5), inset 0 1px 0 rgba(255,255,255,.28)' : 'inset 0 0 0 1px var(--tt-border)' }}>
                 {dowLabel(d)}
               </button>
             );
@@ -143,21 +146,23 @@ export default function TrainerClientSchedule({ clientId }) {
 
         {/* Shared time + duration */}
         {sameTime && (
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, marginTop: 14 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: TT.textMute, textTransform: 'uppercase', marginBottom: 5 }}>{t('trainerSchedule.time', 'Time')}</div>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.7, color: TT.textMute, textTransform: 'uppercase', marginBottom: 6 }}>{t('trainerSchedule.time', 'Time')}</div>
               <input type="time" value={sharedTime} onChange={e => setSharedTime(e.target.value)}
-                style={{ width: '100%', padding: '9px 11px', borderRadius: 10, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.text, fontSize: 14, fontFamily: TFont.display, fontWeight: 700, outline: 'none' }} />
+                style={{ width: '100%', height: 40, padding: '0 12px', borderRadius: 11, border: 'none', boxShadow: 'inset 0 0 0 1px var(--tt-border)', background: TT.surface2, color: TT.text, fontSize: 14, fontFamily: TFont.display, fontWeight: 700, outline: 'none' }} />
             </div>
             <div style={{ flex: 1.4 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: TT.textMute, textTransform: 'uppercase', marginBottom: 5 }}>{t('trainerSchedule.duration', 'Duration')}</div>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.7, color: TT.textMute, textTransform: 'uppercase', marginBottom: 6 }}>{t('trainerSchedule.duration', 'Duration')}</div>
               <div style={{ display: 'flex', gap: 5 }}>
                 {DURATIONS.map(d => {
                   const on = sharedDuration === d;
                   return (
-                    <button key={d} onClick={() => setSharedDuration(d)}
-                      style={{ flex: 1, padding: '9px 0', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                        border: on ? 'none' : `1px solid ${TT.border}`, background: on ? TT.accent : TT.surface2, color: on ? '#fff' : TT.textSub }}>
+                    <button key={d} onClick={() => setSharedDuration(d)} className="tt-tap"
+                      style={{ flex: 1, height: 40, borderRadius: 10, fontFamily: TFont.display, fontSize: 13, fontWeight: 800, cursor: 'pointer',
+                        border: 'none',
+                        background: on ? TT.text : TT.surface2, color: on ? TT.bg : TT.textMute,
+                        boxShadow: on ? 'none' : 'inset 0 0 0 1px var(--tt-border)' }}>
                       {d}
                     </button>
                   );
@@ -182,18 +187,17 @@ export default function TrainerClientSchedule({ clientId }) {
         )}
 
         {/* Summary + save */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
-          <div style={{ flex: 1, fontSize: 11.5, color: TT.textSub, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <CalendarClock size={14} style={{ color: TT.accent }} />
-            {perWeek > 0
-              ? t('trainerSchedule.perWeek', '{{count}} sessions/week · auto-booked 8 weeks out', { count: perWeek })
-              : t('trainerSchedule.none', 'No sessions scheduled')}
-          </div>
-          <button onClick={save} disabled={busy}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 11, border: 'none', background: TT.accent, color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', opacity: busy ? 0.5 : 1 }}>
-            <Check size={14} strokeWidth={2.6} /> {t('trainerSchedule.save', 'Save')}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, fontSize: 11.5, color: TT.textSub }}>
+          <CalendarClock size={14} style={{ color: TT.accent }} />
+          {perWeek > 0
+            ? t('trainerSchedule.perWeek', '{{count}} sessions/week · auto-booked 8 weeks out', { count: perWeek })
+            : t('trainerSchedule.none', 'No sessions scheduled')}
         </div>
+        <button onClick={save} disabled={busy}
+          className="tt-btn tt-btn--primary"
+          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, borderRadius: 12, fontFamily: TFont.display, fontWeight: 800, fontSize: 13, opacity: busy ? 0.5 : 1 }}>
+          <Check size={15} strokeWidth={2.4} /> {t('trainerSchedule.saveSchedule', 'Save schedule')}
+        </button>
       </div>
     </>
   );

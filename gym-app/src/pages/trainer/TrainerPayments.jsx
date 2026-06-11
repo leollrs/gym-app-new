@@ -260,7 +260,7 @@ export default function TrainerPayments() {
                     c.payment_method ? methodLabel(c.payment_method) : null,
                   ].filter(Boolean).join(' · ');
                   return (
-                    <TCard key={c.client_id} padded={0} style={overdue && !paid ? { borderLeft: `3px solid ${TT.hot}` } : undefined}>
+                    <TCard key={c.client_id} padded={0} style={overdue && !paid ? { boxShadow: `inset 3px 0 0 ${TT.hot}, ${TT.shadow}` } : undefined}>
                       <div style={{ padding: 14 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <button type="button" onClick={() => navigate(`/trainer/clients/${c.client_id}`)} aria-label={name}

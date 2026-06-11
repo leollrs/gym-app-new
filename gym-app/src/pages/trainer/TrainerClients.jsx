@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, MessageCircle, CheckSquare, Square, ClipboardList, Send, UserMinus, Ban, AlertTriangle, ShieldBan, MoreHorizontal, CheckCheck, Activity, Plus, SlidersHorizontal } from 'lucide-react';
+import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, MessageCircle, CheckSquare, Square, ClipboardList, Send, UserMinus, Ban, AlertTriangle, ShieldBan, MoreHorizontal, MoreVertical, CheckCheck, Activity, Plus, SlidersHorizontal } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -17,7 +17,7 @@ import useFocusTrap from '../../hooks/useFocusTrap';
 import Skeleton from '../../components/Skeleton';
 import TrainerEmptyState from './components/TrainerEmptyState';
 import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
-import { TCard, TPill, TAvatar, TRing, TEyebrow, TPageTitle, TDarkButton, TIconButton, TTabPill } from './components/designPrimitives';
+import { TCard, TPill, TAvatar, TRing, TPrimaryButton, TIconButton } from './components/designPrimitives';
 
 // ── Client quick-preview modal ──────────────────────────────────────────────
 const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemove, onBlock }) => {
@@ -238,6 +238,7 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
 // ── Add Client from Gym modal ──────────────────────────────────────────────
 const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded }) => {
   const { t } = useTranslation('pages');
+  const { showToast } = useToast();
   const [memberSearch, setMemberSearch] = useState('');
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -295,6 +296,7 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
       onAdded(memberId);
     } catch (err) {
       logger.error('AddClientModal: failed to assign client:', err);
+      showToast(t('trainerClients.addClientFailed', 'Could not add client. Try again.'), 'error');
     } finally {
       setAddingId(null);
     }
@@ -447,20 +449,52 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
   const handleAssign = async () => {
     if (!selectedProgram) return;
     setAssigning(true);
+    let successCount = 0;
+    let failCount = 0;
     try {
-      const rows = selectedClients.map(c => ({
-        profile_id: c.id,
-        program_id: selectedProgram,
-        gym_id: gymId,
-      }));
-      const { error } = await supabase.from('gym_program_enrollments').upsert(rows, { onConflict: 'program_id,profile_id' });
-      if (error) throw error;
-      posthog?.capture('trainer_program_assigned', { client_count: selectedClients.length });
-      showToast(t('trainerClients.programAssignedSuccess', 'Program assigned to {{count}} clients', { count: selectedClients.length }), 'success');
-      onDone();
-    } catch (err) {
-      logger.error('AssignProgram: error', err);
-      showToast(err.message, 'error');
+      for (const c of selectedClients) {
+        // Update the profile's assigned_program_id via secure RPC — the roster
+        // labels/filters read assigned_program_id, so this is what makes the
+        // assignment visible (mirrors TrainerClientDetail handleAssignProgram).
+        const { error: rpcErr } = await supabase.rpc('trainer_assign_program', { p_member_id: c.id, p_program_id: selectedProgram });
+        if (rpcErr) {
+          logger.error('AssignProgram: RPC failed for client', c.id, rpcErr);
+          failCount += 1;
+          continue;
+        }
+        // Upsert enrollment. The conflict path (re-assigning a program the client
+        // already enrolled in) is an UPDATE under RLS — policy ships in migration
+        // 0526. Until it's applied, fall back to keeping the existing row
+        // (ignoreDuplicates → ON CONFLICT DO NOTHING, insert-only RLS).
+        const { error: enrollErr } = await supabase.from('gym_program_enrollments').upsert({
+          program_id: selectedProgram,
+          profile_id: c.id,
+          gym_id: gymId,
+          enrolled_at: new Date().toISOString(),
+        }, { onConflict: 'program_id,profile_id' });
+        if (enrollErr) {
+          const { error: retryErr } = await supabase.from('gym_program_enrollments').upsert({
+            program_id: selectedProgram,
+            profile_id: c.id,
+            gym_id: gymId,
+          }, { onConflict: 'program_id,profile_id', ignoreDuplicates: true });
+          if (retryErr) logger.error('AssignProgram: enrollment upsert failed for client', c.id, retryErr);
+        }
+        successCount += 1;
+      }
+
+      if (successCount > 0) {
+        posthog?.capture('trainer_program_assigned', { client_count: successCount });
+      }
+      if (failCount === 0) {
+        showToast(t('trainerClients.programAssignedSuccess', 'Program assigned to {{count}} clients', { count: successCount }), 'success');
+        onDone();
+      } else if (successCount > 0) {
+        showToast(t('trainerClients.programAssignedPartial', 'Assigned to {{success}} clients, {{failed}} failed', { success: successCount, failed: failCount }), 'warning');
+        onDone();
+      } else {
+        showToast(t('trainerClients.programAssignFailed', 'Could not assign the program. Try again.'), 'error');
+      }
     } finally {
       setAssigning(false);
     }
@@ -615,7 +649,8 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
       }
       onDone();
     } catch (err) {
-      showToast(err.message, 'error');
+      logger.error('ComposeMessage: error', err);
+      showToast(t('trainerClients.messageSendFailed', 'Could not send messages. Try again.'), 'error');
     } finally {
       setSending(false);
     }
@@ -726,6 +761,7 @@ export default function TrainerClients() {
   const [selected, setSelected] = useState(null);
   const [search,   setSearch]   = useState('');
   const [filter,   setFilter]   = useState('all');
+  const [activeChip, setActiveChip] = useState('all'); // visual chip selection (churn + at_risk share the same filter)
   const [sortBy,   setSortBy]   = useState('last_active');
   const [churnScores, setChurnScores] = useState({});
   const [showAddClient, setShowAddClient] = useState(false);
@@ -742,13 +778,13 @@ export default function TrainerClients() {
   const [blockingClient, setBlockingClient] = useState(false);
 
   const handleMessageClient = async (clientId) => {
-    try {
-      const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
-      if (convId) navigate(`/trainer/messages/${convId}`);
-    } catch (err) {
-      logger.error('Error opening conversation:', err);
+    const { data: convId, error } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
+    if (error || !convId) {
+      logger.error('Error opening conversation:', error);
       showToast(t('trainerClients.messageError', 'Could not open conversation'), 'error');
+      return;
     }
+    navigate(`/trainer/messages/${convId}`);
   };
 
   const handleRemoveClient = async () => {
@@ -765,7 +801,7 @@ export default function TrainerClients() {
       showToast(t('trainerClients.clientRemoved', '{{name}} has been removed from your clients', { name: removeTarget.full_name }), 'success');
     } catch (err) {
       logger.error('RemoveClient: error', err);
-      showToast(err.message, 'error');
+      showToast(t('trainerClients.removeFailed', 'Could not remove client. Try again.'), 'error');
     } finally {
       setRemovingClient(false);
       setRemoveTarget(null);
@@ -782,16 +818,17 @@ export default function TrainerClients() {
         .upsert({ blocker_id: profile.id, blocked_id: blockTarget.id }, { onConflict: 'blocker_id,blocked_id' });
       if (blockErr) throw blockErr;
       // 2. Also deactivate the trainer-client relationship
-      await supabase
+      const { error: deactivateErr } = await supabase
         .from('trainer_clients')
         .update({ is_active: false })
         .eq('trainer_id', profile.id)
         .eq('client_id', blockTarget.id);
+      if (deactivateErr) throw deactivateErr;
       setClients(prev => prev.filter(c => c.id !== blockTarget.id));
       showToast(t('trainerClients.clientBlocked', '{{name}} has been blocked', { name: blockTarget.full_name }), 'success');
     } catch (err) {
       logger.error('BlockClient: error', err);
-      showToast(err.message, 'error');
+      showToast(t('trainerClients.blockFailed', 'Could not block client. Try again.'), 'error');
     } finally {
       setBlockingClient(false);
       setBlockTarget(null);
@@ -833,7 +870,7 @@ export default function TrainerClients() {
           client_id,
           notes,
           profiles!trainer_clients_client_id_fkey (
-            id, full_name, username, last_active_at, created_at, assigned_program_id, phone_number
+            id, full_name, username, avatar_url, last_active_at, created_at, assigned_program_id, phone_number
           )
         `)
         .eq('trainer_id', profile.id)
@@ -944,14 +981,20 @@ export default function TrainerClients() {
   const onTrackCount = clients.filter(c => isActiveClient(c) && !isAtRiskClient(c) && !isChurnClient(c)).length;
   const atRiskCount  = clients.filter(c => isAtRiskClient(c)).length;
   const churnCount   = clients.filter(c => isChurnClient(c)).length;
+  const noPlanCount  = clients.filter(c => !c.assigned_program_id).length;
+  const onProgramCount = clients.filter(c => c.assigned_program_id).length;
 
-  // Status tab definitions reuse existing FILTER_KEYS to preserve filter state behaviour.
-  const STATUS_TABS = [
-    { key: 'all',         label: t('trainerClients.tabAll', 'All') },
-    { key: 'active',      label: t('trainerClients.tabOnTrack', 'On track') },
-    { key: 'at_risk',     label: t('trainerClients.tabAtRisk', 'At risk') },
-    { key: 'no_program',  label: t('trainerClients.tabNoPlan', 'No plan') },
-    { key: 'has_program', label: t('trainerClients.tabHasProgram', 'On program') },
+  // Atelier filter chips. Each carries its own visual `id` (so the Churn and
+  // At-risk chips, which share the existing `at_risk` filter, don't both light
+  // up) but maps back to the existing FILTER_KEYS to preserve filter behaviour
+  // (the old funnel also routed Churn → the at_risk view).
+  const STATUS_CHIPS = [
+    { id: 'all',         filter: 'all',         label: t('trainerClients.tabAll', 'All'),               count: clients.length },
+    { id: 'on_track',    filter: 'active',      label: t('trainerClients.tabOnTrack', 'On track'),      count: onTrackCount },
+    { id: 'at_risk',     filter: 'at_risk',     label: t('trainerClients.tabAtRisk', 'At risk'),        count: atRiskCount },
+    { id: 'churn',       filter: 'at_risk',     label: t('trainerClients.funnel.churn', 'Churn'),       count: churnCount },
+    { id: 'no_program',  filter: 'no_program',  label: t('trainerClients.tabNoPlan', 'No plan'),        count: noPlanCount },
+    { id: 'has_program', filter: 'has_program', label: t('trainerClients.tabHasProgram', 'On program'), count: onProgramCount },
   ];
 
   return (
@@ -963,57 +1006,33 @@ export default function TrainerClients() {
         }
       `}</style>
 
-      <div style={{ padding: '6px 16px 12px' }}>
+      <div style={{ padding: '8px 20px 12px' }}>
         {/* Header row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
-          <div>
-            <TEyebrow>{t('trainerClients.roster', 'Roster · {{count}}', { count: clients.length })}</TEyebrow>
-            <TPageTitle>{t('trainerClients.title', 'Clients')}</TPageTitle>
+          <div style={{ fontFamily: TFont.display, fontSize: 30, fontWeight: 800, color: TT.text, letterSpacing: -1, lineHeight: 1 }}>
+            {t('trainerClients.title', 'Clients')}
           </div>
-          <TDarkButton onClick={() => setShowAddClient(true)} aria-label={t('trainerClients.addClient', 'Add Client')}>
-            <Plus size={15} strokeWidth={2.4} />
+          <TPrimaryButton
+            onClick={() => setShowAddClient(true)}
+            aria-label={t('trainerClients.addClient', 'Add Client')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px' }}
+          >
+            <Plus size={16} strokeWidth={2.4} />
             {t('trainerClients.add', 'Add')}
-          </TDarkButton>
+          </TPrimaryButton>
         </div>
 
-        {/* Funnel strip */}
-        {!loading && clients.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 12 }}>
-            {[
-              { lbl: t('trainerClients.funnel.onTrack', 'On track'), n: onTrackCount, tone: TT.good, soft: TT.goodSoft, filter: 'active' },
-              { lbl: t('trainerClients.funnel.atRisk', 'At risk'),   n: atRiskCount,  tone: TT.warn, soft: TT.warnSoft, filter: 'at_risk' },
-              { lbl: t('trainerClients.funnel.churn', 'Churn'),      n: churnCount,   tone: TT.hot,  soft: TT.hotSoft,  filter: 'at_risk' },
-            ].map((s, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setFilter(s.filter)}
-                style={{
-                  padding: 12, borderRadius: 14, background: s.soft,
-                  border: 'none', textAlign: 'left', cursor: 'pointer',
-                  minHeight: 64,
-                }}
-              >
-                <div style={{ fontFamily: TFont.display, fontSize: 22, fontWeight: 800, color: s.tone, letterSpacing: -0.5, lineHeight: 1 }}>
-                  {s.n}
-                </div>
-                <div style={{ fontSize: 11, color: s.tone, fontWeight: 700, marginTop: 4 }}>{s.lbl}</div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Search + filter row */}
+        {/* Search + sort + select row */}
         {!loading && clients.length > 0 && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             <div
               style={{
-                flex: 1, height: 40, background: TT.surface, borderRadius: 12,
-                border: `1px solid ${TT.borderSolid}`,
-                display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px',
+                flex: 1, height: 46, background: TT.surface, borderRadius: 14,
+                boxShadow: 'inset 0 0 0 1px var(--tt-border)',
+                display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px',
               }}
             >
-              <Search size={16} color={TT.textMute} strokeWidth={2} />
+              <Search size={17} color={TT.textMute} strokeWidth={2} />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -1021,7 +1040,7 @@ export default function TrainerClients() {
                 aria-label={t('trainerClients.searchClients', 'Search clients')}
                 style={{
                   flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                  fontSize: 13, color: TT.text, minWidth: 0,
+                  fontSize: 14, color: TT.text, minWidth: 0,
                 }}
               />
             </div>
@@ -1033,43 +1052,58 @@ export default function TrainerClients() {
                 setSortBy(SORT_KEYS[(idx + 1) % SORT_KEYS.length]);
               }}
               title={`${t('trainerClients.sortPrefix', 'Sort')}: ${t(`trainerClients.sort_${sortBy}`, SORT_DEFAULTS[sortBy] || sortBy)}`}
+              className="tt-tap"
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                height: 40, padding: '0 12px', borderRadius: 12,
-                background: TT.surface2, border: `1px solid ${TT.border}`,
-                color: TT.text, fontSize: 12, fontWeight: 700,
-                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                height: 46, padding: '0 13px', borderRadius: 14,
+                background: TT.surface, boxShadow: 'inset 0 0 0 1px var(--tt-border)',
+                color: TT.text, fontSize: 12.5, fontWeight: 700,
+                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, border: 'none',
               }}
             >
-              <SortAsc size={14} style={{ color: TT.text }} />
+              <SortAsc size={15} style={{ color: TT.text }} />
               {t(`trainerClients.sort_${sortBy}`, SORT_DEFAULTS[sortBy] || sortBy)}
             </button>
             <TIconButton
-              size={40}
+              size={46}
               ariaLabel={selectMode ? t('trainerClients.exitSelect', 'Exit select') : t('trainerClients.selectClients', 'Select clients')}
               onClick={() => {
                 if (selectMode) { setSelectMode(false); setBulkSelected(new Set()); }
                 else setSelectMode(true);
               }}
-              style={selectMode ? { background: TT.accentSoft, borderColor: TT.accent } : undefined}
+              style={selectMode
+                ? { background: TT.accentSoft, border: 'none', boxShadow: `inset 0 0 0 1px ${TT.accent}` }
+                : { background: TT.surface, border: 'none', boxShadow: 'inset 0 0 0 1px var(--tt-border)' }}
             >
-              <SlidersHorizontal size={16} color={selectMode ? TT.accentInk : TT.text} />
+              <SlidersHorizontal size={17} color={selectMode ? TT.accentInk : TT.text} />
             </TIconButton>
           </div>
         )}
 
-        {/* Status tabs */}
+        {/* Filter chips */}
         {!loading && clients.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto' }} className="scrollbar-hide">
-            {STATUS_TABS.map((tab) => (
-              <TTabPill
-                key={tab.key}
-                active={filter === tab.key}
-                onClick={() => setFilter(tab.key)}
-              >
-                {tab.label}
-              </TTabPill>
-            ))}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto' }} className="scrollbar-hide">
+            {STATUS_CHIPS.map((chip) => {
+              const isOn = activeChip === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => { setFilter(chip.filter); setActiveChip(chip.id); }}
+                  className="tt-tap"
+                  style={{
+                    padding: '8px 14px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0,
+                    fontFamily: TFont.display, fontSize: 12.5, fontWeight: 700, border: 'none',
+                    background: isOn ? TT.text : TT.surface,
+                    color: isOn ? TT.onInverse : TT.textSub,
+                    boxShadow: isOn ? 'none' : 'inset 0 0 0 1px var(--tt-border)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {chip.label} {chip.count}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -1096,11 +1130,11 @@ export default function TrainerClients() {
             title={t('trainerClients.noMatchingClients', 'No clients match your filters')}
             description={t('trainerClients.noMatchDesc', 'Try widening the filter or clearing your search.')}
             actionLabel={t('trainerClients.clearFilters', 'Clear filters')}
-            onAction={() => { setSearch(''); setFilter('all'); }}
+            onAction={() => { setSearch(''); setFilter('all'); setActiveChip('all'); }}
             compact
           />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          <TCard padded={0} style={{ overflow: 'hidden' }}>
             {filtered.map((c, idx) => {
               const status = isChurnClient(c) ? 'churn' : isAtRiskClient(c) ? 'at_risk' : 'on_track';
               const tone = statusTone(status);
@@ -1110,8 +1144,6 @@ export default function TrainerClients() {
                 return Math.max(0, Math.min(1, wk / 6));
               })();
               const adherencePct = Math.round(adherenceVal * 100);
-              const sessionsLabel = `${c.recentWorkouts || 0}/${6}`;
-              const sessionsRatio = Math.max(0, Math.min(1, (c.recentWorkouts || 0) / 6));
               const programLabel = c.assigned_program_id
                 ? t('trainerClients.programAssigned', 'Program assigned')
                 : t('trainerClients.noProgram', 'No program');
@@ -1125,6 +1157,11 @@ export default function TrainerClients() {
                 const firstName = (c.full_name || '').split(' ')[0];
                 openWhatsApp(c.phone_number, t('trainerClients.waGreeting', 'Hi {{name}}!', { name: firstName || '' }));
               };
+              const openOptions = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setSelected(c);
+              };
               return (
                 <motion.button
                   key={c.id}
@@ -1134,68 +1171,57 @@ export default function TrainerClients() {
                   transition={{ duration: 0.22, delay: Math.min(idx * 0.03, 0.3) }}
                   onClick={() => selectMode ? toggleBulkSelect(c.id) : navigate(`/trainer/clients/${c.id}`)}
                   aria-label={c.full_name}
+                  className="tt-tap"
                   style={{
-                    background: TT.surface,
-                    borderRadius: 18,
-                    border: `1px solid ${isSelected ? TT.accent : TT.border}`,
-                    boxShadow: TT.shadow,
-                    padding: 14,
+                    background: isSelected ? TT.accentSoft : 'transparent',
+                    border: 'none',
+                    borderTop: idx > 0 ? '1px solid var(--tt-border)' : 'none',
+                    padding: '13px 15px',
                     color: TT.text,
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 12,
+                    gap: 13,
                     width: '100%',
                     textAlign: 'left',
                     cursor: 'pointer',
                   }}
                 >
                   {selectMode && (
-                    <button
-                      type="button"
+                    <span
+                      role="button"
+                      tabIndex={0}
                       onClick={(e) => { e.stopPropagation(); toggleBulkSelect(c.id); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); toggleBulkSelect(c.id); } }}
                       aria-label={t('trainerClients.selectClient', 'Select')}
                       style={{
-                        minWidth: 32, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer',
+                        minWidth: 28, minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: 8, background: 'transparent', cursor: 'pointer',
                         flexShrink: 0, color: isSelected ? TT.accent : TT.textMute,
                         animation: 'slideInLeft 0.15s ease-out',
                       }}
                     >
                       {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
-                    </button>
+                    </span>
                   )}
-                  <TAvatar name={c.full_name || '?'} size={44} idx={avatarIdx(c.id)} src={c.avatar_url} />
+                  <TAvatar name={c.full_name || '?'} size={42} idx={avatarIdx(c.id)} src={c.avatar_url} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <div style={{ fontSize: 14.5, fontWeight: 700, color: TT.text }}>
-                        {c.full_name}
-                      </div>
-                      {status === 'churn' && (
-                        <TPill tone="hot" size="s">
-                          {churn ? `${Math.round(churn.score)}%` : t('trainerClients.churnPill', 'Churn')}
-                        </TPill>
-                      )}
-                      {status === 'at_risk' && (
-                        <TPill tone="warn" size="s">
-                          {churn ? `${Math.round(churn.score)}%` : t('trainerClients.riskPill', 'Risk')}
-                        </TPill>
-                      )}
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {c.full_name}
                     </div>
-                    <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: 12, color: TT.textSub, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {programLabel} · {lastActiveLabel}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                      <span style={{ fontSize: 10.5, color: TT.textMute, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                        {t('trainerClients.sessionsLabel', 'Sessions')}
-                      </span>
-                      <span style={{ fontSize: 11, fontFamily: TFont.mono, color: TT.text, fontWeight: 700 }}>
-                        {sessionsLabel}
-                      </span>
-                      <span style={{ flex: 1, height: 4, background: TT.surface2, borderRadius: 999, overflow: 'hidden', minWidth: 20 }}>
-                        <span style={{ display: 'block', width: `${sessionsRatio * 100}%`, height: '100%', background: tone }} />
-                      </span>
-                    </div>
                   </div>
+                  {status === 'churn' && (
+                    <TPill tone="hot" size="m">
+                      {churn ? `${Math.round(churn.score)}%` : t('trainerClients.churnPill', 'Churn')}
+                    </TPill>
+                  )}
+                  {status === 'at_risk' && (
+                    <TPill tone="warn" size="m">
+                      {churn ? `${Math.round(churn.score)}%` : t('trainerClients.riskPill', 'Risk')}
+                    </TPill>
+                  )}
                   {canWA && !selectMode && (
                     <span
                       role="button"
@@ -1204,24 +1230,35 @@ export default function TrainerClients() {
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openWA(e); }}
                       aria-label={t('trainerClients.whatsapp', 'WhatsApp {{name}}', { name: c.full_name || '' })}
                       style={{
-                        width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                        width: 36, height: 36, borderRadius: 11, flexShrink: 0,
                         background: '#25D366', color: '#fff',
                         display: 'grid', placeItems: 'center', cursor: 'pointer',
                       }}
                     >
-                      <MessageCircle size={17} strokeWidth={2.4} />
+                      <MessageCircle size={16} strokeWidth={2.4} />
                     </span>
                   )}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                    <TRing value={adherenceVal} size={40} stroke={4} color={tone} label={`${adherencePct}`} />
-                    <div style={{ fontSize: 9, color: TT.textMute, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase' }}>
-                      {t('trainerClients.adhAbbr', 'Adh')}
-                    </div>
-                  </div>
+                  <TRing value={adherenceVal} size={40} stroke={4} color={tone} label={`${adherencePct}`} />
+                  {!selectMode && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={openOptions}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openOptions(e); }}
+                      aria-label={t('trainerClients.moreOptions', 'More options')}
+                      style={{
+                        width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+                        marginLeft: -4, color: TT.textMute,
+                        display: 'grid', placeItems: 'center', cursor: 'pointer',
+                      }}
+                    >
+                      <MoreVertical size={17} strokeWidth={2.2} />
+                    </span>
+                  )}
                 </motion.button>
               );
             })}
-          </div>
+          </TCard>
         )}
       </div>
 

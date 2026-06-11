@@ -7877,7 +7877,13 @@
       "fat_loss": "Fat Loss",
       "strength": "Strength",
       "endurance": "Endurance",
-      "general_fitness": "General Fitness"
+      "general_fitness": "General Fitness",
+      "lift_1rm": "1RM lift",
+      "body_weight": "Body weight",
+      "body_fat": "Body fat",
+      "workout_count": "Workout count",
+      "streak": "Streak",
+      "volume": "Volume"
     },
     "tabs": {
       "overview": "Overview",
@@ -8050,7 +8056,9 @@
     "errors": {
       "saveNotesFailed": "Could not save notes",
       "saveMealPlanFailed": "Could not save meal plan",
-      "genericError": "Something went wrong"
+      "genericError": "Something went wrong",
+      "assignProgramFailed": "Could not update the program",
+      "openConversationFailed": "Could not open the chat"
     }
   },
   "checkIn": {
@@ -9104,7 +9112,13 @@
     "sessionsCount": "{{count}} sessions",
     "openClient": "Open client",
     "needsAttention": "Needs attention",
-    "pageTitle": "Trainer Home"
+    "pageTitle": "Trainer Home",
+    "attentionReasonChurn": "{{days}} days quiet · churn {{score}}",
+    "attentionReasonInactive": "{{days}} days quiet",
+    "openChatFailed": "Could not open the chat. Try again.",
+    "todaysLineup": "Today’s lineup",
+    "minLabel": "{{n}} MIN",
+    "reachOut": "Reach out"
   },
   "trainerCalendar": {
     "title": "Calendar",
@@ -9212,7 +9226,11 @@
     "minShort": "m",
     "minutesShort": "{{d}}m",
     "now": "NOW",
-    "nowIndicator": "↓ NOW"
+    "nowIndicator": "↓ NOW",
+    "errorSaveSession": "Failed to save session",
+    "errorLoadSessions": "Failed to load sessions",
+    "errorLoadClients": "Failed to load clients",
+    "book": "Book"
   },
   "trainerSocial": {
     "title": "Activity",
@@ -9257,7 +9275,9 @@
       "noMessages": "No messages",
       "onlineAria": "Online",
       "unpinAria": "Unpin",
-      "pinAria": "Pin"
+      "pinAria": "Pin",
+      "workoutShared": "Workout plan",
+      "newShort": "New"
     },
     "thread": {
       "yesterday": "Yesterday",
@@ -9300,12 +9320,13 @@
       "cardMissing": "Plan unavailable",
       "untitledPlan": "Untitled plan",
       "sentPreface": "Shared:",
-      "exerciseCount": "{{count}} exercises",
+      "exerciseCount": "{{count}} exercise",
       "weeksAndDays": "{{weeks}} weeks · {{days}} days/week",
       "daysOnly": "{{days}} days",
       "collapse": "Collapse",
       "pickDay": "Pick a day",
-      "sendBtn": "Send"
+      "sendBtn": "Send",
+      "exerciseCount_plural": "{{count}} exercises"
     },
     "templates": {
       "title": "Templates",
@@ -9329,7 +9350,12 @@
     },
     "deleted": "Conversation removed.",
     "blocked": "{{name}} blocked.",
-    "blockError": "Could not block user."
+    "blockError": "Could not block user.",
+    "startError": {
+      "blocked": "This conversation is blocked, so it can't be opened.",
+      "notAssigned": "You can only message clients assigned to you.",
+      "generic": "Couldn't start the conversation. Try again."
+    }
   },
   "trainerAnalytics": {
     "title": "Analytics",
@@ -9630,7 +9656,16 @@
     "noBookingsDesc": "No bookings for this class yet",
     "noDataDesc": "Not enough data yet",
     "takeAttendance": "Take attendance",
-    "close": "Close"
+    "close": "Close",
+    "errorAddSlot": "Could not add the slot",
+    "deleteSlot": "Delete slot",
+    "confirmDeleteSlot": "Delete this schedule slot?",
+    "confirmDeleteSlotDescription": "Bookings and attendance history for this slot will also be deleted. This cannot be undone.",
+    "errorMarkAttended": "Could not mark attendance",
+    "errorProposal": "Could not send the proposal",
+    "bookingsLoadError": "Could not load bookings",
+    "bookingsLoadErrorDesc": "Something went wrong. Check your connection and try again.",
+    "retry": "Retry"
   },
   "adminAnalytics": {
     "onboardingCompletion": "Onboarding Completion",
@@ -9690,7 +9725,17 @@
     "recentlyDeletedNote": "Deleted chats are kept for 30 days, then permanently removed.",
     "emptyTitle": "No conversations yet",
     "emptyDescription": "Start a conversation with a friend",
-    "unreadCount": "{{count}} unread"
+    "unreadCount": "{{count}} unread",
+    "workoutShare": {
+      "cardLabel": "Workout plan",
+      "fallback": "Your trainer shared a workout plan with you.",
+      "dayN": "Day {{n}}",
+      "exerciseCount": "{{count}} exercise",
+      "exerciseCount_plural": "{{count}} exercises",
+      "showExercises": "See exercises",
+      "hideExercises": "Hide exercises",
+      "exerciseFallback": "Exercise {{n}}"
+    }
   },
   "dm": {
     "encryptionBannerTitle": "Encrypted at rest",
@@ -10069,7 +10114,14 @@
     "repsPlaceholder": "8-12",
     "proteinShort": "P:",
     "carbsShort": "C:",
-    "fatShort": "F:"
+    "fatShort": "F:",
+    "noMealsInPlan": "This plan only has macro targets — no generated meals were saved.",
+    "day": "Day",
+    "loadFailed": "Could not load your plans. Try again.",
+    "loadMealPlansFailed": "Could not load meal plans. Try again.",
+    "generateMealsFailed": "Could not generate the meal plan. Try again.",
+    "yourLibrary": "Your library",
+    "mealPlansHeader": "Meal plans"
   },
   "trainerPrograms": {
     "title": "Program Library",
@@ -10205,7 +10257,13 @@
     "tabAtRisk": "At risk",
     "tabHasProgram": "Has program",
     "tabNoPlan": "No plan",
-    "tabOnTrack": "On track"
+    "tabOnTrack": "On track",
+    "programAssignedPartial": "Assigned to {{success}} clients, {{failed}} failed",
+    "programAssignFailed": "Could not assign the program. Try again.",
+    "addClientFailed": "Could not add client. Try again.",
+    "removeFailed": "Could not remove client. Try again.",
+    "blockFailed": "Could not block client. Try again.",
+    "messageSendFailed": "Could not send messages. Try again."
   },
   "nps": {
     "survey": {
@@ -10302,7 +10360,9 @@
       "card": "Card",
       "transfer": "Transfer",
       "other": "Other"
-    }
+    },
+    "paidOnDate": "Paid · {{date}}",
+    "nextCharge": "Next charge · {{date}}"
   },
   "trainerPayments": {
     "title": "Payments",
@@ -10348,7 +10408,8 @@
     "cleared": "Schedule cleared",
     "error": "Could not save schedule",
     "perWeek": "{{count}} sessions/week · auto-booked 8 weeks out",
-    "none": "No sessions scheduled"
+    "none": "No sessions scheduled",
+    "saveSchedule": "Save schedule"
   },
   "trainerAttendance": {
     "title": "Attendance",
@@ -10364,7 +10425,8 @@
       "history": "History",
       "body": "Body",
       "notes": "Notes",
-      "coaching": "Check-ins"
+      "coaching": "Check-ins",
+      "plan": "Plan"
     },
     "snapshot": {
       "title": "Snapshot",
@@ -10431,15 +10493,20 @@
       "volumeTrend": "Volume trend",
       "workouts": "Workouts",
       "noWorkouts": "No completed workouts yet.",
-      "streaks": "Streaks"
+      "streaks": "Streaks",
+      "daysUnit": "days"
     },
     "live": {
       "now": "NOW",
-      "viewLive": "View live"
+      "viewLive": "View live",
+      "watchLive": "● Live",
+      "startSession": "Start session",
+      "noActiveSession": "Client hasn't started a session yet"
     },
     "pr": {
       "label": "PR",
-      "empty": "No PRs yet"
+      "empty": "No PRs yet",
+      "up": "↑ PR"
     },
     "macros": {
       "calories": "Calories",
@@ -10455,11 +10522,14 @@
     "photos": {
       "title": "Progress photos",
       "empty": "No photos yet",
-      "alt": "Progress photo"
+      "alt": "Progress photo",
+      "headerFallback": "Photo"
     },
     "heatmap": {
       "event_one": "{{count}} event",
-      "event_other": "{{count}} events"
+      "event_other": "{{count}} events",
+      "event": "{{count}} event",
+      "event_plural": "{{count}} events"
     },
     "mealCategories": {
       "breakfast": "Breakfast",
@@ -10467,13 +10537,41 @@
       "dinner": "Dinner",
       "snack": "Snack",
       "pre_workout": "Pre-workout",
-      "post_workout": "Post-workout"
+      "post_workout": "Post-workout",
+      "high_protein": "High protein",
+      "fat_loss": "Fat loss",
+      "lean_bulk": "Lean bulk",
+      "mass_gain": "Mass gain",
+      "budget": "Budget",
+      "quick_meals": "Quick meals"
     },
     "activeWorkout": "Active workout",
     "adhAbbr": "Adh.",
     "coachPinned": "Pinned by coach",
     "injuriesPinned": "Injuries · Pinned",
-    "pinnedNotes": "Pinned notes"
+    "pinnedNotes": "Pinned notes",
+    "prs": "Personal records",
+    "weekOf": "Week {{w}} of {{t}}",
+    "weekDay": "Week {{w}} · day {{d}}",
+    "scheduled": "Soon",
+    "sessionMins": "{{m}} min",
+    "noUpcomingSession": "No upcoming session",
+    "clientLabel": "Client",
+    "weekN": "Week {{w}}",
+    "memberSince": "Member since {{m}}",
+    "currentPlan": "Current plan",
+    "adjust": "Adjust",
+    "weekProgram": "{{n}}-week program",
+    "daysWeekN": "{{d}} days/week",
+    "weekOfPill": "Week {{w}} / {{t}}",
+    "weekProgressLabel": "Week {{w}} of {{t}}",
+    "nextColon": "Next: {{d}}",
+    "progressPct": "{{p}}% complete",
+    "recentPrs": "Recent PRs",
+    "oneRmShort": "1RM {{v}}",
+    "edit": "Edit",
+    "notesWatch": "Watch",
+    "notesCoach": "Coach notes"
   },
   "trainerProfile": {
     "title": "Profile",
@@ -10524,7 +10622,8 @@
       "ratePlaceholder": "e.g. 50",
       "perMonth": "/mo",
       "perSession": "/sess",
-      "rateHint": "Pre-fills new clients’ fees. Optional."
+      "rateHint": "Pre-fills new clients’ fees. Optional.",
+      "usernameTaken": "That username is taken"
     },
     "services": {
       "title": "Services",
@@ -10912,7 +11011,19 @@
     "habitError": "Couldn't update the habit.",
     "habitPlaceholder": "New habit",
     "perWeek": "{{count}}/wk",
-    "add": "Add"
+    "add": "Add",
+    "habitPreset": {
+      "water": "Water 3L",
+      "sleep8": "Sleep 8h",
+      "steps": "10k steps",
+      "protein": "Protein target",
+      "stretch": "Stretch 10 min"
+    },
+    "weekOf": "Week of {{date}}",
+    "completed": "Completed",
+    "pending": "Pending",
+    "new": "New",
+    "removeHabit": "Remove habit"
   },
   "readinessModal": {
     "title": "Recovery",
@@ -12409,14 +12520,23 @@
       "dropSet": "Drop set",
       "restPlus30": "+30s rest",
       "reduce10": "−10% load",
-      "addNote": "Add note"
+      "addNote": "Add note",
+      "restPlus60": "Rest +60s"
     },
     "comingSoon": "Coming soon",
     "spectatorMode": "Spectator mode",
     "logSet": "Log set {{n}}",
     "addNote": "Add note",
     "upNext": "Up next",
-    "cueSent": "Cue sent to client"
+    "cueSent": "Cue sent to client",
+    "cueFailed": "Could not send cue",
+    "notePrompt": "Note for client:",
+    "workingOutTitle": "{{name}} is working out",
+    "noRoutineDetails": "The workout details aren't available for this session.",
+    "setShort": "Set",
+    "targetSpec": "Target {{sets}} × {{reps}}",
+    "restSpec": "{{sec}}s rest",
+    "logSetRest": "Log set · rest {{rest}}"
   },
   "trainerNotifications": {
     "title": "Notifications",
@@ -12499,7 +12619,8 @@
       "placeholder": "What's on your mind?",
       "send": "Send",
       "tooShort": "Add a bit more detail",
-      "opened": "Feedback opened in your email client"
+      "opened": "Feedback opened in your email client",
+      "opening": "Opening your email app…"
     },
     "faq": {
       "client": {
@@ -12520,7 +12641,7 @@
       },
       "payments": {
         "q": "Does TuGymPR handle payments?",
-        "a": "Not directly — your gym handles billing externally."
+        "a": "Clients pay you directly (cash, ATH Móvil, etc.) — the app never processes money. Use the Payments page to track each client's monthly fee and mark who has paid and who's pending."
       },
       "cover": {
         "q": "How do I update my cover photo?",

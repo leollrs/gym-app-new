@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft, MessageCircle, Send, Search, X, Loader2, Plus,
+  ChevronLeft, MessageCircle, Send, Search, X, Loader2, Edit,
   Dumbbell, CalendarPlus, ExternalLink,
 } from 'lucide-react';
 // eslint-disable-next-line no-unused-vars
@@ -19,8 +19,7 @@ import UserAvatar from '../../components/UserAvatar';
 import EmptyState from '../../components/EmptyState';
 import ConversationList from './components/ConversationList';
 import WorkoutShareModal from './components/WorkoutShareModal';
-import { TT } from './components/designTokens';
-import { TEyebrow, TPageTitle, TIconButton } from './components/designPrimitives';
+import { TT, TFont } from './components/designTokens';
 
 // Lazy capacitor keyboard import (mirrors Messages.jsx)
 let Keyboard = null;
@@ -128,7 +127,7 @@ function WorkoutShareCard({ planId, dayIndex, t }) {
       <div className="flex items-center gap-2 mb-2">
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center"
-          style={{ background: '#fff' }}
+          style={{ background: TT.surface }}
         >
           <Dumbbell size={13} style={{ color: TT.accent }} />
         </div>
@@ -138,8 +137,8 @@ function WorkoutShareCard({ planId, dayIndex, t }) {
       </div>
       {loading ? (
         <div className="space-y-2">
-          <div className="h-3 w-3/4 rounded animate-pulse" style={{ background: 'rgba(15,20,25,0.08)' }} />
-          <div className="h-3 w-1/2 rounded animate-pulse" style={{ background: 'rgba(15,20,25,0.08)' }} />
+          <div className="h-3 w-3/4 rounded animate-pulse" style={{ background: `color-mix(in srgb, ${TT.text} 8%, transparent)` }} />
+          <div className="h-3 w-1/2 rounded animate-pulse" style={{ background: `color-mix(in srgb, ${TT.text} 8%, transparent)` }} />
         </div>
       ) : plan ? (
         <>
@@ -594,6 +593,21 @@ export default function TrainerMessages() {
           decryptMessage(payload.new.body, activeConvId, encryptionSeedRef.current).then(decryptedBody => {
             setMessages(prev => {
               if (prev.some(m => m.id === payload.new.id)) return prev;
+              // Reconcile with optimistic temp rows (id `temp-…`): when the
+              // realtime INSERT beats the insert response, swap the temp
+              // bubble for the real row instead of appending a duplicate
+              // (mirrors the body+sender dedupe in member Messages.jsx).
+              const tempIdx = prev.findIndex(m =>
+                m._optimistic
+                && m.sender_id === payload.new.sender_id
+                && m.body === decryptedBody
+                && Math.abs(new Date(m.created_at).getTime() - new Date(payload.new.created_at).getTime()) < 60000
+              );
+              if (tempIdx >= 0) {
+                const next = [...prev];
+                next[tempIdx] = { ...payload.new, body: decryptedBody };
+                return next;
+              }
               return [...prev, { ...payload.new, body: decryptedBody }];
             });
           });
@@ -694,9 +708,12 @@ export default function TrainerMessages() {
     const otherId = conv.otherUser?.id;
     if (!otherId || !profile?.id) return;
     try {
+      // ignoreDuplicates → ON CONFLICT DO NOTHING: re-blocking an already
+      // blocked user is a success, and it sidesteps the missing UPDATE
+      // policy on blocked_users until migration 0527 lands.
       const { error } = await supabase.from('blocked_users').upsert(
         { blocker_id: profile.id, blocked_id: otherId },
-        { onConflict: 'blocker_id,blocked_id' },
+        { onConflict: 'blocker_id,blocked_id', ignoreDuplicates: true },
       );
       if (error) throw error;
       handleDelete(conv.id);
@@ -779,15 +796,27 @@ export default function TrainerMessages() {
   const handleNewConversation = async (clientProfile) => {
     setShowPicker(false);
     if (!clientProfile?.id) return;
-    try {
-      const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientProfile.id });
-      if (convId) {
-        await loadConversations();
-        handleSelect(convId);
+    // supabase-js v2 RPCs never throw — failures land on { error }. The RPC
+    // can RAISE 'Conversation blocked' (block in either direction) or
+    // 'Trainers can only DM assigned clients' — map both to friendly
+    // translated toasts instead of echoing raw text or swallowing silently.
+    const { data: convId, error } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientProfile.id });
+    if (error || !convId) {
+      logger.error('TrainerMessages: failed to start conversation', error);
+      const raw = error?.message || '';
+      let toastMsg;
+      if (raw.includes('Conversation blocked')) {
+        toastMsg = t('trainerMessages.startError.blocked', { defaultValue: 'This conversation is blocked, so it can’t be opened.' });
+      } else if (raw.includes('Trainers can only DM assigned clients')) {
+        toastMsg = t('trainerMessages.startError.notAssigned', { defaultValue: 'You can only message clients assigned to you.' });
+      } else {
+        toastMsg = t('trainerMessages.startError.generic', { defaultValue: 'Couldn’t start the conversation. Try again.' });
       }
-    } catch (err) {
-      logger.error('TrainerMessages: failed to start conversation', err);
+      showToast(toastMsg, 'error');
+      return;
     }
+    await loadConversations();
+    handleSelect(convId);
   };
 
   // ── Build chat items with grouping for nicer bubbles ───────
@@ -835,24 +864,26 @@ export default function TrainerMessages() {
             className={`${showThreadOnMobile ? 'hidden lg:flex' : 'flex'} flex-col h-full lg:border-r`}
             style={{ borderColor: TT.border }}
           >
-            {/* Page-level header: TEyebrow + TPageTitle + TIconButton (mobile + desktop visible) */}
-            <div style={{ padding: '12px 16px 6px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ minWidth: 0 }}>
-                  <TEyebrow>
-                    {t('trainerMessages.list.eyebrow', 'Inbox')} · {t('messages.unreadCount', { count: conversations.reduce((a, c) => a + (c.unreadCount || 0), 0), defaultValue: '{{count}} unread' })}
-                  </TEyebrow>
-                  <TPageTitle>{t('trainerMessages.list.title', 'Messages')}</TPageTitle>
-                </div>
-                <TIconButton
-                  ariaLabel={t('trainerMessages.list.newAria', 'Start new conversation')}
-                  onClick={() => setShowPicker(true)}
-                  size={44}
-                  style={{ background: TT.accent, border: 'none' }}
-                >
-                  <Plus size={22} strokeWidth={2.6} color="#06363B" />
-                </TIconButton>
+            {/* Page-level header: Atelier title + secondary "New" button */}
+            <div style={{ padding: '14px 20px 14px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
+              <div
+                style={{
+                  fontFamily: TFont.display, fontSize: 30, fontWeight: 800,
+                  color: TT.text, letterSpacing: -1, lineHeight: 1,
+                }}
+              >
+                {t('trainerMessages.list.title', 'Messages')}
               </div>
+              <button
+                type="button"
+                onClick={() => setShowPicker(true)}
+                className="tt-btn tt-btn--secondary"
+                style={{ padding: '8px 13px', borderRadius: 12, fontSize: 13 }}
+                aria-label={t('trainerMessages.list.newAria', 'Start new conversation')}
+              >
+                <Edit size={16} strokeWidth={2.2} />
+                {t('trainerMessages.list.newShort', 'New')}
+              </button>
             </div>
 
             <ConversationList
@@ -1044,7 +1075,9 @@ export default function TrainerMessages() {
                     onKeyDown={handleKeyDown}
                     placeholder={t('trainerMessages.thread.composerPlaceholder')}
                     rows={1}
-                    maxLength={5000}
+                    // direct_messages.body CHECK caps the ENCRYPTED ciphertext
+                    // at 2000 chars (≈1450 plaintext) — 1400 stays under it.
+                    maxLength={1400}
                     className="flex-1 resize-none px-4 py-3 text-[14px] outline-none transition-colors"
                     style={{
                       color: TT.text,

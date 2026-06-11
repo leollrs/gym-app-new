@@ -11,6 +11,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import logger from '../../lib/logger';
+import { PROD_WEB_URL } from '../../lib/appUrls';
 import { validateImageFile } from '../../lib/validateImage';
 import { stripExif } from '../../lib/stripExif';
 import AvatarPicker from '../../components/AvatarPicker';
@@ -20,7 +22,7 @@ import {
 } from './components/designPrimitives';
 
 const COVER_GRADIENT = 'linear-gradient(135deg, #FFB86B 0%, #FF7A3D 60%, #FF5A2E 100%)';
-const AVATAR_GRADIENT = 'linear-gradient(135deg, #19B8B8 0%, #2EE0E0 100%)';
+const AVATAR_GRADIENT = 'linear-gradient(135deg, #1E9C8E 0%, #2EC9B7 100%)';
 
 const DOW_LETTERS_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DOW_INDEX_TO_KEY = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 0: 'sun' };
@@ -892,7 +894,7 @@ export default function TrainerProfile() {
   // previous page had set (e.g. "Notificaciones | TuGymPR").
   useEffect(() => {
     const prev = document.title;
-    document.title = `${t('trainerProfile.title', 'Profile')} | TuGymPR`;
+    document.title = `${t('trainerProfile.title', 'Profile')} | ${window.__APP_NAME || 'TuGymPR'}`;
     return () => { document.title = prev; };
   }, [t]);
 
@@ -984,9 +986,13 @@ export default function TrainerProfile() {
       .limit(3)
       .then(async ({ data }) => {
         if (Array.isArray(data) && data.length) {
-          const ids = [...new Set(data.map(r => r.reviewer_id))];
+          // Reviewer display data comes from the same-gym
+          // gym_member_profiles_safe view (see migration 0289) — reading
+          // `profiles` directly is RLS-limited to ACTIVE clients, so reviews
+          // from deactivated clients rendered as "Anonymous".
+          const ids = [...new Set(data.map(r => r.reviewer_id).filter(Boolean))];
           const { data: reviewers } = await supabase
-            .from('profiles')
+            .from('gym_member_profiles_safe')
             .select('id, full_name, username, avatar_url')
             .in('id', ids);
           const byId = new Map((reviewers || []).map(p => [p.id, p]));
@@ -1062,16 +1068,21 @@ export default function TrainerProfile() {
         return;
       }
       const cleanFile = await stripExif(file);
+      // PUBLIC `avatars` bucket (public since migration 0487; owner-folder
+      // INSERT policy keyed on the first path segment = auth.uid(), see 0338).
+      // The old `progress-photos` bucket is PRIVATE, so the stored
+      // getPublicUrl 400'd forever and the cover never displayed.
       const path = `${user.id}/cover-${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
-        .from('progress-photos')
+        .from('avatars')
         .upload(path, cleanFile, { upsert: true, contentType: 'image/jpeg' });
       if (upErr) throw upErr;
-      const { data: urlData } = supabase.storage.from('progress-photos').getPublicUrl(path);
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       await upsertColumn('trainer_cover_url', urlData.publicUrl);
       showToast(t('pages:trainerProfile.cover.updated', 'Cover updated'), 'success');
     } catch (err) {
-      showToast(err?.message || t('pages:trainerProfile.cover.uploadError', 'Failed to upload cover'), 'error');
+      logger.error('TrainerProfile cover upload failed', err);
+      showToast(t('pages:trainerProfile.cover.uploadError', 'Failed to upload cover'), 'error');
     } finally {
       setUploadingCover(false);
     }
@@ -1114,7 +1125,14 @@ export default function TrainerProfile() {
       setIdentityOpen(false);
       showToast(t('pages:trainerProfile.personalInfoSaved', 'Personal info updated'), 'success');
     } catch (err) {
-      showToast(err?.message || t('pages:trainerProfile.personalInfoSaveError', 'Failed to save personal info'), 'error');
+      logger.error('TrainerProfile saveIdentity failed', err);
+      // 23505 = unique violation — in practice the username unique index.
+      showToast(
+        err?.code === '23505'
+          ? t('pages:trainerProfile.editIdentity.usernameTaken', 'That username is taken')
+          : t('pages:trainerProfile.personalInfoSaveError', 'Failed to save personal info'),
+        'error',
+      );
     } finally {
       setSavingIdentity(false);
     }
@@ -1130,7 +1148,8 @@ export default function TrainerProfile() {
       setServiceModal({ open: false, service: null });
       showToast(t('pages:trainerProfile.services.saved', 'Service saved'), 'success');
     } catch (err) {
-      showToast(err?.message || t('pages:trainerProfile.services.saveError', 'Failed to save service'), 'error');
+      logger.error('TrainerProfile saveService failed', err);
+      showToast(t('pages:trainerProfile.services.saveError', 'Failed to save service'), 'error');
     } finally {
       setSavingService(false);
     }
@@ -1145,7 +1164,8 @@ export default function TrainerProfile() {
       setServiceModal({ open: false, service: null });
       showToast(t('pages:trainerProfile.services.deleted', 'Service removed'), 'success');
     } catch (err) {
-      showToast(err?.message || t('pages:trainerProfile.services.saveError', 'Failed to save service'), 'error');
+      logger.error('TrainerProfile deleteService failed', err);
+      showToast(t('pages:trainerProfile.services.saveError', 'Failed to save service'), 'error');
     } finally {
       setSavingService(false);
     }
@@ -1160,7 +1180,8 @@ export default function TrainerProfile() {
       setCredModal({ open: false, credential: null, idx: null });
       showToast(t('pages:trainerProfile.credentials.saved', 'Credential saved'), 'success');
     } catch (err) {
-      showToast(err?.message || t('pages:trainerProfile.credentials.saveError', 'Failed to save credential'), 'error');
+      logger.error('TrainerProfile saveCredential failed', err);
+      showToast(t('pages:trainerProfile.credentials.saveError', 'Failed to save credential'), 'error');
     } finally {
       setSavingCred(false);
     }
@@ -1175,7 +1196,8 @@ export default function TrainerProfile() {
       setCredModal({ open: false, credential: null, idx: null });
       showToast(t('pages:trainerProfile.credentials.deleted', 'Credential removed'), 'success');
     } catch (err) {
-      showToast(err?.message || t('pages:trainerProfile.credentials.saveError', 'Failed to save credential'), 'error');
+      logger.error('TrainerProfile deleteCredential failed', err);
+      showToast(t('pages:trainerProfile.credentials.saveError', 'Failed to save credential'), 'error');
     } finally {
       setSavingCred(false);
     }
@@ -1188,7 +1210,8 @@ export default function TrainerProfile() {
       setSpecialtiesOpen(false);
       showToast(t('pages:trainerProfile.specialties.saved', 'Specialties updated'), 'success');
     } catch (err) {
-      showToast(err?.message || t('pages:trainerProfile.specialties.saveError', 'Failed to save specialties'), 'error');
+      logger.error('TrainerProfile saveSpecialties failed', err);
+      showToast(t('pages:trainerProfile.specialties.saveError', 'Failed to save specialties'), 'error');
     } finally {
       setSavingSpecialties(false);
     }
@@ -1201,7 +1224,8 @@ export default function TrainerProfile() {
       setAvailabilityOpen(false);
       showToast(t('pages:trainerProfile.availability.saved', 'Hours updated'), 'success');
     } catch (err) {
-      showToast(err?.message || t('pages:trainerProfile.availability.saveError', 'Failed to save hours'), 'error');
+      logger.error('TrainerProfile saveAvailability failed', err);
+      showToast(t('pages:trainerProfile.availability.saveError', 'Failed to save hours'), 'error');
     } finally {
       setSavingAvailability(false);
     }
@@ -1296,7 +1320,9 @@ export default function TrainerProfile() {
               <button
                 type="button"
                 onClick={() => {
-                  const url = `${window.location.origin}/trainers/${profile?.id || ''}`;
+                  // PROD_WEB_URL, not window.location.origin — on Capacitor the
+                  // origin is capacitor://localhost, which is dead for recipients.
+                  const url = `${PROD_WEB_URL}/trainers/${profile?.id || ''}`;
                   if (navigator.share) {
                     navigator.share({ url, title: displayName }).catch(() => {});
                   } else {
@@ -1600,7 +1626,7 @@ export default function TrainerProfile() {
                 style={{
                   flex: 1, padding: '8px 4px', borderRadius: 8, textAlign: 'center',
                   background: active ? TT.text : 'transparent',
-                  color: active ? '#fff' : TT.textSub,
+                  color: active ? TT.onInverse : TT.textSub,
                   fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer',
                   minHeight: 32,
                 }}

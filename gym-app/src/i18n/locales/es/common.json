@@ -455,5 +455,6 @@
     "reload": "Recargar ahora",
     "versionLabel": "Versión {{client}} → {{required}}"
   },
-  "errorBoundaryRestart": "Reiniciar"
+  "errorBoundaryRestart": "Reiniciar",
+  "deleting": "Eliminando..."
 }

@@ -43,12 +43,12 @@ export default function TrainerSocial() {
           supabase
             .from('feed_reactions')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', profile.id)
+            .eq('profile_id', profile.id)
             .gte('created_at', sevenDaysAgo),
           supabase
             .from('feed_comments')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', profile.id)
+            .eq('profile_id', profile.id)
             .gte('created_at', sevenDaysAgo),
         ]);
 

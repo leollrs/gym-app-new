@@ -1,12 +1,13 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
-  Plus, X, ChevronDown, ChevronRight, Trash2, Copy, Clock, Dumbbell, Users,
+  Plus, X, ChevronDown, ChevronRight, Trash2, Copy, Clock, Dumbbell,
   ClipboardList, Search, ToggleLeft, ToggleRight, ArrowLeft, StickyNote,
   ChevronUp, FileText, Calendar, Zap, Loader2, GripVertical, RefreshCw, Pencil,
   Activity, Target, Flame, MoreHorizontal,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import logger from '../../lib/logger';
 import { selectInBatches, selectAllRows } from '../../lib/churn/batchedSelect';
 import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
@@ -20,13 +21,12 @@ import { generateWeekPlan, generateDayPlan } from '../../lib/mealPlanner';
 import { MEALS } from '../../data/meals';
 import { foodImageUrl } from '../../lib/imageUrl';
 import { motion } from 'framer-motion';
-import UnderlineTabs from '../../components/UnderlineTabs';
 import SwipeableTabView from '../../components/SwipeableTabView';
 import { UtensilsCrossed } from 'lucide-react';
 import Skeleton from '../../components/Skeleton';
 import TrainerEmptyState from './components/TrainerEmptyState';
-import { TT, TFont, avatarIdx } from './components/designTokens';
-import { TCard, TAvatar, TEyebrow, TPageTitle, TDarkButton, TTabPill } from './components/designPrimitives';
+import { TT, TFont } from './components/designTokens';
+import { TCard, TEyebrow, TPageTitle, TPrimaryButton, TTabPill, TSectionHeader, TPill } from './components/designPrimitives';
 
 // ── Data helpers ──────────────────────────────────────────
 const DEFAULT_SETS = 3;
@@ -340,7 +340,11 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
 
 // ── Plan Builder (full-page workspace) ───────────────────
 const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, showToast }) => {
-  const isEdit = !!plan;
+  // Only a plan that exists in the DB is an edit. Fast-track templates pass a
+  // pre-seeded plan-shaped object WITHOUT an id — that's still a CREATE
+  // (otherwise save runs UPDATE … eq('id', undefined) and the client select
+  // stays disabled with nothing selected).
+  const isEdit = !!plan?.id;
   const init = plan || {};
   const [clientId, setClientId]     = useState(init.client_id || '');
   const [name, setName]             = useState(init.name ?? '');
@@ -380,14 +384,16 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
       try {
         const { data: ob } = await supabase
           .from('member_onboarding')
-          .select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, priority_muscles')
+          .select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, priority_muscles, sex, gender, age, height_inches, height_cm, weight_kg, workout_duration_min')
           .eq('profile_id', clientId)
           .maybeSingle();
-        const { data: goals } = await supabase
+        // Active goals = not yet achieved (there is no is_completed column).
+        const { data: goals, error: goalsErr } = await supabase
           .from('member_goals')
           .select('goal_type, exercise_id, target_value, current_value')
           .eq('profile_id', clientId)
-          .eq('is_completed', false);
+          .is('achieved_at', null);
+        if (goalsErr) console.error('[TrainerPlans] Failed to load client goals:', goalsErr);
         setClientProfile({ onboarding: ob, goals: goals || [] });
       } catch (err) {
         console.error('[TrainerPlans] Failed to load client profile:', err);
@@ -414,8 +420,9 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
           supabase.from('member_goals')
             .select('goal_type, exercise_id')
             .eq('profile_id', clientId)
-            .eq('is_completed', false),
+            .is('achieved_at', null),
         ]);
+        if (goalsRes.error) console.error('[TrainerPlans] Failed to load client goals:', goalsRes.error);
         onb = obRes.data;
         goals = goalsRes.data;
       }
@@ -423,6 +430,11 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
 
       // Apply trainer overrides
       const onbWithOverrides = { ...onb };
+      // Normalize toward the columns the app actually writes (`sex`,
+      // `height_inches`) — the legacy gender/height_cm columns exist but are
+      // often NULL, which silently degrades the generator's personalization.
+      if (onbWithOverrides.sex && !onbWithOverrides.gender) onbWithOverrides.gender = onbWithOverrides.sex;
+      if (!onbWithOverrides.height_cm && onbWithOverrides.height_inches) onbWithOverrides.height_cm = onbWithOverrides.height_inches * 2.54;
       if (overrideDays) onbWithOverrides.training_days_per_week = overrideDays;
       if (overrideMuscles.length > 0) onbWithOverrides.priority_muscles = overrideMuscles.map(m => m.charAt(0).toUpperCase() + m.slice(1));
 
@@ -1011,6 +1023,10 @@ export default function TrainerPlans() {
   const [mealSaving, setMealSaving] = useState(false);
   const [mealClientProfile, setMealClientProfile] = useState(null);
   const [mealGoalOverride, setMealGoalOverride] = useState(null);
+  // Saved meal-plan detail viewer (tap a card → day-by-day meals)
+  const [mealDetail, setMealDetail] = useState(null);
+  const [mealDetailDay, setMealDetailDay] = useState(0);
+  const [confirmDeleteMealPlan, setConfirmDeleteMealPlan] = useState(null);
   const GOAL_OPTIONS = ['fat_loss', 'muscle_gain', 'strength', 'endurance', 'general_fitness'];
 
   // Fetch client data when meal form client changes
@@ -1020,7 +1036,7 @@ export default function TrainerPlans() {
     (async () => {
       const [obRes, weightRes] = await Promise.all([
         supabase.from('member_onboarding')
-          .select('fitness_level, primary_goal, training_days_per_week, height_cm, weight_kg, age, gender')
+          .select('fitness_level, primary_goal, training_days_per_week, height_cm, height_inches, weight_kg, age, gender, sex')
           .eq('profile_id', cid).maybeSingle(),
         supabase.from('body_weight_logs')
           .select('weight_lbs').eq('profile_id', cid).order('logged_at', { ascending: false }).limit(1).maybeSingle(),
@@ -1045,6 +1061,10 @@ export default function TrainerPlans() {
     { type: 'dinner', time: '19:00', label: t('trainerPlans.mealDinner', 'Dinner'), color: '#8B5CF6' },
   ];
 
+  // Saved meal-plan rows keep only compact meal JSON (no image); recover the
+  // full record (image, titles) from the local MEALS catalog by id.
+  const mealById = useMemo(() => new Map(MEALS.map(m => [m.id, m])), []);
+
   const handleGenerateMeals = () => {
     const cal = parseInt(mealForm.target_calories);
     const pro = parseInt(mealForm.target_protein_g);
@@ -1053,27 +1073,34 @@ export default function TrainerPlans() {
     if (!cal || !pro) return;
     setGeneratingMeals(true);
     setTimeout(() => {
-      // 4 slots to match this view's breakfast/lunch/snack/dinner rows —
-      // the generator fills each with slot-appropriate dishes (no more
-      // salmon labeled 07:00) and the old 3-meal output left the dinner
-      // row permanently empty here.
-      const plan = generateWeekPlan({
-        targets: { calories: cal, protein: pro, carbs: carb || 200, fat: fat || 60 },
-        slots: 4,
-        lang: i18n?.language || 'en',
-      });
-      // Slot type comes from the generator's tag; index fallback for safety.
-      const enriched = plan.map(day => ({
-        ...day,
-        meals: (day.meals || []).map((meal, mi) => ({
-          ...meal,
-          slotType: meal.slot || MEAL_SLOTS[mi]?.type || 'snack',
-        })),
-      }));
-      setGeneratedMeals(enriched);
-      setMealStep('meals');
-      setMealPreviewDay(0);
-      setGeneratingMeals(false);
+      try {
+        // 4 slots to match this view's breakfast/lunch/snack/dinner rows —
+        // the generator fills each with slot-appropriate dishes (no more
+        // salmon labeled 07:00) and the old 3-meal output left the dinner
+        // row permanently empty here.
+        const plan = generateWeekPlan({
+          targets: { calories: cal, protein: pro, carbs: carb || 200, fat: fat || 60 },
+          slots: 4,
+          lang: i18n?.language || 'en',
+        });
+        // Slot type comes from the generator's tag; index fallback for safety.
+        const enriched = plan.map(day => ({
+          ...day,
+          meals: (day.meals || []).map((meal, mi) => ({
+            ...meal,
+            slotType: meal.slot || MEAL_SLOTS[mi]?.type || 'snack',
+          })),
+        }));
+        setGeneratedMeals(enriched);
+        setMealStep('meals');
+        setMealPreviewDay(0);
+      } catch (err) {
+        logger.error('TrainerPlans: meal generation failed:', err);
+        showToast(t('trainerPlans.generateMealsFailed', 'Could not generate the meal plan. Try again.'), 'error');
+      } finally {
+        // Always clear the spinner — a throw used to leave it stuck on "Generating…".
+        setGeneratingMeals(false);
+      }
     }, 50);
   };
 
@@ -1153,9 +1180,11 @@ export default function TrainerPlans() {
     // Use latest logged weight, or convert from onboarding kg, or skip
     const weightLbs = mealClientProfile.latestWeight || (ob.weight_kg ? ob.weight_kg * 2.20462 : null);
     if (!weightLbs) return;
-    const heightInches = ob.height_cm ? ob.height_cm / 2.54 : 68; // fallback 5'8"
+    // Prefer the app-written height_inches; legacy height_cm is the fallback.
+    const heightInches = ob.height_inches || (ob.height_cm ? ob.height_cm / 2.54 : 68); // fallback 5'8"
     const age = ob.age || 30; // fallback 30
-    const sex = ob.gender === 'female' ? 'female' : 'male';
+    // The app writes `sex`; legacy rows may only have `gender`.
+    const sex = (ob.sex || ob.gender) === 'female' ? 'female' : 'male';
     const trainingDays = ob.training_days_per_week || 4;
     const goal = mealGoalOverride || ob.primary_goal || 'general_fitness';
 
@@ -1193,6 +1222,11 @@ export default function TrainerPlans() {
         .eq('trainer_id', profile.id)
         .eq('is_active', true),
     ]);
+    if (plansRes.error) logger.error('TrainerPlans: failed to load plans:', plansRes.error);
+    if (clientsRes.error) logger.error('TrainerPlans: failed to load clients:', clientsRes.error);
+    if (plansRes.error || clientsRes.error) {
+      showToast(t('trainerPlans.loadFailed', 'Could not load your plans. Try again.'), 'error');
+    }
     const loadedPlans = plansRes.data || [];
     setPlans(loadedPlans);
     setClients((clientsRes.data || []).map(tc => tc.profiles).filter(Boolean));
@@ -1253,7 +1287,11 @@ export default function TrainerPlans() {
       .eq('trainer_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(100)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          logger.error('TrainerPlans: failed to load meal plans:', error);
+          showToast(t('trainerPlans.loadMealPlansFailed', 'Could not load meal plans. Try again.'), 'error');
+        }
         setMealPlans(data || []);
         setMealPlansLoading(false);
       });
@@ -1265,7 +1303,7 @@ export default function TrainerPlans() {
     // Serialize generated meals into compact JSONB
     const mealsJson = generatedMeals ? generatedMeals.map((day, di) => ({
       day: di + 1,
-      meals: (day.meals || []).map(m => ({ id: m.id, title: m.title, title_es: m.title_es, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, category: m.category, prepTime: m.prepTime })),
+      meals: (day.meals || []).map(m => ({ id: m.id, slotType: m.slotType || m.slot, title: m.title, title_es: m.title_es, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, category: m.category, prepTime: m.prepTime })),
       totals: day.totals,
     })) : [];
     const { error } = await supabase.from('trainer_meal_plans').insert({
@@ -1290,6 +1328,29 @@ export default function TrainerPlans() {
     setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '' });
     setGeneratedMeals(null);
     setMealStep('settings');
+    loadMealPlans();
+  };
+
+  const toggleMealPlanActive = async (plan) => {
+    const { error } = await supabase.from('trainer_meal_plans')
+      .update({ is_active: !plan.is_active })
+      .eq('id', plan.id);
+    if (error) {
+      showToast(t('trainerPlans.errorToggleActive', 'Failed to update plan status'), 'error');
+      return;
+    }
+    setMealDetail(d => (d && d.id === plan.id ? { ...d, is_active: !plan.is_active } : d));
+    loadMealPlans();
+  };
+
+  const deleteMealPlan = async (plan) => {
+    const { error } = await supabase.from('trainer_meal_plans').delete().eq('id', plan.id);
+    if (error) {
+      showToast(t('trainerPlans.errorDeletePlan', 'Failed to delete plan'), 'error');
+      return;
+    }
+    setConfirmDeleteMealPlan(null);
+    setMealDetail(null);
     loadMealPlans();
   };
 
@@ -1476,9 +1537,9 @@ export default function TrainerPlans() {
   if (loading) {
     return (
       <div style={{ background: TT.bg, minHeight: '100%' }} className="pb-2">
-        <div style={{ padding: '6px 16px 12px' }}>
-          <TEyebrow>{t('trainerPlans.heroLabel', 'Library')}</TEyebrow>
-          <TPageTitle>{t('trainerPlans.title', 'Plans')}</TPageTitle>
+        <div style={{ padding: '8px 20px 12px' }}>
+          <TEyebrow color={TT.accent}>{t('trainerPlans.heroLabel', 'Library')}</TEyebrow>
+          <TPageTitle style={{ fontSize: 30 }}>{t('trainerPlans.title', 'Plans')}</TPageTitle>
           <div className="space-y-3 mt-4">
             <Skeleton variant="card" height="h-[120px]" />
             <Skeleton variant="list-item" />
@@ -1492,30 +1553,31 @@ export default function TrainerPlans() {
 
   return (
     <div style={{ background: TT.bg, minHeight: '100%' }} className="pb-2">
-      <div style={{ padding: '6px 16px 12px' }}>
+      <div style={{ padding: '8px 20px 12px' }}>
         {/* Header row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
           <div>
-            <TEyebrow>{t('trainerPlans.heroLabel', 'Library')}</TEyebrow>
-            <TPageTitle>
+            <TEyebrow color={TT.accent}>{t('trainerPlans.heroLabel', 'Library')}</TEyebrow>
+            <TPageTitle style={{ fontSize: 30 }}>
               {section === 'training'
                 ? t('trainerPlans.titleTraining', 'Training Plans')
                 : t('trainerPlans.titleNutrition', 'Nutrition Plans')}
             </TPageTitle>
           </div>
-          <TDarkButton
+          <TPrimaryButton
             onClick={() => section === 'training' ? openBuilder() : setShowMealModal(true)}
             aria-label={section === 'training' ? t('trainerPlans.createPlan', 'New plan') : t('trainerPlans.createMealPlan', 'New meal plan')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
           >
             <Plus size={15} strokeWidth={2.4} />
             {section === 'training'
               ? t('trainerPlans.newPlan', 'New plan')
               : t('trainerPlans.newMealPlan', 'New meal plan')}
-          </TDarkButton>
+          </TPrimaryButton>
         </div>
 
         {/* Section tabs (Training / Nutrition) */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
           {SECTION_TABS.map((tab, i) => (
             <TTabPill
               key={tab.key}
@@ -1531,50 +1593,43 @@ export default function TrainerPlans() {
         <SwipeableTabView activeIndex={sectionIndex} onChangeIndex={setSectionIndex} tabKeys={['training', 'nutrition']}>
           {/* ═══════════ TRAINING SECTION ═══════════ */}
           <div>
-            {/* Fast track templates */}
-            <TCard
-              dark
-              padded={14}
-              style={{ marginBottom: 14 }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: TT.accent, letterSpacing: 1.4, textTransform: 'uppercase' }}>
-                    {t('trainerPlans.fastTrack', 'Fast track')}
-                  </div>
-                  <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, marginTop: 4, letterSpacing: -0.3, color: '#fff' }}>
-                    {t('trainerPlans.fastTrackTitle', 'Start from a template')}
-                  </div>
-                </div>
-                <ChevronRight size={18} color="rgba(255,255,255,0.5)" />
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 12, overflowX: 'auto' }} className="scrollbar-hide">
+            {/* Start from a template — horizontal-scroll template cards */}
+            <div style={{ marginBottom: 18 }}>
+              <TSectionHeader title={t('trainerPlans.fastTrackTitle', 'Start from a template')} />
+              <div
+                style={{ display: 'flex', gap: 12, overflowX: 'auto', marginLeft: -20, marginRight: -20, padding: '0 20px 4px' }}
+                className="scrollbar-hide"
+              >
                 {FAST_TRACK.map((tmpl, i) => {
                   const Icon = tmpl.icon;
                   return (
-                    <button
+                    <TCard
                       key={i}
-                      type="button"
+                      padded={16}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => openBuilder(tmpl.makePlan ? tmpl.makePlan() : null)}
-                      style={{
-                        minWidth: 120,
-                        padding: 12,
-                        borderRadius: 12,
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBuilder(tmpl.makePlan ? tmpl.makePlan() : null); } }}
+                      className="tt-tap"
+                      style={{ minWidth: 168, flexShrink: 0, cursor: 'pointer', textAlign: 'left' }}
                     >
-                      <Icon size={20} color={tmpl.c} strokeWidth={2.2} />
-                      <div style={{ fontSize: 13, fontWeight: 800, marginTop: 8, color: '#fff' }}>{tmpl.l}</div>
-                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{tmpl.s}</div>
-                    </button>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: 12,
+                        background: `${tmpl.c}1F`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Icon size={20} color={tmpl.c} strokeWidth={2.2} />
+                      </div>
+                      <div style={{
+                        fontFamily: TFont.display, fontSize: 15, fontWeight: 800,
+                        color: TT.text, letterSpacing: -0.3, marginTop: 14, lineHeight: 1.15,
+                      }}>{tmpl.l}</div>
+                      <div style={{ fontSize: 12, color: TT.textSub, marginTop: 4 }}>{tmpl.s}</div>
+                    </TCard>
                   );
                 })}
               </div>
-            </TCard>
+            </div>
 
             {/* Status filter strip (small, above plans) */}
             {plans.length > 0 && (
@@ -1595,13 +1650,11 @@ export default function TrainerPlans() {
               </div>
             )}
 
-            {/* "Your plans · n" header */}
-            <div style={{
-              fontFamily: TFont.display, fontSize: 14, fontWeight: 800,
-              color: TT.text, letterSpacing: -0.2, marginBottom: 8,
-            }}>
-              {t('trainerPlans.yourPlans', 'Your plans')} · {filtered.length}
-            </div>
+            {/* "Your library · n" section header */}
+            <TSectionHeader
+              title={t('trainerPlans.yourLibrary', 'Your library')}
+              action={filtered.length > 0 ? `${filtered.length}` : null}
+            />
 
             {/* Plans list */}
             {filtered.length === 0 ? (
@@ -1623,9 +1676,9 @@ export default function TrainerPlans() {
                 />
               )
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+              <TCard padded={0} style={{ overflow: 'hidden' }}>
                 {filtered.map((plan, idx) => {
-                  const { tone, soft, type } = planTone(plan);
+                  const { tone, type } = planTone(plan);
                   const allDays = Object.values(plan.weeks || {}).flat();
                   const totalDays = allDays.length;
                   // Assigned clients = unique client_ids from this plan + (single client from plan.client_id if present)
@@ -1639,192 +1692,145 @@ export default function TrainerPlans() {
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.22, delay: Math.min(idx * 0.03, 0.3) }}
+                      style={{ borderTop: idx > 0 ? `1px solid ${TT.border}` : 'none' }}
                     >
-                      <TCard padded={0} style={{ overflow: 'hidden' }}>
-                        {/* Top half — tinted with accent tone */}
+                      {/* Library row — tap to edit, trailing button toggles options */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openBuilder(plan)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') openBuilder(plan); }}
+                        className="tt-tap"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 13,
+                          padding: '13px 15px', cursor: 'pointer',
+                        }}
+                      >
                         <div style={{
-                          padding: '14px 16px',
-                          display: 'flex', alignItems: 'center', gap: 12,
-                          background: soft,
-                          borderBottom: `1px solid ${TT.border}`,
+                          width: 38, height: 38, borderRadius: 11,
+                          background: `${tone}1F`, flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
+                          <ClipboardList size={18} color={tone} strokeWidth={2} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{
-                            width: 40, height: 40, borderRadius: 12,
-                            background: tone, display: 'flex',
-                            alignItems: 'center', justifyContent: 'center',
-                            flexShrink: 0,
+                            display: 'flex', alignItems: 'center', gap: 6,
                           }}>
-                            <ClipboardList size={20} color="#fff" strokeWidth={2.2} />
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{
-                              fontFamily: TFont.display, fontSize: 15, fontWeight: 800,
-                              color: TT.text, letterSpacing: -0.3,
+                            <span style={{
+                              fontSize: 14.5, fontWeight: 700, color: TT.text,
                               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            }}>
-                              {plan.name}
-                              {!plan.is_active && (
-                                <span style={{
-                                  marginLeft: 6, fontSize: 9, fontWeight: 800,
-                                  padding: '2px 6px', borderRadius: 999,
-                                  background: TT.surface2, color: TT.textSub,
-                                  letterSpacing: 0.5, textTransform: 'uppercase',
-                                }}>
-                                  {t('trainerPlans.inactiveBadge', 'INACTIVE')}
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: 11, color: TT.textSub, marginTop: 2 }}>
-                              {type} · {plan.duration_weeks || 0} {t('trainerPlans.weeks', 'weeks')} · {totalDays} {t('trainerPlans.daysAbbrev', 'days')}
-                            </div>
+                              minWidth: 0,
+                            }}>{plan.name}</span>
+                            {!plan.is_active && (
+                              <TPill tone="neutral" size="s" style={{ flexShrink: 0 }}>
+                                {t('trainerPlans.inactiveBadge', 'INACTIVE')}
+                              </TPill>
+                            )}
                           </div>
+                          <div style={{
+                            fontSize: 11.5, color: TT.textSub, marginTop: 2,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {type} · {plan.duration_weeks || 0} {t('trainerPlans.weeks', 'weeks')} · {totalDays} {t('trainerPlans.daysAbbrev', 'days')} · {assignedCount === 1
+                              ? t('trainerPlans.assigned_one', '{{count}} client', { count: assignedCount })
+                              : t('trainerPlans.assigned_other', '{{count}} clients', { count: assignedCount })}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setExpandedPlan(isExpanded ? null : plan.id); }}
+                          aria-label={t('trainerPlans.moreOptions', 'More options')}
+                          aria-expanded={isExpanded}
+                          style={{
+                            width: 32, height: 32, borderRadius: 8,
+                            background: isExpanded ? TT.surface2 : 'transparent', border: 'none',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: TT.textMute, cursor: 'pointer', flexShrink: 0,
+                          }}
+                        >
+                          {isExpanded ? <ChevronUp size={16} /> : <MoreHorizontal size={16} />}
+                        </button>
+                      </div>
+
+                      {/* Expanded action strip — keeps every option accessible */}
+                      {isExpanded && (
+                        <div style={{
+                          padding: '4px 15px 14px 66px',
+                          display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+                        }}>
                           <button
                             type="button"
-                            onClick={() => setExpandedPlan(isExpanded ? null : plan.id)}
-                            aria-label={t('trainerPlans.moreOptions', 'More options')}
+                            onClick={() => openBuilder(plan)}
                             style={{
-                              width: 32, height: 32, borderRadius: 8,
-                              background: 'transparent', border: 'none',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              color: TT.textSub, cursor: 'pointer', flexShrink: 0,
+                              padding: '6px 10px', borderRadius: 8, border: 'none',
+                              background: TT.accent, fontSize: 11, fontWeight: 700,
+                              color: '#06363B', cursor: 'pointer',
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
                             }}
                           >
-                            <MoreHorizontal size={16} />
+                            <Pencil size={11} /> {t('trainerPlans.edit', 'Edit')}
                           </button>
-                        </div>
-
-                        {/* Bottom half — white, avatars + actions */}
-                        <div style={{
-                          padding: '10px 16px',
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          justifyContent: 'space-between', flexWrap: 'wrap',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                            <div style={{ display: 'flex' }}>
-                              {assignedIds.length > 0 ? assignedIds.slice(0, 3).map((cid, j) => (
-                                <div key={cid} style={{
-                                  marginLeft: j ? -6 : 0,
-                                  border: '2px solid #fff',
-                                  borderRadius: 999,
-                                }}>
-                                  <TAvatar
-                                    name={assignedNames[j] || '?'}
-                                    size={20}
-                                    idx={avatarIdx(cid)}
-                                  />
-                                </div>
-                              )) : (
-                                <div style={{
-                                  width: 20, height: 20, borderRadius: 999,
-                                  background: TT.surface2, border: `2px solid #fff`,
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                }}>
-                                  <Users size={10} color={TT.textMute} />
-                                </div>
-                              )}
-                            </div>
-                            <span style={{ fontSize: 11, color: TT.textSub, fontWeight: 700 }}>
-                              {assignedCount === 1
-                                ? t('trainerPlans.assigned_one', '{{count}} client', { count: assignedCount })
-                                : t('trainerPlans.assigned_other', '{{count}} clients', { count: assignedCount })}
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              type="button"
-                              onClick={() => openBuilder(plan)}
-                              style={{
-                                padding: '6px 10px', borderRadius: 8,
-                                border: `1px solid ${TT.borderSolid}`,
-                                background: TT.surface2, fontSize: 11, fontWeight: 700,
-                                color: TT.text, cursor: 'pointer',
-                              }}
-                            >
-                              {t('trainerPlans.edit', 'Edit')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openBuilder(plan)}
-                              style={{
-                                padding: '6px 10px', borderRadius: 8, border: 'none',
-                                background: TT.accent, fontSize: 11, fontWeight: 700,
-                                color: '#06363B', cursor: 'pointer',
-                              }}
-                            >
-                              {t('trainerPlans.assign', 'Assign')}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Expanded detail strip — keeps existing options accessible */}
-                        {isExpanded && (
-                          <div style={{
-                            padding: '10px 16px 14px',
-                            borderTop: `1px solid ${TT.border}`,
-                            display: 'flex', flexWrap: 'wrap', gap: 6,
-                            background: TT.surface,
+                          <button
+                            type="button"
+                            onClick={() => duplicatePlan(plan)}
+                            style={{
+                              padding: '6px 10px', borderRadius: 8,
+                              border: `1px solid ${TT.borderSolid}`,
+                              background: TT.surface2, fontSize: 11, fontWeight: 700,
+                              color: TT.text, cursor: 'pointer',
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                            }}
+                          >
+                            <Copy size={11} /> {t('trainerPlans.duplicate', 'Duplicate')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleActive(plan)}
+                            style={{
+                              padding: '6px 10px', borderRadius: 8,
+                              border: `1px solid ${TT.borderSolid}`,
+                              background: TT.surface2, fontSize: 11, fontWeight: 700,
+                              color: TT.text, cursor: 'pointer',
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                            }}
+                          >
+                            {plan.is_active
+                              ? <><ToggleRight size={11} /> {t('trainerPlans.deactivate', 'Deactivate')}</>
+                              : <><ToggleLeft size={11} /> {t('trainerPlans.activate', 'Activate')}</>}
+                          </button>
+                          <div style={{ flex: 1 }} />
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeletePlan(plan)}
+                            aria-label={t('trainerPlans.delete', 'Delete')}
+                            style={{
+                              padding: '6px 10px', borderRadius: 8, border: 'none',
+                              background: TT.hotSoft, fontSize: 11, fontWeight: 700,
+                              color: TT.hot, cursor: 'pointer',
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                            }}
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                          <p style={{
+                            width: '100%', fontSize: 10, color: TT.textMute, marginTop: 4,
                           }}>
-                            <button
-                              type="button"
-                              onClick={() => duplicatePlan(plan)}
-                              style={{
-                                padding: '6px 10px', borderRadius: 8,
-                                border: `1px solid ${TT.borderSolid}`,
-                                background: TT.surface2, fontSize: 11, fontWeight: 700,
-                                color: TT.text, cursor: 'pointer',
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                              }}
-                            >
-                              <Copy size={11} /> {t('trainerPlans.duplicate', 'Duplicate')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => toggleActive(plan)}
-                              style={{
-                                padding: '6px 10px', borderRadius: 8,
-                                border: `1px solid ${TT.borderSolid}`,
-                                background: TT.surface2, fontSize: 11, fontWeight: 700,
-                                color: TT.text, cursor: 'pointer',
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                              }}
-                            >
-                              {plan.is_active
-                                ? <><ToggleRight size={11} /> {t('trainerPlans.deactivate', 'Deactivate')}</>
-                                : <><ToggleLeft size={11} /> {t('trainerPlans.activate', 'Activate')}</>}
-                            </button>
-                            <div style={{ flex: 1 }} />
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeletePlan(plan)}
-                              aria-label={t('trainerPlans.delete', 'Delete')}
-                              style={{
-                                padding: '6px 10px', borderRadius: 8, border: 'none',
-                                background: TT.hotSoft, fontSize: 11, fontWeight: 700,
-                                color: TT.hot, cursor: 'pointer',
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                              }}
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                            <p style={{
-                              width: '100%', fontSize: 10, color: TT.textMute, marginTop: 4,
-                            }}>
-                              {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
-                              {plan.updated_at !== plan.created_at && ` · ${t('trainerPlans.updated', 'Updated')} ${format(new Date(plan.updated_at), 'MMM d, yyyy', { locale: dateFnsLocale })}`}
-                            </p>
-                          </div>
-                        )}
-                      </TCard>
+                            {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
+                            {plan.updated_at !== plan.created_at && ` · ${t('trainerPlans.updated', 'Updated')} ${format(new Date(plan.updated_at), 'MMM d, yyyy', { locale: dateFnsLocale })}`}
+                          </p>
+                        </div>
+                      )}
                     </motion.div>
                   );
                 })}
-              </div>
+              </TCard>
             )}
           </div>
 
         {/* ═══════════ NUTRITION SECTION ═══════════ */}
         <div>
-          {/* Status filter */}
+          {/* Status filter — Atelier pill row */}
           {(() => {
             const MEAL_FILTERS = [
               { key: 'active', label: t('trainerPlans.active', 'Active') },
@@ -1832,15 +1838,27 @@ export default function TrainerPlans() {
               { key: 'all', label: t('trainerPlans.statusAll', 'All') },
             ];
             return (
-              <div className="mb-5">
-                <UnderlineTabs
-                  tabs={MEAL_FILTERS}
-                  activeIndex={Math.max(0, MEAL_FILTERS.findIndex(f => f.key === mealFilterStatus))}
-                  onChange={(i) => setMealFilterStatus(MEAL_FILTERS[i].key)}
-                />
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto' }} className="scrollbar-hide">
+                {MEAL_FILTERS.map((tab) => (
+                  <TTabPill
+                    key={tab.key}
+                    active={mealFilterStatus === tab.key}
+                    onClick={() => setMealFilterStatus(tab.key)}
+                  >
+                    {tab.label}
+                  </TTabPill>
+                ))}
               </div>
             );
           })()}
+
+          {/* "Meal plans · n" section header */}
+          {!mealPlansLoading && filteredMealPlans.length > 0 && (
+            <TSectionHeader
+              title={t('trainerPlans.mealPlansHeader', 'Meal plans')}
+              action={`${filteredMealPlans.length}`}
+            />
+          )}
 
           {mealPlansLoading ? (
             <div className="flex justify-center py-20">
@@ -1856,44 +1874,61 @@ export default function TrainerPlans() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
               {filteredMealPlans.map(plan => (
-                <div key={plan.id} className="rounded-2xl p-4 sm:p-5 transition-all"
-                  style={{ background: TT.surface, border: `1px solid ${TT.border}` }}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[14px] font-semibold truncate" style={{ color: TT.text }}>{plan.name}</p>
-                      {plan.profiles?.full_name && (
-                        <p className="text-[12px] mt-0.5" style={{ color: TT.textMute }}>
-                          {t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: plan.profiles.full_name })}
-                        </p>
-                      )}
+                <TCard key={plan.id} padded={16}
+                  role="button" tabIndex={0}
+                  onClick={() => { setMealDetail(plan); setMealDetailDay(0); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { setMealDetail(plan); setMealDetailDay(0); } }}
+                  className="tt-tap"
+                  style={{ cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 13 }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                      background: `${TT.accent}1F`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <UtensilsCrossed size={20} color={TT.accent} strokeWidth={2.2} />
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                      style={plan.is_active
-                        ? { color: TT.goodInk, background: TT.goodSoft }
-                        : { color: TT.textMute, background: TT.surface2 }}>
-                      {plan.is_active ? t('trainerPlans.active', 'Active') : t('trainerPlans.past', 'Past')}
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[14.5px] font-bold truncate" style={{ color: TT.text }}>{plan.name}</p>
+                          {plan.profiles?.full_name && (
+                            <p className="text-[11.5px] mt-0.5" style={{ color: TT.textSub }}>
+                              {t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: plan.profiles.full_name })}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <TPill tone={plan.is_active ? 'good' : 'neutral'} size="s">
+                            {plan.is_active ? t('trainerPlans.active', 'Active') : t('trainerPlans.past', 'Past')}
+                          </TPill>
+                          <ChevronRight size={16} style={{ color: TT.textMute }} />
+                        </div>
+                      </div>
+                      {plan.description && (
+                        <p className="text-[12px] mt-2 line-clamp-2" style={{ color: TT.textSub }}>{plan.description}</p>
+                      )}
+                      <div className="flex items-center gap-3.5 mt-2 text-[11px]">
+                        {plan.target_calories ? <span style={{ color: TT.accent }} className="font-semibold">{plan.target_calories} {t('common:cal', 'cal')}</span> : null}
+                        {plan.target_protein_g ? <span style={{ color: '#60A5FA' }}>{t('trainerPlans.proteinShort', 'P:')} {plan.target_protein_g}g</span> : null}
+                        {plan.target_carbs_g ? <span style={{ color: '#34D399' }}>{t('trainerPlans.carbsShort', 'C:')} {plan.target_carbs_g}g</span> : null}
+                        {plan.target_fat_g ? <span style={{ color: '#F472B6' }}>{t('trainerPlans.fatShort', 'F:')} {plan.target_fat_g}g</span> : null}
+                      </div>
+                      <p className="text-[10px] mt-2" style={{ color: TT.textFaint }}>
+                        {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
+                      </p>
+                    </div>
                   </div>
-                  {plan.description && (
-                    <p className="text-[12px] mb-2 line-clamp-2" style={{ color: TT.textSub }}>{plan.description}</p>
-                  )}
-                  <div className="flex items-center gap-4 text-[11px]" style={{ color: TT.textMute }}>
-                    {plan.target_calories && <span>{plan.target_calories} {t('common:cal', 'cal')}</span>}
-                    {plan.target_protein_g && <span>{t('trainerPlans.proteinShort', 'P:')} {plan.target_protein_g}g</span>}
-                    {plan.target_carbs_g && <span>{t('trainerPlans.carbsShort', 'C:')} {plan.target_carbs_g}g</span>}
-                    {plan.target_fat_g && <span>{t('trainerPlans.fatShort', 'F:')} {plan.target_fat_g}g</span>}
-                  </div>
-                  <p className="text-[10px] mt-2" style={{ color: TT.textFaint }}>
-                    {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
-                  </p>
-                </div>
+                </TCard>
               ))}
             </div>
           )}
         </div>
       </SwipeableTabView>
+        {/* Clear the bottom nav */}
+        <div style={{ height: 90 }} />
       </div>
 
       {/* ── Meal Plan Creation Modal (2-step: Settings → Meals) ── */}
@@ -2030,12 +2065,18 @@ export default function TrainerPlans() {
             {mealStep === 'meals' && generatedMeals && (
               <>
                 <div className="flex-1 overflow-y-auto">
-                  {/* Day selector */}
-                  <div className="flex gap-1.5 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
+                  {/* Day selector — Atelier filter chips */}
+                  <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
                     {DAY_LABELS.map((label, i) => (
                       <button key={i} onClick={() => setMealPreviewDay(i)}
-                        className="shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all"
-                        style={mealPreviewDay === i ? { backgroundColor: TT.accent, color: '#06363B' } : { backgroundColor: TT.surface2, color: TT.textMute }}>
+                        className="shrink-0 tt-tap"
+                        style={{
+                          padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
+                          whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
+                          ...(mealPreviewDay === i
+                            ? { background: TT.text, color: TT.onInverse }
+                            : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }),
+                        }}>
                         {label}
                       </button>
                     ))}
@@ -2212,6 +2253,169 @@ export default function TrainerPlans() {
                 className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
                 style={{ background: TT.hotSoft, color: TT.hot }}
               >
+                {t('trainerPlans.deleteConfirm', 'Delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Saved meal-plan detail viewer ── */}
+      {mealDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => setMealDetail(null)}>
+          <div className="rounded-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
+              <div className="min-w-0">
+                <h2 className="text-[16px] font-bold truncate" style={{ color: TT.text }}>{mealDetail.name}</h2>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <TPill tone={mealDetail.is_active ? 'good' : 'neutral'} size="s">
+                    {mealDetail.is_active ? t('trainerPlans.active', 'Active') : t('trainerPlans.past', 'Past')}
+                  </TPill>
+                  {mealDetail.profiles?.full_name && (
+                    <span className="text-[11px]" style={{ color: TT.textMute }}>
+                      {t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: mealDetail.profiles.full_name })}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setMealDetail(null)} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg shrink-0" style={{ color: TT.textMute }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {mealDetail.description && (
+                <p className="text-[12px] px-4 pt-3" style={{ color: TT.textSub }}>{mealDetail.description}</p>
+              )}
+
+              {/* Macro targets */}
+              {(mealDetail.target_calories || mealDetail.target_protein_g || mealDetail.target_carbs_g || mealDetail.target_fat_g) ? (
+                <div className="px-4 pt-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.macroTargets', 'Macro Targets')}</p>
+                  <div className="flex items-center gap-3 text-[11px] flex-wrap">
+                    {mealDetail.target_calories ? <span style={{ color: TT.accent }} className="font-bold">{mealDetail.target_calories} {t('common:cal', 'cal')}</span> : null}
+                    {mealDetail.target_protein_g ? <span style={{ color: '#60A5FA' }} className="font-semibold">{mealDetail.target_protein_g}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span> : null}
+                    {mealDetail.target_carbs_g ? <span style={{ color: '#34D399' }} className="font-semibold">{mealDetail.target_carbs_g}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span> : null}
+                    {mealDetail.target_fat_g ? <span style={{ color: '#F472B6' }} className="font-semibold">{mealDetail.target_fat_g}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span> : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {Array.isArray(mealDetail.meals) && mealDetail.meals.length > 0 ? (
+                <>
+                  {/* Day selector — Atelier filter chips */}
+                  <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
+                    {mealDetail.meals.map((day, i) => (
+                      <button key={i} onClick={() => setMealDetailDay(i)}
+                        className="shrink-0 tt-tap"
+                        style={{
+                          padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
+                          whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
+                          ...(mealDetailDay === i
+                            ? { background: TT.text, color: TT.onInverse }
+                            : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }),
+                        }}>
+                        {DAY_LABELS[i] || `${t('trainerPlans.day', 'Day')} ${day.day || i + 1}`}
+                      </button>
+                    ))}
+                  </div>
+
+                  {(() => {
+                    const day = mealDetail.meals[Math.min(mealDetailDay, mealDetail.meals.length - 1)];
+                    if (!day) return null;
+                    return (
+                      <div className="px-4 pt-3">
+                        {day.totals && (
+                          <div className="flex items-center gap-3 mb-3 text-[11px]">
+                            <span style={{ color: TT.accent }} className="font-bold">{day.totals.calories || 0} {t('common:cal', 'cal')}</span>
+                            <span style={{ color: '#60A5FA' }} className="font-semibold">{day.totals.protein || 0}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
+                            <span style={{ color: '#34D399' }} className="font-semibold">{day.totals.carbs || 0}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
+                            <span style={{ color: '#F472B6' }} className="font-semibold">{day.totals.fat || 0}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
+                          </div>
+                        )}
+                        <div className="space-y-2.5 pb-4">
+                          {(day.meals || []).map((meal, mi) => {
+                            const slot = MEAL_SLOTS.find(s => s.type === (meal.slotType || meal.slot)) || MEAL_SLOTS[mi] || MEAL_SLOTS[3];
+                            const full = mealById.get(meal.id);
+                            const mealTitle = i18n.language === 'es' && (meal.title_es || full?.title_es)
+                              ? (meal.title_es || full?.title_es)
+                              : (meal.title || full?.title);
+                            const img = foodImageUrl(full?.image);
+                            return (
+                              <div key={mi} className="rounded-xl p-3 flex gap-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
+                                {img ? (
+                                  <img src={img} alt={mealTitle} className="w-16 h-16 rounded-xl object-cover shrink-0" loading="lazy" />
+                                ) : (
+                                  <div className="w-16 h-16 rounded-xl shrink-0 flex items-center justify-center" style={{ backgroundColor: TT.surface }}>
+                                    <UtensilsCrossed size={20} style={{ color: TT.textMute }} />
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: slot.color }}>{slot.label}</span>
+                                  <p className="text-[13px] font-semibold truncate mb-1" style={{ color: TT.text }}>{mealTitle}</p>
+                                  <div className="flex items-center gap-2.5 text-[10px]">
+                                    <span style={{ color: TT.accent }}>{meal.calories} {t('common:cal', 'cal')}</span>
+                                    <span style={{ color: '#60A5FA' }}>{meal.protein}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
+                                    <span style={{ color: '#34D399' }}>{meal.carbs}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
+                                    <span style={{ color: '#F472B6' }}>{meal.fat}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              ) : (
+                <div className="text-center py-12 px-4">
+                  <UtensilsCrossed size={28} className="mx-auto mb-2" style={{ color: TT.textMute }} />
+                  <p className="text-[13px]" style={{ color: TT.textMute }}>
+                    {t('trainerPlans.noMealsInPlan', 'This plan only has macro targets — no generated meals were saved.')}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer actions */}
+            <div className="flex items-center gap-3 p-4 shrink-0" style={{ borderTop: `1px solid ${TT.border}`, paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+              <button onClick={() => toggleMealPlanActive(mealDetail)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold min-h-[44px] tt-tap"
+                style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
+                {mealDetail.is_active ? t('trainerPlans.deactivate', 'Deactivate') : t('trainerPlans.activate', 'Activate')}
+              </button>
+              <button onClick={() => setConfirmDeleteMealPlan(mealDetail)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold min-h-[44px] tt-tap"
+                style={{ background: TT.hotSoft, color: TT.hot }}>
+                {t('trainerPlans.delete', 'Delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Meal-plan delete confirmation */}
+      {confirmDeleteMealPlan && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteMealPlan(null)} />
+          <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
+            <h3 className="text-[16px] font-bold" style={{ color: TT.text }}>
+              {t('trainerPlans.confirmDelete', 'Delete "{{name}}"?', { name: confirmDeleteMealPlan.name })}
+            </h3>
+            <p className="text-[13px]" style={{ color: TT.textSub }}>
+              {t('trainerPlans.confirmDeleteDescription', 'This action cannot be undone. The plan will be permanently removed.')}
+            </p>
+            <div className="flex items-center gap-3 pt-2">
+              <button onClick={() => setConfirmDeleteMealPlan(null)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold min-h-[44px]"
+                style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
+                {t('trainerPlans.cancel', 'Cancel')}
+              </button>
+              <button onClick={() => deleteMealPlan(confirmDeleteMealPlan)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold min-h-[44px]"
+                style={{ background: TT.hotSoft, color: TT.hot }}>
                 {t('trainerPlans.deleteConfirm', 'Delete')}
               </button>
             </div>

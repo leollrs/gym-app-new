@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Check, Edit3 } from 'lucide-react';
+import { ChevronLeft, Check, Edit3, StickyNote } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
@@ -44,11 +44,6 @@ export default function TrainerLiveSession() {
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0); // forces elapsed re-render
   const tickRef = useRef();
-  // Mirror the current routine id into a ref so the realtime subscription can
-  // compare against incoming draft updates WITHOUT taking `routine` as a
-  // dependency — see the subscription effect below.
-  const routineIdRef = useRef(null);
-  useEffect(() => { routineIdRef.current = routine?.id ?? null; }, [routine?.id]);
 
   // Hide bottom nav while live session is active
   useEffect(() => {
@@ -92,7 +87,7 @@ export default function TrainerLiveSession() {
 
       const { data: draftRow } = await supabase
         .from('session_drafts')
-        .select('routine_id, logged_sets, current_exercise_index, elapsed_time, started_at, is_paused, updated_at')
+        .select('routine_id, routine_name, exercises, logged_sets, current_exercise_index, elapsed_time, started_at, is_paused, updated_at')
         .eq('profile_id', sessionId)
         .order('updated_at', { ascending: false })
         .limit(1)
@@ -128,7 +123,13 @@ export default function TrainerLiveSession() {
 
   useEffect(() => { loadSession(); }, [loadSession]);
 
-  // Realtime subscription on session_drafts for this client
+  // Realtime subscription on session_drafts for this client.
+  // DELETE payloads only carry the PK (no profile_id), so they can never match
+  // the row filter — patching state from payloads froze this view when the
+  // client finished. Instead, ANY received event re-runs loadSession(), and a
+  // 30s poll covers DELETEs + the window before session_drafts joins the
+  // realtime publication (migration 0527). When the draft row is gone,
+  // loadSession clears `draft` and the "no active session" empty state shows.
   useEffect(() => {
     if (!sessionId) return undefined;
     const channel = supabase
@@ -136,27 +137,18 @@ export default function TrainerLiveSession() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'session_drafts', filter: `profile_id=eq.${sessionId}` },
-        (payload) => {
-          if (payload.eventType === 'DELETE') {
-            setDraft(null);
-            return;
-          }
-          const next = payload.new;
-          if (next?.routine_id) {
-            setDraft(prev => ({ ...(prev || {}), ...next }));
-            // If routine_id changed, refetch routine. Otherwise just keep latest
-            // draft. Read the current routine id from a ref so this handler
-            // doesn't need `routine` in the effect deps.
-            if (routineIdRef.current !== next.routine_id) loadSession();
-          }
-        }
+        () => { loadSession(); }
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-    // Subscribe ONCE per session. `routine` was previously a dep, which tore
-    // down + recreated the WebSocket channel on every routine change — socket
-    // churn that could thrash re-renders and, on flaky native sockets, reset
-    // the app. `loadSession` is a useMemo keyed on [sessionId], so it's stable.
+    const poll = setInterval(() => { loadSession(); }, 30_000);
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
+    // Subscribe ONCE per session — tearing down the WebSocket channel on every
+    // routine change caused socket churn that could thrash re-renders and, on
+    // flaky native sockets, reset the app. `loadSession` is a useMemo keyed on
+    // [sessionId], so it's stable.
   }, [sessionId, loadSession]);
 
   // Elapsed ticker (1s) — drift-free re-render based on started_at
@@ -167,7 +159,29 @@ export default function TrainerLiveSession() {
   }, [draft?.started_at, draft?.is_paused]);
 
   // ── Derive view state ─────────────
-  const exercises = routine?.routine_exercises || [];
+  // Prefer the client's LIVE exercise list from the draft — ActiveSession
+  // persists swaps/adds/removals to session_drafts.exercises as
+  // { id, name, name_es, targetSets, targetReps, restSeconds, … } with
+  // logged_sets keyed by that same id (= exercise_id), and the draft's
+  // current_exercise_index indexes into THAT array. Map it onto the
+  // routine_exercises row shape this view renders; routine_exercises stays
+  // as the fallback for drafts written before migration 0368 added the column.
+  const exercises = useMemo(() => {
+    if (Array.isArray(draft?.exercises) && draft.exercises.length > 0) {
+      return draft.exercises.map(ex => ({
+        exercise_id: ex.id ?? ex.exercise_id,
+        target_sets: ex.targetSets ?? ex.target_sets ?? 0,
+        target_reps: ex.targetReps ?? ex.target_reps ?? null,
+        rest_seconds: ex.restSeconds ?? ex.rest_seconds ?? null,
+        exercises: {
+          id: ex.id ?? ex.exercise_id,
+          name: ex.name || null,
+          name_es: ex.name_es || null,
+        },
+      }));
+    }
+    return routine?.routine_exercises || [];
+  }, [draft?.exercises, routine?.routine_exercises]);
   const exerciseCount = exercises.length;
   const currentExIdx = Math.min(draft?.current_exercise_index ?? 0, Math.max(0, exerciseCount - 1));
   const currentEx = exercises[currentExIdx] || null;
@@ -208,6 +222,12 @@ export default function TrainerLiveSession() {
     name: ex.exercises?.name_es || ex.exercises?.name || '—',
     spec: `${ex.target_sets} × ${ex.target_reps || '—'}`,
   }));
+
+  // Breadcrumb shown on the progress line: current exercise → next two.
+  const breadcrumb = exercises
+    .slice(currentExIdx, currentExIdx + 3)
+    .map(ex => ex.exercises?.name_es || ex.exercises?.name || '—')
+    .join(' → ');
 
   // Live-elapsed math.
   // The member persists `elapsed_time` as their cumulative pause-aware seconds
@@ -252,7 +272,9 @@ export default function TrainerLiveSession() {
   };
 
   const clientName = client?.full_name || client?.username || t('trainerMessages.list.clientFallback', 'Client');
-  const planName = routine?.name || '—';
+  // The routine row can be RLS-hidden (e.g. admin-created class template) —
+  // the draft's own routine_name still names the plan.
+  const planName = routine?.name || draft?.routine_name || '—';
 
   // ── Render ──────────────
   return (
@@ -306,11 +328,14 @@ export default function TrainerLiveSession() {
         </div>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          padding: '6px 10px', borderRadius: 999,
-          background: 'rgba(255,90,46,0.15)', color: TT.hot,
+          padding: '7px 12px', borderRadius: 999,
+          background: 'rgba(255,255,255,0.07)', color: '#F3F0E9',
         }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: TT.hot }} />
-          <span style={{ fontSize: 11, fontWeight: 800, fontFamily: TFont.mono }}>
+          <span style={{
+            width: 7, height: 7, borderRadius: 999,
+            background: '#27B0A0', boxShadow: '0 0 0 3px rgba(39,176,160,0.25)',
+          }} />
+          <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: 0.5, fontFamily: TFont.mono }}>
             {formatElapsed(elapsedSec)}
           </span>
         </div>
@@ -354,214 +379,280 @@ export default function TrainerLiveSession() {
           </div>
         )}
 
+        {/* Draft exists but the exercise details are unreadable/empty (e.g.
+            an admin-created class template hidden by routines RLS, with no
+            exercises snapshot on the draft) — show a minimal live card
+            instead of a blank page. */}
+        {!loading && draft && !currentEx && (
+          <div style={{
+            marginTop: 30, padding: '24px 18px',
+            background: 'rgba(255,255,255,0.03)', borderRadius: 18,
+            border: '1px solid rgba(255,255,255,0.08)',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              fontFamily: TFont.display, fontSize: 22, fontWeight: 800,
+              color: '#fff', letterSpacing: -0.6, lineHeight: 1.1,
+            }}>
+              {t('trainerLive.workingOutTitle', '{{name}} is working out', { name: clientName })}
+            </div>
+            <div style={{
+              fontSize: 13, color: 'rgba(255,255,255,0.6)',
+              marginTop: 8, lineHeight: 1.5,
+            }}>
+              {t('trainerLive.noRoutineDetails', "The workout details aren't available for this session.")}
+            </div>
+            <div style={{
+              marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '7px 12px', borderRadius: 999,
+              background: 'rgba(255,255,255,0.07)', color: '#F3F0E9',
+            }}>
+              <span style={{
+                width: 7, height: 7, borderRadius: 999,
+                background: '#27B0A0', boxShadow: '0 0 0 3px rgba(39,176,160,0.25)',
+              }} />
+              <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: 0.5, fontFamily: TFont.mono }}>
+                {formatElapsed(elapsedSec)}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Live session view */}
         {!loading && draft && currentEx && (
           <>
             {/* Progress */}
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-              marginTop: 10, marginBottom: 8,
+              gap: 12, marginTop: 10, marginBottom: 7,
             }}>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: 'rgba(243,240,233,0.55)', flexShrink: 0 }}>
                 {t('trainerLive.exerciseProgress', 'Exercise {{current}} of {{total}}', { current: currentExIdx + 1, total: exerciseCount })}
               </div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontFamily: TFont.mono }}>
-                {t('trainerLive.setsProgress', '{{logged}}/{{total}} sets', { logged: completedSets, total: totalTargetSets })}
+              <div style={{
+                fontSize: 11.5, fontWeight: 600, color: 'rgba(243,240,233,0.55)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                textAlign: 'right', minWidth: 0,
+              }}>
+                {breadcrumb}
               </div>
             </div>
             <div style={{
               height: 4, borderRadius: 999, overflow: 'hidden',
-              background: 'rgba(255,255,255,0.08)', marginBottom: 18,
+              background: 'rgba(255,255,255,0.1)', marginBottom: 18,
             }}>
               <div style={{
                 width: `${Math.min(100, progressPct)}%`, height: '100%',
-                background: TT.hot,
+                background: '#27B0A0',
                 transition: 'width 200ms ease',
               }} />
             </div>
 
-            {/* Current exercise hero */}
+            {/* Current exercise card */}
             <div style={{
-              background: 'rgba(255,255,255,0.04)', borderRadius: 18, padding: 18,
-              border: '1px solid rgba(255,255,255,0.08)', marginBottom: 12,
+              borderRadius: 22, background: '#15191C',
+              border: '1px solid rgba(255,255,255,0.07)', overflow: 'hidden',
+              marginBottom: 12,
             }}>
+              {/* Card header: exercise name + target spec + note icon-box */}
               <div style={{
-                fontSize: 11, fontWeight: 800, color: TT.accent,
-                letterSpacing: 1.4, textTransform: 'uppercase',
+                padding: '16px 16px 12px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
               }}>
-                {t('trainerLive.now', 'Now')}
-              </div>
-              <div style={{
-                fontFamily: TFont.display, fontSize: 26, fontWeight: 800,
-                letterSpacing: -1, lineHeight: 1.05, marginTop: 4, color: '#fff',
-              }}>
-                {currentExName}
-              </div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 4 }}>
-                {t('trainerLive.setsRepsSpec', '{{sets}} × {{reps}}', { sets: currentEx.target_sets, reps: currentEx.target_reps || '—' })}
-              </div>
-
-              {/* Set log */}
-              <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {setRows.map((set) => (
-                  <div key={set.n} style={{
-                    display: 'grid', gridTemplateColumns: '24px 1fr 1fr 1fr 32px',
-                    gap: 8, padding: '10px 12px', borderRadius: 10,
-                    background: set.current ? 'rgba(46,224,224,0.12)' : 'rgba(255,255,255,0.02)',
-                    border: set.current ? `1px solid ${TT.accent}` : '1px solid transparent',
-                    opacity: !set.done && !set.current ? 0.45 : 1,
-                    alignItems: 'center',
+                <div style={{ minWidth: 0 }}>
+                  <div style={{
+                    fontFamily: TFont.display, fontSize: 19, fontWeight: 800,
+                    letterSpacing: -0.4, color: '#F3F0E9', lineHeight: 1.1,
                   }}>
-                    <div style={{ fontFamily: TFont.mono, fontSize: 12, color: TT.accent, fontWeight: 800 }}>
-                      S{set.n}
-                    </div>
-                    <div>
-                      <div style={{
-                        fontSize: 9, color: 'rgba(255,255,255,0.4)',
-                        letterSpacing: 0.5, fontWeight: 700, textTransform: 'uppercase',
-                      }}>
-                        {t('trainerLive.weightShort', 'WT')}
-                      </div>
-                      <div style={{
-                        fontSize: 14, fontWeight: 800, fontFamily: TFont.mono,
-                        color: set.done ? '#fff' : (set.current ? TT.accent : 'rgba(255,255,255,0.3)'),
-                      }}>{set.w}</div>
-                    </div>
-                    <div>
-                      <div style={{
-                        fontSize: 9, color: 'rgba(255,255,255,0.4)',
-                        letterSpacing: 0.5, fontWeight: 700, textTransform: 'uppercase',
-                      }}>
-                        {t('trainerLive.repsShort', 'REPS')}
-                      </div>
-                      <div style={{
-                        fontSize: 14, fontWeight: 800, fontFamily: TFont.mono,
-                        color: set.done ? '#fff' : (set.current ? TT.accent : 'rgba(255,255,255,0.3)'),
-                      }}>{set.r}</div>
-                    </div>
-                    <div>
-                      <div style={{
-                        fontSize: 9, color: 'rgba(255,255,255,0.4)',
-                        letterSpacing: 0.5, fontWeight: 700, textTransform: 'uppercase',
-                      }}>
-                        {t('trainerLive.rpeShort', 'RPE')}
-                      </div>
-                      <div style={{
-                        fontSize: 14, fontWeight: 800, fontFamily: TFont.mono,
-                        color: set.done ? '#fff' : (set.current ? TT.accent : 'rgba(255,255,255,0.3)'),
-                      }}>{set.rpe}</div>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      {set.done ? (
-                        <Check size={16} color={TT.good} strokeWidth={2.5} />
-                      ) : set.current ? (
-                        <div style={{ width: 16, height: 16, borderRadius: 999, border: `2px solid ${TT.accent}` }} />
-                      ) : (
-                        <div style={{ width: 16, height: 16, borderRadius: 999, border: '1.5px solid rgba(255,255,255,0.15)' }} />
-                      )}
-                    </div>
+                    {currentExName}
                   </div>
-                ))}
-              </div>
-
-              {/* Coach toolbar */}
-              <div style={{
-                marginTop: 14, padding: 10, borderRadius: 10,
-                background: 'rgba(46,224,224,0.06)',
-                border: `1px solid ${TT.accent}33`,
-              }}>
-                <div style={{
-                  fontSize: 9, fontWeight: 800, color: TT.accent,
-                  letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6,
-                }}>
-                  {t('trainerLive.coach', 'Coach')}
+                  <div style={{ fontSize: 12, color: 'rgba(243,240,233,0.55)', marginTop: 2 }}>
+                    {t('trainerLive.targetSpec', 'Target {{sets}} × {{reps}}', { sets: currentEx.target_sets, reps: currentEx.target_reps || '—' })}
+                    {currentEx.rest_seconds ? ` · ${t('trainerLive.restSpec', '{{sec}}s rest', { sec: currentEx.rest_seconds })}` : ''}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {[
-                    {
-                      label: t('trainerLive.coachActions.dropSet', 'Drop set'),
-                      onClick: () => sendCue('drop_set', {}, t('trainerLive.coachActions.dropSet', 'Drop set')),
-                    },
-                    {
-                      label: t('trainerLive.coachActions.restPlus30', 'Rest +30s'),
-                      onClick: () => sendCue('rest_extend', { seconds: 30 }, t('trainerLive.coachActions.restPlus30', 'Rest +30s')),
-                    },
-                    {
-                      label: t('trainerLive.coachActions.restPlus60', 'Rest +60s'),
-                      onClick: () => sendCue('rest_extend', { seconds: 60 }, t('trainerLive.coachActions.restPlus60', 'Rest +60s')),
-                    },
-                    {
-                      label: t('trainerLive.coachActions.reduce10', 'Reduce 10%'),
-                      onClick: () => sendCue('weight_adjust', { percent: -10 }, t('trainerLive.coachActions.reduce10', 'Reduce 10%')),
-                    },
-                    {
-                      label: t('trainerLive.coachActions.addNote', '+ Note'),
-                      onClick: handleNoteCue,
-                    },
-                  ].map((action) => (
-                    <button
-                      key={action.label}
-                      type="button"
-                      disabled={sending}
-                      onClick={action.onClick}
-                      style={{
-                        padding: '6px 10px', borderRadius: 8,
-                        background: 'rgba(255,255,255,0.06)',
-                        color: '#fff', fontSize: 11, fontWeight: 700,
-                        border: 'none', cursor: sending ? 'wait' : 'pointer',
-                        minHeight: 32,
-                        opacity: sending ? 0.5 : 1,
-                      }}
-                    >
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Log button row — spectator-mode (disabled, full bidirectional logging is a v2 RPC) */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                <button
-                  type="button"
-                  disabled
-                  aria-disabled="true"
-                  onClick={() => showToast(t('trainerLive.spectatorMode', 'Spectator mode'), 'info')}
-                  title={t('trainerLive.comingSoon', 'Coming soon')}
-                  style={{
-                    flex: 1, height: 44, borderRadius: 12, border: 'none',
-                    background: TT.accent, color: '#06363B',
-                    fontFamily: TFont.display, fontWeight: 800, fontSize: 14,
-                    cursor: 'not-allowed', opacity: 0.5,
-                  }}
-                  aria-label={t('trainerLive.logSet', 'Log set {{n}}', { n: currentSetN })}
-                >
-                  {t('trainerLive.logSet', 'Log set {{n}}', { n: currentSetN })}
-                </button>
                 <button
                   type="button"
                   disabled={sending}
                   onClick={handleNoteCue}
-                  style={{
-                    width: 44, height: 44, borderRadius: 12,
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    background: 'transparent', color: '#fff',
-                    cursor: sending ? 'wait' : 'pointer',
-                    opacity: sending ? 0.5 : 1,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
                   aria-label={t('trainerLive.addNote', 'Add note')}
+                  className="tt-tap"
+                  style={{
+                    width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                    background: 'rgba(255,255,255,0.06)', border: 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: sending ? 'wait' : 'pointer', opacity: sending ? 0.5 : 1,
+                  }}
                 >
-                  <Edit3 size={18} strokeWidth={2} />
+                  <StickyNote size={18} color="rgba(243,240,233,0.7)" strokeWidth={2} />
                 </button>
               </div>
+
+              {/* Set table header */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: '34px 1fr 1fr 1fr 44px',
+                gap: 8, padding: '6px 16px',
+                fontSize: 10, fontWeight: 800, letterSpacing: 0.8,
+                textTransform: 'uppercase', color: 'rgba(243,240,233,0.4)',
+              }}>
+                <span>{t('trainerLive.setShort', 'Set')}</span>
+                <span>{t('trainerLive.rpeShort', 'RPE')}</span>
+                <span>{t('trainerLive.weightShort', 'WT')}</span>
+                <span>{t('trainerLive.repsShort', 'Reps')}</span>
+                <span />
+              </div>
+
+              {/* Set rows */}
+              {setRows.map((set) => (
+                <div key={set.n} style={{
+                  display: 'grid', gridTemplateColumns: '34px 1fr 1fr 1fr 44px',
+                  gap: 8, padding: '10px 16px', alignItems: 'center',
+                  background: set.current ? 'rgba(39,176,160,0.10)' : 'transparent',
+                  borderTop: '1px solid rgba(255,255,255,0.05)',
+                }}>
+                  <span style={{
+                    fontFamily: TFont.display, fontWeight: 800, fontSize: 15,
+                    color: set.current ? '#27B0A0' : '#F3F0E9',
+                  }}>{set.n}</span>
+                  <span style={{
+                    fontSize: 12.5, fontFamily: TFont.mono,
+                    color: 'rgba(243,240,233,0.45)',
+                  }}>{set.rpe}</span>
+                  <div style={{
+                    height: 34, borderRadius: 9,
+                    background: set.done ? 'transparent' : 'rgba(255,255,255,0.07)',
+                    boxShadow: set.current ? 'inset 0 0 0 1.5px #27B0A0' : 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontFamily: TFont.mono, fontWeight: 700, fontSize: 14, color: '#F3F0E9',
+                  }}>{set.w}</div>
+                  <div style={{
+                    height: 34, borderRadius: 9,
+                    background: set.done ? 'transparent' : 'rgba(255,255,255,0.07)',
+                    boxShadow: set.current ? 'inset 0 0 0 1.5px #27B0A0' : 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontFamily: TFont.mono, fontWeight: 700, fontSize: 14,
+                    color: set.r !== '—' ? '#F3F0E9' : 'rgba(243,240,233,0.3)',
+                  }}>{set.r}</div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{
+                      width: 30, height: 30, borderRadius: 9,
+                      background: set.done ? '#27B0A0' : 'rgba(255,255,255,0.07)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Check size={16} color={set.done ? '#06363B' : 'rgba(243,240,233,0.4)'} strokeWidth={3} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Coach toolbar (inset, padded inside the card) */}
+              <div style={{ padding: '0 16px 16px' }}>
+                <div style={{
+                  marginTop: 14, padding: 10, borderRadius: 12,
+                  background: 'rgba(39,176,160,0.06)',
+                  border: '1px solid rgba(39,176,160,0.20)',
+                }}>
+                  <div style={{
+                    fontSize: 9, fontWeight: 800, color: TT.accent,
+                    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6,
+                  }}>
+                    {t('trainerLive.coach', 'Coach')}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {[
+                      {
+                        label: t('trainerLive.coachActions.dropSet', 'Drop set'),
+                        onClick: () => sendCue('drop_set', {}, t('trainerLive.coachActions.dropSet', 'Drop set')),
+                      },
+                      {
+                        label: t('trainerLive.coachActions.restPlus30', 'Rest +30s'),
+                        onClick: () => sendCue('rest_extend', { seconds: 30 }, t('trainerLive.coachActions.restPlus30', 'Rest +30s')),
+                      },
+                      {
+                        label: t('trainerLive.coachActions.restPlus60', 'Rest +60s'),
+                        onClick: () => sendCue('rest_extend', { seconds: 60 }, t('trainerLive.coachActions.restPlus60', 'Rest +60s')),
+                      },
+                      {
+                        label: t('trainerLive.coachActions.reduce10', 'Reduce 10%'),
+                        onClick: () => sendCue('weight_adjust', { percent: -10 }, t('trainerLive.coachActions.reduce10', 'Reduce 10%')),
+                      },
+                      {
+                        label: t('trainerLive.coachActions.addNote', '+ Note'),
+                        onClick: handleNoteCue,
+                      },
+                    ].map((action) => (
+                      <button
+                        key={action.label}
+                        type="button"
+                        disabled={sending}
+                        onClick={action.onClick}
+                        className="tt-tap"
+                        style={{
+                          padding: '7px 11px', borderRadius: 999,
+                          background: 'rgba(255,255,255,0.07)',
+                          color: '#F3F0E9', fontSize: 11.5, fontWeight: 700,
+                          border: 'none', cursor: sending ? 'wait' : 'pointer',
+                          minHeight: 32,
+                          opacity: sending ? 0.5 : 1,
+                        }}
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer actions — primary log (spectator-disabled, v2 RPC) + note quick-action */}
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button
+                type="button"
+                disabled
+                aria-disabled="true"
+                onClick={() => showToast(t('trainerLive.spectatorMode', 'Spectator mode'), 'info')}
+                title={t('trainerLive.comingSoon', 'Coming soon')}
+                className="tt-btn"
+                style={{
+                  flex: 1, height: 52, borderRadius: 14,
+                  background: 'linear-gradient(180deg,#2EC9B7,#178C7E)',
+                  color: '#06363B', fontSize: 15,
+                  boxShadow: '0 8px 18px -6px rgba(10,90,82,0.6), inset 0 1px 0 rgba(255,255,255,0.3)',
+                }}
+                aria-label={t('trainerLive.logSet', 'Log set {{n}}', { n: currentSetN })}
+              >
+                <Check size={18} color="#06363B" strokeWidth={2.6} />
+                {currentEx.rest_seconds
+                  ? t('trainerLive.logSetRest', 'Log set · rest {{rest}}', { rest: formatElapsed(currentEx.rest_seconds) })
+                  : t('trainerLive.logSet', 'Log set {{n}}', { n: currentSetN })}
+              </button>
+              <button
+                type="button"
+                disabled={sending}
+                onClick={handleNoteCue}
+                className="tt-tap"
+                style={{
+                  width: 52, height: 52, borderRadius: 14,
+                  background: 'rgba(255,255,255,0.08)',
+                  boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.14)',
+                  border: 'none', color: '#fff',
+                  cursor: sending ? 'wait' : 'pointer',
+                  opacity: sending ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+                aria-label={t('trainerLive.addNote', 'Add note')}
+              >
+                <Edit3 size={20} strokeWidth={2.2} />
+              </button>
             </div>
 
             {/* Up next */}
             {upNext.length > 0 && (
               <>
                 <div style={{
-                  fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.6)',
-                  letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 8,
+                  fontSize: 11, fontWeight: 800, color: 'rgba(243,240,233,0.6)',
+                  letterSpacing: 1.4, textTransform: 'uppercase',
+                  marginTop: 22, marginBottom: 8,
                 }}>
                   {t('trainerLive.upNext', 'Up next')}
                 </div>
@@ -569,7 +660,7 @@ export default function TrainerLiveSession() {
                   <div key={ex.n} style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '10px 14px', marginBottom: 6,
-                    background: 'rgba(255,255,255,0.03)', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.03)', borderRadius: 12,
                   }}>
                     <div style={{
                       fontFamily: TFont.mono, fontSize: 11,
@@ -578,8 +669,8 @@ export default function TrainerLiveSession() {
                       {ex.n}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{ex.name}</div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 1 }}>{ex.spec}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#F3F0E9' }}>{ex.name}</div>
+                      <div style={{ fontSize: 11, color: 'rgba(243,240,233,0.5)', marginTop: 1 }}>{ex.spec}</div>
                     </div>
                   </div>
                 ))}

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { CheckCircle2, Circle, Bell, X, Pencil, MessageCircle, Calendar } from 'lucide-react';
+import { CheckCircle2, Circle, Bell, X, Pencil, MessageCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -141,38 +141,44 @@ export default function TrainerClientPayment({ clientId }) {
     openWhatsApp(status?.phone_number, msg);
   };
 
+  // Green-wash status box (design `rgba(47,166,107,.08)` bg / `.18` border) —
+  // theme-aware via color-mix so it survives dark mode.
+  const greenWash = 'color-mix(in srgb, #2FA66B 9%, var(--tt-surface))';
+  const greenBorder = 'color-mix(in srgb, #2FA66B 22%, transparent)';
+
   return (
     <>
-      <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2, marginBottom: 8 }}>
+      <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, marginBottom: 11 }}>
         {t('trainerPayment.title', 'Payment')}
       </div>
-      <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 18, boxShadow: TT.shadow, padding: 14, marginBottom: 14 }}>
-        {/* Fee row */}
+      <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 'var(--tt-card-radius, 20px)', boxShadow: TT.shadow, padding: 16, marginBottom: 22 }}>
+        {/* Cuota mensual — big fee + Editar ghost */}
         {!editingFee && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12, paddingBottom: 12, borderBottom: `1px solid ${TT.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: TT.textMute, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.8, color: TT.textMute, textTransform: 'uppercase' }}>
                 {t('trainerPayment.feeLabel', 'Monthly fee')}
               </div>
               {fee != null ? (
-                <div style={{ fontSize: 13.5, color: TT.text, marginTop: 2, fontWeight: 700 }}>
-                  <span style={{ fontFamily: TFont.display, fontWeight: 800 }}>${fee.toFixed(0)}</span>
-                  {cps != null && <span style={{ color: TT.textSub, fontWeight: 600 }}> · ${cps.toFixed(0)}/{t('trainerPayment.perSessionShort', 'sess')}</span>}
-                  {status?.payment_method && <span style={{ color: TT.textSub, fontWeight: 600 }}> · {methodLabel(status.payment_method)}</span>}
-                  {status?.billing_day && <span style={{ color: TT.textSub, fontWeight: 600 }}> · {t('trainerPayment.dayShort', 'day {{d}}', { d: status.billing_day })}</span>}
+                <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.text, letterSpacing: -0.8, marginTop: 3 }}>
+                  ${fee.toFixed(0)}<span style={{ fontSize: 13, color: TT.textMute, fontWeight: 700 }}>/{t('trainerPayment.perMonthShort', 'mo')}</span>
                 </div>
               ) : (
-                <div style={{ fontSize: 12.5, color: TT.textSub, marginTop: 2 }}>{t('trainerPayment.noFee', 'Not set')}</div>
+                <div style={{ fontSize: 13, color: TT.textSub, marginTop: 4 }}>{t('trainerPayment.noFee', 'Not set')}</div>
               )}
-              {!paid && nextDue && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: TT.warnInk, fontWeight: 700, marginTop: 5 }}>
-                  <Calendar size={11} /> {t('trainerPayment.nextDue', 'Next due {{date}}', { date: fmtDate(nextDue) })}
+              {fee != null && (cps != null || status?.payment_method || status?.billing_day) && (
+                <div style={{ fontSize: 11.5, color: TT.textSub, fontWeight: 600, marginTop: 3 }}>
+                  {[
+                    cps != null ? `$${cps.toFixed(0)}/${t('trainerPayment.perSessionShort', 'sess')}` : null,
+                    status?.payment_method ? methodLabel(status.payment_method) : null,
+                    status?.billing_day ? t('trainerPayment.dayShort', 'day {{d}}', { d: status.billing_day }) : null,
+                  ].filter(Boolean).join(' · ')}
                 </div>
               )}
             </div>
-            <button onClick={openFeeEditor} disabled={busy}
-              style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 10, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.textSub, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
-              <Pencil size={12} /> {fee != null ? t('trainerPayment.editFee', 'Edit') : t('trainerPayment.addFee', 'Set fee')}
+            <button onClick={openFeeEditor} disabled={busy} className="tt-tap"
+              style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 10, border: 'none', background: 'transparent', color: TT.accent, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              <Pencil size={14} strokeWidth={2.2} /> {fee != null ? t('trainerPayment.editFee', 'Edit') : t('trainerPayment.addFee', 'Set fee')}
             </button>
           </div>
         )}
@@ -247,20 +253,26 @@ export default function TrainerClientPayment({ clientId }) {
           </div>
         )}
 
-        {/* Current status */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 13, background: paid ? TT.goodSoft : TT.warnSoft, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-            {paid ? <CheckCircle2 size={22} style={{ color: TT.goodInk }} /> : <Circle size={22} style={{ color: TT.warnInk }} />}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: TFont.display, fontWeight: 800, fontSize: 15, color: TT.text, letterSpacing: -0.3 }}>
-              {paid ? t('trainerPayment.paidThisMonth', 'Paid this month') : t('trainerPayment.unpaid', 'Payment due')}
+        {/* Status box — green wash when paid, warn wash when due */}
+        {!editingFee && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginTop: 14, padding: '11px 13px', borderRadius: 13, background: paid ? greenWash : TT.warnSoft, border: `1px solid ${paid ? greenBorder : 'transparent'}` }}>
+            <div style={{ width: 30, height: 30, borderRadius: 999, background: paid ? TT.good : TT.warn, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              {paid ? <CheckCircle2 size={16} strokeWidth={3} style={{ color: '#fff' }} /> : <Circle size={16} strokeWidth={3} style={{ color: '#fff' }} />}
             </div>
-            <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 2 }}>
-              {status?.last_paid_at ? t('trainerPayment.lastPaid', 'Last paid {{date}}', { date: fmtDate(status.last_paid_at) }) : t('trainerPayment.neverPaid', 'No payment on record')}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: TFont.display, fontSize: 13.5, fontWeight: 800, color: paid ? TT.goodInk : TT.warnInk }}>
+                {paid
+                  ? (status?.last_paid_at ? t('trainerPayment.paidOnDate', 'Paid · {{date}}', { date: fmtDate(status.last_paid_at) }) : t('trainerPayment.paidThisMonth', 'Paid this month'))
+                  : t('trainerPayment.unpaid', 'Payment due')}
+              </div>
+              <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>
+                {nextDue
+                  ? t('trainerPayment.nextCharge', 'Next charge · {{date}}', { date: fmtDate(nextDue) })
+                  : (status?.last_paid_at ? t('trainerPayment.lastPaid', 'Last paid {{date}}', { date: fmtDate(status.last_paid_at) }) : t('trainerPayment.neverPaid', 'No payment on record'))}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Expected vs generated income + attendance this month */}
         {showSummary && (
@@ -298,7 +310,8 @@ export default function TrainerClientPayment({ clientId }) {
                 <button
                   onClick={openMarkPaid}
                   disabled={busy}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 12px', borderRadius: 12, border: 'none', background: TT.accent, color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 13, cursor: 'pointer', opacity: busy ? 0.5 : 1 }}
+                  className="tt-btn tt-btn--primary"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 12px', borderRadius: 12, fontFamily: TFont.display, fontWeight: 800, fontSize: 13, opacity: busy ? 0.5 : 1 }}
                 >
                   <CheckCircle2 size={15} strokeWidth={2.4} /> {t('trainerPayment.markPaid', 'Mark paid')}
                 </button>
@@ -306,17 +319,19 @@ export default function TrainerClientPayment({ clientId }) {
                   <button
                     onClick={() => run(() => supabase.rpc('trainer_send_payment_reminder', { p_client_id: clientId }), t('trainerPayment.reminderSent', 'Reminder sent'))}
                     disabled={busy}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 12px', borderRadius: 12, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.text, fontFamily: TFont.display, fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: busy ? 0.5 : 1 }}
+                    className="tt-btn tt-btn--secondary"
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 12px', borderRadius: 12, fontFamily: TFont.display, fontWeight: 700, fontSize: 12, opacity: busy ? 0.5 : 1 }}
                   >
-                    <Bell size={13} strokeWidth={2.2} /> {t('trainerPayment.remindApp', 'In-app')}
+                    <Bell size={14} strokeWidth={2} /> {t('trainerPayment.remindApp', 'In-app')}
                   </button>
                   {canWhatsApp && (
                     <button
                       onClick={remindWhatsApp}
                       disabled={busy}
-                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 12px', borderRadius: 12, border: 'none', background: '#25D366', color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 12, cursor: 'pointer' }}
+                      className="tt-tap"
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 12px', borderRadius: 12, border: 'none', background: 'linear-gradient(180deg,#34C759,#23A847)', color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 12, cursor: 'pointer', boxShadow: '0 6px 14px -5px rgba(35,168,71,.6), inset 0 1px 0 rgba(255,255,255,.3)' }}
                     >
-                      <MessageCircle size={13} strokeWidth={2.4} /> {t('trainerPayment.whatsapp', 'WhatsApp')}
+                      <MessageCircle size={14} strokeWidth={2.2} /> {t('trainerPayment.whatsapp', 'WhatsApp')}
                     </button>
                   )}
                 </div>

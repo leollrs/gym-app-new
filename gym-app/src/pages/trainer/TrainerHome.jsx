@@ -12,6 +12,7 @@ import { subDays, format, startOfWeek, startOfDay, endOfDay, isTomorrow } from '
 import { es } from 'date-fns/locale/es';
 import { enUS } from 'date-fns/locale/en-US';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
@@ -19,6 +20,7 @@ import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
 import {
   TCard, TAvatar, TSparkBars, TPill,
   TEyebrow, TDarkButton, TSegmented,
+  TSectionHeader, TPrimaryButton,
 } from './components/designPrimitives';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -54,6 +56,7 @@ function buildWeekBars(profileId, weekSessions) {
 
 export default function TrainerHome() {
   const { profile } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('pages');
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
@@ -88,25 +91,43 @@ export default function TrainerHome() {
   // Realtime: keep `liveClientIds` in sync as clients start/finish workouts.
   // Without this, the "En vivo ahora" pill on the roster only refreshes on
   // page reload — the trainer would miss a client going live.
+  // Patching state from the payload can't work for DELETEs (payload.old only
+  // carries the PK, never profile_id), so ANY session_drafts event just
+  // re-runs the same live-drafts fetch fetchHomeData uses — debounced, since
+  // an in-progress workout updates its draft every few seconds. A 60s poll
+  // covers the window before session_drafts is in the realtime publication
+  // (migration 0527).
   useEffect(() => {
     if (!profile?.id || clients.length === 0) return;
     const clientIds = clients.map(c => c.id);
+
+    const refreshLiveDrafts = async () => {
+      const { data, error } = await selectInBatches(
+        (ids) => supabase.from('session_drafts').select('profile_id')
+          .in('profile_id', ids)
+          .gte('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+        clientIds,
+      );
+      if (error) { logger.error('TrainerHome: live drafts refresh failed:', error); return; }
+      setLiveClientIds(new Set((data || []).map(r => r.profile_id)));
+    };
+
+    let debounceTimer = null;
     const channel = supabase
       .channel(`trainer-home-live-${profile.id}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'session_drafts' },
-        (payload) => {
-          const row = payload.new || payload.old;
-          if (!row || !clientIds.includes(row.profile_id)) return;
-          setLiveClientIds(prev => {
-            const next = new Set(prev);
-            if (payload.eventType === 'DELETE') next.delete(row.profile_id);
-            else next.add(row.profile_id);
-            return next;
-          });
+        () => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(refreshLiveDrafts, 2000);
         })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const poll = setInterval(refreshLiveDrafts, 60_000);
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      clearInterval(poll);
+      supabase.removeChannel(channel);
+    };
   }, [profile?.id, clients.map(c => c.id).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchHomeData() {
@@ -212,7 +233,8 @@ export default function TrainerHome() {
       setLiveClientIds(new Set((liveRes.data || []).map(r => r.profile_id)));
     } catch (err) {
       logger.error('TrainerHome: fetchHomeData crashed', err);
-      setError(err?.message || t('trainerHome.loadError', 'Failed to load dashboard data'));
+      // Display only the translated fallback — raw err.message stays in the log.
+      setError(t('trainerHome.loadError', 'Failed to load dashboard data'));
     } finally {
       setLoading(false);
     }
@@ -389,8 +411,13 @@ export default function TrainerHome() {
   // ── Today's sessions horizontal strip ──
   // ── Quick handlers ──
   async function openConversation(clientId) {
-    const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
-    if (convId) navigate(`/trainer/messages/${convId}`);
+    const { data: convId, error } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
+    if (error || !convId) {
+      logger.error('TrainerHome: get_or_create_conversation failed:', error);
+      showToast(t('trainerHome.openChatFailed', 'Could not open the chat. Try again.'), 'error');
+      return;
+    }
+    navigate(`/trainer/messages/${convId}`);
   }
 
   async function handleCallSubmit() {
@@ -444,6 +471,16 @@ export default function TrainerHome() {
   // (greeting + sessions + cobros) regardless, with graceful per-section empties.
 
   const noClients = clients.length === 0;
+
+  // The "Next up" hero uses a light teal-tint gradient as a deliberate Atelier
+  // treatment. That gradient only reads as premium on the cream shell — in dark
+  // mode it would glow wrong, so we fall back to the theme-aware TT.surface2
+  // fill. Read the toggle at render time (ThemeContext re-renders the tree on
+  // change, so this stays in sync); presentation-only, touches no data.
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  const heroInnerBg = isDark
+    ? TT.surface2
+    : 'linear-gradient(160deg,#E9F7F4 0%,#F3FBF9 60%,#FFFFFF 100%)';
 
   // ── KPIs (desktop) ──
   const kpiCards = [
@@ -503,7 +540,7 @@ export default function TrainerHome() {
                 <p className="text-[13px] font-bold">{t('trainerDashboard.errorTitle', 'Failed to load dashboard')}</p>
                 <p className="text-[12px] mt-0.5 truncate">{error}</p>
               </div>
-              <button type="button" onClick={() => fetchHomeData()} className="shrink-0 text-[12px] font-bold px-2 py-1 rounded-lg" style={{ background: '#fff', color: TT.hot }}>
+              <button type="button" onClick={() => fetchHomeData()} className="shrink-0 text-[12px] font-bold px-2 py-1 rounded-lg" style={{ background: TT.surface, color: TT.hot }}>
                 {t('trainerDashboard.retry', 'Retry')}
               </button>
             </div>
@@ -511,90 +548,96 @@ export default function TrainerHome() {
         )}
 
         {/* Greeting */}
-        <div style={{ padding: '8px 18px 12px' }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, color: TT.accent, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+        <div style={{ padding: '14px 20px 16px' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: TT.accent, letterSpacing: 1.4, textTransform: 'uppercase' }}>
             {homeEyebrow}
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4, gap: 12 }}>
-            <div style={{ fontFamily: TFont.display, fontSize: 22, fontWeight: 800, color: TT.text, letterSpacing: -0.7, lineHeight: 1.05 }}>
-              {greeting}{trainerFirstName ? <>{', '}<span style={{ color: TT.accent }}>{trainerFirstName}.</span></> : '.'}
-            </div>
-            {todaySessionsCount > 0 && (
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: TT.text, letterSpacing: -0.4, lineHeight: 1 }}>
-                  {todaySessionsCount}<span style={{ fontSize: 11, color: TT.textMute, fontWeight: 600 }}>&nbsp;{t('trainerHome.sessionsWord', 'sessions')}</span>
-                </div>
-                <div style={{ fontSize: 11, color: TT.textSub, marginTop: 2, fontWeight: 600 }}>{t('trainerHome.hoursToday', '{{h}} today', { h: hoursLabel })}</div>
-              </div>
-            )}
+          <div style={{ fontFamily: TFont.display, fontSize: 30, fontWeight: 800, color: TT.text, letterSpacing: -1.1, lineHeight: 1.04, marginTop: 6 }}>
+            {greeting}{trainerFirstName ? <>{', '}<span style={{ color: TT.accent }}>{trainerFirstName}</span></> : ''}
+          </div>
+          <div style={{ color: TT.textSub, fontSize: 14, marginTop: 8 }}>
+            {t('trainerHome.deskSummary', '{{sessions}} sessions today · {{att}} need attention', {
+              sessions: todaySessionsCount,
+              att: atRiskClients.length,
+            })}
           </div>
         </div>
 
-        {/* Hero — next session (or rest-day state) */}
-        <div style={{ padding: '0 16px 12px' }}>
+        {/* Next up hero — light premium card */}
+        <div style={{ padding: '0 20px 18px' }}>
           {heroSession ? (
-            <div style={{ background: TT.surface, borderRadius: 20, padding: 16, border: `1px solid ${TT.border}`, boxShadow: TT.shadow }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 999, background: heroIsToday ? TT.hot : TT.accent, boxShadow: `0 0 0 4px ${(heroIsToday ? TT.hot : TT.accent)}25` }} />
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: heroIsToday ? TT.hot : TT.accent, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+            <TCard padded={6} style={{ overflow: 'hidden' }}>
+              <div style={{
+                borderRadius: 18, padding: '16px 16px 18px',
+                background: heroInnerBg,
+                position: 'relative', overflow: 'hidden',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 14 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 999, background: heroIsToday ? TT.hot : TT.accent, boxShadow: `0 0 0 4px color-mix(in srgb, ${heroIsToday ? TT.hot : TT.accent} 16%, transparent)`, animation: 'live-pulse 2s ease-in-out infinite' }} />
+                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: heroIsToday ? TT.hot : TT.accentInk }}>
                     {heroWhen}
                   </span>
                 </div>
-                <div style={{ fontFamily: TFont.mono, fontSize: 11, color: TT.textMute, fontWeight: 700 }}>
-                  {format(new Date(heroSession.scheduled_at), 'h:mm a', { locale: dateFnsLocale })} · {heroSession.duration_mins || 60} min
+                <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+                  <TAvatar name={heroName} size={52} idx={avatarIdx(heroClientId)} src={heroSession.profiles?.avatar_url} style={{ boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.65)' }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: TFont.display, fontSize: 20, fontWeight: 800, color: TT.text, letterSpacing: -0.6, lineHeight: 1.1 }}>{heroName}</div>
+                    {heroSession.title && <div style={{ fontSize: 13, color: TT.textSub, marginTop: 3 }}>{heroSession.title}</div>}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: TFont.display, fontSize: 26, fontWeight: 800, color: TT.text, letterSpacing: -1, lineHeight: 1 }}>
+                      {format(new Date(heroSession.scheduled_at), 'h:mm', { locale: dateFnsLocale })}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: TT.textMute, fontWeight: 700, letterSpacing: 0.4, marginTop: 2 }}>
+                      {t('trainerHome.minLabel', '{{n}} MIN', { n: heroSession.duration_mins || 60 })}
+                    </div>
+                  </div>
                 </div>
+
+                {(heroPR || heroClientLastActive) && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                    {heroPR && (
+                      <div style={{ flex: 1, background: isDark ? TT.surface : 'rgba(255,255,255,0.7)', border: `1px solid ${TT.border}`, borderRadius: 12, padding: '9px 11px' }}>
+                        <div style={{ fontSize: 10, color: TT.textMute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>{t('trainerHome.lastPR', 'Last PR')}</div>
+                        <div style={{ fontSize: 13, color: TT.text, fontWeight: 700, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{heroPR.exercises?.name || ''} · {heroPR.weight_lbs} lb × {heroPR.reps}</div>
+                      </div>
+                    )}
+                    {heroClientLastActive && (
+                      <div style={{ flex: 1, background: isDark ? TT.surface : 'rgba(255,255,255,0.7)', border: `1px solid ${TT.border}`, borderRadius: 12, padding: '9px 11px' }}>
+                        <div style={{ fontSize: 10, color: TT.textMute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>{t('trainerHome.lastActiveLabel', 'Last active')}</div>
+                        <div style={{ fontSize: 13, color: TT.text, fontWeight: 700, marginTop: 3 }}>{format(new Date(heroClientLastActive), 'd MMM', { locale: dateFnsLocale })}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <TAvatar name={heroName} size={52} idx={avatarIdx(heroClientId)} src={heroSession.profiles?.avatar_url} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: TFont.display, fontSize: 20, fontWeight: 800, color: TT.text, letterSpacing: -0.5, lineHeight: 1.1 }}>{heroName}</div>
-                  {heroSession.title && <div style={{ fontSize: 12, color: TT.textSub, marginTop: 3 }}>{heroSession.title}</div>}
-                </div>
-              </div>
-
-              {(heroPR || heroClientLastActive) && (
-                <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, background: TT.surface2, border: `1px solid ${TT.border}` }}>
-                  {heroPR && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                      <span style={{ color: TT.textSub }}>{t('trainerHome.lastPR', 'Last PR')}</span>
-                      <span style={{ fontWeight: 700, color: TT.text }}>{heroPR.exercises?.name || ''} · {heroPR.weight_lbs} lb × {heroPR.reps}</span>
-                    </div>
-                  )}
-                  {heroClientLastActive && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: heroPR ? 6 : 0 }}>
-                      <span style={{ color: TT.textSub }}>{t('trainerHome.lastActiveLabel', 'Last active')}</span>
-                      <span style={{ fontWeight: 700, color: TT.text }}>{format(new Date(heroClientLastActive), 'd MMM', { locale: dateFnsLocale })}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <div style={{ display: 'flex', gap: 8, padding: '12px 10px 8px' }}>
                 {heroIsToday ? (
-                  <button type="button" onClick={() => navigate(`/trainer/live/${heroClientId}`)}
-                    style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: TT.text, color: TT.onInverse, fontFamily: TFont.display, fontWeight: 800, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', letterSpacing: 0.2 }}>
-                    <Play size={15} strokeWidth={2.6} fill="#fff" /> {t('trainerHome.startSession', 'Start session')}
-                  </button>
+                  <TPrimaryButton onClick={() => navigate(`/trainer/live/${heroClientId}`)}
+                    style={{ flex: 1, height: 48, fontFamily: TFont.display, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, letterSpacing: 0.2 }}>
+                    <Play size={17} strokeWidth={2.4} fill="currentColor" /> {t('trainerHome.startSession', 'Start session')}
+                  </TPrimaryButton>
                 ) : (
-                  <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)}
-                    style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: TT.text, color: TT.onInverse, fontFamily: TFont.display, fontWeight: 800, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', letterSpacing: 0.2 }}>
+                  <TPrimaryButton onClick={() => navigate(`/trainer/clients/${heroClientId}`)}
+                    style={{ flex: 1, height: 48, fontFamily: TFont.display, fontWeight: 800, letterSpacing: 0.2 }}>
                     {t('trainerHome.openClientCta', 'Open client')}
-                  </button>
+                  </TPrimaryButton>
                 )}
                 <button type="button" onClick={() => openConversation(heroClientId)} aria-label={t('trainerHome.message', 'Message')}
-                  style={{ width: 46, height: 46, borderRadius: 12, border: `1px solid ${TT.borderSolid}`, background: TT.surface2, color: TT.text, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                  className="tt-btn tt-btn--secondary"
+                  style={{ width: 48, height: 48, padding: 0, display: 'grid', placeItems: 'center' }}>
                   <MessageSquare size={18} />
                 </button>
                 {heroIsToday && (
                   <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)} aria-label={t('trainerHome.openClientShort', 'Open client')}
-                    style={{ width: 46, height: 46, borderRadius: 12, border: `1px solid ${TT.borderSolid}`, background: TT.surface2, color: TT.text, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                    className="tt-btn tt-btn--secondary"
+                    style={{ width: 48, height: 48, padding: 0, display: 'grid', placeItems: 'center' }}>
                     <FileText size={18} />
                   </button>
                 )}
               </div>
-            </div>
+            </TCard>
           ) : (
             <TCard padded={18} style={{ textAlign: 'center' }}>
               <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text }}>
@@ -603,47 +646,44 @@ export default function TrainerHome() {
               <div style={{ fontSize: 12.5, color: TT.textSub, marginTop: 4 }}>
                 {noClients ? t('trainerHome.noClientsYetSub', 'Add a client to start scheduling sessions and tracking payments.') : t('trainerHome.noUpcomingSub', 'Schedule a session with a client to see it here.')}
               </div>
-              <button type="button" onClick={() => navigate(noClients ? '/trainer/clients' : '/trainer/calendar')}
-                style={{ marginTop: 12, padding: '9px 16px', borderRadius: 11, border: 'none', background: TT.text, color: TT.onInverse, fontFamily: TFont.display, fontWeight: 800, fontSize: 12.5, cursor: 'pointer' }}>
+              <TPrimaryButton onClick={() => navigate(noClients ? '/trainer/clients' : '/trainer/calendar')}
+                style={{ marginTop: 12, fontFamily: TFont.display, fontWeight: 800, fontSize: 12.5 }}>
                 {noClients ? t('trainerHome.addClients', 'Add clients') : t('trainerHome.viewAgenda', 'View calendar')}
-              </button>
+              </TPrimaryButton>
             </TCard>
           )}
         </div>
 
-        {/* Upcoming sessions — horizontal scroll (today's rest + future days) */}
+        {/* Today's lineup — vertical rows (today's rest + future days) */}
         {upcomingList.length > 0 && (
-          <div style={{ padding: '0 0 14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 18px 8px' }}>
-              <div style={{ fontFamily: TFont.display, fontSize: 13, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>{t('trainerHome.upcoming', 'Upcoming')}</div>
-              <button type="button" onClick={() => navigate('/trainer/calendar')} style={{ fontSize: 11, color: TT.textSub, fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer' }}>
-                {t('trainerHome.seeAll', 'See all →')}
-              </button>
-            </div>
-            <div style={{ display: 'flex', gap: 10, padding: '0 16px', overflowX: 'auto' }}>
-              {upcomingList.map(s => {
+          <div style={{ padding: '0 20px 18px' }}>
+            <TSectionHeader
+              title={t('trainerHome.todaysLineup', "Today's lineup")}
+              action={`${upcomingList.length} · ${hoursLabel}`}
+            />
+            <TCard padded={0} style={{ overflow: 'hidden' }}>
+              {upcomingList.map((s, i) => {
                 const cId = s.profiles?.id || s.client_id;
                 const cName = s.profiles?.full_name || s.profiles?.username || t('trainerCalendar.client', 'Client');
                 const d = new Date(s.scheduled_at);
                 const isToday = todaySessions.some(x => x.id === s.id);
                 const dayLabel = isToday ? t('trainerHome.todayShort', 'Today') : (isTomorrow(d) ? t('trainerHome.tomorrow', 'tomorrow') : format(d, 'EEE d', { locale: dateFnsLocale }));
+                const sub = s.title ? `${dayLabel} · ${s.title}` : dayLabel;
                 return (
                   <button key={s.id} type="button" onClick={() => navigate(`/trainer/clients/${cId}`)}
-                    style={{ minWidth: 156, padding: 12, borderRadius: 14, background: TT.surface, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, flexShrink: 0, textAlign: 'left', cursor: 'pointer' }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: isToday ? TT.accent : TT.textMute, letterSpacing: 0.6, textTransform: 'uppercase' }}>{dayLabel}</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 2 }}>
-                      <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.4, lineHeight: 1 }}>{format(d, 'h:mm', { locale: dateFnsLocale })}</div>
-                      <span style={{ fontFamily: TFont.mono, fontSize: 10, color: TT.textMute, fontWeight: 700 }}>{s.duration_mins || 60}m</span>
+                    className="tt-tap"
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 13, padding: '13px 15px', borderTop: i > 0 ? `1px solid ${TT.border}` : 'none', background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+                    <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: isToday ? TT.text : TT.textSub, width: 44, letterSpacing: -0.3 }}>{format(d, 'h:mm', { locale: dateFnsLocale })}</div>
+                    <TAvatar name={cName} size={34} idx={avatarIdx(cId)} src={s.profiles?.avatar_url} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cName}</div>
+                      <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
-                      <TAvatar name={cName} size={24} idx={avatarIdx(cId)} src={s.profiles?.avatar_url} />
-                      <div style={{ fontSize: 12, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cName.split(' ')[0]}</div>
-                    </div>
-                    {s.title && <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</div>}
+                    <ChevronRight size={16} color={TT.textMute} />
                   </button>
                 );
               })}
-            </div>
+            </TCard>
           </div>
         )}
 
@@ -653,30 +693,42 @@ export default function TrainerHome() {
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>{t('trainerHome.attendToday', 'Attend today')}</div>
+                  <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>{t('trainerHome.needsAttention', 'Needs attention')}</div>
                   <TPill tone="hot" size="s">{atRiskClients.length}</TPill>
                 </div>
                 <button type="button" onClick={() => navigate('/trainer/clients')} style={{ fontSize: 11.5, color: TT.textSub, fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer' }}>{t('trainerHome.seeAll', 'See all →')}</button>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                {atRiskClients.slice(0, 3).map((item) => {
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 14 }}>
+                {atRiskClients.slice(0, 3).map((item, idx) => {
                   const c = item.client;
                   const tone = statusTone(deriveClientStatus(c, item.churnScore));
                   const name = c.full_name || c.username || t('trainerDashboard.unknownFallback');
                   const reason = item.churnScore != null && item.churnScore >= 60
                     ? t('trainerHome.attentionReasonChurn', '{{days}} days quiet · churn {{score}}', { days: item.daysInactive, score: item.churnScore })
                     : t('trainerHome.attentionReasonInactive', '{{days}} days quiet', { days: item.daysInactive });
+                  // Top item (most inactive after the sort) gets the loud primary
+                  // CTA; the rest get the quieter secondary treatment.
+                  const isTop = idx === 0;
                   return (
-                    <TCard key={c.id} padded={12} style={{ borderLeft: `3px solid ${tone}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <TAvatar name={name} size={36} idx={avatarIdx(c.id)} src={c.avatar_url} />
+                    <TCard key={c.id} padded={13} style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: 0, top: 14, bottom: 14, width: 3, borderRadius: 999, background: tone }} />
+                      <TAvatar name={name} size={40} idx={avatarIdx(c.id)} src={c.avatar_url} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: TT.text }}>{name}</div>
-                        <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>{reason}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: TT.text }}>{name}</div>
+                        <div style={{ fontSize: 12, color: tone, fontWeight: 700, marginTop: 2 }}>{reason}</div>
                       </div>
-                      <button type="button" onClick={() => openConversation(c.id)}
-                        style={{ padding: '7px 11px', borderRadius: 9, background: TT.text, color: TT.onInverse, border: 'none', fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                        {t('trainerHome.greet', 'Say hi')}
-                      </button>
+                      {isTop ? (
+                        <TPrimaryButton onClick={() => openConversation(c.id)}
+                          style={{ padding: '8px 13px', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                          {t('trainerHome.reachOut', 'Reach out')}
+                        </TPrimaryButton>
+                      ) : (
+                        <button type="button" onClick={() => openConversation(c.id)}
+                          className="tt-btn tt-btn--secondary"
+                          style={{ padding: '8px 13px', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                          {t('trainerHome.greet', 'Say hi')}
+                        </button>
+                      )}
                     </TCard>
                   );
                 })}
@@ -688,7 +740,7 @@ export default function TrainerHome() {
             {/* Cobros — teal */}
             <button type="button" onClick={() => navigate('/trainer/payments')}
               style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', display: 'block', height: '100%' }}>
-              <TCard padded={14} style={{ height: '100%', borderLeft: `3px solid ${TT.accent}` }}>
+              <TCard padded={14} style={{ height: '100%', boxShadow: `inset 3px 0 0 ${TT.accent}, ${TT.shadow}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
                   <div style={{ width: 24, height: 24, borderRadius: 7, background: TT.accentSoft, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                     <DollarSign size={13} strokeWidth={2.6} style={{ color: TT.accent }} />
@@ -702,7 +754,7 @@ export default function TrainerHome() {
                 {cobrosAvatars.length > 0 && (
                   <div style={{ display: 'flex', marginTop: 8 }}>
                     {cobrosAvatars.map((c, i) => (
-                      <div key={i} style={{ marginLeft: i ? -8 : 0, border: '2px solid #fff', borderRadius: 999 }}>
+                      <div key={i} style={{ marginLeft: i ? -8 : 0, border: `2px solid ${TT.surface}`, borderRadius: 999 }}>
                         <TAvatar name={c.full_name || '?'} size={22} idx={avatarIdx(c.client_id)} src={c.avatar_url} />
                       </div>
                     ))}
@@ -713,16 +765,16 @@ export default function TrainerHome() {
             {/* Adherencia — green, taps to clients */}
             <button type="button" onClick={() => navigate('/trainer/clients')}
               style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', display: 'block', height: '100%' }}>
-              <TCard padded={14} style={{ height: '100%', background: TT.goodSoft, borderColor: 'transparent', borderLeft: `3px solid ${TT.good}` }}>
+              <TCard padded={14} style={{ height: '100%', background: TT.goodSoft, borderColor: 'transparent', boxShadow: `inset 3px 0 0 ${TT.good}, ${TT.shadow}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: 7, background: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 7, background: TT.surface, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                     <Activity size={13} strokeWidth={2.6} style={{ color: TT.good }} />
                   </div>
                   <span style={{ fontSize: 10, fontWeight: 800, color: TT.goodInk, letterSpacing: 1, textTransform: 'uppercase' }}>{t('trainerHome.kpi.avgAdherence', 'Adherence')}</span>
                 </div>
                 <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.goodInk, letterSpacing: -0.8, lineHeight: 1 }}>{retentionPct}<span style={{ fontSize: 13, color: TT.good, opacity: 0.7 }}>%</span></div>
                 <div style={{ fontSize: 11, color: TT.goodInk, opacity: 0.75, fontWeight: 600, marginTop: 4 }}>{t('trainerHome.kpi.last30', 'last 30 days')}</div>
-                <div style={{ marginTop: 6 }}><TSparkBars data={weekDaySpark} w={120} h={18} color={TT.good} track="rgba(30,122,78,0.15)" /></div>
+                <div style={{ marginTop: 6 }}><TSparkBars data={weekDaySpark} w={120} h={18} color={TT.good} track={`color-mix(in srgb, ${TT.goodInk} 15%, transparent)`} /></div>
               </TCard>
             </button>
           </div>
