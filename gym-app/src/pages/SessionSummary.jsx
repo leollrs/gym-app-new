@@ -383,7 +383,7 @@ const SessionSummary = () => {
         const quotedLabel = i18n.language === 'es' ? `\u00AB${achLabel}\u00BB` : `\u201C${achLabel}\u201D`;
         await sendNotification(user.id, profile.gym_id, {
           type:     'achievement',
-          title:    i18n.t('notifications.achievementUnlocked', { ns: 'common', label: quotedLabel, defaultValue: `Achievement Unlocked: ${quotedLabel}` }),
+          title:    i18n.t('notifications.achievementUnlocked', { ns: 'common', name: (profile?.full_name || '').trim().split(/\s+/)[0] || '', label: quotedLabel, defaultValue: `Achievement Unlocked: ${quotedLabel}` }),
           body:     achDesc,
           dedupKey: `achievement_${ach.key}_${user.id}`,
         });
