@@ -46,6 +46,16 @@ const NPSSurveyModal = () => {
     queryFn: async () => {
       if (!gymId || !userId) return null;
 
+      // Cold-start race guard: the cached profile makes gymId/userId truthy
+      // instantly (offline-first hydration), but the Supabase auth session is
+      // restored asynchronously. Without this, the query fires before the
+      // session loads → goes out as `anon` → 42501 on the member-only
+      // nps_surveys table. Awaiting getSession() loads the session into the
+      // client first (so the query runs authenticated); if there's genuinely
+      // no session, bail.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
+
       // Find active surveys for this gym
       const { data: surveys, error: sErr } = await supabase
         .from('nps_surveys')
