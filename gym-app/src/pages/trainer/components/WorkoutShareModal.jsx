@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Dumbbell, Search, Send } from 'lucide-react';
+// NOT stale: this eslint config can't see `motion.div` JSX member usage
+// (same pattern as TrainerCalendar/TrainerMessages).
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { supabase } from '../../../lib/supabase';
@@ -17,13 +20,20 @@ import { TT } from './designTokens';
  *
  * Props:
  *   open, onClose
- *   trainerId      — trainer profile id (used to query their plans)
- *   onShare(text)  — fired with the token + a friendly preface
- *   t              — translation fn (pages namespace)
+ *   trainerId        — trainer profile id (used to query their plans)
+ *   onShare(text)    — fired with the token + a friendly preface
+ *   t                — translation fn (pages namespace)
+ *   activeClientId   — optional; when the modal is opened from a chat thread,
+ *                      restrict the list to that client's plans. RLS only lets
+ *                      a member read plans where client_id = their id, so a
+ *                      cross-client (or unassigned) share renders EMPTY for
+ *                      the recipient — filtering here prevents that.
+ *   activeClientName — optional; display name for the empty state.
  */
-export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t }) {
+export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t, activeClientId = null, activeClientName = '' }) {
   const focusRef = useFocusTrap(open, onClose);
   const [plans, setPlans] = useState([]);
+  const [clientNames, setClientNames] = useState({});
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(null); // { plan, dayIndex }
@@ -37,14 +47,39 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
 
     (async () => {
       try {
-        const { data, error } = await supabase
+        let req = supabase
           .from('trainer_workout_plans')
           .select('id, name, description, duration_weeks, weeks, client_id')
           .eq('trainer_id', trainerId)
           .eq('is_active', true)
           .order('updated_at', { ascending: false });
+        if (activeClientId) req = req.eq('client_id', activeClientId);
+        const { data, error } = await req;
         if (error) throw error;
-        if (!cancelled) setPlans(data || []);
+        if (cancelled) return;
+        setPlans(data || []);
+
+        // No thread context → label each plan with its client so the trainer
+        // doesn't share Ana's plan into Luis's chat. Names via the same-gym
+        // safe view (plans may point at ex-clients the PII policy hides).
+        if (!activeClientId) {
+          const ids = [...new Set((data || []).map(p => p.client_id).filter(Boolean))];
+          if (ids.length > 0) {
+            const { data: profs, error: profErr } = await supabase
+              .from('gym_member_profiles_safe')
+              .select('id, full_name')
+              .in('id', ids);
+            if (profErr) {
+              logger.error('WorkoutShareModal: failed to load client names', profErr);
+            } else if (!cancelled) {
+              const map = {};
+              (profs || []).forEach(p => { map[p.id] = p.full_name; });
+              setClientNames(map);
+            }
+          } else {
+            setClientNames({});
+          }
+        }
       } catch (err) {
         logger.error('WorkoutShareModal: failed to load plans', err);
         if (!cancelled) setPlans([]);
@@ -54,7 +89,7 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
     })();
 
     return () => { cancelled = true; };
-  }, [open, trainerId]);
+  }, [open, trainerId, activeClientId]);
 
   // Lock scroll
   useEffect(() => {
@@ -88,8 +123,14 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
     return t('trainerMessages.share.dayN', { n: idx + 1, defaultValue: 'Day {{n}}' });
   };
 
+  // An empty day would render a hollow card for the recipient — block Send.
+  // (Plain computation, not a hook: we're below the `!open` early return.)
+  const selectedDay = selected ? selected.plan?.weeks?.['1']?.[selected.dayIndex] : null;
+  const selectedDayExerciseCount = Array.isArray(selectedDay?.exercises) ? selectedDay.exercises.length : 0;
+  const canSend = !!selected && selectedDayExerciseCount > 0;
+
   const handleSend = () => {
-    if (!selected) return;
+    if (!canSend) return;
     const { plan, dayIndex } = selected;
     const planName = plan.name || t('trainerMessages.share.untitledPlan', 'Untitled plan');
     const dName = dayLabel(plan, dayIndex);
@@ -98,7 +139,7 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
     onShare(`${preface}\n${token}`);
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center px-0 sm:px-4 backdrop-blur-sm"
       style={{ background: 'rgba(0,0,0,0.6)' }}
@@ -173,13 +214,20 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
           )}
           {!loading && filtered.length === 0 && (
             <p className="text-center text-[13px] py-8" style={{ color: TT.textMute }}>
-              {t('trainerMessages.share.empty', 'No plans yet')}
+              {activeClientId
+                ? t('trainerMessages.share.emptyForClient', { name: activeClientName || t('trainerMessages.share.thisClient', 'this client'), defaultValue: 'No plans for {{name}} yet' })
+                : t('trainerMessages.share.empty', 'No plans yet')}
             </p>
           )}
           {!loading && filtered.map((plan) => {
             const dayCount = planDayCount(plan);
             const days = plan?.weeks?.['1'];
             const isExpanded = selected?.plan?.id === plan.id;
+            const clientLabel = !activeClientId
+              ? (plan.client_id
+                  ? (clientNames[plan.client_id] || t('trainerMessages.share.clientFallback', 'Client'))
+                  : t('trainerMessages.share.unassigned', 'Unassigned'))
+              : null;
             return (
               <div
                 key={plan.id}
@@ -192,7 +240,19 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
                   className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 min-h-[56px]"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold truncate" style={{ color: TT.text }}>{plan.name}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-[14px] font-semibold truncate" style={{ color: TT.text }}>{plan.name}</p>
+                      {clientLabel && (
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 truncate max-w-[120px]"
+                          style={plan.client_id
+                            ? { background: TT.accentSoft, color: TT.accentInk }
+                            : { background: TT.warnSoft, color: TT.warnInk }}
+                        >
+                          {clientLabel}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px]" style={{ color: TT.textSub }}>
                       {plan.duration_weeks
                         ? t('trainerMessages.share.weeksAndDays', { weeks: plan.duration_weeks, days: dayCount || 0, defaultValue: '{{weeks}} weeks · {{days}} days/week' })
@@ -236,10 +296,15 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
 
         {/* Send footer */}
         <div className="px-3 py-3" style={{ borderTop: `1px solid ${TT.border}` }}>
+          {selected && selectedDayExerciseCount === 0 && (
+            <p className="text-center text-[11px] font-semibold mb-2" style={{ color: TT.warnInk }}>
+              {t('trainerMessages.share.emptyDay', 'This day has no exercises yet')}
+            </p>
+          )}
           <button
             type="button"
             onClick={handleSend}
-            disabled={!selected}
+            disabled={!canSend}
             className="w-full min-h-[48px] rounded-xl flex items-center justify-center gap-2 text-[14px] font-bold disabled:opacity-50"
             style={{ background: TT.accent, color: '#06363B' }}
           >
@@ -249,5 +314,5 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
         </div>
       </motion.div>
     </div>
-  );
+  , document.body);
 }

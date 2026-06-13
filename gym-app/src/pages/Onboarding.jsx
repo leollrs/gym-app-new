@@ -501,6 +501,11 @@ const Onboarding = () => {
   // its dependency array — otherwise the deps tuple hits a TDZ during render.
   const DRAFT_KEY   = 'onboarding_draft';
   const PERSIST_KEY = 'tugympr_onboarding_state';
+  // Set by Signup when its post-signup claim_imported_invite failed: the gym
+  // is already attached but the invite never burned / imported shell never
+  // merged. Step 0 re-surfaces prefilled with this code so the claim can be
+  // retried (and clears it on success or explicit skip — never a trap).
+  const PENDING_CLAIM_KEY = 'tugympr_pending_invite_claim';
   const PERSIST_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
   const savedPersist = useMemo(() => {
@@ -542,10 +547,13 @@ const Onboarding = () => {
     if (savedDraft) return; // user has an in-progress draft — don't overwrite
     profilePrefillRanRef.current = true;
 
+    // These columns live on member_onboarding, NOT profiles — selecting them
+    // from profiles 42703'd ("column profiles.fitness_level does not exist")
+    // and the prefill silently never ran. (DOB has its own effect below.)
     supabase
-      .from('profiles')
-      .select('fitness_level, primary_goal, training_days_per_week, height_inches, initial_weight_lbs, age, sex, date_of_birth')
-      .eq('id', user.id)
+      .from('member_onboarding')
+      .select('fitness_level, primary_goal, training_days_per_week, height_inches, initial_weight_lbs, age, sex')
+      .eq('profile_id', user.id)
       .maybeSingle()
       .then(({ data: row }) => {
         if (!row) return;
@@ -603,10 +611,13 @@ const Onboarding = () => {
   // Guard: wait for i18n translations to load before rendering
   if (!i18nReady) return null;
 
-  // Skip Step 0 (invite code) if user already has gym attached.
+  // Skip Step 0 (invite code) if user already has gym attached — UNLESS a
+  // signup-time claim is still pending (gym attached but invite unclaimed).
   const initialStep = (() => {
     const draft = savedDraft?.step ?? 0;
-    if (draft === 0 && profile?.gym_id) return 1;
+    let pendingClaim = '';
+    try { pendingClaim = localStorage.getItem(PENDING_CLAIM_KEY) || ''; } catch {}
+    if (draft === 0 && profile?.gym_id && !pendingClaim) return 1;
     return draft;
   })();
   const [step, setStep]     = useState(initialStep);
@@ -637,11 +648,22 @@ const Onboarding = () => {
     loadMeals().then(setMEALSState).catch(() => {});
   }, []);
 
-  // Invite code state
-  const [inviteCode, setInviteCode] = useState(() => {
-    try { return localStorage.getItem('pendingInviteCode') || ''; } catch { return ''; }
+  // Invite code state — a pending signup-time claim (see PENDING_CLAIM_KEY)
+  // prefills the code and keeps step 0 actionable even with a gym attached.
+  const [pendingInviteClaim, setPendingInviteClaim] = useState(() => {
+    try { return localStorage.getItem(PENDING_CLAIM_KEY) || ''; } catch { return ''; }
   });
-  const [inviteStatus, setInviteStatus] = useState(() => profile?.gym_id ? 'success' : 'idle');
+  const clearPendingInviteClaim = () => {
+    setPendingInviteClaim('');
+    try { localStorage.removeItem(PENDING_CLAIM_KEY); } catch {}
+  };
+  const [inviteCode, setInviteCode] = useState(() => {
+    // Same normalization as handleInviteCodeChange (no dashes/spaces, upper).
+    let raw = pendingInviteClaim;
+    try { raw = raw || localStorage.getItem('pendingInviteCode') || ''; } catch { /* keep pending */ }
+    return (raw || '').replace(/[-\s]/g, '').toUpperCase();
+  });
+  const [inviteStatus, setInviteStatus] = useState(() => (profile?.gym_id && !pendingInviteClaim) ? 'success' : 'idle');
   const [showRewardPicker, setShowRewardPicker] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [referredRewardId, setReferredRewardId] = useState(null);
@@ -728,12 +750,15 @@ const Onboarding = () => {
     };
   }, [step, data, phoneCountryCode, phoneNumber, dietaryRestrictions, foodAllergies, dislikedIngredients, onboardingDone]);
 
-  // Skip Step 0 once profile loads
+  // Skip Step 0 once profile loads — but not while a signup-time claim is
+  // pending, and not right after an in-page claim succeeded (inviteStatus
+  // 'success' lets the success chip + its own delayed step-jump play out
+  // instead of being stomped by refreshProfile landing gym_id).
   useEffect(() => {
-    if (step === 0 && profile?.gym_id) {
+    if (step === 0 && profile?.gym_id && !pendingInviteClaim && inviteStatus !== 'success') {
       setStep(1);
     }
-  }, [profile?.gym_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profile?.gym_id, pendingInviteClaim]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-fill workout buddy from referral
   const [referrerBuddy, setReferrerBuddy] = useState(() => {
@@ -853,10 +878,15 @@ const Onboarding = () => {
         return result;
       })
       .catch(err => {
+        // Swallow, don't rethrow: nothing awaits a background preload yet, so
+        // a rethrow surfaces as a raw unhandled-rejection toast on device
+        // (the "[reject] …RLS…" banner a tester hit mid-onboarding). The
+        // consumer rethrows from cache.error when it sees the null result.
         if (planCacheRef.current.key === key) {
           planCacheRef.current.error = err;
         }
-        throw err;
+        console.warn('[onboarding] plan preload failed:', err?.message || err);
+        return null;
       });
     planCacheRef.current = { key, promise, result: null, error: null };
   }, [
@@ -886,10 +916,13 @@ const Onboarding = () => {
         return result;
       })
       .catch(err => {
+        // Swallow, don't rethrow — same unhandled-rejection trap as the plan
+        // preload above. Consumer rethrows from cache.error on null.
         if (mealPlanCacheRef.current.key === key) {
           mealPlanCacheRef.current.error = err;
         }
-        throw err;
+        console.warn('[onboarding] meal preload failed:', err?.message || err);
+        return null;
       });
     mealPlanCacheRef.current = { key, promise, result: null, error: null };
   }, [
@@ -980,6 +1013,46 @@ const Onboarding = () => {
     setInviteStatus('verifying');
     setInviteError('');
     try {
+      // gym_invites (admin-created / bulk-import / owner) FIRST — mirrors
+      // Signup: claim_imported_invite merges any pre-created shell profile
+      // into this account, which claim_invite_code never does (entering an
+      // imported code here used to leave a duplicate shell behind forever).
+      const upperCode = inviteCode.trim().toUpperCase();
+      let gymLookup = null;
+      try {
+        const { data: lookup } = await supabase.rpc('lookup_gym_invite_by_code', {
+          p_code: upperCode,
+        });
+        gymLookup = lookup || null;
+      } catch { /* lookup unavailable — fall through to member_invites */ }
+
+      if (gymLookup) {
+        const { data: claim, error: claimErr } = await supabase.rpc('claim_imported_invite', {
+          p_code: upperCode,
+        });
+        if (claimErr) throw claimErr;
+        if (!claim?.success) {
+          setInviteStatus('error');
+          const msg = String(claim?.error || '').toLowerCase();
+          setInviteError(
+            msg.includes('expired') ? t('inviteCode.errors.expired')
+              : msg.includes('already') ? t('inviteCode.errors.alreadyUsed')
+                : t('inviteCode.errors.invalidCode')
+          );
+          return;
+        }
+        setInviteStatus('success');
+        setGymMissing(false);
+        clearPendingInviteClaim();
+        await refreshProfile();
+        setTimeout(() => {
+          setStep(inviteReturnStep ?? 1);
+          setInviteReturnStep(null);
+        }, 1500);
+        return;
+      }
+
+      // Not a gym_invite — legacy member_invites system, unchanged.
       const { data: result, error: rpcError } = await supabase.rpc('claim_invite_code', {
         p_invite_code: inviteCode.trim(),
       });
@@ -999,6 +1072,7 @@ const Onboarding = () => {
       }
       setInviteStatus('success');
       setGymMissing(false);
+      clearPendingInviteClaim();
       await refreshProfile();
 
       if (result?.has_referral && result?.referred_reward_id) {
@@ -1384,6 +1458,12 @@ const Onboarding = () => {
   // events happen inside. Safe to call in background (no React state
   // mutations) — caller applies UI state when consuming.
   const runGeneratePlanCore = async (snapshot) => {
+    // Hard gate: if the client's session isn't attached yet (async restore on
+    // native) every write below would run as anon and die on RLS — noisy
+    // server errors for a self-healing state. getSession() awaits the restore.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error(t('common:somethingWentWrong'));
+
     const { data: profileRow } = await supabase
       .from('profiles').select('gym_id').eq('id', user.id).single();
     const gymId = profileRow?.gym_id;
@@ -1630,6 +1710,9 @@ const Onboarding = () => {
         planCacheRef.current = { key: planInputKey(), promise, result: null, error: null };
       }
       const result = await promise;
+      // Preload failures resolve null (see the preload .catch) — surface the
+      // stored error through the normal friendly-error path below.
+      if (!result) throw planCacheRef.current.error || new Error(t('common:somethingWentWrong'));
       planCacheRef.current.result = result;
       setGeneratedRoutines(result.routinesA);
       setGeneratedRoutinesB(result.routinesB);
@@ -1746,6 +1829,10 @@ const Onboarding = () => {
   // Core worker — side-effectful, safe to run in background. Does not
   // mutate React state. Returns { weekPlan, macros } for the consumer.
   const runGenerateMealPlanCore = async (snapshot) => {
+    // Same session gate as runGeneratePlanCore — never write as anon.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error(t('common:somethingWentWrong'));
+
     const { data: profileRow } = await supabase
       .from('profiles').select('gym_id').eq('id', user.id).single();
     const gymId = profileRow?.gym_id;
@@ -1797,7 +1884,7 @@ const Onboarding = () => {
     });
 
     const startOfWeek = new Date();
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     const { error: planErr } = await supabase
       .from('generated_meal_plans')
       .upsert({
@@ -1810,15 +1897,18 @@ const Onboarding = () => {
       }, { onConflict: 'profile_id,week_start' });
     if (planErr) console.warn('[onboarding] generated meal plan save failed:', planErr.message);
 
+    // Column names per 0001 schema (daily_*) — the bare calories/protein_g
+    // names 42703'd silently here, so onboarding never persisted targets and
+    // the Nutrition page recomputed them on first open instead.
     const { error: targetErr } = await supabase
       .from('nutrition_targets')
       .upsert({
         profile_id: user.id,
         gym_id: gymId,
-        calories: macros.calories,
-        protein_g: macros.protein,
-        carbs_g: macros.carbs,
-        fat_g: macros.fat,
+        daily_calories: macros.calories,
+        daily_protein_g: macros.protein,
+        daily_carbs_g: macros.carbs,
+        daily_fat_g: macros.fat,
       }, { onConflict: 'profile_id' });
     if (targetErr) console.warn('[onboarding] nutrition targets save failed:', targetErr.message);
 
@@ -1853,7 +1943,9 @@ const Onboarding = () => {
         promise = runGenerateMealPlanCore(snapshot);
         mealPlanCacheRef.current = { key: mealInputKey(), promise, result: null, error: null };
       }
-      const { weekPlan, macros } = await promise;
+      const mealResult = await promise;
+      if (!mealResult) throw mealPlanCacheRef.current.error || new Error(t('common:somethingWentWrong'));
+      const { weekPlan, macros } = mealResult;
       mealPlanCacheRef.current.result = { weekPlan, macros };
       setMealPlanMacros(macros);
       setGeneratedMealPlan(weekPlan);
@@ -2008,6 +2100,17 @@ const Onboarding = () => {
             ══════════════════════════════════════════════════════ */}
         {step === 0 && (
           <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Signup claimed the gym but the invite itself didn't finish —
+                explain why this step re-appeared with the code prefilled. */}
+            {pendingInviteClaim && inviteStatus !== 'success' && (
+              <div style={{
+                background: OB.tealSoft, borderRadius: 14, padding: '12px 14px',
+              }}>
+                <p style={{ fontSize: 13, color: OB.tealDeep, margin: 0, lineHeight: 1.45 }}>
+                  {t('inviteCode.pendingClaim', "Your gym code didn't finish linking at signup — verify it below to finish connecting your account.")}
+                </p>
+              </div>
+            )}
             <OBInput
               value={inviteCode}
               onChange={e => handleInviteCodeChange(e.target.value)}
@@ -2065,7 +2168,12 @@ const Onboarding = () => {
             {inviteStatus !== 'success' && (
               <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => {
+                  // "Continue without code": a bad/stale pending claim must
+                  // never trap the user — drop the flag and move on.
+                  clearPendingInviteClaim();
+                  setStep(1);
+                }}
                 style={{
                   background: 'transparent', border: 'none', cursor: 'pointer',
                   fontSize: 13, color: OB.sub, padding: '10px', textAlign: 'center',

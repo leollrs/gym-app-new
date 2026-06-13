@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft, ChevronRight, Bell, Lock, HelpCircle, LogOut,
-  Globe, Trash2, AlertTriangle, Loader2, Check, X, Repeat,
+  Globe, Trash2, AlertTriangle, Loader2, Check, X, Repeat, KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -12,7 +12,7 @@ import logger from '../../lib/logger';
 import i18n from 'i18next';
 import ViewSwitcherModal from '../../components/ViewSwitcherModal';
 import { TT, TFont } from './components/designTokens';
-import { TCard, TEyebrow, TPageTitle, TIconButton } from './components/designPrimitives';
+import { TCard, TEyebrow, TPageTitle, TIconButton, TPrimaryButton } from './components/designPrimitives';
 import TrainerAutomations from './components/TrainerAutomations';
 
 const LANGUAGES = [
@@ -54,6 +54,159 @@ function SettingsRow({ Icon, label, sub, onClick, danger, isFirst }) {
   );
 }
 
+// ── Change password modal ──
+// Trainers previously had NO way to change their password from inside the
+// app (member side has one). Routes through supabase.auth.updateUser.
+function ChangePasswordModal({ open, onClose }) {
+  const { t } = useTranslation(['pages', 'common']);
+  const { showToast } = useToast();
+  const [pw1, setPw1] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  if (!open) return null;
+
+  const tooShort = pw1.length > 0 && pw1.length < 8;
+  const mismatch = pw2.length > 0 && pw1 !== pw2;
+  const valid = pw1.length >= 8 && pw1 === pw2;
+
+  const inputStyle = {
+    width: '100%', padding: '10px 12px', borderRadius: 10,
+    fontSize: 13.5, border: `1px solid ${TT.borderSolid}`,
+    background: TT.surface, color: TT.text, outline: 'none',
+    fontFamily: 'inherit',
+  };
+  const labelStyle = {
+    fontSize: 11.5, fontWeight: 800, color: TT.textSub,
+    letterSpacing: 0.4, textTransform: 'uppercase',
+    marginBottom: 6, display: 'block',
+  };
+
+  const close = () => {
+    setPw1(''); setPw2('');
+    onClose();
+  };
+
+  const submit = async () => {
+    if (!valid || saving) return;
+    setSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: pw1 });
+    setSaving(false);
+    if (error) {
+      logger.error('TrainerSettings password change failed', error);
+      showToast(
+        error.message || t('pages:trainerSettings.passwordUpdateFailed', "Couldn't update password"),
+        'error',
+      );
+      return;
+    }
+    showToast(t('pages:trainerSettings.passwordUpdated', 'Password updated'), 'success');
+    close();
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={close}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: 'rgba(11,15,18,0.55)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: TT.surface, borderRadius: 18,
+          width: '100%', maxWidth: 420,
+          boxShadow: TT.shadowLg, overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px', borderBottom: `1px solid ${TT.border}`,
+        }}>
+          <div style={{
+            fontFamily: TFont.display, fontSize: 16, fontWeight: 800,
+            color: TT.text, letterSpacing: -0.3,
+          }}>
+            {t('pages:trainerSettings.changePassword', 'Change password')}
+          </div>
+          <button
+            type="button"
+            onClick={close}
+            aria-label={t('common:close', 'Close')}
+            style={{
+              width: 32, height: 32, borderRadius: 999,
+              border: 'none', background: TT.surface2, color: TT.textSub,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={labelStyle}>{t('pages:trainerSettings.newPassword', 'New password')}</label>
+            <input
+              type="password"
+              value={pw1}
+              onChange={(e) => setPw1(e.target.value)}
+              autoComplete="new-password"
+              maxLength={72}
+              style={inputStyle}
+            />
+            <div style={{ fontSize: 10.5, color: tooShort ? TT.hot : TT.textSub, marginTop: 4 }}>
+              {t('pages:trainerSettings.passwordMin', 'At least 8 characters.')}
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>{t('pages:trainerSettings.confirmPassword', 'Confirm new password')}</label>
+            <input
+              type="password"
+              value={pw2}
+              onChange={(e) => setPw2(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+              autoComplete="new-password"
+              maxLength={72}
+              style={inputStyle}
+            />
+            {mismatch && (
+              <div style={{ fontSize: 10.5, color: TT.hot, marginTop: 4 }}>
+                {t('pages:trainerSettings.passwordMismatch', "Passwords don't match.")}
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={{
+          padding: '12px 16px', borderTop: `1px solid ${TT.border}`,
+          display: 'flex', gap: 8, justifyContent: 'flex-end',
+        }}>
+          <button
+            type="button"
+            onClick={close}
+            style={{
+              padding: '10px 14px', borderRadius: 10,
+              background: 'transparent', color: TT.textSub,
+              border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            {t('common:cancel', 'Cancel')}
+          </button>
+          <TPrimaryButton onClick={submit} disabled={!valid || saving}>
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} strokeWidth={2.4} />}
+            {saving ? t('common:saving', 'Saving...') : t('common:save', 'Save')}
+          </TPrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TrainerSettings() {
   const { t } = useTranslation(['pages', 'common']);
   const navigate = useNavigate();
@@ -62,6 +215,7 @@ export default function TrainerSettings() {
 
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showViewSwitcher, setShowViewSwitcher] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteInput, setDeleteInput] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -157,6 +311,12 @@ export default function TrainerSettings() {
             label={t('pages:trainerProfile.account.privacy', 'Privacy')}
             sub={t('pages:trainerSettings.privacySub', 'Profile visibility and data')}
             onClick={() => navigate('/trainer/privacy')}
+          />
+          <SettingsRow
+            Icon={KeyRound}
+            label={t('pages:trainerSettings.changePassword', 'Change password')}
+            sub={t('pages:trainerSettings.changePasswordSub', 'Update your sign-in password')}
+            onClick={() => setShowPasswordModal(true)}
           />
           <SettingsRow
             Icon={Globe}
@@ -332,6 +492,7 @@ export default function TrainerSettings() {
       </div>
 
       <ViewSwitcherModal open={showViewSwitcher} onClose={() => setShowViewSwitcher(false)} />
+      <ChangePasswordModal open={showPasswordModal} onClose={() => setShowPasswordModal(false)} />
     </div>
   );
 }

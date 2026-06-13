@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import {
   MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
-  Search, UserPlus, Check, X, Users, Flag, Gift,
+  Search, UserPlus, Check, X, Users, Flag,
   Image, Link, MoreHorizontal, EyeOff, VolumeX,
   AlertTriangle, Trash2, PenSquare, Ban,
   Footprints, Bike, Waves, CircleDot, TrendingUp,
@@ -15,12 +15,16 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '../contexts/ToastContext';
 import ReactionPicker from '../components/ReactionPicker';
 import ProfilePreview from '../components/ProfilePreview';
+import LiveTrainingIndicator from '../components/LiveTrainingIndicator';
 import UserAvatar from '../components/UserAvatar';
+import FriendsPanel from '../components/FriendsPanel';
 import SwipeableTabView from '../components/SwipeableTabView';
 import UnderlineTabs from '../components/UnderlineTabs';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import LoadMoreButton from '../components/LoadMoreButton';
+import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
+import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import { timeAgoFine as timeAgo, fmtDuration } from '../lib/dateUtils';
 import { takePhoto } from '../lib/takePhoto';
 
@@ -673,7 +677,11 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
           if (mu.id !== currentUserId) {
             supabase.from('notifications').insert({
               profile_id: mu.id,
-              type: 'mention',
+              // 'mention' is NOT a notification_type enum value — this insert
+              // failed silently every time, so mentioned users never got
+              // notified. 'friend_activity' is the closest valid type and is
+              // already styled (pink UserPlus) in the notifications UI.
+              type: 'friend_activity',
               title: t('social.mentionedNotifTitle', 'You were mentioned'),
               body: content.slice(0, 100),
               data: { feed_item_id: item.id, commenter_id: currentUserId },
@@ -900,329 +908,19 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
   );
 });
 
-// ── Helper: get friendship status toward another profile ─────────────────────
-const getFriendStatus = (friendships, userId, otherId) => {
-  const f = friendships.find(
-    (x) =>
-      (x.requester_id === userId && x.addressee_id === otherId) ||
-      (x.addressee_id === userId && x.requester_id === otherId)
-  );
-  if (!f) return 'none';
-  if (f.status === 'accepted') return 'accepted';
-  if (f.requester_id === userId) return 'pending_sent';
-  return 'pending_received';
-};
-
-// ── Friends Panel ─────────────────────────────────────────────────────────────
-const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t }) => {
-  const [profiles, setProfiles] = useState({});
-  const [requesters, setRequesters] = useState({});
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [addingId, setAddingId] = useState(null);
-  const [acceptingId, setAcceptingId] = useState(null);
-  // Set of user ids the viewer has blocked OR who have blocked the viewer.
-  // Loaded once on mount and used to exclude search results so blocked
-  // members can't appear in friend-search at all (write paths were already
-  // blocked, but visibility wasn't).
-  const [hiddenIds, setHiddenIds] = useState(() => new Set());
-
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
-    (async () => {
-      const [outgoing, incoming] = await Promise.all([
-        supabase.from('blocked_users').select('blocked_id').eq('blocker_id', userId),
-        supabase.from('blocked_users').select('blocker_id').eq('blocked_id', userId),
-      ]);
-      if (cancelled) return;
-      const ids = new Set();
-      (outgoing.data || []).forEach((r) => r.blocked_id && ids.add(r.blocked_id));
-      (incoming.data || []).forEach((r) => r.blocker_id && ids.add(r.blocker_id));
-      setHiddenIds(ids);
-    })();
-    return () => { cancelled = true; };
-  }, [userId]);
-
-  const accepted = friendships.filter((f) => f.status === 'accepted');
-  const incoming = friendships.filter((f) => f.addressee_id === userId && f.status === 'pending');
-
-  // Load profiles for accepted friends
-  useEffect(() => {
-    if (!accepted.length) return;
-    const ids = accepted.map((f) => (f.requester_id === userId ? f.addressee_id : f.requester_id));
-    supabase
-      .from('gym_member_profiles_safe')
-      .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
-      .in('id', ids)
-      .limit(200)
-      .then(({ data, error }) => {
-        if (error) return;
-        const map = {};
-        (data || []).forEach((p) => { map[p.id] = p; });
-        setProfiles(map);
-      });
-  }, [accepted, userId]);
-
-  // Load requester profiles for incoming
-  useEffect(() => {
-    if (!incoming.length) return;
-    const ids = incoming.map((f) => f.requester_id);
-    supabase
-      .from('gym_member_profiles_safe')
-      .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
-      .in('id', ids)
-      .limit(100)
-      .then(({ data, error }) => {
-        if (error) return;
-        const map = {};
-        (data || []).forEach((p) => { map[p.id] = p; });
-        setRequesters(map);
-      });
-  }, [incoming]);
-
-  // Search gym members — debounced 300ms to reduce egress.
-  // Filters out users in either direction of a block relationship so they
-  // never surface in the friend-search list.
-  useEffect(() => {
-    if (!gymId || !searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    setSearching(true);
-    const timer = setTimeout(() => {
-      const raw = searchQuery.trim();
-      const clean = raw.replace(/[%_\\,()."']/g, '');
-      const pattern = `%${clean}%`;
-      supabase
-        .from('gym_member_profiles_safe')
-        .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
-        .neq('id', userId)
-        .in('role', ['member', 'trainer'])
-        .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
-        .limit(20)
-        .then(({ data, error }) => {
-          setSearching(false);
-          if (error) return;
-          // Belt-and-suspenders client filter: even if RLS later allows the row
-          // through, we don't want blocked users in the picker.
-          const filtered = (data ?? []).filter((p) => !hiddenIds.has(p.id));
-          setSearchResults(filtered);
-        })
-        .catch(() => setSearching(false));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [gymId, userId, searchQuery, hiddenIds]);
-
-  const handleAccept = async (friendshipId) => {
-    setAcceptingId(friendshipId);
-    const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
-    if (!error) posthogClient?.capture('friend_request_accepted');
-    await loadFriendships();
-    setAcceptingId(null);
-  };
-
-  const handleAddFriend = async (addresseeId) => {
-    if (!gymId) return;
-    setAddingId(addresseeId);
-    const { error } = await supabase.from('friendships').insert({
-      requester_id: userId,
-      addressee_id: addresseeId,
-      gym_id: gymId,
-      status: 'pending',
-    });
-    if (!error) posthogClient?.capture('friend_request_sent', { source: 'social' });
-    await loadFriendships();
-    setAddingId(null);
-  };
-
-  const incomingWithRequester = incoming.map((f) => ({ ...f, requester: requesters[f.requester_id] }));
-
-  return (
-    <div className="rounded-2xl overflow-hidden mb-6 bg-white/[0.04] border border-white/[0.06]">
-
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-4">
-        <p className="font-semibold text-[18px] truncate" style={{ color: 'var(--color-text-primary)' }}>
-          {t('social.friendsButton')}
-          {accepted.length > 0 && (
-            <span className="font-normal ml-1.5" style={{ color: 'var(--color-text-subtle)' }}>· {accepted.length}</span>
-          )}
-        </p>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={t('social.closeFriendsPanel', 'Close friends panel')}
-          className="w-11 h-11 rounded-xl hover:bg-white/[0.06] transition-colors duration-200 flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-          style={{ color: 'var(--color-text-subtle)' }}
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      <div className="px-5 pb-5 space-y-6">
-        {/* Add Friends — search same-gym members only */}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('social.addFriends')}</p>
-          <p className="text-[12px] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('social.searchMembers')}</p>
-          {!gymId ? (
-            <div className="rounded-2xl bg-white/[0.05] border border-[#D4AF37]/30 px-4 py-3 text-[13px] text-[#D4AF37]">
-              {t('social.noGymForFriends')}
-            </div>
-          ) : (
-            <>
-          <div className="relative">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-subtle)' }} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('social.searchPlaceholder')}
-              aria-label={t('social.addFriends')}
-              className="w-full rounded-xl border border-white/[0.06] pl-11 pr-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
-              style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-            />
-          </div>
-          {searching && (
-            <div className="mt-3 flex justify-center py-4" role="status" aria-busy={true} aria-label={t('social.searching', 'Searching')}>
-              <div className="w-5 h-5 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
-            </div>
-          )}
-          {!searching && searchQuery.trim() && (
-            <div className="mt-3 space-y-1 max-h-[240px] overflow-y-auto">
-              {searchResults.length === 0 ? (
-                <p className="text-[13px] py-4 text-center" style={{ color: 'var(--color-text-muted)' }}>{t('social.noSearchResults')}</p>
-              ) : (
-                searchResults.map((p) => {
-                  const status = getFriendStatus(friendships, userId, p.id);
-                  const isAdding = addingId === p.id;
-                  return (
-                    <div key={p.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/[0.06] transition-colors">
-                      <Avatar src={p.avatar_url} name={p.full_name} size={40} avatarType={p.avatar_type} avatarValue={p.avatar_value} />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{p.full_name}</p>
-                        {p.username && (
-                          <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>@{p.username}</p>
-                        )}
-                      </div>
-                      {status === 'accepted' ? (
-                        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-900/40">
-                          <Check size={12} strokeWidth={2.5} /> {t('social.friendStatus.friends')}
-                        </span>
-                      ) : status === 'pending_sent' ? (
-                        <span className="flex items-center gap-1 text-[12px] font-medium flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
-                          <Clock size={12} /> {t('social.friendStatus.pending')}
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleAddFriend(p.id)}
-                          disabled={isAdding}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] hover:opacity-90"
-                        >
-                          <UserPlus size={12} strokeWidth={2} /> {isAdding ? '…' : t('social.friendStatus.add')}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-            </>
-          )}
-        </div>
-
-        {/* Incoming requests */}
-        {incomingWithRequester.length > 0 && (
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('social.requests')}</p>
-            <div className="space-y-1">
-              {incomingWithRequester.map((f) => (
-                <IncomingRequestRow
-                  key={f.id}
-                  friendship={f}
-                  onAccept={() => handleAccept(f.id)}
-                  isAccepting={acceptingId === f.id}
-                  t={t}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Your friends list */}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('social.yourFriends')}</p>
-          {accepted.length === 0 ? (
-            <div className="py-8 text-center rounded-2xl" style={{ background: 'var(--color-bg-card)' }}>
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: 'var(--color-bg-card)' }}>
-                <Users size={24} style={{ color: 'var(--color-text-subtle)' }} />
-              </div>
-              <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('social.noFriendsYet')}</p>
-              <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('social.noFriendsHint')}</p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {accepted.map((f) => {
-                const otherId = f.requester_id === userId ? f.addressee_id : f.requester_id;
-                const p = profiles[otherId];
-                return (
-                  <div key={f.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/[0.06] transition-colors">
-                    <Avatar src={p?.avatar_url} name={p?.full_name ?? '?'} size={44} avatarType={p?.avatar_type} avatarValue={p?.avatar_value} />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-[15px] truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {p?.full_name ?? <span style={{ color: 'var(--color-text-subtle)' }}>Loading…</span>}
-                      </p>
-                      {p?.username && (
-                        <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>@{p.username}</p>
-                      )}
-                    </div>
-                    <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-900/40">
-                      <Check size={12} strokeWidth={2.5} /> {t('social.friendStatus.friends')}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ── Incoming Request Row ───────────────────────────────────────────────────────
-const IncomingRequestRow = ({ friendship, onAccept, isAccepting, t }) => {
-  const p = friendship.requester;
-  if (!p) return null;
-
-  return (
-    <div className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/[0.06] transition-colors">
-      <Avatar src={p.avatar_url} name={p.full_name} size={40} avatarType={p.avatar_type} avatarValue={p.avatar_value} />
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{p.full_name}</p>
-        <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>@{p.username}</p>
-      </div>
-      <button
-        type="button"
-        onClick={onAccept}
-        disabled={isAccepting}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-emerald-500 text-white hover:bg-emerald-600"
-      >
-        <Check size={12} strokeWidth={2.5} /> {isAccepting ? '…' : t('social.friendStatus.accept')}
-      </button>
-    </div>
-  );
-};
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-const SocialFeed = ({ embedded = false }) => {
+// hideComposer: used by the trainer embed (TrainerSocial) — hides the
+// create-post composer + "My Posts" tab and renders only the For You feed.
+// Trainer posts are visible to almost nobody (the 0527 feed arm is
+// one-directional), so authoring from the trainer shell is a dead end.
+// Member surfaces (Community passes only `embedded`) are unaffected.
+const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const { t } = useTranslation('pages');
   const { user, profile, gymName, gymLogoUrl } = useAuth();
   const { showToast } = useToast();
   const posthog = usePostHog();
+  const socialEnabled = useFeatureEnabled('social');
   const [feed, setFeed]               = useState([]);
   const [loading, setLoading]         = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1411,6 +1109,18 @@ const SocialFeed = ({ embedded = false }) => {
     };
     init();
     return () => { cancelled = true; };
+  }, [user, profile]);
+
+  // Keep-alive refresh: /social stays mounted, so after the member completes a
+  // workout/PR (which posts to the feed) the still-mounted feed would miss it.
+  // Refresh on the workout-changed signal only — the feed RPC is heavy, so we
+  // deliberately don't refetch on every visibilitychange.
+  useEffect(() => {
+    if (!user || !profile) return undefined;
+    const onChanged = () => { loadFeed(null); };
+    window.addEventListener('tugympr:workouts-changed', onChanged);
+    return () => window.removeEventListener('tugympr:workouts-changed', onChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, profile]);
 
   // When friendships change (accept/add), reload feed
@@ -1741,6 +1451,50 @@ const SocialFeed = ({ embedded = false }) => {
 
   const activeFeed = tab === 'forYou' ? rankedFeed : myFeed;
 
+  // For You pane JSX — shared between the default swipeable two-tab layout and
+  // the hideComposer (trainer embed) single-pane layout.
+  const forYouPane = (
+    <div>
+      {rankedFeed.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title={t('social.noFriendActivity')}
+          description={t('social.noFriendActivityHint')}
+          actionLabel={t('social.findFriends')}
+          onAction={() => setShowFriends(true)}
+        />
+      ) : (
+        <div className="flex flex-col gap-5">
+          {rankedFeed.map((item) => (
+            <FeedCard
+              key={item.id}
+              item={item}
+              currentUserId={user.id}
+              onToggleLike={handleReact}
+              onReact={handleReact}
+              onReport={handleReport}
+              onHide={handleHide}
+              onMute={handleMute}
+              onBlock={handleBlock}
+              onDelete={handleDelete}
+              onProfilePreview={setPreviewUserId}
+              reportedIds={reportedIds}
+              t={t}
+            />
+          ))}
+          <LoadMoreButton hasMore={hasMore} loading={loadingMore} onLoadMore={handleLoadMore} />
+          {!hasMore && <p className="text-center text-[13px] py-8 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('social.allCaughtUp')}</p>}
+        </div>
+      )}
+    </div>
+  );
+
+  // Platform kill switch (Operations → feature_social). After all hooks so a
+  // mid-session flip can't change the hook order. The trainer embed
+  // (TrainerSocial passes hideComposer) is exempt — trainers aren't the
+  // kill-switch audience; the member Community tab (embedded only) IS gated.
+  if (!socialEnabled && !hideComposer) return <FeatureDisabledScreen embedded={embedded} />;
+
   return (
     <div className={`${embedded ? '' : 'min-h-screen pb-28 md:pb-12'}`} style={!embedded ? { background: 'var(--color-bg-primary)' } : undefined}>
       <div className={`${embedded ? '' : 'max-w-5xl lg:max-w-6xl mx-auto px-4 md:px-6 lg:px-8 pt-6 pb-8'}`}>
@@ -1782,11 +1536,50 @@ const SocialFeed = ({ embedded = false }) => {
         </header>
         )}
 
-        {/* Find Friends panel */}
+        {/* Add-friends CTA — opens the find-friends modal so you can connect
+            with members already in your gym. (Referrals — inviting NEW people
+            to join the gym — live on the separate Referrals page.) */}
+        {!embedded && !showFriends && (
+          <button
+            type="button"
+            onClick={() => setShowFriends(true)}
+            className="w-full mb-4 rounded-2xl bg-gradient-to-r from-[#D4AF37]/10 to-[#D4AF37]/5 border border-[#D4AF37]/20 p-4 text-left active:scale-[0.99] transition-transform"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
+                <UserPlus size={20} className="text-[#D4AF37]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('social.inviteTitle')}</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('social.inviteSubtitle')}</p>
+              </div>
+              <span className="px-4 py-2 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] text-[12px] font-bold whitespace-nowrap flex-shrink-0">
+                {t('social.addFriends')}
+              </span>
+            </div>
+          </button>
+        )}
+
+        {/* Tab bar (hidden in the composer-less trainer embed — only one feed) */}
+        {!hideComposer && (
+          <div className="mb-6">
+            <UnderlineTabs
+              tabs={[
+                { key: 'forYou', label: t('social.tabs.forYou') },
+                { key: 'mine', label: t('social.tabs.mine') },
+              ]}
+              activeIndex={feedTabIndex}
+              onChange={handleFeedSwipe}
+            />
+          </div>
+        )}
+
+        {/* Find Friends — opens as a modal OVER the page (portaled to body). */}
         {showFriends && (
           <FriendsPanel
             userId={user.id}
             gymId={profile?.gym_id}
+            gymName={profile?.gym_name}
             friendships={friendships}
             loadFriendships={loadFriendships}
             onClose={() => setShowFriends(false)}
@@ -1794,47 +1587,9 @@ const SocialFeed = ({ embedded = false }) => {
           />
         )}
 
-        {/* Invite a Friend Card */}
-        {!embedded && !showFriends && (
-          <div className="mb-4 rounded-2xl bg-gradient-to-r from-[#D4AF37]/10 to-[#D4AF37]/5 border border-[#D4AF37]/20 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-                <Gift size={20} className="text-[#D4AF37]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('social.inviteTitle')}</p>
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('social.inviteSubtitle')}</p>
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  const referralCode = user.id.slice(0, 8);
-                  const text = `Join me at ${profile?.gym_name || 'our gym'}! Use my referral code: ${referralCode}`;
-                  if (navigator.share) {
-                    navigator.share({ title: t('social.joinTheGym'), text }).catch(() => {});
-                  } else {
-                    navigator.clipboard?.writeText(text);
-                  }
-                }}
-                className="px-4 py-2 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] text-[12px] font-bold whitespace-nowrap flex-shrink-0 active:scale-95 transition-transform"
-              >
-                {t('social.invite')}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Tab bar */}
-        <div className="mb-6">
-          <UnderlineTabs
-            tabs={[
-              { key: 'forYou', label: t('social.tabs.forYou') },
-              { key: 'mine', label: t('social.tabs.mine') },
-            ]}
-            activeIndex={feedTabIndex}
-            onChange={handleFeedSwipe}
-          />
-        </div>
+        {/* Live now — friends currently mid-workout. Renders null (no wrapper,
+            no phantom margin) when nobody's training; owns its own mb when shown. */}
+        <LiveTrainingIndicator onFriendTap={setPreviewUserId} />
 
         {/* Friends Streaks (shared, above swipeable area) */}
         {friendStreaks.length > 0 && (
@@ -1844,7 +1599,7 @@ const SocialFeed = ({ embedded = false }) => {
               {friendStreaks.map(f => (
                 <button key={f.id} type="button" onClick={() => setPreviewUserId(f.id)} aria-label={`${f.name} - ${t('social.streak', { count: f.streak })}`} className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer" style={{ width: 64 }}>
                   <Avatar src={f.avatar_url} name={f.name ?? '?'} size={40} avatarType={f.avatar_type} avatarValue={f.avatar_value} />
-                  <p className="text-[11px] mt-1.5 truncate w-full text-center" style={{ color: 'var(--color-text-muted)' }}>{f.name.split(' ')[0]}</p>
+                  <p className="text-[11px] mt-1.5 truncate w-full text-center" style={{ color: 'var(--color-text-muted)' }}>{(f.name ?? '').split(' ')[0]}</p>
                   <p className="text-[11px] font-semibold text-[#D4AF37]">{t('social.streak', { count: f.streak })}</p>
                 </button>
               ))}
@@ -1870,43 +1625,14 @@ const SocialFeed = ({ embedded = false }) => {
           />
         )}
 
+        {/* Composer-less embed: single For You pane, no swipe tabs */}
+        {!loading && feed.length > 0 && hideComposer && forYouPane}
+
         {/* Swipeable feed panels */}
-        {!loading && feed.length > 0 && (
+        {!loading && feed.length > 0 && !hideComposer && (
           <SwipeableTabView activeIndex={feedTabIndex} onChangeIndex={handleFeedSwipe} tabKeys={['forYou', 'mine']}>
             {/* For You tab (ranked) */}
-            <div>
-              {rankedFeed.length === 0 ? (
-                <EmptyState
-                  icon={Users}
-                  title={t('social.noFriendActivity')}
-                  description={t('social.noFriendActivityHint')}
-                  actionLabel={t('social.findFriends')}
-                  onAction={() => setShowFriends(true)}
-                />
-              ) : (
-                <div className="flex flex-col gap-5">
-                  {rankedFeed.map((item) => (
-                    <FeedCard
-                      key={item.id}
-                      item={item}
-                      currentUserId={user.id}
-                      onToggleLike={handleReact}
-                      onReact={handleReact}
-                      onReport={handleReport}
-                      onHide={handleHide}
-                      onMute={handleMute}
-                      onBlock={handleBlock}
-                      onDelete={handleDelete}
-                      onProfilePreview={setPreviewUserId}
-                      reportedIds={reportedIds}
-                      t={t}
-                    />
-                  ))}
-                  <LoadMoreButton hasMore={hasMore} loading={loadingMore} onLoadMore={handleLoadMore} />
-                  {!hasMore && <p className="text-center text-[13px] py-8 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('social.allCaughtUp')}</p>}
-                </div>
-              )}
-            </div>
+            {forYouPane}
 
             {/* My Posts tab */}
             <div>

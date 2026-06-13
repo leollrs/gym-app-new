@@ -4,16 +4,40 @@ import { supabase } from '../../../lib/supabase';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
 
+// Fallback when the platform_config row is missing/unreadable — mirrors
+// send-sms's SMS_MONTHLY_CAP env default (parseInt(env) || '200').
+const DEFAULT_SMS_CAP = 200;
+// Approx Twilio cost per SMS segment — mirrors send-sms's pricing default.
+// Display-only estimate; the edge fn is the source of truth for enforcement.
+const SMS_COST_PER_SEND = 0.054;
+
 export default function SmsUsageCard({ gymId }) {
   const { t } = useTranslation('pages');
   const [usage, setUsage] = useState(null);
   const [recentSms, setRecentSms] = useState([]);
   const [expanded, setExpanded] = useState(false);
-  const SMS_CAP = 200;
+  // A11: the cap is configurable (platform_config 'sms_monthly_cap', matching
+  // the edge fn's env override) — the old hardcoded 200 drifted silently.
+  // This card only renders in the platform tier, so super_admin RLS covers it.
+  const [smsCap, setSmsCap] = useState(DEFAULT_SMS_CAP);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.from('platform_config')
+      .select('value')
+      .eq('key', 'sms_monthly_cap')
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled || error || data?.value == null) return; // keep the 200 fallback
+        // jsonb value may arrive as a number, '250', or '"250"' — normalize.
+        const parsed = parseInt(String(data.value).replace(/^"+|"+$/g, ''), 10);
+        if (Number.isFinite(parsed) && parsed > 0) setSmsCap(parsed);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!gymId) return;
-    const currentMonth = new Date().toISOString().slice(0, 7);
 
     // Fetch current month usage
     supabase.from('sms_usage_monthly')
@@ -38,7 +62,7 @@ export default function SmsUsageCard({ gymId }) {
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const currentUsage = usage?.find(u => u.month === currentMonth)?.count || 0;
-  const pct = Math.min(100, (currentUsage / SMS_CAP) * 100);
+  const pct = Math.min(100, (currentUsage / smsCap) * 100);
 
   return (
     <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
@@ -53,8 +77,8 @@ export default function SmsUsageCard({ gymId }) {
           </div>
         </div>
         <div className="text-right">
-          <p className="text-[18px] font-bold text-[#E5E7EB]">{currentUsage}<span className="text-[13px] font-normal text-[#6B7280]">/{SMS_CAP}</span></p>
-          <p className="text-[10px] text-[#6B7280]">{'\u2248'} ${(currentUsage * 0.054).toFixed(2)} cost</p>
+          <p className="text-[18px] font-bold text-[#E5E7EB]">{currentUsage}<span className="text-[13px] font-normal text-[#6B7280]">/{smsCap}</span></p>
+          <p className="text-[10px] text-[#6B7280]">{'\u2248'} ${(currentUsage * SMS_COST_PER_SEND).toFixed(2)} cost</p>
         </div>
       </div>
 

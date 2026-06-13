@@ -2,16 +2,15 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Building2, Users, Activity,
-  X, ChevronRight, Loader2, UserPlus, Eye, EyeOff,
-  TrendingUp, AlertTriangle,
+  ChevronRight, TrendingUp, AlertTriangle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { selectInBatches, selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { healthScoreFromStatsRow, healthTier } from '../../lib/platform/healthScore';
 import logger from '../../lib/logger';
-import { subDays } from 'date-fns';
 import FadeIn from '../../components/platform/FadeIn';
 import StatCard from '../../components/platform/StatCard';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
@@ -39,17 +38,17 @@ const TierBadge = ({ tier, isFounding, t: translate }) => {
   );
 };
 
-// Health score: 0-100 based on activity
-const getHealthScore = (gym, memberCount, sessionCount30d) => {
-  if (!gym.is_active) return { labelKey: 'platform.gyms.healthInactive', fallback: 'Inactive', color: 'text-red-400', bg: 'bg-red-500/15' };
-  const members = memberCount || 0;
-  const sessions = sessionCount30d || 0;
-  if (members === 0) return { labelKey: 'platform.gyms.healthNew', fallback: 'New', color: 'text-blue-400', bg: 'bg-blue-500/15' };
-  const sessionsPerMember = sessions / members;
-  if (sessionsPerMember >= 4) return { labelKey: 'platform.gyms.healthThriving', fallback: 'Thriving', color: 'text-emerald-400', bg: 'bg-emerald-500/15' };
-  if (sessionsPerMember >= 1.5) return { labelKey: 'platform.gyms.healthHealthy', fallback: 'Healthy', color: 'text-emerald-400', bg: 'bg-emerald-500/10' };
-  if (sessionsPerMember >= 0.5) return { labelKey: 'platform.gyms.healthModerate', fallback: 'Moderate', color: 'text-amber-400', bg: 'bg-amber-500/15' };
-  return { labelKey: 'platform.gyms.healthAtRisk', fallback: 'At Risk', color: 'text-red-400', bg: 'bg-red-500/15' };
+// Health labels keyed by the SHARED healthTier (lib/platform/healthScore) —
+// this list previously ran its own sessions-per-member formula and could say
+// "Thriving" while the detail page scored the same gym 40 (audit dup #1).
+// 'new' = unscored (0 members), deliberately NOT "At Risk".
+const HEALTH_LABELS = {
+  inactive: { labelKey: 'platform.gyms.healthInactive', fallback: 'Inactive', color: 'text-red-400',     bg: 'bg-red-500/15' },
+  new:      { labelKey: 'platform.gyms.healthNew',      fallback: 'New',      color: 'text-blue-400',    bg: 'bg-blue-500/15' },
+  thriving: { labelKey: 'platform.gyms.healthThriving', fallback: 'Thriving', color: 'text-emerald-400', bg: 'bg-emerald-500/15' },
+  healthy:  { labelKey: 'platform.gyms.healthHealthy',  fallback: 'Healthy',  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+  watch:    { labelKey: 'platform.gyms.healthWatch',    fallback: 'Watch',    color: 'text-amber-400',   bg: 'bg-amber-500/15' },
+  critical: { labelKey: 'platform.gyms.healthAtRisk',   fallback: 'At Risk',  color: 'text-red-400',     bg: 'bg-red-500/15' },
 };
 
 const FILTERS = [
@@ -72,17 +71,14 @@ export default function GymsOverview() {
   const { showToast } = useToast();
 
   const [gyms, setGyms] = useState([]);
-  const [memberCounts, setMemberCounts] = useState({});
-  const [sessionCounts, setSessionCounts] = useState({});
+  const [statsByGym, setStatsByGym] = useState({});
   const [ownerProfiles, setOwnerProfiles] = useState({});
-  const [totalSessions, setTotalSessions] = useState(0);
   const [newGymsThisMonth, setNewGymsThisMonth] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [sort, setSort] = useState('newest');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [addMemberGym, setAddMemberGym] = useState(null);
 
   useEffect(() => {
     document.title = `${t('platform.gyms.title', 'Gyms')} | ${window.__APP_NAME || 'TuGymPR'}`;
@@ -91,44 +87,31 @@ export default function GymsOverview() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
       const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
-      const [gymsRes, profilesRes, sessionsRes] = await Promise.all([
+      // platform_gym_stats (0437) aggregates server-side: real member counts
+      // (role=member, no imported ghosts/staff/null-gym leaks) and
+      // completed-only 30d sessions. The old code pulled EVERY profile and
+      // EVERY 30d session platform-wide into the browser to count them.
+      const [gymsRes, statsRes] = await Promise.all([
         selectAllRows((from, to) =>
           supabase.from('gyms').select('*').order('created_at', { ascending: false }).range(from, to)
         ),
-        selectAllRows((from, to) =>
-          supabase.from('profiles').select('gym_id').range(from, to)
-        ),
-        selectAllRows((from, to) =>
-          supabase
-            .from('workout_sessions')
-            .select('gym_id')
-            .gte('started_at', thirtyDaysAgo)
-            .range(from, to)
-        ),
+        supabase.rpc('platform_gym_stats'),
       ]);
 
       const gymsList = gymsRes.data || [];
       setGyms(gymsList);
 
-      // Member counts per gym
-      const counts = {};
-      (profilesRes.data || []).forEach((p) => {
-        counts[p.gym_id] = (counts[p.gym_id] || 0) + 1;
-      });
-      setMemberCounts(counts);
-
-      // Session counts per gym (30d)
-      const sessCounts = {};
-      let total = 0;
-      (sessionsRes.data || []).forEach((s) => {
-        sessCounts[s.gym_id] = (sessCounts[s.gym_id] || 0) + 1;
-        total++;
-      });
-      setSessionCounts(sessCounts);
-      setTotalSessions(total);
+      if (statsRes.error) {
+        logger.error('platform_gym_stats failed:', statsRes.error);
+        showToast(t('platform.gyms.statsLoadFailed', 'Could not load gym activity stats'), 'error');
+        setStatsByGym({});
+      } else {
+        const map = {};
+        (statsRes.data || []).forEach((row) => { map[row.gym_id] = row; });
+        setStatsByGym(map);
+      }
 
       // New gyms this month
       setNewGymsThisMonth(gymsList.filter(g => g.created_at >= monthStart).length);
@@ -149,22 +132,32 @@ export default function GymsOverview() {
       }
     } catch (err) {
       logger.error('Failed to fetch gyms data:', err);
+      showToast(t('platform.gyms.loadFailed', 'Could not load gyms'), 'error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast, t]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Shared health pipeline: stats row → score → tier → label.
+  const gymHealth = useCallback((gym) => {
+    if (!gym.is_active) return HEALTH_LABELS.inactive;
+    const tier = healthTier(healthScoreFromStatsRow(statsByGym[gym.id]));
+    return HEALTH_LABELS[tier] ?? HEALTH_LABELS.new;
+  }, [statsByGym]);
+
+  const memberCount = useCallback((gymId) => statsByGym[gymId]?.member_count ?? 0, [statsByGym]);
+  const sessionCount = useCallback((gymId) => statsByGym[gymId]?.sessions_30d ?? 0, [statsByGym]);
 
   const filtered = useMemo(() => {
     let list = gyms;
     if (filter === 'active') list = list.filter((g) => g.is_active);
     if (filter === 'inactive') list = list.filter((g) => !g.is_active);
+    // Same predicate as the Struggling KPI (audit L15: the filter used to also
+    // match Moderate while the KPI counted only At Risk).
     if (filter === 'at risk') {
-      list = list.filter((g) => {
-        const h = getHealthScore(g, memberCounts[g.id], sessionCounts[g.id]);
-        return h.fallback === 'At Risk' || h.fallback === 'Moderate';
-      });
+      list = list.filter((g) => g.is_active && healthTier(healthScoreFromStatsRow(statsByGym[g.id])) === 'critical');
     }
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -178,10 +171,10 @@ export default function GymsOverview() {
     // Sort
     switch (sort) {
       case 'largest':
-        list = [...list].sort((a, b) => (memberCounts[b.id] || 0) - (memberCounts[a.id] || 0));
+        list = [...list].sort((a, b) => memberCount(b.id) - memberCount(a.id));
         break;
       case 'most-active':
-        list = [...list].sort((a, b) => (sessionCounts[b.id] || 0) - (sessionCounts[a.id] || 0));
+        list = [...list].sort((a, b) => sessionCount(b.id) - sessionCount(a.id));
         break;
       case 'name':
         list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -191,20 +184,18 @@ export default function GymsOverview() {
     }
 
     return list;
-  }, [gyms, filter, search, sort, memberCounts, sessionCounts, ownerProfiles]);
+  }, [gyms, filter, search, sort, statsByGym, ownerProfiles, memberCount, sessionCount]);
 
   const totalMembers = useMemo(
-    () => Object.values(memberCounts).reduce((a, b) => a + b, 0),
-    [memberCounts]
+    () => Object.values(statsByGym).reduce((a, row) => a + (row.member_count ?? 0), 0),
+    [statsByGym]
   );
   const activeGyms = useMemo(() => gyms.filter((g) => g.is_active).length, [gyms]);
   const inactiveGyms = gyms.length - activeGyms;
-  const strugglingGyms = useMemo(() => {
-    return gyms.filter(g => {
-      const h = getHealthScore(g, memberCounts[g.id], sessionCounts[g.id]);
-      return h.fallback === 'At Risk';
-    }).length;
-  }, [gyms, memberCounts, sessionCounts]);
+  const strugglingGyms = useMemo(
+    () => gyms.filter(g => g.is_active && healthTier(healthScoreFromStatsRow(statsByGym[g.id])) === 'critical').length,
+    [gyms, statsByGym]
+  );
 
   if (loading) {
     return <PlatformSpinner />;
@@ -309,7 +300,7 @@ export default function GymsOverview() {
               <span />
             </div>
             {filtered.map((gym) => {
-              const health = getHealthScore(gym, memberCounts[gym.id], sessionCounts[gym.id]);
+              const health = gymHealth(gym);
               return (
                 <button
                   key={gym.id}
@@ -330,7 +321,7 @@ export default function GymsOverview() {
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${health.bg} ${health.color}`}>
                       {t(health.labelKey, health.fallback)}
                     </span>
-                    <span className="text-[11px] text-[#6B7280]">{memberCounts[gym.id] || 0} {t('platform.gyms.members', 'members')}</span>
+                    <span className="text-[11px] text-[#6B7280]">{memberCount(gym.id)} {t('platform.gyms.members', 'members')}</span>
                   </div>
 
                   {/* Desktop: Plan */}
@@ -340,7 +331,7 @@ export default function GymsOverview() {
 
                   {/* Desktop: Members */}
                   <p className="hidden md:flex items-center justify-end text-[13px] text-[#9CA3AF] tabular-nums">
-                    {(memberCounts[gym.id] || 0).toLocaleString()}
+                    {memberCount(gym.id).toLocaleString()}
                   </p>
 
                   {/* Desktop: Health */}
@@ -355,9 +346,9 @@ export default function GymsOverview() {
                     <span className={`w-2 h-2 rounded-full ${gym.is_active ? 'bg-[#10B981]' : 'bg-[#EF4444]'}`} />
                   </div>
 
-                  {/* Desktop: Last activity */}
+                  {/* Desktop: Last activity (completed sessions, 30d) */}
                   <p className="hidden md:flex items-center text-[11px] text-[#6B7280] truncate">
-                    {sessionCounts[gym.id] ? `${sessionCounts[gym.id]} ${t('platform.gyms.sessions', 'sessions')}` : t('platform.gyms.noActivity', 'No activity')}
+                    {sessionCount(gym.id) ? `${sessionCount(gym.id)} ${t('platform.gyms.sessions', 'sessions')}` : t('platform.gyms.noActivity', 'No activity')}
                   </p>
 
                   {/* Desktop: Owner */}
@@ -385,125 +376,6 @@ export default function GymsOverview() {
           profile={profile}
         />
       )}
-
-      {addMemberGym && (
-        <AddMemberModal
-          gymId={addMemberGym.id}
-          gymName={addMemberGym.name}
-          onClose={() => setAddMemberGym(null)}
-          onCreated={() => { setAddMemberGym(null); fetchData(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-function AddMemberModal({ gymId, gymName, onClose, onCreated }) {
-  const { t } = useTranslation('pages');
-  const [form, setForm] = useState({ email: '', password: '', fullName: '', username: '', role: 'member' });
-  const [showPassword, setShowPassword] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (!form.email.trim() || !form.password || !form.fullName.trim() || !form.username.trim()) {
-      setError(t('platform.gymDetail.modals.allFieldsRequired', 'All fields are required'));
-      return;
-    }
-    if (form.password.length < 8 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password)) {
-      setError(t('platform.gymDetail.modals.passwordRequirements', 'Password must be 8+ characters with uppercase, lowercase, and a number'));
-      return;
-    }
-    setSaving(true);
-    try {
-      const { error: rpcErr } = await supabase.rpc('admin_create_gym_member', {
-        p_email: form.email.trim(), p_password: form.password, p_full_name: form.fullName.trim(),
-        p_username: form.username.trim().toLowerCase(), p_gym_id: gymId, p_role: form.role,
-      });
-      if (rpcErr) { setError(rpcErr.message || t('platform.gyms.createMemberFailed', 'Failed to create member')); setSaving(false); return; }
-      onCreated();
-    } catch (err) {
-      setError(err.message || t('platform.gyms.createMemberFailed', 'Failed to create member'));
-      setSaving(false);
-    }
-  };
-
-  const autoUsername = (val) => {
-    setForm(prev => ({
-      ...prev, fullName: val,
-      username: prev.username || val.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20),
-    }));
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4 animate-fade-in-up">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-[15px] font-semibold text-[#E5E7EB] flex items-center gap-2">
-            <UserPlus className="w-4 h-4 text-[#D4AF37]" />{t('platform.gymDetail.modals.addMember', 'Add Member')}
-          </h3>
-          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"><X className="w-4 h-4" /></button>
-        </div>
-        <p className="text-[12px] text-[#9CA3AF] mb-4">
-          {t('platform.gyms.addingToPrefix', 'Adding to')} <span className="text-[#E5E7EB] font-medium">{gymName}</span>
-        </p>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.fullName', 'Full Name')} *</label>
-            <input type="text" value={form.fullName} onChange={e => autoUsername(e.target.value)} placeholder={t('platform.gymDetail.modals.fullNamePlaceholder', 'John Smith')}
-              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
-          </div>
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.usernameLabel', 'Username')} *</label>
-            <input type="text" value={form.username} onChange={e => setForm(prev => ({ ...prev, username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '') }))} placeholder={t('platform.gymDetail.modals.usernamePlaceholder', 'johnsmith')}
-              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 font-mono" required />
-          </div>
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.emailLabel', 'Email')} *</label>
-            <input type="email" value={form.email} onChange={e => setForm(prev => ({ ...prev, email: e.target.value }))} placeholder={t('platform.gymDetail.modals.emailPlaceholder', 'john@example.com')}
-              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
-          </div>
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.tempPassword', 'Temporary Password')} *</label>
-            <div className="relative">
-              <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={e => setForm(prev => ({ ...prev, password: e.target.value }))} placeholder={t('platform.gymDetail.modals.passwordPlaceholder', 'Min. 8 characters')}
-                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 pr-9 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required minLength={8} />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#9CA3AF] transition-colors">
-                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-          </div>
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.roleLabel', 'Role')} *</label>
-            <div className="grid grid-cols-3 gap-1.5 bg-[#111827] border border-white/6 rounded-lg p-1">
-              {[
-                { value: 'member', label: t('platform.gymDetail.roles.member', 'Member') },
-                { value: 'trainer', label: t('platform.gymDetail.roles.trainer', 'Trainer') },
-                { value: 'admin', label: t('platform.gymDetail.roles.admin', 'Admin') },
-              ].map(r => (
-                <button key={r.value} type="button" onClick={() => setForm(prev => ({ ...prev, role: r.value }))}
-                  className={`px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
-                    form.role === r.value
-                      ? r.value === 'admin' ? 'bg-indigo-500/15 text-indigo-400' : r.value === 'trainer' ? 'bg-purple-500/15 text-purple-400' : 'bg-[#D4AF37]/15 text-[#D4AF37]'
-                      : 'text-[#6B7280] hover:text-[#9CA3AF]'
-                  }`}>{r.label}</button>
-              ))}
-            </div>
-          </div>
-          {error && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel', 'Cancel')}</button>
-            <button type="submit" disabled={saving}
-              className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 flex items-center gap-2">
-              {saving && <Loader2 size={14} className="animate-spin" />}
-              {saving ? t('platform.gymDetail.modals.creating', 'Creating...') : t('platform.gymDetail.modals.createMember', 'Create Member')}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }

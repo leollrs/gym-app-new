@@ -545,7 +545,7 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
     try {
       const blob = await buildCard();
       const link = `${PROD_WEB_URL}/share/${data?.sessionId || 'workout'}`;
-      const text = caption?.trim() || data?.name || 'TuGymPR';
+      const text = caption?.trim() || data?.name || profile?.gym_name || 'TuGymPR';
       const full = `${text}\n${link}`;
 
       if (dest === 'link') {
@@ -1226,7 +1226,7 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
             <Dest active={activeDest === 'im'} onClick={() => setActiveDest('im')} label={t('share.destMessages', { defaultValue: 'Messages' })} color="#34C759">
               <MsgIcon />
             </Dest>
-            <Dest active={activeDest === 'tu'} onClick={() => setActiveDest('tu')} label="TuGymPR" color="var(--color-accent)">
+            <Dest active={activeDest === 'tu'} onClick={() => setActiveDest('tu')} label={profile?.gym_name || 'TuGymPR'} color="var(--color-accent)">
               <TuShareIcon />
             </Dest>
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('sessionSummary.share.save', 'Save')} color="#5A6570" light>

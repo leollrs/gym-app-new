@@ -13,11 +13,36 @@ import { validateImageFile } from '../../lib/validateImage';
 // ── Constants ────────────────────────────────────────────────
 const TOTAL_STEPS = 7;
 
+// Real hexes ONLY — these get upserted verbatim into gym_branding.primary_color,
+// and applyBranding parseInt()s them (a 'var(--…)' string poisons the whole
+// gym's theme with rgba(NaN…)).
 const PRESET_COLORS = [
-  'var(--color-accent)', 'var(--color-danger)', 'var(--color-danger)', 'var(--color-warning)',
-  'var(--color-success)', 'var(--color-success)', 'var(--color-info)', 'var(--color-info)',
-  'var(--color-coach)', 'var(--color-coach)',
+  '#F59E0B', '#EF4444', '#3B82F6', '#10B981',
+  '#8B5CF6', '#EC4899', '#14B8A6', '#F97316',
 ];
+
+const DEFAULT_PRIMARY = '#F59E0B';
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+// Normalize any stored/in-flight color to a literal 6-digit hex before it
+// touches gym_branding (mirrors AdminSettingsBranding.resolveColorToHex):
+// hex passes through; a CSS var() — older wizard runs saved those verbatim —
+// resolves to its computed value; anything else falls back to the default.
+function normalizeHexColor(value, fallbackHex = DEFAULT_PRIMARY) {
+  if (typeof value === 'string' && HEX_RE.test(value.trim())) return value.trim();
+  try {
+    if (typeof value === 'string' && value.includes('var(') && typeof document !== 'undefined') {
+      const m = value.match(/var\(\s*(--[a-zA-Z0-9-]+)\s*\)/);
+      if (m) {
+        const resolved = getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim();
+        if (HEX_RE.test(resolved)) return resolved;
+        const rgb = resolved.match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
+        if (rgb) return '#' + [rgb[1], rgb[2], rgb[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+      }
+    }
+  } catch { /* fall through */ }
+  return fallbackHex;
+}
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY_VALUES = [1, 2, 3, 4, 5, 6, 0]; // Monday=1 ... Sunday=0
@@ -422,7 +447,7 @@ export default function AdminOnboardingWizard({ onComplete }) {
 
   // Step 2: Branding state
   const [gymName, setGymName] = useState(authGymName || '');
-  const [primaryColor, setPrimaryColor] = useState('var(--color-accent)');
+  const [primaryColor, setPrimaryColor] = useState(DEFAULT_PRIMARY);
   const [customColor, setCustomColor] = useState('');
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState('');
@@ -463,7 +488,9 @@ export default function AdminOnboardingWizard({ onComplete }) {
         }
       }
       if (branding?.primary_color) {
-        setPrimaryColor(branding.primary_color);
+        // Older wizard runs stored 'var(--color-accent)' strings — normalize
+        // so the swatches/<input type="color"> and the next save get real hex.
+        setPrimaryColor(normalizeHexColor(branding.primary_color));
       }
       if (branding?.logo_url) {
         const { data: signed } = await supabase.storage
@@ -520,6 +547,8 @@ export default function AdminOnboardingWizard({ onComplete }) {
       // Final step — complete setup
       setSaving(true);
       try {
+        // Never let a non-hex (e.g. in-flight 'var(--…)' state) reach the DB.
+        const safeColor = normalizeHexColor(primaryColor);
         // Upload logo if selected
         if (logoFile && gymId) {
           setUploading(true);
@@ -533,14 +562,14 @@ export default function AdminOnboardingWizard({ onComplete }) {
           await supabase.from('gym_branding').upsert({
             gym_id: gymId,
             logo_url: path,
-            primary_color: primaryColor,
+            primary_color: safeColor,
           }, { onConflict: 'gym_id' });
           setUploading(false);
         } else if (gymId) {
           // Save color even without logo
           await supabase.from('gym_branding').upsert({
             gym_id: gymId,
-            primary_color: primaryColor,
+            primary_color: safeColor,
           }, { onConflict: 'gym_id' });
         }
 
@@ -592,6 +621,8 @@ export default function AdminOnboardingWizard({ onComplete }) {
     // Save branding on step 2 completion
     if (step === 1 && gymId) {
       try {
+        // Never let a non-hex (e.g. in-flight 'var(--…)' state) reach the DB.
+        const safeColor = normalizeHexColor(primaryColor);
         if (logoFile) {
           setUploading(true);
           const compressed = await compressImage(logoFile);
@@ -603,14 +634,14 @@ export default function AdminOnboardingWizard({ onComplete }) {
           await supabase.from('gym_branding').upsert({
             gym_id: gymId,
             logo_url: path,
-            primary_color: primaryColor,
+            primary_color: safeColor,
           }, { onConflict: 'gym_id' });
           setUploading(false);
           setLogoFile(null); // Prevent re-upload on final step
         } else {
           await supabase.from('gym_branding').upsert({
             gym_id: gymId,
-            primary_color: primaryColor,
+            primary_color: safeColor,
           }, { onConflict: 'gym_id' });
         }
         if (gymName) {

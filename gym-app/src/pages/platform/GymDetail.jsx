@@ -1,9 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, Activity, Settings, Crown, ChevronDown,
   Dumbbell, Clock, Pause, Play, X, Trash2,
-  UserPlus, Eye, EyeOff, AlertTriangle,
+  UserPlus, Eye, EyeOff, AlertTriangle, RefreshCw,
   Trophy, Upload, Microscope, Database, HeartPulse,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -21,9 +21,27 @@ import GymContentTab from './gym-detail/GymContentTab';
 import GymSettingsTab from './gym-detail/GymSettingsTab';
 
 // ── Constants ──────────────────────────────────────────────────
-const TIER_OPTIONS = ['free', 'starter', 'pro', 'enterprise'];
-const CHALLENGE_TYPES = ['consistency', 'volume', 'pr', 'team'];
-const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'advanced'];
+// Canonical tier set — plan_type is the source of truth (0043), the dropdown
+// writes BOTH plan_type and subscription_tier so the list badge and this page
+// can never disagree again.
+const TIER_OPTIONS = ['free', 'starter', 'pro', 'lifetime', 'enterprise'];
+// Real challenge_type enum values (0001). 'pr' does not exist — pr_count does.
+// specific_lift omitted: it requires an exercise_id picker this modal lacks.
+const CHALLENGE_TYPES = ['consistency', 'volume', 'pr_count', 'team'];
+// challenges.status enum subset exposed here (archived handled elsewhere).
+const CHALLENGE_STATUSES = ['draft', 'active', 'completed'];
+// Real achievement_category enum values (0001:32).
+const ACHIEVEMENT_CATEGORIES = ['milestone', 'challenge', 'strength_standard', 'streak', 'social'];
+const ROLE_ORDER = { member: 0, trainer: 1, admin: 2, super_admin: 3 };
+// Same readable charset as generate_invite_code() (0107) — no I/L/O/0/1.
+const INVITE_CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const genInviteCode = () =>
+  Array.from({ length: 6 }, () => INVITE_CHARSET[Math.floor(Math.random() * INVITE_CHARSET.length)]).join('');
+// Mirrors platform_create_gym's slug normalization (0542): lowercase, every
+// run of non-[a-z0-9] (spaces, underscores, symbols) collapses to a single
+// hyphen, leading/trailing hyphens stripped.
+const normalizeSlug = (raw) =>
+  String(raw ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '');
 
 // ── Challenge Modal Component ─────────────────────────────────
 function ChallengeModal({ challenge, onSave, onClose }) {
@@ -31,24 +49,42 @@ function ChallengeModal({ challenge, onSave, onClose }) {
   const [form, setForm] = useState({
     name: challenge?.name ?? '',
     type: challenge?.type ?? 'consistency',
+    // New challenges default to ACTIVE: members see challenges by date range
+    // regardless of status, but lifecycle broadcast / auto-settle / prize
+    // award only fire for 'active' — a 'draft' default silently broke every
+    // platform-created challenge. Editing keeps the stored status.
+    status: challenge?.status ?? 'active',
     description: challenge?.description ?? '',
     start_date: challenge?.start_date ? challenge.start_date.slice(0, 10) : '',
     end_date: challenge?.end_date ? challenge.end_date.slice(0, 10) : '',
   });
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
     if (!form.name.trim()) return;
+    // start/end are NOT NULL on challenges (0001) — require them honestly.
+    if (!form.start_date || !form.end_date) {
+      setFormError(t('platform.gymDetail.modals.datesRequired', 'Start and end dates are required'));
+      return;
+    }
+    if (form.end_date < form.start_date) {
+      setFormError(t('platform.gymDetail.modals.endBeforeStart', 'End date must be after the start date'));
+      return;
+    }
     setSaving(true);
-    await onSave({
+    const err = await onSave({
       name: form.name.trim(),
       type: form.type,
+      status: form.status,
       description: form.description.trim() || null,
-      start_date: form.start_date || null,
-      end_date: form.end_date || null,
+      start_date: form.start_date,
+      end_date: form.end_date,
     });
     setSaving(false);
+    if (err) setFormError(err); // stay open on failure
   };
 
   return (
@@ -69,11 +105,22 @@ function ChallengeModal({ challenge, onSave, onClose }) {
             <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.titleLabel')}</label>
             <input type="text" value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder={t('platform.gymDetail.modals.titlePlaceholder')} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
           </div>
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.typeLabel')}</label>
-            <select value={form.type} onChange={e => setForm(prev => ({ ...prev, type: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer">
-              {CHALLENGE_TYPES.map(ct => (<option key={ct} value={ct}>{ct.charAt(0).toUpperCase() + ct.slice(1)}</option>))}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.typeLabel')}</label>
+              <select value={form.type} onChange={e => setForm(prev => ({ ...prev, type: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer">
+                {/* keep an out-of-set existing value (e.g. specific_lift) selectable */}
+                {!CHALLENGE_TYPES.includes(form.type) && (<option value={form.type}>{t(`platform.gymDetail.contentTab.challengeType.${form.type}`, form.type)}</option>)}
+                {CHALLENGE_TYPES.map(ct => (<option key={ct} value={ct}>{t(`platform.gymDetail.contentTab.challengeType.${ct}`, ct)}</option>))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.statusLabel', 'Status')}</label>
+              <select value={form.status} onChange={e => setForm(prev => ({ ...prev, status: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer">
+                {!CHALLENGE_STATUSES.includes(form.status) && (<option value={form.status}>{t(`platform.gymDetail.contentTab.status.${form.status}`, form.status)}</option>)}
+                {CHALLENGE_STATUSES.map(cs => (<option key={cs} value={cs}>{t(`platform.gymDetail.contentTab.status.${cs}`, cs)}</option>))}
+              </select>
+            </div>
           </div>
           <div>
             <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.descriptionLabel')}</label>
@@ -81,14 +128,15 @@ function ChallengeModal({ challenge, onSave, onClose }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.startDate')}</label>
-              <input type="date" value={form.start_date} onChange={e => setForm(prev => ({ ...prev, start_date: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.startDate')} *</label>
+              <input type="date" required value={form.start_date} onChange={e => setForm(prev => ({ ...prev, start_date: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
             </div>
             <div>
-              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.endDate')}</label>
-              <input type="date" value={form.end_date} onChange={e => setForm(prev => ({ ...prev, end_date: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.endDate')} *</label>
+              <input type="date" required value={form.end_date} min={form.start_date || undefined} onChange={e => setForm(prev => ({ ...prev, end_date: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
             </div>
           </div>
+          {formError && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
             <button type="submit" disabled={saving} className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50">{saving ? t('platform.gymDetail.modals.saving') : challenge ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
@@ -100,29 +148,37 @@ function ChallengeModal({ challenge, onSave, onClose }) {
 }
 
 // ── Program Modal Component ───────────────────────────────────
+// gym_programs (0012/0513) has NO difficulty/level column — the old modal's
+// difficulty_level select made every insert AND edit fail silently.
 function ProgramModal({ program, onSave, onClose }) {
   const { t } = useTranslation('pages');
   const [form, setForm] = useState({
     name: program?.name ?? '',
     description: program?.description ?? '',
-    difficulty_level: program?.difficulty_level ?? 'beginner',
     duration_weeks: program?.duration_weeks ?? '',
     is_published: program?.is_published ?? false,
   });
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
     if (!form.name.trim()) return;
+    const weeks = parseInt(form.duration_weeks, 10);
+    if (!weeks || weeks < 1) {
+      setFormError(t('platform.gymDetail.modals.durationRequired', 'Duration (weeks) is required'));
+      return;
+    }
     setSaving(true);
-    await onSave({
+    const err = await onSave({
       name: form.name.trim(),
       description: form.description.trim() || null,
-      difficulty_level: form.difficulty_level,
-      duration_weeks: form.duration_weeks ? parseInt(form.duration_weeks, 10) : null,
+      duration_weeks: weeks,
       is_published: form.is_published,
     });
     setSaving(false);
+    if (err) setFormError(err); // stay open on failure
   };
 
   return (
@@ -142,22 +198,15 @@ function ProgramModal({ program, onSave, onClose }) {
             <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.descriptionLabel')}</label>
             <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} placeholder={t('platform.gymDetail.modals.programDescPlaceholder')} rows={3} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.difficulty')}</label>
-              <select value={form.difficulty_level} onChange={e => setForm(prev => ({ ...prev, difficulty_level: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer">
-                {DIFFICULTY_LEVELS.map(d => (<option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.durationWeeks')}</label>
-              <input type="number" value={form.duration_weeks} onChange={e => setForm(prev => ({ ...prev, duration_weeks: e.target.value }))} placeholder="e.g., 8" min="1" className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
-            </div>
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.durationWeeks')} *</label>
+            <input type="number" required value={form.duration_weeks} onChange={e => setForm(prev => ({ ...prev, duration_weeks: e.target.value }))} placeholder="e.g., 8" min="1" className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="is_published" checked={form.is_published} onChange={e => setForm(prev => ({ ...prev, is_published: e.target.checked }))} className="accent-[#D4AF37]" />
             <label htmlFor="is_published" className="text-[12px] text-[#9CA3AF]">{t('platform.gymDetail.modals.publishImmediately')}</label>
           </div>
+          {formError && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
             <button type="submit" disabled={saving} className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50">{saving ? t('platform.gymDetail.modals.saving') : program ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
@@ -169,17 +218,52 @@ function ProgramModal({ program, onSave, onClose }) {
 }
 
 // ── Achievement Modal Component ───────────────────────────────
+// Rebuilt on the REAL achievement_definitions schema (0001:706): name,
+// description (NOT NULL), icon (NOT NULL, emoji/text), category (enum),
+// criteria (JSONB, optional). The old modal wrote type/requirement_value —
+// columns that exist nowhere, so every save failed and reported success.
 function AchievementModal({ achievement, onSave, onClose }) {
   const { t } = useTranslation('pages');
-  const [form, setForm] = useState({ name: achievement?.name ?? '', description: achievement?.description ?? '', type: achievement?.type ?? '', requirement_value: achievement?.requirement_value ?? '' });
+  const [form, setForm] = useState({
+    name: achievement?.name ?? '',
+    description: achievement?.description ?? '',
+    icon: achievement?.icon ?? '\u{1F3C6}',
+    category: achievement?.category ?? 'milestone',
+    criteria: achievement?.criteria && Object.keys(achievement.criteria).length > 0
+      ? JSON.stringify(achievement.criteria, null, 2)
+      : '',
+  });
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
     if (!form.name.trim()) return;
+    if (!form.description.trim()) {
+      setFormError(t('platform.gymDetail.modals.descriptionRequired', 'Description is required'));
+      return;
+    }
+    let criteria = {};
+    if (form.criteria.trim()) {
+      try {
+        criteria = JSON.parse(form.criteria);
+        if (typeof criteria !== 'object' || criteria === null || Array.isArray(criteria)) throw new Error('not an object');
+      } catch {
+        setFormError(t('platform.gymDetail.modals.criteriaInvalid', 'Criteria must be a valid JSON object, e.g. {"workouts": 30}'));
+        return;
+      }
+    }
     setSaving(true);
-    await onSave({ name: form.name.trim(), description: form.description.trim() || null, type: form.type.trim() || null, requirement_value: form.requirement_value !== '' ? Number(form.requirement_value) : null });
+    const err = await onSave({
+      name: form.name.trim(),
+      description: form.description.trim(),
+      icon: form.icon.trim() || '\u{1F3C6}',
+      category: form.category,
+      criteria,
+    });
     setSaving(false);
+    if (err) setFormError(err); // stay open on failure
   };
 
   return (
@@ -196,19 +280,29 @@ function AchievementModal({ achievement, onSave, onClose }) {
             <input type="text" value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder={t('platform.gymDetail.modals.achievementPlaceholder')} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
           </div>
           <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.descriptionLabel')}</label>
-            <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} placeholder={t('platform.gymDetail.modals.achievementDescPlaceholder')} rows={3} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.descriptionLabelReq', 'Description *')}</label>
+            <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} placeholder={t('platform.gymDetail.modals.achievementDescPlaceholder')} rows={3} required className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.achievementType')}</label>
-              <input type="text" value={form.type} onChange={e => setForm(prev => ({ ...prev, type: e.target.value }))} placeholder={t('platform.gymDetail.modals.achievementTypePlaceholder')} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.iconLabel', 'Icon (emoji) *')}</label>
+              <input type="text" value={form.icon} maxLength={16} onChange={e => setForm(prev => ({ ...prev, icon: e.target.value }))} placeholder={'\u{1F3C6}'} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
             </div>
             <div>
-              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.requirementValue')}</label>
-              <input type="number" value={form.requirement_value} onChange={e => setForm(prev => ({ ...prev, requirement_value: e.target.value }))} placeholder="e.g., 30" className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.categoryLabel', 'Category *')}</label>
+              <select value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer">
+                {ACHIEVEMENT_CATEGORIES.map(c => (<option key={c} value={c}>{t(`platform.gymDetail.contentTab.achievementCategory.${c}`, c.replace(/_/g, ' '))}</option>))}
+              </select>
             </div>
           </div>
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.criteriaLabel', 'Criteria (JSON, optional)')}</label>
+            <textarea value={form.criteria} onChange={e => setForm(prev => ({ ...prev, criteria: e.target.value }))} placeholder='{"workouts": 30}' rows={3} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[12px] font-mono text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
+            {/* These are the exact keys the unlock engine evaluates — keep in
+                sync with the member-side achievement checker. */}
+            <p className="text-[10px] text-[#4B5563] mt-1">{t('platform.gymDetail.modals.criteriaHintKeys', 'Supported keys: workouts (completed workouts), checkins (check-ins), prs (PRs), streak (current streak days), volume (lifetime lbs lifted) — e.g. {"workouts": 30, "streak": 7}. All listed conditions must be met. Leave empty for manual awards.')}</p>
+          </div>
+          {formError && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
             <button type="submit" disabled={saving} className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50">{saving ? t('platform.gymDetail.modals.saving') : achievement ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
@@ -234,7 +328,7 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
     if (form.password.length < 8 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password)) { setError(t('platform.gymDetail.modals.passwordRequirements')); return; }
     setSaving(true);
     try {
-      const { data, error: rpcErr } = await supabase.rpc('admin_create_gym_member', { p_email: form.email.trim(), p_password: form.password, p_full_name: form.fullName.trim(), p_username: form.username.trim().toLowerCase(), p_gym_id: gymId, p_role: form.role });
+      const { error: rpcErr } = await supabase.rpc('admin_create_gym_member', { p_email: form.email.trim(), p_password: form.password, p_full_name: form.fullName.trim(), p_username: form.username.trim().toLowerCase(), p_gym_id: gymId, p_role: form.role });
       if (rpcErr) { setError(rpcErr.message || 'Failed to create member'); setSaving(false); return; }
       onCreated();
     } catch (err) { setError(err.message || 'Failed to create member'); setSaving(false); }
@@ -268,7 +362,7 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
           <div>
             <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.tempPassword')}</label>
             <div className="relative">
-              <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={e => setForm(prev => ({ ...prev, password: e.target.value }))} placeholder={t('platform.gymDetail.modals.passwordPlaceholder')} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 pr-9 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required minLength={6} />
+              <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={e => setForm(prev => ({ ...prev, password: e.target.value }))} placeholder={t('platform.gymDetail.modals.passwordPlaceholder')} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 pr-9 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required minLength={8} />
               <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#9CA3AF] transition-colors" aria-label={showPassword ? 'Hide password' : 'Show password'}>
                 {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
@@ -320,6 +414,16 @@ export default function GymDetail() {
   const [editingTier, setEditingTier] = useState(false);
   const [editingGym, setEditingGym] = useState({ name: '', slug: '', qr_enabled: false, qr_payload_type: 'auto_id', qr_display_format: 'qr_code', qr_payload_template: '', classes_enabled: false, multi_admin_enabled: false, max_admin_seats: 1, sms_phone_number: '' });
   const [savingGym, setSavingGym] = useState(false);
+  // A6: snapshot of the gym values loaded when the edit state was initialized —
+  // saveGymSettings diffs against it so a platform save can't clobber fields a
+  // gym admin changed meanwhile.
+  const editBaseline = useRef(null);
+  // A2: inline validation error rendered by GymSettingsTab next to the form.
+  const [settingsError, setSettingsError] = useState('');
+  // A4: per-section read failures (members/invites/activity/challenges/
+  // programs/achievements). Failed reads used to render as empty states.
+  const [loadErrors, setLoadErrors] = useState({});
+  const [retryingLoads, setRetryingLoads] = useState(false);
   const [challenges, setChallenges] = useState([]);
   const [programs, setPrograms] = useState([]);
   const [achievements, setAchievements] = useState([]);
@@ -336,13 +440,38 @@ export default function GymDetail() {
   const [pauseReason, setPauseReason] = useState('');
   const [deleteGymConfirmName, setDeleteGymConfirmName] = useState('');
   const [lifecycleProcessing, setLifecycleProcessing] = useState(false);
+  const [statsRow, setStatsRow] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  // Tiny inline toast — this page had ZERO mutation feedback before; every
+  // failed write looked like success. Fixed-dark styling matches the platform.
+  const toastTimer = useRef(null);
+  const notify = useCallback((message, type = 'success') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, type });
+    toastTimer.current = setTimeout(() => setToast(null), type === 'error' ? 5000 : 3000);
+  }, []);
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   // ── Data fetching ─────────────────────────────────────────
+  // A4: record (or clear) a per-section load failure — same idea as the
+  // fetchRewards rewardsAvailable=false pattern, generalized.
+  const markLoad = (key, error) => {
+    if (error) console.warn(`[GymDetail] ${key} load failed:`, error);
+    setLoadErrors(prev => {
+      if (!!error === !!prev[key]) return prev;
+      const next = { ...prev };
+      if (error) next[key] = true; else delete next[key];
+      return next;
+    });
+  };
   const fetchGym = async () => {
     const { data } = await supabase.from('gyms').select('*').eq('id', gymId).single();
     if (data) {
       setGym(data);
-      setEditingGym({ name: data.name, slug: data.slug, qr_enabled: data.qr_enabled ?? false, qr_payload_type: data.qr_payload_type ?? 'auto_id', qr_display_format: data.qr_display_format ?? 'qr_code', qr_payload_template: data.qr_payload_template ?? '', classes_enabled: data.classes_enabled ?? false, multi_admin_enabled: data.multi_admin_enabled ?? false, max_admin_seats: data.max_admin_seats ?? 1, sms_phone_number: data.sms_phone_number ?? '' });
+      const initialEdit = { name: data.name, slug: data.slug, qr_enabled: data.qr_enabled ?? false, qr_payload_type: data.qr_payload_type ?? 'auto_id', qr_display_format: data.qr_display_format ?? 'qr_code', qr_payload_template: data.qr_payload_template ?? '', classes_enabled: data.classes_enabled ?? false, multi_admin_enabled: data.multi_admin_enabled ?? false, max_admin_seats: data.max_admin_seats ?? 1, sms_phone_number: data.sms_phone_number ?? '' };
+      setEditingGym(initialEdit);
+      editBaseline.current = initialEdit; // A6: diff base for saveGymSettings
     }
     const { data: b } = await supabase.from('gym_branding').select('*').eq('gym_id', gymId).maybeSingle();
     setBranding(b);
@@ -353,42 +482,338 @@ export default function GymDetail() {
       setLogoUrl('');
     }
   };
-  const fetchMembers = async () => { const { data } = await supabase.from('profiles').select('id, full_name, username, role, created_at, last_active_at, membership_status, avatar_url, avatar_type, avatar_value').eq('gym_id', gymId).order('created_at', { ascending: false }); setMembers(data ?? []); };
-  const fetchActivity = async () => { const { data: sess } = await supabase.from('workout_sessions').select('id, profile_id, status, started_at, total_volume_lbs, profiles(full_name)').eq('gym_id', gymId).order('started_at', { ascending: false }).limit(20); setSessions(sess ?? []); const { data: ci } = await supabase.from('check_ins').select('id, profile_id, checked_in_at, profiles(full_name)').eq('gym_id', gymId).order('checked_in_at', { ascending: false }).limit(20); setCheckIns(ci ?? []); };
-  const fetchInvites = async () => { const { data } = await supabase.from('gym_invites').select('*').eq('gym_id', gymId).order('expires_at', { ascending: false }); setInvites(data ?? []); };
-  const fetchChallenges = async () => { const { data } = await supabase.from('challenges').select('*, challenge_participants(id)').eq('gym_id', gymId).order('start_date', { ascending: false }); setChallenges(data ?? []); };
-  const fetchPrograms = async () => { const { data } = await supabase.from('gym_programs').select('*').eq('gym_id', gymId).order('created_at', { ascending: false }); setPrograms(data ?? []); };
-  const fetchAchievements = async () => { const { data } = await supabase.from('achievement_definitions').select('*, user_achievements(id)').eq('gym_id', gymId).order('created_at', { ascending: false }); setAchievements(data ?? []); };
-  const fetchRewards = async () => { try { const { data, error } = await supabase.from('reward_points').select('profile_id, total_points, lifetime_points, last_updated').eq('gym_id', gymId).order('last_updated', { ascending: false }); if (error) { setRewardsAvailable(false); } else { setRewardsAvailable(data ?? []); } } catch { setRewardsAvailable(false); } };
+  // A4: each fetcher keeps the previous list on failure (instead of clobbering
+  // it with []) and flags the section so the UI can say so honestly.
+  const fetchMembers = async () => { const { data, error } = await supabase.from('profiles').select('id, full_name, username, role, additional_roles, created_at, last_active_at, membership_status, avatar_url, avatar_type, avatar_value, imported_archived').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setMembers(data ?? []); markLoad('members', error); };
+  const fetchActivity = async () => { const { data: sess, error: sessErr } = await supabase.from('workout_sessions').select('id, profile_id, status, started_at, total_volume_lbs, profiles(full_name)').eq('gym_id', gymId).order('started_at', { ascending: false }).limit(20); if (!sessErr) setSessions(sess ?? []); const { data: ci, error: ciErr } = await supabase.from('check_ins').select('id, profile_id, checked_in_at, profiles(full_name)').eq('gym_id', gymId).order('checked_in_at', { ascending: false }).limit(20); if (!ciErr) setCheckIns(ci ?? []); markLoad('activity', sessErr || ciErr); };
+  const fetchInvites = async () => { const { data, error } = await supabase.from('gym_invites').select('*').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setInvites(data ?? []); markLoad('invites', error); };
+  const fetchChallenges = async () => { const { data, error } = await supabase.from('challenges').select('*, challenge_participants(id)').eq('gym_id', gymId).order('start_date', { ascending: false }); if (!error) setChallenges(data ?? []); markLoad('challenges', error); };
+  const fetchPrograms = async () => { const { data, error } = await supabase.from('gym_programs').select('*').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setPrograms(data ?? []); markLoad('programs', error); };
+  const fetchAchievements = async () => { const { data, error } = await supabase.from('achievement_definitions').select('*, user_achievements(id)').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setAchievements(data ?? []); markLoad('achievements', error); };
+  // P2-8: read the REAL rewards catalog (gym_rewards, 0187) — the old code read
+  // reward_points (per-member balances, select_own-only RLS) → permanently empty.
+  const fetchRewards = async () => { try { const { data, error } = await supabase.from('gym_rewards').select('id, name, name_es, description, description_es, cost_points, reward_type, emoji_icon, is_active, sort_order').eq('gym_id', gymId).order('sort_order', { ascending: true }).order('cost_points', { ascending: true }); if (error) { setRewardsAvailable(false); } else { setRewardsAvailable(data ?? []); } } catch { setRewardsAvailable(false); } };
+  // P1-4: header stats came from the limit(20) activity feed — a gym doing 400
+  // sessions/month read "20". Pull this gym's row from platform_gym_stats
+  // (uncapped, completed-only, ghost-free) + a head-count for check-in events.
+  const fetchStats = async () => {
+    const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
+    const [rpcRes, ciRes] = await Promise.all([
+      supabase.rpc('platform_gym_stats'),
+      supabase.from('check_ins').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).gte('checked_in_at', thirtyDaysAgo),
+    ]);
+    let row = null;
+    if (!rpcRes.error) row = (rpcRes.data ?? []).find(r => r.gym_id === gymId) ?? null;
+    else logger.error('platform_gym_stats failed:', rpcRes.error);
+    let sessions30d = row?.sessions_30d;
+    if (sessions30d == null) {
+      // RPC unavailable → honest uncapped count query instead of the 20-row feed
+      const sessRes = await supabase.from('workout_sessions').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('status', 'completed').gte('started_at', thirtyDaysAgo);
+      sessions30d = sessRes.count ?? null;
+    }
+    setStatsRow({ row, sessions30d, checkIns30d: ciRes.count ?? null });
+  };
 
-  useEffect(() => { const load = async () => { setLoading(true); await Promise.all([fetchGym(), fetchMembers(), fetchActivity(), fetchInvites(), fetchChallenges(), fetchPrograms(), fetchAchievements(), fetchRewards()]); setLoading(false); }; load(); }, [gymId]);
+  useEffect(() => { const load = async () => { setLoading(true); await Promise.all([fetchGym(), fetchMembers(), fetchActivity(), fetchInvites(), fetchChallenges(), fetchPrograms(), fetchAchievements(), fetchRewards(), fetchStats()]); setLoading(false); }; load(); }, [gymId]);
+
+  // A4: re-run only the fetches that failed (banner button).
+  const retryFailedLoads = async () => {
+    const fetchers = { members: fetchMembers, activity: fetchActivity, invites: fetchInvites, challenges: fetchChallenges, programs: fetchPrograms, achievements: fetchAchievements };
+    const failed = Object.keys(loadErrors).filter(k => fetchers[k]);
+    if (failed.length === 0 || retryingLoads) return;
+    setRetryingLoads(true);
+    await Promise.all(failed.map(k => fetchers[k]()));
+    setRetryingLoads(false);
+  };
 
   useEffect(() => {
     if (gym?.name) document.title = `${gym.name} | ${window.__APP_NAME || 'TuGymPR'}`;
   }, [gym?.name]);
 
-  const stats = useMemo(() => { const thirtyDaysAgo = subDays(new Date(), 30).toISOString(); const totalMembers = members.length; const activeMembers = members.filter(m => m.last_active_at && m.last_active_at >= thirtyDaysAgo).length; const recentSessions = sessions.filter(s => s.started_at >= thirtyDaysAgo).length; const avgSessions = activeMembers > 0 ? (recentSessions / activeMembers).toFixed(1) : '0'; return { totalMembers, activeMembers, recentSessions, avgSessions }; }, [members, sessions]);
+  // P1-6: count REAL members (role=member, not imported ghosts) — staff and
+  // archived import shells inflated every count on this page before.
+  const stats = useMemo(() => {
+    const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
+    const realMembers = members.filter(m => m.role === 'member' && m.imported_archived !== true);
+    const totalMembers = statsRow?.row?.member_count ?? realMembers.length;
+    const activeMembers = statsRow?.row?.active_30d ?? realMembers.filter(m => m.last_active_at && m.last_active_at >= thirtyDaysAgo).length;
+    const recentSessions = statsRow?.sessions30d ?? sessions.filter(s => s.status === 'completed' && s.started_at >= thirtyDaysAgo).length;
+    const avgSessions = activeMembers > 0 ? (recentSessions / activeMembers).toFixed(1) : '0';
+    const checkIns30d = statsRow?.checkIns30d ?? checkIns.length;
+    return { totalMembers, activeMembers, recentSessions, avgSessions, checkIns30d };
+  }, [members, sessions, checkIns, statsRow]);
   const gymStatus = !gym?.is_active && gym?.subscription_tier === 'cancelled' ? 'deactivated' : !gym?.is_active ? 'paused' : 'active';
 
   // ── Actions ───────────────────────────────────────────────
-  const handlePauseGym = async () => { if (!gym || lifecycleProcessing) return; setLifecycleProcessing(true); const { error } = await supabase.rpc('pause_gym', { p_gym_id: gymId }); if (!error) { logAdminAction('pause_gym', 'gym', gymId, { gym_name: gym.name, reason: pauseReason || null }); setGym(prev => ({ ...prev, is_active: false })); await fetchMembers(); } else { logger.error('Failed to pause gym:', error); } setLifecycleProcessing(false); setLifecycleModal(null); setPauseReason(''); };
-  const handleReactivateGym = async () => { if (!gym || lifecycleProcessing) return; setLifecycleProcessing(true); const { error } = await supabase.rpc('unpause_gym', { p_gym_id: gymId }); if (!error) { const updates = { is_active: true, ...(gym.subscription_tier === 'cancelled' ? { subscription_tier: 'free' } : {}) }; logAdminAction('reactivate_gym', 'gym', gymId, { gym_name: gym.name }); setGym(prev => ({ ...prev, ...updates })); await fetchMembers(); } else { logger.error('Failed to reactivate gym:', error); } setLifecycleProcessing(false); setLifecycleModal(null); };
-  const handleDeleteGym = async () => { if (!gym || lifecycleProcessing) return; if (deleteGymConfirmName !== gym.name) return; setLifecycleProcessing(true); const { error: gymErr } = await supabase.from('gyms').update({ is_active: false, subscription_tier: 'cancelled' }).eq('id', gymId); if (!gymErr) { const { error: profilesErr } = await supabase.from('profiles').update({ membership_status: 'deactivated' }).eq('gym_id', gymId).neq('role', 'super_admin'); if (profilesErr) logger.error('Failed to update member statuses:', profilesErr); logAdminAction('permanently_deactivate_gym', 'gym', gymId, { gym_name: gym.name }); setGym(prev => ({ ...prev, is_active: false, subscription_tier: 'cancelled' })); await fetchMembers(); } setLifecycleProcessing(false); setLifecycleModal(null); setDeleteGymConfirmName(''); };
-  const updateTier = async (tier) => { const { error } = await supabase.from('gyms').update({ subscription_tier: tier }).eq('id', gymId); if (!error) { setGym(prev => ({ ...prev, subscription_tier: tier })); setEditingTier(false); } };
-  const updateMemberRole = async (profileId, newRole) => { const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', profileId); if (!error) setMembers(prev => prev.map(m => m.id === profileId ? { ...m, role: newRole } : m)); };
-  const updateMemberStatus = async (profileId, newStatus) => { const { error } = await supabase.from('profiles').update({ membership_status: newStatus }).eq('id', profileId); if (!error) setMembers(prev => prev.map(m => m.id === profileId ? { ...m, membership_status: newStatus } : m)); };
-  const deleteMember = async (member) => { if (!window.confirm(t('platform.gymDetail.deleteMember.confirm', { name: member.full_name ?? member.username }))) return; const { error } = await supabase.rpc('admin_delete_gym_member', { p_user_id: member.id }); if (error) { alert(t('platform.gymDetail.deleteMember.failed', { error: error.message })); } else { setMembers(prev => prev.filter(m => m.id !== member.id)); } };
-  const saveGymSettings = async () => { setSavingGym(true); const updates = { name: editingGym.name, slug: editingGym.slug, qr_enabled: editingGym.qr_enabled, qr_payload_type: editingGym.qr_payload_type, qr_display_format: editingGym.qr_display_format, qr_payload_template: editingGym.qr_payload_template || null, classes_enabled: editingGym.classes_enabled, multi_admin_enabled: editingGym.multi_admin_enabled, max_admin_seats: editingGym.max_admin_seats, sms_phone_number: editingGym.sms_phone_number || null }; const { error } = await supabase.from('gyms').update(updates).eq('id', gymId); if (!error) setGym(prev => ({ ...prev, ...updates })); setSavingGym(false); };
+  const handlePauseGym = async () => { if (!gym || lifecycleProcessing) return; setLifecycleProcessing(true); const { error } = await supabase.rpc('pause_gym', { p_gym_id: gymId }); if (!error) { logAdminAction('pause_gym', 'gym', gymId, { gym_name: gym.name, reason: pauseReason || null }, gymId); setGym(prev => ({ ...prev, is_active: false })); await fetchMembers(); notify(t('platform.gymDetail.toasts.gymPaused', 'Gym paused')); } else { logger.error('Failed to pause gym:', error); notify(t('platform.gymDetail.toasts.pauseFailed', 'Could not pause the gym: {{error}}', { error: error.message }), 'error'); } setLifecycleProcessing(false); setLifecycleModal(null); setPauseReason(''); };
+  const handleReactivateGym = async () => { if (!gym || lifecycleProcessing) return; setLifecycleProcessing(true); const { error } = await supabase.rpc('unpause_gym', { p_gym_id: gymId }); if (!error) { const updates = { is_active: true, ...(gym.subscription_tier === 'cancelled' ? { subscription_tier: 'free' } : {}) }; logAdminAction('reactivate_gym', 'gym', gymId, { gym_name: gym.name }, gymId); setGym(prev => ({ ...prev, ...updates })); await fetchMembers(); notify(t('platform.gymDetail.toasts.gymReactivated', 'Gym reactivated')); } else { logger.error('Failed to reactivate gym:', error); notify(t('platform.gymDetail.toasts.reactivateFailed', 'Could not reactivate the gym: {{error}}', { error: error.message }), 'error'); } setLifecycleProcessing(false); setLifecycleModal(null); };
+  // P2-6: route through pause_gym (0294) so each member's current status is
+  // snapshotted into pre_pause_status BEFORE everyone is deactivated (the old
+  // direct update made a later reactivate resurrect banned members as active).
+  // Then mark the tier cancelled. A3: this is honestly a DEACTIVATE (nothing
+  // is deleted, Reactivate fully reverses it) — UI copy says so; permanent
+  // deletion lives in GymOps.
+  const handleDeleteGym = async () => {
+    if (!gym || lifecycleProcessing) return;
+    if (deleteGymConfirmName !== gym.name) return;
+    setLifecycleProcessing(true);
+    const { error: pauseErr } = await supabase.rpc('pause_gym', { p_gym_id: gymId });
+    if (pauseErr) {
+      logger.error('Failed to deactivate gym:', pauseErr);
+      notify(t('platform.gymDetail.toasts.deleteFailed', 'Could not deactivate the gym: {{error}}', { error: pauseErr.message }), 'error');
+      setLifecycleProcessing(false);
+      return;
+    }
+    // A3: mirror plan_type alongside subscription_tier — updateTier writes
+    // both, so leaving plan_type behind made the list badge disagree again.
+    const { error: gymErr } = await supabase.from('gyms').update({ subscription_tier: 'cancelled', plan_type: 'cancelled' }).eq('id', gymId);
+    if (gymErr) {
+      logger.error('Failed to mark gym cancelled:', gymErr);
+      notify(t('platform.gymDetail.toasts.deleteFailed', 'Could not deactivate the gym: {{error}}', { error: gymErr.message }), 'error');
+      setGym(prev => ({ ...prev, is_active: false })); // pause did land
+      setLifecycleProcessing(false);
+      return;
+    }
+    logAdminAction('deactivate_gym', 'gym', gymId, { gym_name: gym.name }, gymId);
+    setGym(prev => ({ ...prev, is_active: false, subscription_tier: 'cancelled', plan_type: 'cancelled' }));
+    await fetchMembers();
+    notify(t('platform.gymDetail.toasts.gymDeactivatedReversible', 'Gym deactivated — reversible via Reactivate'));
+    setLifecycleProcessing(false);
+    setLifecycleModal(null);
+    setDeleteGymConfirmName('');
+  };
+  // P2-12: tier writes BOTH plan_type (canonical per 0043) and
+  // subscription_tier (legacy mirror) so list badge + detail agree.
+  const updateTier = async (tier) => {
+    const { error } = await supabase.from('gyms').update({ plan_type: tier, subscription_tier: tier }).eq('id', gymId);
+    if (error) { notify(t('platform.gymDetail.toasts.tierFailed', 'Could not change the plan: {{error}}', { error: error.message }), 'error'); return; }
+    logAdminAction('change_gym_tier', 'gym', gymId, { gym_name: gym?.name, from: gym?.plan_type ?? gym?.subscription_tier ?? null, to: tier }, gymId);
+    setGym(prev => ({ ...prev, plan_type: tier, subscription_tier: tier }));
+    setEditingTier(false);
+    notify(t('platform.gymDetail.toasts.tierChanged', 'Plan updated to {{tier}}', { tier: tier.toUpperCase() }));
+  };
+  // P2-3: role changes go through the hardened RPCs — demoting a trainer via a
+  // raw UPDATE left zombie trainer_clients rows (0358's whole reason to exist),
+  // and additional_roles could silently keep a higher role in the bag.
+  const updateMemberRole = async (member, newRole) => {
+    if (!member || member.role === newRole) return;
+    if (member.role === 'super_admin' || (member.additional_roles ?? []).includes('super_admin')) return; // UI renders these read-only too
+    let error = null;
+    if (member.role === 'trainer') {
+      // Atomic demote (0358/0471): deactivates trainer_clients + flips role→member
+      ({ error } = await supabase.rpc('demote_trainer_atomically', { p_trainer_id: member.id }));
+      if (!error && newRole === 'admin') {
+        const newBag = (member.additional_roles ?? []).filter(r => ROLE_ORDER[r] != null && ROLE_ORDER[r] < ROLE_ORDER.admin);
+        ({ error } = await supabase.from('profiles').update({ role: 'admin', additional_roles: newBag }).eq('id', member.id));
+      }
+    } else if (newRole === 'trainer') {
+      // 0489 promote RPC: bag-aware, idempotent, preserves higher primary roles
+      ({ error } = await supabase.rpc('promote_member_to_trainer', { p_member_id: member.id }));
+    } else {
+      // member ↔ admin: never leave a role >= the new primary in the bag
+      const newBag = (member.additional_roles ?? []).filter(r => ROLE_ORDER[r] != null && ROLE_ORDER[r] < ROLE_ORDER[newRole]);
+      ({ error } = await supabase.from('profiles').update({ role: newRole, additional_roles: newBag }).eq('id', member.id));
+    }
+    if (error) {
+      notify(t('platform.gymDetail.toasts.roleFailed', 'Could not change role: {{error}}', { error: error.message }), 'error');
+      return;
+    }
+    logAdminAction('change_role', 'member', member.id, { gym_name: gym?.name, from: member.role, to: newRole }, gymId);
+    await fetchMembers(); // refetch: the RPCs may have adjusted the bag server-side
+    notify(t('platform.gymDetail.toasts.roleChanged', 'Role updated'));
+  };
+  const updateMemberStatus = async (member, newStatus) => {
+    if (!member || member.membership_status === newStatus) return;
+    const { error } = await supabase.from('profiles').update({ membership_status: newStatus }).eq('id', member.id);
+    if (error) {
+      notify(t('platform.gymDetail.toasts.statusFailed', 'Could not change status: {{error}}', { error: error.message }), 'error');
+      return;
+    }
+    logAdminAction('change_member_status', 'member', member.id, { gym_name: gym?.name, from: member.membership_status ?? 'active', to: newStatus }, gymId);
+    setMembers(prev => prev.map(m => m.id === member.id ? { ...m, membership_status: newStatus } : m));
+    notify(t('platform.gymDetail.toasts.statusChanged', 'Status updated'));
+  };
+  const deleteMember = async (member) => { if (!window.confirm(t('platform.gymDetail.deleteMember.confirm', { name: member.full_name ?? member.username }))) return; const { error } = await supabase.rpc('admin_delete_gym_member', { p_user_id: member.id }); if (error) { notify(t('platform.gymDetail.deleteMember.failed', { error: error.message }), 'error'); } else { logAdminAction('delete_member', 'member', member.id, { gym_name: gym?.name, name: member.full_name ?? member.username }, gymId); setMembers(prev => prev.filter(m => m.id !== member.id)); notify(t('platform.gymDetail.toasts.memberDeleted', 'Member deleted')); } };
+  const saveGymSettings = async () => {
+    setSavingGym(true);
+    setSettingsError('');
+    // A2: normalize + validate the slug exactly like platform_create_gym (0542)
+    // — the old code wrote the raw input, so "My Gym!" became a dead deep link.
+    const slug = normalizeSlug(editingGym.slug);
+    if (!slug) {
+      const msg = t('platform.gymDetail.settings.slugInvalid', 'Slug must contain at least one letter or number');
+      setSettingsError(msg);
+      notify(msg, 'error');
+      setSavingGym(false);
+      return;
+    }
+    if (slug !== gym?.slug) {
+      const { data: dupe, error: dupeErr } = await supabase.from('gyms').select('id').eq('slug', slug).neq('id', gymId).maybeSingle();
+      if (!dupeErr && dupe) {
+        const msg = t('platform.gymDetail.settings.slugTaken', 'That slug is already in use by another gym');
+        setSettingsError(msg);
+        notify(msg, 'error');
+        setSavingGym(false);
+        return;
+      }
+      // dupeErr → proceed: the unique index on gyms.slug still backstops the write.
+    }
+    // A6: dirty-field diff against the snapshot taken when editing started —
+    // the old full-snapshot write reverted anything a gym admin changed since
+    // this page loaded (name, classes_enabled, qr_enabled...).
+    const toPayload = (src) => ({ name: src.name, slug: normalizeSlug(src.slug), qr_enabled: src.qr_enabled, qr_payload_type: src.qr_payload_type, qr_display_format: src.qr_display_format, qr_payload_template: src.qr_payload_template || null, classes_enabled: src.classes_enabled, multi_admin_enabled: src.multi_admin_enabled, max_admin_seats: src.max_admin_seats, sms_phone_number: src.sms_phone_number || null });
+    const candidate = toPayload({ ...editingGym, slug });
+    const base = editBaseline.current ? toPayload(editBaseline.current) : null;
+    const updates = {};
+    Object.keys(candidate).forEach(k => { if (!base || candidate[k] !== base[k]) updates[k] = candidate[k]; });
+    if (Object.keys(updates).length === 0) {
+      notify(t('platform.gymDetail.toasts.noChanges', 'No changes to save'));
+      setSavingGym(false);
+      return;
+    }
+    const { error } = await supabase.from('gyms').update(updates).eq('id', gymId);
+    if (error) {
+      notify(t('platform.gymDetail.toasts.settingsFailed', 'Could not save settings: {{error}}', { error: error.message }), 'error');
+    } else {
+      logAdminAction('update_gym_settings', 'gym', gymId, { gym_name: editingGym.name ?? gym?.name, fields: Object.keys(updates) }, gymId);
+      setGym(prev => ({ ...prev, ...updates }));
+      setEditingGym(prev => ({ ...prev, slug }));
+      editBaseline.current = { ...editingGym, slug }; // next save diffs against what we just wrote
+      notify(t('platform.gymDetail.toasts.settingsSaved', 'Settings saved'));
+    }
+    setSavingGym(false);
+  };
+
+  // ── Invites + owner (P0-1d) ───────────────────────────────
+  // Direct inserts ride the 0542 super_admin RLS arm. Codes follow the 0107
+  // convention (6 chars, no I/L/O/0/1); the partial unique index is the
+  // collision guard — retry on 23505.
+  const createInvite = async ({ email, role }) => {
+    const cleanEmail = (email ?? '').trim().toLowerCase() || null;
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return t('platform.gymDetail.invites.invalidEmail', 'Enter a valid email or leave it empty');
+    }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const code = genInviteCode();
+      const { error } = await supabase.from('gym_invites').insert({
+        gym_id: gymId,
+        created_by: profile?.id ?? null,
+        email: cleanEmail,
+        invite_code: code,
+        role: role === 'trainer' ? 'trainer' : 'member',
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      if (!error) {
+        logAdminAction('create_invite', 'gym_invite', null, { gym_name: gym?.name, code, email: cleanEmail, role }, gymId);
+        await fetchInvites();
+        notify(t('platform.gymDetail.toasts.inviteCreated', 'Invite {{code}} created', { code }));
+        return null;
+      }
+      if (error.code !== '23505') {
+        notify(t('platform.gymDetail.toasts.inviteFailed', 'Could not create the invite: {{error}}', { error: error.message }), 'error');
+        return error.message;
+      }
+    }
+    const msg = t('platform.gymDetail.toasts.inviteCodeCollision', 'Could not generate a unique code — try again');
+    notify(msg, 'error');
+    return msg;
+  };
+  const revokeInvite = async (inv) => {
+    const { error } = await supabase.from('gym_invites').delete().eq('id', inv.id);
+    if (error) {
+      notify(t('platform.gymDetail.toasts.revokeFailed', 'Could not revoke the invite: {{error}}', { error: error.message }), 'error');
+      return;
+    }
+    logAdminAction('revoke_invite', 'gym_invite', inv.id, { gym_name: gym?.name, code: inv.invite_code ?? inv.token }, gymId);
+    setInvites(prev => prev.filter(i => i.id !== inv.id));
+    notify(t('platform.gymDetail.toasts.inviteRevoked', 'Invite revoked'));
+  };
+  const copyInviteCode = async (inv) => {
+    try {
+      await navigator.clipboard.writeText(inv.invite_code ?? inv.token ?? '');
+      notify(t('platform.gymDetail.toasts.codeCopied', 'Code copied'));
+    } catch {
+      notify(t('platform.gymDetail.toasts.copyFailed', 'Could not copy — copy it manually'), 'error');
+    }
+  };
+  // gyms.owner_user_id was written by NO code path before — the Owner column
+  // on GymsOverview was permanently "—". 0040's update-any policy covers this.
+  const setGymOwner = async (ownerId) => {
+    const { error } = await supabase.from('gyms').update({ owner_user_id: ownerId || null }).eq('id', gymId);
+    if (error) {
+      notify(t('platform.gymDetail.toasts.ownerFailed', 'Could not set the owner: {{error}}', { error: error.message }), 'error');
+      return;
+    }
+    logAdminAction('set_gym_owner', 'gym', gymId, { gym_name: gym?.name, owner_user_id: ownerId || null }, gymId);
+    setGym(prev => ({ ...prev, owner_user_id: ownerId || null }));
+    notify(t('platform.gymDetail.toasts.ownerSet', 'Owner updated'));
+  };
 
   // ── Content CRUD ──────────────────────────────────────────
-  const saveChallenge = async (formData) => { if (editingChallenge?.id) { const { error } = await supabase.from('challenges').update(formData).eq('id', editingChallenge.id); if (!error) await fetchChallenges(); } else { const { error } = await supabase.from('challenges').insert({ ...formData, gym_id: gymId }); if (!error) await fetchChallenges(); } setShowChallengeModal(false); setEditingChallenge(null); };
-  const deleteChallenge = async (challengeId) => { const { error } = await supabase.from('challenges').delete().eq('id', challengeId); if (!error) setChallenges(prev => prev.filter(c => c.id !== challengeId)); setDeleteConfirm(null); };
-  const saveProgram = async (formData) => { if (editingProgram?.id) { const { error } = await supabase.from('gym_programs').update(formData).eq('id', editingProgram.id); if (!error) await fetchPrograms(); } else { const { error } = await supabase.from('gym_programs').insert({ ...formData, gym_id: gymId }); if (!error) await fetchPrograms(); } setShowProgramModal(false); setEditingProgram(null); };
-  const toggleProgramPublish = async (prog) => { const { error } = await supabase.from('gym_programs').update({ is_published: !prog.is_published }).eq('id', prog.id); if (!error) setPrograms(prev => prev.map(p => p.id === prog.id ? { ...p, is_published: !p.is_published } : p)); };
-  const deleteProgram = async (programId) => { const { error } = await supabase.from('gym_programs').delete().eq('id', programId); if (!error) setPrograms(prev => prev.filter(p => p.id !== programId)); setDeleteConfirm(null); };
-  const saveAchievement = async (formData) => { if (editingAchievement?.id) { const { error } = await supabase.from('achievement_definitions').update(formData).eq('id', editingAchievement.id); if (!error) await fetchAchievements(); } else { const { error } = await supabase.from('achievement_definitions').insert({ ...formData, gym_id: gymId }); if (!error) await fetchAchievements(); } setShowAchievementModal(false); setEditingAchievement(null); };
-  const deleteAchievement = async (achievementId) => { const { error } = await supabase.from('achievement_definitions').delete().eq('id', achievementId); if (!error) setAchievements(prev => prev.filter(a => a.id !== achievementId)); setDeleteConfirm(null); };
-  const getChallengeStatus = (c) => { const now = new Date(); if (c.status) return c.status; if (c.end_date && new Date(c.end_date) < now) return 'ended'; if (c.start_date && new Date(c.start_date) > now) return 'upcoming'; return 'active'; };
+  // Every handler returns null on success or an error message (the modal stays
+  // open and shows it). The old versions discarded { error } and closed anyway.
+  const saveChallenge = async (formData) => {
+    let error;
+    if (editingChallenge?.id) {
+      ({ error } = await supabase.from('challenges').update(formData).eq('id', editingChallenge.id));
+    } else {
+      // created_by is NOT NULL on challenges (0001)
+      ({ error } = await supabase.from('challenges').insert({ ...formData, gym_id: gymId, created_by: profile?.id }));
+    }
+    if (error) {
+      notify(t('platform.gymDetail.toasts.saveFailed', 'Save failed: {{error}}', { error: error.message }), 'error');
+      return error.message;
+    }
+    logAdminAction(editingChallenge?.id ? 'update_challenge' : 'create_challenge', 'challenge', editingChallenge?.id ?? null, { gym_name: gym?.name, name: formData.name }, gymId);
+    await fetchChallenges();
+    notify(t('platform.gymDetail.toasts.saved', 'Saved'));
+    setShowChallengeModal(false);
+    setEditingChallenge(null);
+    return null;
+  };
+  const deleteChallenge = async (challengeId) => { const { error } = await supabase.from('challenges').delete().eq('id', challengeId); if (error) { notify(t('platform.gymDetail.toasts.deleteEntityFailed', 'Delete failed: {{error}}', { error: error.message }), 'error'); } else { logAdminAction('delete_challenge', 'challenge', challengeId, { gym_name: gym?.name }, gymId); setChallenges(prev => prev.filter(c => c.id !== challengeId)); notify(t('platform.gymDetail.toasts.deleted', 'Deleted')); } setDeleteConfirm(null); };
+  const saveProgram = async (formData) => {
+    let error;
+    if (editingProgram?.id) {
+      ({ error } = await supabase.from('gym_programs').update(formData).eq('id', editingProgram.id));
+    } else {
+      // created_by is NOT NULL on gym_programs (0012)
+      ({ error } = await supabase.from('gym_programs').insert({ ...formData, gym_id: gymId, created_by: profile?.id }));
+    }
+    if (error) {
+      notify(t('platform.gymDetail.toasts.saveFailed', 'Save failed: {{error}}', { error: error.message }), 'error');
+      return error.message;
+    }
+    logAdminAction(editingProgram?.id ? 'update_program' : 'create_program', 'program', editingProgram?.id ?? null, { gym_name: gym?.name, name: formData.name }, gymId);
+    await fetchPrograms();
+    notify(t('platform.gymDetail.toasts.saved', 'Saved'));
+    setShowProgramModal(false);
+    setEditingProgram(null);
+    return null;
+  };
+  const toggleProgramPublish = async (prog) => { const { error } = await supabase.from('gym_programs').update({ is_published: !prog.is_published }).eq('id', prog.id); if (error) { notify(t('platform.gymDetail.toasts.saveFailed', 'Save failed: {{error}}', { error: error.message }), 'error'); } else { setPrograms(prev => prev.map(p => p.id === prog.id ? { ...p, is_published: !p.is_published } : p)); } };
+  const deleteProgram = async (programId) => { const { error } = await supabase.from('gym_programs').delete().eq('id', programId); if (error) { notify(t('platform.gymDetail.toasts.deleteEntityFailed', 'Delete failed: {{error}}', { error: error.message }), 'error'); } else { logAdminAction('delete_program', 'program', programId, { gym_name: gym?.name }, gymId); setPrograms(prev => prev.filter(p => p.id !== programId)); notify(t('platform.gymDetail.toasts.deleted', 'Deleted')); } setDeleteConfirm(null); };
+  const saveAchievement = async (formData) => {
+    let error;
+    if (editingAchievement?.id) {
+      ({ error } = await supabase.from('achievement_definitions').update(formData).eq('id', editingAchievement.id));
+    } else {
+      // gym-scoped definition → not global
+      ({ error } = await supabase.from('achievement_definitions').insert({ ...formData, gym_id: gymId, is_global: false }));
+    }
+    if (error) {
+      notify(t('platform.gymDetail.toasts.saveFailed', 'Save failed: {{error}}', { error: error.message }), 'error');
+      return error.message;
+    }
+    logAdminAction(editingAchievement?.id ? 'update_achievement' : 'create_achievement', 'achievement', editingAchievement?.id ?? null, { gym_name: gym?.name, name: formData.name }, gymId);
+    await fetchAchievements();
+    notify(t('platform.gymDetail.toasts.saved', 'Saved'));
+    setShowAchievementModal(false);
+    setEditingAchievement(null);
+    return null;
+  };
+  const deleteAchievement = async (achievementId) => { const { error } = await supabase.from('achievement_definitions').delete().eq('id', achievementId); if (error) { notify(t('platform.gymDetail.toasts.deleteEntityFailed', 'Delete failed: {{error}}', { error: error.message }), 'error'); } else { logAdminAction('delete_achievement', 'achievement', achievementId, { gym_name: gym?.name }, gymId); setAchievements(prev => prev.filter(a => a.id !== achievementId)); notify(t('platform.gymDetail.toasts.deleted', 'Deleted')); } setDeleteConfirm(null); };
+  const getChallengeStatus = (c) => { const now = new Date(); if (c.status && c.status !== 'active') return c.status; if (c.end_date && new Date(c.end_date) < now) return 'ended'; if (c.start_date && new Date(c.start_date) > now) return 'upcoming'; return c.status ?? 'active'; };
 
   // ── Loading / not found ───────────────────────────────────
   if (loading) return (<div className="min-h-screen bg-[#05070B] flex items-center justify-center" aria-busy="true"><div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" role="status" aria-label={t('platform.gymDetail.loadingAria', 'Loading gym details')} /></div>);
@@ -402,6 +827,19 @@ export default function GymDetail() {
     { key: 'content',  label: t('platform.gymDetail.tabs.content',  'Content'),  icon: Trophy },
     { key: 'settings', label: t('platform.gymDetail.tabs.settings', 'Settings'), icon: Settings },
   ];
+
+  // A4: which failed sections feed the ACTIVE tab (overview consumes nearly
+  // everything; wellness fetches its own data). The banner renders above the
+  // tab content because the tab components themselves aren't owned here.
+  const TAB_SECTIONS = {
+    overview: ['members', 'activity', 'invites', 'challenges', 'programs', 'achievements'],
+    wellness: [],
+    people: ['members', 'invites'],
+    activity: ['activity'],
+    content: ['challenges', 'programs', 'achievements'],
+    settings: ['members', 'invites'],
+  };
+  const failedSections = (TAB_SECTIONS[tab] ?? []).filter(k => loadErrors[k]);
 
   return (
     <div className="min-h-screen bg-[#05070B]">
@@ -427,8 +865,8 @@ export default function GymDetail() {
             </div></div>
             <div className="flex items-center gap-3 flex-wrap">
               <div className="relative">
-                <button onClick={() => setEditingTier(!editingTier)} className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/20 transition-colors"><Crown className="w-3.5 h-3.5" />{(gym.subscription_tier ?? 'free').toUpperCase()}<ChevronDown className="w-3 h-3" /></button>
-                {editingTier && (<div className="absolute right-0 top-full mt-1 bg-[#111827] border border-white/8 rounded-lg shadow-xl z-20 py-1 min-w-[120px]">{TIER_OPTIONS.map(tierOpt => (<button key={tierOpt} onClick={() => updateTier(tierOpt)} className={`block w-full text-left px-3 py-1.5 text-[12px] hover:bg-white/6 transition-colors ${gym.subscription_tier === tierOpt ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>{tierOpt.toUpperCase()}</button>))}</div>)}
+                <button onClick={() => setEditingTier(!editingTier)} className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/20 transition-colors"><Crown className="w-3.5 h-3.5" />{(gym.plan_type ?? gym.subscription_tier ?? 'free').toUpperCase()}<ChevronDown className="w-3 h-3" /></button>
+                {editingTier && (<div className="absolute right-0 top-full mt-1 bg-[#111827] border border-white/8 rounded-lg shadow-xl z-20 py-1 min-w-[120px]">{TIER_OPTIONS.map(tierOpt => (<button key={tierOpt} onClick={() => updateTier(tierOpt)} className={`block w-full text-left px-3 py-1.5 text-[12px] hover:bg-white/6 transition-colors ${(gym.plan_type ?? gym.subscription_tier) === tierOpt ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>{tierOpt.toUpperCase()}</button>))}</div>)}
               </div>
               {gymStatus === 'active' ? (
                 <button onClick={() => setLifecycleModal('pause')} className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-amber-500/20 hover:bg-amber-500/10 text-amber-400 transition-colors"><Pause className="w-4 h-4" />{t('platform.gymDetail.lifecycle.pauseBtn')}</button>
@@ -493,14 +931,51 @@ export default function GymDetail() {
           ))}
         </div>
 
+        {/* A4: failed reads used to render as believable empty states — when a
+            section the active tab needs failed to load, say so honestly and
+            offer a retry of just the failed fetches. */}
+        {failedSections.length > 0 && (
+          <div className="mb-6 bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-start gap-2.5 flex-1 min-w-0">
+              <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold text-red-300">{t('platform.gymDetail.loadErrors.title', "Some data couldn't be loaded")}</p>
+                <p className="text-[11px] text-red-300/70 mt-0.5">
+                  {t('platform.gymDetail.loadErrors.body', 'Failed to load: {{sections}}. The lists below may be empty or stale.', { sections: failedSections.map(k => t(`platform.gymDetail.loadErrors.section.${k}`, k)).join(', ') })}
+                </p>
+              </div>
+            </div>
+            <button onClick={retryFailedLoads} disabled={retryingLoads} className="self-start sm:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-red-500/15 text-red-300 border border-red-500/25 hover:bg-red-500/25 transition-colors disabled:opacity-50 flex-shrink-0">
+              <RefreshCw className={`w-3.5 h-3.5 ${retryingLoads ? 'animate-spin' : ''}`} />
+              {retryingLoads ? t('platform.gymDetail.loadErrors.retrying', 'Retrying...') : t('platform.gymDetail.loadErrors.retry', 'Retry')}
+            </button>
+          </div>
+        )}
+
         {/* Tab content */}
         {tab === 'overview' && <GymOverviewTab gym={gym} branding={branding} logoUrl={logoUrl} stats={stats} checkIns={checkIns} challenges={challenges} programs={programs} achievements={achievements} invites={invites} members={members} gymId={gymId} setTab={setTab} setContentSubTab={setContentSubTab} />}
         {tab === 'wellness' && <GymWellnessTab gymId={gymId} />}
-        {tab === 'people' && <GymPeopleTab members={members} invites={invites} updateMemberRole={updateMemberRole} updateMemberStatus={updateMemberStatus} deleteMember={deleteMember} setShowAddMemberModal={setShowAddMemberModal} />}
+        {tab === 'people' && <GymPeopleTab members={members} invites={invites} updateMemberRole={updateMemberRole} updateMemberStatus={updateMemberStatus} deleteMember={deleteMember} setShowAddMemberModal={setShowAddMemberModal} createInvite={createInvite} revokeInvite={revokeInvite} copyInviteCode={copyInviteCode} />}
         {tab === 'activity' && <GymActivityTab sessions={sessions} checkIns={checkIns} gymId={gymId} />}
         {tab === 'content' && <GymContentTab challenges={challenges} programs={programs} achievements={achievements} rewardsAvailable={rewardsAvailable} getChallengeStatus={getChallengeStatus} setEditingChallenge={setEditingChallenge} setShowChallengeModal={setShowChallengeModal} setEditingProgram={setEditingProgram} setShowProgramModal={setShowProgramModal} toggleProgramPublish={toggleProgramPublish} setEditingAchievement={setEditingAchievement} setShowAchievementModal={setShowAchievementModal} setDeleteConfirm={setDeleteConfirm} initialSubTab={contentSubTab} />}
-        {tab === 'settings' && <GymSettingsTab gym={gym} branding={branding} logoUrl={logoUrl} invites={invites} editingGym={editingGym} setEditingGym={setEditingGym} savingGym={savingGym} saveGymSettings={saveGymSettings} gymStatus={gymStatus} setLifecycleModal={setLifecycleModal} t={t} />}
+        {tab === 'settings' && <GymSettingsTab gym={gym} branding={branding} logoUrl={logoUrl} invites={invites} editingGym={editingGym} setEditingGym={setEditingGym} savingGym={savingGym} saveGymSettings={saveGymSettings} settingsError={settingsError} gymStatus={gymStatus} setLifecycleModal={setLifecycleModal} members={members} setGymOwner={setGymOwner} notify={notify} onBrandingSaved={(updates) => setBranding(prev => ({ ...(prev ?? { gym_id: gymId }), ...updates }))} t={t} />}
       </div>
+
+      {/* Inline toast — fixed dark platform styling */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] max-w-[90vw] px-4 py-2.5 rounded-xl border text-[12px] font-medium shadow-2xl"
+          style={{
+            background: '#0F172A',
+            borderColor: toast.type === 'error' ? 'rgba(239,68,68,0.45)' : 'rgba(16,185,129,0.45)',
+            color: toast.type === 'error' ? '#FCA5A5' : '#6EE7B7',
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
 
       {/* Modals */}
       {showChallengeModal && <ChallengeModal challenge={editingChallenge} onSave={saveChallenge} onClose={() => { setShowChallengeModal(false); setEditingChallenge(null); }} />}
@@ -554,17 +1029,19 @@ export default function GymDetail() {
         </div>
       )}
 
-      {/* Delete / Permanently Deactivate Gym Modal */}
+      {/* Deactivate Gym Modal — A3: honest copy (this flow never deletes;
+          it pauses + cancels the plan and is fully reversible via Reactivate.
+          Permanent deletion lives in GymOps / Data & costs). */}
       {lifecycleModal === 'delete' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => { setLifecycleModal(null); setDeleteGymConfirmName(''); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLifecycleModal(null); setDeleteGymConfirmName(''); } }} />
           <div className="relative bg-[#0F172A] border border-red-500/20 rounded-2xl p-6 max-w-md w-full mx-4">
-            <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-5 h-5 text-red-400" /></div><div><h3 className="text-[15px] font-semibold text-red-400">{t('platform.gymDetail.lifecycle.deleteTitle')}</h3><p className="text-[11px] text-[#6B7280]">{gym.name}</p></div></div>
-            <div className="p-3 bg-red-500/8 border border-red-500/15 rounded-xl mb-4"><p className="text-[12px] text-red-300">{t('platform.gymDetail.lifecycle.deleteWarning')}</p></div>
-            <div className="mb-4"><label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">{t('platform.gymDetail.lifecycle.deleteConfirmLabel', { name: gym.name })}</label><input type="text" value={deleteGymConfirmName} onChange={e => setDeleteGymConfirmName(e.target.value)} placeholder={gym.name} aria-label="Type gym name to confirm deletion" className="w-full bg-[#111827] border border-red-500/20 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-red-400/40" /></div>
+            <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-5 h-5 text-red-400" /></div><div><h3 className="text-[15px] font-semibold text-red-400">{t('platform.gymDetail.lifecycle.deactivateTitle', 'Deactivate Gym')}</h3><p className="text-[11px] text-[#6B7280]">{gym.name}</p></div></div>
+            <div className="p-3 bg-red-500/8 border border-red-500/15 rounded-xl mb-4"><p className="text-[12px] text-red-300">{t('platform.gymDetail.lifecycle.deactivateWarning', 'The gym is deactivated: all members lose app access and the plan is marked cancelled. This is reversible — use Reactivate to restore access. For permanent deletion of the gym and its data, use the Data & costs page.')}</p></div>
+            <div className="mb-4"><label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">{t('platform.gymDetail.lifecycle.deleteConfirmLabel', { name: gym.name })}</label><input type="text" value={deleteGymConfirmName} onChange={e => setDeleteGymConfirmName(e.target.value)} placeholder={gym.name} aria-label="Type gym name to confirm deactivation" className="w-full bg-[#111827] border border-red-500/20 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-red-400/40" /></div>
             <div className="flex justify-end gap-3">
               <button onClick={() => { setLifecycleModal(null); setDeleteGymConfirmName(''); }} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.lifecycle.cancel')}</button>
-              <button onClick={handleDeleteGym} disabled={lifecycleProcessing || deleteGymConfirmName !== gym.name} className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmDelete')}</button>
+              <button onClick={handleDeleteGym} disabled={lifecycleProcessing || deleteGymConfirmName !== gym.name} className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmDeactivate', 'Deactivate Gym')}</button>
             </div>
           </div>
         </div>

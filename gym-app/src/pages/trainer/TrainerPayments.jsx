@@ -1,21 +1,35 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { DollarSign, Bell, MessageCircle, CheckCircle2, ChevronLeft, ChevronRight, AlertTriangle, RotateCcw, Pencil, X } from 'lucide-react';
+import { DollarSign, Bell, MessageCircle, CheckCircle2, ChevronLeft, ChevronRight, AlertTriangle, RotateCcw, Pencil, X, Download, Ticket } from 'lucide-react';
 import { format, addMonths, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { enUS } from 'date-fns/locale/en-US';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
+import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { openWhatsApp, hasWhatsApp } from '../../lib/whatsapp';
+import { exportCSV } from '../../lib/csvExport';
 import EmptyState from '../../components/EmptyState';
 import { TT, TFont, avatarIdx } from './components/designTokens';
 import { TCard, TAvatar } from './components/designPrimitives';
 
 const METHODS = ['cash', 'athmovil', 'card', 'transfer', 'other'];
 const METHOD_DEFAULT = { cash: 'Efectivo', athmovil: 'ATH Móvil', card: 'Tarjeta', transfer: 'Transferencia', other: 'Otro' };
-const fmtMoney = (n) => `$${Number(n || 0).toFixed(0)}`;
+// $62 stays $62, but 62.5 must render $62.50 — toFixed(0) was silently
+// rounding cents away on a money surface.
+const fmtMoney = (n) => {
+  const v = Number(n || 0);
+  return Number.isInteger(v) ? `$${v}` : `$${v.toFixed(2)}`;
+};
+const fmtAmountPlain = (n) => {
+  const v = Number(n || 0);
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+};
+const todayYmd = () => format(new Date(), 'yyyy-MM-dd');
+// Manual tracking started with the app — nothing exists before 2024.
+const MIN_YEAR = 2024;
 
 // Trainer "who owes me" tracker + annual income view. Manual tracking only.
 // Month view: page through months, one-tap mark paid (at the set fee), edit an
@@ -24,6 +38,7 @@ const fmtMoney = (n) => `$${Number(n || 0).toFixed(0)}`;
 export default function TrainerPayments() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('pages');
+  const { profile } = useAuth();
   const { showToast } = useToast();
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
 
@@ -35,11 +50,14 @@ export default function TrainerPayments() {
   const [yearData, setYearData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
-  const [filter, setFilter] = useState('pending'); // pending | paid | all
+  const [filter, setFilter] = useState('pending'); // pending | paid | packs | all
   const [editId, setEditId] = useState(null);
   const [editAmount, setEditAmount] = useState('');
   const [editMethod, setEditMethod] = useState('cash');
   const [editNote, setEditNote] = useState('');
+  const [editPaidAt, setEditPaidAt] = useState(todayYmd());
+  // null = session_packs unavailable (pre-0534) → packs UI hidden entirely.
+  const [packs, setPacks] = useState(null);
 
   useEffect(() => { document.title = `${t('trainerPayments.title', 'Payments')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -67,6 +85,37 @@ export default function TrainerPayments() {
 
   useEffect(() => { if (mode === 'month') loadMonth(); else loadYear(); }, [mode, loadMonth, loadYear]);
 
+  // Active session packs (0534). Tolerates the table not existing yet
+  // (42P01 pre-migration) by hiding all pack UI.
+  useEffect(() => {
+    if (!profile?.id) return;
+    let on = true;
+    (async () => {
+      const { data: rows, error } = await supabase
+        .from('session_packs')
+        .select('id, client_id, sessions_total, sessions_used, is_active, created_at')
+        .eq('trainer_id', profile.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+      if (!on) return;
+      if (error) {
+        if (error.code !== '42P01') logger.error('TrainerPayments packs load failed', error);
+        setPacks(null);
+        return;
+      }
+      setPacks(rows || []);
+    })();
+    return () => { on = false; };
+  }, [profile?.id]);
+
+  // Oldest active pack per client (the one being consumed).
+  const packByClient = useMemo(() => {
+    const m = {};
+    for (const p of packs || []) if (!m[p.client_id]) m[p.client_id] = p;
+    return m;
+  }, [packs]);
+  const packsAvailable = Array.isArray(packs) && packs.length > 0;
+
   const methodLabel = (key) => METHODS.includes(key) ? t(`trainerPayment.method.${key}`, METHOD_DEFAULT[key]) : null;
   const fmtDay = (d) => d ? format(new Date(d), 'd MMM', { locale: dateFnsLocale }) : '';
 
@@ -74,11 +123,13 @@ export default function TrainerPayments() {
   const filtered = useMemo(() => {
     if (filter === 'pending') return clients.filter(c => Number(c.monthly_fee || 0) > 0 && !c.paid_this_month);
     if (filter === 'paid') return clients.filter(c => c.paid_this_month);
+    if (filter === 'packs') return clients.filter(c => packByClient[c.client_id]);
     return clients;
-  }, [clients, filter]);
+  }, [clients, filter, packByClient]);
 
   const pendingCount = clients.filter(c => Number(c.monthly_fee || 0) > 0 && !c.paid_this_month).length;
   const paidCount = clients.filter(c => c.paid_this_month).length;
+  const packsCount = clients.filter(c => packByClient[c.client_id]).length;
 
   const act = async (id, fn, okMsg) => {
     if (busyId) return;
@@ -111,24 +162,81 @@ export default function TrainerPayments() {
 
   const remindWA = (c) => {
     const name = (c.full_name || '').split(' ')[0];
-    openWhatsApp(c.phone_number, t('trainerPayment.waMessage', 'Hi {{name}}, just a reminder that your membership payment for this month is pending. Thanks!', { name: name || '' }));
+    // P2-11: this is the trainer's own PT fee, not the gym membership.
+    openWhatsApp(c.phone_number, t('trainerPayment.waMessage', 'Hi {{name}}! Quick reminder: your training payment for this month is still pending. Thanks!', { name: name || '' }));
   };
 
   const openEdit = (c) => {
     setEditAmount(c.paid_amount != null ? String(c.paid_amount) : (c.monthly_fee != null ? String(c.monthly_fee) : ''));
     setEditMethod(c.payment_method && METHODS.includes(c.payment_method) ? c.payment_method : 'cash');
     setEditNote('');
+    // "Pagado el": default today (or the recorded date when editing); never future.
+    const prior = c.paid_at ? format(new Date(c.paid_at), 'yyyy-MM-dd') : todayYmd();
+    setEditPaidAt(prior > todayYmd() ? todayYmd() : prior);
     setEditId(c.client_id);
   };
   const saveEdit = (c) => {
     const amt = editAmount ? Number(editAmount) : null;
     const composed = [methodLabel(editMethod), editNote.trim()].filter(Boolean).join(' · ') || null;
+    // Noon local keeps the chosen calendar day stable across timezones.
+    const paidAtIso = editPaidAt ? new Date(`${editPaidAt}T12:00:00`).toISOString() : null;
     act(c.client_id, () => supabase.rpc('mark_client_paid', {
       p_client_id: c.client_id, p_period_month: periodStr(viewMonth),
       p_amount: Number.isFinite(amt) ? amt : null, p_note: composed,
+      p_paid_at: paidAtIso,
     }), t('trainerPayment.markedPaid', 'Marked paid'));
     setEditId(null);
   };
+
+  // ── CSV export (month + year) ──
+  const exportMonth = async () => {
+    if (!clients.length) return;
+    try {
+      await exportCSV({
+        filename: `cobros-${format(viewMonth, 'yyyy-MM')}`,
+        columns: [
+          { key: 'full_name', label: t('trainerPayments.csvClient', 'Client'), format: (v, r) => v || r.username || '' },
+          { key: 'monthly_fee', label: t('trainerPayments.csvFee', 'Fee'), format: v => v != null ? fmtAmountPlain(v) : '' },
+          { key: 'paid_amount', label: t('trainerPayments.csvPaid', 'Amount paid'), format: (v, r) => r.paid_this_month ? fmtAmountPlain(v ?? r.monthly_fee) : '' },
+          { key: 'paid_at', label: t('trainerPayments.csvPaidDate', 'Paid date'), format: v => v ? format(new Date(v), 'yyyy-MM-dd') : '' },
+          { key: 'note', label: t('trainerPayments.csvNote', 'Note'), format: v => v || '' },
+        ],
+        data: clients,
+      });
+    } catch (e) {
+      logger.error('TrainerPayments month export failed', e);
+      showToast(t('trainerPayments.exportError', 'Could not export the file'), 'error');
+    }
+  };
+  const exportYear = async () => {
+    const yClients = Array.isArray(yearData?.clients) ? yearData.clients : [];
+    if (!yClients.length) return;
+    const monthLabel = (m) => format(new Date(2000, m - 1, 1), 'MMM', { locale: dateFnsLocale });
+    try {
+      await exportCSV({
+        filename: `cobros-${yearData?.year || viewYear}`,
+        columns: [
+          { key: 'full_name', label: t('trainerPayments.csvClient', 'Client') },
+          ...Array.from({ length: 12 }, (_, i) => ({
+            key: `m${i}`, label: monthLabel(i + 1),
+            format: (_v, r) => fmtAmountPlain(Array.isArray(r.months) ? r.months[i] : 0),
+          })),
+          { key: 'total', label: t('trainerPayments.csvTotal', 'Total'), format: v => fmtAmountPlain(v) },
+        ],
+        data: yClients,
+      });
+    } catch (e) {
+      logger.error('TrainerPayments year export failed', e);
+      showToast(t('trainerPayments.exportError', 'Could not export the file'), 'error');
+    }
+  };
+
+  const ExportButton = ({ onClick, disabled }) => (
+    <button type="button" onClick={onClick} disabled={disabled}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', border: `1px solid ${TT.border}`, background: TT.surface, color: disabled ? TT.textMute : TT.text, opacity: disabled ? 0.55 : 1 }}>
+      <Download size={13} /> {t('trainerPayments.exportCsv', 'Export CSV')}
+    </button>
+  );
 
   const collected = Number(data?.collected_total || 0);
   const pendingTotal = Number(data?.pending_total || 0);
@@ -137,6 +245,8 @@ export default function TrainerPayments() {
   const filterTabs = [
     { key: 'pending', label: t('trainerPayments.tabPending', 'Pending'), count: pendingCount },
     { key: 'paid', label: t('trainerPayments.tabPaid', 'Paid'), count: paidCount },
+    // Only offered once session_packs exists and has active packs.
+    ...(packsAvailable ? [{ key: 'packs', label: t('trainerPayments.tabPacks', 'Packs'), count: packsCount }] : []),
     { key: 'all', label: t('trainerPayments.tabAll', 'All'), count: clients.length },
   ];
 
@@ -169,10 +279,10 @@ export default function TrainerPayments() {
   );
 
   // ── period stepper (big label) ──
-  const Stepper = ({ label, onPrev, onNext, nextDisabled }) => (
+  const Stepper = ({ label, onPrev, onNext, nextDisabled, prevDisabled }) => (
     <div style={{ padding: '4px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-      <button type="button" onClick={onPrev} aria-label={t('trainerPayments.prev', 'Previous')}
-        style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${TT.border}`, background: TT.surface, display: 'grid', placeItems: 'center', color: TT.text, cursor: 'pointer' }}>
+      <button type="button" onClick={onPrev} disabled={prevDisabled} aria-label={t('trainerPayments.prev', 'Previous')}
+        style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${TT.border}`, background: TT.surface, display: 'grid', placeItems: 'center', color: prevDisabled ? TT.textMute : TT.text, cursor: prevDisabled ? 'not-allowed' : 'pointer', opacity: prevDisabled ? 0.4 : 1 }}>
         <ChevronLeft size={20} />
       </button>
       <div style={{ fontFamily: TFont.display, fontSize: 26, fontWeight: 800, color: TT.text, letterSpacing: -0.8, textTransform: 'capitalize', textAlign: 'center', flex: 1 }}>
@@ -217,8 +327,8 @@ export default function TrainerPayments() {
               ))}
             </div>
 
-            {/* Filter tabs */}
-            <div style={{ padding: '16px 16px 8px', display: 'flex', gap: 8 }}>
+            {/* Filter tabs + export */}
+            <div style={{ padding: '16px 16px 8px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               {filterTabs.map(tab => {
                 const on = filter === tab.key;
                 return (
@@ -230,6 +340,9 @@ export default function TrainerPayments() {
                   </button>
                 );
               })}
+              <div style={{ marginLeft: 'auto' }}>
+                <ExportButton onClick={exportMonth} disabled={loading || clients.length === 0} />
+              </div>
             </div>
 
             {/* List */}
@@ -255,8 +368,10 @@ export default function TrainerPayments() {
                   const busy = busyId === c.client_id;
                   const canWA = hasWhatsApp(c.phone_number);
                   const editing = editId === c.client_id;
+                  const pk = packByClient[c.client_id];
+                  const pkLeft = pk ? Math.max(0, Number(pk.sessions_total) - Number(pk.sessions_used)) : 0;
                   const feeLine = [
-                    fee != null ? t('trainerPayments.perMonth', '${{amount}}/mo', { amount: fee.toFixed(0) }) : t('trainerPayment.noFee', 'No fee set'),
+                    fee != null ? t('trainerPayments.perMonth', '${{amount}}/mo', { amount: fmtAmountPlain(fee) }) : t('trainerPayment.noFee', 'No fee set'),
                     c.payment_method ? methodLabel(c.payment_method) : null,
                   ].filter(Boolean).join(' · ');
                   return (
@@ -273,6 +388,17 @@ export default function TrainerPayments() {
                               {overdue && !paid && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 800, color: TT.hot, background: TT.hotSoft, padding: '2px 7px', borderRadius: 999, flexShrink: 0 }}>
                                   <AlertTriangle size={10} /> {t('trainerPayments.overdue', '{{n}}d', { n: c.overdue_days })}
+                                </span>
+                              )}
+                              {pk && (
+                                <span title={t('trainerPayments.packLeft', '{{n}} of {{total}} sessions left', { n: pkLeft, total: pk.sessions_total })}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 800, color: TT.accentInk, background: TT.accentSoft, padding: '2px 7px', borderRadius: 999, flexShrink: 0 }}>
+                                  <Ticket size={10} /> {t('trainerPayments.pack', 'Pack')}: {pkLeft}/{pk.sessions_total}
+                                </span>
+                              )}
+                              {c.is_active_client === false && (
+                                <span style={{ fontSize: 10, fontWeight: 800, color: TT.textSub, background: TT.surface2, padding: '2px 7px', borderRadius: 999, flexShrink: 0 }}>
+                                  {t('trainerPayments.inactiveClient', 'Inactive')}
                                 </span>
                               )}
                             </div>
@@ -300,6 +426,18 @@ export default function TrainerPayments() {
                               <input inputMode="decimal" value={editAmount} onChange={e => setEditAmount(e.target.value.replace(/[^0-9.]/g, ''))}
                                 placeholder={t('trainerPayment.amount', 'Amount')}
                                 style={{ flex: 1, padding: '8px 11px', borderRadius: 10, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.text, fontSize: 14, fontFamily: TFont.display, fontWeight: 700, outline: 'none' }} />
+                            </div>
+                            {/* "Pagado el" — real payment date (backdate ok, never future) */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 800, color: TT.textSub, letterSpacing: 0.4, textTransform: 'uppercase', flexShrink: 0 }}>
+                                {t('trainerPayments.paidOnLabel', 'Paid on')}
+                              </span>
+                              <input type="date" value={editPaidAt} max={todayYmd()}
+                                onChange={e => {
+                                  const v = e.target.value;
+                                  setEditPaidAt(v && v > todayYmd() ? todayYmd() : v);
+                                }}
+                                style={{ flex: 1, padding: '8px 11px', borderRadius: 10, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.text, fontSize: 13, outline: 'none', fontFamily: 'inherit' }} />
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                               {METHODS.map(m => {
@@ -368,18 +506,24 @@ export default function TrainerPayments() {
           <>
             <Stepper
               label={String(viewYear)}
-              onPrev={() => setViewYear(y => y - 1)}
+              onPrev={() => setViewYear(y => Math.max(MIN_YEAR, y - 1))}
               onNext={() => setViewYear(y => y + 1)}
               nextDisabled={atCurrentYear}
+              prevDisabled={viewYear <= MIN_YEAR}
             />
             {loading ? (
               <div style={{ padding: '16px' }}>
                 <div className="animate-pulse" style={{ height: 200, borderRadius: 18, background: TT.surface2 }} />
               </div>
             ) : (
-              <YearView yearData={yearData} dateFnsLocale={dateFnsLocale} t={t}
-                onPickMonth={(m) => { setViewMonth(startOfMonth(new Date(viewYear, m - 1, 1))); setMode('month'); }}
-                onOpenClient={(id) => navigate(`/trainer/clients/${id}`)} />
+              <>
+                <div style={{ padding: '12px 16px 0', display: 'flex', justifyContent: 'flex-end' }}>
+                  <ExportButton onClick={exportYear} disabled={!Array.isArray(yearData?.clients) || yearData.clients.length === 0} />
+                </div>
+                <YearView yearData={yearData} dateFnsLocale={dateFnsLocale} t={t}
+                  onPickMonth={(m) => { setViewMonth(startOfMonth(new Date(viewYear, m - 1, 1))); setMode('month'); }}
+                  onOpenClient={(id) => navigate(`/trainer/clients/${id}`)} />
+              </>
             )}
           </>
         )}

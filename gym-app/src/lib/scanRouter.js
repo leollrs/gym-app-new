@@ -110,6 +110,16 @@ export function parseQRContent(text) {
     return null;
   }
 
+  // Challenge prize (podium rewards): challenge-prize:{qrCode}
+  // Keep ORIGINAL case — challenge_prizes.qr_code lookup is case-sensitive.
+  if (lower.startsWith('challenge-prize:')) {
+    const code = text.substring('challenge-prize:'.length);
+    if (code && code.length >= 6) {
+      return { type: 'challenge_prize', qrCode: code };
+    }
+    return null;
+  }
+
   // Referral: gym-referral:{gymId}:{referrerId}:{referralCode}
   if (lower.startsWith('gym-referral:')) {
     const parts = lower.split(':');
@@ -125,6 +135,24 @@ export function parseQRContent(text) {
     if (code.length >= 6) {
       return { type: 'voucher', voucherCode: code };
     }
+    return null;
+  }
+
+  // Signed check-in: gym-checkin:{qr_code_payload} — the wrapper QRCodeModal
+  // adds so sign-qr's allowlist accepts member check-in QRs. Strip it and
+  // keep ORIGINAL case (profiles.qr_code_payload lookup is case-sensitive).
+  if (lower.startsWith('gym-checkin:')) {
+    const code = text.substring('gym-checkin:'.length);
+    return code ? { type: 'checkin', qrPayload: code } : null;
+  }
+
+  // A prefixed payload from one of OUR QR families that didn't match a
+  // branch above must NEVER fall through to check-in — that's exactly how
+  // challenge-prize QRs used to scan as "Member not found" (misdetected as
+  // a member pass). Unknown subtype → unrecognized scan, not a member code.
+  // Member passes are bare codes and external/door codes never use these
+  // schemes, so this only catches our own payloads.
+  if (/^(gym|challenge|earned)-[a-z0-9_-]*:/.test(lower)) {
     return null;
   }
 

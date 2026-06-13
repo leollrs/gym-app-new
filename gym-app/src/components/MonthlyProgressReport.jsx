@@ -154,7 +154,7 @@ const ANGLE_LABELS = {
 // ══════════════════════════════════════════════════════════════════════════════
 const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) => {
   const { t, i18n } = useTranslation('pages');
-  const { user, profile, gymName, gymLogoUrl } = useAuth();
+  const { user, gymName, gymLogoUrl } = useAuth();
   const targetId = profileIdProp || user?.id;
   const dateFnsLocale = i18n.language === 'es' ? { locale: esLocale } : undefined;
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
@@ -187,6 +187,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
         { data: achievements },
         { data: checkIns },
         { data: sessionExercises },
+        { data: onboardingRow },
       ] = await Promise.all([
         // Current month sessions
         supabase
@@ -272,6 +273,15 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
           .eq('workout_sessions.status', 'completed')
           .gte('workout_sessions.completed_at', monthStart)
           .lte('workout_sessions.completed_at', monthEnd),
+        // The REPORT SUBJECT's planned training frequency. Must come from
+        // member_onboarding for targetId — the viewer's auth profile is the
+        // wrong person when a trainer opens a client's report (and
+        // profiles.training_days_per_week doesn't exist anyway).
+        supabase
+          .from('member_onboarding')
+          .select('training_days_per_week')
+          .eq('profile_id', targetId)
+          .maybeSingle(),
       ]);
 
       // ── Exercise names lookup (localized) ─────────────────────────────────
@@ -320,7 +330,8 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
       const monthDays = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) });
       const trainedDates = s.map(ss => ss.completed_at.slice(0, 10));
       const uniqueTrainedDays = [...new Set(trainedDates)];
-      const daysPlanned = (profile?.training_days_per_week || 4) * Math.ceil(monthDays.length / 7);
+      const trainingDaysPerWeek = Number(onboardingRow?.training_days_per_week) || 3;
+      const daysPlanned = trainingDaysPerWeek * Math.ceil(monthDays.length / 7);
       const attendanceRate = daysPlanned > 0 ? Math.round((uniqueTrainedDays.length / daysPlanned) * 100) : 0;
 
       // Best streak
@@ -460,7 +471,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
     } finally {
       setLoading(false);
     }
-  }, [targetId, profile, month]);
+  }, [targetId, month]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -523,7 +534,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
   if (isModal && !isOpen) return null;
 
   const content = (
-    <div role={isModal ? 'dialog' : undefined} aria-modal={isModal ? 'true' : undefined} aria-labelledby="monthly-report-title" className={`${isModal ? 'fixed inset-0 z-50 backdrop-blur-xl bg-black/60 flex items-start justify-center overflow-y-auto pt-[env(safe-area-inset-top)]' : 'w-full bg-[var(--color-bg-primary)]'}`}>
+    <div data-swipe-ignore role={isModal ? 'dialog' : undefined} aria-modal={isModal ? 'true' : undefined} aria-labelledby="monthly-report-title" className={`${isModal ? 'fixed inset-0 z-50 backdrop-blur-xl bg-black/60 flex items-start justify-center overflow-y-auto pt-[env(safe-area-inset-top)]' : 'w-full bg-[var(--color-bg-primary)]'}`}>
       <div className={`w-full ${isModal ? 'max-w-2xl mx-auto mt-12 mb-4 md:my-8 px-3' : 'max-w-2xl mx-auto'}`}>
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <motion.div

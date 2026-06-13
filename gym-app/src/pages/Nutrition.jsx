@@ -40,6 +40,9 @@ import { rankMenuItems } from '../lib/menuRanker';
 import { useToast } from '../contexts/ToastContext';
 import { hasConsentedToAI, recordAIConsent } from '../lib/aiConsent';
 import AIConsentDialog from '../components/AIConsentDialog';
+import TrainerMealPlanSection from '../components/TrainerMealPlanSection';
+import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
+import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 
 // Wrap a promise with a timeout so a hung edge-function call surfaces an error
 // instead of leaving the spinner stuck forever (cold-start, network drop, etc).
@@ -375,8 +378,10 @@ const RecipeCard = ({ recipe, saved, onSave, onOpen, size = 'md', lang = 'en' })
         </button>
         {/* Match badge */}
         <div className="absolute top-2.5 left-2.5">
+          {/* Chip bg is always white — text must be FIXED dark, not the theme
+              var (in dark mode --color-text-primary is white → white-on-white). */}
           <span className="text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
-            style={{ backgroundColor: 'rgba(255,255,255,0.92)', color: 'var(--color-text-primary)' }}>
+            style={{ backgroundColor: 'rgba(255,255,255,0.92)', color: '#1f2937' }}>
             <span className="w-1.5 h-1.5 rounded-full bg-[#2ECC71]" />
             {mealTag}
           </span>
@@ -454,14 +459,14 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onL
             className="absolute top-4 left-4 min-w-[44px] min-h-[44px] w-10 h-10 rounded-full flex items-center justify-center focus:outline-none"
             style={{ background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(16px)' }}
             aria-label={t('common.close', 'Close')}>
-            <ChevronLeft size={18} style={{ color: 'var(--color-text-primary)' }} />
+            <ChevronLeft size={18} style={{ color: '#1f2937' }} />
           </button>
           {/* bookmark */}
           <button onClick={() => onSave(recipe.id)}
             className="absolute top-4 right-4 min-w-[44px] min-h-[44px] w-10 h-10 rounded-full flex items-center justify-center focus:outline-none"
             style={{ background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(16px)' }}
             aria-label={saved ? t('nutrition.removeBookmark', 'Remove bookmark') : t('nutrition.bookmarkRecipe', 'Bookmark recipe')}>
-            <Star size={18} className={saved ? 'fill-[#FFC24A] text-[#FFC24A]' : ''} style={{ color: saved ? '#FFC24A' : 'var(--color-text-muted)' }} />
+            <Star size={18} className={saved ? 'fill-[#FFC24A] text-[#FFC24A]' : ''} style={{ color: saved ? '#FFC24A' : '#6b7280' }} />
           </button>
         </div>
 
@@ -770,7 +775,19 @@ const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 const lookupBarcode = async (barcode, lang = 'en') => {
   // Use locale-specific API endpoint for translated product names
   const host = lang === 'es' ? 'es.openfoodfacts.org' : 'world.openfoodfacts.org';
-  const res = await fetch(`https://${host}/api/v2/product/${encodeURIComponent(barcode)}.json`);
+  let res;
+  try {
+    res = await fetch(`https://${host}/api/v2/product/${encodeURIComponent(barcode)}.json`);
+  } catch {
+    // fetch itself threw (offline, DNS, CORS) — an actual network failure.
+    // Previously this fell through as a generic "could not read barcode".
+    throw new Error('network');
+  }
+  // Open Food Facts API v2 answers HTTP 404 for barcodes that simply aren't
+  // in its database. That's "product not found", NOT a network problem —
+  // treating every !ok as 'network' made unknown products (common for PR
+  // local brands) show "Network error. Check your connection."
+  if (res.status === 404) return null;
   if (!res.ok) throw new Error('network');
   const json = await res.json();
   if (json.status !== 1 || !json.product) return null;
@@ -2901,11 +2918,11 @@ const countPlannedDays = (userId) => {
 // ── HOME VIEW ───────────────────────────────────────────────
 // ── SUMMARY SHEET MODAL (matches reference) ────────────────
 // Helper to fetch summary week data (reusable for prefetch)
-const fetchSummaryWeekData = async (userId) => {
-  // Week starts on Sunday
+const fetchSummaryWeekData = async (userId, weeksBack = 0) => {
+  // Week starts on Sunday; weeksBack=1 → last week, 2 → two weeks ago…
   const now = new Date();
   const sunday = new Date(now);
-  sunday.setDate(now.getDate() - now.getDay());
+  sunday.setDate(now.getDate() - now.getDay() - weeksBack * 7);
   const dates = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(sunday);
     d.setDate(sunday.getDate() + i);
@@ -2927,6 +2944,10 @@ const fetchSummaryWeekData = async (userId) => {
 };
 
 const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }) => {
+  // weeksBack: 0 = this week, 1 = last week… Past weeks are fetched on
+  // demand and cached for the life of the modal so ‹ › flips are instant.
+  const [weeksBack, setWeeksBack] = useState(0);
+  const weekCache = useRef(new Map(prefetchedData ? [[0, prefetchedData]] : []));
   const [weekData, setWeekData] = useState(prefetchedData || null);
   const calTarget = targets?.daily_calories || 2000;
   const proteinTarget = targets?.daily_protein_g || 150;
@@ -2936,12 +2957,30 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
   const dayKeys = lang === 'es' ? ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'] : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
   useEffect(() => {
-    if (weekData || !userId) return; // skip if prefetched
+    if (!userId) return;
+    const cached = weekCache.current.get(weeksBack);
+    if (cached) { setWeekData(cached); return; }
+    let cancelled = false;
+    setWeekData(null); // show the spinner for uncached weeks
     (async () => {
-      const data = await fetchSummaryWeekData(userId);
+      const data = await fetchSummaryWeekData(userId, weeksBack);
+      if (cancelled) return;
+      weekCache.current.set(weeksBack, data);
       setWeekData(data);
     })();
-  }, [userId, weekData]);
+    return () => { cancelled = true; };
+  }, [userId, weeksBack]);
+
+  // "Jun 1 – Jun 7" range label for past weeks; "This week" for the current.
+  const weekLabel = useMemo(() => {
+    if (weeksBack === 0) return t('nutrition.thisWeek', 'This week');
+    const data = weekCache.current.get(weeksBack);
+    const dates = data?.dates;
+    if (!dates?.length) return '';
+    const loc = lang === 'es' ? 'es' : 'en';
+    const fmt = (s) => new Date(`${s}T00:00:00`).toLocaleDateString(loc, { month: 'short', day: 'numeric' });
+    return `${fmt(dates[0])} – ${fmt(dates[6])}`;
+  }, [weeksBack, weekData, lang, t]);
 
   // Compute stats
   const days = weekData ? weekData.dates.map((date, i) => {
@@ -2977,6 +3016,25 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 pt-4 pb-8">
+          {/* Week navigation — browse past weeks for overall progress */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => setWeeksBack(w => w + 1)}
+              className="w-9 h-9 rounded-full flex items-center justify-center active:scale-95 focus:outline-none"
+              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+              aria-label={t('nutrition.prevWeek', 'Previous week')}>
+              <ChevronLeft size={16} style={{ color: 'var(--color-text-primary)' }} />
+            </button>
+            <span className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{weekLabel}</span>
+            <button
+              onClick={() => setWeeksBack(w => Math.max(0, w - 1))}
+              disabled={weeksBack === 0}
+              className="w-9 h-9 rounded-full flex items-center justify-center active:scale-95 focus:outline-none"
+              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', opacity: weeksBack === 0 ? 0.35 : 1 }}
+              aria-label={t('nutrition.nextWeek', 'Next week')}>
+              <ChevronRight size={16} style={{ color: 'var(--color-text-primary)' }} />
+            </button>
+          </div>
           {!weekData ? (
             <div className="py-12 text-center"><div className="w-6 h-6 rounded-full animate-spin mx-auto" style={{ border: '2px solid var(--color-border-subtle)', borderTopColor: TU.accent }} /></div>
           ) : (
@@ -2986,7 +3044,10 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
                 {[
                   { label: t('nutrition.avgCalories', 'Avg kcal'), value: avg, sub: `/ ${calTarget}` },
                   { label: t('nutrition.compliance', 'Adherence'), value: `${adherence}%`, sub: t('nutrition.onTarget', 'on target'), accent: adherence >= 70 ? TU.accent : TU.hot },
-                  { label: t('nutrition.streak', 'Streak'), value: String(streak), sub: t('nutrition.days', 'days'), accent: TU.hot },
+                  // Honest label: this counts days TRACKED within the shown
+                  // week (0–7) — it is not a consecutive-day streak and never
+                  // was. Was previously labeled "Streak".
+                  { label: t('nutrition.daysTracked', 'Days tracked'), value: String(streak), sub: t('nutrition.ofSevenDays', 'of 7 days'), accent: TU.hot },
                 ].map(s => (
                   <div key={s.label} className="rounded-[14px] p-3.5" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
                     <div className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>{s.label}</div>
@@ -3087,7 +3148,7 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
   );
 };
 
-const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onLogMeal, onOpenSearch, onDeleteLog, onOpenLog, setView, openEdit, embedded = false, userId, recentScans = [], onRepeatScan, scannedFavorites = [], onOpenFavorite }) => {
+const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onLogMeal, onOpenSearch, onDeleteLog, onOpenLog, setView, openEdit, embedded = false, userId, recentScans = [], onRepeatScan, scannedFavorites = [], onOpenFavorite, groceryList = [], onAddGroceryItems }) => {
   const { t, i18n } = useTranslation('pages');
   const lang = i18n.language || 'en';
 
@@ -3271,6 +3332,9 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
           </button>
         ))}
       </div>
+
+      {/* ── Trainer-assigned meal plan (renders nothing without one) ── */}
+      <TrainerMealPlanSection userId={userId} groceryList={groceryList} onAddGroceryItems={onAddGroceryItems} />
 
       {/* ── Weekly Summary Modal ── */}
       {showSummary && createPortal(
@@ -3948,14 +4012,16 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                   style={{ width: 200, background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
                   <div className="relative" style={{ height: 110, background: `linear-gradient(135deg, ${ga} 0%, ${gb} 100%)` }}>
                     {s.image && <img src={foodImageUrl(s.image)} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />}
+                    {/* White chips → fixed dark content (theme text var is
+                        white in dark mode → was white-on-white). */}
                     <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1"
-                      style={{ background: 'rgba(255,255,255,0.92)', color: 'var(--color-text-primary)' }}>
+                      style={{ background: 'rgba(255,255,255,0.92)', color: '#1f2937' }}>
                       <span className="w-1.5 h-1.5 rounded-full bg-[#2ECC71]" />
                       {t('nutrition.macroMatch', { defaultValue: '{{pct}}% match', pct: matchPct })}
                     </div>
                     <div className="absolute bottom-2.5 right-2.5 w-[30px] h-[30px] rounded-full flex items-center justify-center"
                       style={{ background: 'rgba(255,255,255,0.95)' }}>
-                      <Plus size={16} style={{ color: 'var(--color-text-primary)' }} strokeWidth={2.4} />
+                      <Plus size={16} style={{ color: '#1f2937' }} strokeWidth={2.4} />
                     </div>
                   </div>
                   <div className="p-3.5">
@@ -4847,7 +4913,7 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
               };
               setPlan(nextPlan);
               const startOfWeek = new Date();
-              startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1);
+              startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
               const weekStartStr = startOfWeek.toISOString().split('T')[0];
               await supabase
                 .from('generated_meal_plans')
@@ -4903,7 +4969,7 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
               });
               setPlan(nextPlan);
               const startOfWeek = new Date();
-              startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1);
+              startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
               const weekStartStr = startOfWeek.toISOString().split('T')[0];
               await supabase
                 .from('generated_meal_plans')
@@ -4977,6 +5043,11 @@ export default function Nutrition({ embedded = false }) {
   const { t, i18n } = useTranslation('pages');
   const posthog = usePostHog();
   const { showToast } = useToast();
+  const nutritionEnabled = useFeatureEnabled('nutrition');
+  // Platform kill switch for the OpenAI photo surfaces (Operations →
+  // feature_ai, migration 0551). Hides the AI/Menu scan pills entirely —
+  // barcode + search stay. A layer ABOVE the per-user aiConsent gate.
+  const aiEnabled = useFeatureEnabled('ai');
   const lang = i18n.language || 'en';
   // Whether this page is the actual route + tab the user is on right now.
   // Used to gate document.body portals (the floating scan FAB, fullscreen
@@ -5025,8 +5096,15 @@ export default function Nutrition({ embedded = false }) {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [barcodeScanning, setBarcodeScanning] = useState(false);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
+  // Fullscreen "Logging…" overlay while a food_logs insert is in flight.
+  const [loggingFood, setLoggingFood] = useState(false);
   const [barcodeProduct, setBarcodeProduct] = useState(null);
   const [barcodeError, setBarcodeError] = useState('');
+  // True only when the barcode was read fine but the product isn't in the
+  // Open Food Facts DB (common for PR-local brands). Drives the "Scan with
+  // AI instead" shortcut on the error dialog — we DON'T offer AI for a real
+  // network failure, where it would fail the same way.
+  const [barcodeNotFound, setBarcodeNotFound] = useState(false);
   // 'barcode' = auto-decode via html5-qrcode, 'ai' = pause decoder, use shutter to grab frame.
   // Single camera stream (html5-qrcode) is shared between both modes — switching only toggles
   // whether decode callbacks run and what the shutter does. No second camera is ever opened.
@@ -5228,6 +5306,18 @@ export default function Nutrition({ embedded = false }) {
     setGroceryAdded(prev => new Set([...prev, recipe.id]));
   };
 
+  // Pre-shaped grocery items (e.g. the coach meal-plan section builds its own
+  // {id,label,category,fromRecipe,checked} rows) — merge with id-dedup so
+  // re-adding never duplicates.
+  const handleAddGroceryItemsRaw = (items) => {
+    if (!Array.isArray(items) || items.length === 0) return;
+    setGroceryList(prev => {
+      const existingIds = new Set(prev.map(i => i.id));
+      const additions = items.filter(i => i?.id && !existingIds.has(i.id));
+      return additions.length ? [...prev, ...additions] : prev;
+    });
+  };
+
   const handleToggleGroceryItem = (id) => {
     setGroceryList(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
   };
@@ -5303,9 +5393,10 @@ export default function Nutrition({ embedded = false }) {
 
   // Load data
   const load = useCallback(async () => {
-    if (!user) return;
+    if (!user) { setLoading(false); return; }
     setLoading(true);
 
+    try {
     const [{ data: tgt }, { data: ob }, { data: bw }, { data: foodLogs }, { data: favs }] = await Promise.all([
       supabase.from('nutrition_targets').select('*').eq('profile_id', user.id).maybeSingle(),
       supabase.from('member_onboarding').select('primary_goal,training_days_per_week,initial_weight_lbs,height_inches,age,sex').eq('profile_id', user.id).maybeSingle(),
@@ -5341,7 +5432,12 @@ export default function Nutrition({ embedded = false }) {
       activeTargets = saved ?? autoTargets;
     }
     setTargets(activeTargets ?? null);
-    setLoading(false);
+    } catch {
+      // A rejected query must not strand the full-page skeleton (no cache paint
+      // on this page); the offline banner covers the hard-offline case.
+    } finally {
+      setLoading(false);
+    }
   }, [user, profile]);
 
   useEffect(() => { load(); }, [load]);
@@ -5473,10 +5569,22 @@ export default function Nutrition({ embedded = false }) {
   const scanModeRef = useRef('barcode');
   useEffect(() => { scanModeRef.current = scanMode; }, [scanMode]);
 
+  // If the platform AI kill switch flips while the user is mid AI/menu mode,
+  // fall back to barcode (mirrors how the consent decline path keeps the user
+  // in barcode mode). The AI/Menu pills are hidden while the flag is off, so
+  // this only fires on a live flip.
+  useEffect(() => {
+    if (!aiEnabled && (scanMode === 'ai' || scanMode === 'menu')) {
+      setScanMode('barcode');
+      scanModeRef.current = 'barcode';
+    }
+  }, [aiEnabled, scanMode]);
+
   const handleBarcodeRequest = useCallback(async (signal) => {
     if (signal === '__open_scanner__') {
       setSearchOpen(false);
       setBarcodeError('');
+      setBarcodeNotFound(false);
       setBarcodeProduct(null);
       setScanMode('barcode');
       scanModeRef.current = 'barcode';
@@ -5484,9 +5592,11 @@ export default function Nutrition({ embedded = false }) {
       const processBarcode = async (rawValue) => {
         setBarcodeScanning(false);
         setBarcodeLoading(true);
+        setBarcodeNotFound(false);
         try {
           const product = await lookupBarcode(rawValue, lang);
           if (!product) {
+            setBarcodeNotFound(true);
             setBarcodeError(t('nutrition.productNotFound'));
           } else {
             posthog?.capture('food_scanned', { method: 'barcode' });
@@ -5550,7 +5660,9 @@ export default function Nutrition({ embedded = false }) {
             // Only auto-process decoded barcodes while in barcode mode. In AI
             // photo mode the user drives the capture via the shutter.
             if (scanModeRef.current !== 'barcode') return;
-            html5Qr.stop().catch(() => {});
+            // Sync-throw guard: see closeBarcodeScanner. Rapid double-decode
+            // events can race the stop.
+            try { html5Qr.stop()?.catch?.(() => {}); } catch { /* already stopped */ }
             await processBarcode(decoded);
           },
           () => {}
@@ -5568,11 +5680,19 @@ export default function Nutrition({ embedded = false }) {
     setBarcodeScanning(false);
     setBarcodeLoading(false);
     setBarcodeError('');
+    setBarcodeNotFound(false);
     setBarcodeProduct(null);
     setScanMode('barcode');
     scanModeRef.current = 'barcode';
     if (window.__barcodeScannerRef) {
-      window.__barcodeScannerRef.stop().catch(() => {});
+      // html5-qrcode's stop() THROWS SYNCHRONOUSLY (not a rejected promise)
+      // when the scanner isn't running — e.g. right after a successful decode,
+      // whose callback already stopped it. A bare .catch() can't intercept
+      // that, so every successful scan used to surface "Cannot stop, scanner
+      // is not running or paused." into the console + error tracking.
+      try {
+        window.__barcodeScannerRef.stop()?.catch?.(() => {});
+      } catch { /* already stopped */ }
       window.__barcodeScannerRef = null;
     }
   }, []);
@@ -5902,6 +6022,17 @@ export default function Nutrition({ embedded = false }) {
   };
 
   const handleLogFood = async ({ food, servings, mealType, cal, pro, carb, fat }) => {
+    // Fullscreen "Logging…" overlay while the insert is in flight — without
+    // it the tap felt dead on slow networks and read as the app freezing.
+    setLoggingFood(true);
+    try {
+      await doLogFood({ food, servings, mealType, cal, pro, carb, fat });
+    } finally {
+      setLoggingFood(false);
+    }
+  };
+
+  const doLogFood = async ({ food, servings, mealType, cal, pro, carb, fat }) => {
     // Clean AI-generated labels ("Redbull of dark desk" -> "Redbull") before save.
     const cleanedName = (!food.id && food.name) ? (cleanFoodName(food.name) || food.name) : food.name;
 
@@ -5992,6 +6123,16 @@ export default function Nutrition({ embedded = false }) {
 
   const handleLogMenuItem = useCallback(async (item) => {
     if (!user?.id || !profile?.gym_id) return;
+    setLoggingFood(true);
+    try {
+      await doLogMenuItem(item);
+    } finally {
+      setLoggingFood(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, profile?.gym_id, mealTypeFromClock]);
+
+  const doLogMenuItem = async (item) => {
     const cleanedName = cleanFoodName(item.name) || item.name;
     // Recipe-shaped items pass `image` (filename); menu-scanned items have no image.
     const resolvedImage = item.image_url || (item.image ? foodImageUrl(item.image) : null);
@@ -6034,7 +6175,7 @@ export default function Nutrition({ embedded = false }) {
     } else if (error) {
       showToast(t('nutrition.menuScan.logFailed', 'Failed to log item'), 'error');
     }
-  }, [user?.id, profile?.gym_id, mealTypeFromClock, pushRecentScan, posthog, showToast, t]);
+  };
 
   const handleUpdateLog = async (logId, updates) => {
     const { data, error } = await supabase.from('food_logs')
@@ -6110,6 +6251,11 @@ export default function Nutrition({ embedded = false }) {
     });
     setDraft({ daily_calories: result.calories, daily_protein_g: result.protein, daily_carbs_g: result.carbs, daily_fat_g: result.fat });
   };
+
+  // Platform kill switch (Operations → feature_nutrition). After all hooks so
+  // a mid-session flip can't change the hook order. Also covers the Progress
+  // tab embed (members are the kill-switch audience).
+  if (!nutritionEnabled) return <FeatureDisabledScreen embedded={embedded} />;
 
   if (loading) {
     return (
@@ -6188,6 +6334,8 @@ export default function Nutrition({ embedded = false }) {
               openEdit={openEdit}
               embedded={embedded}
               userId={user?.id}
+              groceryList={groceryList}
+              onAddGroceryItems={handleAddGroceryItemsRaw}
               recentScans={recentScans}
               scannedFavorites={scannedFavorites}
               onRepeatScan={(r) => {
@@ -6521,32 +6669,39 @@ export default function Nutrition({ embedded = false }) {
               >
                 <ScanLine size={13} />{t('nutrition.scanBarcode', 'Barcode')}
               </button>
-              <button
-                type="button"
-                onClick={() => requireAIConsent('food-analysis', () => setScanMode('ai'))}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[12px] font-bold transition-all active:scale-95"
-                style={{
-                  background: scanMode === 'ai' ? TU.coach : 'transparent',
-                  color: scanMode === 'ai' ? '#fff' : 'var(--color-text-muted)',
-                  border: 'none', cursor: 'pointer',
-                  fontFamily: TU.display, letterSpacing: -0.1,
-                }}
-              >
-                <Sparkles size={13} />{t('nutrition.aiPhoto', 'AI photo')}
-              </button>
-              <button
-                type="button"
-                onClick={() => requireAIConsent('menu-analysis', () => setScanMode('menu'))}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[12px] font-bold transition-all active:scale-95"
-                style={{
-                  background: scanMode === 'menu' ? TU.coach : 'transparent',
-                  color: scanMode === 'menu' ? '#fff' : 'var(--color-text-muted)',
-                  border: 'none', cursor: 'pointer',
-                  fontFamily: TU.display, letterSpacing: -0.1,
-                }}
-              >
-                <BookOpen size={13} />{t('nutrition.menuScan.modeLabel', 'Menu')}
-              </button>
+              {/* AI + Menu pills only exist while the platform feature_ai
+                  kill switch is on (the only direct per-call OpenAI spend).
+                  aiConsent still gates each tap underneath. */}
+              {aiEnabled && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => requireAIConsent('food-analysis', () => setScanMode('ai'))}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[12px] font-bold transition-all active:scale-95"
+                    style={{
+                      background: scanMode === 'ai' ? TU.coach : 'transparent',
+                      color: scanMode === 'ai' ? '#fff' : 'var(--color-text-muted)',
+                      border: 'none', cursor: 'pointer',
+                      fontFamily: TU.display, letterSpacing: -0.1,
+                    }}
+                  >
+                    <Sparkles size={13} />{t('nutrition.aiPhoto', 'AI photo')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => requireAIConsent('menu-analysis', () => setScanMode('menu'))}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[12px] font-bold transition-all active:scale-95"
+                    style={{
+                      background: scanMode === 'menu' ? TU.coach : 'transparent',
+                      color: scanMode === 'menu' ? '#fff' : 'var(--color-text-muted)',
+                      border: 'none', cursor: 'pointer',
+                      fontFamily: TU.display, letterSpacing: -0.1,
+                    }}
+                  >
+                    <BookOpen size={13} />{t('nutrition.menuScan.modeLabel', 'Menu')}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -6623,44 +6778,46 @@ export default function Nutrition({ embedded = false }) {
               }}>
               {scanMode === 'ai' && t('nutrition.pointAtFood', 'Point at your food, then tap the shutter')}
               {scanMode === 'menu' && t('nutrition.menuScan.hint', 'Frame the whole menu, landscape works too')}
-              {scanMode === 'barcode' && t('nutrition.pointCamera', 'Point at a barcode')}
+              {scanMode === 'barcode' && t('nutrition.pointCamera', 'Point at a barcode — it scans automatically')}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (scanMode === 'ai') {
-                  // Gate on third-party AI consent (Apple 5.1.2) before sending
-                  // the captured frame to OpenAI Vision.
-                  requireAIConsent('food-analysis', () => captureFrameForAI());
-                } else if (scanMode === 'menu') {
-                  requireAIConsent('menu-analysis', () => captureFrameForMenu());
+            {/* The shutter only exists in AI/Menu modes. In barcode mode
+                html5-qrcode decodes continuously at 10fps — a visible (even
+                dimmed) shutter reads as "tap to scan" and got tapped to no
+                effect, so it's hidden entirely; the hint above says scanning
+                is automatic. */}
+            {scanMode !== 'barcode' && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Platform feature_ai kill switch — belt-and-suspenders over
+                  // the hidden pills + barcode fallback effect, so the shutter
+                  // can never fire an OpenAI call while the switch is off.
+                  if (!aiEnabled) return;
+                  if (scanMode === 'ai') {
+                    // Gate on third-party AI consent (Apple 5.1.2) before sending
+                    // the captured frame to OpenAI Vision.
+                    requireAIConsent('food-analysis', () => captureFrameForAI());
+                  } else if (scanMode === 'menu') {
+                    requireAIConsent('menu-analysis', () => captureFrameForMenu());
+                  }
+                }}
+                aria-label={
+                  scanMode === 'ai'
+                    ? t('nutrition.takePhoto', 'Take photo')
+                    : t('nutrition.menuScan.takePhoto', 'Capture menu')
                 }
-                // In barcode mode the shutter is a no-op — html5-qrcode decodes
-                // continuously at 10fps. We intentionally do NOT open a native
-                // file picker here.
-              }}
-              aria-label={
-                scanMode === 'ai'
-                  ? t('nutrition.takePhoto', 'Take photo')
-                  : scanMode === 'menu'
-                    ? t('nutrition.menuScan.takePhoto', 'Capture menu')
-                    : t('nutrition.scanBarcode', 'Scan barcode')
-              }
-              disabled={scanMode === 'barcode'}
-              className="w-[78px] h-[78px] rounded-full flex items-center justify-center active:scale-95 transition-transform"
-              style={{
-                border: `3px solid ${scanMode === 'barcode' ? TU.accent : TU.coach}`,
-                background: 'var(--color-bg-card)',
-                padding: 5,
-                cursor: scanMode === 'barcode' ? 'default' : 'pointer',
-                opacity: scanMode === 'barcode' ? 0.55 : 1,
-                boxShadow: `0 8px 24px color-mix(in srgb, ${scanMode === 'barcode' ? TU.accent : TU.coach} 35%, transparent)`,
-              }}
-            >
-              <div className="w-full h-full rounded-full" style={{
-                background: scanMode === 'barcode' ? 'var(--color-text-primary)' : TU.coach,
-              }} />
-            </button>
+                className="w-[78px] h-[78px] rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                style={{
+                  border: `3px solid ${TU.coach}`,
+                  background: 'var(--color-bg-card)',
+                  padding: 5,
+                  cursor: 'pointer',
+                  boxShadow: `0 8px 24px color-mix(in srgb, ${TU.coach} 35%, transparent)`,
+                }}
+              >
+                <div className="w-full h-full rounded-full" style={{ background: TU.coach }} />
+              </button>
+            )}
           </div>
 
           {/* Scoped CSS — forces html5-qrcode's injected <video> + <canvas> to
@@ -6750,8 +6907,50 @@ export default function Nutrition({ embedded = false }) {
           <div className="relative w-full max-w-sm rounded-[22px] p-6 text-center" style={{ background: 'var(--color-bg-primary)' }} onClick={e => e.stopPropagation()}>
             <AlertCircle size={36} className="mx-auto mb-3" style={{ color: 'var(--color-danger, #EF4444)' }} />
             <p className="text-[14px] mb-4" style={{ color: 'var(--color-text-primary)' }}>{barcodeError}</p>
-            <button onClick={closeBarcodeScanner} className="px-6 py-2.5 rounded-[14px] font-bold text-[14px] active:scale-95"
-              style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)' }}>OK</button>
+            <div className="flex flex-col gap-2.5">
+              {/* Product not in the barcode DB → offer AI photo as the fallback
+                  (only when the platform AI switch is on). A real network error
+                  doesn't get this — AI would fail the same way. Reopens the
+                  camera straight into AI mode, gated by the same consent flow. */}
+              {barcodeNotFound && aiEnabled && (
+                <button
+                  onClick={() => {
+                    setBarcodeError('');
+                    setBarcodeNotFound(false);
+                    requireAIConsent('food-analysis', () => {
+                      handleBarcodeRequest('__open_scanner__');
+                      setScanMode('ai');
+                    });
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-[14px] font-bold text-[14px] active:scale-95"
+                  style={{ background: TU.coach, color: '#fff' }}
+                >
+                  <Sparkles size={15} />{t('nutrition.scanWithAi', 'Scan with AI instead')}
+                </button>
+              )}
+              <button onClick={closeBarcodeScanner} className="px-6 py-2.5 rounded-[14px] font-bold text-[14px] active:scale-95"
+                style={barcodeNotFound && aiEnabled
+                  ? { background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)' }
+                  : { background: TU.accent, color: 'var(--color-text-on-accent, #001512)' }}>
+                {barcodeNotFound && aiEnabled ? t('nutrition.cancel', 'Cancel') : 'OK'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Logging overlay — food_logs insert in flight ── */}
+      {loggingFood && (
+        <div className="fixed inset-0 z-[96] flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
+          aria-busy={true}>
+          <div className="rounded-[20px] px-7 py-6 flex flex-col items-center gap-3"
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 18px 50px rgba(0,0,0,0.25)' }}>
+            <div className="w-9 h-9 rounded-full animate-spin"
+              style={{ border: `3px solid var(--color-border-subtle)`, borderTopColor: TU.accent }} />
+            <p className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: TU.display }}>
+              {t('nutrition.logging', 'Logging…')}
+            </p>
           </div>
         </div>
       )}

@@ -19,21 +19,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { fetchCurrentKPIs } from '../../../lib/admin/currentKPIs';
+import { computeHealthScore } from '../../../lib/platform/healthScore';
 import StatCard from '../../../components/platform/StatCard';
 
-const getScoreColor = (s) => (s >= 80 ? '#10B981' : s >= 60 ? '#22C55E' : s >= 40 ? '#F59E0B' : s >= 20 ? '#F97316' : '#EF4444');
-
-// Same six-factor weighting as the cross-gym Gym Health page (0281 / GymHealth.jsx).
-function computeHealthScore({ totalMembers, active30d, sessions30d, checkedIn30d, onboarded, avgChurn, new30d }) {
-  if (!totalMembers) return 0;
-  const retention = (active30d / totalMembers) * 25;
-  const engagement = (Math.min(sessions30d / totalMembers, 12) / 12) * 20;
-  const checkin = (checkedIn30d / totalMembers) * 15;
-  const onboarding = (onboarded / totalMembers) * 15;
-  const churnHealth = ((100 - (avgChurn || 0)) / 100) * 15;
-  const growth = (Math.min(new30d / totalMembers, 0.3) / 0.3) * 10;
-  return Math.round(Math.min(retention + engagement + checkin + onboarding + churnHealth + growth, 100));
-}
+const getScoreColor = (s) => (s == null ? '#6B7280' : s >= 80 ? '#10B981' : s >= 60 ? '#22C55E' : s >= 40 ? '#F59E0B' : s >= 20 ? '#F97316' : '#EF4444');
 
 export default function GymWellnessTab({ gymId }) {
   const { t } = useTranslation('pages');
@@ -75,9 +64,16 @@ export default function GymWellnessTab({ gymId }) {
       const atRisk = churn.filter((c) => c.score >= 60 && c.score < 80).length;
       const critical = churn.filter((c) => c.score >= 80).length;
 
+      // Shared canonical formula (lib/platform/healthScore) — returns null for
+      // 0-member gyms (unscored) instead of a misleading 0/Critical.
       const score = computeHealthScore({
-        totalMembers, active30d, sessions30d: sessions.length,
-        checkedIn30d, onboarded, avgChurn, new30d,
+        totalMembers,
+        activeMembers30d: active30d,
+        totalSessions30d: sessions.length,
+        checkedInMembers30d: checkedIn30d,
+        onboardedMembers: onboarded,
+        avgChurnScore: avgChurn,
+        newMembers30d: new30d,
       });
 
       return { score, atRisk, critical, cardsDelivered30d: (cardsRes.data || []).length, totalMembers };
@@ -86,7 +82,7 @@ export default function GymWellnessTab({ gymId }) {
     staleTime: 60_000,
   });
 
-  const scoreColor = useMemo(() => getScoreColor(health?.score ?? 0), [health?.score]);
+  const scoreColor = useMemo(() => getScoreColor(health?.score ?? null), [health?.score]);
 
   if (kpisLoading || healthLoading) {
     return (
@@ -111,7 +107,7 @@ export default function GymWellnessTab({ gymId }) {
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
             <p className="text-[34px] font-bold leading-none tabular-nums" style={{ color: scoreColor }}>
-              {health?.score ?? 0}
+              {health?.score ?? '—'}
             </p>
             <span className="text-[13px] text-[#6B7280]">/ 100</span>
           </div>

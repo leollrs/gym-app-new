@@ -8,8 +8,6 @@ const statusConfig = {
   banned:      { key: 'banned',      bg: 'bg-red-500/10',     text: 'text-red-400',     border: 'border-red-500/20' },
 };
 
-export { statusConfig };
-
 export default function StatusBadge({ status }) {
   const { t } = useTranslation('pages');
   const cfg = statusConfig[status] ?? statusConfig.active;

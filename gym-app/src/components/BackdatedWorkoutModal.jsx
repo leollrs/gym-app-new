@@ -400,6 +400,7 @@ export default function BackdatedWorkoutModal({ open, onClose, onSaved, routines
       const { data, error } = await supabase.rpc('log_backdated_workout', { p_payload: payload });
       if (error) throw error;
       onSaved?.(data);
+      try { window.dispatchEvent(new CustomEvent('tugympr:workouts-changed')); } catch { /* noop */ }
       onClose?.();
     } catch (err) {
       // Never render raw DB errors to members — log for diagnosis, show a

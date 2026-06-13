@@ -18,41 +18,102 @@
     <title>TuGymPR</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800;900&family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;600;700;800;900&family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600;700&family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <script>
-      // Boot-failure overlay — shows JS errors visibly so we can diagnose
-      // blank-screen boot issues. STRICTLY pre-mount: once React has rendered
-      // anything into #root, this never fires again. Without that guard, any
-      // unhandled rejection mid-session (e.g. a recoverable DB error) painted
-      // a full-screen black overlay over a perfectly working app — the in-app
-      // ErrorBoundary + errorTracker own everything post-mount.
+      // Boot-failure recovery — the LAST net under the React ErrorBoundaries
+      // and the StuckLoadingRecovery watcher. Fires only when #root is (still)
+      // empty, i.e. the app genuinely failed to boot. Behavior:
+      //   1. Errors/rejections are buffered, never painted raw.
+      //   2. On the first wedged boot we silently reload once (most boot
+      //      failures — half-applied OTA update, transient chunk fetch — heal
+      //      on a clean reload).
+      //   3. If the retry also fails, paint a BRANDED bilingual screen with a
+      //      "Reintentar" button (+ a clear-cache fallback). The raw error
+      //      stays collapsed behind "Detalles técnicos" for field debugging —
+      //      a member must never see a naked stack trace or DB error.
+      // Post-mount, the in-app ErrorBoundary + errorTracker own everything;
+      // a MutationObserver tears this down the moment React commits.
       (function() {
-        function showError(label, err) {
+        var buffer = '';
+        var timer = null;
+        var painted = false;
+
+        function rootEmpty() {
+          var root = document.getElementById('root');
+          return !root || root.childElementCount === 0;
+        }
+
+        function paint() {
+          if (painted || !rootEmpty() || !document.body) return;
+          // First wedged boot → one silent retry before showing anything.
           try {
-            var root = document.getElementById('root');
-            if (root && root.childElementCount > 0) return; // app booted — stay silent
-            var overlay = document.getElementById('__boot_error__');
-            if (!overlay) {
-              overlay = document.createElement('div');
-              overlay.id = '__boot_error__';
-              overlay.style.cssText = 'position:fixed;inset:0;background:#0B0F12;color:#E8C547;font:13px -apple-system,monospace;padding:24px;overflow:auto;z-index:99999;white-space:pre-wrap;';
-              document.body && document.body.appendChild(overlay);
+            if (!sessionStorage.getItem('__boot_retry__')) {
+              sessionStorage.setItem('__boot_retry__', '1');
+              location.reload();
+              return;
             }
-            overlay.textContent += '['+label+'] '+(err && (err.stack||err.message||err))+'\n\n';
+          } catch(_){}
+          painted = true;
+          var ov = document.createElement('div');
+          ov.id = '__boot_error__';
+          ov.style.cssText = 'position:fixed;inset:0;background:#0B0F12;color:#F3F0E9;font:15px/1.5 -apple-system,system-ui,sans-serif;z-index:99999;display:flex;align-items:center;justify-content:center;padding:28px;text-align:center;';
+          ov.innerHTML =
+            '<div style="max-width:340px;width:100%">' +
+              '<div style="font-size:42px;line-height:1">&#128170;</div>' +
+              '<div style="font-size:21px;font-weight:800;margin-top:14px;letter-spacing:-0.4px">No pudimos abrir el app</div>' +
+              '<div style="font-size:13.5px;color:rgba(243,240,233,0.65);margin-top:8px">Algo fall&oacute; al iniciar. Int&eacute;ntalo de nuevo &mdash; tus datos est&aacute;n seguros.<br><span style="opacity:.7">Something went wrong while starting. Your data is safe.</span></div>' +
+              '<button id="__boot_retry_btn__" style="margin-top:22px;width:100%;height:52px;border:none;border-radius:14px;background:linear-gradient(180deg,#2EC9B7,#178C7E);color:#06363B;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">Reintentar &middot; Retry</button>' +
+              '<button id="__boot_wipe_btn__" style="margin-top:10px;width:100%;height:44px;border:none;border-radius:12px;background:rgba(255,255,255,0.07);color:rgba(243,240,233,0.75);font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">Borrar cach&eacute; y reintentar</button>' +
+              '<details style="margin-top:18px;text-align:left"><summary style="font-size:11px;color:rgba(243,240,233,0.4);cursor:pointer">Detalles t&eacute;cnicos</summary>' +
+                '<pre id="__boot_error_log__" style="font:10.5px/1.45 ui-monospace,monospace;color:rgba(243,240,233,0.5);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:auto;margin-top:8px"></pre>' +
+              '</details>' +
+            '</div>';
+          document.body.appendChild(ov);
+          var log = document.getElementById('__boot_error_log__');
+          if (log) log.textContent = buffer || '(no error captured)';
+          var retry = document.getElementById('__boot_retry_btn__');
+          if (retry) retry.onclick = function(){
+            try { sessionStorage.removeItem('__boot_retry__'); } catch(_){}
+            location.reload();
+          };
+          var wipe = document.getElementById('__boot_wipe_btn__');
+          if (wipe) wipe.onclick = function(){
+            // Last resort for corrupted persisted state. Auth session lives in
+            // localStorage too — the user re-logs in, which beats a dead app.
+            try { localStorage.clear(); } catch(_){}
+            try { sessionStorage.clear(); } catch(_){}
+            location.reload();
+          };
+        }
+
+        function onBootError(label, err) {
+          try {
+            if (painted || !rootEmpty()) return; // app is up — in-app handlers own it
+            if (buffer.length < 4000) {
+              buffer += '[' + label + '] ' + (err && (err.stack || err.message || err)) + '\n\n';
+            }
+            // Grace window: a healthy boot commits within a couple seconds —
+            // only treat the boot as wedged if #root is STILL empty afterward.
+            // (An early benign rejection a frame before first commit must not
+            // reload or paint anything.)
+            if (!timer) timer = setTimeout(paint, 2500);
           } catch(_){}
         }
-        window.addEventListener('error', function(e){ showError('error', e.error || e.message); });
-        window.addEventListener('unhandledrejection', function(e){ showError('reject', e.reason); });
-        // If an early error drew the overlay but the app still managed to
-        // mount, tear the overlay down — the boot recovered.
+
+        window.addEventListener('error', function(e){ onBootError('error', e.error || e.message); });
+        window.addEventListener('unhandledrejection', function(e){ onBootError('reject', e.reason); });
+
+        // The app mounted — clear the retry flag, kill any pending paint, and
+        // remove the overlay if an early error had already drawn it.
         try {
           var mo = new MutationObserver(function(){
-            var root = document.getElementById('root');
-            if (root && root.childElementCount > 0) {
-              var ov = document.getElementById('__boot_error__');
-              if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
-              mo.disconnect();
-            }
+            if (rootEmpty()) return;
+            try { sessionStorage.removeItem('__boot_retry__'); } catch(_){}
+            if (timer) { clearTimeout(timer); timer = null; }
+            var ov = document.getElementById('__boot_error__');
+            if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+            painted = false;
+            mo.disconnect();
           });
           mo.observe(document.documentElement, { childList: true, subtree: true });
         } catch(_){}

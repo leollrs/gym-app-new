@@ -459,6 +459,7 @@ const SessionSummary = () => {
       t('sessionSummary.deleteSuccess', { defaultValue: 'Workout discarded' }),
       'success'
     );
+    try { window.dispatchEvent(new CustomEvent('tugympr:workouts-changed')); } catch { /* noop */ }
     navigate('/');
   };
 

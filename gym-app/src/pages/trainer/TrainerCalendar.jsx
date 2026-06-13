@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus, X, ChevronLeft, ChevronRight, Calendar as CalendarIcon,
   Trash2, Bell, BellOff, Repeat, Dumbbell,
@@ -10,12 +11,13 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
 import {
-  format, addWeeks, startOfWeek, endOfWeek, addDays,
+  format, addWeeks, startOfWeek, endOfWeek, addDays, startOfDay,
   isSameDay, isToday, setHours, setMinutes,
   startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, addMonths,
 } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
+import { createPortal } from 'react-dom';
 import logger from '../../lib/logger';
 import useFocusTrap from '../../hooks/useFocusTrap';
 import { TT, TFont, avatarIdx } from './components/designTokens';
@@ -52,8 +54,34 @@ function statusVisuals(status) {
   }
 }
 
+// Title-kind heuristics — EN + ES keywords so Spanish titles classify too.
+const GROUP_KEYWORDS = ['bootcamp', 'group', 'grupal', 'grupo'];
+const INTAKE_KEYWORDS = ['assessment', 'intake', 'evaluación', 'evaluacion', 'valoración', 'valoracion'];
+const titleHasKeyword = (title, keywords) => {
+  const lower = (title || '').toLowerCase();
+  return keywords.some(k => lower.includes(k));
+};
+const isGroupTitle = (title) => titleHasKeyword(title, GROUP_KEYWORDS);
+const isIntakeTitle = (title) => titleHasKeyword(title, INTAKE_KEYWORDS);
+
+// Small chip showing the workout attached to a session (details.workout_name).
+const WorkoutChip = ({ name }) => {
+  if (!name) return null;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '2px 7px', borderRadius: 999, maxWidth: '100%',
+      background: TT.accentSoft, color: TT.accentInk,
+      fontSize: 9.5, fontWeight: 800, overflow: 'hidden',
+    }}>
+      <Dumbbell size={9} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+    </span>
+  );
+};
+
 // ── Session Modal (keeps existing UX, restyled with TT tokens) ─────────────
-const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gymId, workoutPlans }) => {
+const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gymId, workoutPlans, presetClientId }) => {
   const { showToast } = useToast();
   const { t, i18n } = useTranslation(['pages', 'common']);
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
@@ -66,8 +94,11 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     }
     return out;
   }, [t]);
-  const [clientId, setClientId] = useState(session?.client_id || '');
-  const [title, setTitle]       = useState(session?.title || t('pages:trainerCalendar.titlePlaceholder'));
+  const [clientId, setClientId] = useState(session?.client_id || presetClientId || '');
+  // Title starts EMPTY (placeholder attr shows the hint) — pre-filling the
+  // VALUE with localized placeholder text made every session keep that text
+  // as its real title, which broke the kind heuristics + cluttered the lists.
+  const [title, setTitle]       = useState(session?.title || '');
   const [notes, setNotes]       = useState(session?.notes || '');
   const [dateVal, setDateVal]   = useState(
     session ? format(new Date(session.scheduled_at), 'yyyy-MM-dd') : format(date || new Date(), 'yyyy-MM-dd')
@@ -87,6 +118,25 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError]       = useState('');
   const [selectedWorkout, setSelectedWorkout] = useState(session?.details?.workout_id || '');
+
+  // Personal plans (trainer_workout_plans) are per-client: when a client is
+  // selected only their plans are listed; routines + gym programs always show.
+  const visibleWorkoutPlans = useMemo(
+    () => (workoutPlans || []).filter(w => w._type !== 'plan' || !clientId || w._clientId === clientId),
+    [workoutPlans, clientId],
+  );
+
+  // Switching client drops a selected plan that belongs to someone else, so
+  // we never attach the wrong client's plan.
+  const handleClientChange = (nextClientId) => {
+    setClientId(nextClientId);
+    setSelectedWorkout(prev => {
+      if (!prev) return prev;
+      const w = (workoutPlans || []).find(x => x.id === prev);
+      const wrongClient = w && w._type === 'plan' && nextClientId && w._clientId && w._clientId !== nextClientId;
+      return wrongClient ? '' : prev;
+    });
+  };
 
   const applyTemplate = (tmpl) => {
     setTitle(t(`pages:trainerCalendar.${tmpl.titleKey}`));
@@ -131,6 +181,27 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     const clientConflict = (clientSessions || []).find(overlaps);
     if (clientConflict) return { type: 'client', session: clientConflict };
 
+    // Cross-trainer check: RLS hides this client's sessions with OTHER
+    // trainers from the queries above, so ask the SECURITY DEFINER RPC
+    // (migration 0529). If the RPC isn't deployed yet (404/42883), degrade
+    // silently to the same-trainer checks above.
+    try {
+      const { data: crossRows, error: crossErr } = await supabase.rpc('check_client_session_conflict', {
+        p_client_id: clientId,
+        p_start: startTime.toISOString(),
+        p_duration_mins: durationMins,
+        p_exclude_session: excludeSessionId || null,
+      });
+      if (crossErr) {
+        const missing = crossErr.code === '42883' || crossErr.code === 'PGRST202' || crossErr.status === 404;
+        if (!missing) logger.error('SessionModal: check_client_session_conflict failed:', crossErr);
+      } else if (Array.isArray(crossRows) && crossRows.length > 0) {
+        return { type: 'client_other_trainer', session: crossRows[0] };
+      }
+    } catch (e) {
+      logger.error('SessionModal: cross-trainer conflict check threw:', e);
+    }
+
     return null;
   };
 
@@ -145,9 +216,20 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     try {
       const conflict = await checkConflicts(scheduledAt, durationMins, isEdit ? session.id : null);
       if (conflict) {
-        const msg = conflict.type === 'trainer'
-          ? t('pages:trainerCalendar.trainerConflict')
-          : t('pages:trainerCalendar.clientConflict');
+        let msg;
+        if (conflict.type === 'trainer') {
+          const otherClient = conflict.session?.profiles?.full_name;
+          msg = otherClient
+            ? t('pages:trainerCalendar.trainerConflictNamed', 'You already have a session with {{name}} at that time', { name: otherClient })
+            : t('pages:trainerCalendar.trainerConflict');
+        } else if (conflict.type === 'client_other_trainer') {
+          const otherTrainer = conflict.session?.trainer_name;
+          msg = otherTrainer
+            ? t('pages:trainerCalendar.clientOtherTrainerConflictNamed', 'This client already has a session with {{name}} at that time', { name: otherTrainer })
+            : t('pages:trainerCalendar.clientOtherTrainerConflict', 'This client already has a session with another trainer at that time');
+        } else {
+          msg = t('pages:trainerCalendar.clientConflict');
+        }
         setError(msg);
         showToast(msg, 'error');
         setSaving(false);
@@ -188,6 +270,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       updated_at: new Date().toISOString(),
     };
 
+    let recurringCount = 0;
     if (!isEdit && recurring) {
       const recurrenceGroup = crypto.randomUUID();
       const step = frequency === 'biweekly' ? 2 : 1;
@@ -203,14 +286,25 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
         });
         cursor = addWeeks(cursor, step);
       }
+      // End date before the start date generates zero rows — that's a user
+      // mistake, not a success.
+      if (rows.length === 0) {
+        const msg = t('pages:trainerCalendar.recurringNoneCreated', 'No sessions were created — check the end date');
+        setError(msg);
+        showToast(msg, 'error');
+        setSaving(false);
+        return;
+      }
       try {
         for (let i = 1; i < rows.length; i++) {
           const rc = await checkConflicts(rows[i].scheduled_at, durationMins, null);
           if (rc) {
             const dateStr = format(new Date(rows[i].scheduled_at), 'MMM d', { locale: dateFnsLocale });
-            const msg = rc.type === 'trainer'
-              ? t('pages:trainerCalendar.trainerConflictOnDate', { date: dateStr })
-              : t('pages:trainerCalendar.clientConflictOnDate', { date: dateStr });
+            const msg = rc.type === 'client_other_trainer'
+              ? t('pages:trainerCalendar.clientOtherTrainerConflictOnDate', 'This client has a session with another trainer on {{date}}', { date: dateStr })
+              : rc.type === 'trainer'
+                ? t('pages:trainerCalendar.trainerConflictOnDate', { date: dateStr })
+                : t('pages:trainerCalendar.clientConflictOnDate', { date: dateStr });
             setError(msg);
             showToast(msg, 'error');
             setSaving(false);
@@ -224,25 +318,20 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       const { error: err } = await supabase.from('trainer_sessions').insert(rows);
       if (err) {
         logger.error('SessionModal: recurring insert failed:', err);
-        const isConflict = err.code === '23505' || err.code === 'P0001' || (err.message || '').includes('trainer_schedule_conflict');
-        const friendly = isConflict
-          ? t('pages:trainerCalendar.scheduleConflictGuard', 'This time slot conflicts with another session.')
-          : t('pages:trainerCalendar.errorSaveSession', 'Failed to save session');
+        const friendly = t('pages:trainerCalendar.errorSaveSession', 'Failed to save session');
         setError(friendly);
         setSaving(false);
         showToast(friendly, 'error');
         return;
       }
+      recurringCount = rows.length;
     } else {
       const { error: err } = isEdit
         ? await supabase.from('trainer_sessions').update(updatePayload).eq('id', session.id)
         : await supabase.from('trainer_sessions').insert(insertPayload);
       if (err) {
         logger.error('SessionModal: save session failed:', err);
-        const isConflict = err.code === '23505' || err.code === 'P0001' || (err.message || '').includes('trainer_schedule_conflict');
-        const friendly = isConflict
-          ? t('pages:trainerCalendar.scheduleConflictGuard', 'This time slot conflicts with another session.')
-          : t('pages:trainerCalendar.errorSaveSession', 'Failed to save session');
+        const friendly = t('pages:trainerCalendar.errorSaveSession', 'Failed to save session');
         setError(friendly);
         setSaving(false);
         showToast(friendly, 'error');
@@ -257,18 +346,34 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     // never delivered anything, so it was removed.
 
     if (!isEdit && recurring) {
-      const step = frequency === 'biweekly' ? 2 : 1;
-      const baseDate = new Date(`${dateVal}T${timeVal}`);
-      const endLimit = endDate ? new Date(`${endDate}T23:59:59`) : addWeeks(baseDate, 8);
-      let count = 0;
-      let cur = baseDate;
-      while (cur <= endLimit) { count++; cur = addWeeks(cur, step); }
-      posthog?.capture('trainer_session_created', { recurring: true, count });
-      showToast(t('pages:trainerCalendar.recurringSessionsCreated', { count }), 'success');
+      posthog?.capture('trainer_session_created', { recurring: true, count: recurringCount });
+      showToast(t('pages:trainerCalendar.recurringSessionsCreated', { count: recurringCount }), 'success');
     } else {
       showToast(isEdit ? t('pages:trainerCalendar.sessionUpdated') : t('pages:trainerCalendar.sessionScheduled'), 'success');
       if (!isEdit) posthog?.capture('trainer_session_created', { recurring: false });
     }
+    onSaved();
+  };
+
+  // Cancel (status → 'cancelled') is the primary destructive action: the
+  // 0443 UPDATE trigger notifies the member. Hard DELETE bypassed that
+  // trigger entirely (sessions just vanished on the member side), so it's
+  // now only offered for sessions that are ALREADY cancelled.
+  const isCancelled = isEdit && session?.status === 'cancelled';
+
+  const handleCancelSession = async () => {
+    setDeleting(true);
+    const { error } = await supabase
+      .from('trainer_sessions')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', session.id);
+    if (error) {
+      logger.error('SessionModal: cancel session failed:', error);
+      setDeleting(false);
+      showToast(t('pages:trainerCalendar.errorCancelSession', 'Failed to cancel session'), 'error');
+      return;
+    }
+    showToast(t('pages:trainerCalendar.sessionCancelledToast', 'Session cancelled — the client will be notified'), 'success');
     onSaved();
   };
 
@@ -290,9 +395,9 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     color: TT.text, outline: 'none',
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
-      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+  return createPortal(
+    <div className="fixed inset-0 z-[90] flex items-center justify-center px-4 py-6"
+      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', overscrollBehavior: 'contain' }}
       onClick={onClose}
     >
       <div
@@ -360,7 +465,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
             <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
               {t('pages:trainerCalendar.clientLabel')}
             </label>
-            <select value={clientId} onChange={e => setClientId(e.target.value)} style={inputStyle}>
+            <select value={clientId} onChange={e => handleClientChange(e.target.value)} style={inputStyle}>
               <option value="">{t('pages:trainerCalendar.selectClient')}</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
             </select>
@@ -383,13 +488,13 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
               <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
                 {t('pages:trainerCalendar.dateLabel')}
               </label>
-              <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} style={inputStyle} />
+              <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} style={{ ...inputStyle, minWidth: 0, maxWidth: '100%' }} />
             </div>
             <div>
               <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
                 {t('pages:trainerCalendar.timeLabel')}
               </label>
-              <input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)} style={inputStyle} />
+              <input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)} style={{ ...inputStyle, minWidth: 0, maxWidth: '100%' }} />
             </div>
           </div>
 
@@ -540,7 +645,13 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
                     <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
                       {t('pages:trainerCalendar.endDateLabel')}
                     </label>
-                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle} />
+                    <input
+                      type="date"
+                      value={endDate}
+                      min={format(new Date(), 'yyyy-MM-dd')}
+                      onChange={e => setEndDate(e.target.value)}
+                      style={inputStyle}
+                    />
                     <p style={{ fontSize: 10.5, color: TT.textMute, marginTop: 4 }}>{t('pages:trainerCalendar.endDateHint')}</p>
                   </div>
                 </div>
@@ -549,7 +660,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           )}
 
           {/* Workout Plan Selector */}
-          {(workoutPlans || []).length > 0 && (
+          {visibleWorkoutPlans.length > 0 && (
             <div>
               <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
                 <Dumbbell size={12} color={TT.accent} style={{ display: 'inline', marginRight: 4, marginTop: -2 }} />
@@ -557,9 +668,11 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
               </label>
               <select value={selectedWorkout} onChange={e => setSelectedWorkout(e.target.value)} style={inputStyle}>
                 <option value="">{t('pages:trainerCalendar.noWorkout')}</option>
-                {workoutPlans.map(w => (
+                {visibleWorkoutPlans.map(w => (
                   <option key={w.id} value={w.id}>
-                    {w.name}{w._days ? ` (${w._days} ${t('pages:trainerCalendar.days')})` : ''}
+                    {w._type === 'plan'
+                      ? `${t('pages:trainerCalendar.planPrefix', 'Plan')}: ${w.name}${w._clientName ? ` · ${w._clientName}` : ''}`
+                      : `${w.name}${w._days ? ` (${w._days} ${t('pages:trainerCalendar.days')})` : ''}`}
                   </option>
                 ))}
               </select>
@@ -586,9 +699,13 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
         }}>
           {isEdit && (
             confirmDelete ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 12, color: TT.textSub }}>{t('pages:trainerCalendar.deleteSessionConfirm')}</span>
-                <button onClick={handleDelete} disabled={deleting}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: TT.textSub }}>
+                  {isCancelled
+                    ? t('pages:trainerCalendar.deleteSessionConfirm')
+                    : t('pages:trainerCalendar.cancelSessionConfirm', 'Cancel this session? The client will be notified.')}
+                </span>
+                <button onClick={isCancelled ? handleDelete : handleCancelSession} disabled={deleting}
                   style={{
                     padding: '8px 12px', minHeight: 44, borderRadius: 10,
                     fontSize: 12, fontWeight: 800,
@@ -614,7 +731,10 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
                   fontSize: 13, fontWeight: 700, color: TT.hot, background: 'transparent', border: 'none',
                 }}
               >
-                <Trash2 size={14} /> {t('pages:trainerCalendar.delete')}
+                <Trash2 size={14} />{' '}
+                {isCancelled
+                  ? t('pages:trainerCalendar.delete')
+                  : t('pages:trainerCalendar.cancelSession', 'Cancel session')}
               </button>
             )
           )}
@@ -639,7 +759,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
         </div>
       </div>
     </div>
-  );
+  , document.body);
 };
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -648,6 +768,7 @@ export default function TrainerSchedule() {
   const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [viewMode, setViewMode] = useState('week');
   const [weekOffset, setWeekOffset] = useState(0);
@@ -655,16 +776,23 @@ export default function TrainerSchedule() {
   const [monthOffset, setMonthOffset] = useState(0);
   const [sessions, setSessions] = useState([]);
   const [clients, setClients] = useState([]);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
   const [workoutPlans, setWorkoutPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  // `?client=<id>&book=1` deep-link (messages page contract): open the
+  // booking modal with that client preselected. null = no pending request.
+  const [pendingBookClient, setPendingBookClient] = useState(null);
 
   // ── Derived dates ──
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 0 });
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  const selectedDay = addDays(new Date(), dayOffset);
+  // startOfDay: the raw addDays(new Date(), n) carried wall-clock h:m:s.ms,
+  // which made day-view hour slots start at e.g. 7:43:12 — sessions matched
+  // one row early and anything in the first hour matched NO row at all.
+  const selectedDay = startOfDay(addDays(new Date(), dayOffset));
 
   const monthAnchor = addMonths(new Date(), monthOffset);
   const monthStart = startOfMonth(monthAnchor);
@@ -702,8 +830,37 @@ export default function TrainerSchedule() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 
+  // ── `?client=<id>&book=1` deep link (from TrainerMessages) ──
+  // Capture once on mount, then strip the params so refresh/back doesn't
+  // re-open the modal.
+  useEffect(() => {
+    const wantsBook = searchParams.get('book') === '1';
+    const clientParam = searchParams.get('client');
+    if (!wantsBook && !clientParam) return;
+    if (wantsBook) setPendingBookClient(clientParam || '');
+    const next = new URLSearchParams(searchParams);
+    next.delete('book');
+    next.delete('client');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Open the modal once the client list is in (so the <select> can actually
+  // show the preselected client). Unknown/foreign ids degrade to no preselect.
+  useEffect(() => {
+    if (pendingBookClient === null || !clientsLoaded) return;
+    const valid = clients.some(c => c.id === pendingBookClient);
+    setModal({ date: new Date(), presetClientId: valid ? pendingBookClient : '' });
+    setPendingBookClient(null);
+  }, [pendingBookClient, clientsLoaded, clients]);
+
   const fetchRange = useMemo(() => {
-    if (viewMode === 'day') return { start: selectedDay, end: selectedDay };
+    // Day view fetches the WHOLE week around the selected day so the week
+    // strip dots stay accurate while flipping through days.
+    if (viewMode === 'day') {
+      const ws = startOfWeek(selectedDay, { weekStartsOn: 0 });
+      return { start: ws, end: endOfWeek(ws, { weekStartsOn: 0 }) };
+    }
     if (viewMode === 'month') return { start: paddedMonthDays[0], end: paddedMonthDays[paddedMonthDays.length - 1] };
     return { start: weekStart, end: weekEnd };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -724,33 +881,58 @@ export default function TrainerSchedule() {
     if (error) {
       logger.error('TrainerCalendar: loadClients failed:', error);
       showToast(t('trainerCalendar.errorLoadClients', 'Failed to load clients'), 'error');
+      setClientsLoaded(true); // unblock the deep-link modal (opens w/o preselect)
       return; // keep prior list
     }
     setClients((data || []).map(tc => tc.profiles).filter(Boolean));
+    setClientsLoaded(true);
   };
 
   const loadWorkoutPlans = async () => {
-    const { data: routines, error: routinesError } = await supabase
-      .from('routines')
-      .select('id, name, created_at')
-      .eq('created_by', profile.id)
-      .order('name');
-    const { data: programs, error: programsError } = await supabase
-      .from('gym_programs')
-      .select('id, name, duration_weeks, weeks')
-      .eq('gym_id', profile.gym_id)
-      .eq('is_published', true)
-      .order('name');
+    const [
+      { data: routines, error: routinesError },
+      { data: programs, error: programsError },
+      { data: plans, error: plansError },
+    ] = await Promise.all([
+      supabase
+        .from('routines')
+        .select('id, name, created_at')
+        .eq('created_by', profile.id)
+        .order('name'),
+      supabase
+        .from('gym_programs')
+        .select('id, name, duration_weeks, weeks')
+        .eq('gym_id', profile.gym_id)
+        .eq('is_published', true)
+        .order('name'),
+      // The trainer's own custom plans (the actual Plans feature) — per
+      // client, so the modal can filter them to the selected client.
+      supabase
+        .from('trainer_workout_plans')
+        .select('id, name, client_id, duration_weeks, weeks, profiles!trainer_workout_plans_client_id_fkey(full_name)')
+        .eq('trainer_id', profile.id)
+        .eq('is_active', true)
+        .order('name'),
+    ]);
     if (routinesError) logger.error('TrainerCalendar: loadWorkoutPlans routines failed:', routinesError);
     if (programsError) logger.error('TrainerCalendar: loadWorkoutPlans programs failed:', programsError);
-    if (routinesError && programsError) return; // keep prior list
+    if (plansError) logger.error('TrainerCalendar: loadWorkoutPlans plans failed:', plansError);
+    if (routinesError && programsError && plansError) return; // keep prior list
 
+    const countDays = (weeks) => Object.values(weeks || {})
+      .reduce((sum, wk) => sum + (Array.isArray(wk) ? wk.length : 0), 0);
     const mapped = [
+      ...(plans || []).map(p => ({
+        id: p.id, name: p.name, _type: 'plan',
+        _days: countDays(p.weeks) || null,
+        _clientId: p.client_id,
+        _clientName: p.profiles?.full_name || null,
+      })),
       ...(routines || []).map(r => ({ id: r.id, name: r.name, _type: 'routine', _days: null })),
-      ...(programs || []).map(p => {
-        const totalDays = Object.values(p.weeks || {}).reduce((sum, wk) => sum + (Array.isArray(wk) ? wk.length : 0), 0);
-        return { id: p.id, name: p.name, _type: 'program', _days: totalDays || (p.duration_weeks * 3) };
-      }),
+      ...(programs || []).map(p => ({
+        id: p.id, name: p.name, _type: 'program',
+        _days: countDays(p.weeks) || (p.duration_weeks * 3),
+      })),
     ];
     setWorkoutPlans(mapped);
   };
@@ -790,26 +972,19 @@ export default function TrainerSchedule() {
     || (viewMode === 'week' && weekOffset === 0)
     || (viewMode === 'month' && monthOffset === 0);
 
+  // All day/week/month lists derive from this map. Cancelled sessions are
+  // EXCLUDED — they used to occupy day-view hour slots and hide the real
+  // booking behind them. (Counters below still read the raw `sessions`.)
   const sessionsByDay = useMemo(() => {
     const map = {};
     sessions.forEach(s => {
+      if (s.status === 'cancelled') return;
       const key = format(new Date(s.scheduled_at), 'yyyy-MM-dd');
       if (!map[key]) map[key] = [];
       map[key].push(s);
     });
     return map;
   }, [sessions]);
-
-  const weekSessionsByDay = useMemo(() => {
-    const map = {};
-    days.forEach(d => { map[format(d, 'yyyy-MM-dd')] = []; });
-    sessions.forEach(s => {
-      const key = format(new Date(s.scheduled_at), 'yyyy-MM-dd');
-      if (map[key]) map[key].push(s);
-    });
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, weekStart.getTime()]);
 
   const dayViewSessions = useMemo(() => {
     const key = format(selectedDay, 'yyyy-MM-dd');
@@ -840,8 +1015,10 @@ export default function TrainerSchedule() {
     () => sessions.filter(s => s.status !== 'cancelled').length,
     [sessions]
   );
+  // Only truly-confirmed sessions — completed ones were inflating this and
+  // making "X confirmed" read like pending confirmations that already happened.
   const weekConfirmed = useMemo(
-    () => sessions.filter(s => s.status === 'confirmed' || s.status === 'completed').length,
+    () => sessions.filter(s => s.status === 'confirmed').length,
     [sessions]
   );
   const weekPending = useMemo(
@@ -896,18 +1073,21 @@ export default function TrainerSchedule() {
     return `${dayViewSessions.length} · ${dur}`;
   }, [dayViewSessions]);
 
-  // Per-day session counts for the week strip (Sun-first, aligned with `days`).
-  const weekStripCounts = useMemo(
-    () => days.map(d => (weekSessionsByDay[format(d, 'yyyy-MM-dd')] || []).length),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [weekSessionsByDay, weekStart.getTime()]
-  );
+  // Week strip days: in DAY view the strip follows the SELECTED day's week
+  // (it used to stay pinned to weekOffset's week, so prev/next-day drifted
+  // off the strip and the dots went stale). In week view it's the visible week.
+  const stripDays = viewMode === 'day'
+    ? Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(selectedDay, { weekStartsOn: 0 }), i))
+    : days;
+  // Dots come from sessionsByDay (cancelled excluded) — day view now fetches
+  // the whole week, so every strip day has real counts.
+  const stripCounts = stripDays.map(d => (sessionsByDay[format(d, 'yyyy-MM-dd')] || []).length);
+  const stripWeekLabel = `${format(stripDays[0], 'MMM d', { locale: dateFnsLocale })} — ${format(stripDays[6], 'MMM d', { locale: dateFnsLocale })}`;
 
   // Tone for a session's left edge — group→coach, intake→warn, else status visual.
   const sessionEdgeTone = (s) => {
-    const title = (s.title || '').toLowerCase();
-    if (title.includes('bootcamp') || title.includes('group')) return TT.coach;
-    if (title.includes('assessment') || title.includes('intake')) return TT.warn;
+    if (isGroupTitle(s.title)) return TT.coach;
+    if (isIntakeTitle(s.title)) return TT.warn;
     return statusVisuals(s.status).tone;
   };
 
@@ -929,7 +1109,7 @@ export default function TrainerSchedule() {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
           <div>
-            <TEyebrow color={TT.accent}>{weekLabel}</TEyebrow>
+            <TEyebrow color={TT.accent}>{viewMode === 'day' ? stripWeekLabel : weekLabel}</TEyebrow>
             <TPageTitle style={{ fontSize: 30 }}>{t('trainerCalendar.title', 'Calendar')}</TPageTitle>
           </div>
           <TPrimaryButton
@@ -1005,7 +1185,7 @@ export default function TrainerSchedule() {
             style={{
               fontFamily: TFont.display, fontSize: 14, fontWeight: 800,
               color: TT.text, background: 'transparent', border: 'none',
-              opacity: isAtToday ? 1 : 1, cursor: isAtToday ? 'default' : 'pointer',
+              cursor: isAtToday ? 'default' : 'pointer',
             }}
           >
             {subLabel}
@@ -1021,11 +1201,11 @@ export default function TrainerSchedule() {
         {/* Week strip — day picker (week + day views) */}
         {viewMode !== 'month' && (
           <TCard padded={0} style={{ padding: '12px 8px', marginBottom: 14, display: 'flex', justifyContent: 'space-between' }}>
-            {days.map((day, i) => {
+            {stripDays.map((day, i) => {
               const today = isToday(day);
               const selected = viewMode === 'day' && isSameDay(day, selectedDay);
               const on = selected || (viewMode === 'week' && today);
-              const count = weekStripCounts[i] || 0;
+              const count = stripCounts[i] || 0;
               return (
                 <button
                   key={format(day, 'yyyy-MM-dd')}
@@ -1079,7 +1259,7 @@ export default function TrainerSchedule() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {days.map((day) => {
                   const key = format(day, 'yyyy-MM-dd');
-                  const dSessions = (weekSessionsByDay[key] || [])
+                  const dSessions = (sessionsByDay[key] || [])
                     .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
                   const today = isToday(day);
                   return (
@@ -1117,10 +1297,8 @@ export default function TrainerSchedule() {
                           const now = new Date();
                           const sEnd = new Date(start.getTime() + dur * 60000);
                           const isNow = today && now >= start && now <= sEnd;
-                          const isGroup = (s.title || '').toLowerCase().includes('bootcamp')
-                            || (s.title || '').toLowerCase().includes('group');
-                          const isIntake = (s.title || '').toLowerCase().includes('assessment')
-                            || (s.title || '').toLowerCase().includes('intake');
+                          const isGroup = isGroupTitle(s.title);
+                          const isIntake = isIntakeTitle(s.title);
                           const pillTone = isGroup ? 'coach' : isIntake ? 'warn' : 'teal';
                           const fullName = s.profiles?.full_name || t('trainerCalendar.client', 'Client');
                           return (
@@ -1149,8 +1327,15 @@ export default function TrainerSchedule() {
                                 idx={avatarIdx(s.profiles?.id || s.client_id)}
                                 src={s.profiles?.avatar_url}
                               />
-                              <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: TT.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {fullName}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: TT.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {fullName}
+                                </div>
+                                {s.details?.workout_name && (
+                                  <div style={{ marginTop: 2 }}>
+                                    <WorkoutChip name={s.details.workout_name} />
+                                  </div>
+                                )}
                               </div>
                               <TPill tone={pillTone} size="s">
                                 {isGroup ? t('trainerCalendar.kindGroup', 'Group')
@@ -1194,59 +1379,68 @@ export default function TrainerSchedule() {
                 {dayHourRows.map((h) => {
                   const slot = setMinutes(setHours(selectedDay, h), 0);
                   const slotEnd = setMinutes(setHours(selectedDay, h + 1), 0);
-                  const session = dayViewSessions.find(s => {
-                    const t = new Date(s.scheduled_at);
-                    return t >= slot && t < slotEnd;
+                  // ALL sessions in this hour — .find() used to render only the
+                  // first and silently swallow the rest.
+                  const slotSessions = dayViewSessions.filter(s => {
+                    const st = new Date(s.scheduled_at);
+                    return st >= slot && st < slotEnd;
                   });
-                  if (!session) return null;
-                  const start = new Date(session.scheduled_at);
-                  const now = new Date();
-                  const dur = session.duration_mins || 60;
-                  const end = new Date(start.getTime() + dur * 60000);
-                  const isCurrent = isSameDay(selectedDay, now) && now >= start && now <= end;
-                  const tone = sessionEdgeTone(session);
-                  const fullName = session.profiles?.full_name || t('trainerCalendar.client', 'Client');
-                  return (
-                    <div key={h} style={{ display: 'flex', gap: 13, marginBottom: 10 }}>
-                      <div style={{ width: 46, flexShrink: 0, textAlign: 'right', paddingTop: 15 }}>
-                        <div style={{ fontFamily: TFont.display, fontSize: 13.5, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
-                          {format(start, 'h:mm')}
+                  if (slotSessions.length === 0) return null;
+                  return slotSessions.map((session) => {
+                    const start = new Date(session.scheduled_at);
+                    const now = new Date();
+                    const dur = session.duration_mins || 60;
+                    const end = new Date(start.getTime() + dur * 60000);
+                    const isCurrent = isSameDay(selectedDay, now) && now >= start && now <= end;
+                    const tone = sessionEdgeTone(session);
+                    const fullName = session.profiles?.full_name || t('trainerCalendar.client', 'Client');
+                    return (
+                      <div key={session.id} style={{ display: 'flex', gap: 13, marginBottom: 10 }}>
+                        <div style={{ width: 46, flexShrink: 0, textAlign: 'right', paddingTop: 15 }}>
+                          <div style={{ fontFamily: TFont.display, fontSize: 13.5, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
+                            {format(start, 'h:mm')}
+                          </div>
+                          <div style={{ fontSize: 10, color: TT.textMute, fontWeight: 700 }}>
+                            {format(start, 'a')}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 10, color: TT.textMute, fontWeight: 700 }}>
-                          {format(start, 'a')}
-                        </div>
+                        <TCard
+                          padded={0}
+                          onClick={() => setModal({ session })}
+                          className="tt-tap"
+                          style={{
+                            flex: 1, minWidth: 0, padding: '12px 14px',
+                            display: 'flex', alignItems: 'center', gap: 11,
+                            boxShadow: `inset 3px 0 0 ${tone}, ${TT.shadow}`,
+                            cursor: 'pointer', position: 'relative',
+                          }}
+                        >
+                          {isCurrent && (
+                            <div style={{
+                              position: 'absolute', top: 8, right: 10,
+                              fontSize: 9, fontWeight: 800, color: TT.hot,
+                              letterSpacing: 1, textTransform: 'uppercase',
+                            }}>{t('trainerCalendar.nowIndicator', '↓ NOW')}</div>
+                          )}
+                          <TAvatar name={fullName} size={36} idx={avatarIdx(session.profiles?.id || session.client_id)} src={session.profiles?.avatar_url} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {fullName}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>
+                              {session.title} · {session.duration_mins}{t('trainerCalendar.minShort', 'm')}
+                            </div>
+                            {session.details?.workout_name && (
+                              <div style={{ marginTop: 4 }}>
+                                <WorkoutChip name={session.details.workout_name} />
+                              </div>
+                            )}
+                          </div>
+                          <ChevronRight size={15} color={TT.textMute} />
+                        </TCard>
                       </div>
-                      <TCard
-                        padded={0}
-                        onClick={() => setModal({ session })}
-                        className="tt-tap"
-                        style={{
-                          flex: 1, minWidth: 0, padding: '12px 14px',
-                          display: 'flex', alignItems: 'center', gap: 11,
-                          boxShadow: `inset 3px 0 0 ${tone}, ${TT.shadow}`,
-                          cursor: 'pointer', position: 'relative',
-                        }}
-                      >
-                        {isCurrent && (
-                          <div style={{
-                            position: 'absolute', top: 8, right: 10,
-                            fontSize: 9, fontWeight: 800, color: TT.hot,
-                            letterSpacing: 1, textTransform: 'uppercase',
-                          }}>{t('trainerCalendar.nowIndicator', '↓ NOW')}</div>
-                        )}
-                        <TAvatar name={fullName} size={36} idx={avatarIdx(session.profiles?.id || session.client_id)} src={session.profiles?.avatar_url} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {fullName}
-                          </div>
-                          <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>
-                            {session.title} · {session.duration_mins}{t('trainerCalendar.minShort', 'm')}
-                          </div>
-                        </div>
-                        <ChevronRight size={15} color={TT.textMute} />
-                      </TCard>
-                    </div>
-                  );
+                    );
+                  });
                 })}
               </div>
             )}
@@ -1314,7 +1508,11 @@ export default function TrainerSchedule() {
               fontFamily: TFont.display, fontSize: 14, fontWeight: 800,
               color: TT.text, letterSpacing: -0.2, marginBottom: 8, padding: '0 2px',
             }}>
-              {t('trainerCalendar.upcomingThisMonth', 'Upcoming this month')} · {monthUpcomingSessions.length}
+              {/* Past months list everything that happened — calling those
+                  "upcoming" was wrong. */}
+              {monthOffset < 0
+                ? t('trainerCalendar.sessionsThisMonth', 'Sessions this month')
+                : t('trainerCalendar.upcomingThisMonth', 'Upcoming this month')} · {monthUpcomingSessions.length}
             </div>
             {monthUpcomingSessions.length === 0 ? (
               <TCard padded={16}>
@@ -1322,7 +1520,9 @@ export default function TrainerSchedule() {
                   textAlign: 'center', fontSize: 13, color: TT.textSub,
                   padding: '14px 8px',
                 }}>
-                  {t('trainerCalendar.noUpcomingThisMonth', 'No upcoming sessions this month')}
+                  {monthOffset < 0
+                    ? t('trainerCalendar.noSessionsThisMonth', 'No sessions this month')
+                    : t('trainerCalendar.noUpcomingThisMonth', 'No upcoming sessions this month')}
                 </div>
               </TCard>
             ) : (
@@ -1517,7 +1717,7 @@ export default function TrainerSchedule() {
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         {days.map((day, di) => {
                           const key = format(day, 'yyyy-MM-dd');
-                          const dSessions = (weekSessionsByDay[key] || [])
+                          const dSessions = (sessionsByDay[key] || [])
                             .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
                           const today = isToday(day);
                           return (
@@ -1572,8 +1772,13 @@ export default function TrainerSchedule() {
                                         <TAvatar name={fullName} size={24}
                                           idx={avatarIdx(s.profiles?.id || s.client_id)}
                                           src={s.profiles?.avatar_url} />
-                                        <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: TT.text }}>
-                                          {fullName}
+                                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                          <span style={{ fontSize: 12, fontWeight: 700, color: TT.text }}>
+                                            {fullName}
+                                          </span>
+                                          {s.details?.workout_name && (
+                                            <WorkoutChip name={s.details.workout_name} />
+                                          )}
                                         </div>
                                         <span style={{ fontSize: 11, color: TT.textMute, fontFamily: TFont.mono }}>
                                           {s.duration_mins}{t('trainerCalendar.minShort', 'm')}
@@ -1596,19 +1801,12 @@ export default function TrainerSchedule() {
                     {dayHourRows.map((h, i) => {
                       const slot = setMinutes(setHours(selectedDay, h), 0);
                       const slotEnd = setMinutes(setHours(selectedDay, h + 1), 0);
-                      const session = dayViewSessions.find(s => {
-                        const t = new Date(s.scheduled_at);
-                        return t >= slot && t < slotEnd;
+                      // ALL sessions in this hour — .find() rendered only one.
+                      const slotSessions = dayViewSessions.filter(s => {
+                        const st = new Date(s.scheduled_at);
+                        return st >= slot && st < slotEnd;
                       });
                       const now = new Date();
-                      let isCurrent = false;
-                      if (session) {
-                        const start = new Date(session.scheduled_at);
-                        const dur = session.duration_mins || 60;
-                        const end = new Date(start.getTime() + dur * 60000);
-                        isCurrent = isSameDay(selectedDay, now) && now >= start && now <= end;
-                      }
-                      const visuals = session ? statusVisuals(session.status) : null;
                       return (
                         <div key={h} style={{
                           display: 'flex', gap: 16,
@@ -1622,33 +1820,46 @@ export default function TrainerSchedule() {
                           }}>
                             {h % 12 === 0 ? 12 : h % 12}{h >= 12 ? t('trainerCalendar.pm', 'pm') : t('trainerCalendar.am', 'am')}
                           </div>
-                          <div style={{ flex: 1 }}>
-                            {session && visuals && (
-                              <button
-                                onClick={() => setModal({ session })}
-                                style={{
-                                  width: '100%', padding: '10px 14px', borderRadius: 10,
-                                  background: visuals.soft,
-                                  border: '1px solid transparent',
-                                  boxShadow: `inset 3px 0 0 ${visuals.tone}`,
-                                  position: 'relative', textAlign: 'left', cursor: 'pointer',
-                                }}
-                              >
-                                {isCurrent && (
-                                  <div style={{
-                                    position: 'absolute', top: 8, right: 10,
-                                    fontSize: 9, fontWeight: 800, color: TT.hot,
-                                    letterSpacing: 1, textTransform: 'uppercase',
-                                  }}>{t('trainerCalendar.nowIndicator', '↓ NOW')}</div>
-                                )}
-                                <div style={{ fontSize: 13, fontWeight: 800, color: TT.text }}>
-                                  {session.profiles?.full_name || t('trainerCalendar.client', 'Client')}
-                                </div>
-                                <div style={{ fontSize: 11, color: TT.textSub, marginTop: 2 }}>
-                                  {session.title} · {session.duration_mins}{t('trainerCalendar.minShort', 'm')}
-                                </div>
-                              </button>
-                            )}
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {slotSessions.map((session) => {
+                              const start = new Date(session.scheduled_at);
+                              const dur = session.duration_mins || 60;
+                              const end = new Date(start.getTime() + dur * 60000);
+                              const isCurrent = isSameDay(selectedDay, now) && now >= start && now <= end;
+                              const visuals = statusVisuals(session.status);
+                              return (
+                                <button
+                                  key={session.id}
+                                  onClick={() => setModal({ session })}
+                                  style={{
+                                    width: '100%', padding: '10px 14px', borderRadius: 10,
+                                    background: visuals.soft,
+                                    border: '1px solid transparent',
+                                    boxShadow: `inset 3px 0 0 ${visuals.tone}`,
+                                    position: 'relative', textAlign: 'left', cursor: 'pointer',
+                                  }}
+                                >
+                                  {isCurrent && (
+                                    <div style={{
+                                      position: 'absolute', top: 8, right: 10,
+                                      fontSize: 9, fontWeight: 800, color: TT.hot,
+                                      letterSpacing: 1, textTransform: 'uppercase',
+                                    }}>{t('trainerCalendar.nowIndicator', '↓ NOW')}</div>
+                                  )}
+                                  <div style={{ fontSize: 13, fontWeight: 800, color: TT.text }}>
+                                    {session.profiles?.full_name || t('trainerCalendar.client', 'Client')}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: TT.textSub, marginTop: 2 }}>
+                                    {format(start, 'HH:mm')} · {session.title} · {session.duration_mins}{t('trainerCalendar.minShort', 'm')}
+                                  </div>
+                                  {session.details?.workout_name && (
+                                    <div style={{ marginTop: 5 }}>
+                                      <WorkoutChip name={session.details.workout_name} />
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -1657,20 +1868,28 @@ export default function TrainerSchedule() {
                 )}
               </TCard>
 
-              {/* Selected day detail rail */}
+              {/* Selected day detail rail. When browsing another week, focus
+                  the FIRST day of the visible week — focusing "today" (which
+                  isn't in the fetched range) made the rail always-empty. */}
               <TCard padded={0}>
+                {(() => {
+                  const railDay = viewMode === 'day'
+                    ? selectedDay
+                    : (weekOffset === 0 ? new Date() : weekStart);
+                  return (
+                    <>
                 <div style={{ padding: '14px 18px', borderBottom: `1px solid ${TT.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <TEyebrow>{t('trainerCalendar.thisWeek', 'This week')}</TEyebrow>
+                    <TEyebrow>{t('trainerCalendar.dayDetail', 'Day detail')}</TEyebrow>
                     <div style={{
                       fontFamily: TFont.display, fontSize: 16, fontWeight: 800,
                       color: TT.text, letterSpacing: -0.3, marginTop: 4,
                     }}>
-                      {format(viewMode === 'day' ? selectedDay : new Date(), 'EEE · MMM d', { locale: dateFnsLocale })}
+                      {format(railDay, 'EEE · MMM d', { locale: dateFnsLocale })}
                     </div>
                   </div>
                   <button
-                    onClick={() => setModal({ date: viewMode === 'day' ? selectedDay : new Date() })}
+                    onClick={() => setModal({ date: railDay })}
                     aria-label={t('trainerCalendar.addSession', 'Add session')}
                     style={{
                       width: 38, height: 38, borderRadius: 10,
@@ -1683,7 +1902,7 @@ export default function TrainerSchedule() {
                   </button>
                 </div>
                 {(() => {
-                  const focusKey = format(viewMode === 'day' ? selectedDay : new Date(), 'yyyy-MM-dd');
+                  const focusKey = format(railDay, 'yyyy-MM-dd');
                   const focusSessions = (sessionsByDay[focusKey] || [])
                     .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
                   if (focusSessions.length === 0) {
@@ -1719,6 +1938,9 @@ export default function TrainerSchedule() {
                     );
                   });
                 })()}
+                    </>
+                  );
+                })()}
               </TCard>
             </div>
           )}
@@ -1735,8 +1957,8 @@ export default function TrainerSchedule() {
           onSaved={handleSaved}
           trainerId={profile.id}
           gymId={profile.gym_id}
-          trainerName={profile.full_name}
           workoutPlans={workoutPlans}
+          presetClientId={modal.presetClientId}
         />
       )}
     </div>

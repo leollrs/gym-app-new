@@ -1,10 +1,19 @@
+import { useMemo, useState } from 'react';
 import {
   Settings, Palette, QrCode, CalendarDays, Smartphone, Link2,
-  ShieldOff, Pause, Play, AlertTriangle,
+  ShieldOff, AlertTriangle, Crown,
 } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
+import { supabase } from '../../../lib/supabase';
+import { logAdminAction } from '../../../lib/adminAudit';
 import RoleBadge from './RoleBadge';
+
+// A7: strict hex validation — deliberately NO var(--…) resolution here (the
+// admin page's resolveColorToHex resolves against the CURRENT document's CSS
+// vars, which on the platform tier would poison the gym's colors with
+// platform gold — the exact data bug this editor exists to repair).
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+const asValidHex = (v) => (typeof v === 'string' && HEX_RE.test(v.trim()) ? v.trim() : '');
 
 export default function GymSettingsTab({
   gym,
@@ -15,10 +24,67 @@ export default function GymSettingsTab({
   setEditingGym,
   savingGym,
   saveGymSettings,
+  settingsError,
   gymStatus,
   setLifecycleModal,
+  members = [],
+  setGymOwner,
+  notify,
+  onBrandingSaved,
   t,
 }) {
+  // Owner candidates: this gym's admins (primary or additional role).
+  const adminCandidates = useMemo(
+    () => members.filter(m =>
+      m.role === 'admin' || m.role === 'super_admin' ||
+      (m.additional_roles ?? []).some(r => r === 'admin' || r === 'super_admin')
+    ),
+    [members]
+  );
+  const [ownerDraft, setOwnerDraft] = useState(undefined); // undefined = untouched
+  const ownerValue = ownerDraft !== undefined ? ownerDraft : (gym.owner_user_id ?? '');
+  const ownerDirty = ownerDraft !== undefined && ownerDraft !== (gym.owner_user_id ?? '');
+  const currentOwner = members.find(m => m.id === gym.owner_user_id);
+
+  // ── A7: platform branding editor (gym_branding.primary_color /
+  //    accent_color — the columns applyBranding consumes; write arm: 0551).
+  //    An invalid stored value (e.g. the literal 'var(--color-accent)')
+  //    loads as empty so saving overwrites it with a real hex. Same
+  //    draft-vs-stored pattern as ownerDraft above (undefined = untouched).
+  const storedPrimary = asValidHex(branding?.primary_color);
+  const storedAccent = asValidHex(branding?.accent_color);
+  const [primaryDraft, setPrimaryDraft] = useState(undefined);
+  const [accentDraft, setAccentDraft] = useState(undefined);
+  const brandPrimary = primaryDraft !== undefined ? primaryDraft : storedPrimary;
+  const brandAccent = accentDraft !== undefined ? accentDraft : storedAccent;
+  const [brandSaving, setBrandSaving] = useState(false);
+  const brandValid = HEX_RE.test(brandPrimary) && HEX_RE.test(brandAccent);
+  const brandDirty = brandPrimary !== storedPrimary || brandAccent !== storedAccent;
+  const storedInvalid =
+    (!!branding?.primary_color && !storedPrimary) ||
+    (!!branding?.accent_color && !storedAccent);
+
+  const saveBranding = async () => {
+    if (!brandValid || brandSaving) return;
+    setBrandSaving(true);
+    const payload = { primary_color: brandPrimary.trim(), accent_color: brandAccent.trim() };
+    const { error } = await supabase
+      .from('gym_branding')
+      .upsert({ gym_id: gym.id, ...payload, updated_at: new Date().toISOString() }, { onConflict: 'gym_id' });
+    setBrandSaving(false);
+    if (error) {
+      notify?.(t('platform.gymDetail.settings.brandingSaveFailed', 'Could not save branding: {{error}}', { error: error.message }), 'error');
+      return;
+    }
+    logAdminAction('update_gym_branding', 'gym', gym.id, { gym_name: gym.name, ...payload }, gym.id);
+    // Parent updates its branding state → stored values now match the save;
+    // clear the drafts so the fields track the new stored values.
+    onBrandingSaved?.(payload);
+    setPrimaryDraft(undefined);
+    setAccentDraft(undefined);
+    notify?.(t('platform.gymDetail.settings.brandingSaved', 'Branding saved'));
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Gym info */}
@@ -53,10 +119,49 @@ export default function GymSettingsTab({
           <p className="text-[13px] text-[#E5E7EB]">{gym.timezone ?? t('platform.gymDetail.settings.notSet')}</p>
         </div>
 
+        {/* Set owner (P0-1d) — gyms.owner_user_id had no writer before; the
+            GymsOverview Owner column was permanently empty. */}
         <div>
-          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.ownerLabel')}</label>
-          <p className="text-[13px] text-[#9CA3AF] font-mono text-[11px]">{gym.owner_user_id ?? t('platform.gymDetail.people.unknown')}</p>
+          <label className="block text-[11px] text-[#6B7280] font-medium mb-1 flex items-center gap-1.5">
+            <Crown className="w-3 h-3 text-[#D4AF37]" />
+            {t('platform.gymDetail.settings.ownerLabel')}
+          </label>
+          {adminCandidates.length === 0 ? (
+            <p className="text-[12px] text-[#6B7280]">
+              {currentOwner?.full_name ?? (gym.owner_user_id ? gym.owner_user_id : t('platform.gymDetail.settings.noOwnerCandidates', 'No admins yet — promote someone to admin first, then set them as owner.'))}
+            </p>
+          ) : (
+            <div className="flex items-center gap-2">
+              <select
+                value={ownerValue}
+                onChange={e => setOwnerDraft(e.target.value)}
+                aria-label={t('platform.gymDetail.settings.ownerSelectAria', 'Select gym owner')}
+                className="flex-1 bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer"
+              >
+                <option value="">{t('platform.gymDetail.settings.noOwner', 'No owner set')}</option>
+                {adminCandidates.map(a => (
+                  <option key={a.id} value={a.id}>{a.full_name || a.username || a.id}</option>
+                ))}
+                {/* keep a stale owner visible even if no longer an admin */}
+                {gym.owner_user_id && !adminCandidates.some(a => a.id === gym.owner_user_id) && (
+                  <option value={gym.owner_user_id}>{currentOwner?.full_name || currentOwner?.username || gym.owner_user_id}</option>
+                )}
+              </select>
+              <button
+                onClick={async () => { await setGymOwner(ownerValue || null); setOwnerDraft(undefined); }}
+                disabled={!ownerDirty}
+                className="px-3 py-2 rounded-lg text-[12px] font-semibold bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {t('platform.gymDetail.settings.setOwner', 'Set owner')}
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* A2: inline slug validation errors from saveGymSettings */}
+        {settingsError && (
+          <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{settingsError}</p>
+        )}
 
         <button
           onClick={saveGymSettings}
@@ -67,58 +172,86 @@ export default function GymSettingsTab({
         </button>
       </div>
 
-      {/* Branding preview */}
+      {/* Branding \u2014 A7: editable colors (was read-only swatches). Upserts
+          gym_branding via the 0551 super_admin ALL policy. */}
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4">
         <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
           <Palette className="w-4 h-4 text-[#D4AF37]" />
           {t('platform.gymDetail.settings.branding')}
         </h3>
 
-        {branding ? (
-          <>
-            <div className="flex items-center gap-3">
-              <div>
-                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.primaryColor')}</label>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-8 h-8 rounded-lg border border-white/10"
-                    style={{ backgroundColor: branding.primary_color ?? '#D4AF37' }}
-                  />
-                  <span className="text-[12px] text-[#9CA3AF] font-mono">{branding.primary_color ?? '\u2014'}</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.accentColor')}</label>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-8 h-8 rounded-lg border border-white/10"
-                    style={{ backgroundColor: branding.accent_color ?? '#E6C766' }}
-                  />
-                  <span className="text-[12px] text-[#9CA3AF] font-mono">{branding.accent_color ?? '\u2014'}</span>
-                </div>
-              </div>
-            </div>
+        {!branding && (
+          <p className="text-[#6B7280] text-sm">{t('platform.gymDetail.settings.noBranding')}</p>
+        )}
 
-            {branding.custom_app_name && (
-              <div>
-                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.customAppName')}</label>
-                <p className="text-[13px] text-[#E5E7EB]">{branding.custom_app_name}</p>
-              </div>
-            )}
-
-            {logoUrl && (
-              <div>
-                <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.logo')}</label>
-                <img
-                  src={logoUrl}
-                  alt={t('platform.gymDetail.settings.logoAlt', { name: gym.name })}
-                  className="h-12 w-auto rounded-lg border border-white/6 bg-white/[0.03] p-1"
+        <div className="flex items-start gap-4 flex-wrap">
+          {[
+            { label: t('platform.gymDetail.settings.primaryColor'), value: brandPrimary, set: setPrimaryDraft, fallback: '#D4AF37' },
+            { label: t('platform.gymDetail.settings.accentColor'), value: brandAccent, set: setAccentDraft, fallback: '#10B981' },
+          ].map(field => (
+            <div key={field.label}>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{field.label}</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={HEX_RE.test(field.value) ? field.value : field.fallback}
+                  onChange={e => field.set(e.target.value)}
+                  aria-label={field.label}
+                  className="w-9 h-9 rounded-lg border border-white/10 bg-[#111827] p-0.5 cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={field.value}
+                  onChange={e => field.set(e.target.value)}
+                  placeholder={field.fallback}
+                  maxLength={7}
+                  aria-label={`${field.label} hex`}
+                  className={`w-24 bg-[#111827] border rounded-lg px-2.5 py-2 text-[12px] font-mono text-[#E5E7EB] placeholder-[#4B5563] outline-none transition-colors ${
+                    field.value === '' || HEX_RE.test(field.value)
+                      ? 'border-white/6 focus:border-[#D4AF37]/40'
+                      : 'border-red-500/40'
+                  }`}
                 />
               </div>
-            )}
-          </>
-        ) : (
-          <p className="text-[#6B7280] text-sm">{t('platform.gymDetail.settings.noBranding')}</p>
+            </div>
+          ))}
+        </div>
+
+        {storedInvalid && (
+          <p className="text-[11px] text-amber-400 bg-amber-500/8 border border-amber-500/15 rounded-lg px-3 py-2">
+            {t('platform.gymDetail.settings.brandingStoredInvalid', "A stored color isn't a valid hex value \u2014 pick a color and save to repair it.")}
+          </p>
+        )}
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={saveBranding}
+            disabled={!brandValid || !brandDirty || brandSaving}
+            className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {brandSaving ? t('platform.gymDetail.settings.saving') : t('platform.gymDetail.settings.saveBranding', 'Save branding')}
+          </button>
+          <p className="text-[11px] text-[#6B7280]">
+            {t('platform.gymDetail.settings.brandingApplyNote', "The gym's app picks up new colors on its next launch.")}
+          </p>
+        </div>
+
+        {branding?.custom_app_name && (
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.customAppName')}</label>
+            <p className="text-[13px] text-[#E5E7EB]">{branding.custom_app_name}</p>
+          </div>
+        )}
+
+        {logoUrl && (
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.logo')}</label>
+            <img
+              src={logoUrl}
+              alt={t('platform.gymDetail.settings.logoAlt', { name: gym.name })}
+              className="h-12 w-auto rounded-lg border border-white/6 bg-white/[0.03] p-1"
+            />
+          </div>
         )}
       </div>
 
@@ -194,7 +327,11 @@ export default function GymSettingsTab({
             {editingGym.qr_payload_type === 'external_id' && (
               <div className="p-3 bg-[#111827] rounded-xl border border-white/6">
                 <p className="text-[12px] text-[#9CA3AF]">
-                  {t('platform.gymDetail.settings.externalIdHelpPlain')}
+                  {/* externalIdHelp exists in BOTH locales but carries <1>…</1>
+                      Trans markup — strip it for this plain-text context.
+                      (externalIdHelpPlain existed in neither locale → raw key
+                      rendered on screen.) */}
+                  {t('platform.gymDetail.settings.externalIdHelp').replace(/<\/?1>/g, '')}
                 </p>
               </div>
             )}
@@ -334,36 +471,21 @@ export default function GymSettingsTab({
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex flex-wrap gap-3">
-          {gymStatus === 'active' && (
-            <button
-              onClick={() => setLifecycleModal('pause')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium border border-amber-500/20 bg-amber-500/8 text-amber-400 hover:bg-amber-500/15 transition-colors"
-            >
-              <Pause className="w-4 h-4" />
-              {t('platform.gymDetail.lifecycle.pauseBtn')}
-            </button>
-          )}
-          {gymStatus !== 'active' && (
-            <button
-              onClick={() => setLifecycleModal('reactivate')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium border border-emerald-500/20 bg-emerald-500/8 text-emerald-400 hover:bg-emerald-500/15 transition-colors"
-            >
-              <Play className="w-4 h-4" />
-              {t('platform.gymDetail.lifecycle.reactivateBtn')}
-            </button>
-          )}
-          {gymStatus !== 'deactivated' && (
+        {/* Pause/reactivate live in the page header (canonical) — only the
+            destructive action that has no header button stays here. A3: this
+            is a DEACTIVATE (reversible; nothing is deleted) — permanent
+            deletion lives in GymOps. */}
+        {gymStatus !== 'deactivated' && (
+          <div className="flex flex-wrap gap-3">
             <button
               onClick={() => setLifecycleModal('delete')}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium border border-red-500/20 bg-red-500/8 text-red-400 hover:bg-red-500/15 transition-colors"
             >
               <AlertTriangle className="w-4 h-4" />
-              {t('platform.gymDetail.lifecycle.deleteBtn')}
+              {t('platform.gymDetail.lifecycle.deactivateBtn', 'Deactivate Gym')}
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Invite links */}
@@ -385,7 +507,9 @@ export default function GymSettingsTab({
                   key={inv.id}
                   className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 bg-[#111827] border border-white/6 rounded-lg px-3 py-2.5"
                 >
-                  <span className="text-[12px] text-[#9CA3AF] font-mono flex-1 truncate">{inv.token}</span>
+                  {/* A5: members type invite_code — token is the legacy hex
+                      credential nobody uses (mirrors GymPeopleTab). */}
+                  <span className="text-[12px] text-[#9CA3AF] font-mono flex-1 truncate">{inv.invite_code ?? inv.token}</span>
                   <RoleBadge role={inv.role ?? 'member'} />
                   <span className="text-[11px] text-[#6B7280]">
                     {inv.expires_at ? t('platform.gymDetail.settings.expires', { date: format(new Date(inv.expires_at), 'MMM d, yyyy') }) : t('platform.gymDetail.settings.noExpiry')}

@@ -32,6 +32,7 @@ const PRRow = ({ pr, history, isNew }) => {
   const groupLabel = group ? t(`personalRecords.muscleGroups.${group}`, group) : '';
   const byDate = {};
   history.forEach(h => {
+    if (!h.achieved_at) return; // null → .slice throws; skip the row
     const dateKey = h.achieved_at.slice(0, 10);
     const o = parseFloat(h.estimated_1rm);
     if (!byDate[dateKey] || o > byDate[dateKey].orm) byDate[dateKey] = { dateKey, orm: o };
@@ -61,7 +62,7 @@ const PRRow = ({ pr, history, isNew }) => {
           </div>
           <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
             {groupLabel && <span className="capitalize">{groupLabel} {'\u00B7'} </span>}
-            {format(parseISO(pr.achieved_at), 'MMM d, yyyy', { locale: dateLocale })}
+            {pr.achieved_at && format(parseISO(pr.achieved_at), 'MMM d, yyyy', { locale: dateLocale })}
           </p>
         </div>
         <div className="text-right flex-shrink-0 mr-1">
@@ -178,15 +179,12 @@ export default function PersonalRecords({ embedded = false }) {
   const newPRs = filtered.filter(pr => pr.achieved_at >= weekAgo);
   const allPRs = filtered;
 
-  // Quick filter pills (muscle groups)
-  const quickFilters = ['all', ...MUSCLE_GROUPS];
-
   return (
     <div className={embedded ? '' : 'min-h-screen'} style={{ background: embedded ? undefined : 'var(--color-bg-primary)' }}>
       <div className={embedded ? '' : 'max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 pt-4 pb-28 md:pb-12'}>
 
         {/* Search bar */}
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-4">
           <div className="flex-1 flex items-center gap-2.5 rounded-[14px] px-3.5 py-3"
             style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
             <Search size={18} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
@@ -210,20 +208,10 @@ export default function PersonalRecords({ embedded = false }) {
           </button>
         </div>
 
-        {/* Quick filter pills */}
-        <div className="flex gap-2 overflow-x-auto scrollbar-none pb-4">
-          {quickFilters.map(g => (
-            <button key={g} onClick={() => setFilterGroup(g)}
-              className="px-3.5 py-2 rounded-full text-[13px] font-semibold whitespace-nowrap active:scale-95 transition-all flex-shrink-0"
-              style={{
-                background: filterGroup === g ? 'var(--color-text-primary)' : 'transparent',
-                color: filterGroup === g ? 'var(--color-bg-primary)' : 'var(--color-text-muted)',
-                border: filterGroup === g ? 'none' : '1px solid var(--color-border-subtle)',
-              }}>
-              {t(`personalRecords.muscleGroups.${g}`, g === 'all' ? 'All' : g.charAt(0).toUpperCase() + g.slice(1))}
-            </button>
-          ))}
-        </div>
+        {/* (Removed) horizontal muscle-group quick pills — they duplicated the
+            filter sheet next to the search bar (which covers muscle group AND
+            equipment, with an active-count badge) and the horizontal scroll
+            strip fought swipe gestures. One filter surface now. */}
 
         {loading ? (
           <Skeleton variant="card" count={6} />

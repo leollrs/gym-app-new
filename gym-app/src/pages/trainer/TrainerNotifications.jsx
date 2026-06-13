@@ -2,9 +2,10 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft, Bell, CheckCheck, Trash2, X,
-  Dumbbell, Trophy, AlertTriangle, Star, UserPlus,
-  Calendar, MessageSquare, Activity, BookOpen, Users,
+  ChevronLeft, Bell, BellRing, CheckCheck, Trash2, X,
+  Dumbbell, Trophy, AlertTriangle, UserPlus,
+  Calendar, CalendarX, Activity, BookOpen, Users,
+  Ticket, TicketX,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale, enUS as enLocale } from 'date-fns/locale';
@@ -29,24 +30,31 @@ const TYPE_META = {
   client_workout_logged: { icon: Dumbbell,      tone: TT.accent, bg: TT.accentSoft, ink: TT.accentInk, cat: 'activity' },
   client_pr:             { icon: Trophy,        tone: TT.hot,    bg: TT.hotSoft,    ink: TT.hot,       cat: 'activity' },
   client_no_show:        { icon: AlertTriangle, tone: TT.warn,   bg: TT.warnSoft,   ink: TT.warnInk,   cat: 'alerts' },
-  client_review:         { icon: Star,          tone: TT.coach,  bg: TT.coachSoft,  ink: TT.coach,     cat: 'activity' },
   client_adherence_drop: { icon: Activity,      tone: TT.warn,   bg: TT.warnSoft,   ink: TT.warnInk,   cat: 'alerts' },
-  client_message:        { icon: MessageSquare, tone: TT.accent, bg: TT.accentSoft, ink: TT.accentInk, cat: 'messages' },
+  // The type the trainer automations actually emit (inactivity / missed
+  // check-in alerts — migration 0501).
+  trainer_alert:         { icon: BellRing,      tone: TT.warn,   bg: TT.warnSoft,   ink: TT.warnInk,   cat: 'alerts' },
   new_client_assigned:   { icon: UserPlus,      tone: TT.good,   bg: TT.goodSoft,   ink: TT.goodInk,   cat: 'clients' },
   session_rescheduled:   { icon: Calendar,      tone: TT.warn,   bg: TT.warnSoft,   ink: TT.warnInk,   cat: 'schedule' },
+  session_declined:      { icon: CalendarX,     tone: TT.hot,    bg: TT.hotSoft,    ink: TT.hot,       cat: 'schedule' },
   class_booking:         { icon: BookOpen,      tone: TT.accent, bg: TT.accentSoft, ink: TT.accentInk, cat: 'schedule' },
   session_reminder:      { icon: Calendar,      tone: TT.accent, bg: TT.accentSoft, ink: TT.accentInk, cat: 'schedule' },
-  trainer_message:       { icon: MessageSquare, tone: TT.accent, bg: TT.accentSoft, ink: TT.accentInk, cat: 'messages' },
+  // Session-pack balance alerts (packs wave).
+  pack_low:              { icon: Ticket,        tone: TT.warn,   bg: TT.warnSoft,   ink: TT.warnInk,   cat: 'alerts' },
+  pack_exhausted:        { icon: TicketX,       tone: TT.hot,    bg: TT.hotSoft,    ink: TT.hot,       cat: 'alerts' },
   announcement:          { icon: Users,         tone: TT.coach,  bg: TT.coachSoft,  ink: TT.coach,     cat: 'alerts' },
   system:                { icon: Bell,          tone: TT.textSub,bg: TT.surface2,   ink: TT.textSub,   cat: 'alerts' },
 };
 
+// 'messages' pill removed: client_message / trainer_message have zero
+// producers, so it was a permanently-empty filter. 'clients' added so
+// new_client_assigned rows are reachable outside "All".
 const CATEGORIES = [
   { key: 'all',      labelKey: 'trainerNotifications.tabs.all',      labelDefault: 'All' },
   { key: 'activity', labelKey: 'trainerNotifications.tabs.activity', labelDefault: 'Client activity' },
   { key: 'alerts',   labelKey: 'trainerNotifications.tabs.alerts',   labelDefault: 'Alerts' },
   { key: 'schedule', labelKey: 'trainerNotifications.tabs.schedule', labelDefault: 'Schedule' },
-  { key: 'messages', labelKey: 'trainerNotifications.tabs.messages', labelDefault: 'Messages' },
+  { key: 'clients',  labelKey: 'trainerNotifications.tabs.clients',  labelDefault: 'Clients' },
 ];
 
 const metaFor = (type) => TYPE_META[type] || {
@@ -93,7 +101,7 @@ export default function TrainerNotifications() {
   }, [user?.id]);
 
   const counts = useMemo(() => {
-    const c = { all: items.length, activity: 0, alerts: 0, schedule: 0, messages: 0, clients: 0 };
+    const c = { all: items.length, activity: 0, alerts: 0, schedule: 0, clients: 0 };
     items.forEach(n => {
       const cat = metaFor(n.type).cat;
       if (c[cat] != null) c[cat]++;
@@ -301,7 +309,7 @@ export default function TrainerNotifications() {
               }
               description={
                 filter === 'all'
-                  ? t('pages:trainerNotifications.empty.body', 'Client PRs, no-shows, reviews, and adherence drops will appear here.')
+                  ? t('pages:trainerNotifications.empty.body', 'Client PRs, no-shows, and adherence drops will appear here.')
                   : t('pages:trainerNotifications.emptyFilter.body', 'Switch tabs to see other alerts.')
               }
             />

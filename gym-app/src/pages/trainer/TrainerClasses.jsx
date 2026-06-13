@@ -43,7 +43,15 @@ const DAYS_OF_WEEK = [
   { value: 6, labelKey: 'days.saturday' },
 ];
 
-const TABS = ['myClasses', 'bookings', 'analytics'];
+const TABS = ['myClasses', 'bookings', 'analytics', 'templates'];
+
+// A booking row counts for rosters/analytics only when it's a real spot.
+// Waitlisted rows render separately; cancelled rows never render (P1-6).
+const isActiveBooking = (b) => b?.status === 'confirmed' || b?.status === 'attended';
+const isWaitlisted = (b) => b?.status === 'waitlisted';
+// Two half-synced attendance signals exist (trainer sets `attended`, member
+// self-check-in sets status='attended') — treat either as attended.
+const isAttended = (b) => b?.attended === true || b?.status === 'attended';
 
 // ── Shared spinner ──
 function Spinner({ label }) {
@@ -79,16 +87,33 @@ async function mergeSafeProfiles(rows) {
 }
 
 // ── Class Detail Drawer (for My Classes tab) ──
-function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
+function ClassDetailDrawer({ cls, gymId, onClose, t, tc, dateLocale }) {
   const [adding, setAdding] = useState(false);
   const [newSlot, setNewSlot] = useState({ day_of_week: 1, start_time: '09:00', end_time: '10:00' });
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
+  // Weekly slots first (by day/time), then one-off slots (by date) — P2-9:
+  // specific_date slots used to be invisible here.
   const schedules = (cls.gym_class_schedules || [])
-    .sort((a, b) => a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time));
+    .slice()
+    .sort((a, b) => {
+      const aOne = a.specific_date != null, bOne = b.specific_date != null;
+      if (aOne !== bOne) return aOne ? 1 : -1;
+      if (aOne) return a.specific_date.localeCompare(b.specific_date) || (a.start_time || '').localeCompare(b.start_time || '');
+      return (a.day_of_week ?? 0) - (b.day_of_week ?? 0) || (a.start_time || '').localeCompare(b.start_time || '');
+    });
+
+  const slotLabel = (slot) => slot.specific_date
+    ? format(new Date(`${slot.specific_date}T12:00:00`), 'd MMM yyyy', { locale: dateLocale })
+    : tc(DAYS_OF_WEEK.find(d => d.value === slot.day_of_week)?.labelKey || '');
 
   const handleAddSlot = async () => {
+    // Slot sanity: a class can't end before it starts.
+    if (!newSlot.start_time || !newSlot.end_time || newSlot.end_time <= newSlot.start_time) {
+      showToast(t('trainerClasses.errorEndAfterStart', 'End time must be after the start time'), 'error');
+      return;
+    }
     const { error } = await supabase.from('gym_class_schedules').insert({
       class_id: cls.id,
       gym_id: gymId,
@@ -207,8 +232,9 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
                 {schedules.map(slot => (
                   <div key={slot.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 10px', background: TT.surface2, borderRadius: 10, border: `1px solid ${TT.border}` }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: TT.text, flexShrink: 0 }}>
-                      {tc(DAYS_OF_WEEK.find(d => d.value === slot.day_of_week)?.labelKey || '')}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, color: TT.text, flexShrink: 0 }}>
+                      {slotLabel(slot)}
+                      {slot.specific_date && <TPill tone="teal" size="s">{t('trainerClasses.oneOff', 'One-off')}</TPill>}
                     </span>
                     <span style={{ fontFamily: TFont.mono, fontSize: 12, color: TT.textSub, flex: 1, textAlign: 'right', letterSpacing: -0.3 }}>
                       {slot.start_time?.slice(0, 5)} – {slot.end_time?.slice(0, 5)}
@@ -291,7 +317,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
               </h3>
               <p className="text-[13px]" style={{ color: TT.textSub }}>
                 <span style={{ display: 'block', fontWeight: 700, color: TT.text, marginBottom: 4 }}>
-                  {tc(DAYS_OF_WEEK.find(d => d.value === confirmDeleteSlot.day_of_week)?.labelKey || '')} · {confirmDeleteSlot.start_time?.slice(0, 5)} – {confirmDeleteSlot.end_time?.slice(0, 5)}
+                  {slotLabel(confirmDeleteSlot)} · {confirmDeleteSlot.start_time?.slice(0, 5)} – {confirmDeleteSlot.end_time?.slice(0, 5)}
                 </span>
                 {t('trainerClasses.confirmDeleteSlotDescription', 'Bookings and attendance history for this slot will also be deleted. This cannot be undone.')}
               </p>
@@ -332,23 +358,43 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
   const dowLabel = (dow) => tc(DAYS_OF_WEEK.find(d => d.value === dow)?.labelKey || '');
   const todayDow = new Date().getDay();
 
-  // Explode classes into slot-instances grouped by weekday.
-  const slotsByDow = useMemo(() => {
-    const map = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  // Explode classes into slot-instances grouped by weekday (recurring) and by
+  // exact date (one-off `specific_date` slots — P2-9: these were invisible).
+  const { slotsByDow, oneOffByDate } = useMemo(() => {
+    const byDow = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+    const byDate = {};
     classes.forEach(cls => {
       (cls.gym_class_schedules || []).forEach(slot => {
-        if (slot.day_of_week == null || !map[slot.day_of_week]) return;
-        map[slot.day_of_week].push({ cls, slot });
+        if (slot.specific_date) {
+          (byDate[slot.specific_date] = byDate[slot.specific_date] || []).push({ cls, slot, oneOff: true });
+          return;
+        }
+        if (slot.day_of_week == null || !byDow[slot.day_of_week]) return;
+        byDow[slot.day_of_week].push({ cls, slot });
       });
     });
-    Object.values(map).forEach(arr => arr.sort((a, b) => (a.slot.start_time || '').localeCompare(b.slot.start_time || '')));
-    return map;
+    const byTime = (a, b) => (a.slot.start_time || '').localeCompare(b.slot.start_time || '');
+    Object.values(byDow).forEach(arr => arr.sort(byTime));
+    Object.values(byDate).forEach(arr => arr.sort(byTime));
+    return { slotsByDow: byDow, oneOffByDate: byDate };
   }, [classes]);
 
-  const totalSlots = useMemo(() => Object.values(slotsByDow).reduce((n, a) => n + a.length, 0), [slotsByDow]);
+  const totalSlots = useMemo(
+    () => Object.values(slotsByDow).reduce((n, a) => n + a.length, 0)
+      + Object.values(oneOffByDate).reduce((n, a) => n + a.length, 0),
+    [slotsByDow, oneOffByDate],
+  );
+
+  // Recurring + one-off entries for one concrete date, time-sorted.
+  const entriesForDate = (date) => {
+    const weekly = slotsByDow[date.getDay()] || [];
+    const oneOffs = oneOffByDate[format(date, 'yyyy-MM-dd')] || [];
+    return [...weekly, ...oneOffs]
+      .sort((a, b) => (a.slot.start_time || '').localeCompare(b.slot.start_time || ''));
+  };
 
   const SlotRow = ({ entry }) => {
-    const { cls, slot } = entry;
+    const { cls, slot, oneOff } = entry;
     const accent = cls.accent_color || TT.accent;
     return (
       <button type="button" onClick={() => setSelectedClass(cls)}
@@ -358,7 +404,10 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
           {slot.start_time?.slice(0, 5)}<span style={{ color: TT.textMute }}>–{slot.end_time?.slice(0, 5)}</span>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cls.name}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cls.name}</span>
+            {oneOff && <TPill tone="teal" size="s">{t('trainerClasses.oneOff', 'One-off')}</TPill>}
+          </div>
           <div style={{ fontSize: 11, color: TT.textSub, marginTop: 1 }}>
             {cls.max_capacity} {t('trainerClasses.spots', 'spots')} · {cls.duration_minutes} {t('trainerClasses.minutesShort', 'min')}
           </div>
@@ -384,7 +433,7 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
 
   // ── Day view ──
   const renderDay = () => {
-    const entries = slotsByDow[dayDate.getDay()] || [];
+    const entries = entriesForDate(dayDate);
     return (
       <>
         <Stepper
@@ -399,27 +448,32 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
     );
   };
 
-  // ── Week view (Mon-first agenda) ──
-  const renderWeek = () => (
-    <div>
-      {[1, 2, 3, 4, 5, 6, 0].map(dow => {
-        const entries = slotsByDow[dow] || [];
-        const isToday = dow === todayDow;
-        return (
-          <div key={dow} style={{ marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontFamily: TFont.display, fontSize: 12.5, fontWeight: 800, color: isToday ? TT.accent : TT.text, letterSpacing: 0.3, textTransform: 'uppercase' }}>{dowLabel(dow)}</span>
-              {isToday && <span style={{ fontSize: 9, fontWeight: 800, color: '#06363B', background: TT.accent, padding: '2px 7px', borderRadius: 999, letterSpacing: 0.5, textTransform: 'uppercase' }}>{t('trainerClasses.filterToday', 'Today')}</span>}
-              {entries.length > 0 && <span style={{ fontSize: 11, color: TT.textMute, fontWeight: 600 }}>{entries.length}</span>}
+  // ── Week view (Mon-first agenda; current week, so one-off dates land) ──
+  const renderWeek = () => {
+    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+    return (
+      <div>
+        {[0, 1, 2, 3, 4, 5, 6].map(offset => {
+          const date = addDays(weekStart, offset);
+          const dow = date.getDay();
+          const entries = entriesForDate(date);
+          const isToday = dow === todayDow;
+          return (
+            <div key={offset} style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontFamily: TFont.display, fontSize: 12.5, fontWeight: 800, color: isToday ? TT.accent : TT.text, letterSpacing: 0.3, textTransform: 'uppercase' }}>{dowLabel(dow)}</span>
+                {isToday && <span style={{ fontSize: 9, fontWeight: 800, color: '#06363B', background: TT.accent, padding: '2px 7px', borderRadius: 999, letterSpacing: 0.5, textTransform: 'uppercase' }}>{t('trainerClasses.filterToday', 'Today')}</span>}
+                {entries.length > 0 && <span style={{ fontSize: 11, color: TT.textMute, fontWeight: 600 }}>{entries.length}</span>}
+              </div>
+              {entries.length === 0
+                ? <div style={{ fontSize: 11.5, color: TT.textMute, paddingLeft: 2, paddingBottom: 2 }}>{t('trainerClasses.free', 'Free')}</div>
+                : entries.map((e, i) => <SlotRow key={i} entry={e} />)}
             </div>
-            {entries.length === 0
-              ? <div style={{ fontSize: 11.5, color: TT.textMute, paddingLeft: 2, paddingBottom: 2 }}>{t('trainerClasses.free', 'Free')}</div>
-              : entries.map((e, i) => <SlotRow key={i} entry={e} />)}
-          </div>
-        );
-      })}
-    </div>
-  );
+          );
+        })}
+      </div>
+    );
+  };
 
   // ── Month view (calendar; tap a day → day view) ──
   const renderMonth = () => {
@@ -444,7 +498,7 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
             {cells.map((d, i) => {
               if (!d) return <div key={i} />;
-              const count = (slotsByDow[d.getDay()] || []).length;
+              const count = entriesForDate(d).length;
               const today = isSameDay(d, new Date());
               const has = count > 0;
               return (
@@ -486,7 +540,7 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
       ) : view === 'day' ? renderDay() : view === 'week' ? renderWeek() : renderMonth()}
 
       {selectedClass && (
-        <ClassDetailDrawer cls={selectedClass} gymId={gymId} onClose={() => setSelectedClass(null)} t={t} tc={tc} />
+        <ClassDetailDrawer cls={selectedClass} gymId={gymId} onClose={() => setSelectedClass(null)} t={t} tc={tc} dateLocale={dateLocale} />
       )}
     </>
   );
@@ -516,7 +570,7 @@ function BookingsTab({ classes, t, dateLocale }) {
       if (classIds.length === 0) return [];
       const { data, error } = await supabase
         .from('gym_class_bookings')
-        .select('id, status, attended, booking_date, class_id, profile_id, profiles(id, full_name, avatar_url)')
+        .select('id, status, attended, booking_date, waitlist_position, class_id, profile_id, profiles(id, full_name, avatar_url)')
         .in('class_id', classIds)
         .gte('booking_date', rangeStartStr)
         .lte('booking_date', rangeEndStr)
@@ -531,10 +585,12 @@ function BookingsTab({ classes, t, dateLocale }) {
     staleTime: 30 * 1000,
   });
 
+  // Marking also sets status='attended' so the trainer mark and the member
+  // self-check-in signal stay consistent (they were two half-synced flags).
   const handleMarkAttended = async (bookingId) => {
     const { error } = await supabase
       .from('gym_class_bookings')
-      .update({ attended: true, attended_at: new Date().toISOString() })
+      .update({ attended: true, attended_at: new Date().toISOString(), status: 'attended' })
       .eq('id', bookingId);
     if (error) {
       logger.error('TrainerClasses: mark attended error', error);
@@ -544,13 +600,49 @@ function BookingsTab({ classes, t, dateLocale }) {
     }
   };
 
+  // Un-mark (mis-taps happen): back to a plain confirmed booking.
+  const handleUnmarkAttended = async (bookingId) => {
+    const { error } = await supabase
+      .from('gym_class_bookings')
+      .update({ attended: false, attended_at: null, status: 'confirmed' })
+      .eq('id', bookingId);
+    if (error) {
+      logger.error('TrainerClasses: unmark attended error', error);
+      showToast(t('trainerClasses.errorMarkAttended', 'Could not mark attendance'), 'error');
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['trainer', 'all-class-bookings'] });
+    }
+  };
+
+  // Promote a waitlisted member into the class.
+  const handlePromote = async (bookingId) => {
+    const { error } = await supabase
+      .from('gym_class_bookings')
+      .update({ status: 'confirmed', waitlist_position: null, promoted_at: new Date().toISOString() })
+      .eq('id', bookingId);
+    if (error) {
+      logger.error('TrainerClasses: promote waitlist error', error);
+      showToast(t('trainerClasses.errorPromote', 'Could not confirm this member'), 'error');
+    } else {
+      showToast(t('trainerClasses.promoted', 'Member confirmed'), 'success');
+      queryClient.invalidateQueries({ queryKey: ['trainer', 'all-class-bookings'] });
+    }
+  };
+
   const classMap = {};
   for (const c of classes) classMap[c.id] = c;
 
-  const byDate = useMemo(() => {
-    const m = {};
-    for (const b of bookings) { (m[b.booking_date] = m[b.booking_date] || []).push(b); }
-    return m;
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+  // P1-6: cancelled bookings NEVER render; waitlisted rows live in their own
+  // group; only confirmed/attended count for rosters and day/week/month totals.
+  const { activeByDate, waitlistByDate } = useMemo(() => {
+    const act = {}, wait = {};
+    for (const b of bookings) {
+      if (isActiveBooking(b)) (act[b.booking_date] = act[b.booking_date] || []).push(b);
+      else if (isWaitlisted(b)) (wait[b.booking_date] = wait[b.booking_date] || []).push(b);
+    }
+    return { activeByDate: act, waitlistByDate: wait };
   }, [bookings]);
 
   const renderStepper = ({ label, onPrev, onNext }) => (
@@ -567,13 +659,59 @@ function BookingsTab({ classes, t, dateLocale }) {
     </div>
   );
 
-  // Bookings for one date, grouped by class.
+  // One member row (active roster or waitlist).
+  const BookingRow = ({ b, isFuture, waitlisted }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: TT.surface, borderRadius: 12, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, overflow: 'hidden' }}>
+      {b.profiles?.avatar_url ? (
+        <img src={b.profiles.avatar_url} alt={b.profiles?.full_name || t('trainerClasses.members')} style={{ width: 32, height: 32, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
+      ) : (
+        <div style={{ width: 32, height: 32, borderRadius: 999, display: 'grid', placeItems: 'center', flexShrink: 0, background: TT.accentSoft }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: TT.accentInk }}>{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
+        </div>
+      )}
+      <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.profiles?.full_name || t('trainerClasses.unknown')}</span>
+      {waitlisted ? (
+        <button
+          type="button"
+          onClick={() => handlePromote(b.id)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: TT.accentInk, background: TT.accentSoft, padding: '7px 11px', borderRadius: 999, border: 'none', cursor: 'pointer', minHeight: 44, whiteSpace: 'nowrap' }}
+          className="sm:!min-h-[32px]"
+        >
+          <Check size={11} /> {t('trainerClasses.promote', 'Confirm')}
+        </button>
+      ) : isAttended(b) ? (
+        // Tappable to undo a mis-tap.
+        <button
+          type="button"
+          onClick={() => handleUnmarkAttended(b.id)}
+          title={t('trainerClasses.unmarkAttended', 'Tap to unmark')}
+          style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}
+        >
+          <TPill tone="good" size="m"><Check size={11} /> {t('trainerClasses.attended')}</TPill>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => handleMarkAttended(b.id)}
+          disabled={isFuture}
+          title={isFuture ? t('trainerClasses.futureAttendance', 'You can mark attendance once the day arrives') : undefined}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: TT.accentInk, background: TT.accentSoft, padding: '7px 11px', borderRadius: 999, border: 'none', cursor: isFuture ? 'not-allowed' : 'pointer', opacity: isFuture ? 0.45 : 1, minHeight: 44, whiteSpace: 'nowrap' }}
+          className="sm:!min-h-[32px]"
+        >
+          <UserCheck size={11} /> {t('trainerClasses.markAttended')}
+        </button>
+      )}
+    </div>
+  );
+
+  // Bookings for one date, grouped by class: active roster + waitlist group.
   const renderDayBookings = (dateStr) => {
-    const dayBookings = byDate[dateStr] || [];
-    const grouped = dayBookings.reduce((acc, b) => {
-      (acc[b.class_id] = acc[b.class_id] || []).push(b);
-      return acc;
-    }, {});
+    const dayActive = activeByDate[dateStr] || [];
+    const dayWaitlist = waitlistByDate[dateStr] || [];
+    const isFuture = dateStr > todayStr;
+    const grouped = {};
+    for (const b of dayActive) (grouped[b.class_id] = grouped[b.class_id] || { active: [], waitlist: [] }).active.push(b);
+    for (const b of dayWaitlist) (grouped[b.class_id] = grouped[b.class_id] || { active: [], waitlist: [] }).waitlist.push(b);
     if (Object.keys(grouped).length === 0) {
       return (
         <TrainerEmptyState
@@ -586,9 +724,10 @@ function BookingsTab({ classes, t, dateLocale }) {
     }
     return (
       <div className="space-y-4">
-        {Object.entries(grouped).map(([classId, classBookings]) => {
+        {Object.entries(grouped).map(([classId, { active, waitlist }]) => {
           const cls = classMap[classId];
           const accentColor = cls?.accent_color || TT.accent;
+          const sortedWaitlist = waitlist.slice().sort((a, b) => (a.waitlist_position ?? 999) - (b.waitlist_position ?? 999));
           return (
             <div key={classId}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -596,33 +735,20 @@ function BookingsTab({ classes, t, dateLocale }) {
                   <CalendarDays size={12} style={{ color: accentColor }} />
                 </div>
                 <span style={{ fontSize: 13, fontWeight: 700, color: TT.text }}>{cls?.name || t('trainerClasses.unknown')}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: TT.textMute, marginLeft: 'auto' }}>{classBookings.length}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: TT.textMute, marginLeft: 'auto' }}>{active.length}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {classBookings.map(b => (
-                  <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: TT.surface, borderRadius: 12, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, overflow: 'hidden' }}>
-                    {b.profiles?.avatar_url ? (
-                      <img src={b.profiles.avatar_url} alt={b.profiles?.full_name || t('trainerClasses.members')} style={{ width: 32, height: 32, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
-                    ) : (
-                      <div style={{ width: 32, height: 32, borderRadius: 999, display: 'grid', placeItems: 'center', flexShrink: 0, background: TT.accentSoft }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: TT.accentInk }}>{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
-                      </div>
-                    )}
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.profiles?.full_name || t('trainerClasses.unknown')}</span>
-                    {b.attended ? (
-                      <TPill tone="good" size="m"><Check size={11} /> {t('trainerClasses.attended')}</TPill>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleMarkAttended(b.id)}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: TT.accentInk, background: TT.accentSoft, padding: '7px 11px', borderRadius: 999, border: 'none', cursor: 'pointer', minHeight: 44, whiteSpace: 'nowrap' }}
-                        className="sm:!min-h-[32px]"
-                      >
-                        <UserCheck size={11} /> {t('trainerClasses.markAttended')}
-                      </button>
-                    )}
-                  </div>
-                ))}
+                {active.map(b => <BookingRow key={b.id} b={b} isFuture={isFuture} />)}
+                {sortedWaitlist.length > 0 && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0 0', paddingLeft: 2 }}>
+                      <TPill tone="warn" size="s">
+                        {t('trainerClasses.waitlist', 'Waitlist')} ({sortedWaitlist.length})
+                      </TPill>
+                    </div>
+                    {sortedWaitlist.map(b => <BookingRow key={b.id} b={b} waitlisted />)}
+                  </>
+                )}
               </div>
             </div>
           );
@@ -639,8 +765,9 @@ function BookingsTab({ classes, t, dateLocale }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {days.map(day => {
           const dayStr = format(day, 'yyyy-MM-dd');
-          const dayB = byDate[dayStr] || [];
-          const attended = dayB.filter(b => b.attended).length;
+          const dayB = activeByDate[dayStr] || [];
+          const waitN = (waitlistByDate[dayStr] || []).length;
+          const attended = dayB.filter(isAttended).length;
           const isToday = isSameDay(day, new Date());
           return (
             <button key={dayStr} type="button" onClick={() => { setAnchorDate(startOfDay(day)); setView('day'); }}
@@ -650,15 +777,20 @@ function BookingsTab({ classes, t, dateLocale }) {
                 <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: TT.text, letterSpacing: -0.4, lineHeight: 1 }}>{format(day, 'd')}</div>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                {dayB.length === 0 ? (
+                {dayB.length === 0 && waitN === 0 ? (
                   <span style={{ fontSize: 12.5, color: TT.textMute }}>{t('trainerClasses.free', 'Free')}</span>
                 ) : (
                   <span style={{ fontSize: 12.5, color: TT.text, fontWeight: 600 }}>
                     {t('trainerClasses.weekDaySummary', '{{n}} booked · {{a}} attended', { n: dayB.length, a: attended })}
+                    {waitN > 0 && (
+                      <span style={{ color: TT.warnInk, fontWeight: 700 }}>
+                        {' · '}{t('trainerClasses.waitlistShort', '{{n}} waitlisted', { n: waitN })}
+                      </span>
+                    )}
                   </span>
                 )}
               </div>
-              {dayB.length > 0 && <ChevronRight size={14} color={TT.textMute} style={{ flexShrink: 0 }} />}
+              {(dayB.length > 0 || waitN > 0) && <ChevronRight size={14} color={TT.textMute} style={{ flexShrink: 0 }} />}
             </button>
           );
         })}
@@ -683,7 +815,7 @@ function BookingsTab({ classes, t, dateLocale }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
           {cells.map((d, i) => {
             if (!d) return <div key={i} />;
-            const count = (byDate[format(d, 'yyyy-MM-dd')] || []).length;
+            const count = (activeByDate[format(d, 'yyyy-MM-dd')] || []).length;
             const today = isSameDay(d, new Date());
             const has = count > 0;
             return (
@@ -745,25 +877,31 @@ function AnalyticsTab({ classes, t, dateLocale }) {
   const selectedClass = classes.find(c => c.id === selectedClassId);
   const hasTemplate = !!selectedClass?.workout_template_id;
 
-  const { data: analytics, isLoading } = useQuery({
+  const { data: analytics, isLoading, isError, refetch } = useQuery({
     queryKey: ['trainer', 'class-analytics', selectedClassId],
     queryFn: async () => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const since = thirtyDaysAgo.toISOString();
 
-      const { data: allBookings } = await supabase
+      const { data: allBookings, error: bookingsError } = await supabase
         .from('gym_class_bookings')
-        .select('id, attended, rating')
+        .select('id, attended, rating, status')
         .eq('class_id', selectedClassId)
         .gte('booked_at', since);
+      if (bookingsError) {
+        logger.error('TrainerClasses: analytics fetch error', bookingsError);
+        throw bookingsError; // real retry state instead of fake "No data yet"
+      }
 
-      const bookings = allBookings || [];
+      // P1-6: cancelled/waitlisted rows must not deflate the attendance rate —
+      // only real spots (confirmed/attended) count in the denominator.
+      const bookings = (allBookings || []).filter(isActiveBooking);
       const total = bookings.length;
-      const attended = bookings.filter(b => b.attended).length;
+      const attended = bookings.filter(isAttended).length;
       const attendanceRate = total > 0 ? Math.round((attended / total) * 100) : 0;
 
-      const rated = bookings.filter(b => b.rating != null && b.attended);
+      const rated = bookings.filter(b => b.rating != null && isAttended(b));
       const avgRating = rated.length > 0
         ? (rated.reduce((sum, b) => sum + b.rating, 0) / rated.length).toFixed(1)
         : null;
@@ -818,6 +956,15 @@ function AnalyticsTab({ classes, t, dateLocale }) {
       {/* Analytics content */}
       {isLoading ? (
         <Spinner label={t('trainerClasses.loading')} />
+      ) : isError ? (
+        <TrainerEmptyState
+          icon={BarChart3}
+          title={t('trainerClasses.analyticsLoadError', 'Could not load analytics')}
+          description={t('trainerClasses.bookingsLoadErrorDesc', 'Something went wrong. Check your connection and try again.')}
+          actionLabel={t('trainerClasses.retry', 'Retry')}
+          onAction={() => refetch()}
+          compact
+        />
       ) : !analytics || analytics.total === 0 ? (
         <TrainerEmptyState
           icon={BarChart3}
@@ -929,6 +1076,10 @@ function AnalyticsTab({ classes, t, dateLocale }) {
 // ── Routine Selector (reused from original) ──
 function RoutineSelector({ gymId, value, onChange, t }) {
   const [search, setSearch] = useState('');
+  // "Change" opens the picker without dropping the current template first
+  // (it used to be a duplicate of "Remove" — both called onChange(null)).
+  const [changing, setChanging] = useState(false);
+  useEffect(() => { setChanging(false); setSearch(''); }, [value]);
 
   const { data: routines = [] } = useQuery({
     queryKey: ['trainer', 'routines-for-classes', gymId],
@@ -952,7 +1103,7 @@ function RoutineSelector({ gymId, value, onChange, t }) {
 
   return (
     <div>
-      {selected ? (
+      {selected && !changing ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: 12, background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 12, overflow: 'hidden' }}>
           <Dumbbell size={14} style={{ color: TT.accent, flexShrink: 0 }} />
           <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TT.text, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -964,7 +1115,7 @@ function RoutineSelector({ gymId, value, onChange, t }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             <button
               type="button"
-              onClick={() => onChange(null)}
+              onClick={() => setChanging(true)}
               style={{ fontSize: 11, fontWeight: 700, color: TT.accentDark, background: 'transparent', border: 'none', cursor: 'pointer', minHeight: 44, minWidth: 44, padding: '0 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               {t('trainerClasses.changeTemplate')}
@@ -980,14 +1131,26 @@ function RoutineSelector({ gymId, value, onChange, t }) {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: TT.textMute }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={t('trainerClasses.changeTemplate')}
-              style={{ ...inputStyle, paddingLeft: 32 }}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: TT.textMute }} />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={t('trainerClasses.changeTemplate')}
+                autoFocus={changing}
+                style={{ ...inputStyle, paddingLeft: 32 }}
+              />
+            </div>
+            {changing && (
+              <button
+                type="button"
+                onClick={() => { setChanging(false); setSearch(''); }}
+                style={{ fontSize: 11, fontWeight: 700, color: TT.textSub, background: 'transparent', border: 'none', cursor: 'pointer', minHeight: 44, padding: '0 8px', flexShrink: 0 }}
+              >
+                {t('trainerClasses.cancel')}
+              </button>
+            )}
           </div>
           {search && filtered.length > 0 && (
             <div style={{ maxHeight: 192, overflowY: 'auto', borderRadius: 12, border: `1px solid ${TT.border}`, background: TT.surface }}>
@@ -995,7 +1158,7 @@ function RoutineSelector({ gymId, value, onChange, t }) {
                 <button
                   key={r.id}
                   type="button"
-                  onClick={() => { onChange(r.id); setSearch(''); }}
+                  onClick={() => { onChange(r.id); setSearch(''); setChanging(false); }}
                   style={{ width: '100%', textAlign: 'left', padding: '10px 12px', fontSize: 12, color: TT.text, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}
                 >
                   <Dumbbell size={12} style={{ color: TT.textMute, flexShrink: 0 }} />
@@ -1162,19 +1325,30 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
     if (!form.name.trim()) return;
     setSubmitting(true);
     try {
+      const details = {
+        class_name: form.name.trim(),
+        description: form.description.trim(),
+        suggested_day: form.day_of_week,
+        suggested_time: form.start_time,
+        duration_minutes: form.duration,
+      };
       const { error } = await supabase.rpc('log_admin_action', {
         p_action: 'class_proposal',
         p_entity_type: 'class',
         p_entity_id: null,
-        p_details: {
-          class_name: form.name.trim(),
-          description: form.description.trim(),
-          suggested_day: form.day_of_week,
-          suggested_time: form.start_time,
-          duration_minutes: form.duration,
-        },
+        p_details: details,
       });
       if (error) throw error;
+
+      // P2-10: the audit log alone was a write-only black hole — also ping
+      // every gym admin (in-app + push, migration 0535). Tolerate the RPC
+      // not existing yet so the proposal flow never breaks pre-migration.
+      const { error: notifyError } = await supabase.rpc('notify_class_proposal', {
+        p_class_name: form.name.trim(),
+        p_details: details,
+      });
+      if (notifyError) logger.error('ProposeClass: admin notify failed (tolerated)', notifyError);
+
       posthog?.capture('trainer_class_proposed');
       showToast(t('trainerClasses.proposalSent', 'Proposal sent to admin'), 'success');
       onClose();
@@ -1319,30 +1493,62 @@ export default function TrainerClasses() {
 
   useEffect(() => { document.title = t('trainerClasses.documentTitle'); }, [t]);
 
-  const { data: classes = [], isLoading } = useQuery({
+  const CLASS_SELECT = '*, gym_class_schedules(id, day_of_week, specific_date, start_time, end_time, override_capacity)';
+
+  const { data: classes = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['trainer', 'my-classes', trainerId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // P1-7: the admin assigns co-trainers via the gym_class_trainers
+      // junction (source of truth per 0379) — load those class ids too and
+      // union with the legacy trainer_id-owned set. Junction errors are
+      // tolerated so the owned path still works pre-0535.
+      let junctionIds = [];
+      const { data: jRows, error: jErr } = await supabase
+        .from('gym_class_trainers')
+        .select('class_id')
+        .eq('trainer_id', trainerId);
+      if (jErr) logger.error('TrainerClasses: junction fetch error', jErr);
+      else junctionIds = [...new Set((jRows || []).map(r => r.class_id))];
+
+      const { data: owned, error } = await supabase
         .from('gym_classes')
-        .select('*, gym_class_schedules(id, day_of_week, start_time, end_time, override_capacity)')
+        .select(CLASS_SELECT)
         .eq('trainer_id', trainerId)
         .eq('is_active', true)
         .order('name');
-      if (error) logger.error('TrainerClasses: fetch error', error);
+      if (error) {
+        logger.error('TrainerClasses: fetch error', error);
+        throw error; // surfaces the retry state below instead of a fake "No classes"
+      }
+
+      const ownedIds = new Set((owned || []).map(c => c.id));
+      const extraIds = junctionIds.filter(id => !ownedIds.has(id));
+      let viaJunction = [];
+      if (extraIds.length > 0) {
+        const { data: jClasses, error: jcErr } = await supabase
+          .from('gym_classes')
+          .select(CLASS_SELECT)
+          .in('id', extraIds)
+          .eq('is_active', true);
+        // Pre-0535 RLS may hide these rows — degrade to owned-only.
+        if (jcErr) logger.error('TrainerClasses: junction classes fetch error', jcErr);
+        else viaJunction = jClasses || [];
+      }
+
+      const data = [...(owned || []), ...viaJunction]
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
       // Resolve signed image URLs
-      if (data) {
-        for (const cls of data) {
-          if (cls.image_url && cls.image_url.startsWith('class-images/')) {
-            const { data: signedData } = await supabase.storage
-              .from('class-images')
-              .createSignedUrl(cls.image_url.replace('class-images/', ''), 3600);
-            if (signedData?.signedUrl) cls.image_url = signedData.signedUrl;
-          }
+      for (const cls of data) {
+        if (cls.image_url && cls.image_url.startsWith('class-images/')) {
+          const { data: signedData } = await supabase.storage
+            .from('class-images')
+            .createSignedUrl(cls.image_url.replace('class-images/', ''), 3600);
+          if (signedData?.signedUrl) cls.image_url = signedData.signedUrl;
         }
       }
 
-      return data || [];
+      return data;
     },
     enabled: !!trainerId,
     staleTime: 60 * 1000,
@@ -1394,17 +1600,28 @@ export default function TrainerClasses() {
         </div>
       )}
 
+      {/* Load error → honest retry instead of a fake "No classes assigned" */}
+      {!isLoading && isError && (
+        <TrainerEmptyState
+          icon={CalendarDays}
+          title={t('trainerClasses.classesLoadError', 'Could not load your classes')}
+          description={t('trainerClasses.classesLoadErrorDesc', 'Something went wrong. Check your connection and try again.')}
+          actionLabel={t('trainerClasses.retry', 'Retry')}
+          onAction={() => refetch()}
+        />
+      )}
+
       {/* Tab content */}
-      {!isLoading && activeTab === 'myClasses' && (
+      {!isLoading && !isError && activeTab === 'myClasses' && (
         <MyClassesTab classes={classes} gymId={gymId} t={t} tc={tc} dateLocale={dateLocale} />
       )}
-      {!isLoading && activeTab === 'bookings' && (
+      {!isLoading && !isError && activeTab === 'bookings' && (
         <BookingsTab classes={classes} t={t} dateLocale={dateLocale} />
       )}
-      {!isLoading && activeTab === 'analytics' && (
+      {!isLoading && !isError && activeTab === 'analytics' && (
         <AnalyticsTab classes={classes} t={t} dateLocale={dateLocale} />
       )}
-      {!isLoading && activeTab === 'templates' && (
+      {!isLoading && !isError && activeTab === 'templates' && (
         <TemplatesTab classes={classes} gymId={gymId} t={t} />
       )}
 

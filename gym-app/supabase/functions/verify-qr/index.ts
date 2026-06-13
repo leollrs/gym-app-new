@@ -120,11 +120,20 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await authClient.auth.getUser();
     if (authErr || !user) return jsonResp({ error: 'Unauthorized' }, 401);
 
-    // ── Database-based rate limiting (60 requests per user per hour) ──
+    // ── Database-based rate limiting (per authenticated caller, per hour) ──
     // Use service-role client so RLS on ai_rate_limits can't block the
     // count query and turn the whole verify into a 500. Rate-limit
     // enforcement is purely a server-side concern; the value is keyed
     // on the authenticated user.id resolved above.
+    //
+    // This endpoint is the front-desk CHECK-IN scanner — a busy gym at a class
+    // change legitimately scans far more than the old 60/hr cap allowed, and
+    // the caller is already authenticated staff (not a public abuse surface).
+    // The limit is therefore a runaway-loop backstop, not a throttle: 1000/hr.
+    // And the integrity of every scan is guaranteed by the HMAC signature +
+    // single-use nonce below regardless of the rate counter, so a transient
+    // ai_rate_limits outage must NOT brick check-in — fail OPEN, not closed.
+    const RL_MAX_PER_HOUR = 1000;
     const rlClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { count, error: rlError } = await rlClient
@@ -132,15 +141,15 @@ serve(async (req) => {
       .select('*', { count: 'exact', head: true })
       .eq('profile_id', user.id)
       .eq('endpoint', 'verify-qr')
-      .gte('requested_at', oneHourAgo);
+      .gte('created_at', oneHourAgo);
 
     if (rlError) {
-      // Fail CLOSED: if we cannot confirm the caller is under the limit,
-      // reject rather than allowing unbounded verification attempts.
-      console.error('Rate limit check failed (rejecting):', rlError.message);
-      return jsonResp({ error: 'Rate limit check unavailable' }, 503);
-    } else if ((count ?? 0) >= 60) {
-      return jsonResp({ error: 'Rate limit exceeded — max 60 requests per hour' }, 429);
+      // Fail OPEN: signature + nonce still protect integrity, and bricking the
+      // whole scanner with a misleading "invalid signature" on a transient DB
+      // blip is worse than letting an authenticated scan through uncounted.
+      console.warn('Rate limit check failed (allowing — fail open):', rlError.message);
+    } else if ((count ?? 0) >= RL_MAX_PER_HOUR) {
+      return jsonResp({ error: `Rate limit exceeded — max ${RL_MAX_PER_HOUR} requests per hour` }, 429);
     }
 
     // Best-effort insert; ignore failure

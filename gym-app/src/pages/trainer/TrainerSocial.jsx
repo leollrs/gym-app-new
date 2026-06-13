@@ -52,15 +52,21 @@ export default function TrainerSocial() {
             .gte('created_at', sevenDaysAgo),
         ]);
 
+        // supabase-js never throws — check each { error } so a failed query
+        // renders an honest "—" instead of a silent fake 0.
+        if (tcRes.error) logger.error('TrainerSocial: clients stat failed', tcRes.error);
+        if (reactionsRes.error) logger.error('TrainerSocial: reactions stat failed', reactionsRes.error);
+        if (commentsRes.error) logger.error('TrainerSocial: comments stat failed', commentsRes.error);
+
         const clients = (tcRes.data || []).map(r => r.profiles).filter(Boolean);
         const sevenDaysAgoMs = Date.now() - 7 * 86400000;
         const activeClients = clients.filter(c => c.last_active_at && new Date(c.last_active_at).getTime() >= sevenDaysAgoMs).length;
 
         if (!cancelled) {
           setStats({
-            activeClients,
-            totalReactions: reactionsRes.count || 0,
-            totalComments: commentsRes.count || 0,
+            activeClients: tcRes.error ? null : activeClients,
+            totalReactions: reactionsRes.error ? null : (reactionsRes.count || 0),
+            totalComments: commentsRes.error ? null : (commentsRes.count || 0),
           });
         }
       } catch (err) {
@@ -85,7 +91,7 @@ export default function TrainerSocial() {
         <TrainerHero
           accentLabel={t('trainerSocial.heroLabel', 'Last 7 days')}
           title={t('trainerSocial.heroTitle', 'Active clients in the feed')}
-          value={stats.activeClients}
+          value={stats.activeClients ?? '—'}
           subText={t('trainerSocial.heroSub', 'Your engaged trainees this week')}
           icon={Users}
         />
@@ -95,14 +101,14 @@ export default function TrainerSocial() {
           <TrainerStatCard
             icon={Heart}
             label={t('trainerSocial.reactionsGiven', 'Reactions given')}
-            value={stats.totalReactions}
+            value={stats.totalReactions ?? '—'}
             sub={t('trainerSocial.lastSevenDays', 'Last 7 days')}
             delay={0.04}
           />
           <TrainerStatCard
             icon={MessageCircle}
             label={t('trainerSocial.commentsPosted', 'Comments')}
-            value={stats.totalComments}
+            value={stats.totalComments ?? '—'}
             sub={t('trainerSocial.lastSevenDays', 'Last 7 days')}
             delay={0.08}
           />
@@ -113,7 +119,9 @@ export default function TrainerSocial() {
         )}
 
         <Suspense fallback={<FeedSkeleton />}>
-          <SocialFeed embedded />
+          {/* hideComposer: trainer posts are visible to almost nobody (the
+              0527 feed arm is one-directional) — no composer / My Posts tab. */}
+          <SocialFeed embedded hideComposer />
         </Suspense>
       </div>
     </div>

@@ -1,12 +1,14 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import useKeyboardOpen from '../hooks/useKeyboardOpen';
 import { useEffect, useState, useRef } from 'react';
 import {
   Building2, Users, BarChart3, Search, Settings, LogOut,
   ScrollText, MoreHorizontal, X, Shield, Bug, Bell,
-  Activity, HeadphonesIcon, AlertTriangle, HeartPulse, Puzzle, Printer, ListChecks,
+  Activity, HeadphonesIcon, AlertTriangle, HeartPulse, Puzzle, Printer, ListChecks, Repeat,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import ViewSwitcherModal from '../components/ViewSwitcherModal';
 
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -54,16 +56,39 @@ const linkClass = (active) =>
   }`;
 
 export default function PlatformLayout({ children }) {
+  const keyboardOpen = useKeyboardOpen();
   const { t } = useTranslation('common');
-  const { profile, signOut, unreadAdminNotifs } = useAuth();
+  const { profile, signOut, unreadAdminNotifs, availableRoles } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // View switcher (P2-9): the platform tier had no way to flip into the admin
+  // experience, so every /admin/* deep link bounced a primary super_admin back
+  // to /platform/attention. Mirrors the trigger pattern used by
+  // TrainerProfile / AdminProfile (button → ViewSwitcherModal).
+  const [showViewSwitcher, setShowViewSwitcher] = useState(false);
+  const hasMultipleViews = Array.isArray(availableRoles) && availableRoles.length > 1;
   const moreMenuRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
+  // A9: ensure the background sign-out fires exactly once whether it was the
+  // timer (real timeout) or the modal button (defensive fallback) that ran.
+  const signOutFiredRef = useRef(false);
+  const fireBackgroundSignOut = () => {
+    if (signOutFiredRef.current) return;
+    signOutFiredRef.current = true;
+    Promise.resolve()
+      .then(() => signOut())
+      .catch((err) => console.warn('[platform] background signOut failed', err));
+  };
+  const fireSignOutRef = useRef(fireBackgroundSignOut);
+  fireSignOutRef.current = fireBackgroundSignOut;
 
   // ── Session inactivity timeout (30 min) ───────────────────────
+  // A9: the timeout actually SIGNS OUT when it fires — the old version only
+  // showed a modal while the Supabase session kept auto-refreshing underneath
+  // (cosmetic security on a tier that can touch every gym). The modal stays
+  // up to explain what happened; its button just navigates to /login.
   useEffect(() => {
     const updateActivity = () => { lastActivityRef.current = Date.now(); };
     const events = ['mousemove', 'keypress', 'click', 'touchstart', 'scroll'];
@@ -72,6 +97,7 @@ export default function PlatformLayout({ children }) {
     const interval = setInterval(() => {
       if (Date.now() - lastActivityRef.current >= SESSION_TIMEOUT_MS) {
         setSessionExpired(true);
+        fireSignOutRef.current(); // kill the session NOW, not on button tap
         clearInterval(interval);
       }
     }, 30_000); // check every 30s
@@ -84,17 +110,13 @@ export default function PlatformLayout({ children }) {
 
   const handleSessionExpiredLogout = () => {
     // Navigate IMMEDIATELY so the modal disappears the instant the user taps
-    // Sign In. The previous flow awaited signOut() before navigating, which
-    // meant any slow step inside (removePushTokens on bad wifi, supabase
-    // auth.signOut() round-trip) left the user staring at the modal with no
-    // feedback — looked like the button was broken. signOut still runs, just
-    // in the background; the SIGNED_OUT auth event finishes clearing local
-    // state once the network round-trip lands.
+    // Sign In — signOut already ran in the background when the timer fired
+    // (fireBackgroundSignOut guards against a double-run; this call is only a
+    // defensive fallback). Awaiting it here would leave the user staring at
+    // the modal through a slow removePushTokens/auth round-trip.
     setSessionExpired(false);
     navigate('/login', { replace: true });
-    Promise.resolve()
-      .then(() => signOut())
-      .catch((err) => console.warn('[platform] background signOut failed', err));
+    fireBackgroundSignOut();
   };
 
   useEffect(() => {
@@ -193,6 +215,15 @@ export default function PlatformLayout({ children }) {
             </div>
             <p className="text-[13px] font-medium text-[#9CA3AF] truncate">{profile?.full_name ?? 'Super Admin'}</p>
           </div>
+          {hasMultipleViews && (
+            <button
+              onClick={() => setShowViewSwitcher(true)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-[#6B7280] hover:text-[#D4AF37] hover:bg-white/[0.04] transition-colors duration-200"
+            >
+              <Repeat size={14} />
+              {t('platformLayout.view', 'View')}
+            </button>
+          )}
           <button
             onClick={handleSignOut}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-[#6B7280] hover:text-[#EF4444] hover:bg-red-500/5 transition-colors duration-200"
@@ -283,12 +314,22 @@ export default function PlatformLayout({ children }) {
                 <span className="text-[10px] font-medium text-center leading-tight">{t(labelKey)}</span>
               </NavLink>
             ))}
+            {hasMultipleViews && (
+              <button
+                type="button"
+                onClick={() => { setMoreMenuOpen(false); setShowViewSwitcher(true); }}
+                className="flex flex-col items-center gap-1 py-3 px-1 rounded-xl transition-colors text-[#9CA3AF] hover:bg-white/[0.04]"
+              >
+                <Repeat size={22} strokeWidth={1.75} />
+                <span className="text-[10px] font-medium text-center leading-tight">{t('platformLayout.view', 'View')}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* Mobile bottom nav */}
-      <nav aria-label="Platform mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/[0.06] bg-[#05070B]/95 backdrop-blur-2xl transition-colors duration-200"
+      <nav aria-label="Platform mobile navigation" className={`md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/[0.06] bg-[#05070B]/95 backdrop-blur-2xl transition-colors duration-200 ${keyboardOpen ? 'hidden' : ''}`}
         style={{ paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}>
         {MOBILE_NAV.map(({ to, labelKey, icon: Icon, exact }) => (
           <NavLink
@@ -342,6 +383,10 @@ export default function PlatformLayout({ children }) {
           </div>
         </div>
       )}
+
+      {/* View switcher — lets the founder flip into the admin/trainer/member
+          experiences so /admin/* deep links (inbox taps) actually resolve. */}
+      <ViewSwitcherModal open={showViewSwitcher} onClose={() => setShowViewSwitcher(false)} />
     </div>
   );
 }

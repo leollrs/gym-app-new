@@ -24,6 +24,62 @@ async function fetchPrintedCardsForMember(supabase, gymId, memberId) {
   return data || [];
 }
 
+// Fallback for gyms configured with qr_payload_type = external_id /
+// custom_template: those members' passes display their RAW gym door code
+// (profiles.qr_external_id), which never matches qr_code_payload. Route the
+// scan through checkin_by_external_id (0371/0471) — the same SECURITY DEFINER
+// RPC the desktop bridge uses: staff-only, scoped to the caller's gym, with
+// the identical 3-hour duplicate guard + 24h-checked points budget as the
+// JS path below. Returns null when nothing matched (caller shows not-found).
+async function tryExternalIdCheckin(scanned, ctx) {
+  const { gymId, supabase, t } = ctx;
+  const code = typeof scanned === 'string' ? scanned.trim() : '';
+  // Bounded: plain short codes only. Signed payloads carry a `|signature`
+  // and never reach here; URLs/JSON blobs are skipped by the length guard.
+  if (!code || code.length > 64 || code.includes('|')) return null;
+  try {
+    const { data, error } = await supabase.rpc('checkin_by_external_id', {
+      p_external_id: code,
+      p_source: 'admin_scanner',
+    });
+    // RPC missing (pre-0371 deploy), staff/gym rejection, or member_not_found
+    // → fall through to the generic not-found message.
+    if (error || !data || data.success !== true || !data.profile_id) return null;
+
+    const cardsToDeliver = await fetchPrintedCardsForMember(supabase, gymId, data.profile_id);
+    if (data.duplicate) {
+      return {
+        success: true,
+        message: t('admin.scan.alreadyCheckedIn', '{{name}} already checked in today', { name: data.member_name }),
+        memberName: data.member_name,
+        memberId: data.profile_id,
+        avatarUrl: data.avatar_url,
+        data: { duplicate: true, cardsToDeliver },
+      };
+    }
+
+    logAdminAction('checkin_scan', 'member', data.profile_id);
+
+    const pointsAwarded = Number(data.points_awarded) || 0;
+    const msg = pointsAwarded > 0
+      ? t('admin.scan.checkinSuccess', '{{name}} checked in! +{{pts}}pts', { name: data.member_name, pts: pointsAwarded })
+      : t('admin.scan.checkinSuccessNoPoints', '{{name}} checked in!', { name: data.member_name });
+
+    return {
+      success: true,
+      message: msg,
+      memberName: data.member_name,
+      memberId: data.profile_id,
+      avatarUrl: data.avatar_url,
+      data: { pointsEarned: pointsAwarded, cardsToDeliver },
+      externalPayload: { action: 'checkin', memberId: data.profile_id, memberExternalId: data.external_id, memberName: data.member_name, timestamp: new Date().toISOString(), data: { pointsEarned: pointsAwarded } },
+    };
+  } catch (err) {
+    logger.warn('checkin_by_external_id fallback failed:', err?.message);
+    return null;
+  }
+}
+
 // ── Check-in ─────────────────────────────────────────────
 export async function handleCheckinScan(parsed, ctx) {
   const { gymId, supabase, t } = ctx;
@@ -37,6 +93,11 @@ export async function handleCheckinScan(parsed, ctx) {
     .single();
 
   if (memberErr || !member) {
+    // No qr_code_payload match — the scan may be a RAW external-id code
+    // (gyms.qr_payload_type external_id/custom_template). Try the bounded
+    // gym-scoped reverse lookup before giving up.
+    const externalResult = await tryExternalIdCheckin(parsed.qrPayload, ctx);
+    if (externalResult) return externalResult;
     return { success: false, message: t('admin.scan.memberNotFound', 'Member not found') };
   }
 
@@ -463,12 +524,83 @@ export async function handleEarnedRewardScan(parsed, ctx) {
   };
 }
 
+// ── Challenge prize (podium rewards from ended challenges) ──
+export async function handleChallengePrizeScan(parsed, ctx) {
+  const { gymId, supabase, t } = ctx;
+
+  if (!parsed?.qrCode || parsed.qrCode.length < 6) {
+    return { success: false, message: t('admin.scan.invalidQR', 'Invalid QR code') };
+  }
+
+  // Look up the prize by qr_code (admin RLS allows reading rows in own gym)
+  const { data: prize, error: lookupErr } = await supabase
+    .from('challenge_prizes')
+    .select('id, gym_id, profile_id, placement, reward_label, status, challenges(name)')
+    .eq('qr_code', parsed.qrCode)
+    .maybeSingle();
+
+  if (lookupErr || !prize) {
+    return { success: false, message: t('admin.scan.prizeNotFound', 'Challenge prize not found') };
+  }
+
+  if (prize.gym_id !== gymId) {
+    return { success: false, message: t('admin.scan.wrongGym', 'QR code is for a different gym') };
+  }
+
+  if (prize.status !== 'pending') {
+    return { success: false, message: t('admin.scan.alreadyClaimed', 'This reward was already claimed') };
+  }
+
+  const { data: member } = await supabase
+    .from('profiles')
+    .select('full_name, avatar_url, qr_external_id')
+    .eq('id', prize.profile_id)
+    .eq('gym_id', gymId)
+    .single();
+
+  if (!member) {
+    return { success: false, message: t('admin.scan.memberNotFound', 'Member not found') };
+  }
+
+  // SECURITY DEFINER RPC (0471): admin-gated, gym-checked, pending-only.
+  const { error: redeemErr } = await supabase.rpc('redeem_challenge_prize', { p_prize_id: prize.id });
+  if (redeemErr) {
+    logger.error('redeem_challenge_prize failed:', redeemErr);
+    return { success: false, message: t('admin.scan.claimFailed', 'Failed to claim reward') };
+  }
+
+  logAdminAction('redeem_challenge_prize', 'member', prize.profile_id, {
+    prize_id: prize.id, placement: prize.placement, reward: prize.reward_label,
+    challenge: prize.challenges?.name,
+  });
+
+  return {
+    success: true,
+    message: t('admin.scan.earnedRewardClaimed', '{{name}} claimed: {{reward}}', {
+      name: member.full_name, reward: prize.reward_label,
+    }),
+    memberName: member.full_name,
+    memberId: prize.profile_id,
+    avatarUrl: member.avatar_url,
+    data: { rewardName: prize.reward_label, placement: prize.placement, challengeName: prize.challenges?.name },
+    externalPayload: {
+      action: 'challenge_prize',
+      memberId: prize.profile_id,
+      memberExternalId: member.qr_external_id,
+      memberName: member.full_name,
+      timestamp: new Date().toISOString(),
+      data: { prizeId: prize.id, rewardName: prize.reward_label, placement: prize.placement },
+    },
+  };
+}
+
 // ── Dispatcher ───────────────────────────────────────────
 const HANDLERS = {
   checkin: handleCheckinScan,
   purchase: handlePurchaseScan,
   reward_redemption: handleRewardRedemptionScan,
   earned_reward: handleEarnedRewardScan,
+  challenge_prize: handleChallengePrizeScan,
   referral: handleReferralScan,
   voucher: handleVoucherScan,
 };

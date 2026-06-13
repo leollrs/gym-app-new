@@ -127,7 +127,8 @@ function deriveProblems(g, t) {
       key: 'errors', severity: 'high', icon: Bug,
       label: t('platform.attention.p.errors', { count: g.errors_7d, defaultValue: '{{count}} technical errors (7d)' }),
       fix: t('platform.attention.f.errors', 'Check the error log and resolve before members notice.'),
-      route: `/platform/error-logs`,
+      // Carry the gym context so ErrorLogs opens pre-filtered to this gym.
+      route: `/platform/error-logs?gym=${g.gym_id}`,
     });
   }
 
@@ -144,7 +145,7 @@ export default function Attention() {
     document.title = `${t('platform.attention.title', 'Needs Attention')} | ${window.__APP_NAME || 'TuGymPR'}`;
   }, [t]);
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['platform', 'gym-attention'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('platform_gym_attention');
@@ -178,6 +179,20 @@ export default function Attention() {
 
       {isLoading ? (
         <PlatformSpinner />
+      ) : isError ? (
+        /* Honest failure — a failed query must never render the green
+           "Every gym looks healthy" panel. */
+        <div className="text-center py-16 bg-[#0F172A] border border-red-500/20 rounded-xl">
+          <AlertTriangle size={32} className="mx-auto text-red-400 mb-3" />
+          <p className="text-[14px] font-medium text-red-400">{t('platform.attention.loadFailed', 'Could not load gym signals')}</p>
+          <p className="text-[12px] text-[#6B7280] mt-1">{t('platform.attention.loadFailedHint', 'The check failed — gym health is unknown right now, not necessarily fine.')}</p>
+          <button
+            onClick={() => refetch()}
+            className="mt-4 px-4 py-2 rounded-lg text-[12px] font-medium bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+          >
+            {t('platform.attention.retry', 'Retry')}
+          </button>
+        </div>
       ) : (
         <>
           {/* Summary */}

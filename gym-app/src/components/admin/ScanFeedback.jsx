@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ScanLine, CheckCircle, XCircle, LogIn, ShoppingBag, Gift, Users, Ticket, X, Mail } from 'lucide-react';
+import { ScanLine, CheckCircle, XCircle, LogIn, ShoppingBag, Gift, Users, Ticket, X, Mail, Trophy } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
@@ -44,6 +44,8 @@ const ACTION_CONFIG = {
   reward_redemption:  { icon: Gift,        color: 'var(--color-success)', label: 'Reward' },
   referral:           { icon: Users,       color: 'var(--color-info)', label: 'Referral' },
   voucher:            { icon: Ticket,      color: 'var(--color-warning)', label: 'Voucher' },
+  earned_reward:      { icon: Gift,        color: 'var(--color-success)', label: 'Reward' },
+  challenge_prize:    { icon: Trophy,      color: 'var(--color-accent)', label: 'Prize' },
 };
 
 /**

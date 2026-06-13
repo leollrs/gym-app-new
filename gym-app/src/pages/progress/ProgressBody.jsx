@@ -26,6 +26,8 @@ import { usePostHog } from '@posthog/react';
 import { useCachedState, hasCachedState } from '../../hooks/useCachedState';
 import { hasConsentedToAI, recordAIConsent } from '../../lib/aiConsent';
 import AIConsentDialog from '../../components/AIConsentDialog';
+import { useFeatureEnabled } from '../../hooks/usePlatformFlags';
+import { updateBodyMetricGoals } from '../../lib/goalUpdater';
 
 // ── Goal-aware progress color helper ─────────────────────────────────────────
 
@@ -394,6 +396,14 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
   // explicitly consents to OpenAI Vision processing of body photos.
   const [consentOpen, setConsentOpen] = useState(false);
 
+  // Platform kill switch for the OpenAI photo surfaces (Operations →
+  // feature_ai, 0551) — a layer ABOVE the per-user consent: hides the scan
+  // entry point entirely and closes a scan in progress if it flips mid-flow.
+  const aiEnabled = useFeatureEnabled('ai');
+  useEffect(() => {
+    if (!aiEnabled && scanMode) setScanMode(false);
+  }, [aiEnabled, scanMode]);
+
   // Clean up localStorage when modal closes
   const handleClose = useCallback(() => {
     try { localStorage.removeItem('_bodyScanFront'); localStorage.removeItem('_bodyScanSide'); } catch {}
@@ -604,12 +614,13 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
   // Public entry: gate the AI scan flow on third-party consent (Apple 5.1.2).
   // If not yet consented, open the AIConsentDialog; on agree, persist and proceed.
   const resetScan = useCallback(() => {
+    if (!aiEnabled) return; // platform feature_ai kill switch — entry hidden, but never launch
     if (!hasConsentedToAI('body-analysis')) {
       setConsentOpen(true);
       return;
     }
     openScanFlow();
-  }, [openScanFlow]);
+  }, [openScanFlow, aiEnabled]);
 
   const handleConsentAgree = useCallback(async () => {
     setConsentOpen(false);
@@ -635,6 +646,11 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
         .from('body_measurements')
         .upsert(payload, { onConflict: 'profile_id,measured_at' });
       if (err) throw new Error(err.message);
+      // Move any body_fat goal's progress bar when a body-fat % was logged
+      // (goalUpdater skips body goals on workout completion). Non-blocking.
+      if (payload.body_fat_pct != null) {
+        updateBodyMetricGoals(profileId, 'body_fat', payload.body_fat_pct).catch(() => {});
+      }
       posthog?.capture('body_metric_logged', { metric_type: 'measurements' });
       onSaved();
       handleClose();
@@ -779,7 +795,9 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                       {scanResult.scan_quality === 'good' ? t('progressBody.highQualityScan') : scanResult.scan_quality === 'fair' ? t('progressBody.fairQuality') + ' — ' + (scanResult.scan_notes || '') : t('progressBody.lowQuality') + ' — ' + (scanResult.scan_notes || '')}
                     </p>
                   </div>
-                  <button onClick={resetScan} aria-label={t('progressBody.rescan')} className="text-[10px] font-semibold text-[#D4AF37]">{t('progressBody.rescan')}</button>
+                  {aiEnabled && (
+                    <button onClick={resetScan} aria-label={t('progressBody.rescan')} className="text-[10px] font-semibold text-[#D4AF37]">{t('progressBody.rescan')}</button>
+                  )}
                 </div>
 
                 {/* Derived metrics */}
@@ -820,7 +838,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                   </p>
                 </div>
               </div>
-            ) : (
+            ) : aiEnabled ? (
               <button onClick={resetScan}
                 className="w-full py-4 rounded-[16px] flex flex-col items-center gap-2 active:scale-[0.97] transition-all"
                 style={{ background: 'color-mix(in srgb, var(--color-accent) 4%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
@@ -828,6 +846,13 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                 <span className="text-[13px] font-bold text-[#D4AF37]">{t('progressBody.aiBodyScan')}</span>
                 <span className="text-[10px] text-[var(--color-text-muted)]">{t('progressBody.photosForAccuracy')}</span>
               </button>
+            ) : (
+              /* Platform feature_ai kill switch is off — the scan entry point
+                 disappears, so leave a small note instead of a silent hole.
+                 Manual measurement fields below keep working. */
+              <p className="text-[11px] text-center py-2" style={{ color: 'var(--color-text-muted)' }}>
+                {t('progressBody.aiScanUnavailable', 'AI body scan is temporarily unavailable. You can still enter measurements manually below.')}
+              </p>
             )}
           </div>
 
@@ -1005,6 +1030,9 @@ export default function ProgressBody() {
   const [primaryGoal, setPrimaryGoal] = useState('general_fitness');
   // Photo zoom modal — { url, taken_at, ... }
   const [zoomPhoto, setZoomPhoto] = useState(null);
+  // Busy flag for the zoom viewer's Delete — the before/now tiles open the
+  // viewer, so this is the only delete affordance those photos have.
+  const [zoomDeleting, setZoomDeleting] = useState(false);
 
   // Auto-cleanup stale body scan data (older than 10 minutes)
   useEffect(() => {
@@ -1105,15 +1133,20 @@ export default function ProgressBody() {
 
   const handleDeletePhoto = async (photo) => {
     try {
-      // Delete from storage
+      // Delete the DB row FIRST, then the storage object. If we removed
+      // storage first and the DB delete then failed (RLS/network), the row
+      // would survive pointing at a now-deleted file → a permanently broken
+      // thumbnail on reload. DB-first means a storage failure only orphans a
+      // file (wasted bytes, never referenced) instead of breaking the UI.
+      const { error } = await supabase.from('progress_photos').delete().eq('id', photo.id);
+      if (error) return false;
       await supabase.storage.from('progress-photos').remove([photo.storage_path]);
-      // Delete from database
-      await supabase.from('progress_photos').delete().eq('id', photo.id);
       // Update local state — strip the deleted photo from the cached META;
       // the URL-bearing `progressPhotos` derives from it via the effect above.
       setPhotoMeta(prev => prev.filter(p => p.id !== photo.id));
+      return true;
     } catch (err) {
-      // silent — UI state unchanged on failure
+      return false; // UI state unchanged on failure — callers may toast
     }
   };
 
@@ -1170,6 +1203,10 @@ export default function ProgressBody() {
       dispatch({ type: 'SET_LOGGING_WEIGHT', payload: false });
       return;
     }
+    // Push the new weight into any body_weight goal — the workout-completion
+    // goal updater deliberately skips body goals, so this is the only path that
+    // moves their progress bar. Non-blocking: never let it fail the weight log.
+    updateBodyMetricGoals(user.id, 'body_weight', w).catch(() => {});
     dispatch({ type: 'CLEAR_WEIGHT_INPUT' });
     posthog?.capture('body_metric_logged', { metric_type: 'weight' });
     loadData();
@@ -1308,7 +1345,7 @@ export default function ProgressBody() {
               <span className="text-[16px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>lbs</span>
             </div>
             <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-              {latest ? `${t('progressBody.logged', 'Logged')} ${format(parseISO(latest.logged_at), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined })}` : ''}
+              {latest?.logged_at ? `${t('progressBody.logged', 'Logged')} ${format(parseISO(latest.logged_at), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined })}` : ''}
               {weightLogs.length > 0 && ` ${'\u00B7'} ${t('progressBody.entriesTotal', { count: weightLogs.length, defaultValue: `${weightLogs.length} ${weightLogs.length === 1 ? 'entry' : 'entries'} total` })}`}
             </p>
           </div>
@@ -1416,12 +1453,13 @@ export default function ProgressBody() {
 
       {/* ── Measurements ── */}
       <div className="mb-4">
-        <div className="flex items-baseline justify-between mb-3 px-1">
+        <div className="flex items-center justify-between mb-3 px-1">
           <div style={{ fontFamily: TU_DISPLAY, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>
             {t('progress.body.measurements', 'Measurements')}
           </div>
           <button onClick={() => dispatch({ type: 'TOGGLE_MEASUREMENTS', payload: true })}
-            className="text-[13px] font-bold flex items-center gap-1" style={{ color: TU_ACCENT }}>
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-bold active:scale-95 transition-all"
+            style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #001512)' }}>
             <Plus size={14} strokeWidth={2.5} />
             {latestMeasurements ? t('progress.body.update', 'Update') : t('progress.body.add', 'Add')}
           </button>
@@ -1430,7 +1468,7 @@ export default function ProgressBody() {
         {latestMeasurements ? (
           <>
             <p className="text-[11px] mb-3 text-[var(--color-text-muted)]">
-              {t('progress.body.lastRecorded')} {format(parseISO(latestMeasurements.measured_at), 'MMMM d, yyyy', { locale: i18n.language === 'es' ? esLocale : undefined })}
+              {t('progress.body.lastRecorded')} {latestMeasurements.measured_at && format(parseISO(latestMeasurements.measured_at), 'MMMM d, yyyy', { locale: i18n.language === 'es' ? esLocale : undefined })}
             </p>
 
             {/* Body fat warning */}
@@ -1444,18 +1482,10 @@ export default function ProgressBody() {
               </div>
             )}
 
-            {/* Measurement pills as horizontal scroll */}
-            <div className="flex gap-2 overflow-x-auto scrollbar-none pb-2 mb-3">
-              {MEASUREMENT_FIELDS.filter(f => latestMeasurements[f.key] != null).map(f => {
-                const label = MEASUREMENT_LABEL_KEYS[f.key] ? t(MEASUREMENT_LABEL_KEYS[f.key]) : f.label;
-                return (
-                  <span key={f.key} className="px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap flex-shrink-0"
-                    style={{ background: 'transparent', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-                    {label}
-                  </span>
-                );
-              })}
-            </div>
+            {/* (Removed) decorative measurement-name pill strip — it looked
+                like a filter row but was inert, and its horizontal scroll
+                fought the tab swipe gesture. The value grid below already
+                labels every measurement. */}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {MEASUREMENT_FIELDS.filter(f => latestMeasurements[f.key] != null).map(f => {
@@ -1653,6 +1683,38 @@ export default function ProgressBody() {
                 </p>
               )}
             </div>
+            {/* Delete from the viewer — the Before/Now tiles open photos here,
+                and this is their only delete affordance (the timeline grid has
+                its own per-tile trash). Same confirm copy as the timeline. */}
+            <button
+              type="button"
+              disabled={zoomDeleting}
+              onClick={async (e) => {
+                e.stopPropagation();
+                const msg = t('progressBody.confirmDeletePhoto', 'Delete this progress photo? This cannot be undone.');
+                if (!window.confirm(msg)) return;
+                setZoomDeleting(true);
+                const ok = await handleDeletePhoto(zoomPhoto);
+                setZoomDeleting(false);
+                if (ok) {
+                  setZoomPhoto(null);
+                } else {
+                  showToast(t('progressBody.deleteFailed', 'Could not delete photo. Try again.'), 'error');
+                }
+              }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all"
+              style={{
+                background: 'rgba(239,68,68,0.16)',
+                color: '#F87171',
+                border: '1px solid rgba(239,68,68,0.35)',
+                opacity: zoomDeleting ? 0.6 : 1,
+              }}
+            >
+              {zoomDeleting
+                ? <span className="w-3.5 h-3.5 border-2 border-[#F87171]/40 border-t-[#F87171] rounded-full animate-spin" role="status" />
+                : <Trash2 size={14} />}
+              {t('progressBody.deletePhoto', 'Delete photo')}
+            </button>
           </div>
         </div>,
         document.body

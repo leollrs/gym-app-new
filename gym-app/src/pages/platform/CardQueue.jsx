@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Printer, Check, Truck, Calendar, Building2, Loader2,
   ChevronDown, ChevronRight, PartyPopper, Sparkles, Award, Cake, Gift, ArrowLeftRight,
+  AlertTriangle, RotateCcw, RefreshCw,
 } from 'lucide-react';
 import { format, nextSaturday, addDays, isSaturday } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -60,13 +61,15 @@ export default function CardQueue() {
   const [expanded, setExpanded] = useState(() => new Set());
   // { gymId, ids } currently open in the print preview, or null
   const [preview, setPreview] = useState(null);
+  // Pending confirmation: { kind: 'print', gym, ids } | { kind: 'fulfillment', gym, value }
+  const [confirm, setConfirm] = useState(null);
 
   useEffect(() => {
     document.title = `${t('platform.cardQueue.title', 'Card Queue')} | ${window.__APP_NAME || 'TuGymPR'}`;
   }, [t]);
 
   // ── Gyms (id → name, fulfillment) ──
-  const { data: gyms = [] } = useQuery({
+  const { data: gyms = [], isError: gymsError, refetch: refetchGyms } = useQuery({
     queryKey: ['platform', 'card-queue', 'gyms'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -79,7 +82,7 @@ export default function CardQueue() {
   });
 
   // ── Open cards across all gyms (pending = to print, printed = to deliver) ──
-  const { data: cards = [], isLoading } = useQuery({
+  const { data: cards = [], isLoading, isError: cardsError, refetch: refetchCards } = useQuery({
     queryKey: ['platform', 'card-queue', 'cards'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -130,6 +133,34 @@ export default function CardQueue() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platform', 'card-queue', 'gyms'] });
+      showToast(t('platform.cardQueue.fulfillmentSaved', 'Delivery mode updated'), 'success');
+    },
+    onError: () => showToast(t('platform.cardQueue.toastFailed', 'Action failed'), 'error'),
+  });
+
+  // ── Undo: send a printed card back to pending ──
+  // Clears the print stamp AND the frozen delivery snapshot: the 0430 trigger
+  // only fills NULLs on the next pending→printed flip, so leaving
+  // expected_delivery_at / delivery_fulfilled_by set would freeze a stale
+  // Saturday on re-print. super_admin UPDATE policy (0430) covers all gyms.
+  const returnToPendingMutation = useMutation({
+    mutationFn: async (id) => {
+      const { error } = await supabase
+        .from('print_cards')
+        .update({
+          status: 'pending',
+          printed_at: null,
+          printed_by: null,
+          expected_delivery_at: null,
+          delivery_fulfilled_by: null,
+        })
+        .eq('id', id)
+        .eq('status', 'printed');
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform', 'card-queue', 'cards'] });
+      showToast(t('platform.cardQueue.toastReturned', 'Card returned to pending'), 'success');
     },
     onError: () => showToast(t('platform.cardQueue.toastFailed', 'Action failed'), 'error'),
   });
@@ -156,17 +187,20 @@ export default function CardQueue() {
   const perGym = useMemo(() => {
     const groups = new Map();
     for (const c of cards) {
-      const g = gymMap[c.gym_id];
-      if (!g) continue; // gym not loaded / deleted
+      // The gyms lookup is a separate request that can fail independently:
+      // never silently drop loaded cards — group them under a placeholder
+      // gym instead so the queue stays honest.
+      const g = gymMap[c.gym_id] || { id: c.gym_id, name: null, card_fulfillment: null, missing: true };
       if (!groups.has(c.gym_id)) {
         groups.set(c.gym_id, { gym: g, pending: [], printed: [] });
       }
       groups.get(c.gym_id)[c.status === 'pending' ? 'pending' : 'printed'].push(c);
     }
     let list = [...groups.values()];
-    if (!showAllGyms) list = list.filter((row) => row.gym.card_fulfillment === 'platform');
+    // Unknown-fulfillment (placeholder) gyms stay visible in both scopes.
+    if (!showAllGyms) list = list.filter((row) => row.gym.card_fulfillment === 'platform' || row.gym.missing);
     // Most work first: gyms with the most pending cards on top.
-    list.sort((a, b) => b.pending.length - a.pending.length || a.gym.name.localeCompare(b.gym.name));
+    list.sort((a, b) => b.pending.length - a.pending.length || (a.gym.name || '').localeCompare(b.gym.name || ''));
     return list;
   }, [cards, gymMap, showAllGyms]);
 
@@ -198,6 +232,38 @@ export default function CardQueue() {
           {t('platform.cardQueue.subtitle', 'Print weekly, deliver Saturdays')}
         </p>
       </div>
+
+      {/* Failure banners — never render a green/empty state on a failed query */}
+      {cardsError && (
+        <div className="mb-5 flex items-center gap-3 bg-[#EF4444]/[0.06] border border-[#EF4444]/25 rounded-xl px-4 py-3">
+          <AlertTriangle size={18} className="text-[#EF4444] flex-shrink-0" />
+          <p className="text-[12px] text-[#D1D5DB] leading-snug flex-1">
+            {t('platform.cardQueue.loadFailed', "Couldn't load the card queue.")}
+          </p>
+          <button
+            onClick={() => { refetchCards(); refetchGyms(); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/30 hover:bg-[#EF4444]/20 transition flex-shrink-0"
+          >
+            <RefreshCw size={12} />
+            {t('platform.cardQueue.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+      {!cardsError && gymsError && (
+        <div className="mb-5 flex items-center gap-3 bg-[#F59E0B]/[0.06] border border-[#F59E0B]/25 rounded-xl px-4 py-3">
+          <AlertTriangle size={18} className="text-[#F59E0B] flex-shrink-0" />
+          <p className="text-[12px] text-[#D1D5DB] leading-snug flex-1">
+            {t('platform.cardQueue.gymsLoadFailed', "Gym names didn't load — showing cards anyway.")}
+          </p>
+          <button
+            onClick={() => refetchGyms()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/30 hover:bg-[#F59E0B]/20 transition flex-shrink-0"
+          >
+            <RefreshCw size={12} />
+            {t('platform.cardQueue.retry', 'Retry')}
+          </button>
+        </div>
+      )}
 
       {/* Weekly cadence banner */}
       <div className="mb-5 flex items-center gap-3 bg-[#D4AF37]/[0.06] border border-[#D4AF37]/20 rounded-xl px-4 py-3">
@@ -238,10 +304,11 @@ export default function CardQueue() {
         </button>
       </div>
 
-      {/* Per-gym panels */}
+      {/* Per-gym panels — on a failed cards query the banner above is the
+          state; "Nothing to print" must never masquerade as an all-clear. */}
       {isLoading ? (
         <PlatformSpinner />
-      ) : perGym.length === 0 ? (
+      ) : cardsError ? null : perGym.length === 0 ? (
         <div className="text-center py-16 bg-[#0F172A] border border-white/6 rounded-xl">
           <Printer size={32} className="mx-auto text-[#6B7280] mb-3" />
           <p className="text-[14px] text-[#6B7280]">{t('platform.cardQueue.empty', 'Nothing to print right now')}</p>
@@ -266,29 +333,36 @@ export default function CardQueue() {
                   >
                     {isOpen ? <ChevronDown size={15} className="text-[#6B7280]" /> : <ChevronRight size={15} className="text-[#6B7280]" />}
                     <Building2 size={15} className="text-[#9CA3AF] flex-shrink-0" />
-                    <span className="text-[14px] font-semibold text-[#E5E7EB] truncate flex-1">{gym.name}</span>
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFulfillmentMutation.mutate({
-                          gymId: gym.id,
-                          value: gym.card_fulfillment === 'platform' ? 'gym' : 'platform',
-                        });
-                      }}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setFulfillmentMutation.mutate({ gymId: gym.id, value: gym.card_fulfillment === 'platform' ? 'gym' : 'platform' }); } }}
-                      title={t('platform.cardQueue.toggleFulfillment', 'Toggle who delivers this gym\'s cards')}
-                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full cursor-pointer transition-colors ${
-                        gym.card_fulfillment === 'platform'
-                          ? 'text-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20'
-                          : 'text-[#6B7280] bg-white/[0.04] hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      {gym.card_fulfillment === 'platform'
-                        ? t('platform.cardQueue.platformBadge', 'You deliver')
-                        : t('platform.cardQueue.selfBadge', 'Self-print')}
+                    <span className="text-[14px] font-semibold text-[#E5E7EB] truncate flex-1">
+                      {gym.name || t('platform.cardQueue.unknownGym', 'Unknown gym')}
                     </span>
+                    {/* A11y: plain span (no role/tabIndex) — a nested interactive
+                        element inside the header <button> is invalid; the click
+                        only opens the confirm modal, stopPropagation keeps the
+                        row from toggling. Hidden when the gym row is a
+                        placeholder (fulfillment unknown). */}
+                    {!gym.missing && (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirm({
+                            kind: 'fulfillment',
+                            gym,
+                            value: gym.card_fulfillment === 'platform' ? 'gym' : 'platform',
+                          });
+                        }}
+                        title={t('platform.cardQueue.toggleFulfillment', 'Toggle who delivers this gym\'s cards')}
+                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full cursor-pointer transition-colors ${
+                          gym.card_fulfillment === 'platform'
+                            ? 'text-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20'
+                            : 'text-[#6B7280] bg-white/[0.04] hover:bg-white/[0.08]'
+                        }`}
+                      >
+                        {gym.card_fulfillment === 'platform'
+                          ? t('platform.cardQueue.platformBadge', 'You deliver')
+                          : t('platform.cardQueue.selfBadge', 'Self-print')}
+                      </span>
+                    )}
                     {pending.length > 0 && (
                       <span className="text-[11px] font-bold text-[#D4AF37] tabular-nums">
                         {t('platform.cardQueue.toPrintCount', { count: pending.length, defaultValue: '{{count}} to print' })}
@@ -314,7 +388,7 @@ export default function CardQueue() {
                             {t('platform.cardQueue.previewPrint', 'Preview & print')}
                           </button>
                           <button
-                            onClick={() => markPrintedMutation.mutate({ ids: pendingIds, gymId: gym.id })}
+                            onClick={() => setConfirm({ kind: 'print', gym, ids: pendingIds })}
                             disabled={markPrintedMutation.isPending}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30 hover:bg-[#10B981]/20 transition disabled:opacity-40"
                           >
@@ -355,6 +429,7 @@ export default function CardQueue() {
                                   ? t('platform.cardQueue.deliverOn', { date: fmtDate(new Date(c.expected_delivery_at)), defaultValue: 'Deliver {{date}}' })
                                   : null}
                                 onDeliver={() => markDeliveredMutation.mutate(c.id)}
+                                onReturn={() => returnToPendingMutation.mutate(c.id)}
                               />
                             ))}
                           </ul>
@@ -379,11 +454,81 @@ export default function CardQueue() {
           onClose={() => setPreview(null)}
         />
       )}
+
+      {/* Confirm: mark-printed batch + fulfillment flip (both were one-tap) */}
+      {confirm && (
+        <ConfirmModal
+          t={t}
+          confirm={confirm}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            if (confirm.kind === 'print') {
+              markPrintedMutation.mutate({ ids: confirm.ids, gymId: confirm.gym.id });
+            } else if (confirm.kind === 'fulfillment') {
+              setFulfillmentMutation.mutate({ gymId: confirm.gym.id, value: confirm.value });
+            }
+            setConfirm(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function CardRow({ card, t, deliveryLabel, onDeliver }) {
+function ConfirmModal({ t, confirm, onCancel, onConfirm }) {
+  const gymName = confirm.gym?.name || t('platform.cardQueue.unknownGym', 'Unknown gym');
+  const isPrint = confirm.kind === 'print';
+  const title = isPrint
+    ? t('platform.cardQueue.confirmPrintTitle', 'Mark batch as printed?')
+    : t('platform.cardQueue.confirmFulfillmentTitle', 'Change who delivers?');
+  const body = isPrint
+    ? t('platform.cardQueue.confirmPrintBody', {
+        count: confirm.ids?.length ?? 0,
+        gym: gymName,
+        defaultValue: "{{count}} cards for {{gym}} move to delivery and the gym's admins get a heads-up.",
+      })
+    : confirm.value === 'platform'
+      ? t('platform.cardQueue.confirmFulfillmentToPlatform', {
+          gym: gymName,
+          defaultValue: '{{gym}} switches to platform delivery — you print and drop off their cards.',
+        })
+      : t('platform.cardQueue.confirmFulfillmentToGym', {
+          gym: gymName,
+          defaultValue: '{{gym}} will print their own cards from now on.',
+        });
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="bg-[#0F172A] border border-white/10 rounded-2xl p-5 w-full max-w-sm"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-[15px] font-semibold text-[#E5E7EB]">{title}</h2>
+        <p className="text-[13px] text-[#9CA3AF] mt-2 leading-relaxed">{body}</p>
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-3 py-2 rounded-lg text-[12px] font-semibold text-[#9CA3AF] border border-white/10 hover:bg-white/[0.04] transition-colors"
+          >
+            {t('platform.cardQueue.cancel', 'Cancel')}
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-3 py-2 rounded-lg text-[12px] font-bold bg-[#D4AF37] text-black hover:brightness-95 transition"
+          >
+            {t('platform.cardQueue.confirm', 'Confirm')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CardRow({ card, t, deliveryLabel, onDeliver, onReturn }) {
   const member = card.profiles || {};
   const Icon = OCCASION_ICON[card.occasion] || Gift;
   return (
@@ -401,6 +546,15 @@ function CardRow({ card, t, deliveryLabel, onDeliver }) {
       </div>
       {deliveryLabel && (
         <span className="text-[10px] text-[#10B981] whitespace-nowrap">{deliveryLabel}</span>
+      )}
+      {onReturn && (
+        <button
+          onClick={onReturn}
+          title={t('platform.cardQueue.returnToPending', 'Return to pending')}
+          className="w-7 h-7 rounded-lg flex items-center justify-center bg-white/[0.04] text-[#9CA3AF] hover:bg-white/[0.08] hover:text-[#E5E7EB] transition-colors flex-shrink-0"
+        >
+          <RotateCcw size={13} />
+        </button>
       )}
       {onDeliver && (
         <button

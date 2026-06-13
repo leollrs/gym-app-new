@@ -352,7 +352,7 @@ serve(async (req) => {
         .select('*', { count: 'exact', head: true })
         .eq('profile_id', user.id)
         .eq('endpoint', ENDPOINT)
-        .gte('requested_at', oneHourAgo);
+        .gte('created_at', oneHourAgo);
 
       if ((requestCount ?? 0) > RATE_LIMIT) {
         return new Response(

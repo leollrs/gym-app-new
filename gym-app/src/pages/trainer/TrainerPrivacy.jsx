@@ -2,15 +2,15 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft, Lock, Download, Star, MessageSquare,
-  Loader2, Check, AlertTriangle, Users,
+  ChevronLeft, Lock, Download,
+  Loader2, Check, Users, UserX, Camera,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
-import { TT, TFont } from './components/designTokens';
-import { TCard, TEyebrow, TPageTitle, TIconButton, TPrimaryButton } from './components/designPrimitives';
+import { TT, TFont, avatarIdx } from './components/designTokens';
+import { TCard, TEyebrow, TPageTitle, TIconButton, TPrimaryButton, TAvatar } from './components/designPrimitives';
 
 // eslint-disable-next-line no-unused-vars
 function PrivacyToggleRow({ Icon, title, desc, value, onChange, disabled, isFirst }) {
@@ -62,7 +62,7 @@ function PrivacyToggleRow({ Icon, title, desc, value, onChange, disabled, isFirs
 }
 
 export default function TrainerPrivacy() {
-  const { t } = useTranslation(['pages', 'common']);
+  const { t, i18n } = useTranslation(['pages', 'common']);
   const navigate = useNavigate();
   const { profile, patchProfile } = useAuth();
   const { showToast } = useToast();
@@ -70,13 +70,26 @@ export default function TrainerPrivacy() {
   // Default TRUE so existing trainers without the column (pre-migration) still
   // show up in the directory. Matches the DB default.
   const [directoryVisible, setDirectoryVisible] = useState(profile?.trainer_directory_visible ?? true);
+  // Photo visibility (0553): whether the gym (members) see the trainer's
+  // uploaded photo, or just the initials/design avatar. Default TRUE = DB default.
+  const [photoVisible, setPhotoVisible] = useState(profile?.trainer_photo_visible ?? true);
   const [verified] = useState(profile?.trainer_verified ?? false);
   const [savingKey, setSavingKey] = useState(null);
   const [exporting, setExporting] = useState(false);
 
+  // Blocked users (blocked from chats; this is the only unblock surface
+  // on the trainer side — mirrors the member Settings → Privacy list).
+  const [blockedList, setBlockedList] = useState([]);
+  const [blockedLoading, setBlockedLoading] = useState(true);
+  const [blockedError, setBlockedError] = useState(false);
+  const [unblockingId, setUnblockingId] = useState(null);
+
   useEffect(() => {
     setDirectoryVisible(profile?.trainer_directory_visible ?? true);
   }, [profile?.trainer_directory_visible]);
+  useEffect(() => {
+    setPhotoVisible(profile?.trainer_photo_visible ?? true);
+  }, [profile?.trainer_photo_visible]);
 
   // The shared `get_auth_context` RPC doesn't return
   // trainer_directory_visible, so `profile.*` from useAuth() is undefined
@@ -88,11 +101,19 @@ export default function TrainerPrivacy() {
     if (!profile?.id) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      // Resilient pre-0553: retry without the new column if it's missing.
+      let { data, error } = await supabase
         .from('profiles')
-        .select('trainer_directory_visible')
+        .select('trainer_directory_visible, trainer_photo_visible')
         .eq('id', profile.id)
         .maybeSingle();
+      if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+        ({ data } = await supabase
+          .from('profiles')
+          .select('trainer_directory_visible')
+          .eq('id', profile.id)
+          .maybeSingle());
+      }
       if (cancelled || !data) return;
       if (typeof data.trainer_directory_visible === 'boolean') {
         setDirectoryVisible(data.trainer_directory_visible);
@@ -100,10 +121,68 @@ export default function TrainerPrivacy() {
           patchProfile({ trainer_directory_visible: data.trainer_directory_visible });
         }
       }
+      if (typeof data.trainer_photo_visible === 'boolean') {
+        setPhotoVisible(data.trainer_photo_visible);
+        if (data.trainer_photo_visible !== profile.trainer_photo_visible) {
+          patchProfile({ trainer_photo_visible: data.trainer_photo_visible });
+        }
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
+
+  // Load the trainer's block list. DELETE-own policy exists since 0272
+  // ("Users can delete own blocks"), so unblock is a plain row delete.
+  useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('blocked_users')
+        .select('id, blocked_id, created_at')
+        .eq('blocker_id', profile.id)
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        logger.error('TrainerPrivacy blocked list load failed', error);
+        setBlockedError(true);
+        setBlockedLoading(false);
+        return;
+      }
+      const rows = data || [];
+      let byId = new Map();
+      if (rows.length) {
+        // Names via the same-gym safe view (0289) — reading `profiles`
+        // directly is RLS-limited to ACTIVE clients, and someone you blocked
+        // usually isn't one.
+        const ids = [...new Set(rows.map(r => r.blocked_id).filter(Boolean))];
+        const { data: people, error: peopleErr } = await supabase
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url')
+          .in('id', ids);
+        if (peopleErr) logger.error('TrainerPrivacy blocked profiles load failed', peopleErr);
+        byId = new Map((people || []).map(p => [p.id, p]));
+      }
+      if (cancelled) return;
+      setBlockedList(rows.map(r => ({ ...r, person: byId.get(r.blocked_id) || null })));
+      setBlockedLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [profile?.id]);
+
+  const handleUnblock = async (row) => {
+    setUnblockingId(row.id);
+    const { error } = await supabase.from('blocked_users').delete().eq('id', row.id);
+    setUnblockingId(null);
+    if (error) {
+      logger.error('TrainerPrivacy unblock failed', error);
+      showToast(t('pages:trainerPrivacy.unblockFailed', "Couldn't unblock. Try again."), 'error');
+      return;
+    }
+    setBlockedList(prev => prev.filter(b => b.id !== row.id));
+    showToast(t('pages:trainerPrivacy.unblocked', 'User unblocked'), 'success');
+  };
 
   const updateField = async (column, nextValue) => {
     setSavingKey(column);
@@ -122,6 +201,7 @@ export default function TrainerPrivacy() {
       // Roll back optimistic update on failure
       patchProfile({ [column]: prev });
       if (column === 'trainer_directory_visible') setDirectoryVisible(prev);
+      if (column === 'trainer_photo_visible') setPhotoVisible(prev ?? true);
       logger.error('TrainerPrivacy save failed', err);
       showToast(t('pages:trainerPrivacy.saveFailed', 'Failed to save'), 'error');
     } finally {
@@ -132,31 +212,36 @@ export default function TrainerPrivacy() {
   const exportData = async () => {
     setExporting(true);
     try {
-      const [
-        { data: profileRow, error: profileErr },
-        { data: reviews, error: reviewsErr },
-        { data: clients, error: clientsErr },
-      ] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', profile.id).single(),
-        supabase.from('trainer_reviews').select('*').eq('trainer_id', profile.id),
-        supabase.from('trainer_clients').select('*').eq('trainer_id', profile.id),
-      ]);
+      // Each section is checked individually: one failing read no longer
+      // aborts the whole export — we export what succeeded and record the
+      // failures inside the JSON so the file is honest about what's missing.
+      const sections = [
+        ['profile', supabase.from('profiles').select('*').eq('id', profile.id).single()],
+        ['reviews_received', supabase.from('trainer_reviews').select('*').eq('trainer_id', profile.id)],
+        ['clients', supabase.from('trainer_clients').select('*').eq('trainer_id', profile.id)],
+        ['sessions', supabase.from('trainer_sessions').select('*').eq('trainer_id', profile.id).order('scheduled_at', { ascending: false })],
+      ];
+      const results = await Promise.all(sections.map(([, q]) => q));
 
-      // Abort on any read error — exporting nulls + toasting success would
-      // hand the trainer an empty "backup" they might rely on.
-      const readErr = profileErr || reviewsErr || clientsErr;
-      if (readErr) {
-        logger.error('TrainerPrivacy export read failed', readErr);
+      const payload = { exported_at: new Date().toISOString() };
+      const failed = {};
+      sections.forEach(([key], i) => {
+        const { data, error } = results[i];
+        if (error) {
+          logger.error(`TrainerPrivacy export read failed (${key})`, error);
+          failed[key] = error.message || 'read failed';
+          return;
+        }
+        payload[key] = data ?? (key === 'profile' ? null : []);
+      });
+
+      const failedKeys = Object.keys(failed);
+      if (failedKeys.length === sections.length) {
+        // NOTHING succeeded — don't hand the trainer an empty "backup".
         showToast(t('pages:trainerPrivacy.exportFailed', 'Export failed.'), 'error');
         return;
       }
-
-      const payload = {
-        exported_at: new Date().toISOString(),
-        profile: profileRow,
-        reviews_received: reviews ?? [],
-        clients: clients ?? [],
-      };
+      if (failedKeys.length) payload.failed_sections = failed;
 
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -167,7 +252,12 @@ export default function TrainerPrivacy() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showToast(t('pages:trainerPrivacy.exportDone', 'Export downloaded.'), 'success');
+      showToast(
+        failedKeys.length
+          ? t('pages:trainerPrivacy.exportPartial', 'Exported — some sections failed and are noted in the file.')
+          : t('pages:trainerPrivacy.exportDone', 'Export downloaded.'),
+        failedKeys.length ? 'info' : 'success',
+      );
     } catch (err) {
       logger.error('TrainerPrivacy export failed', err);
       showToast(t('pages:trainerPrivacy.exportFailed', 'Export failed.'), 'error');
@@ -234,6 +324,14 @@ export default function TrainerPrivacy() {
             disabled={savingKey === 'trainer_directory_visible'}
             onChange={(v) => { setDirectoryVisible(v); updateField('trainer_directory_visible', v); }}
           />
+          <PrivacyToggleRow
+            Icon={Camera}
+            title={t('pages:trainerPrivacy.photoVisible', 'Show my photo to members')}
+            desc={t('pages:trainerPrivacy.photoVisibleDesc', 'Display your profile photo in the gym page and your public profile. When off, members see your initials instead — design avatars stay visible.')}
+            value={photoVisible}
+            disabled={savingKey === 'trainer_photo_visible'}
+            onChange={(v) => { setPhotoVisible(v); updateField('trainer_photo_visible', v); }}
+          />
         </TCard>
         <div style={{
           marginTop: 8, padding: 10, borderRadius: 10,
@@ -249,32 +347,82 @@ export default function TrainerPrivacy() {
         </div>
       </div>
 
-      {/* Reviews & contact (informational; toggles when those flows ship) */}
+      {/* Blocked users — the unblock surface for chat blocks */}
       <div className="max-w-3xl mx-auto" style={{ padding: '0 16px 14px' }}>
         <div style={{
           fontFamily: TFont.display, fontSize: 13, fontWeight: 800,
           color: TT.textSub, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8,
         }}>
-          {t('pages:trainerPrivacy.reviews', 'Reviews & contact')}
+          {t('pages:trainerPrivacy.blockedUsers', 'Blocked users')}
         </div>
         <TCard padded={0}>
-          <PrivacyToggleRow
-            isFirst
-            Icon={Star}
-            title={t('pages:trainerPrivacy.acceptReviews', 'Accept client reviews')}
-            desc={t('pages:trainerPrivacy.acceptReviewsDesc', 'Active clients can leave a 1–5 star review on your public profile. Reviews are visible to everyone in your gym.')}
-            value={true}
-            disabled
-            onChange={() => {}}
-          />
-          <PrivacyToggleRow
-            Icon={MessageSquare}
-            title={t('pages:trainerPrivacy.directMessages', 'Direct messages from members')}
-            desc={t('pages:trainerPrivacy.directMessagesDesc', 'Members in your gym can message you. You can mute individual conversations from the chat.')}
-            value={true}
-            disabled
-            onChange={() => {}}
-          />
+          {blockedLoading ? (
+            <div style={{ padding: 16, display: 'flex', justifyContent: 'center' }}>
+              <Loader2 size={16} className="animate-spin" style={{ color: TT.textMute }} />
+            </div>
+          ) : blockedError ? (
+            <div style={{ padding: 14, fontSize: 12.5, color: TT.textSub }}>
+              {t('pages:trainerPrivacy.blockedLoadFailed', "Couldn't load your blocked users. Pull to refresh or try later.")}
+            </div>
+          ) : blockedList.length === 0 ? (
+            <div style={{ padding: 14, fontSize: 12.5, color: TT.textMute, fontStyle: 'italic', lineHeight: 1.5 }}>
+              {t('pages:trainerPrivacy.blockedEmpty', "You haven't blocked anyone. When you block someone from a chat, they'll show up here.")}
+            </div>
+          ) : (
+            blockedList.map((row, i) => {
+              const name = row.person?.full_name || row.person?.username
+                || t('pages:trainerPrivacy.blockedMember', 'Member');
+              const busy = unblockingId === row.id;
+              return (
+                <div key={row.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '12px 14px', minHeight: 56,
+                  borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
+                }}>
+                  <TAvatar
+                    name={name}
+                    size={32}
+                    idx={avatarIdx(row.blocked_id)}
+                    src={row.person?.avatar_url || undefined}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: 700, color: TT.text,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {name}
+                    </div>
+                    {row.created_at && (
+                      <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 1 }}>
+                        {t('pages:trainerPrivacy.blockedSince', 'Blocked {{date}}', {
+                          date: new Date(row.created_at).toLocaleDateString(i18n.language),
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUnblock(row)}
+                    disabled={busy}
+                    style={{
+                      padding: '7px 12px', borderRadius: 9, flexShrink: 0,
+                      border: `1px solid ${TT.borderSolid}`, background: TT.surface,
+                      color: TT.hot, fontSize: 11.5, fontWeight: 700,
+                      cursor: busy ? 'wait' : 'pointer',
+                      opacity: busy ? 0.6 : 1,
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      minHeight: 32,
+                    }}
+                  >
+                    {busy
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <UserX size={12} strokeWidth={2.2} />}
+                    {t('pages:trainerPrivacy.unblock', 'Unblock')}
+                  </button>
+                </div>
+              );
+            })
+          )}
         </TCard>
       </div>
 
@@ -300,7 +448,7 @@ export default function TrainerPrivacy() {
                 {t('pages:trainerPrivacy.exportTitle', 'Export your data')}
               </div>
               <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 2, lineHeight: 1.4 }}>
-                {t('pages:trainerPrivacy.exportDesc', 'Download a JSON file with your profile, reviews received, and client roster.')}
+                {t('pages:trainerPrivacy.exportDesc', 'Download a JSON file with your profile, reviews received, client roster, and session history.')}
               </div>
             </div>
           </div>
@@ -339,7 +487,6 @@ export default function TrainerPrivacy() {
               }}
             >
               {row.label}
-              <AlertTriangle size={0} aria-hidden="true" /> {/* spacer to keep alignment */}
               <span style={{ color: TT.textMute, fontSize: 12 }}>→</span>
             </button>
           ))}

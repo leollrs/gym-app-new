@@ -294,7 +294,13 @@ export default function PublicTrainerProfile() {
   const [statsAvailable, setStatsAvailable] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [hasEverBeenClient, setHasEverBeenClient] = useState(false);
-  const [nextSessionAt, setNextSessionAt] = useState(null);
+  // Full next-session row (id/status/details/client_id) — drives the sticky
+  // "Next:" line plus the viewer's Confirmar / No puedo card.
+  const [nextSession, setNextSession] = useState(null);
+  // Active session pack for viewer+trainer ("Te quedan X de Y sesiones").
+  // Null when none — or when the session_packs table isn't deployed yet.
+  const [packInfo, setPackInfo] = useState(null);
+  const [responding, setResponding] = useState(false);
   const [favorites, setFavorites] = useState(loadFavorites);
   const [contactOpen, setContactOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -333,6 +339,7 @@ export default function PublicTrainerProfile() {
       relRes,
       anyRelRes,
       nextSessionRes,
+      packsRes,
     ] = await Promise.all([
       supabase.rpc('get_trainer_review_summary', { p_trainer_id: trainerId }),
       // Reviews are fetched bare — the `reviewer:profiles!reviewer_id(...)`
@@ -362,13 +369,27 @@ export default function PublicTrainerProfile() {
         .eq('trainer_id', trainerId)
         .eq('client_id', profile.id)
         .maybeSingle(),
+      // RLS scopes this to the viewer's OWN sessions with the trainer
+      // (clients only SELECT rows where they're the client). Confirmed
+      // sessions count too — confirming shouldn't make the card vanish.
       supabase
         .from('trainer_sessions')
-        .select('scheduled_at')
+        .select('id, trainer_id, client_id, scheduled_at, duration_mins, status, details')
         .eq('trainer_id', trainerId)
-        .eq('status', 'scheduled')
+        .in('status', ['scheduled', 'confirmed'])
         .gte('scheduled_at', new Date().toISOString())
         .order('scheduled_at', { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+      // Session packs (migration 0534) — viewer's active pack with this
+      // trainer. The table may not be deployed yet; errors just hide the line.
+      supabase
+        .from('session_packs')
+        .select('sessions_total, sessions_used')
+        .eq('trainer_id', trainerId)
+        .eq('client_id', profile.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
     ]);
@@ -402,7 +423,9 @@ export default function PublicTrainerProfile() {
     }
     setIsClient(!!relRes.data);
     setHasEverBeenClient(!!anyRelRes.data);
-    setNextSessionAt(nextSessionRes.data?.scheduled_at || null);
+    setNextSession(nextSessionRes.data || null);
+    // 42P01 / PGRST205 = session_packs not deployed → just hide the line.
+    setPackInfo(!packsRes.error && packsRes.data ? packsRes.data : null);
 
     // Directory opt-out: if the trainer has flipped the visibility toggle
     // off, hide the profile unless the viewer has a client relationship
@@ -506,8 +529,40 @@ export default function PublicTrainerProfile() {
     loadAll();
   }, [user, trainer, profile, showToast, t, loadAll]);
 
+  // ── Confirm / can't-make-it on the viewer's next session ──
+  // Calls client_respond_session (migration 0532). Confirm is optimistic:
+  // the chip flips immediately and reverts if the RPC errors (including the
+  // not-deployed-yet case).
+  const respondSession = useCallback(async (response) => {
+    if (!nextSession?.id || responding) return;
+    setResponding(true);
+    const prev = nextSession;
+    if (response === 'confirm') {
+      setNextSession({ ...nextSession, status: 'confirmed' });
+    }
+    const { error } = await supabase.rpc('client_respond_session', {
+      p_session_id: nextSession.id,
+      p_response: response,
+    });
+    setResponding(false);
+    if (error) {
+      if (response === 'confirm') setNextSession(prev);
+      console.error('[PublicTrainerProfile] respond session failed:', error);
+      showToast(t('publicTrainerProfile.respondFailed', "Couldn't send your response. Try again."), 'error');
+      return;
+    }
+    if (response === 'decline') {
+      showToast(t('publicTrainerProfile.declineSent', 'We let your trainer know'), 'success');
+    }
+  }, [nextSession, responding, showToast, t]);
+
   // ── Derived display values ──────────────────────────────
   const displayName = trainer?.full_name || trainer?.username || t('publicTrainerProfile.trainerLabel', 'Trainer');
+  const nextSessionAt = nextSession?.scheduled_at || null;
+  // The respond card is only for the session's own client (the trainer
+  // viewing their public page also gets a nextSession row via RLS).
+  const viewerOwnsNextSession = !!(nextSession && profile?.id && nextSession.client_id === profile.id);
+  const packsLeft = packInfo ? Math.max(0, Number(packInfo.sessions_total || 0) - Number(packInfo.sessions_used || 0)) : null;
   const credentialsArr = Array.isArray(trainer?.trainer_credentials) ? trainer.trainer_credentials : [];
   const specialtiesArr = Array.isArray(trainer?.trainer_specialties) ? trainer.trainer_specialties : [];
   const servicesArr = useMemo(
@@ -783,6 +838,96 @@ export default function PublicTrainerProfile() {
           )}
         </div>
       </div>
+
+      {/* ── Viewer's next session — confirm / can't make it ── */}
+      {viewerOwnsNextSession && (
+        <div style={{ padding: '0 16px 14px' }}>
+          <TCard padded={14}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{
+                fontSize: 10, fontWeight: 800, color: TT.accent,
+                letterSpacing: 1, textTransform: 'uppercase',
+              }}>
+                {t('publicTrainerProfile.yourNextSession', 'Your next session')}
+              </div>
+              {nextSession.status === 'confirmed' && (
+                <span style={{
+                  padding: '3px 9px', borderRadius: 999,
+                  background: TT.goodSoft, color: TT.goodInk,
+                  fontSize: 10, fontWeight: 800, letterSpacing: 0.4,
+                }}>
+                  ✓ {t('publicTrainerProfile.confirmedChip', 'Confirmed')}
+                </span>
+              )}
+            </div>
+            <div style={{
+              fontFamily: TFont.display, fontSize: 17, fontWeight: 800,
+              color: TT.text, letterSpacing: -0.4, marginTop: 6,
+            }}>
+              {new Date(nextSession.scheduled_at).toLocaleString(undefined, {
+                weekday: 'short', month: 'short', day: 'numeric',
+                hour: 'numeric', minute: '2-digit',
+              })}
+              {nextSession.duration_mins ? (
+                <span style={{ fontSize: 12, color: TT.textMute, fontWeight: 600 }}>
+                  {' '}· {nextSession.duration_mins} min
+                </span>
+              ) : null}
+            </div>
+            {nextSession.details?.workout_name && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 5, marginTop: 5,
+                fontSize: 12, color: TT.textSub, fontWeight: 700, minWidth: 0,
+              }}>
+                <Dumbbell size={12} strokeWidth={2.2} color={TT.accent} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {nextSession.details.workout_name}
+                </span>
+              </div>
+            )}
+            {packsLeft != null && Number(packInfo?.sessions_total) > 0 && (
+              <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 6 }}>
+                {t('publicTrainerProfile.packsRemaining', 'You have {{left}} of {{total}} sessions left', {
+                  left: packsLeft,
+                  total: Number(packInfo.sessions_total),
+                })}
+              </div>
+            )}
+            {nextSession.status === 'scheduled' && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button
+                  type="button"
+                  disabled={responding}
+                  onClick={() => respondSession('confirm')}
+                  style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 12, border: 'none',
+                    background: TT.accent, color: '#06363B',
+                    fontFamily: TFont.display, fontSize: 13, fontWeight: 800,
+                    cursor: responding ? 'wait' : 'pointer',
+                    opacity: responding ? 0.6 : 1, minHeight: 44,
+                  }}
+                >
+                  {t('publicTrainerProfile.confirmCta', 'Confirm')}
+                </button>
+                <button
+                  type="button"
+                  disabled={responding}
+                  onClick={() => respondSession('decline')}
+                  style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 12,
+                    border: `1px solid ${TT.borderSolid}`, background: TT.surface,
+                    fontSize: 12.5, fontWeight: 700, color: TT.text,
+                    cursor: responding ? 'wait' : 'pointer',
+                    opacity: responding ? 0.6 : 1, minHeight: 44,
+                  }}
+                >
+                  {t('publicTrainerProfile.declineCta', "Can't make it")}
+                </button>
+              </div>
+            )}
+          </TCard>
+        </div>
+      )}
 
       {/* ── Stats strip ──────────────────────────── */}
       {/* Client/session tiles only render when get_trainer_public_stats

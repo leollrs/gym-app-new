@@ -16,15 +16,19 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Wrench } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale/es';
+import { enUS } from 'date-fns/locale/en-US';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const AUTH_PATHS = ['/login', '/auth/reset-password', '/signup'];
 
 export default function MaintenanceGate() {
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
   const { availableRoles } = useAuth();
   const location = useLocation();
+  const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
 
   const isSuperAdmin = Array.isArray(availableRoles) && availableRoles.includes('super_admin');
   const onAuthRoute = AUTH_PATHS.some((p) => location.pathname.startsWith(p));
@@ -47,7 +51,17 @@ export default function MaintenanceGate() {
 
   if (!data?.enabled || isSuperAdmin || onAuthRoute) return null;
 
-  const message = data.message || t('maintenance.body', 'We’re doing some quick maintenance to make things better. The app will be back shortly — thanks for your patience.');
+  // Always the LOCALIZED body. The admin's free-text message is single-
+  // language, which painted a Spanglish card for users on the other language —
+  // the custom text stays stored (ops record) but the lock screen renders
+  // entirely in whatever language this user last used.
+  const message = t('maintenance.body', 'We’re doing some quick maintenance to make things better. The app will be back shortly — thanks for your patience.');
+
+  // Estimated return time (0539). The 30s poll keeps this fresh; once the
+  // estimate is overrun we switch to "almost done" instead of a stale time.
+  const etaDate = data.eta ? new Date(data.eta) : null;
+  const etaValid = etaDate && !Number.isNaN(etaDate.getTime());
+  const etaFuture = etaValid && etaDate.getTime() > Date.now();
 
   return (
     <div
@@ -69,6 +83,13 @@ export default function MaintenanceGate() {
       <p className="text-[14px] leading-relaxed max-w-sm" style={{ color: 'var(--color-text-muted, #9CA3AF)' }}>
         {message}
       </p>
+      {etaValid && (
+        <p className="text-[14px] font-bold mt-4" style={{ color: 'var(--color-accent, #D4AF37)' }}>
+          {etaFuture
+            ? t('maintenance.eta', 'We expect to be back around {{time}}', { time: format(etaDate, 'h:mm a', { locale: dateFnsLocale }) })
+            : t('maintenance.almostDone', 'Almost done — just a little longer.')}
+        </p>
+      )}
       <p className="text-[12px] mt-6" style={{ color: 'var(--color-text-subtle, #6B7280)' }}>
         {t('maintenance.autoResume', 'This screen will clear automatically when we’re done.')}
       </p>

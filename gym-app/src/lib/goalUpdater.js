@@ -87,3 +87,75 @@ export async function updateGoalsAfterWorkout(profileId, gymId, sessionData = {}
 
   return achieved;
 }
+
+/**
+ * Update body_weight / body_fat goals after the member logs a new body metric.
+ *
+ * updateGoalsAfterWorkout deliberately skips these types because they aren't
+ * driven by workouts — they change when the member logs a weight or body-fat
+ * reading on the body-metrics page (ProgressBody). This is that update path:
+ * call it after a successful body_weight_logs / body_measurements write.
+ *
+ * Body goals can move in EITHER direction (cut to a lower weight, or bulk to a
+ * higher one), so achievement is decided by the direction implied by
+ * start_value → target_value, not a fixed >= comparison. When start_value is
+ * missing (goal created before any metric was logged), the first real reading
+ * backfills the baseline so direction + progress are correct from then on.
+ *
+ * @param {string} profileId
+ * @param {'body_weight'|'body_fat'} goalType
+ * @param {number} newValue — freshly logged metric (lbs for weight, % for body fat)
+ * @returns {Promise<Array>} goals newly marked achieved
+ */
+export async function updateBodyMetricGoals(profileId, goalType, newValue) {
+  const value = parseFloat(newValue);
+  if (!profileId || isNaN(value)) return [];
+
+  const { data: goals, error } = await supabase
+    .from('member_goals')
+    .select('*')
+    .eq('profile_id', profileId)
+    .eq('goal_type', goalType)
+    .is('achieved_at', null);
+
+  if (error || !goals?.length) return [];
+
+  const achieved = [];
+
+  for (const goal of goals) {
+    const target = parseFloat(goal.target_value);
+    const updates = { current_value: value };
+
+    // Establish the baseline. A goal seeded with a real metric already has
+    // start_value; one created before any reading was seeded 0/null — backfill
+    // it with this first real reading. (Weight / body-fat are never <= 0, so
+    // <= 0 reliably means "unseeded".)
+    let startVal = goal.start_value != null ? parseFloat(goal.start_value) : NaN;
+    if (isNaN(startVal) || startVal <= 0) {
+      startVal = value;
+      updates.start_value = value;
+    }
+
+    // Only auto-complete when we can trust the direction (a real baseline that
+    // differs from the target). On the backfill reading start === current, so
+    // this is naturally false until a later reading actually reaches the target.
+    const hasDirection = !isNaN(startVal) && startVal !== target;
+    const decreasing = startVal > target;
+    const isAchieved = hasDirection && (decreasing ? value <= target : value >= target);
+    if (isAchieved) updates.achieved_at = new Date().toISOString();
+
+    const { error: updateErr } = await supabase
+      .from('member_goals')
+      .update(updates)
+      .eq('id', goal.id);
+
+    if (updateErr) {
+      console.error('[goalUpdater] failed to update body goal', goal.id, updateErr);
+      continue;
+    }
+
+    if (isAchieved) achieved.push(goal);
+  }
+
+  return achieved;
+}

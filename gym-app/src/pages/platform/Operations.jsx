@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity, Shield, Database, Zap, MessageSquare, HardDrive,
+  Activity, Database, Zap, HardDrive,
   AlertTriangle, CheckCircle2, XCircle, RefreshCw, Clock,
-  Building2, ChevronRight, ToggleLeft, ToggleRight, Bell,
-  Wifi, WifiOff, Lock, Eye, Loader2,
+  Building2, ChevronRight, Bell,
+  Wifi, Lock, Sparkles,
 } from 'lucide-react';
 import { formatDistanceToNow, subHours } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -14,6 +14,33 @@ import { logAdminAction } from '../../lib/adminAudit';
 import logger from '../../lib/logger';
 import FadeIn from '../../components/platform/FadeIn';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
+
+// ── Incident mute store (localStorage, 2h expiry) ────────────
+// Acknowledging an incident mutes that incident type for 2 hours on this
+// device — it drops out of the list and comes back automatically if the
+// errors are still spiking after the window.
+const MUTED_INCIDENTS_KEY = 'platform_ops_muted_incidents';
+const MUTE_DURATION_MS = 2 * 60 * 60 * 1000;
+
+function readMutedIncidents() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MUTED_INCIDENTS_KEY) || '{}');
+    const now = Date.now();
+    const live = {};
+    Object.entries(raw).forEach(([id, exp]) => {
+      if (typeof exp === 'number' && exp > now) live[id] = exp;
+    });
+    return live;
+  } catch {
+    return {};
+  }
+}
+
+function writeMutedIncidents(map) {
+  try {
+    localStorage.setItem(MUTED_INCIDENTS_KEY, JSON.stringify(map));
+  } catch { /* storage full/blocked — mute just won't persist */ }
+}
 
 // ── Health status helpers ────────────────────────────────────
 const STATUS = {
@@ -129,11 +156,14 @@ function ConfirmModal({ open, title, message, onConfirm, onCancel }) {
 }
 
 // ── Kill switch toggle ───────────────────────────────────────
-function KillSwitch({ label, description, enabled, onToggle, loading: busy }) {
+function KillSwitch({ icon: Icon, label, description, enabled, onToggle, loading: busy }) {
   return (
     <div className="flex items-center justify-between py-3 border-b border-white/4 last:border-0">
       <div className="min-w-0 flex-1 mr-4">
-        <p className="text-[13px] font-medium text-[#E5E7EB]">{label}</p>
+        <p className="text-[13px] font-medium text-[#E5E7EB] flex items-center gap-1.5">
+          {Icon && <Icon size={13} className="text-[#D4AF37] flex-shrink-0" />}
+          {label}
+        </p>
         <p className="text-[11px] text-[#6B7280] mt-0.5">{description}</p>
       </div>
       <button
@@ -154,6 +184,141 @@ function KillSwitch({ label, description, enabled, onToggle, loading: busy }) {
           style={{ width: 18, height: 18, top: 2 }}
         />
       </button>
+    </div>
+  );
+}
+
+// ── Per-flag display meta ────────────────────────────────────
+// Order + labels for the kill-switch list. The flag set itself comes from
+// platform_config feature_% rows merged over the state defaults, so a future
+// flag with no entry here still renders via the humanized fallback below.
+// Only 'ai' carries inline fallbacks — the other keys predate it in locales.
+const FLAG_ORDER = ['referrals', 'classes', 'social', 'messaging', 'qr', 'challenges', 'nutrition', 'ai'];
+const FLAG_META = {
+  referrals:  { labelKey: 'platform.ops.killReferrals',  descKey: 'platform.ops.killReferralsDesc' },
+  classes:    { labelKey: 'platform.ops.killClasses',    descKey: 'platform.ops.killClassesDesc' },
+  social:     { labelKey: 'platform.ops.killSocial',     descKey: 'platform.ops.killSocialDesc' },
+  messaging:  { labelKey: 'platform.ops.killMessaging',  descKey: 'platform.ops.killMessagingDesc' },
+  qr:         { labelKey: 'platform.ops.killQr',         descKey: 'platform.ops.killQrDesc' },
+  challenges: { labelKey: 'platform.ops.killChallenges', descKey: 'platform.ops.killChallengesDesc' },
+  nutrition:  { labelKey: 'platform.ops.killNutrition',  descKey: 'platform.ops.killNutritionDesc' },
+  ai: {
+    icon: Sparkles, // the one switch that directly stops paid API spend
+    labelKey: 'platform.ops.killAi',
+    labelFallback: 'AI photo analysis',
+    descKey: 'platform.ops.killAiDesc',
+    descFallback: 'Food, menu & body photo scanning (OpenAI). Turning this off stops all paid AI calls app-wide.',
+  },
+};
+
+// ── Maintenance setup modal ──────────────────────────────────
+// Enable/edit flow: the message every locked-out user will see + an
+// estimated duration that MaintenanceGate renders as "back around ~X".
+const MAINT_DURATIONS = [15, 30, 60, 120];
+
+function MaintenanceSetupModal({ open, onClose, onSave, saving, isActive, initialMessage, initialEta, t }) {
+  const [message, setMessage] = useState('');
+  const [durMin, setDurMin] = useState(30); // number | 'custom' | null (no estimate)
+  const [customMin, setCustomMin] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setMessage(initialMessage || t('platform.ops.maintenanceDefaultMsg', 'El app está en mantenimiento. Volvemos pronto 💪'));
+    // Editing an active window with a future ETA → seed the remaining minutes
+    // so "save" without touching duration keeps roughly the same ETA.
+    const eta = initialEta ? new Date(initialEta) : null;
+    const remaining = eta && !Number.isNaN(eta.getTime()) ? Math.round((eta.getTime() - Date.now()) / 60000) : null;
+    if (remaining && remaining > 0) {
+      if (MAINT_DURATIONS.includes(remaining)) { setDurMin(remaining); setCustomMin(''); }
+      else { setDurMin('custom'); setCustomMin(String(remaining)); }
+    } else if (isActive && initialEta) {
+      setDurMin(null); setCustomMin('');
+    } else {
+      setDurMin(30); setCustomMin('');
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!open) return null;
+
+  const resolvedMinutes = durMin === 'custom'
+    ? (Number.parseInt(customMin, 10) > 0 ? Number.parseInt(customMin, 10) : null)
+    : durMin;
+
+  const handleSave = () => {
+    const etaIso = resolvedMinutes ? new Date(Date.now() + resolvedMinutes * 60000).toISOString() : null;
+    onSave({ message: message.trim(), etaIso });
+  };
+
+  const pill = (active) => `px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors ${
+    active ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6'
+  }`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
+      <div className="relative bg-[#0F172A] border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+        <h3 className="text-[15px] font-bold text-[#E5E7EB] mb-1">
+          {isActive ? t('platform.ops.maintenanceEditTitle', 'Edit maintenance window') : t('platform.ops.maintenanceSetupTitle', 'Enable maintenance mode')}
+        </h3>
+        <p className="text-[12px] text-[#6B7280] leading-relaxed mb-4">{t('platform.ops.confirmAffectsAll')}</p>
+
+        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-[0.06em] mb-1.5">
+          {t('platform.ops.maintenanceMessageLabel', 'Internal note (optional)')}
+        </label>
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={3}
+          maxLength={220}
+          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-amber-500/40 resize-none mb-1.5"
+        />
+        <p className="text-[11px] text-[#6B7280] leading-relaxed mb-4">
+          {t('platform.ops.maintenanceMessageHint', 'Users always see the standard maintenance copy in their own language (EN/ES) — this note is stored for the ops record only.')}
+        </p>
+
+        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-[0.06em] mb-1.5">
+          {t('platform.ops.maintenanceEtaLabel', 'Estimated duration')}
+        </label>
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          {MAINT_DURATIONS.map((m) => (
+            <button key={m} type="button" onClick={() => { setDurMin(m); setCustomMin(''); }} className={pill(durMin === m)}>
+              {t('platform.ops.maintenanceMin', '{{n}} min', { n: m })}
+            </button>
+          ))}
+          <input
+            type="number"
+            min="1"
+            max="1440"
+            value={customMin}
+            onChange={(e) => { setCustomMin(e.target.value); setDurMin('custom'); }}
+            onFocus={() => setDurMin('custom')}
+            placeholder={t('platform.ops.maintenanceCustomMin', 'Other (min)')}
+            className={`w-24 bg-white/5 border rounded-lg px-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#4B5563] outline-none ${durMin === 'custom' ? 'border-amber-500/40' : 'border-white/10'}`}
+          />
+          <button type="button" onClick={() => { setDurMin(null); setCustomMin(''); }} className={pill(durMin === null)}>
+            {t('platform.ops.maintenanceNoEta', 'No estimate')}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3 justify-end">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6 transition-colors"
+          >
+            {t('platform.ops.cancel')}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || (durMin === 'custom' && !resolvedMinutes)}
+            className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-500/20 transition-colors disabled:opacity-50"
+          >
+            {saving
+              ? t('platform.ops.maintenanceSaving', 'Saving…')
+              : isActive ? t('platform.ops.maintenanceUpdate', 'Save changes') : t('platform.ops.maintenanceActivate', 'Enable maintenance')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -185,12 +350,15 @@ export default function Operations() {
 
   // Incidents (derived from errors + health)
   const [incidents, setIncidents] = useState([]);
+  const [mutedIncidents, setMutedIncidents] = useState(() => readMutedIncidents());
 
   // Blast radius
   const [affectedGyms, setAffectedGyms] = useState([]);
   const [affectedFeatures, setAffectedFeatures] = useState([]);
 
-  // Kill switches
+  // Kill switches — defaults; real values are the platform_config feature_%
+  // rows merged over these in fetchFeatureFlags. 'ai' (0551) gates the only
+  // direct per-call spend (OpenAI photo analysis).
   const [features, setFeatures] = useState({
     referrals: true,
     classes: true,
@@ -199,8 +367,13 @@ export default function Operations() {
     qr: true,
     challenges: true,
     nutrition: true,
+    ai: true,
   });
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState('');
+  const [maintenanceEta, setMaintenanceEta] = useState(null); // ISO string | null
+  const [maintModalOpen, setMaintModalOpen] = useState(false);
+  const [maintSaving, setMaintSaving] = useState(false);
   const [savingFeature, setSavingFeature] = useState(null);
 
   // Confirmation modal
@@ -209,7 +382,6 @@ export default function Operations() {
   // Stats
   const [stats, setStats] = useState({
     totalErrors24h: 0,
-    activeUsers1h: 0,
     totalGyms: 0,
     activeGyms: 0,
   });
@@ -378,7 +550,7 @@ export default function Operations() {
           id: 'auth-spike',
           severity: authErrors.length >= 20 ? 'critical' : 'high',
           area: 'Authentication',
-          message: `Auth failures up ${authErrors.length}x in last 2h`,
+          message: `${authErrors.length} auth failures in last 2h`,
           gymsAffected: affectedGymIds.length,
           startedAt: authErrors[authErrors.length - 1]?.created_at || new Date().toISOString(),
         });
@@ -509,12 +681,14 @@ export default function Operations() {
         }
       }
 
-      const { data: maint } = await supabase
+      const { data: maintRows } = await supabase
         .from('platform_config')
-        .select('value')
-        .eq('key', 'maintenance_mode')
-        .maybeSingle();
-      setMaintenanceMode(maint?.value === 'true' || maint?.value === true);
+        .select('key, value')
+        .in('key', ['maintenance_mode', 'maintenance_message', 'maintenance_eta']);
+      const maintMap = Object.fromEntries((maintRows || []).map((r) => [r.key, r.value]));
+      setMaintenanceMode(maintMap.maintenance_mode === 'true' || maintMap.maintenance_mode === true);
+      setMaintenanceMessage(typeof maintMap.maintenance_message === 'string' ? maintMap.maintenance_message : '');
+      setMaintenanceEta(typeof maintMap.maintenance_eta === 'string' && maintMap.maintenance_eta ? maintMap.maintenance_eta : null);
     } catch {
       setConfigWarning(t('platform.ops.configWarning', 'platform_config table not available — using default feature flags.'));
     }
@@ -545,20 +719,27 @@ export default function Operations() {
     return () => clearInterval(interval);
   }, [handleRefresh]);
 
+  // supabase-js v2 never throws from .from() — the old try/catch was dead
+  // code and a failed write left the switch lying. Check { error }, revert
+  // the optimistic flip and warn instead.
   const executeToggleFeature = async (key) => {
     setSavingFeature(key);
     const newVal = !features[key];
     setFeatures(prev => ({ ...prev, [key]: newVal }));
 
-    try {
-      await supabase.from('platform_config').upsert({
-        key: `feature_${key}`,
-        value: String(newVal),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'key' });
-      logAdminAction('toggle_feature_flag', 'platform_config', null, { flag: key, enabled: newVal });
-    } catch {
+    const { error } = await supabase.from('platform_config').upsert({
+      key: `feature_${key}`,
+      value: String(newVal),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+
+    if (error) {
       setFeatures(prev => ({ ...prev, [key]: !newVal }));
+      setConfigWarning(t('platform.ops.flagSaveFailed', "Couldn't save the feature flag — nothing was changed. Try again."));
+    } else {
+      // Write landed → the table is reachable; clear any stale warning.
+      setConfigWarning(null);
+      logAdminAction('toggle_feature_flag', 'platform_config', null, { flag: key, enabled: newVal });
     }
     setSavingFeature(null);
   };
@@ -570,7 +751,7 @@ export default function Operations() {
       setConfirmModal({
         open: true,
         title: t('platform.ops.confirmDisableTitle', { feature: label }),
-        message: t('platform.ops.confirmAffectsAllGyms'),
+        message: `${t('platform.ops.confirmAffectsAllGyms')} ${t('platform.ops.killSwitchPropagation', 'Changes take about a minute to reach member apps.')}`,
         onConfirm: () => {
           setConfirmModal(prev => ({ ...prev, open: false }));
           executeToggleFeature(key);
@@ -582,29 +763,50 @@ export default function Operations() {
     }
   };
 
-  const executeToggleMaintenance = async () => {
-    const newVal = !maintenanceMode;
-    setMaintenanceMode(newVal);
-    try {
-      await supabase.from('platform_config').upsert({
-        key: 'maintenance_mode',
-        value: String(newVal),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'key' });
-    } catch {
-      setMaintenanceMode(!newVal);
+  // ── Incident acknowledge → 2h mute (localStorage) ──────────
+  const acknowledgeIncident = useCallback((incidentId) => {
+    setMutedIncidents(prev => {
+      const next = { ...readMutedIncidents(), ...prev, [incidentId]: Date.now() + MUTE_DURATION_MS };
+      writeMutedIncidents(next);
+      return next;
+    });
+  }, []);
+
+  const now = Date.now();
+  const visibleIncidents = incidents.filter((inc) => !(mutedIncidents[inc.id] > now));
+  const mutedCount = incidents.length - visibleIncidents.length;
+
+  // Writes all three maintenance keys in one upsert. supabase-js never throws
+  // from .from(), so the result's { error } is the only failure signal — the
+  // old try/catch version could show "maintenance on" after a failed write.
+  const saveMaintenance = async ({ enabled, message, etaIso }) => {
+    setMaintSaving(true);
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('platform_config').upsert([
+      { key: 'maintenance_mode',    value: String(enabled), updated_at: now },
+      { key: 'maintenance_message', value: message ?? '',   updated_at: now },
+      { key: 'maintenance_eta',     value: etaIso ?? '',    updated_at: now },
+    ], { onConflict: 'key' });
+    setMaintSaving(false);
+    if (error) {
+      setConfigWarning(t('platform.ops.maintenanceSaveFailed', "Couldn't save maintenance mode — try again."));
+      return false;
     }
+    setMaintenanceMode(enabled);
+    setMaintenanceMessage(message ?? '');
+    setMaintenanceEta(etaIso ?? null);
+    logAdminAction('toggle_maintenance', 'platform_config', null, { enabled, eta: etaIso || null });
+    return true;
   };
 
-  const toggleMaintenance = () => {
-    const titleKey = maintenanceMode ? 'platform.ops.confirmDisableMaintenanceTitle' : 'platform.ops.confirmEnableMaintenanceTitle';
+  const disableMaintenance = () => {
     setConfirmModal({
       open: true,
-      title: t(titleKey),
+      title: t('platform.ops.confirmDisableMaintenanceTitle'),
       message: t('platform.ops.confirmAffectsAll'),
-      onConfirm: () => {
+      onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, open: false }));
-        executeToggleMaintenance();
+        await saveMaintenance({ enabled: false, message: maintenanceMessage, etaIso: null });
       },
     });
   };
@@ -689,24 +891,47 @@ export default function Operations() {
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em]">
               {t('platform.ops.activeIncidents')}
-              {incidents.length > 0 && (
+              {visibleIncidents.length > 0 && (
                 <span className="ml-2 text-red-400 bg-red-500/15 px-1.5 py-0.5 rounded-full text-[10px] normal-case">
-                  {incidents.length}
+                  {visibleIncidents.length}
+                </span>
+              )}
+              {mutedCount > 0 && (
+                <span className="ml-2 text-[#9CA3AF] bg-white/5 px-1.5 py-0.5 rounded-full text-[10px] normal-case border border-white/6">
+                  {t('platform.ops.mutedCount', 'muted ({{count}})', { count: mutedCount })}
                 </span>
               )}
             </p>
           </div>
 
-          {incidents.length === 0 ? (
-            <div className="bg-[#0F172A] border border-emerald-500/20 rounded-xl p-6 text-center">
-              <CheckCircle2 size={28} className="mx-auto text-emerald-400 mb-2" />
-              <p className="text-[13px] font-medium text-emerald-400">{t('platform.ops.allSystemsOperational')}</p>
-              <p className="text-[11px] text-[#6B7280] mt-1">{t('platform.ops.noActiveIncidents')}</p>
-            </div>
+          {visibleIncidents.length === 0 ? (
+            mutedCount > 0 ? (
+              <div className="bg-[#0F172A] border border-white/10 rounded-xl p-6 text-center">
+                <Bell size={28} className="mx-auto text-[#9CA3AF] mb-2" />
+                <p className="text-[13px] font-medium text-[#E5E7EB]">
+                  {t('platform.ops.allIncidentsMuted', 'No unacknowledged incidents')}
+                </p>
+                <p className="text-[11px] text-[#6B7280] mt-1">
+                  {t('platform.ops.allIncidentsMutedDesc', '{{count}} acknowledged — muted for 2 hours, they come back if still firing.', { count: mutedCount })}
+                </p>
+              </div>
+            ) : (
+              <div className="bg-[#0F172A] border border-emerald-500/20 rounded-xl p-6 text-center">
+                <CheckCircle2 size={28} className="mx-auto text-emerald-400 mb-2" />
+                <p className="text-[13px] font-medium text-emerald-400">{t('platform.ops.allSystemsOperational')}</p>
+                <p className="text-[11px] text-[#6B7280] mt-1">{t('platform.ops.noActiveIncidents')}</p>
+              </div>
+            )
           ) : (
             <div className="space-y-2.5">
-              {incidents.map((inc) => (
-                <IncidentCard key={inc.id} {...inc} t={t} dateFnsLocale={dateFnsLocale} />
+              {visibleIncidents.map((inc) => (
+                <IncidentCard
+                  key={inc.id}
+                  {...inc}
+                  onAcknowledge={() => acknowledgeIncident(inc.id)}
+                  t={t}
+                  dateFnsLocale={dateFnsLocale}
+                />
               ))}
             </div>
           )}
@@ -737,8 +962,8 @@ export default function Operations() {
         </FadeIn>
       )}
 
-      {/* Blast radius (only show when there are incidents) */}
-      {incidents.length > 0 && (
+      {/* Blast radius (only show when there are unmuted incidents) */}
+      {visibleIncidents.length > 0 && (
         <FadeIn delay={220}>
           <div className="mb-6">
             <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">{t('platform.ops.blastRadius')}</p>
@@ -833,93 +1058,111 @@ export default function Operations() {
         <div className="mb-6">
           <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">{t('platform.ops.immediateActions')}</p>
 
-          {/* Maintenance mode banner */}
+          {/* Maintenance mode banner — enable opens the setup modal (message +
+              estimated duration); disable keeps the confirm step. */}
           <div className={`bg-[#0F172A] border rounded-xl p-4 mb-3 ${
             maintenanceMode ? 'border-amber-500/30 bg-amber-500/5' : 'border-white/6'
           }`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                   maintenanceMode ? 'bg-amber-500/15' : 'bg-white/5'
                 }`}>
                   <AlertTriangle size={16} className={maintenanceMode ? 'text-amber-400' : 'text-[#6B7280]'} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('platform.ops.maintenanceMode')}</p>
                   <p className="text-[11px] text-[#6B7280]">
                     {maintenanceMode
                       ? t('platform.ops.maintenanceActive')
                       : t('platform.ops.maintenanceDisabled')}
                   </p>
+                  {maintenanceMode && (
+                    <div className="mt-1.5 space-y-0.5">
+                      {maintenanceMessage && (
+                        <p className="text-[11px] text-amber-200/80 truncate">“{maintenanceMessage}”</p>
+                      )}
+                      {maintenanceEta && !Number.isNaN(new Date(maintenanceEta).getTime()) && (
+                        <p className="text-[11px] font-semibold text-amber-400">
+                          {t('platform.ops.maintenanceUntilApprox', 'Until ~{{time}}', {
+                            time: new Date(maintenanceEta).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-              <button
-                onClick={toggleMaintenance}
-                role="switch"
-                aria-checked={maintenanceMode}
-                className={`px-4 py-2 rounded-lg text-[12px] font-semibold transition-colors ${
-                  maintenanceMode
-                    ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
-                    : 'bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10'
-                }`}
-              >
-                {maintenanceMode ? t('platform.ops.disable') : t('platform.ops.enable')}
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {maintenanceMode && (
+                  <button
+                    onClick={() => setMaintModalOpen(true)}
+                    className="px-3 py-2 rounded-lg text-[12px] font-semibold bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 transition-colors"
+                  >
+                    {t('platform.ops.maintenanceEdit', 'Edit')}
+                  </button>
+                )}
+                <button
+                  onClick={() => (maintenanceMode ? disableMaintenance() : setMaintModalOpen(true))}
+                  role="switch"
+                  aria-checked={maintenanceMode}
+                  className={`px-4 py-2 rounded-lg text-[12px] font-semibold transition-colors ${
+                    maintenanceMode
+                      ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
+                      : 'bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10'
+                  }`}
+                >
+                  {maintenanceMode ? t('platform.ops.disable') : t('platform.ops.enable')}
+                </button>
+              </div>
             </div>
           </div>
 
+          <MaintenanceSetupModal
+            open={maintModalOpen}
+            onClose={() => setMaintModalOpen(false)}
+            saving={maintSaving}
+            isActive={maintenanceMode}
+            initialMessage={maintenanceMessage}
+            initialEta={maintenanceEta}
+            t={t}
+            onSave={async (payload) => {
+              const ok = await saveMaintenance({ enabled: true, ...payload });
+              if (ok) setMaintModalOpen(false);
+            }}
+          />
+
           {/* Feature kill switches */}
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
-            <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3">{t('platform.ops.featureKillSwitches')}</p>
-            <KillSwitch
-              label={t('platform.ops.killReferrals')}
-              description={t('platform.ops.killReferralsDesc')}
-              enabled={features.referrals}
-              onToggle={() => toggleFeature('referrals', t('platform.ops.killReferrals'))}
-              loading={savingFeature === 'referrals'}
-            />
-            <KillSwitch
-              label={t('platform.ops.killClasses')}
-              description={t('platform.ops.killClassesDesc')}
-              enabled={features.classes}
-              onToggle={() => toggleFeature('classes', t('platform.ops.killClasses'))}
-              loading={savingFeature === 'classes'}
-            />
-            <KillSwitch
-              label={t('platform.ops.killSocial')}
-              description={t('platform.ops.killSocialDesc')}
-              enabled={features.social}
-              onToggle={() => toggleFeature('social', t('platform.ops.killSocial'))}
-              loading={savingFeature === 'social'}
-            />
-            <KillSwitch
-              label={t('platform.ops.killMessaging')}
-              description={t('platform.ops.killMessagingDesc')}
-              enabled={features.messaging}
-              onToggle={() => toggleFeature('messaging', t('platform.ops.killMessaging'))}
-              loading={savingFeature === 'messaging'}
-            />
-            <KillSwitch
-              label={t('platform.ops.killQr')}
-              description={t('platform.ops.killQrDesc')}
-              enabled={features.qr}
-              onToggle={() => toggleFeature('qr', t('platform.ops.killQr'))}
-              loading={savingFeature === 'qr'}
-            />
-            <KillSwitch
-              label={t('platform.ops.killChallenges')}
-              description={t('platform.ops.killChallengesDesc')}
-              enabled={features.challenges}
-              onToggle={() => toggleFeature('challenges', t('platform.ops.killChallenges'))}
-              loading={savingFeature === 'challenges'}
-            />
-            <KillSwitch
-              label={t('platform.ops.killNutrition')}
-              description={t('platform.ops.killNutritionDesc')}
-              enabled={features.nutrition}
-              onToggle={() => toggleFeature('nutrition', t('platform.ops.killNutrition'))}
-              loading={savingFeature === 'nutrition'}
-            />
+            <p className="text-[12px] font-semibold text-[#9CA3AF] mb-1">{t('platform.ops.featureKillSwitches')}</p>
+            <p className="text-[11px] text-[#6B7280] mb-3">
+              {t('platform.ops.killSwitchPropagation', 'Changes take about a minute to reach member apps.')}
+            </p>
+            {[
+              ...FLAG_ORDER.filter(key => key in features),
+              ...Object.keys(features).filter(key => !FLAG_ORDER.includes(key)).sort(),
+            ].map(key => {
+              const meta = FLAG_META[key];
+              // Unknown flag (a future feature_% row with no meta entry):
+              // humanize the key and render a generic description.
+              const label = meta
+                ? t(meta.labelKey, meta.labelFallback)
+                : key.replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase());
+              const description = meta
+                ? t(meta.descKey, meta.descFallback)
+                : t('platform.ops.killUnknownDesc', 'Platform feature flag ({{key}}). No description registered for this switch.', { key: `feature_${key}` });
+              return (
+                <KillSwitch
+                  key={key}
+                  icon={meta?.icon}
+                  label={label}
+                  description={description}
+                  enabled={features[key]}
+                  onToggle={() => toggleFeature(key, label)}
+                  loading={savingFeature === key}
+                />
+              );
+            })}
           </div>
         </div>
       </FadeIn>

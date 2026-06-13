@@ -154,7 +154,7 @@ export default function ShareTplBodyComp({
             {data.beforeBfPct != null && (
               <Stat label="BF %" value={`${data.beforeBfPct.toFixed(0)}→${data.afterBfPct?.toFixed(0) ?? '?'}`} accent={accent} s={s} />
             )}
-            <Stat label="GYM" value={data.gym || 'TuGymPR'} accent="#fff" s={s} />
+            <Stat label="GYM" value={(typeof data.gym === 'string' ? data.gym : data.gym?.name) || 'TuGymPR'} accent="#fff" s={s} />
           </div>
         )}
       </div>

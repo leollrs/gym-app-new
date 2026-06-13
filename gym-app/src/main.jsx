@@ -88,7 +88,11 @@ persistQueryClient({
   dehydrateOptions: {
     shouldDehydrateQuery: (query) => {
       const key = query.queryKey?.[0];
-      const skipKeys = ['realtime', 'admin-members', 'admin-churn', 'admin-audit'];
+      // platform-flags / maintenance-status are infra switches a super-admin
+      // flips expecting near-immediate effect — never serve them from the
+      // 7-day persisted cache (a stale "off" would survive a re-enable or an
+      // app restart). They always fetch fresh, fail-open while loading.
+      const skipKeys = ['realtime', 'admin-members', 'admin-churn', 'admin-audit', 'platform-flags', 'maintenance-status'];
       return query.state.status === 'success' && !skipKeys.includes(key);
     },
   },
@@ -102,7 +106,7 @@ const flushCache = () => {
   try {
     const state = queryClient.getQueryCache().getAll();
     const serialized = state
-      .filter(q => q.state.status === 'success' && !['realtime', 'admin-members', 'admin-churn', 'admin-audit'].includes(q.queryKey?.[0]))
+      .filter(q => q.state.status === 'success' && !['realtime', 'admin-members', 'admin-churn', 'admin-audit', 'platform-flags', 'maintenance-status'].includes(q.queryKey?.[0]))
       .map(q => ({ queryKey: q.queryKey, state: q.state }));
     const snapshot = {
       buster: BUILD_ID,
@@ -158,10 +162,18 @@ installAppResume(queryClient);
       return; // stale token — let auth refresh, then normal queries run
     }
 
-    // Fire-and-forget — in-flight queries dedupe automatically
+    // Fire-and-forget — in-flight queries dedupe automatically.
+    // getSession() first: the PERSISTED token being valid doesn't mean the
+    // CLIENT has attached it yet (session restore is async on native). A
+    // request fired before that runs as anon → 42501 on get_dashboard_data
+    // (0486 revoked anon EXECUTE) and noise in the platform error log.
+    // getSession awaits the restore and bailing just defers to the normal
+    // component-mounted queries.
     queryClient.prefetchQuery({
       queryKey: ['dashboard', userId],
       queryFn: async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('session not attached yet — skip warm-up');
         const { data, error } = await supabase.rpc('get_dashboard_data');
         if (error) throw error;
         return data;
@@ -173,6 +185,8 @@ installAppResume(queryClient);
       // refetches anyway (the mismatch this prefetch used to have).
       queryKey: ['notifications', userId, 'member'],
       queryFn: async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('session not attached yet — skip warm-up');
         const { data, error } = await supabase
           .from('notifications')
           .select('id, title, body, type, read_at, created_at, profile_id, audience, data')
@@ -623,6 +637,16 @@ if (isNative) {
         if (referralMatch) {
           localStorage.setItem('pendingReferralCode', referralMatch[1].toUpperCase());
           window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: '/signup' } }));
+        }
+        // /challenge/ID and /class/ID(?d=DATE) invite links → forward the full
+        // path+query to App.jsx's deep-link effect, which translates them to
+        // the in-app focus query so the invitee lands on the item to join.
+        // (Universal Link / App Link must be configured for these https URLs to
+        // reach the native app instead of the browser — see the .well-known/
+        // association files + the iOS Associated Domains / Android intent-filter.)
+        const itemMatch = path.match(/^\/(challenge|class)\/[^/]+$/i);
+        if (itemMatch) {
+          window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: parsed.pathname + (parsed.search || '') } }));
         }
       } catch {}
     });

@@ -28,6 +28,7 @@ export default function TrainerClientRecovery({ clientId }) {
   const { t } = useTranslation('pages');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,9 +38,12 @@ export default function TrainerClientRecovery({ clientId }) {
         if (cancelled) return;
         if (error) throw error;
         setData(r || {});
+        setFailed(false);
       } catch (e) {
         logger.error(e);
-        if (!cancelled) setData({});
+        // A failed read must NOT fall through to the {} fallback — that
+        // renders a fake "Ready · 100". Quiet "—" state instead.
+        if (!cancelled) { setData(null); setFailed(true); }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -47,7 +51,32 @@ export default function TrainerClientRecovery({ clientId }) {
     return () => { cancelled = true; };
   }, [clientId]);
 
-  if (loading || !data) return null;
+  if (loading) return null;
+
+  if (failed || !data) {
+    return (
+      <>
+        <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2, marginBottom: 8 }}>
+          {t('trainerRecovery.title', 'Recovery')}
+        </div>
+        <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 18, boxShadow: TT.shadow, padding: 14, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: TT.surface2, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <span style={{ fontFamily: TFont.display, fontWeight: 900, fontSize: 22, letterSpacing: -1, color: TT.textMute, lineHeight: 1 }}>—</span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: TFont.display, fontWeight: 800, fontSize: 14, color: TT.textSub, letterSpacing: -0.2 }}>
+                {t('trainerRecovery.unavailable', 'Recovery unavailable')}
+              </div>
+              <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 2 }}>
+                {t('trainerRecovery.unavailableHint', "Couldn't load this client's recovery data right now.")}
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   const sessions = Array.isArray(data.sessions) ? data.sessions : [];
   const soreness = typeof data.soreness === 'number' ? data.soreness : null;

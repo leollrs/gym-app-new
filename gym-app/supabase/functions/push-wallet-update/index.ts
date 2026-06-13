@@ -151,6 +151,22 @@ serve(async (req: Request) => {
       });
     }
 
+    // ── No pass, no work ──
+    // Most members never added a wallet pass; bail before the rate-limit
+    // lookup and result logging so they cost one PK read, zero log rows.
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('wallet_pass_serial')
+      .eq('id', profileId)
+      .single();
+
+    if (!profile?.wallet_pass_serial) {
+      return new Response(JSON.stringify({ message: 'No wallet pass for this member', pushed: 0 }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // ── Rate limit: max 1 push per member per 5 minutes ──
     // Apple throttles passes that update too frequently and shows
     // a disruptive "too many updates" warning to the user.
@@ -189,20 +205,6 @@ serve(async (req: Request) => {
         message: 'APNs push not configured — update logged only',
         pushed: 0,
       }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Get all device registrations for this member's pass
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('wallet_pass_serial')
-      .eq('id', profileId)
-      .single();
-
-    if (!profile?.wallet_pass_serial) {
-      return new Response(JSON.stringify({ message: 'No wallet pass for this member', pushed: 0 }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

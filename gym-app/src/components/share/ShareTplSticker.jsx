@@ -32,6 +32,11 @@ export default function ShareTplSticker({
   const cardW = w * 0.78;
   const pad = 18 * s;
   const radius = 22 * s;
+  // data.gym may be a string or an object ({name,location}). Normalize to a
+  // name string for text + a gym object for the lockup (a raw object rendered
+  // as a React child crashes the share sheet).
+  const gymLabel = (typeof data?.gym === 'string' ? data.gym : data?.gym?.name) || 'TuGymPR';
+  const gymObj = typeof data?.gym === 'string' ? { name: data.gym } : (data?.gym || null);
 
   // ── Headline content per share kind ──────────────────────────────────────
   let label = 'WORKOUT';
@@ -140,13 +145,13 @@ export default function ShareTplSticker({
           >
             {label}
           </div>
-          {showGym && data.gym && (
+          {showGym && gymObj && (
             <div style={{ transform: `scale(${s * 0.9})`, transformOrigin: 'right center', opacity: 0.9 }}>
               <GymLockup
-                name={data.gym}
+                gym={gymObj}
                 logoUrl={data.gymLogo}
-                color="#fff"
-                size={11}
+                tone="light"
+                size="sm"
               />
             </div>
           )}
@@ -325,7 +330,7 @@ export default function ShareTplSticker({
             textAlign: 'center',
           }}
         >
-          TuGymPR
+          {gymLabel}
         </div>
       </div>
     </div>

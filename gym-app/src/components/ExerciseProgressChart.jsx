@@ -75,12 +75,16 @@ function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
 
       if (error) logger.error('ExerciseProgressChart fetch error', error);
 
-      setData((rows || []).map(r => ({
-        date:   format(parseISO(r.achieved_at), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined }),
-        orm:    Math.round(r.estimated_1rm),
-        weight: r.weight_lbs,
-        reps:   r.reps,
-      })));
+      setData((rows || [])
+        // Guard a null/garbage achieved_at — parseISO(null) → Invalid Date and
+        // format() throws RangeError, white-screening the whole chart modal.
+        .filter(r => r.achieved_at)
+        .map(r => ({
+          date:   format(parseISO(r.achieved_at), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined }),
+          orm:    Math.round(r.estimated_1rm),
+          weight: r.weight_lbs,
+          reps:   r.reps,
+        })));
       setLoading(false);
     };
     load();

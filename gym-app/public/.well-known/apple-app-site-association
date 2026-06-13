@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "J3L5DWU6FT.com.tugympr.app",
+        "paths": [
+          "/challenge/*",
+          "/class/*",
+          "/invite/*",
+          "/referral/*",
+          "/add-friend/*"
+        ]
+      }
+    ]
+  }
+}

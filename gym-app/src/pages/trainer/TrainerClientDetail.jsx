@@ -1,38 +1,44 @@
-import { useEffect, useReducer, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useReducer, useCallback, useMemo, useRef, useState } from 'react';
+import { flushSync, createPortal } from 'react-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, Save, TrendingUp, TrendingDown, Minus, StickyNote, Calendar, BarChart3,
+  ArrowLeft, Save, StickyNote, BarChart3,
   MessageSquare, Bell, Phone, Mail, UserCheck, Plus, X, Dumbbell, Trophy,
-  AlertTriangle, BookOpen, ChevronRight, ChevronDown, ChevronLeft, Flame,
-  Heart, Zap, RefreshCw, Apple, MapPin, UtensilsCrossed, ClipboardList, Ruler,
-  Loader2, MoreHorizontal, Play, Eye, History as HistoryIcon, User as UserIcon,
+  AlertTriangle, BookOpen, ChevronDown, ChevronLeft, Flame,
+  Zap, UtensilsCrossed, ClipboardList, Ruler,
+  Loader2, Play, Eye, MessageCircle, Smartphone,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import logger from '../../lib/logger';
-import { format, subWeeks, subDays, startOfWeek, differenceInWeeks, eachDayOfInterval } from 'date-fns';
+import { format, subWeeks, subDays, startOfWeek, differenceInWeeks, eachDayOfInterval, startOfMonth, endOfMonth, differenceInCalendarWeeks } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { enUS } from 'date-fns/locale/en-US';
 import { useTranslation } from 'react-i18next';
-import UnderlineTabs from '../../components/UnderlineTabs';
 import MonthlyProgressReport from '../../components/MonthlyProgressReport';
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import ChartTooltip from '../../components/ChartTooltip';
 import { calculateMacros } from '../../lib/macroCalculator';
 import { generateDayPlan } from '../../lib/mealPlanner';
-import AnimatedCounter from '../../components/AnimatedCounter';
-import TrainerStatCard from './components/TrainerStatCard';
+import { exercises as EXERCISE_CATALOG } from '../../data/exercises';
+import { exName } from '../../lib/exerciseName';
+import { normalizePhone, openWhatsApp } from '../../lib/whatsapp';
 import TrainerClientRecovery from './components/TrainerClientRecovery';
 import TrainerClientPayment from './components/TrainerClientPayment';
 import TrainerClientSchedule from './components/TrainerClientSchedule';
 import TrainerClientAttendance from './components/TrainerClientAttendance';
-import TrainerClientCoaching from './components/TrainerClientCoaching';
 import { TT, TFont, avatarIdx } from './components/designTokens';
 import { TCard, TPill, TPrimaryButton, TAvatar, TIconButton, TSectionHeader } from './components/designPrimitives';
 import CheckinPhotoEditor from '../../components/CheckinPhotoEditor';
 
-const TAB_KEYS = ['overview', 'history', 'body', 'notesFollowUp', 'programNutrition', 'coaching'];
+// Single source of truth for tab ids — drives the tab bar, the swipe order
+// and the ?tab= URL param.
+const MEMBER_TAB_ORDER = ['overview', 'programNutrition', 'body', 'notesFollowUp', 'history'];
+
+// Local catalog lookup for resolving exercise ids → localized names without a query.
+const EXERCISE_BY_ID = new Map(EXERCISE_CATALOG.map((e) => [e.id, e]));
 
 // --- Reducer ---
 const initialState = {
@@ -40,21 +46,20 @@ const initialState = {
   loading: true,
   accessDenied: false,
   isAssigned: false,
-  _assignmentNotes: null,
 
   // Client data
   client: null,
   onboarding: null,
-  stats: { count: 0, volume: 0 },
+  stats: { count: 0 },
   programName: null,
   enrollment: null,
   streak: null,
   nextSession: null, // next upcoming trainer_session (scheduled/confirmed)
+  memberGoals: [], // member-set goals (trainer read policy ships in 0527)
 
   // Workout data
   recentSessions: [],
   personalRecords: [],
-  weeklyWorkouts: [],
   workoutsThisWeek: 0,
 
   // Body data
@@ -65,6 +70,7 @@ const initialState = {
 
   // Notes state
   notesData: { notes: '', injuries: '' },
+  notesDirty: false, // unsaved local edits — guards against reload clobbering
   notesSaved: false,
   savingNotes: false,
 
@@ -88,7 +94,6 @@ const initialState = {
   mealPlanForm: { calories: '', protein: '', carbs: '', fat: '', name: '', description: '' },
   showMealPlanForm: false,
   nutritionLoaded: false,
-  sampleMeals: null,
   generatingMeals: false,
 
   // UI state
@@ -106,20 +111,38 @@ const initialState = {
   historyLoaded: false,
   allSessions: [], // completed workout_sessions (extended list)
   expandedSessionId: null,
+  sessionDetails: {}, // session id → { loading, exercises } (cached per session)
 };
 
 function reducer(state, action) {
   switch (action.type) {
     case 'SET':
       return { ...state, ...action.payload };
+    case 'LOAD_DATA': {
+      // Full data refresh. Never clobber notes the trainer is editing — a
+      // reload triggered mid-edit (assigning a program, etc.) used to revert
+      // the textarea to the page-load snapshot and silently wipe edits.
+      const { notesData, ...rest } = action.payload;
+      return state.notesDirty ? { ...state, ...rest } : { ...state, ...rest, notesData };
+    }
     case 'SET_NOTES_FIELD':
-      return { ...state, notesData: { ...state.notesData, [action.field]: action.value } };
+      return { ...state, notesDirty: true, notesData: { ...state.notesData, [action.field]: action.value } };
     case 'SET_MEAL_PLAN_FIELD':
       return { ...state, mealPlanForm: { ...state.mealPlanForm, [action.field]: action.value } };
     case 'SET_MEAL_PLAN_FORM':
       return { ...state, mealPlanForm: { ...state.mealPlanForm, ...action.payload } };
     case 'PREPEND_FOLLOWUP':
       return { ...state, followups: [action.followup, ...state.followups] };
+    case 'SET_SESSION_DETAIL':
+      return { ...state, sessionDetails: { ...state.sessionDetails, [action.id]: action.detail } };
+    case 'REFRESH_VIEWING_PHOTO':
+      // Apply a re-signed URL only if the viewer is still showing that photo.
+      if (state.viewingPhoto?.id !== action.photo.id) return state;
+      return {
+        ...state,
+        viewingPhoto: action.photo,
+        progressPhotos: state.progressPhotos.map((p) => (p.id === action.photo.id ? action.photo : p)),
+      };
     default:
       return state;
   }
@@ -130,29 +153,62 @@ export default function TrainerClientNotes() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { showToast } = useToast();
+  const { isDark: isDarkTheme } = useTheme();
   const { t, i18n } = useTranslation(['pages', 'common']);
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Lazy init: restore the active tab from ?tab= so refresh / deep-links land
+  // on the same tab instead of always resetting to Overview.
+  const [state, dispatch] = useReducer(reducer, initialState, (init) => {
+    if (typeof window === 'undefined') return init;
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    return urlTab && MEMBER_TAB_ORDER.includes(urlTab) ? { ...init, activeTab: urlTab } : init;
+  });
   const notesSavedTimerRef = useRef(null);
+  // Raw trainer_clients.notes as last fetched/saved — loadClientData re-derives
+  // notesData from this, so it MUST be refreshed after a successful save or a
+  // reload (e.g. assigning a program) reverts the textarea to page-load text.
+  const assignmentNotesRef = useRef(null);
   // Tab-swipe gesture state (declared here with other hooks — must run before
   // the loading/notFound early returns to keep hook order stable).
-  const swipeRef = useRef({ x: 0, y: 0, active: false });
+  const swipeRef = useRef({ x: 0, y: 0, active: false, horiz: false, dx: 0, width: 0, settling: false });
+  // Paged lists — heavy tabs render 5 rows at a time ("Ver más" steps by 5)
+  // so a long history can't bloat the DOM and stall the page.
+  const [prVisible, setPrVisible] = useState(5);
+  const [showContactSheet, setShowContactSheet] = useState(false);
+  const [logVisible, setLogVisible] = useState(5);
+  useEffect(() => { setPrVisible(5); setLogVisible(5); }, [clientId]);
+  const swipeViewportRef = useRef(null);
+  const trackRef = useRef(null);
+  // True while a horizontal drag/settle is live — mounts the neighbor tab
+  // panels so the incoming page is visible as the finger drags.
+  const [swipeDrag, setSwipeDrag] = useState(false);
 
   // Destructure for readability in JSX
   const {
     loading, accessDenied, isAssigned, client, onboarding, stats, programName, enrollment, streak, nextSession,
-    recentSessions, personalRecords, weeklyWorkouts, workoutsThisWeek,
+    memberGoals, recentSessions, personalRecords, workoutsThisWeek,
     weights, measurements, progressPhotos, checkIns,
     notesData, notesSaved, savingNotes,
     followups, showFollowupModal, fuMethod, fuNote, fuOutcome, savingFollowup,
     availablePrograms, assigningProgram,
-    nutritionTargets, foodLogSummary, activeMealPlan, savingMealPlan, mealPlanForm, showMealPlanForm, nutritionLoaded, sampleMeals, generatingMeals,
+    nutritionTargets, foodLogSummary, activeMealPlan, savingMealPlan, mealPlanForm, showMealPlanForm, nutritionLoaded, generatingMeals,
     activeTab, showReport,
     liveDraft, bodyPeriod, viewingPhoto,
-    historyLoaded, allSessions, expandedSessionId,
+    historyLoaded, allSessions, expandedSessionId, sessionDetails,
   } = state;
 
   useEffect(() => { document.title = t('trainerNotes.pageTitle'); }, [t]);
+
+  // Keep the active tab in the URL (?tab=) so refresh / deep-links restore it.
+  useEffect(() => {
+    const current = searchParams.get('tab') || 'overview';
+    if (current === activeTab) return;
+    const next = new URLSearchParams(searchParams);
+    if (activeTab === 'overview') next.delete('tab');
+    else next.set('tab', activeTab);
+    setSearchParams(next, { replace: true });
+  }, [activeTab, searchParams, setSearchParams]);
 
   // Cleanup notesSaved timer on unmount
   useEffect(() => {
@@ -163,7 +219,8 @@ export default function TrainerClientNotes() {
 
   // Phase 1: verify trainer ↔ client assignment BEFORE any data queries fire.
   const checkAssignment = useCallback(async () => {
-    dispatch({ type: 'SET', payload: { loading: true, accessDenied: false, isAssigned: false } });
+    // Fresh client load — any dirty-notes state belongs to the previous client.
+    dispatch({ type: 'SET', payload: { loading: true, accessDenied: false, isAssigned: false, notesDirty: false } });
     try {
       const { data: assignment } = await supabase
         .from('trainer_clients')
@@ -180,7 +237,8 @@ export default function TrainerClientNotes() {
       }
 
       // Assignment confirmed — store notes and set flag so data queries can proceed.
-      dispatch({ type: 'SET', payload: { isAssigned: true, _assignmentNotes: assignment.notes } });
+      assignmentNotesRef.current = assignment.notes;
+      dispatch({ type: 'SET', payload: { isAssigned: true } });
     } catch (err) {
       logger.error('Error checking assignment:', err);
       dispatch({ type: 'SET', payload: { loading: false } });
@@ -189,31 +247,34 @@ export default function TrainerClientNotes() {
 
   // Phase 2: load all client data — only runs after isAssigned is true.
   const loadClientData = useCallback(async () => {
-    const assignmentNotes = state._assignmentNotes;
+    const assignmentNotes = assignmentNotesRef.current;
     try {
       const weekStart = startOfWeek(new Date(), { weekStartsOn: 0 });
-      const eightWeeksAgo = subWeeks(new Date(), 8).toISOString();
+      const oneYearAgo = subDays(new Date(), 366).toISOString();
 
       const [
         clientRes, statsRes, weightsRes, measRes, streakRes, followupsRes,
-        recentRes, prsRes, weeklyRes, onbRes, thisWeekRes, nextSessionRes,
+        recentRes, prsRes, onbRes, thisWeekRes, nextSessionRes,
       ] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, full_name, username, last_active_at, created_at, assigned_program_id, checkin_photo_path')
+          .select('id, full_name, username, phone_number, last_active_at, created_at, assigned_program_id, checkin_photo_path')
           .eq('id', clientId)
           .single(),
         supabase
           .from('workout_sessions')
-          .select('id, total_volume_lbs')
+          .select('id')
           .eq('profile_id', clientId)
           .eq('status', 'completed'),
+        // Full year of weight logs so the Body tab's 365d view isn't truncated
+        // (the old latest-50 cap cut off frequent loggers after ~2 months).
         supabase
           .from('body_weight_logs')
           .select('weight_lbs, logged_at')
           .eq('profile_id', clientId)
+          .gte('logged_at', oneYearAgo)
           .order('logged_at', { ascending: false })
-          .limit(50),
+          .limit(400),
         supabase
           .from('body_measurements')
           .select('*')
@@ -247,13 +308,6 @@ export default function TrainerClientNotes() {
           .eq('profile_id', clientId)
           .order('achieved_at', { ascending: false })
           .limit(20),
-        // Weekly workout counts (last 8 weeks)
-        supabase
-          .from('workout_sessions')
-          .select('started_at')
-          .eq('profile_id', clientId)
-          .eq('status', 'completed')
-          .gte('started_at', eightWeeksAgo),
         // Onboarding data for client summary
         supabase
           .from('member_onboarding')
@@ -285,8 +339,6 @@ export default function TrainerClientNotes() {
       // round-trips between the two Promise.all batches.
       const assignedProgramId = clientRes.data?.assigned_program_id || null;
 
-      const totalVolume = (statsRes.data || []).reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
-
       // Parse notes - gracefully handle plain string vs JSON
       // Merge old preferences and goalReminders into coach notes
       let parsedNotes = { notes: '', injuries: '' };
@@ -311,27 +363,10 @@ export default function TrainerClientNotes() {
         }
       }
 
-      // Process weekly workout data for chart
-      let processedWeeklyWorkouts = [];
-      if (weeklyRes.data) {
-        const weekMap = {};
-        for (let i = 7; i >= 0; i--) {
-          const wk = startOfWeek(subWeeks(new Date(), i), { weekStartsOn: 0 });
-          const key = format(wk, 'MMM d', { locale: dateFnsLocale });
-          weekMap[key] = 0;
-        }
-        weeklyRes.data.forEach((s) => {
-          const wk = startOfWeek(new Date(s.started_at), { weekStartsOn: 0 });
-          const key = format(wk, 'MMM d', { locale: dateFnsLocale });
-          if (weekMap[key] !== undefined) weekMap[key]++;
-        });
-        processedWeeklyWorkouts = Object.entries(weekMap).map(([week, count]) => ({ week, count }));
-      }
-
-      // Load available programs, progress photos, check-ins, AND the assigned
-      // program name + enrollment all in parallel (program name/enrollment were
-      // previously two serial hops between batches).
-      const [progsRes, photosRes, checkInsRes, progNameRes, enrRes] = await Promise.all([
+      // Load available programs, progress photos, check-ins, member goals, AND
+      // the assigned program name + enrollment all in parallel (program
+      // name/enrollment were previously two serial hops between batches).
+      const [progsRes, photosRes, checkInsRes, goalsRes, progNameRes, enrRes] = await Promise.all([
         supabase
           .from('gym_programs')
           .select('id, name, duration_weeks, weeks')
@@ -344,12 +379,24 @@ export default function TrainerClientNotes() {
           .eq('profile_id', clientId)
           .order('taken_at', { ascending: false })
           .limit(12),
+        // Current-month check-ins (drives "Monthly visits"). The old
+        // latest-30-overall query undercounted multi-scan members.
         supabase
           .from('check_ins')
           .select('id, checked_in_at, method')
           .eq('profile_id', clientId)
+          .gte('checked_in_at', startOfMonth(new Date()).toISOString())
+          .lte('checked_in_at', endOfMonth(new Date()).toISOString())
           .order('checked_in_at', { ascending: false })
-          .limit(30),
+          .limit(500),
+        // Member-set goals (read-only; trainer SELECT policy ships in 0527 —
+        // on { error } we just hide the section).
+        supabase
+          .from('member_goals')
+          .select('id, title, goal_type, target_value, current_value, start_value, unit, target_date, achieved_at, created_at')
+          .eq('profile_id', clientId)
+          .order('created_at', { ascending: false })
+          .limit(12),
         assignedProgramId
           ? supabase.from('gym_programs').select('name').eq('id', assignedProgramId).single()
           : Promise.resolve({ data: null }),
@@ -368,13 +415,15 @@ export default function TrainerClientNotes() {
       const loadedProgramName = progNameRes.data?.name || null;
       const loadedEnrollment = enrRes.data || null;
 
-      // Batch all photo signed URLs into ONE request (was one round-trip per photo).
+      // Batch all photo signed URLs into ONE request (was one round-trip per
+      // photo). 6h expiry so long-open tabs don't go stale mid-review; the
+      // fullscreen viewer re-signs on open as a further backstop.
       const photoPaths = (photosRes.data || []).map((p) => p.storage_path);
       let signedByPath = {};
       if (photoPaths.length) {
         const { data: signed } = await supabase.storage
           .from('progress-photos')
-          .createSignedUrls(photoPaths, 3600);
+          .createSignedUrls(photoPaths, 21600);
         (signed ?? []).forEach((s) => { if (s.signedUrl) signedByPath[s.path] = s.signedUrl; });
       }
       const photosWithUrls = (photosRes.data || []).map((photo) => ({
@@ -383,10 +432,10 @@ export default function TrainerClientNotes() {
       }));
 
       dispatch({
-        type: 'SET',
+        type: 'LOAD_DATA',
         payload: {
           client: clientRes.data,
-          stats: { count: (statsRes.data || []).length, volume: totalVolume },
+          stats: { count: (statsRes.data || []).length },
           programName: loadedProgramName,
           enrollment: loadedEnrollment,
           weights: weightsRes.data || [],
@@ -398,7 +447,7 @@ export default function TrainerClientNotes() {
           onboarding: onbRes.data || null,
           nextSession: nextSessionRes.data || null,
           workoutsThisWeek: thisWeekRes.data?.length || 0,
-          weeklyWorkouts: processedWeeklyWorkouts,
+          memberGoals: goalsRes.error ? [] : (goalsRes.data || []),
           availablePrograms: progsRes.data || [],
           progressPhotos: photosWithUrls,
           checkIns: checkInsRes.data || [],
@@ -410,7 +459,7 @@ export default function TrainerClientNotes() {
       logger.error('Error loading client data:', err);
       dispatch({ type: 'SET', payload: { loading: false } });
     }
-  }, [clientId, profile?.id, profile?.gym_id, t, state._assignmentNotes]);
+  }, [clientId, profile?.id, profile?.gym_id, t]);
 
   // Phase 1: run assignment check whenever clientId / trainer changes.
   useEffect(() => {
@@ -477,10 +526,14 @@ export default function TrainerClientNotes() {
   // - If no draft -> show toast and stay put (no auto-redirect)
   const handleStartLiveSession = useCallback(async () => {
     try {
+      // Same ≤6h freshness window as the live pill — a days-old abandoned
+      // draft should toast "hasn't started", not open a dead spectator view.
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
       const { data: latest } = await supabase
         .from('session_drafts')
         .select('profile_id')
         .eq('profile_id', clientId)
+        .gte('updated_at', sixHoursAgo)
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -505,12 +558,12 @@ export default function TrainerClientNotes() {
       const sixMonthsAgo = subWeeks(new Date(), 26).toISOString();
       const { data: sessions } = await supabase
         .from('workout_sessions')
-        .select('id, name, started_at, ended_at, duration_seconds, total_volume_lbs, status')
+        .select('id, name, started_at, completed_at, duration_seconds, total_volume_lbs, status')
         .eq('profile_id', clientId)
         .eq('status', 'completed')
         .gte('started_at', sixMonthsAgo)
         .order('started_at', { ascending: false })
-        .limit(200);
+        .limit(100);
       dispatch({
         type: 'SET',
         payload: {
@@ -546,13 +599,17 @@ export default function TrainerClientNotes() {
           .eq('profile_id', clientId)
           .gte('log_date', sevenDaysAgo)
           .order('log_date'),
+        // Newest active plan. Deliberately NOT .maybeSingle(): legacy data can
+        // hold several active rows (TrainerPlans used to stack them) and
+        // maybeSingle() errors on 2+ rows → the card showed "No plan".
         supabase
           .from('trainer_meal_plans')
           .select('*')
           .eq('trainer_id', profile.id)
           .eq('client_id', clientId)
           .eq('is_active', true)
-          .maybeSingle(),
+          .order('created_at', { ascending: false })
+          .limit(1),
       ]);
 
       // Aggregate food logs by day
@@ -565,16 +622,19 @@ export default function TrainerClientNotes() {
         dayMap[log.log_date].fat += Number(log.fat_g) || 0;
       });
 
+      if (mealPlanRes.error) logger.error('Error loading active meal plan:', mealPlanRes.error);
+      const loadedActivePlan = mealPlanRes.data?.[0] || null;
+
       // Pre-fill meal plan form from active plan
       let loadedMealPlanForm = state.mealPlanForm;
-      if (mealPlanRes.data) {
+      if (loadedActivePlan) {
         loadedMealPlanForm = {
-          calories: mealPlanRes.data.target_calories?.toString() || '',
-          protein: mealPlanRes.data.target_protein_g?.toString() || '',
-          carbs: mealPlanRes.data.target_carbs_g?.toString() || '',
-          fat: mealPlanRes.data.target_fat_g?.toString() || '',
-          name: mealPlanRes.data.name || '',
-          description: mealPlanRes.data.description || '',
+          calories: loadedActivePlan.target_calories?.toString() || '',
+          protein: loadedActivePlan.target_protein_g?.toString() || '',
+          carbs: loadedActivePlan.target_carbs_g?.toString() || '',
+          fat: loadedActivePlan.target_fat_g?.toString() || '',
+          name: loadedActivePlan.name || '',
+          description: loadedActivePlan.description || '',
         };
       }
 
@@ -582,7 +642,7 @@ export default function TrainerClientNotes() {
         type: 'SET',
         payload: {
           nutritionTargets: targetsRes.data || null,
-          activeMealPlan: mealPlanRes.data || null,
+          activeMealPlan: loadedActivePlan,
           foodLogSummary: Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date)),
           mealPlanForm: loadedMealPlanForm,
           nutritionLoaded: true,
@@ -641,11 +701,19 @@ export default function TrainerClientNotes() {
       });
 
       if (plan?.meals) {
-        const mealDesc = plan.meals.map(m => `${m.type || t('trainerNotes.nutrition.meal')}: ${m.name} (${Math.round(m.calories)} cal)`).join('\n');
+        // Generated meals carry a `slot` tag (breakfast/lunch/snack/dinner);
+        // `type` is only a legacy fallback. Map to the localized slot labels.
+        const SLOT_KEYS = ['breakfast', 'lunch', 'snack', 'dinner'];
+        const mealDesc = plan.meals.map(m => {
+          const slotKey = m.slot ?? m.type;
+          const label = SLOT_KEYS.includes(slotKey)
+            ? t(`nutrition.meals.${slotKey}`, slotKey)
+            : (slotKey || t('trainerNotes.nutrition.meal'));
+          return `${label}: ${m.name} (${Math.round(m.calories)} cal)`;
+        }).join('\n');
         dispatch({
           type: 'SET',
           payload: {
-            sampleMeals: plan.meals,
             showMealPlanForm: true,
           },
         });
@@ -669,13 +737,39 @@ export default function TrainerClientNotes() {
     if (!profile?.id || savingMealPlan) return;
     dispatch({ type: 'SET', payload: { savingMealPlan: true } });
     try {
-      // Deactivate existing plan if any
-      if (activeMealPlan) {
-        await supabase
+      // Editing the assigned plan = a real UPDATE on the same row (keeps the
+      // start date, no replace-with-copy). Only brand-new assignments go
+      // through the deactivate+insert path below.
+      if (activeMealPlan?.id) {
+        const { data, error } = await supabase
           .from('trainer_meal_plans')
-          .update({ is_active: false, updated_at: new Date().toISOString() })
-          .eq('id', activeMealPlan.id);
+          .update({
+            name: mealPlanForm.name || t('trainerNotes.nutrition.customPlan'),
+            description: mealPlanForm.description || null,
+            target_calories: parseInt(mealPlanForm.calories) || null,
+            target_protein_g: parseInt(mealPlanForm.protein) || null,
+            target_carbs_g: parseInt(mealPlanForm.carbs) || null,
+            target_fat_g: parseInt(mealPlanForm.fat) || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', activeMealPlan.id)
+          .select()
+          .single();
+        if (error) throw error;
+        dispatch({ type: 'SET', payload: { activeMealPlan: data, showMealPlanForm: false, savingMealPlan: false } });
+        return;
       }
+
+      // Single-active invariant: deactivate ALL of this client's currently
+      // active plans (legacy data can hold several — TrainerPlans used to
+      // stack actives). RLS scopes the update to this trainer's own rows.
+      // Abort on failure so we never insert a duplicate active.
+      const { error: deactivateErr } = await supabase
+        .from('trainer_meal_plans')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq('client_id', clientId)
+        .eq('is_active', true);
+      if (deactivateErr) throw deactivateErr;
 
       const payload = {
         gym_id: profile.gym_id,
@@ -709,10 +803,15 @@ export default function TrainerClientNotes() {
   async function handleDeactivateMealPlan() {
     if (!activeMealPlan) return;
     try {
-      await supabase
+      // Deactivate every active row for this client (not just the one we're
+      // showing) so legacy duplicate actives are cleaned up too. supabase-js
+      // never throws — check { error } so a failed write can't fake success.
+      const { error } = await supabase
         .from('trainer_meal_plans')
         .update({ is_active: false, updated_at: new Date().toISOString() })
-        .eq('id', activeMealPlan.id);
+        .eq('client_id', clientId)
+        .eq('is_active', true);
+      if (error) throw error;
       dispatch({
         type: 'SET',
         payload: {
@@ -722,6 +821,7 @@ export default function TrainerClientNotes() {
       });
     } catch (err) {
       logger.error('Error deactivating meal plan:', err);
+      showToast(t('trainerNotes.errors.deactivateMealPlanFailed', 'Could not deactivate the meal plan'), 'error');
     }
   }
 
@@ -737,7 +837,10 @@ export default function TrainerClientNotes() {
         notes: serialized,
       }, { onConflict: 'trainer_id,client_id' });
       if (error) throw error; // don't flash "Saved ✓" on a failed write
-      dispatch({ type: 'SET', payload: { notesSaved: true } });
+      // Refresh the load-time snapshot so a later reload (assign program,
+      // language switch) re-derives THESE notes instead of reverting.
+      assignmentNotesRef.current = serialized;
+      dispatch({ type: 'SET', payload: { notesSaved: true, notesDirty: false } });
       if (notesSavedTimerRef.current) clearTimeout(notesSavedTimerRef.current);
       notesSavedTimerRef.current = setTimeout(() => {
         dispatch({ type: 'SET', payload: { notesSaved: false } });
@@ -770,7 +873,9 @@ export default function TrainerClientNotes() {
         payload: { showFollowupModal: false, fuNote: '', fuMethod: 'call', fuOutcome: 'no_answer' },
       });
     } catch (err) {
+      // Keep the modal open so the trainer can retry without losing the note.
       logger.error('Error saving followup:', err);
+      showToast(t('trainerNotes.errors.saveFollowupFailed', 'Could not save the follow-up'), 'error');
     } finally {
       dispatch({ type: 'SET', payload: { savingFollowup: false } });
     }
@@ -1002,26 +1107,37 @@ export default function TrainerClientNotes() {
     return Object.entries(weekMap).map(([week, volume]) => ({ week, volume: Math.round(volume) }));
   }, [allSessions, dateFnsLocale]);
 
-  // History tab — 90-day attendance heatmap (workouts + check-ins)
-  const attendanceHeatmap = useMemo(() => {
-    const days = eachDayOfInterval({ start: subDays(new Date(), 89), end: new Date() });
-    const dayMap = {};
-    days.forEach(d => {
-      dayMap[format(d, 'yyyy-MM-dd')] = 0;
-    });
+  // History tab — this month's visits, split by week-of-month. A "visit" is a
+  // day the client showed up (a workout OR a check-in counts once). The detailed
+  // day-by-day attendance lives in the Body tab's month calendar, so here we
+  // surface the monthly total broken down per week.
+  const monthlyVisits = useMemo(() => {
+    const now = new Date();
+    const mStart = startOfMonth(now);
+    const mEnd = endOfMonth(now);
+    const visitDays = new Set();
     (allSessions || []).forEach(s => {
-      const key = format(new Date(s.started_at), 'yyyy-MM-dd');
-      if (key in dayMap) dayMap[key] += 1;
+      const d = new Date(s.started_at);
+      if (d >= mStart && d <= mEnd) visitDays.add(format(d, 'yyyy-MM-dd'));
     });
     (checkIns || []).forEach(c => {
-      const key = format(new Date(c.checked_in_at), 'yyyy-MM-dd');
-      if (key in dayMap) dayMap[key] += 1;
+      const d = new Date(c.checked_in_at);
+      if (d >= mStart && d <= mEnd) visitDays.add(format(d, 'yyyy-MM-dd'));
     });
-    return days.map(d => {
-      const key = format(d, 'yyyy-MM-dd');
-      const v = dayMap[key];
-      return { date: key, value: v, label: format(d, 'EEE, MMM d', { locale: dateFnsLocale }) };
+    const buckets = {};
+    eachDayOfInterval({ start: mStart, end: mEnd }).forEach(d => {
+      const wi = differenceInCalendarWeeks(d, mStart, { weekStartsOn: 0 });
+      if (buckets[wi] == null) buckets[wi] = 0;
+      if (visitDays.has(format(d, 'yyyy-MM-dd'))) buckets[wi] += 1;
     });
+    const weeks = Object.keys(buckets).map(Number).sort((a, b) => a - b)
+      .map(wi => ({ week: wi + 1, count: buckets[wi] }));
+    return {
+      weeks,
+      total: visitDays.size,
+      max: Math.max(...weeks.map(w => w.count), 1),
+      monthLabel: format(now, 'MMMM', { locale: dateFnsLocale }),
+    };
   }, [allSessions, checkIns, dateFnsLocale]);
 
   // History tab — streaks (current from streak_cache; longest from sessions)
@@ -1046,6 +1162,21 @@ export default function TrainerClientNotes() {
     }
     return { current, longest: Math.max(longest, current) };
   }, [streak, allSessions]);
+
+  // Member-declared injuries + excluded exercises (from onboarding) — safety
+  // info the member already gave the gym; resolve exercise ids to localized
+  // names via the local catalog (custom ids simply don't resolve).
+  const declaredInjuries = useMemo(() => {
+    const notes = (onboarding?.injuries_notes || '').trim();
+    const ids = Array.isArray(onboarding?.excluded_exercise_ids) ? onboarding.excluded_exercise_ids : [];
+    const excludedNames = ids
+      .map((id) => {
+        const ex = EXERCISE_BY_ID.get(id);
+        return ex ? exName(ex) : null;
+      })
+      .filter(Boolean);
+    return notes || excludedNames.length ? { notes, excludedNames } : null;
+  }, [onboarding]);
 
   if (loading) {
     return (
@@ -1121,12 +1252,12 @@ export default function TrainerClientNotes() {
   const injuriesNote = (notesData?.injuries || '').trim();
 
   // Map first 3 PRs into the "Personal records" grid
-  const topPRs = (personalRecords || []).slice(0, 4);
+  const topPRs = (personalRecords || []).slice(0, prVisible);
 
   // Pinned-notes warm gradient is light-only; in dark mode fall back to the
-  // theme-aware surface so it doesn't blow out. Read the toggle at render time
-  // (ThemeContext re-renders the tree when the OS preference flips).
-  const isDarkTheme = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  // theme-aware surface so it doesn't blow out. isDarkTheme comes from
+  // ThemeContext (useTheme at the top) so a theme flip re-renders correctly —
+  // a render-time DOM classList check could go stale.
   const pinnedNoteBg = isDarkTheme ? TT.surface2 : 'linear-gradient(160deg,#FFFBEF,#FFFDF7)';
   const pinnedNoteBorder = isDarkTheme ? TT.border : '#F1E6C8';
 
@@ -1148,37 +1279,154 @@ export default function TrainerClientNotes() {
     } catch (err) { logger.error('Error opening conversation:', err); }
   };
 
-  // ── Swipe left/right to move between tabs (in tab-bar order) ──────────
-  // (swipeRef is declared up top with the other hooks; these are plain handlers.)
-  const MEMBER_TAB_ORDER = ['overview', 'programNutrition', 'history', 'notesFollowUp', 'body', 'coaching'];
+  // Contact actions — only rendered when the client has a dialable number.
+  const phoneDigits = normalizePhone(client?.phone_number);
+
+  // Open the fullscreen photo viewer and re-sign the URL in the background so
+  // a tab that's been open past the signed-URL expiry still loads the image.
+  const openPhotoViewer = (photo) => {
+    dispatch({ type: 'SET', payload: { viewingPhoto: photo } });
+    (async () => {
+      try {
+        const { data: signed, error } = await supabase.storage
+          .from('progress-photos')
+          .createSignedUrl(photo.storage_path, 21600);
+        if (!error && signed?.signedUrl) {
+          dispatch({ type: 'REFRESH_VIEWING_PHOTO', photo: { ...photo, signedUrl: signed.signedUrl } });
+        }
+      } catch (err) {
+        logger.error('Error refreshing photo URL:', err);
+      }
+    })();
+  };
+
+  // History tab — fetch a session's exercises + sets on first expand and
+  // cache per session id (trainer SELECT policies exist on both tables).
+  const loadSessionDetail = async (sessionId) => {
+    if (sessionDetails[sessionId]) return; // cached or in flight
+    dispatch({ type: 'SET_SESSION_DETAIL', id: sessionId, detail: { loading: true, exercises: [] } });
+    const { data, error } = await supabase
+      .from('session_exercises')
+      .select('id, exercise_id, snapshot_name, position, session_sets ( set_number, weight_lbs, reps, duration_seconds, is_completed )')
+      .eq('session_id', sessionId)
+      .order('position', { ascending: true });
+    if (error) {
+      logger.error('Error loading session detail:', error);
+      dispatch({ type: 'SET_SESSION_DETAIL', id: sessionId, detail: { loading: false, exercises: [] } });
+      return;
+    }
+    const exercisesDetail = (data || []).map((se) => {
+      const catalogEx = EXERCISE_BY_ID.get(se.exercise_id);
+      return {
+        id: se.id,
+        name: (catalogEx && exName(catalogEx)) || se.snapshot_name || '—',
+        sets: (se.session_sets || [])
+          .filter((st) => st.is_completed)
+          .sort((a, b) => (a.set_number || 0) - (b.set_number || 0)),
+      };
+    });
+    dispatch({ type: 'SET_SESSION_DETAIL', id: sessionId, detail: { loading: false, exercises: exercisesDetail } });
+  };
+
+  // ── Sliding swipe between tabs (in tab-bar order) ─────────────────────
+  // The panels live on a 3-slot track (prev | active | next). During a
+  // horizontal drag the track follows the finger via an IMPERATIVE transform
+  // on trackRef (zero re-renders per move); releasing past the threshold
+  // animates to the neighbor and only then commits the tab change.
   const onTabSwipeStart = (e) => {
     const tch = e.touches && e.touches[0];
     // Don't hijack text fields or explicitly-ignored scrollers (the tab bar, charts).
-    if (!tch || (e.target.closest && e.target.closest('[data-swipe-ignore], input, textarea, select'))) {
+    if (!tch || swipeRef.current.settling ||
+        (e.target.closest && e.target.closest('[data-swipe-ignore]'))) {
       swipeRef.current.active = false;
       return;
     }
-    swipeRef.current = { x: tch.clientX, y: tch.clientY, active: true };
+    swipeRef.current = { ...swipeRef.current, x: tch.clientX, y: tch.clientY, active: true, horiz: false, dx: 0 };
   };
-  const onTabSwipeEnd = (e) => {
+
+  const onTabSwipeMove = (e) => {
     const s = swipeRef.current;
-    if (!s.active) return;
-    s.active = false;
-    const tch = e.changedTouches && e.changedTouches[0];
+    if (!s.active || s.settling) return;
+    const tch = e.touches && e.touches[0];
     if (!tch) return;
     const dx = tch.clientX - s.x;
     const dy = tch.clientY - s.y;
-    // Require a dominant horizontal swipe so vertical scrolling never switches tabs.
-    if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+    if (!s.horiz) {
+      // Decide intent once: clear vertical motion releases the gesture to the
+      // scroller; clear horizontal motion locks the track to the finger.
+      if (Math.abs(dy) > 16 && Math.abs(dy) > Math.abs(dx)) { s.active = false; return; }
+      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+      s.horiz = true;
+      s.width = swipeViewportRef.current?.clientWidth || window.innerWidth;
+      // A drag that started on a text field is a swipe, not typing — drop the
+      // keyboard/caret so the slide isn't fighting the focused input.
+      const ae = document.activeElement;
+      if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) ae.blur();
+      setSwipeDrag(true); // mount neighbor panels so the next page is visible
+    }
     const i = MEMBER_TAB_ORDER.indexOf(activeTab);
-    if (i < 0) return;
-    const next = dx < 0 ? i + 1 : i - 1;
-    if (next < 0 || next >= MEMBER_TAB_ORDER.length) return;
-    dispatch({ type: 'SET', payload: { activeTab: MEMBER_TAB_ORDER[next] } });
+    let d = dx;
+    if ((d > 0 && i === 0) || (d < 0 && i === MEMBER_TAB_ORDER.length - 1)) d = d / 3; // edge resistance
+    s.dx = d;
+    const el = trackRef.current;
+    if (el) {
+      el.style.transition = 'none';
+      el.style.transform = `translateX(calc(-33.3333% + ${d}px))`;
+    }
+  };
+
+  // slotShift: -1 settles to prev, 0 snaps back, 1 settles to next.
+  const settleSwipe = (targetTab, slotShift) => {
+    const s = swipeRef.current;
+    const el = trackRef.current;
+    const reset = () => {
+      swipeRef.current = { x: 0, y: 0, active: false, horiz: false, dx: 0, width: 0, settling: false };
+    };
+    if (!el) {
+      if (targetTab) dispatch({ type: 'SET', payload: { activeTab: targetTab } });
+      setSwipeDrag(false);
+      reset();
+      return;
+    }
+    s.settling = true;
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      el.removeEventListener('transitionend', done);
+      // flushSync so the new tab is ALREADY in the center slot when the track
+      // snaps back to rest — otherwise the old panel flashes for a frame.
+      flushSync(() => {
+        if (targetTab) dispatch({ type: 'SET', payload: { activeTab: targetTab } });
+        setSwipeDrag(false);
+      });
+      el.style.transition = 'none';
+      el.style.transform = 'translateX(-33.3333%)';
+      reset();
+    };
+    el.addEventListener('transitionend', done);
+    setTimeout(done, 380); // safety net — transitionend can be swallowed
+    requestAnimationFrame(() => {
+      el.style.transition = 'transform 280ms cubic-bezier(.22, .8, .32, 1)';
+      el.style.transform = `translateX(${(-(1 + slotShift) * 33.3333).toFixed(4)}%)`;
+    });
+  };
+
+  const onTabSwipeEnd = () => {
+    const s = swipeRef.current;
+    if (!s.active || s.settling) return;
+    s.active = false;
+    if (!s.horiz) return; // tap or vertical scroll — nothing to settle
+    const i = MEMBER_TAB_ORDER.indexOf(activeTab);
+    const threshold = Math.min(96, (s.width || 320) * 0.22);
+    let shift = 0;
+    if (s.dx <= -threshold && i < MEMBER_TAB_ORDER.length - 1) shift = 1;
+    else if (s.dx >= threshold && i > 0) shift = -1;
+    settleSwipe(shift === 0 ? null : MEMBER_TAB_ORDER[i + shift], shift);
   };
 
   return (
-    <div style={{ background: TT.bg, minHeight: '100%' }} onTouchStart={onTabSwipeStart} onTouchEnd={onTabSwipeEnd}>
+    <div style={{ background: TT.bg, minHeight: '100%' }} onTouchStart={onTabSwipeStart} onTouchMove={onTabSwipeMove} onTouchEnd={onTabSwipeEnd} onTouchCancel={onTabSwipeEnd}>
       {/* ── Back bar (Atelier) ──────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 16px 4px' }}>
         <TIconButton
@@ -1190,12 +1438,23 @@ export default function TrainerClientNotes() {
         <div style={{ fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: TT.text, letterSpacing: -0.2 }}>
           {t('trainerClientDetail.clientLabel', 'Client')}
         </div>
-        <TIconButton
-          ariaLabel={t('trainerNotes.actions.monthlyReport', 'More')}
+        {/* The old "⋯" hid a single action — label it for discoverability. */}
+        <button
+          type="button"
           onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
+          aria-label={t('trainerNotes.actions.monthlyReport', 'Monthly report')}
+          className="tt-tap"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            height: 38, padding: '0 12px', borderRadius: 12,
+            background: TT.surface2, border: `1px solid ${TT.borderSolid}`,
+            fontFamily: TFont.display, fontSize: 12, fontWeight: 700,
+            color: TT.text, cursor: 'pointer', flexShrink: 0,
+          }}
         >
-          <MoreHorizontal size={18} strokeWidth={2.2} color={TT.text} />
-        </TIconButton>
+          <BarChart3 size={14} strokeWidth={2.2} color={TT.accent} />
+          {t('trainerClientDetail.reportPill', 'Report')}
+        </button>
       </div>
 
       {/* ── Identity header (centered) — exact Atelier reference sizes ── */}
@@ -1261,6 +1520,22 @@ export default function TrainerClientNotes() {
             <Play size={16} strokeWidth={2.2} />
             {t('trainerClientDetail.live.startSession', 'Log session')}
           </button>
+          {/* One Contact button → action sheet (call / WhatsApp / SMS). The
+              old inline WhatsApp + Call pair crowded the CTA row. */}
+          {phoneDigits && (
+            <button
+              type="button"
+              onClick={() => setShowContactSheet(true)}
+              aria-label={t('trainerClientDetail.contact.contactBtn', 'Contact')}
+              className="tt-btn tt-btn--secondary"
+              style={{
+                width: 44, height: 44, borderRadius: 14, padding: 0, flexShrink: 0,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Phone size={16} strokeWidth={2.2} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1281,57 +1556,82 @@ export default function TrainerClientNotes() {
       </div>
 
       {/* ── Tab chips (Atelier, horizontal scroll) ──────────── */}
-      <div data-swipe-ignore style={{ display: 'flex', gap: 7, padding: '0 16px 12px', overflowX: 'auto' }}>
-        {[
-          { l: t('trainerClientDetail.tabs.overview', 'Overview'), tab: 'overview' },
-          { l: t('trainerClientDetail.tabs.plan', 'Plan'), tab: 'programNutrition' },
-          { l: t('trainerClientDetail.tabs.history', 'History'), tab: 'history' },
-          { l: t('trainerClientDetail.tabs.notes', 'Notes'), tab: 'notesFollowUp' },
-          { l: t('trainerClientDetail.tabs.body', 'Body'), tab: 'body' },
-          { l: t('trainerClientDetail.tabs.coaching', 'Check-ins'), tab: 'coaching' },
-        ].map((t2) => {
-          const isActive = activeTab === t2.tab;
-          return (
-            <button
-              key={t2.tab}
-              type="button"
-              onClick={() => dispatch({ type: 'SET', payload: { activeTab: t2.tab } })}
-              className="tt-tap"
-              style={{
-                padding: '8px 14px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0,
-                fontFamily: TFont.display, fontSize: 13, fontWeight: 700,
-                background: isActive ? TT.text : TT.surface,
-                color: isActive ? TT.onInverse : TT.textSub,
-                boxShadow: isActive ? '0 2px 6px -2px rgba(20,16,10,.4)' : 'inset 0 0 0 1px var(--tt-border)',
-                border: 'none', cursor: 'pointer', minHeight: 36,
-              }}
-            >
-              {t2.l}
-            </button>
-          );
-        })}
+      <div
+        data-swipe-ignore
+        role="tablist"
+        style={{ display: 'flex', padding: '0 8px', borderBottom: `1px solid ${TT.border}`, marginBottom: 4 }}
+      >
+        {(() => {
+          // Labels keyed by the canonical id list (MEMBER_TAB_ORDER) so the
+          // chip order, swipe order and ?tab= values can never drift apart.
+          const TAB_LABELS = {
+            overview: t('trainerClientDetail.tabs.overview', 'Overview'),
+            programNutrition: t('trainerClientDetail.tabs.plan', 'Plan'),
+            body: t('trainerClientDetail.tabs.body', 'Body'),
+            notesFollowUp: t('trainerClientDetail.tabs.notes', 'Notes'),
+            history: t('trainerClientDetail.tabs.history', 'History'),
+          };
+          return MEMBER_TAB_ORDER.map((tabId) => {
+            const isActive = activeTab === tabId;
+            return (
+              <button
+                key={tabId}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => dispatch({ type: 'SET', payload: { activeTab: tabId } })}
+                className="tt-tap"
+                style={{
+                  flex: 1, minWidth: 0, textAlign: 'center',
+                  padding: '11px 2px 12px', whiteSpace: 'nowrap',
+                  // Clip instead of spilling — an overlong label widening the
+                  // document is what let the whole page pan sideways.
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                  fontFamily: TFont.display, fontSize: 12, fontWeight: isActive ? 800 : 600,
+                  background: 'none', border: 'none',
+                  color: isActive ? TT.text : TT.textSub,
+                  borderBottom: isActive ? `2px solid ${TT.accent}` : '2px solid transparent',
+                  marginBottom: -1,
+                  cursor: 'pointer', minHeight: 40,
+                }}
+              >
+                {TAB_LABELS[tabId]}
+              </button>
+            );
+          });
+        })()}
       </div>
 
+      {/* ── Swipeable tab panels: 3-slot track (prev | active | next) that
+          follows the finger; neighbors mount only while a drag is live, so
+          the idle render cost is identical to the old single panel. ────── */}
+      {(() => {
+        const renderTabPanel = (tab) => (
+          <>
       {/* ── Overview tab content (new visual layer) ────────── */}
-      {activeTab === 'overview' && (
+      {tab === 'overview' && (
         <div style={{ padding: '16px 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
           {/* Check-in reference photo (staff-managed) */}
           <TCard padded={14} style={{ marginBottom: 22 }}>
+            {/* View-only for trainers — the reference photo is managed by the
+                gym admin at the front desk (0548 enforces this server-side). */}
             <CheckinPhotoEditor
+              canEdit={false}
               subjectId={clientId}
               path={client.checkin_photo_path}
               size={84}
               onChange={(p) => dispatch({ type: 'SET', payload: { client: { ...client, checkin_photo_path: p } } })}
               theme={{ accent: TT.accent, surface: TT.surface2, border: TT.border, text: TT.text, textSub: TT.textSub, danger: TT.hot, badgeBorder: TT.surface }}
-              labels={{ photo: t('checkinPhoto.title', 'Check-in photo'), hint: t('checkinPhoto.hint', 'Staff only — used to verify identity at check-in.'), add: t('checkinPhoto.add', 'Add photo'), replace: t('checkinPhoto.replace', 'Replace'), remove: t('checkinPhoto.remove', 'Remove') }}
+              labels={{ photo: t('checkinPhoto.title', 'Check-in photo'), hint: t('checkinPhoto.viewOnlyHint', 'Managed by the gym at the front desk — view only.'), add: t('checkinPhoto.add', 'Add photo'), replace: t('checkinPhoto.replace', 'Replace'), remove: t('checkinPhoto.remove', 'Remove') }}
             />
           </TCard>
           {/* Payment (trainer tool) */}
           <TrainerClientPayment clientId={clientId} />
           {/* Weekly schedule (trainer tool) */}
           <TrainerClientSchedule clientId={clientId} />
-          {/* Next session */}
-          {(programName || recentSessions.length > 0) && (
+          {/* Next session — also shown for brand-new clients whose only data
+              is a booked upcoming session (nextSession). */}
+          {(nextSession || programName || recentSessions.length > 0) && (
             <>
               <TSectionHeader title={t('trainerClientDetail.nextSession', 'Next session')} />
               <TCard padded={14} style={{ marginBottom: 22, boxShadow: `inset 3px 0 0 ${TT.accent}, ${TT.shadow}` }}>
@@ -1354,7 +1654,8 @@ export default function TrainerClientNotes() {
                     </div>
                     <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 2 }}>
                       {programProgress
-                        ? t('trainerClientDetail.weekDay', 'Week {{w}} · day {{d}}', { w: programProgress.currentWeek, d: programProgress.daysPerWeek })
+                        // daysPerWeek is a frequency, not "which day" — phrase it as such.
+                        ? t('trainerClientDetail.weekDaysPerWeek', 'Week {{w}} · {{d}} days/wk', { w: programProgress.currentWeek, d: programProgress.daysPerWeek })
                         : recentSessions[0]?.name || ''}
                     </div>
                   </div>
@@ -1422,52 +1723,8 @@ export default function TrainerClientNotes() {
             </>
           )}
 
-          {/* Recent log — dumbbell icon-box rows (Atelier) */}
-          <TSectionHeader title={t('trainerClientDetail.recentLog', 'Recent log')} />
-          {recentSessions.length === 0 ? (
-            <TCard padded={14} style={{ marginBottom: 22 }}>
-              <p style={{ fontSize: 13, color: TT.textMute }}>
-                {t('trainerNotes.overview.noRecentWorkouts', 'No recent workouts')}
-              </p>
-            </TCard>
-          ) : (
-            <TCard padded={0} style={{ marginBottom: 22, overflow: 'hidden' }}>
-              {recentSessions.slice(0, 5).map((s, i) => {
-                const mins = s.duration_seconds ? Math.round(s.duration_seconds / 60) : null;
-                return (
-                  <div
-                    key={s.id}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px',
-                      borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
-                    }}
-                  >
-                    <div style={{
-                      width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-                      background: 'color-mix(in srgb, #1E9C8E 12%, transparent)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Dumbbell size={17} color={TT.accent} strokeWidth={2.1} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {s.name || t('trainerNotes.overview.workout', 'Workout')}
-                      </div>
-                      <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>
-                        {format(new Date(s.started_at), 'MMM d', { locale: dateFnsLocale })}
-                        {mins != null && ` · ${t('trainerClientDetail.sessionMins', '{{m}} min', { m: mins })}`}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: TT.text, fontFamily: TFont.mono, flexShrink: 0 }}>
-                      {s.total_volume_lbs >= 1000
-                        ? `${(s.total_volume_lbs / 1000).toFixed(1)}${t('trainerClientDetail.body.kLbs', 'k lbs')}`
-                        : `${s.total_volume_lbs || 0} ${t('common:lb', 'lb')}`}
-                    </div>
-                  </div>
-                );
-              })}
-            </TCard>
-          )}
+          {/* (Recent log removed — duplicated the History tab's Entrenos list.
+              recentSessions still feeds the hero's next-session fallback.) */}
 
           {/* Recent PRs (Atelier) */}
           <TSectionHeader title={t('trainerClientDetail.recentPrs', 'Recent PRs')} />
@@ -1518,7 +1775,66 @@ export default function TrainerClientNotes() {
                   </div>
                 </div>
               ))}
+              {(personalRecords || []).length > prVisible && (
+                <button type="button" onClick={() => setPrVisible(v => v + 5)} className="tt-tap"
+                  style={{ width: '100%', padding: 13, background: 'transparent', border: 'none', borderTop: `1px solid ${TT.border}`, color: TT.accentInk, fontWeight: 800, fontSize: 12.5, fontFamily: TFont.display, cursor: 'pointer' }}>
+                  {t('trainerClientDetail.showMore', 'Ver más')}
+                </button>
+              )}
             </TCard>
+          )}
+
+          {/* Client goals (member-set, read-only — RLS read policy from 0527;
+              section hides itself when the query errors or returns nothing) */}
+          {memberGoals.length > 0 && (
+            <>
+              <TSectionHeader title={t('trainerClientDetail.clientGoals.title', 'Client goals')} />
+              <TCard padded={0} style={{ marginBottom: 22, overflow: 'hidden' }}>
+                {[...memberGoals]
+                  .sort((a, b) => (a.achieved_at ? 1 : 0) - (b.achieved_at ? 1 : 0))
+                  .slice(0, 6)
+                  .map((g, i) => {
+                    const target = parseFloat(g.target_value) || 0;
+                    const current = parseFloat(g.current_value) || 0;
+                    // Direction-aware (mirrors GoalsSection.goalProgressPct): body
+                    // goals count DOWN from a baseline, so current/target pins them
+                    // at 100%. Use distance covered when a baseline is recorded;
+                    // fall back to current/target for legacy goals.
+                    const start = g.start_value != null ? parseFloat(g.start_value) : NaN;
+                    const rawPct = (!isNaN(start) && start !== target)
+                      ? ((start - current) / (start - target)) * 100
+                      : (target > 0 ? (current / target) * 100 : 0);
+                    const pct = isFinite(rawPct) ? Math.min(100, Math.max(0, Math.round(rawPct))) : 0;
+                    const achieved = !!g.achieved_at;
+                    return (
+                      <div
+                        key={g.id}
+                        style={{ padding: '12px 15px', borderTop: i > 0 ? `1px solid ${TT.border}` : 'none' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {g.title}
+                          </div>
+                          {achieved ? (
+                            <TPill tone="good" size="m" style={{ flexShrink: 0 }}>
+                              {t('goals.achieved', 'Achieved')}
+                            </TPill>
+                          ) : (
+                            <span style={{ fontSize: 12, fontWeight: 700, color: TT.textSub, fontFamily: TFont.mono, flexShrink: 0 }}>
+                              {current.toLocaleString()} / {target.toLocaleString()}{g.unit ? ` ${g.unit}` : ''}
+                            </span>
+                          )}
+                        </div>
+                        {!achieved && (
+                          <div style={{ height: 5, background: TT.surface2, borderRadius: 999, marginTop: 8, overflow: 'hidden', boxShadow: 'inset 0 0 0 1px var(--tt-border)' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#27B0A0,#178C7E)', borderRadius: 999 }} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </TCard>
+            </>
           )}
 
           {/* Pinned notes (warm gradient, Atelier) */}
@@ -1571,36 +1887,6 @@ export default function TrainerClientNotes() {
             </>
           )}
 
-          {/* Quick action row — keep access to follow-up/report */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'notesFollowUp', showFollowupModal: true } })}
-              className="tt-btn tt-btn--secondary"
-              style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <Phone size={13} />
-              {t('trainerNotes.actions.logFollowUp', 'Log follow-up')}
-            </button>
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
-              className="tt-btn tt-btn--secondary"
-              style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <BarChart3 size={13} />
-              {t('trainerNotes.actions.monthlyReport', 'Monthly report')}
-            </button>
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'programNutrition' } })}
-              className="tt-btn tt-btn--secondary"
-              style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <BookOpen size={13} />
-              {t('trainerNotes.actions.assignProgram', 'Assign program')}
-            </button>
-          </div>
         </div>
       )}
 
@@ -1609,7 +1895,7 @@ export default function TrainerClientNotes() {
           profile_id = auth.uid(), which would block trainers. Adding new RLS policies + RPCs (Option B) is
           additional backend scope; this read-only mirror satisfies the v1 requirement and is safe to ship.
           Trainer still sees the full picture (weight trend, body comp, measurements grid, photo timeline). */}
-      {activeTab === 'body' && (
+      {tab === 'body' && (
         <div style={{ padding: '16px 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
           {/* Recovery + what-to-train (trainer tool) */}
           <TrainerClientRecovery clientId={clientId} />
@@ -1699,7 +1985,7 @@ export default function TrainerClientNotes() {
               ))}
             </div>
           </div>
-          <TCard padded={16} style={{ marginBottom: 22 }}>
+          <TCard padded={16} style={{ marginBottom: 22 }} data-swipe-ignore>
             {bodyWeightStats.current != null && (
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ fontFamily: TFont.display, fontSize: 26, fontWeight: 800, color: TT.text, letterSpacing: -1, lineHeight: 1 }}>
@@ -1800,7 +2086,7 @@ export default function TrainerClientNotes() {
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => dispatch({ type: 'SET', payload: { viewingPhoto: p } })}
+                      onClick={() => openPhotoViewer(p)}
                       aria-label={t('trainerClientDetail.body.viewPhoto', 'View progress photo')}
                       style={{
                         aspectRatio: '3/4', borderRadius: 12, overflow: 'hidden',
@@ -1832,7 +2118,7 @@ export default function TrainerClientNotes() {
       )}
 
       {/* ===================== TAB: HISTORY (full client history) ===================== */}
-      {activeTab === 'history' && (
+      {tab === 'history' && (
         <div style={{ padding: '16px 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
           {/* Streak summary — flame / trophy stat cards (Atelier) */}
           <TSectionHeader title={t('trainerClientDetail.history.streaks', 'Streaks')} />
@@ -1858,7 +2144,7 @@ export default function TrainerClientNotes() {
 
           {/* PR timeline */}
           <TSectionHeader title={t('trainerClientDetail.history.prTimeline', 'PR timeline')} />
-          <TCard padded={14} style={{ marginBottom: 22 }}>
+          <TCard padded={14} style={{ marginBottom: 22 }} data-swipe-ignore>
             {prTimelineData.series.length > 1 ? (
               <div style={{ height: 200, marginLeft: -10 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -1894,7 +2180,7 @@ export default function TrainerClientNotes() {
 
           {/* Volume trend */}
           <TSectionHeader title={t('trainerClientDetail.history.volumeTrend', 'Volume trend')} />
-          <TCard padded={14} style={{ marginBottom: 22 }}>
+          <TCard padded={14} style={{ marginBottom: 22 }} data-swipe-ignore>
             {volumeTrendData.some(d => d.volume > 0) ? (
               <div style={{ height: 180, marginLeft: -10 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -1920,38 +2206,37 @@ export default function TrainerClientNotes() {
             )}
           </TCard>
 
-          {/* Attendance heatmap (90-day) */}
-          <TSectionHeader title={t('trainerClientDetail.history.attendance', 'Attendance')} />
-          <TCard padded={16} style={{ marginBottom: 22 }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: 5,
-            }}>
-              {attendanceHeatmap.slice(-35).map((d, i) => {
-                const intensity = d.value === 0 ? 0 : Math.min(d.value, 3);
-                const colors = [TT.surface2, TT.accentSoft, '#7FE3C4', TT.accent];
+          {/* Monthly visits — broken down by week (detailed calendar lives in Body) */}
+          <TSectionHeader
+            title={t('trainerClientDetail.history.monthlyVisits', 'Monthly visits')}
+            action={monthlyVisits.monthLabel}
+          />
+          <TCard padded={16} style={{ marginBottom: 22 }} data-swipe-ignore>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 16 }}>
+              <span style={{ fontFamily: TFont.display, fontSize: 26, fontWeight: 800, color: TT.text, letterSpacing: -1, lineHeight: 1 }}>
+                {monthlyVisits.total}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: TT.textSub }}>
+                {t('trainerClientDetail.history.visitsThisMonth', 'visits this month')}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: 84, gap: 8 }}>
+              {monthlyVisits.weeks.map((w) => {
+                const h = w.count === 0 ? 6 : Math.max(12, (w.count / monthlyVisits.max) * 60);
                 return (
-                  <div
-                    key={i}
-                    title={`${d.label}: ${t('trainerClientDetail.heatmap.event', '{{count}} events', { count: d.value })}`}
-                    aria-label={`${d.label}: ${t('trainerClientDetail.heatmap.event', '{{count}} events', { count: d.value })}`}
-                    style={{
-                      aspectRatio: '1/1',
-                      borderRadius: 5,
-                      background: colors[intensity],
-                      boxShadow: intensity === 0 ? 'inset 0 0 0 1px var(--tt-border)' : 'none',
-                    }}
-                  />
+                  <div key={w.week} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontFamily: TFont.display, fontSize: 12.5, fontWeight: 800, color: w.count > 0 ? TT.text : TT.textMute }}>{w.count}</span>
+                    <div style={{
+                      width: '100%', maxWidth: 38, height: h, borderRadius: 8,
+                      background: w.count > 0 ? 'linear-gradient(180deg,#27B0A0,#178C7E)' : TT.surface2,
+                      boxShadow: w.count > 0 ? 'inset 0 1px 0 rgba(255,255,255,.25)' : 'inset 0 0 0 1px var(--tt-border)',
+                    }} />
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: TT.textMute }}>
+                      {t('trainerClientDetail.history.weekShort', 'W')}{w.week}
+                    </span>
+                  </div>
                 );
               })}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 10.5, color: TT.textMute, fontWeight: 700 }}>
-              <span>{t('trainerClientDetail.history.less', 'Less')}</span>
-              {[TT.surface2, TT.accentSoft, '#7FE3C4', TT.accent].map((c, i) => (
-                <div key={i} style={{ width: 11, height: 11, borderRadius: 3, background: c, boxShadow: i === 0 ? 'inset 0 0 0 1px var(--tt-border)' : 'none' }} />
-              ))}
-              <span>{t('trainerClientDetail.history.more', 'More')}</span>
             </div>
           </TCard>
 
@@ -1971,13 +2256,17 @@ export default function TrainerClientNotes() {
             </TCard>
           ) : (
             <TCard padded={0}>
-              {allSessions.slice(0, 30).map((s, i) => {
+              {allSessions.slice(0, logVisible).map((s, i) => {
                 const isOpen = expandedSessionId === s.id;
                 return (
                   <div key={s.id} style={{ borderTop: i > 0 ? `1px solid ${TT.border}` : 'none' }}>
                     <button
                       type="button"
-                      onClick={() => dispatch({ type: 'SET', payload: { expandedSessionId: isOpen ? null : s.id } })}
+                      onClick={() => {
+                        const next = isOpen ? null : s.id;
+                        dispatch({ type: 'SET', payload: { expandedSessionId: next } });
+                        if (next) loadSessionDetail(s.id);
+                      }}
                       aria-expanded={isOpen}
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center', gap: 12,
@@ -2028,54 +2317,77 @@ export default function TrainerClientNotes() {
                         padding: '0 14px 12px',
                         fontSize: 12, color: TT.textSub,
                         background: TT.surface2,
-                        borderBottom: i === Math.min(allSessions.length, 30) - 1 ? 'none' : 'none',
                       }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, paddingTop: 10 }}>
-                          <div>
-                            <div style={{ fontSize: 9.5, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                              {t('trainerClientDetail.history.duration', 'Duration')}
+                        {(() => {
+                          // Per-exercise breakdown (fetched on first expand,
+                          // cached per session) — the collapsed row already
+                          // shows date/duration/volume.
+                          const detail = sessionDetails[s.id];
+                          if (!detail || detail.loading) {
+                            return (
+                              <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px' }}>
+                                <Loader2 size={15} className="animate-spin" />
+                              </div>
+                            );
+                          }
+                          if (detail.exercises.length === 0) {
+                            return (
+                              <p style={{ fontSize: 12, color: TT.textMute, paddingTop: 10 }}>
+                                {t('trainerClientDetail.history.noDetail', 'No exercise detail recorded for this session.')}
+                              </p>
+                            );
+                          }
+                          return detail.exercises.map((ex, j) => (
+                            <div key={ex.id} style={{ paddingTop: j === 0 ? 10 : 9 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 700, color: TT.text }}>{ex.name}</div>
+                              {ex.sets.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
+                                  {ex.sets.map((set, k) => {
+                                    const w = Number(set.weight_lbs) || 0;
+                                    const r = set.reps || 0;
+                                    const label = (!w && !r && set.duration_seconds)
+                                      ? `${set.duration_seconds}s`
+                                      : `${w}×${r}`;
+                                    return (
+                                      <span
+                                        key={k}
+                                        style={{
+                                          fontFamily: TFont.mono, fontSize: 11, fontWeight: 700,
+                                          color: TT.text, background: TT.surface,
+                                          borderRadius: 7, padding: '2px 7px',
+                                          boxShadow: 'inset 0 0 0 1px var(--tt-border)',
+                                        }}
+                                      >
+                                        {label}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
-                            <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, marginTop: 2 }}>
-                              {formatDuration(s.duration_seconds)}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 9.5, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                              {t('trainerClientDetail.history.volume', 'Volume')}
-                            </div>
-                            <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, marginTop: 2 }}>
-                              {s.total_volume_lbs >= 1000
-                                ? `${(s.total_volume_lbs / 1000).toFixed(1)}${t('trainerClientDetail.body.kLbs', 'k lbs')}`
-                                : `${s.total_volume_lbs || 0} ${t('common:lb', 'lb')}`}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 9.5, fontWeight: 700, color: TT.textMute, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                              {t('trainerClientDetail.history.date', 'Date')}
-                            </div>
-                            <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, marginTop: 2 }}>
-                              {format(new Date(s.started_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
-                            </div>
-                          </div>
-                        </div>
+                          ));
+                        })()}
                       </div>
                     )}
                   </div>
                 );
               })}
+              {allSessions.length > logVisible && (
+                <button type="button" onClick={() => setLogVisible(v => v + 5)} className="tt-tap"
+                  style={{ width: '100%', padding: 13, background: 'transparent', border: 'none', borderTop: `1px solid ${TT.border}`, color: TT.accentInk, fontWeight: 800, fontSize: 12.5, fontFamily: TFont.display, cursor: 'pointer' }}>
+                  {t('trainerClientDetail.showMore', 'Ver más')}
+                </button>
+              )}
             </TCard>
           )}
         </div>
       )}
 
-      {/* ── Existing legacy tab content for non-overview tabs ── */}
+      {/* ── Remaining tab content (each block is already gated on activeTab) ── */}
       <div className="md:max-w-[860px] md:mx-auto">
-        <div style={{
-          display: (activeTab === 'overview' || activeTab === 'body' || activeTab === 'history') ? 'none' : 'block',
-        }}>
 
       {/* ===================== TAB 2: NOTES & FOLLOW-UP ===================== */}
-      {activeTab === 'notesFollowUp' && (
+      {tab === 'notesFollowUp' && (
         <div style={{ padding: '16px 16px 24px' }} className="md:grid md:grid-cols-2 md:gap-4">
           {/* Coach Notes (merged: notes + preferences + goal reminders) */}
           <TCard padded={16} style={{ marginBottom: 22 }}>
@@ -2132,6 +2444,42 @@ export default function TrainerClientNotes() {
               }}
               rows={5}
             />
+
+            {/* Member-declared injuries + excluded exercises (from onboarding —
+                read-only safety info, shown only when the member declared any) */}
+            {declaredInjuries && (
+              <div style={{
+                marginTop: 12, padding: '11px 12px', borderRadius: 12,
+                background: TT.warnSoft,
+              }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: TT.warnInk, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                  {t('trainerClientDetail.declaredInjuries.title', 'Client-declared injuries')}
+                </div>
+                {declaredInjuries.notes && (
+                  <p style={{ fontSize: 13, color: TT.text, fontWeight: 600, marginTop: 5, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                    {declaredInjuries.notes}
+                  </p>
+                )}
+                {declaredInjuries.excludedNames.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: TT.warnInk, letterSpacing: 0.5, textTransform: 'uppercase', marginTop: declaredInjuries.notes ? 9 : 5 }}>
+                      {t('trainerClientDetail.declaredInjuries.excluded', 'Excluded exercises')}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 5 }}>
+                      {declaredInjuries.excludedNames.map((name, i) => (
+                        <span key={i} style={{
+                          fontSize: 11.5, fontWeight: 700, color: TT.text,
+                          background: TT.surface, borderRadius: 8, padding: '3px 8px',
+                          boxShadow: 'inset 0 0 0 1px var(--tt-border)',
+                        }}>
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </TCard>
 
           {/* Save button */}
@@ -2210,13 +2558,8 @@ export default function TrainerClientNotes() {
         </div>
       )}
 
-      {/* ===================== TAB: CHECK-INS & HABITS (#6) ===================== */}
-      {activeTab === 'coaching' && (
-        <TrainerClientCoaching clientId={clientId} gymId={profile?.gym_id} trainerId={profile?.id} />
-      )}
-
       {/* ===================== TAB 3: PROGRAM & NUTRITION ===================== */}
-      {activeTab === 'programNutrition' && (
+      {tab === 'programNutrition' && (
         <div style={{ padding: '16px 16px 24px' }} className="md:max-w-[860px] md:mx-auto">
           {/* Current assigned program */}
           <TSectionHeader title={t('trainerNotes.program.currentProgram')} />
@@ -2311,8 +2654,8 @@ export default function TrainerClientNotes() {
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <p style={{ fontSize: 14, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prog.name}</p>
                       <p style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>
+                        {/* gym_programs has no days_per_week column — duration only. */}
                         {prog.duration_weeks ? `${prog.duration_weeks} ${t('trainerNotes.program.weeks')}` : ''}
-                        {prog.days_per_week ? ` · ${prog.days_per_week} ${t('trainerNotes.program.daysWk')}` : ''}
                       </p>
                     </div>
                     {isAssigned ? (
@@ -2491,7 +2834,7 @@ export default function TrainerClientNotes() {
 
               {/* 7-Day Food Log Compliance */}
               <TSectionHeader title={t('trainerNotes.nutrition.weeklyIntake', '7-Day Intake')} />
-              <TCard padded={16} style={{ marginBottom: 22 }}>
+              <TCard padded={16} style={{ marginBottom: 22 }} data-swipe-ignore>
                 {foodLogSummary.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '24px 0' }}>
                     <p style={{ fontSize: 13, color: TT.textMute }}>{t('trainerNotes.nutrition.noLogs', 'No food logs in the last 7 days')}</p>
@@ -2601,8 +2944,22 @@ export default function TrainerClientNotes() {
           )}
         </div>
       )}
-        </div>
       </div>
+          </>
+        );
+        const ti = MEMBER_TAB_ORDER.indexOf(activeTab);
+        const prevTab = swipeDrag && ti > 0 ? MEMBER_TAB_ORDER[ti - 1] : null;
+        const nextTab = swipeDrag && ti < MEMBER_TAB_ORDER.length - 1 ? MEMBER_TAB_ORDER[ti + 1] : null;
+        return (
+          <div ref={swipeViewportRef} style={{ overflow: 'hidden', touchAction: 'pan-y' }}>
+            <div ref={trackRef} style={{ display: 'flex', alignItems: 'flex-start', width: '300%', transform: 'translateX(-33.3333%)' }}>
+              <div style={{ width: '33.3333%', flexShrink: 0 }}>{prevTab ? renderTabPanel(prevTab) : null}</div>
+              <div style={{ width: '33.3333%', flexShrink: 0 }}>{renderTabPanel(activeTab)}</div>
+              <div style={{ width: '33.3333%', flexShrink: 0 }}>{nextTab ? renderTabPanel(nextTab) : null}</div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Monthly Report Modal */}
       <MonthlyProgressReport
@@ -2613,7 +2970,7 @@ export default function TrainerClientNotes() {
 
       {/* Log Follow-Up Modal */}
       {showFollowupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+        <div data-swipe-ignore className="fixed inset-0 z-[90] flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
           <div style={{ background: TT.surface, borderRadius: 'var(--tt-card-radius, 20px)', border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg, width: '100%', maxWidth: 448, maxHeight: '90vh', overflowY: 'auto', padding: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ fontFamily: TFont.display, fontSize: 17, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
@@ -2706,15 +3063,102 @@ export default function TrainerClientNotes() {
         </div>
       )}
 
+      {/* Contact action sheet — call / WhatsApp / SMS (member emails are
+          PII-protected from trainers by design, so no email row). Portaled:
+          ancestors with transforms break position:fixed. */}
+      {showContactSheet && phoneDigits && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('trainerClientDetail.contact.contactBtn', 'Contact')}
+          onClick={() => setShowContactSheet(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 90,
+            background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 480,
+              background: TT.surface, border: `1px solid ${TT.border}`, borderBottom: 'none',
+              borderRadius: '22px 22px 0 0',
+              padding: '10px 16px calc(16px + env(safe-area-inset-bottom))',
+            }}
+          >
+            <div style={{ width: 38, height: 4.5, borderRadius: 999, background: TT.border, margin: '2px auto 12px' }} />
+            <div style={{ fontFamily: TFont.display, fontSize: 17, fontWeight: 800, color: TT.text, letterSpacing: -0.3, textAlign: 'center', marginBottom: 6 }}>
+              {t('trainerClientDetail.contact.title', 'Contact {{name}}', { name: (client?.full_name || '').split(' ')[0] || t('trainerMessages.list.clientFallback', 'Client') })}
+            </div>
+            {[
+              {
+                ico: Phone, tint: TT.accent,
+                label: t('trainerClientDetail.contact.call', 'Call'),
+                onClick: () => { setShowContactSheet(false); window.location.href = `tel:+${phoneDigits}`; },
+              },
+              {
+                ico: MessageCircle, tint: '#25D366',
+                label: t('trainerClientDetail.contact.whatsapp', 'WhatsApp'),
+                onClick: () => {
+                  setShowContactSheet(false);
+                  openWhatsApp(client.phone_number, t('trainerClients.waGreeting', 'Hi {{name}}!', { name: (client.full_name || '').split(' ')[0] || '' }));
+                },
+              },
+              {
+                ico: Smartphone, tint: '#5A8DEE',
+                label: t('trainerClientDetail.contact.sms', 'Text message (SMS)'),
+                onClick: () => { setShowContactSheet(false); window.location.href = `sms:+${phoneDigits}`; },
+              },
+            ].map((row, i) => {
+              const Ico = row.ico;
+              return (
+                <button
+                  key={row.label}
+                  type="button"
+                  onClick={row.onClick}
+                  className="tt-tap"
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 13,
+                    padding: '13px 6px', background: 'transparent', border: 'none',
+                    borderTop: i > 0 ? `1px solid ${TT.border}` : 'none',
+                    cursor: 'pointer', textAlign: 'left', minHeight: 54,
+                  }}
+                >
+                  <span style={{
+                    width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+                    background: `color-mix(in srgb, ${row.tint} 14%, transparent)`,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Ico size={18} color={row.tint} strokeWidth={2.2} />
+                  </span>
+                  <span style={{ fontSize: 14.5, fontWeight: 700, color: TT.text }}>{row.label}</span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setShowContactSheet(false)}
+              className="tt-btn tt-btn--secondary"
+              style={{ width: '100%', height: 48, borderRadius: 14, marginTop: 8, fontSize: 14 }}
+            >
+              {t('trainerNotes.followUp.cancel', 'Cancel')}
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Body tab — full-image photo viewer (read-only) */}
       {viewingPhoto && (
         <div
+          data-swipe-ignore
           role="dialog"
           aria-modal="true"
           aria-label={t('trainerClientDetail.body.viewPhoto', 'View progress photo')}
           onClick={() => dispatch({ type: 'SET', payload: { viewingPhoto: null } })}
           style={{
-            position: 'fixed', inset: 0, zIndex: 60,
+            position: 'fixed', inset: 0, zIndex: 90,
             background: 'rgba(0,0,0,0.92)',
             display: 'flex', flexDirection: 'column',
             backdropFilter: 'blur(4px)',

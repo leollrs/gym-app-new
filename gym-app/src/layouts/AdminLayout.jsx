@@ -134,9 +134,12 @@ export default function AdminLayout({ children }) {
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState({});
 
-  // Admin presence heartbeat (multi-admin awareness)
+  // Admin presence heartbeat. NOT gated on multiAdminEnabled: the platform
+  // tier reads admin_presence as "owner engagement" for EVERY gym
+  // (GymHealth "Admin Inactive", FeatureAdoption, Attention) — gating it
+  // meant zero gyms ever wrote presence and they all read as inactive.
   useEffect(() => {
-    if (!profile?.gym_id || !gymConfig?.multiAdminEnabled) return;
+    if (!profile?.gym_id) return;
     const page = location.pathname.replace('/admin', '') || '/';
     // Initial heartbeat
     supabase.rpc('admin_heartbeat', { p_page: page }).catch(() => {});
@@ -146,7 +149,7 @@ export default function AdminLayout({ children }) {
       supabase.rpc('admin_heartbeat', { p_page: currentPage }).catch(() => {});
     }, 60_000);
     return () => clearInterval(interval);
-  }, [profile?.gym_id, gymConfig?.multiAdminEnabled, location.pathname]);
+  }, [profile?.gym_id, location.pathname]);
 
   // Fetch online admins (for multi-admin gyms)
   useEffect(() => {
@@ -265,12 +268,19 @@ export default function AdminLayout({ children }) {
     if (!profile?.gym_id) return;
     const fetchHighRisk = async () => {
       try {
-        const { count } = await supabase
+        // churn_risk_scores keeps one snapshot per member per DAY — an
+        // unfiltered count tallies the whole history, not current risk.
+        // Count distinct members within the last cron cycle (26h, same
+        // slack as loadScores' FRESH_MS) and dedupe by profile.
+        const since = new Date(Date.now() - 26 * 3600 * 1000).toISOString();
+        const { data } = await supabase
           .from('churn_risk_scores')
-          .select('id', { count: 'exact', head: true })
+          .select('profile_id')
           .eq('gym_id', profile.gym_id)
-          .in('risk_tier', ['critical', 'high']);
-        setHighRiskCount(count ?? 0);
+          .in('risk_tier', ['critical', 'high'])
+          .gte('computed_at', since)
+          .limit(1000);
+        setHighRiskCount(new Set((data || []).map(r => r.profile_id)).size);
       } catch (_) {
         // Fail silently — badge is non-critical
       }

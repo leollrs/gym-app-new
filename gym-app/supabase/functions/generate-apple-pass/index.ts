@@ -108,7 +108,7 @@ serve(async (req: Request) => {
       .select('*', { count: 'exact', head: true })
       .eq('profile_id', user.id)
       .eq('endpoint', 'generate-apple-pass')
-      .gte('requested_at', oneHourAgo);
+      .gte('created_at', oneHourAgo);
     if ((rlCount ?? 0) >= 10) {
       return new Response(
         JSON.stringify({ error: 'Rate limit exceeded — max 10 requests per hour' }),

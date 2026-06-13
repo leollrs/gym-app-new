@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ChevronLeft, ChevronRight, Bell, Edit2, Check, X, Loader2,
+  ChevronLeft, ChevronRight, Edit2, Check, X, Loader2,
   Camera, Shield, Trash2, Plus, Eye, Share2,
   Settings, Dumbbell, Star, Repeat,
   MapPin, Zap, Calendar,
@@ -26,6 +26,17 @@ const AVATAR_GRADIENT = 'linear-gradient(135deg, #1E9C8E 0%, #2EC9B7 100%)';
 
 const DOW_LETTERS_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DOW_INDEX_TO_KEY = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 0: 'sun' };
+
+// The 13 trainer_* profile columns this page owns (mirrors migration 0528).
+// Fetched directly on mount as a belt-and-suspenders against a context
+// profile that predates 0528 (get_auth_context didn't return them).
+const TRAINER_PROFILE_COLS = [
+  'trainer_tagline', 'trainer_cover_url', 'trainer_years_exp',
+  'trainer_location', 'trainer_pronouns', 'trainer_specialties',
+  'trainer_credentials', 'trainer_services', 'trainer_availability',
+  'trainer_verified', 'trainer_directory_visible',
+  'trainer_default_rate', 'trainer_rate_unit',
+].join(', ');
 
 // ────────────────────────────────────────────────────────────────────
 // Helpers
@@ -168,39 +179,55 @@ const labelStyle = {
 // ────────────────────────────────────────────────────────────────────
 // Edit Identity Modal
 // ────────────────────────────────────────────────────────────────────
+const makeIdentityDraft = (profile, currentEmail) => ({
+  full_name: profile?.full_name || '',
+  username: profile?.username || '',
+  email: currentEmail || '',
+  phone_number: profile?.phone_number || '',
+  trainer_pronouns: profile?.trainer_pronouns || '',
+  trainer_location: profile?.trainer_location || '',
+  trainer_years_exp: profile?.trainer_years_exp != null ? String(profile.trainer_years_exp) : '',
+  bio: profile?.bio || '',
+  trainer_tagline: profile?.trainer_tagline || '',
+  trainer_default_rate: profile?.trainer_default_rate != null ? String(profile.trainer_default_rate) : '',
+  trainer_rate_unit: profile?.trainer_rate_unit || 'month',
+});
+
+// Normalize a draft into DB-shaped values — used for the UPDATE payload AND
+// to diff against the seeded values, so untouched fields are never written.
+// (Previously every save wrote ALL fields; with an un-hydrated context
+// profile that nulled pronouns/location/years/tagline/rate on any save.)
+const normalizeIdentityDraft = (d) => ({
+  full_name: d.full_name.trim() || null,
+  username: d.username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') || null,
+  phone_number: d.phone_number.trim() || null,
+  trainer_pronouns: d.trainer_pronouns.trim() || null,
+  trainer_location: d.trainer_location.trim() || null,
+  trainer_years_exp: d.trainer_years_exp.trim()
+    ? Math.max(0, Math.min(80, parseInt(d.trainer_years_exp, 10) || 0))
+    : null,
+  bio: d.bio.trim() || null,
+  trainer_tagline: d.trainer_tagline.trim() || null,
+  trainer_default_rate: d.trainer_default_rate.trim() ? Math.max(0, Number(d.trainer_default_rate) || 0) : null,
+  trainer_rate_unit: d.trainer_default_rate.trim() ? (d.trainer_rate_unit || 'month') : null,
+});
+
 function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, saving }) {
   const { t } = useTranslation(['pages', 'common']);
-  const [draft, setDraft] = useState(() => ({
-    full_name: profile?.full_name || '',
-    username: profile?.username || '',
-    email: currentEmail || '',
-    phone_number: profile?.phone_number || '',
-    trainer_pronouns: profile?.trainer_pronouns || '',
-    trainer_location: profile?.trainer_location || '',
-    trainer_years_exp: profile?.trainer_years_exp != null ? String(profile.trainer_years_exp) : '',
-    bio: profile?.bio || '',
-    trainer_tagline: profile?.trainer_tagline || '',
-    trainer_default_rate: profile?.trainer_default_rate != null ? String(profile.trainer_default_rate) : '',
-    trainer_rate_unit: profile?.trainer_rate_unit || 'month',
-  }));
+  const [initialDraft] = useState(() => makeIdentityDraft(profile, currentEmail));
+  const [draft, setDraft] = useState(initialDraft);
 
   const submit = () => {
-    const phone = draft.phone_number.trim() || null;
     const email = draft.email.trim() || null;
-    const updates = {
-      full_name: draft.full_name.trim() || null,
-      username: draft.username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') || null,
-      phone_number: phone,
-      trainer_pronouns: draft.trainer_pronouns.trim() || null,
-      trainer_location: draft.trainer_location.trim() || null,
-      trainer_years_exp: draft.trainer_years_exp.trim()
-        ? Math.max(0, Math.min(80, parseInt(draft.trainer_years_exp, 10) || 0))
-        : null,
-      bio: draft.bio.trim() || null,
-      trainer_tagline: draft.trainer_tagline.trim() || null,
-      trainer_default_rate: draft.trainer_default_rate.trim() ? Math.max(0, Number(draft.trainer_default_rate) || 0) : null,
-      trainer_rate_unit: draft.trainer_default_rate.trim() ? (draft.trainer_rate_unit || 'month') : null,
-    };
+    // Only send fields whose normalized value actually changed from the
+    // seeded one — an untouched field can never be nulled, even if the seed
+    // itself was empty because hydration failed.
+    const next = normalizeIdentityDraft(draft);
+    const base = normalizeIdentityDraft(initialDraft);
+    const updates = {};
+    Object.keys(next).forEach((k) => {
+      if (next[k] !== base[k]) updates[k] = next[k];
+    });
     // Email is on auth.users, not profiles — pass it as a side-channel so the
     // parent can route it through supabase.auth.updateUser (verification email).
     onSave(updates, { email, originalEmail: currentEmail });
@@ -282,6 +309,9 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
           />
           <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 4, lineHeight: 1.4 }}>
             {t('pages:trainerProfile.editIdentity.phoneHint', 'Format: +1 followed by 10 digits.')}
+          </div>
+          <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 2, lineHeight: 1.4 }}>
+            {t('pages:trainerProfile.editIdentity.phonePublicHint', 'Visible to gym members as a Call button on your public profile.')}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -924,6 +954,43 @@ export default function TrainerProfile() {
 
   // (Account list / language / delete-account UX moved to /trainer/settings.)
 
+  // ── P0-1: hydrate the trainer_* columns directly ──
+  // get_auth_context only returns them from migration 0528 onward, so on an
+  // un-migrated backend `profile.trainer_services` etc. are undefined here —
+  // the page rendered empty and the editors seeded from nothing (adding one
+  // service rebuilt the JSONB from [] and wiped the rest). Fetch our own row
+  // and merge it over the context profile; every read below goes through `tp`.
+  const [trainerRow, setTrainerRow] = useState(null);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select(TRAINER_PROFILE_COLS)
+        .eq('id', profile.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        // Fall back to the context profile; getCurrentArray() re-fetches
+        // before any JSONB write so a failed hydration can't cause a wipe.
+        logger.error('TrainerProfile trainer-row fetch failed', error);
+        return;
+      }
+      if (data) setTrainerRow(data);
+    })();
+    return () => { cancelled = true; };
+  }, [profile?.id]);
+
+  // Hydrated profile view: the fetched row wins for trainer_* columns (it's
+  // fresher than context pre-0528, and every save on this page also updates
+  // trainerRow so the UI reflects saves instantly).
+  const tp = useMemo(
+    () => (trainerRow ? { ...profile, ...trainerRow } : profile),
+    [profile, trainerRow],
+  );
+
   // ── Data fetching ────────────────────────
   useEffect(() => {
     if (!profile?.id) return;
@@ -934,9 +1001,14 @@ export default function TrainerProfile() {
       .select('id', { count: 'exact', head: true })
       .eq('trainer_id', profile.id)
       .eq('is_active', true)
-      .then(({ count }) => setClientCount(count || 0));
+      .then(({ count, error }) => {
+        if (error) { logger.error('TrainerProfile client count failed', error); return; }
+        setClientCount(count || 0);
+      });
 
-    // Sessions this month (completed)
+    // Sessions this month (completed) — trainer_sessions has no `started_at`
+    // column (the old filter errored and the KPI sat at 0 forever); sessions
+    // live on `scheduled_at` and completion is the status flag.
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
@@ -945,8 +1017,11 @@ export default function TrainerProfile() {
       .select('id', { count: 'exact', head: true })
       .eq('trainer_id', profile.id)
       .eq('status', 'completed')
-      .gte('started_at', monthStart.toISOString())
-      .then(({ count }) => setSessionsThisMonth(count || 0));
+      .gte('scheduled_at', monthStart.toISOString())
+      .then(({ count, error }) => {
+        if (error) { logger.error('TrainerProfile sessions count failed', error); return; }
+        setSessionsThisMonth(count || 0);
+      });
 
     // Avg adherence — average of (completed/planned) across clients for the current week
     supabase
@@ -1011,7 +1086,27 @@ export default function TrainerProfile() {
       .eq('id', profile.id);
     if (error) throw error;
     patchProfile({ [column]: nextValue });
+    // Keep the hydrated row in sync so the page reflects the save instantly
+    // even when the context profile lags (pre-0528 get_auth_context).
+    setTrainerRow(prev => ({ ...(prev || {}), [column]: nextValue }));
   }, [profile?.id, patchProfile]);
+
+  // Current value of a JSONB array column. Never rebuilds from an empty
+  // assumption: if the value isn't hydrated (undefined), read the column from
+  // the DB before writing — replacing the whole JSONB from a stale/missing
+  // local value is how "add one service" used to wipe all the others.
+  const getCurrentArray = useCallback(async (column) => {
+    const local = tp?.[column];
+    if (Array.isArray(local)) return [...local];
+    if (tp && column in tp && local === null) return []; // confirmed empty in DB
+    const { data, error } = await supabase
+      .from('profiles')
+      .select(column)
+      .eq('id', profile.id)
+      .maybeSingle();
+    if (error) throw error;
+    return Array.isArray(data?.[column]) ? [...data[column]] : [];
+  }, [tp, profile?.id]);
 
   // ── Avatar save (preserved from previous version) ──
   const handleAvatarSave = async ({ type, value, file }) => {
@@ -1103,9 +1198,20 @@ export default function TrainerProfile() {
       const normalizedUpdates = { ...updates };
       if (phone) normalizedUpdates.phone_number = phone.replace(/\s+/g, '');
 
-      const { error } = await supabase.from('profiles').update(normalizedUpdates).eq('id', profile.id);
-      if (error) throw error;
-      Object.entries(normalizedUpdates).forEach(([k, v]) => patchProfile({ [k]: v }));
+      // Only changed fields arrive here (the modal diffs against its seeds),
+      // so an untouched field can never be nulled. Nothing changed → no write.
+      if (Object.keys(normalizedUpdates).length > 0) {
+        const { error } = await supabase.from('profiles').update(normalizedUpdates).eq('id', profile.id);
+        if (error) throw error;
+        Object.entries(normalizedUpdates).forEach(([k, v]) => patchProfile({ [k]: v }));
+        setTrainerRow(prev => {
+          const next = { ...(prev || {}) };
+          Object.entries(normalizedUpdates).forEach(([k, v]) => {
+            if (k.startsWith('trainer_')) next[k] = v;
+          });
+          return next;
+        });
+      }
 
       // Email change goes through Supabase auth — sends a confirmation link
       // to the new address. The address only flips after the link is clicked.
@@ -1141,7 +1247,7 @@ export default function TrainerProfile() {
   const saveService = async (svc) => {
     setSavingService(true);
     try {
-      const list = Array.isArray(profile?.trainer_services) ? [...profile.trainer_services] : [];
+      const list = await getCurrentArray('trainer_services');
       const idx = list.findIndex(s => s.id === svc.id);
       if (idx >= 0) list[idx] = svc; else list.push(svc);
       await upsertColumn('trainer_services', list);
@@ -1158,8 +1264,7 @@ export default function TrainerProfile() {
   const deleteService = async (id) => {
     setSavingService(true);
     try {
-      const list = (Array.isArray(profile?.trainer_services) ? profile.trainer_services : [])
-        .filter(s => s.id !== id);
+      const list = (await getCurrentArray('trainer_services')).filter(s => s.id !== id);
       await upsertColumn('trainer_services', list);
       setServiceModal({ open: false, service: null });
       showToast(t('pages:trainerProfile.services.deleted', 'Service removed'), 'success');
@@ -1174,8 +1279,8 @@ export default function TrainerProfile() {
   const saveCredential = async (cred) => {
     setSavingCred(true);
     try {
-      const list = Array.isArray(profile?.trainer_credentials) ? [...profile.trainer_credentials] : [];
-      if (credModal.idx != null) list[credModal.idx] = cred; else list.push(cred);
+      const list = await getCurrentArray('trainer_credentials');
+      if (credModal.idx != null && credModal.idx < list.length) list[credModal.idx] = cred; else list.push(cred);
       await upsertColumn('trainer_credentials', list);
       setCredModal({ open: false, credential: null, idx: null });
       showToast(t('pages:trainerProfile.credentials.saved', 'Credential saved'), 'success');
@@ -1190,8 +1295,7 @@ export default function TrainerProfile() {
   const deleteCredential = async (idx) => {
     setSavingCred(true);
     try {
-      const list = (Array.isArray(profile?.trainer_credentials) ? profile.trainer_credentials : [])
-        .filter((_, i) => i !== idx);
+      const list = (await getCurrentArray('trainer_credentials')).filter((_, i) => i !== idx);
       await upsertColumn('trainer_credentials', list);
       setCredModal({ open: false, credential: null, idx: null });
       showToast(t('pages:trainerProfile.credentials.deleted', 'Credential removed'), 'success');
@@ -1233,15 +1337,15 @@ export default function TrainerProfile() {
 
   // (Account/sign-out/language/delete handlers live on /trainer/settings.)
 
-  // ── Derived values ────────────────────────
-  const displayName = profile?.full_name || profile?.username || t('pages:trainerProfile.trainerBadge', 'Trainer');
+  // ── Derived values (all from the hydrated `tp`) ──
+  const displayName = tp?.full_name || tp?.username || t('pages:trainerProfile.trainerBadge', 'Trainer');
   const initial = (displayName || '?').trim()[0]?.toUpperCase() || 'T';
-  const isVerified = !!profile?.trainer_verified;
-  const services = Array.isArray(profile?.trainer_services) ? profile.trainer_services : [];
-  const credentials = Array.isArray(profile?.trainer_credentials) ? profile.trainer_credentials : [];
-  const specialties = Array.isArray(profile?.trainer_specialties) ? profile.trainer_specialties : [];
-  const availability = (profile?.trainer_availability && typeof profile.trainer_availability === 'object')
-    ? profile.trainer_availability : {};
+  const isVerified = !!tp?.trainer_verified;
+  const services = Array.isArray(tp?.trainer_services) ? tp.trainer_services : [];
+  const credentials = Array.isArray(tp?.trainer_credentials) ? tp.trainer_credentials : [];
+  const specialties = Array.isArray(tp?.trainer_specialties) ? tp.trainer_specialties : [];
+  const availability = (tp?.trainer_availability && typeof tp.trainer_availability === 'object')
+    ? tp.trainer_availability : {};
   const topCredential = credentials[0]?.name || null;
 
   const dayLabelsFull = useMemo(() => (
@@ -1286,12 +1390,12 @@ export default function TrainerProfile() {
       <div style={{ position: 'relative' }}>
         <div style={{
           height: 130,
-          background: profile?.trainer_cover_url
-            ? `url(${profile.trainer_cover_url}) center/cover, ${COVER_GRADIENT}`
+          background: tp?.trainer_cover_url
+            ? `url(${tp.trainer_cover_url}) center/cover, ${COVER_GRADIENT}`
             : COVER_GRADIENT,
           position: 'relative', overflow: 'hidden',
         }}>
-          {!profile?.trainer_cover_url && (
+          {!tp?.trainer_cover_url && (
             <div style={{
               position: 'absolute', inset: 0,
               background: 'radial-gradient(circle at 80% 20%, rgba(255,255,255,0.18), transparent 50%)',
@@ -1403,7 +1507,7 @@ export default function TrainerProfile() {
                 alt={displayName}
                 style={{
                   width: 90, height: 90, borderRadius: 24,
-                  border: `4px solid ${TT.bg === '#f0eee9' ? '#FAF7F0' : TT.bg}`,
+                  border: `4px solid ${TT.bg}`,
                   objectFit: 'cover', display: 'block',
                 }}
               />
@@ -1411,7 +1515,7 @@ export default function TrainerProfile() {
               <div style={{
                 width: 90, height: 90, borderRadius: 24,
                 background: AVATAR_GRADIENT,
-                border: `4px solid ${TT.bg === '#f0eee9' ? '#FAF7F0' : TT.bg}`,
+                border: `4px solid ${TT.bg}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontFamily: TFont.display, fontSize: 36, fontWeight: 900, color: '#06363B',
                 letterSpacing: -1,
@@ -1429,7 +1533,7 @@ export default function TrainerProfile() {
                 position: 'absolute', bottom: -2, right: -2,
                 width: 28, height: 28, borderRadius: 999,
                 background: TT.text, color: TT.onInverse,
-                border: `3px solid ${TT.bg === '#f0eee9' ? '#FAF7F0' : TT.bg}`,
+                border: `3px solid ${TT.bg}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer',
               }}
@@ -1445,7 +1549,7 @@ export default function TrainerProfile() {
                   position: 'absolute', top: -4, right: -4,
                   width: 22, height: 22, borderRadius: 999,
                   background: TT.goodInk,
-                  border: `2px solid ${TT.bg === '#f0eee9' ? '#FAF7F0' : TT.bg}`,
+                  border: `2px solid ${TT.bg}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
@@ -1467,10 +1571,10 @@ export default function TrainerProfile() {
               {displayName}
             </div>
             <div style={{ fontSize: 12, color: TT.textSub, marginTop: 4 }}>
-              {profile?.username ? `@${profile.username}` : ''}
-              {profile?.username && profile?.trainer_pronouns ? ' · ' : ''}
-              {profile?.trainer_pronouns || ''}
-              {!profile?.username && !profile?.trainer_pronouns && gymName ? gymName : ''}
+              {tp?.username ? `@${tp.username}` : ''}
+              {tp?.username && tp?.trainer_pronouns ? ' · ' : ''}
+              {tp?.trainer_pronouns || ''}
+              {!tp?.username && !tp?.trainer_pronouns && gymName ? gymName : ''}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
               {topCredential && (
@@ -1478,16 +1582,16 @@ export default function TrainerProfile() {
                   {t('pages:trainerProfile.certified', 'CERTIFIED')} · {topCredential}
                 </TPill>
               )}
-              {profile?.trainer_years_exp != null && profile?.trainer_years_exp > 0 && (
+              {tp?.trainer_years_exp != null && tp?.trainer_years_exp > 0 && (
                 <TPill tone="dark" size="s">
                   <Zap size={9} strokeWidth={2.4} />
-                  {t('pages:trainerProfile.yrsExperience', '{{n}} yrs experience', { n: profile.trainer_years_exp })}
+                  {t('pages:trainerProfile.yrsExperience', '{{n}} yrs experience', { n: tp.trainer_years_exp })}
                 </TPill>
               )}
-              {profile?.trainer_location && (
+              {tp?.trainer_location && (
                 <TPill tone="outline" size="s">
                   <MapPin size={9} strokeWidth={2.4} />
-                  {profile.trainer_location}
+                  {tp.trainer_location}
                 </TPill>
               )}
             </div>
@@ -1517,10 +1621,10 @@ export default function TrainerProfile() {
           <div style={{
             fontSize: 13, lineHeight: 1.4, fontStyle: 'italic',
             fontFamily: TFont.body,
-            color: profile?.trainer_tagline ? TT.text : TT.textMute,
+            color: tp?.trainer_tagline ? TT.text : TT.textMute,
           }}>
-            {profile?.trainer_tagline
-              ? `"${profile.trainer_tagline}"`
+            {tp?.trainer_tagline
+              ? `"${tp.trainer_tagline}"`
               : t('pages:trainerProfile.editIdentity.taglinePlaceholder', 'One-line summary clients will see first')}
           </div>
         </div>
@@ -2071,7 +2175,7 @@ export default function TrainerProfile() {
         <EditIdentityModal
           open={identityOpen}
           onClose={() => setIdentityOpen(false)}
-          profile={profile}
+          profile={tp}
           currentEmail={user?.email}
           onSave={saveIdentity}
           saving={savingIdentity}

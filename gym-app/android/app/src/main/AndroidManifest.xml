@@ -50,14 +50,18 @@
                 the caller in MainActivity.onCreate() before acting on the intent.
             -->
 
-            <!-- Android App Links (verified): https://tugympr.com deep links.
-                 Requires /.well-known/assetlinks.json hosted at tugympr.com with the
-                 app's signing certificate SHA-256 fingerprint. -->
+            <!-- Android App Links (verified): https deep links.
+                 app.tugympr.com is the web-app host that serves invite links
+                 (/challenge/:id, /class/:id, /invite, /referral, /add-friend).
+                 Each host needs /.well-known/assetlinks.json with the app's
+                 signing-cert SHA-256 (app.tugympr.com's lives in this repo's
+                 public/.well-known/). -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="tugympr.com" />
+                <data android:scheme="https" android:host="app.tugympr.com" />
             </intent-filter>
 
         </activity>
@@ -208,6 +212,9 @@
     <!-- Health Connect intent for privacy policy -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <!-- Instagram: required (Android 11+) so the InstagramShare plugin can
+             detect IG + resolve the ADD_TO_STORY intent for direct Story share -->
+        <package android:name="com.instagram.android" />
     </queries>
 
 </manifest>

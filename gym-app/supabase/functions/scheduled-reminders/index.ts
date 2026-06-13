@@ -244,12 +244,29 @@ async function sendPush(
 // in-app row but still fired a fresh push every hour. Real failures also
 // return false (no row → no push).
 async function insertNotif(supabase: ReturnType<typeof createClient>, profileId: string, gymId: string, type: string, title: string, body: string, dedupKey: string) {
+  // Pre-check: skip the INSERT entirely when this dedup_key already exists.
+  // This cron re-runs through the day and re-evaluates members who still
+  // qualify, so without a pre-check every run after the first re-attempts the
+  // same INSERT and trips the partial unique index idx_notifications_dedup_key
+  // (0155) — which Postgres logs as an ERROR-severity line even though we
+  // catch the 23505 below. The lookup hits that same index directly. This
+  // mirrors the pre-check the rest-day reminder already does inline.
+  if (dedupKey) {
+    const { count } = await supabase.from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('dedup_key', dedupKey);
+    if ((count ?? 0) > 0) return false; // already sent → no fresh row → no push
+  }
+
   const { error } = await supabase.from('notifications').insert({
     profile_id: profileId, gym_id: gymId, type, title, body, dedup_key: dedupKey,
   });
   if (error) {
+    // 23505 = a concurrent run inserted between our pre-check and this insert
+    // (rare race — the index is the real guard). Anything else is a real
+    // failure worth surfacing.
     if (error.code !== '23505') console.warn('Notification insert failed:', profileId, error.message);
-    return false; // 23505 duplicate OR a real error → no fresh row → no push
+    return false; // duplicate OR a real error → no fresh row → no push
   }
   return true;
 }

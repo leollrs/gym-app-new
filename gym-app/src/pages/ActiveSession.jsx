@@ -625,6 +625,11 @@ const ActiveSession = () => {
   const isRestingRef = useRef(!!restoredRest.current);
   useEffect(() => { isRestingRef.current = isResting; }, [isResting]);
 
+  // Trainer-logged sets (cue 'set_log', migration 0549). Assigned after
+  // handleToggleComplete is defined; a ref so the once-subscribed realtime
+  // callback and the resume backfill always call the latest closure.
+  const applyTrainerSetRef = useRef(null);
+
   // Coach cue banner state — { id, type, text } | null. Auto-dismisses.
   const [coachCue, setCoachCue] = useState(null);
   useEffect(() => {
@@ -677,6 +682,17 @@ const ActiveSession = () => {
         } else if (cue.cue_type === 'note') {
           const note = (cue.payload?.text || '').toString().slice(0, 200);
           bannerText = note ? `${t('activeSession.cue.notePrefix', 'Coach')}: ${note}` : t('activeSession.cue.noteEmpty', 'Coach left a note');
+        } else if (cue.cue_type === 'set_log') {
+          // Trainer logged a set on the client's behalf (0549). Apply through
+          // the normal completion path; ack ONLY when it applied, so the
+          // resume backfill retries cues that landed mid-hydration.
+          const applied = applyTrainerSetRef.current?.(cue.payload);
+          if (!applied) return;
+          bannerText = t('activeSession.cue.setLogged', 'Coach logged set {{n}}: {{w}} × {{r}}', {
+            n: (Number(cue.payload?.set_index) || 0) + 1,
+            w: cue.payload?.weight || '—',
+            r: cue.payload?.reps || '—',
+          });
         }
 
         if (bannerText) setCoachCue({ id: cue.id, type: cue.cue_type, text: bannerText });
@@ -691,6 +707,65 @@ const ActiveSession = () => {
   // restStateKey is stable for a given session; intentionally tracked once.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Backfill trainer set logs that arrived while the app was suspended — iOS
+  // drops the websocket in background and realtime INSERTs don't replay, so
+  // without this a set the trainer logged while the member's phone was locked
+  // would sit unacknowledged forever. On mount + every foreground resume,
+  // fetch this session's unacked set_log cues and apply the LAST one per
+  // (exercise, set) slot; superseded ones are acked without applying (the
+  // trainer corrected their own entry). Other cue types stay momentary by
+  // design — a 20-minute-old "rest +30s" is meaningless on resume.
+  useEffect(() => {
+    if (!user?.id || dataLoading) return undefined;
+    let cancelled = false;
+    const ack = (cueId) => {
+      supabase.rpc('ack_session_cue', { p_cue_id: cueId }).then(({ error }) => {
+        if (error) logger.warn('ack_session_cue failed', error.message);
+      });
+    };
+    const backfill = async () => {
+      const { data, error } = await supabase
+        .from('session_cues')
+        .select('id, payload, created_at')
+        .eq('client_id', user.id)
+        .eq('cue_type', 'set_log')
+        .eq('acknowledged', false)
+        .gte('created_at', startedAt.current)
+        .order('created_at', { ascending: true })
+        .limit(30);
+      if (cancelled || error || !data?.length) {
+        if (error) logger.warn('set_log backfill failed', error.message);
+        return;
+      }
+      const bySlot = new Map(); // last cue per (exercise, set) wins
+      data.forEach(cue => bySlot.set(`${cue.payload?.exercise_id}:${cue.payload?.set_index}`, cue));
+      let lastApplied = null;
+      for (const cue of data) {
+        const isLatestForSlot = bySlot.get(`${cue.payload?.exercise_id}:${cue.payload?.set_index}`)?.id === cue.id;
+        if (!isLatestForSlot) { ack(cue.id); continue; }
+        if (applyTrainerSetRef.current?.(cue.payload)) {
+          lastApplied = cue;
+          ack(cue.id);
+        }
+      }
+      if (lastApplied) {
+        setCoachCue({
+          id: lastApplied.id, type: 'set_log',
+          text: t('activeSession.cue.setLogged', 'Coach logged set {{n}}: {{w}} × {{r}}', {
+            n: (Number(lastApplied.payload?.set_index) || 0) + 1,
+            w: lastApplied.payload?.weight || '—',
+            r: lastApplied.payload?.reps || '—',
+          }),
+        });
+      }
+    };
+    backfill();
+    const onVis = () => { if (document.visibilityState === 'visible') backfill(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', onVis); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, dataLoading]);
 
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [workoutComplete, setWorkoutComplete] = useState(false);
@@ -1850,6 +1925,10 @@ const ActiveSession = () => {
 
   // ── Save draft to DB (fire-and-forget) ──────────────────────────────────────
   const saveDraftToDb = async (overrideLoggedSets = null) => {
+    // Never save after finish/discard — a save landing after the discard's
+    // DELETE leaves a zombie session_drafts row that resurrects the "Resume"
+    // chip every time this routine is reopened (DB draft wins on load).
+    if (sessionEndedRef.current) return;
     if (!draftSaveRef.current) return;
     const payload = overrideLoggedSets
       ? { ...draftSaveRef.current, logged_sets: overrideLoggedSets }
@@ -1885,7 +1964,10 @@ const ActiveSession = () => {
 
   // ── Persist to localStorage ─────────────────────────────────────────────────
   useEffect(() => {
-    if (dataLoading) return;
+    // sessionEndedRef guard: after discard removes the draft, the elapsed
+    // timer keeps ticking until unmount — one tick re-ran this effect and
+    // REWROTE the draft, so the workout "always kept showing as resume".
+    if (dataLoading || sessionEndedRef.current) return;
     try {
       localStorage.setItem(sessionKey, JSON.stringify({
         startedAt: startedAt.current,
@@ -1907,6 +1989,7 @@ const ActiveSession = () => {
   // ── Force-save on browser close or tab switch to background ─────────────────
   useEffect(() => {
     const forceSave = () => {
+      if (sessionEndedRef.current) return; // finished/discarded — never re-save
       if (saveRef.current && saveRef.current.loggedSets && Object.keys(saveRef.current.loggedSets).length > 0) {
         try { localStorage.setItem(sessionKey, JSON.stringify(saveRef.current)); } catch { }
       }
@@ -2279,6 +2362,43 @@ const ActiveSession = () => {
 
       return updated;
     });
+  };
+
+  // ── Trainer-logged sets (cue 'set_log', migration 0549) ──────────────────
+  // The trainer types weight/reps in TrainerLiveSession; we stamp them on the
+  // target set and run the SAME completion path a member tap uses (PR
+  // detection + confetti, rest timer, superset hops, auto-finish, draft
+  // persistence — which echoes back to the trainer's live view). Editing an
+  // already-completed set only rewrites its values: no re-toggle, no second
+  // rest timer. Re-assigned every render so callbacks see fresh state.
+  applyTrainerSetRef.current = (p) => {
+    const exId = p?.exercise_id;
+    const setIndex = Number(p?.set_index);
+    if (!exId || !Number.isInteger(setIndex) || setIndex < 0) return false;
+    const ex = exercises.find(e => e.id === exId);
+    const sets = loggedSets[exId];
+    if (!ex || !Array.isArray(sets) || setIndex >= sets.length) return false;
+    const weight = (p.weight ?? '').toString().trim().slice(0, 8);
+    const reps = (p.reps ?? '').toString().trim().slice(0, 5);
+    if (!reps) return false;
+    const wasCompleted = !!sets[setIndex]?.completed;
+    setLoggedSets(prev => {
+      const cur = prev[exId];
+      if (!Array.isArray(cur) || setIndex >= cur.length) return prev;
+      const updated = { ...prev, [exId]: [...cur] };
+      updated[exId][setIndex] = { ...updated[exId][setIndex], weight, reps, skipped: false, coachLogged: true };
+      try {
+        localStorage.setItem(sessionKey, JSON.stringify({ ...saveRef.current, loggedSets: updated }));
+      } catch { }
+      if (wasCompleted) saveDraftToDb(updated); // value-only edit — persist now
+      return updated;
+    });
+    if (!wasCompleted) {
+      // Queued after the value-stamping updater above, so the completion
+      // logic (PR check reads set.weight/reps) sees the coach's numbers.
+      handleToggleComplete(exId, setIndex, ex.name_es || ex.name || '', ex.restSeconds ?? 90);
+    }
+    return true;
   };
 
   const handleAddSet = (exerciseId) => {
@@ -2701,6 +2821,7 @@ const ActiveSession = () => {
       });
 
       sessionEndedRef.current = true;
+      draftSaveRef.current = null;
       localStorage.removeItem(sessionKey);
       // Also clear DB draft — skip for empty/free sessions: they have no
       // session_drafts row and their id 'empty' isn't a valid UUID (22P02).
@@ -2711,6 +2832,11 @@ const ActiveSession = () => {
       cancelWorkoutNotification();
       endLiveActivity({ elapsedSeconds: elapsedTime, completedSets, totalSets });
       syncWorkoutEnded({ duration: elapsedTime, totalVolume, prsHit: sessionPRs.length, setsCompleted: completedSets });
+      // Tell the rest of the app a workout just landed. GymWOD (and any other
+      // listener) only re-checks "completed today" on this event or on
+      // visibilitychange — and the Dashboard is keep-alive, so without this
+      // the WOD card kept showing "Start/Resume" right after finishing it.
+      try { window.dispatchEvent(new CustomEvent('tugympr:workouts-changed')); } catch { /* noop */ }
 
       // Link completed session to class booking so instructors see member results
       if (classBookingId && result?.session_id) {
@@ -2870,6 +2996,7 @@ const ActiveSession = () => {
               // don't leave orphan state behind.
               posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: 0, from: 'warmup_gate' });
               sessionEndedRef.current = true;
+              draftSaveRef.current = null;
               try { localStorage.removeItem(sessionKey); } catch {}
               if (user?.id && !isEmptyMode) {
                 supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}, () => {});
@@ -3342,7 +3469,7 @@ const ActiveSession = () => {
         onOpenListManager={() => setShowListManager(true)}
         onDismissResumedBanner={() => setShowResumedBanner(false)}
         watchHeartRate={watchHeartRate}
-        onDiscardSession={() => { posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: elapsedTime }); sessionEndedRef.current = true; localStorage.removeItem(sessionKey); if (!isEmptyMode) supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {}); cancelWorkoutNotification(); endLiveActivity(); syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); navigate('/workouts'); }}
+        onDiscardSession={() => { posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: elapsedTime }); sessionEndedRef.current = true; draftSaveRef.current = null; localStorage.removeItem(sessionKey); if (!isEmptyMode) supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {}); cancelWorkoutNotification(); endLiveActivity(); syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); navigate('/workouts'); }}
       />
 
       {/* ── Pause action sheet — Resume / Save for later / Delete ────────── */}

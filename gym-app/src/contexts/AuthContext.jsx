@@ -13,6 +13,7 @@ import i18n from '../i18n/i18n';
 import { getSessionCreatedAt, setSessionCreatedAt, clearSessionCreatedAt, isSessionExpired } from '../lib/sessionAge';
 import { safeNavigate } from '../lib/navigationRef';
 import { getProgramWeekNum } from '../lib/programWeek';
+import { prewarmSignedQR } from '../hooks/useSignedQR';
 
 const AuthContext = createContext({});
 
@@ -226,11 +227,17 @@ export const AuthProvider = ({ children }) => {
 
     // Fallback to direct query if RPC fails (e.g. migration not yet applied)
     let data, branding, gym;
+    // Set when the FALLBACK gyms select itself errored (network blip, 5xx).
+    // That leaves gym = null — the exact same shape RLS produces for a
+    // genuinely deactivated gym — so without this flag a transient error
+    // painted the "gym deactivated" screen. null data + NO error is the only
+    // trustworthy "row hidden" signal.
+    let gymQueryFailed = false;
     if (rpcError || !rpcResult) {
       const [{ data: fallback }, { data: onboarding }] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, gym_id, full_name, username, role, additional_roles, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience, date_of_birth, age_verified_at, created_at, health_sync_enabled, metric_units')
+          .select('id, gym_id, full_name, username, role, additional_roles, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, qr_external_id, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience, date_of_birth, age_verified_at, created_at, health_sync_enabled, metric_units, trainer_tagline, trainer_cover_url, trainer_years_exp, trainer_location, trainer_pronouns, trainer_specialties, trainer_credentials, trainer_services, trainer_availability, trainer_verified, trainer_directory_visible, trainer_default_rate, trainer_rate_unit')
           .eq('id', userId)
           .maybeSingle(),
         supabase
@@ -312,18 +319,22 @@ export const AuthProvider = ({ children }) => {
             .single(),
           supabase
             .from('gyms')
-            .select('name, is_active, qr_enabled, qr_display_format, classes_enabled, setup_completed')
+            .select('name, is_active, qr_enabled, qr_display_format, classes_enabled, setup_completed, qr_payload_type, qr_payload_template, multi_admin_enabled')
             .eq('id', data.gym_id)
             .maybeSingle(),
         ]);
         branding = brandingRes.data;
         gym = gymRes.data;
+        gymQueryFailed = !!gymRes.error;
       }
 
-      // If the gym query returned null, RLS blocked it because is_active = false
-      // (the policy only exposes inactive gyms to super_admins).
-      // Treat "user has gym_id but can't read the gym row" as deactivated.
-      const isDeactivated = data.role !== 'super_admin' && (!gym || gym.is_active === false);
+      // If the gym query returned null WITHOUT an error, RLS blocked it because
+      // is_active = false (the policy only exposes inactive gyms to
+      // super_admins). Treat "user has gym_id but can't read the gym row" as
+      // deactivated. A query that ERRORED is a connection problem, not a
+      // deactivation — never lock the account out over a blip; we keep the
+      // previous/cached gym state and let the next focus/cold-load retry.
+      const isDeactivated = !gymQueryFailed && data.role !== 'super_admin' && (!gym || gym.is_active === false);
       setGymDeactivated(isDeactivated);
 
       if (isDeactivated) {
@@ -356,15 +367,32 @@ export const AuthProvider = ({ children }) => {
         // default-amber → gym-color flash on startup.
         cacheBranding(brandingArgs);
       }
-      const resolvedName = gym?.name || branding?.custom_app_name || '';
-      setGymName(resolvedName);
-      setAppName(resolvedName);
-      setGymConfig({
-        qrEnabled: gym?.qr_enabled ?? false,
-        qrDisplayFormat: gym?.qr_display_format ?? 'qr_code',
-        classesEnabled: gym?.classes_enabled ?? false,
-        setupCompleted: gym?.setup_completed ?? true, // default true so existing gyms don't see wizard
-      });
+      // When the (fallback-path) gyms select errored, gym is null for
+      // CONNECTION reasons — skip the gym-derived writes so we don't clobber
+      // the live gymName/gymConfig (and the offline_gym cache) with empty
+      // defaults. The cached/previous values stay until a retry succeeds.
+      if (!gymQueryFailed) {
+        const resolvedName = gym?.name || branding?.custom_app_name || '';
+        setGymName(resolvedName);
+        setAppName(resolvedName);
+        setGymConfig({
+          qrEnabled: gym?.qr_enabled ?? false,
+          qrDisplayFormat: gym?.qr_display_format ?? 'qr_code',
+          classesEnabled: gym?.classes_enabled ?? false,
+          setupCompleted: gym?.setup_completed ?? true, // default true so existing gyms don't see wizard
+          // QR payload source (0084, surfaced by the platform GymSettingsTab):
+          // 'auto_id' (signed in-app payload) | 'external_id' (gym's own door
+          // code, raw) | 'custom_template'. QRCodeModal reads these. The
+          // get_auth_context RPC (0528) doesn't return them yet — the deferred
+          // backfill query below patches them in on the RPC path.
+          qrPayloadType: gym?.qr_payload_type ?? 'auto_id',
+          qrPayloadTemplate: gym?.qr_payload_template ?? null,
+          // Drives the AdminLayout online-admins display. get_auth_context
+          // (0528) doesn't return it — the deferred backfill below patches
+          // it on the RPC path; the fallback select above has it directly.
+          multiAdminEnabled: gym?.multi_admin_enabled ?? false,
+        });
+      }
 
       // Cache a SAFE subset of the profile so the app can boot offline.
       // SECURITY: role must always come from a fresh server fetch — never
@@ -384,15 +412,45 @@ export const AuthProvider = ({ children }) => {
           cached_at: Date.now(),
         };
         localStorage.setItem('offline_profile', JSON.stringify(safeProfileForCache));
-        localStorage.setItem('offline_gym', JSON.stringify({
-          name: gym?.name || branding?.custom_app_name || '',
-          qrEnabled: gym?.qr_enabled ?? false,
-          qrDisplayFormat: gym?.qr_display_format ?? 'qr_code',
-          classesEnabled: gym?.classes_enabled ?? false,
-          setupCompleted: gym?.setup_completed ?? true,
-          isActive: gym?.is_active ?? true,
-        }));
+        if (!gymQueryFailed) {
+          localStorage.setItem('offline_gym', JSON.stringify({
+            name: gym?.name || branding?.custom_app_name || '',
+            qrEnabled: gym?.qr_enabled ?? false,
+            qrDisplayFormat: gym?.qr_display_format ?? 'qr_code',
+            classesEnabled: gym?.classes_enabled ?? false,
+            setupCompleted: gym?.setup_completed ?? true,
+            isActive: gym?.is_active ?? true,
+          }));
+        }
       } catch {}
+
+      // The get_auth_context RPC (0528) returns neither gyms.qr_payload_type/
+      // qr_payload_template nor the member's profiles.qr_external_id. Backfill
+      // them with ONE deferred, non-blocking query on the RPC path so the QR
+      // payload config works without holding up auth. Errors are swallowed —
+      // the 'auto_id' defaults above are exactly the pre-0551 behavior.
+      if (rpcResult && !rpcError) {
+        supabase
+          .from('profiles')
+          .select('qr_external_id, gyms(qr_payload_type, qr_payload_template, multi_admin_enabled)')
+          .eq('id', data.id)
+          .maybeSingle()
+          .then(({ data: extra, error: extraErr }) => {
+            if (extraErr || !extra) return;
+            setProfile((prev) => (prev && prev.id === data.id
+              ? { ...prev, qr_external_id: extra.qr_external_id ?? null }
+              : prev));
+            if (extra.gyms) {
+              setGymConfig((prev) => ({
+                ...prev,
+                qrPayloadType: extra.gyms.qr_payload_type ?? 'auto_id',
+                qrPayloadTemplate: extra.gyms.qr_payload_template ?? null,
+                multiAdminEnabled: extra.gyms.multi_admin_enabled ?? false,
+              }));
+            }
+          })
+          .catch(() => {});
+      }
 
       setErrorTrackerAuth({ id: userId }, data, gym?.name || branding?.custom_app_name || '');
 
@@ -1032,19 +1090,21 @@ export const AuthProvider = ({ children }) => {
     } catch { /* cache wipe is fine — refreshProfile will repopulate */ }
   }, []);
 
-  // ── ROLE DEMOTION DETECTOR ─────────────────────────────────
+  // ── ROLE DEMOTION / GYM-STATE DETECTOR ─────────────────────
   // If a trainer/admin is demoted while logged in, the cached profile.role
   // would otherwise stay until next login. On window focus / visibility,
   // re-fetch the profile; if the role changed and the active view is no
   // longer permitted, sign the user out so the route guards can route them
-  // correctly on next login.
+  // correctly on next login. The SAME single query also embeds the gym row
+  // so gym deactivation + admin/platform feature toggles (qr/classes)
+  // propagate at next focus instead of next cold start — no extra round trip.
   useEffect(() => {
     if (!user?.id) return undefined;
     const handleFocus = async () => {
       try {
         const { data } = await supabase
           .from('profiles')
-          .select('role, additional_roles, membership_status')
+          .select('role, additional_roles, membership_status, gym_id, gyms(is_active, qr_enabled, qr_display_format, classes_enabled, setup_completed, qr_payload_type, qr_payload_template, multi_admin_enabled)')
           .eq('id', user.id)
           .maybeSingle();
         if (!data) return;
@@ -1054,12 +1114,47 @@ export const AuthProvider = ({ children }) => {
           (cachedRole === 'trainer' && serverRole === 'member') ||
           (cachedRole === 'admin' && serverRole !== 'admin' && serverRole !== 'super_admin') ||
           (cachedRole === 'super_admin' && serverRole !== 'super_admin');
-        const banned = ['banned', 'cancelled', 'deactivated'].includes(data.membership_status);
+        // 'frozen' kicks like its siblings — the blocked screen at next login
+        // handles it (fetchProfile sets memberBlocked='frozen').
+        const banned = ['banned', 'cancelled', 'deactivated', 'frozen'].includes(data.membership_status);
         if (downgraded || banned) {
           await supabase.auth.signOut();
-        } else if (serverRole !== cachedRole) {
+          return;
+        }
+        if (serverRole !== cachedRole) {
           // Role changed but not a downgrade — refresh cache silently.
+          // (fetchProfile re-evaluates gym state + config too.)
           fetchProfile(user.id);
+          return;
+        }
+        // ── Gym-level enforcement (same row, zero extra queries) ──
+        // The embed is a LEFT join: when this query SUCCEEDED, a null
+        // `gyms` with a non-null gym_id means RLS hid the row — i.e. the
+        // gym was deactivated (mirrors fetchProfile's cold-load check).
+        // Errors never reach here (data would be null → early return), so
+        // this can't repeat the transient-error-as-deactivation bug.
+        const gymRow = data.gyms ?? null;
+        if (serverRole !== 'super_admin' && data.gym_id && (!gymRow || gymRow.is_active === false)) {
+          setGymDeactivated(true);
+          setGymName('');
+          setGymLogoUrl('');
+        } else if (gymRow) {
+          if (gymDeactivated) {
+            // Gym came back — full restore (name, branding, config).
+            fetchProfile(user.id);
+          } else {
+            // Live-refresh the toggles so admin/platform changes apply now.
+            setGymConfig((prev) => ({
+              ...prev,
+              qrEnabled: gymRow.qr_enabled ?? false,
+              qrDisplayFormat: gymRow.qr_display_format ?? 'qr_code',
+              classesEnabled: gymRow.classes_enabled ?? false,
+              setupCompleted: gymRow.setup_completed ?? true,
+              qrPayloadType: gymRow.qr_payload_type ?? 'auto_id',
+              qrPayloadTemplate: gymRow.qr_payload_template ?? null,
+              multiAdminEnabled: gymRow.multi_admin_enabled ?? false,
+            }));
+          }
         }
       } catch { /* network blip — ignore */ }
     };
@@ -1072,11 +1167,30 @@ export const AuthProvider = ({ children }) => {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [user?.id, profile?.role]);
+  }, [user?.id, profile?.role, gymDeactivated]);
+
+  // ── Member-pass QR prewarm ──────────────────────────────────────────────
+  // Sign the check-in QR at app open + on resume so opening the pass at the
+  // door renders instantly from the useSignedQR cache (signatures expire
+  // after 60s server-side; the cache counts as fresh for 45s). Must build
+  // the EXACT string QRCodeModal signs (gym-checkin: wrap for bare codes).
+  // External/template gyms display raw door codes — nothing to sign.
+  useEffect(() => {
+    const raw = profile?.qr_code_payload;
+    const type = gymConfig?.qrPayloadType;
+    if (!raw || type === 'external_id' || type === 'custom_template') return undefined;
+    const toSign = raw.startsWith('gym-') ? raw : `gym-checkin:${raw}`;
+    prewarmSignedQR(toSign);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') prewarmSignedQR(toSign);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [profile?.qr_code_payload, gymConfig?.qrPayloadType]);
 
   // Optimistic patch — merges safelisted fields into the local profile
   // immediately without a DB round-trip.  Follow up with refreshProfile() to confirm.
-  const PATCHABLE_FIELDS = ['avatar_url', 'avatar_type', 'avatar_value', 'full_name', 'username', 'bio', 'privacy_public', 'leaderboard_visible', 'accent_color', 'trainer_icon', 'phone_number', 'specialties', 'years_of_experience', 'date_of_birth', 'age_verified_at', 'metric_units'];
+  const PATCHABLE_FIELDS = ['avatar_url', 'avatar_type', 'avatar_value', 'full_name', 'username', 'bio', 'privacy_public', 'leaderboard_visible', 'accent_color', 'trainer_icon', 'phone_number', 'specialties', 'years_of_experience', 'date_of_birth', 'age_verified_at', 'metric_units', 'trainer_tagline', 'trainer_cover_url', 'trainer_years_exp', 'trainer_location', 'trainer_pronouns', 'trainer_specialties', 'trainer_credentials', 'trainer_services', 'trainer_availability', 'trainer_verified', 'trainer_directory_visible', 'trainer_default_rate', 'trainer_rate_unit'];
   const patchProfile = useCallback((fields) => {
     const safe = Object.fromEntries(
       Object.entries(fields).filter(([k]) => PATCHABLE_FIELDS.includes(k))

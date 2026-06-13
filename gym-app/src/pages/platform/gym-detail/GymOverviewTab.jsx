@@ -80,7 +80,8 @@ export default function GymOverviewTab({
             <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.overview.avgSessionsMember')}</p>
           </div>
           <div>
-            <p className="text-[18px] font-bold text-[#E5E7EB]">{checkIns.length}</p>
+            {/* real 30d count (P1-4) — checkIns is the 20-row feed, list-only */}
+            <p className="text-[18px] font-bold text-[#E5E7EB]">{stats.checkIns30d ?? checkIns.length}</p>
             <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.overview.checkIns')}</p>
           </div>
         </div>
@@ -103,7 +104,8 @@ export default function GymOverviewTab({
             <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.overview.achievements')}</p>
           </button>
           <div className="p-1">
-            <p className="text-[18px] font-bold text-[#E5E7EB]">{invites.length}</p>
+            {/* only invites that can still be claimed (unused + unexpired) */}
+            <p className="text-[18px] font-bold text-[#E5E7EB]">{invites.filter(i => !i.used_at && (!i.expires_at || new Date(i.expires_at) > new Date())).length}</p>
             <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.overview.invites')}</p>
           </div>
         </div>

@@ -2,7 +2,9 @@
   "maintenance": {
     "title": "App en mantenimiento",
     "body": "Estamos haciendo un mantenimiento rápido para mejorar la app. Volveremos en breve — gracias por tu paciencia.",
-    "autoResume": "Esta pantalla desaparecerá automáticamente cuando terminemos."
+    "autoResume": "Esta pantalla desaparecerá automáticamente cuando terminemos.",
+    "eta": "Volvemos aprox. a las {{time}}",
+    "almostDone": "Ya casi terminamos — un poquito más."
   },
   "timeAgo": {
     "never": "Nunca",
@@ -205,7 +207,11 @@
     "signOutConfirm": "¿Estás seguro de que quieres cerrar sesión?",
     "morePages": "Más Páginas",
     "more": "Más",
-    "platform": "Plataforma"
+    "platform": "Plataforma",
+    "sessionExpired": "Sesión expirada",
+    "sessionExpiredMsg": "Tu sesión expiró por inactividad. Vuelve a iniciar sesión.",
+    "signIn": "Iniciar sesión",
+    "view": "Vista"
   },
   "filters": "Filtros",
   "collapse": "Contraer",
@@ -456,5 +462,18 @@
     "versionLabel": "Versión {{client}} → {{required}}"
   },
   "errorBoundaryRestart": "Reiniciar",
-  "deleting": "Eliminando..."
+  "deleting": "Eliminando...",
+  "featureDisabled": {
+    "title": "Temporalmente no disponible",
+    "body": "Esta función está pausada por mantenimiento. Vuelve a intentarlo pronto.",
+    "back": "Volver"
+  },
+  "addFriend": {
+    "notFound": "No encontramos ese código de amigo.",
+    "notSameGym": "Ese miembro no pertenece a tu gimnasio.",
+    "alreadyConnected": "Ya son amigos o tienes una solicitud pendiente.",
+    "sendFailed": "No se pudo enviar la solicitud de amistad.",
+    "sent": "¡Solicitud de amistad enviada a {{name}}!",
+    "sentGeneric": "¡Solicitud de amistad enviada!"
+  }
 }

@@ -150,7 +150,9 @@ export default function ShareTplCardio({
   if (variant === 'editorial') {
     const aspect = h / w;
     const mode = aspect >= 1.4 ? 'tall' : aspect >= 1.05 ? 'portrait' : 'square';
-    const pad = (mode === 'square' ? 28 : 36) * s;
+    // Portrait (4:5) is the shortest vertical canvas — use the tighter padding
+    // (like square) so the stacked content fits without the 4:5 card clipping.
+    const pad = (mode === 'square' || mode === 'portrait' ? 28 : 36) * s;
     const light = themeMode === 'light';
     const bg = light ? '#EEEBE3' : '#0A0D10';
     const fg = light ? '#0A0D10' : '#fff';
@@ -249,7 +251,7 @@ export default function ShareTplCardio({
                 : <StatRow s={s} light={light} label="CAL" value={`${calories}`} />}
             </div>
             <div style={{ fontSize: 10 * s, fontWeight: 700, color: subFg, letterSpacing: 1.4 * s, marginTop: 10 * s, textTransform: 'uppercase', flexShrink: 0 }}>
-              TuGymPR
+              {gymName || 'TuGymPR'}
             </div>
           </div>
         </div>
@@ -257,8 +259,9 @@ export default function ShareTplCardio({
     }
 
     // Tall + Portrait — vertical stack with adaptive map height.
-    // Story leaves ~50% of canvas for the map; portrait crunches to ~38%.
-    const mapH = Math.round(h * (mode === 'tall' ? 0.5 : 0.4));
+    // Story leaves ~50% of canvas for the map; portrait (4:5, much shorter)
+    // gets ~38% so the headline + stats + footer all fit without clipping.
+    const mapH = Math.round(h * (mode === 'tall' ? 0.5 : 0.38));
     const mapW = Math.round(w - pad * 2);
     return (
       <div
@@ -274,7 +277,7 @@ export default function ShareTplCardio({
           overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 * s, flexShrink: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: (mode === 'portrait' ? 11 : 16) * s, flexShrink: 0 }}>
           <div
             style={{
               fontSize: 16 * s, fontWeight: 800, letterSpacing: 2 * s,
@@ -319,7 +322,7 @@ export default function ShareTplCardio({
           </div>
         )}
 
-        <div style={{ marginTop: 18 * s, flexShrink: 0 }}>
+        <div style={{ marginTop: (mode === 'portrait' ? 12 : 18) * s, flexShrink: 0 }}>
           <div
             style={{
               fontFamily: FONT_DISPLAY, fontWeight: 900,
@@ -359,7 +362,7 @@ export default function ShareTplCardio({
             flexShrink: 0,
           }}
         >
-          TuGymPR
+          {gymName || 'TuGymPR'}
         </div>
       </div>
     );
@@ -450,7 +453,7 @@ export default function ShareTplCardio({
             flexShrink: 0,
           }}
         >
-          TuGymPR
+          {gymName || 'TuGymPR'}
         </div>
       </div>
     );
@@ -549,7 +552,7 @@ export default function ShareTplCardio({
             flexShrink: 0,
           }}
         >
-          TuGymPR
+          {gymName || 'TuGymPR'}
         </div>
       </div>
     );
@@ -626,7 +629,7 @@ export default function ShareTplCardio({
           <div style={{ marginTop: 12 * s, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {showGym ? <GymLockup s={s} gymName={gymName} gymLogoUrl={gymLogoUrl} light /> : <span />}
             <div style={{ fontSize: 12 * s, fontWeight: 700, color: 'rgba(255,255,255,0.55)', letterSpacing: 1.6 * s, textTransform: 'uppercase' }}>
-              TuGymPR
+              {gymName || 'TuGymPR'}
             </div>
           </div>
         </div>

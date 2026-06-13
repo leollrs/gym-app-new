@@ -320,7 +320,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         // don't require the blob, so we keep going instead of aborting.
       }
       const link = `${PROD_WEB_URL}/share/cardio/${data?.sessionId || 'run'}`;
-      const text = caption?.trim() || 'TuGymPR';
+      const text = caption?.trim() || profile?.gym_name || 'TuGymPR';
       const full = `${text}\n${link}`;
 
       if (dest === 'link') {
@@ -430,7 +430,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       } else {
         try {
           await Share.share({
-            title: 'TuGymPR',
+            title: profile?.gym_name || 'TuGymPR',
             text: full,
             url: link,
           });
@@ -875,7 +875,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
             <Dest active={activeDest === 'ig-feed'} onClick={() => { setActiveDest('ig-feed'); setFormat('square'); }} label="IG Feed" color="#C13584"><IGIcon /></Dest>
             <Dest active={activeDest === 'wa'} onClick={() => { setActiveDest('wa'); setFormat('square'); }} label="WhatsApp" color="#25D366"><WAIcon /></Dest>
             <Dest active={activeDest === 'im'} onClick={() => { setActiveDest('im'); setFormat('square'); }} label="Messages" color="#34C759"><MsgIcon /></Dest>
-            <Dest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('square'); }} label="TuGymPR" color="var(--color-accent)"><TuShareIcon /></Dest>
+            <Dest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('square'); }} label={profile?.gym_name || 'TuGymPR'} color="var(--color-accent)"><TuShareIcon /></Dest>
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('cardio.share.save', 'Save')} color="#5A6570" light><SaveIcon /></Dest>
             <Dest active={activeDest === 'link'} onClick={() => setActiveDest('link')} label={t('cardio.share.copyLink', 'Copy link')} color="#5A6570" light><LinkIcon /></Dest>
           </div>

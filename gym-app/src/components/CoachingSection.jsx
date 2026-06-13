@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ClipboardList, Check, X, Flame } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { getMemberCoaching, submitCheckin, setHabitLog, mondayOf, todayStr } from '../lib/coaching';
+import { getMemberCoaching, submitCheckin, setHabitLog, periodFor, todayStr } from '../lib/coaching';
 
 function CheckinModal({ template, profileId, gymId, period, existing, onClose, onSaved, t }) {
   const questions = Array.isArray(template.questions) ? template.questions : [];
@@ -181,12 +181,26 @@ export default function CoachingSection() {
       </div>
 
       {/* Check-ins */}
-      {data.checkins.map(({ template, done }) => (
-        <button key={template.id} type="button" onClick={() => setModalTemplate(template)}
+      {data.checkins.map(({ template, done }) => {
+        const once = template.cadence === 'once';
+        // A completed one-time form stays as a check, not an editable card.
+        const tappable = !(once && done);
+        const subtitle = once
+          ? (done
+              ? t('coaching.doneOnce', { defaultValue: 'Completed' })
+              : t('coaching.dueOnce', { defaultValue: 'Pending — tap to fill out' }))
+          : template.cadence === 'monthly'
+            ? (done ? t('coaching.doneThisMonth', { defaultValue: 'Done this month — tap to edit' }) : t('coaching.dueThisMonth', { defaultValue: 'Due this month' }))
+            : template.cadence === 'biweekly'
+              ? (done ? t('coaching.donePeriod', { defaultValue: 'Done — tap to edit' }) : t('coaching.duePeriod', { defaultValue: 'Due now' }))
+              : (done ? t('coaching.doneThisWeek', { defaultValue: 'Done this week — tap to edit' }) : t('coaching.dueThisWeek', { defaultValue: 'Due this week' }));
+        const Row = tappable ? 'button' : 'div';
+        return (
+        <Row key={template.id} {...(tappable ? { type: 'button', onClick: () => setModalTemplate(template) } : {})}
           style={{
-            width: '100%', textAlign: 'left', marginBottom: 8, padding: '13px 14px', borderRadius: 14, cursor: 'pointer',
+            width: '100%', textAlign: 'left', marginBottom: 8, padding: '13px 14px', borderRadius: 14, cursor: tappable ? 'pointer' : 'default',
             background: 'var(--color-bg-card, #fff)', border: '1px solid var(--color-border-subtle)',
-            display: 'flex', alignItems: 'center', gap: 12,
+            display: 'flex', alignItems: 'center', gap: 12, boxSizing: 'border-box',
           }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: done ? 'color-mix(in srgb, #3DAD7C 16%, transparent)' : 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}>
@@ -194,12 +208,11 @@ export default function CoachingSection() {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>{template.title}</div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-              {done ? t('coaching.doneThisWeek', { defaultValue: 'Done this week — tap to edit' }) : t('coaching.dueThisWeek', { defaultValue: 'Due this week' })}
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{subtitle}</div>
           </div>
-        </button>
-      ))}
+        </Row>
+        );
+      })}
 
       {/* Habits */}
       {data.habits.length > 0 && (
@@ -236,7 +249,7 @@ export default function CoachingSection() {
           template={modalTemplate}
           profileId={user.id}
           gymId={profile?.gym_id}
-          period={mondayOf()}
+          period={data.checkins.find((c) => c.template.id === modalTemplate.id)?.period ?? periodFor(modalTemplate.cadence)}
           existing={data.checkins.find((c) => c.template.id === modalTemplate.id)?.response}
           onClose={() => setModalTemplate(null)}
           onSaved={load}

@@ -110,6 +110,9 @@ export default function DeletedWorkoutsModal({ open, onClose, onRestored }) {
       queryClient.invalidateQueries({ queryKey: ['cardio-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     } catch {}
+    // Restoring a soft-deleted session changes "completed today" — let the
+    // WOD card (and any other listener) re-check.
+    try { window.dispatchEvent(new CustomEvent('tugympr:workouts-changed')); } catch { /* noop */ }
   }, [user?.id, queryClient]);
 
   const handleRestore = useCallback(async (item) => {

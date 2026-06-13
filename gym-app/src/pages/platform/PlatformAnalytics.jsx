@@ -1,19 +1,19 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, Legend, CartesianGrid,
+  ResponsiveContainer, Legend, CartesianGrid, Cell,
 } from 'recharts';
 import {
   Building2, Users, Dumbbell, TrendingUp, TrendingDown,
   UserPlus, Activity, ChevronRight, AlertTriangle,
-  DollarSign, UserCheck, Signal,
+  DollarSign, UserCheck, Signal, Download, RefreshCw,
 } from 'lucide-react';
 import { format, subMonths, startOfMonth, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../../contexts/AuthContext';
 import { getMonthlyPrice, getPricingLabel, getMemberBracketLabel } from '../../lib/pricing';
+import { exportCSV } from '../../lib/csvExport';
 
 import ChartTooltip from '../../components/ChartTooltip';
 import FadeIn from '../../components/platform/FadeIn';
@@ -34,25 +34,48 @@ const pctBg = (val, good, warn) => {
   return 'bg-red-500/15';
 };
 
+const isMissingTable = (error) => error?.code === '42P01';
+
+// Week-over-week delta tag rendered inside a StatCard value. Only shows when
+// a previous snapshot week exists — no snapshots, no fake motion.
+const DeltaTag = ({ delta, suffix = '' }) => {
+  if (delta == null || Number.isNaN(delta)) return null;
+  const rounded = Math.abs(delta) < 10 ? +delta.toFixed(1) : Math.round(delta);
+  if (!rounded) return null;
+  const up = rounded > 0;
+  return (
+    <span className={`text-[11px] font-semibold ml-1.5 ${up ? 'text-emerald-400' : 'text-red-400'}`}>
+      {up ? '▲' : '▼'}{Math.abs(rounded).toLocaleString()}{suffix}
+    </span>
+  );
+};
+
 // ── Main Component ───────────────────────────────────────────
 export default function PlatformAnalytics() {
-  const { profile } = useAuth();
   const { t } = useTranslation('pages');
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [gyms, setGyms] = useState([]);
-  // Server-side aggregates (migration 0437) — one row per gym, so payload
-  // scales with gym count, not member count.
+  // Server-side aggregates (migrations 0437/0540) — one row per gym, so
+  // payload scales with gym count, not member count.
   const [statsRows, setStatsRows] = useState([]);
   const [growthRows, setGrowthRows] = useState([]);
   const [churnData, setChurnData] = useState({ total_at_risk: 0, avg_score: 0, signals: [] });
+  // Weekly frozen captures (0545) — power WoW deltas + real income months.
+  const [snapshots, setSnapshots] = useState([]);
+
+  // Error surfaces — supabase-js v2 never throws, so without these every
+  // failure rendered as zeros that looked like real numbers.
+  const [loadError, setLoadError] = useState(null);     // gyms/stats (page-critical)
+  const [scopedError, setScopedError] = useState(null); // growth/churn (sections)
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Per-gym scope: null = all gyms (platform-wide), or a gym id to focus one.
   const [scopeId, setScopeId] = useState(null);
 
   // Sort state for gym table
-  const [sortKey, setSortKey] = useState('members');
+  const [sortKey, setSortKey] = useState('memberCount');
   const [sortDir, setSortDir] = useState('desc');
 
   // Top gyms toggle
@@ -67,32 +90,52 @@ export default function PlatformAnalytics() {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [gymRes, statsRes] = await Promise.all([
+      setLoadError(null);
+      const [gymRes, statsRes, snapRes] = await Promise.all([
         supabase.from('gyms').select('id, name, slug, is_active, created_at, subscription_tier, monthly_price, plan_type, is_founding'),
         supabase.rpc('platform_gym_stats'),
+        // Optional: snapshots may not exist yet (0545 pending) — tolerate.
+        supabase.from('platform_snapshots')
+          .select('snapshot_date, gym_id, data')
+          .eq('kind', 'gym_stats')
+          .order('snapshot_date', { ascending: true }),
       ]);
+      if (gymRes.error || statsRes.error) {
+        setLoadError((gymRes.error || statsRes.error).message || 'Query failed');
+      }
       setGyms(gymRes.data || []);
       setStatsRows(statsRes.data || []);
+      setSnapshots(snapRes.error ? [] : (snapRes.data || []));
+      if (snapRes.error && !isMissingTable(snapRes.error)) {
+        // Non-critical — deltas/real income just won't render.
+        console.warn('platform_snapshots query failed:', snapRes.error.message);
+      }
       setLoading(false);
     };
     fetchAll();
-  }, []);
+  }, [reloadKey]);
 
   // ── Growth + churn signals are time-series / text aggregates the server
   //    computes for the chosen scope (one gym or all). Refetch on scope change.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setScopedError(null);
       const [growthRes, churnRes] = await Promise.all([
         supabase.rpc('platform_member_growth', { p_gym_id: scopeId, p_weeks: 13 }),
         supabase.rpc('platform_churn_signals', { p_gym_id: scopeId }),
       ]);
       if (cancelled) return;
+      if (growthRes.error || churnRes.error) {
+        setScopedError((growthRes.error || churnRes.error).message || 'Query failed');
+      }
       setGrowthRows(growthRes.data || []);
       setChurnData(churnRes.data || { total_at_risk: 0, avg_score: 0, signals: [] });
     })();
     return () => { cancelled = true; };
-  }, [scopeId]);
+  }, [scopeId, reloadKey]);
+
+  const retry = useCallback(() => setReloadKey(k => k + 1), []);
 
   // ── Scope: filter the per-gym aggregate rows to the selected gym (or all).
   const scopeGym = useMemo(() => (scopeId ? gyms.find(g => g.id === scopeId) || null : null), [gyms, scopeId]);
@@ -104,9 +147,28 @@ export default function PlatformAnalytics() {
   const totalMembers = sumStat('member_count');
   const totalSessions = sumStat('sessions_30d');
   const newMembers30d = sumStat('new_30d');
-  const activeMembers = sumStat('checkedin_30d');
+  const checkedInMembers = sumStat('checkedin_30d');
   const avgSessionsPerMember = totalMembers ? (totalSessions / totalMembers).toFixed(1) : 0;
-  const retentionRate = totalMembers ? ((activeMembers / totalMembers) * 100).toFixed(1) : 0;
+  // Honest name: this is the share of members who CHECKED IN in the last 30d
+  // (it used to masquerade as "Retention Rate").
+  const checkinRate30 = totalMembers ? ((checkedInMembers / totalMembers) * 100).toFixed(1) : 0;
+
+  // ── Week-over-week deltas from the latest snapshot (hidden without one) ──
+  const prevWeek = useMemo(() => {
+    if (!snapshots.length) return null;
+    const latestDate = snapshots.reduce((max, r) => (String(r.snapshot_date) > max ? String(r.snapshot_date) : max), '');
+    const rows = snapshots.filter(r =>
+      String(r.snapshot_date) === latestDate && r.data && (!scopeId || r.gym_id === scopeId));
+    if (!rows.length) return null;
+    const sum = (k) => rows.reduce((s, r) => s + (Number(r.data[k]) || 0), 0);
+    const members = sum('member_count');
+    return {
+      members,
+      sessions: sum('sessions_30d'),
+      new30: sum('new_30d'),
+      checkinRate: members ? (sum('checkedin_30d') / members) * 100 : null,
+    };
+  }, [snapshots, scopeId]);
 
   // Weekly member-growth series from the server (already scope-aware).
   const growthData = useMemo(
@@ -157,18 +219,49 @@ export default function PlatformAnalytics() {
       .sort((a, b) => b.price - a.price);
   }, [scopedGyms, gymMemberCounts]);
 
+  // ── Monthly income, honest version ─────────────────────────
+  // Months covered by a weekly snapshot (0545) compute income from the
+  // FROZEN member counts / plan / price / active flag of that month, run
+  // through the same pricing brackets. Months without coverage remain a
+  // projection from today's prices over today's active gyms — and the chart
+  // says so. Accuracy accrues as snapshots accrue.
   const monthlyIncomeChart = useMemo(() => {
     const now = new Date();
+    const snapDatesByMonth = {};
+    snapshots.forEach(r => {
+      const dstr = String(r.snapshot_date);
+      const mKey = dstr.slice(0, 7);
+      if (!snapDatesByMonth[mKey] || dstr > snapDatesByMonth[mKey]) snapDatesByMonth[mKey] = dstr;
+    });
+    const gymById = Object.fromEntries(gyms.map(g => [g.id, g]));
     const months = [];
     for (let i = 11; i >= 0; i--) {
       const monthStart = startOfMonth(subMonths(now, i));
-      const income = scopedGyms
-        .filter(g => new Date(g.created_at) <= monthStart && g.is_active)
-        .reduce((sum, g) => sum + getGymPrice(g), 0);
-      months.push({ month: format(monthStart, 'MMM'), income });
+      const mKey = format(monthStart, 'yyyy-MM');
+      const snapDate = snapDatesByMonth[mKey];
+      if (snapDate) {
+        const rows = snapshots.filter(r =>
+          String(r.snapshot_date) === snapDate && r.data && (!scopeId || r.gym_id === scopeId));
+        const income = rows
+          .filter(r => r.data.is_active !== false)
+          .reduce((sum, r) => sum + getMonthlyPrice({
+            planType: r.data.plan_type || 'starter',
+            memberCount: Number(r.data.member_count) || 0,
+            isFounding: gymById[r.gym_id]?.is_founding ?? false, // founding status is set at signup, immutable
+            monthlyPriceOverride: parseFloat(r.data.monthly_price) || 0,
+          }), 0);
+        months.push({ month: format(monthStart, 'MMM'), income, projected: false });
+      } else {
+        const income = scopedGyms
+          .filter(g => new Date(g.created_at) <= monthStart && g.is_active)
+          .reduce((sum, g) => sum + getGymPrice(g), 0);
+        months.push({ month: format(monthStart, 'MMM'), income, projected: true });
+      }
     }
     return months;
-  }, [scopedGyms, gymMemberCounts]);
+  }, [scopedGyms, gymMemberCounts, snapshots, gyms, scopeId]);
+
+  const hasProjectedMonths = monthlyIncomeChart.some(m => m.projected);
 
   const arr = mrr * 12;
   const payingGyms = scopedGyms.filter(g => g.is_active && getGymPrice(g) > 0).length;
@@ -180,9 +273,11 @@ export default function PlatformAnalytics() {
     return gyms.map(gym => {
       const s = byId[gym.id] || {};
       const memberCount = s.member_count || 0;
-      const activeRate = memberCount ? ((s.checkedin_30d || 0) / memberCount) * 100 : 0;
+      // Active % = app activity (last_active_at), Check-in % = gym-floor
+      // attendance. They used to be the SAME number under two labels.
+      const activeRate = memberCount ? ((s.active_30d || 0) / memberCount) * 100 : 0;
+      const checkinRate = memberCount ? ((s.checkedin_30d || 0) / memberCount) * 100 : 0;
       const sessionCount = s.sessions_30d || 0;
-      const retention = activeRate;
       const highChurn = (s.churn_critical || 0) + (s.churn_high || 0);
       const churnPct = memberCount ? (highChurn / memberCount) * 100 : 0;
       const isStruggling = activeRate < 30 || churnPct > 20;
@@ -193,8 +288,8 @@ export default function PlatformAnalytics() {
         slug: gym.slug,
         memberCount,
         activeRate: +activeRate.toFixed(1),
+        checkinRate: +checkinRate.toFixed(1),
         sessionCount,
-        retention: +retention.toFixed(1),
         highChurn,
         churnPct: +churnPct.toFixed(1),
         isStruggling,
@@ -222,13 +317,27 @@ export default function PlatformAnalytics() {
     }
   };
 
-  // ── Top 5 gyms by selected metric ─────────────────────────
-  const topGyms = useMemo(() => {
-    const key = topMetric === 'members' ? 'memberCount' : topMetric === 'activity' ? 'sessionCount' : 'retention';
-    return [...gymBreakdown].sort((a, b) => b[key] - a[key]).slice(0, 5);
-  }, [gymBreakdown, topMetric]);
+  const handleExportComparison = async () => {
+    await exportCSV({
+      filename: 'gym-comparison',
+      columns: [
+        { key: 'name', label: t('platform.analytics.headerGym', 'Gym') },
+        { key: 'memberCount', label: t('platform.analytics.headerMembers', 'Members') },
+        { key: 'activeRate', label: t('platform.analytics.headerActive', 'Active %') },
+        { key: 'checkinRate', label: t('platform.analytics.headerCheckin', 'Check-in %') },
+        { key: 'sessionCount', label: t('platform.analytics.headerSessions', 'Sessions (30d)') },
+        { key: 'highChurn', label: t('platform.analytics.headerChurnRisk', 'Churn Risk') },
+        { key: 'churnPct', label: t('platform.analytics.headerChurnPct', 'Churn %') },
+      ],
+      data: sortedGyms,
+    });
+  };
 
-  const topGymsBarKey = topMetric === 'members' ? 'memberCount' : topMetric === 'activity' ? 'sessionCount' : 'retention';
+  // ── Top 5 gyms by selected metric ─────────────────────────
+  const topGymsBarKey = topMetric === 'members' ? 'memberCount' : topMetric === 'activity' ? 'sessionCount' : 'checkinRate';
+  const topGyms = useMemo(() => {
+    return [...gymBreakdown].sort((a, b) => b[topGymsBarKey] - a[topGymsBarKey]).slice(0, 5);
+  }, [gymBreakdown, topGymsBarKey]);
 
   // ── Struggling gyms ────────────────────────────────────────
   const strugglingGyms = useMemo(() => {
@@ -250,7 +359,14 @@ export default function PlatformAnalytics() {
       }))
       .sort((a, b) => b.avgScore - a.avgScore);
 
-    const gymsRisingChurn = perGymChurn.filter(g => g.avgScore > 50).length;
+    // RISING churn = positive velocity (score climbing >0.5/day on average),
+    // from migration 0540. null (column absent pre-apply) hides the card —
+    // the old version measured LEVEL > 50 and called it "rising".
+    const hasVelocity = sStats.some(r => r.avg_churn_velocity !== undefined && r.avg_churn_velocity !== null);
+    const gymsRisingChurn = hasVelocity
+      ? sStats.filter(r => (Number(r.avg_churn_velocity) || 0) > 0.5).length
+      : null;
+
     const totalAtRisk = Number(churnData.total_at_risk) || 0;
     const platformAvgScore = +(Number(churnData.avg_score) || 0).toFixed(1);
     const topSignals = (churnData.signals || []).slice(0, 10).map(s => ({
@@ -290,6 +406,8 @@ export default function PlatformAnalytics() {
     return { perGym, platformAvgRate, best, worst, gapsGyms };
   }, [sStats, gyms, t]);
 
+  const showRisingCard = !scopeId && crossGymChurn.gymsRisingChurn != null;
+
   // ── Render ─────────────────────────────────────────────────
   if (loading) return <PlatformSpinner />;
 
@@ -305,6 +423,37 @@ export default function PlatformAnalytics() {
         </p>
       </FadeIn>
 
+      {/* ── Critical load failure: banner + retry, no fake zeros ── */}
+      {loadError && (
+        <div className="bg-red-500/5 border border-red-500/25 rounded-xl p-5 mb-6 flex flex-col items-center text-center">
+          <AlertTriangle className="w-5 h-5 text-red-400 mb-2" />
+          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">
+            {t('platform.common.loadFailed', "Couldn't load this page's data")}
+          </p>
+          <p className="text-[11px] text-[#9CA3AF] mb-3 max-w-md">{loadError}</p>
+          <button
+            onClick={retry}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#D4AF37]/15 text-[#D4AF37] text-[12px] font-semibold hover:bg-[#D4AF37]/25 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {t('platform.common.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+
+      {!loadError && scopedError && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3 mb-6 flex items-center gap-3">
+          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <p className="text-[12px] text-[#9CA3AF] flex-1">
+            {t('platform.common.degraded', { sources: t('platform.analytics.srcGrowthChurn', 'growth & churn signals'), defaultValue: 'Some data failed to load: {{sources}}. Affected sections may be incomplete.' })}
+          </p>
+          <button onClick={retry} className="text-[11px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors flex-shrink-0">
+            {t('platform.common.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+
+      {!loadError && (<>
       {/* Per-gym scope selector */}
       <div className="flex items-center gap-2 mb-6 flex-wrap">
         <span className="text-[11px] text-[#6B7280] uppercase tracking-wider font-semibold">{t('platform.analytics.viewing', 'Viewing')}</span>
@@ -336,13 +485,29 @@ export default function PlatformAnalytics() {
         )}
       </div>
 
-      {/* ── Top Stats ───────────────────────────────────────── */}
+      {/* ── Top Stats (Δ vs previous snapshot week when one exists) ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
         <StatCard value={totalGyms} label={t('platform.analytics.totalGyms', 'Total Gyms')} icon={Building2} color="#6366F1" delay={0} />
-        <StatCard value={totalMembers.toLocaleString()} label={t('platform.analytics.totalMembers', 'Total Members')} icon={Users} color="var(--color-accent)" delay={50} />
-        <StatCard value={totalSessions.toLocaleString()} label={t('platform.analytics.sessions30d', 'Sessions (30d)')} icon={Dumbbell} color="#3B82F6" delay={100} />
-        <StatCard value={`${retentionRate}%`} label={t('platform.analytics.retentionRate', 'Retention Rate')} icon={TrendingUp} color="#10B981" delay={150} />
-        <StatCard value={newMembers30d.toLocaleString()} label={t('platform.analytics.newMembers30d', 'New Members (30d)')} icon={UserPlus} color="#8B5CF6" delay={200} />
+        <StatCard
+          value={<span className="inline-flex items-baseline">{totalMembers.toLocaleString()}<DeltaTag delta={prevWeek ? totalMembers - prevWeek.members : null} /></span>}
+          label={t('platform.analytics.totalMembers', 'Total Members')}
+          icon={Users} color="var(--color-accent)" delay={50}
+        />
+        <StatCard
+          value={<span className="inline-flex items-baseline">{totalSessions.toLocaleString()}<DeltaTag delta={prevWeek ? totalSessions - prevWeek.sessions : null} /></span>}
+          label={t('platform.analytics.sessions30d', 'Sessions (30d)')}
+          icon={Dumbbell} color="#3B82F6" delay={100}
+        />
+        <StatCard
+          value={<span className="inline-flex items-baseline">{`${checkinRate30}%`}<DeltaTag delta={prevWeek?.checkinRate != null ? parseFloat(checkinRate30) - prevWeek.checkinRate : null} suffix="pp" /></span>}
+          label={t('platform.analytics.checkinRate30d', 'Check-in Rate (30d)')}
+          icon={TrendingUp} color="#10B981" delay={150}
+        />
+        <StatCard
+          value={<span className="inline-flex items-baseline">{newMembers30d.toLocaleString()}<DeltaTag delta={prevWeek ? newMembers30d - prevWeek.new30 : null} /></span>}
+          label={t('platform.analytics.newMembers30d', 'New Members (30d)')}
+          icon={UserPlus} color="#8B5CF6" delay={200}
+        />
         <StatCard value={avgSessionsPerMember} label={t('platform.analytics.avgSessionsPerMember', 'Avg Sessions / Member')} icon={Activity} color="#F59E0B" delay={250} />
       </div>
 
@@ -398,7 +563,14 @@ export default function PlatformAnalytics() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 mb-6">
         <FadeIn delay={140}>
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
-            <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.monthlyIncome', 'Monthly Income (Last 12 Months)')}</h2>
+            <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+              <h2 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.analytics.monthlyIncome', 'Monthly Income (Last 12 Months)')}</h2>
+              {hasProjectedMonths && (
+                <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                  {t('platform.analytics.incomeProjectionBadge', 'Projection (current prices)')}
+                </span>
+              )}
+            </div>
             <div className="h-[260px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthlyIncomeChart}>
@@ -415,10 +587,23 @@ export default function PlatformAnalytics() {
                     content={<ChartTooltip formatter={(v) => `$${v.toLocaleString()}`} />}
                     cursor={{ fill: 'var(--color-accent-glow)' }}
                   />
-                  <Bar dataKey="income" fill="url(#incomeGrad)" radius={[4, 4, 0, 0]} barSize={28} />
+                  <Bar dataKey="income" radius={[4, 4, 0, 0]} barSize={28}>
+                    {monthlyIncomeChart.map((m, idx) => (
+                      <Cell
+                        key={idx}
+                        fill={m.projected ? '#F59E0B' : 'url(#incomeGrad)'}
+                        fillOpacity={m.projected ? 0.35 : 1}
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            {hasProjectedMonths && (
+              <p className="text-[10.5px] text-[#6B7280] mt-2 leading-relaxed">
+                {t('platform.analytics.incomeProjectionNote', 'Amber months have no snapshot yet — they are projected from today’s prices and today’s active gyms. Green months are computed from that month’s weekly snapshot (frozen member counts, plans, and status).')}
+              </p>
+            )}
           </div>
         </FadeIn>
 
@@ -478,7 +663,7 @@ export default function PlatformAnalytics() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.analytics.topGyms', 'Top Gyms')}</h2>
               <div className="flex gap-1">
-                {['members', 'activity', 'retention'].map(m => (
+                {['members', 'activity', 'checkin'].map(m => (
                   <button
                     key={m}
                     onClick={() => setTopMetric(m)}
@@ -512,7 +697,7 @@ export default function PlatformAnalytics() {
                     <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
                     <Bar
                       dataKey={topGymsBarKey}
-                      name={topMetric === 'members' ? t('platform.analytics.membersLabel', 'Members') : topMetric === 'activity' ? t('platform.analytics.sessionsLabel', 'Sessions') : t('platform.analytics.retentionPctLabel', 'Retention %')}
+                      name={topMetric === 'members' ? t('platform.analytics.membersLabel', 'Members') : topMetric === 'activity' ? t('platform.analytics.sessionsLabel', 'Sessions') : t('platform.analytics.checkinPctLabel', 'Check-in %')}
                       fill="var(--color-accent)"
                       radius={[0, 4, 4, 0]}
                       barSize={18}
@@ -575,7 +760,17 @@ export default function PlatformAnalytics() {
       {/* ── Gym Comparison Table ─────────────────────────────── */}
       <FadeIn delay={250}>
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
-          <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.gymComparison', 'Gym Comparison')}</h2>
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <h2 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.analytics.gymComparison', 'Gym Comparison')}</h2>
+            <button
+              onClick={handleExportComparison}
+              disabled={sortedGyms.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-[11px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/[0.08] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {t('platform.analytics.exportCsv', 'Export CSV')}
+            </button>
+          </div>
           {sortedGyms.length === 0 ? (
             <p className="text-[13px] text-[#6B7280] py-12 text-center">{t('platform.analytics.noGymData', 'No gym data available')}</p>
           ) : (
@@ -586,14 +781,14 @@ export default function PlatformAnalytics() {
                     <SortHeader label={t('platform.analytics.headerGym', 'Gym')} field="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHeader label={t('platform.analytics.headerMembers', 'Members')} field="memberCount" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHeader label={t('platform.analytics.headerActive', 'Active %')} field="activeRate" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader label={t('platform.analytics.headerCheckin', 'Check-in %')} field="checkinRate" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHeader label={t('platform.analytics.headerSessions', 'Sessions (30d)')} field="sessionCount" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                    <SortHeader label={t('platform.analytics.headerRetention', 'Retention')} field="retention" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHeader label={t('platform.analytics.headerChurnRisk', 'Churn Risk')} field="highChurn" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <th className="w-8" />
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedGyms.map((gym, i) => (
+                  {sortedGyms.map((gym) => (
                     <tr
                       key={gym.id}
                       className="border-b border-white/4 last:border-0 hover:bg-white/[0.02] transition-colors cursor-pointer"
@@ -615,12 +810,12 @@ export default function PlatformAnalytics() {
                         </span>
                       </td>
                       <td className="px-3 py-3">
-                        <span className="text-[13px] text-[#E5E7EB] tabular-nums">{gym.sessionCount.toLocaleString()}</span>
+                        <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-full ${pctBg(gym.checkinRate, 40, 20)} ${pctColor(gym.checkinRate, 40, 20)}`}>
+                          {gym.checkinRate}%
+                        </span>
                       </td>
                       <td className="px-3 py-3">
-                        <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-full ${pctBg(gym.retention, 60, 40)} ${pctColor(gym.retention, 60, 40)}`}>
-                          {gym.retention}%
-                        </span>
+                        <span className="text-[13px] text-[#E5E7EB] tabular-nums">{gym.sessionCount.toLocaleString()}</span>
                       </td>
                       <td className="px-3 py-3">
                         {gym.highChurn > 0 ? (
@@ -657,7 +852,7 @@ export default function PlatformAnalytics() {
           </div>
 
           {/* Churn summary strip */}
-          <div className={`grid grid-cols-1 ${scopeId ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-3 mb-6`}>
+          <div className={`grid grid-cols-1 ${showRisingCard ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-3 mb-6`}>
             <StatCard
               value={crossGymChurn.totalAtRisk.toLocaleString()}
               label={t('platform.analytics.totalAtRisk', 'Total At-Risk Members')}
@@ -672,7 +867,7 @@ export default function PlatformAnalytics() {
               color="#F59E0B"
               delay={320}
             />
-            {!scopeId && (
+            {showRisingCard && (
               <StatCard
                 value={crossGymChurn.gymsRisingChurn}
                 label={t('platform.analytics.gymsRisingChurn', 'Gyms with Rising Churn')}
@@ -907,6 +1102,7 @@ export default function PlatformAnalytics() {
           )}
         </div>
       </FadeIn>
+      </>)}
     </div>
   );
 }

@@ -138,6 +138,19 @@ const SLOW_THRESHOLD_MS = 3000;
  * Wrap the global fetch to monitor all Supabase API calls.
  * Tracks: network errors, slow calls, 400/401/403/500 responses.
  */
+
+// Wall-clock elapsed lies when the tab/app was suspended mid-request — iOS
+// freezes the webview, so a fetch that started before the nap "takes" the
+// whole nap (the 12s+ session_drafts/trainer_clients rows in the error log).
+// Track the last return-to-visible moment; a request whose window overlaps a
+// hidden period isn't a slow query, it's a suspension — don't log it.
+let lastShownAt = 0;
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') lastShownAt = Date.now();
+  });
+}
+
 export function installFetchInterceptor() {
   if (typeof window === 'undefined') return;
 
@@ -167,8 +180,10 @@ export function installFetchInterceptor() {
       const response = await originalFetch.call(this, input, init);
       const elapsed = Date.now() - startTime;
 
-      // Slow API call
-      if (elapsed > SLOW_THRESHOLD_MS) {
+      // Slow API call — skip when the request spanned a hidden/suspended
+      // period (started before the page was last shown, or still hidden now).
+      const spannedSuspension = startTime < lastShownAt || document.visibilityState === 'hidden';
+      if (elapsed > SLOW_THRESHOLD_MS && !spannedSuspension) {
         trackError('slow_api', `${init?.method || 'GET'} ${endpoint} took ${elapsed}ms`, {
           endpoint,
           method: init?.method || 'GET',

@@ -69,7 +69,9 @@ export default function MyGym() {
   }, [t]);
 
   useEffect(() => {
-    if (!profile?.gym_id) return;
+    // Gym-less member: clear the full-screen spinner instead of stranding it
+    // (loading inits true and only cleared on the gym-present path).
+    if (!profile?.gym_id) { setLoading(false); return; }
     const load = async () => {
       const todayStr = new Date().toISOString().split('T')[0];
       const [gymRes, hoursRes, holidaysRes, closuresRes, annRes] = await Promise.all([

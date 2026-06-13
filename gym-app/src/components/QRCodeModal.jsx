@@ -7,7 +7,7 @@ import { Capacitor } from '@capacitor/core';
 import { useTranslation } from 'react-i18next';
 import { WalletPass } from '../lib/walletPass';
 import { supabase } from '../lib/supabase';
-import { signQRPayload } from '../lib/qrSecurity';
+import useSignedQR from '../hooks/useSignedQR';
 import { useAuth } from '../contexts/AuthContext';
 
 const FONT_DISPLAY = "'Familjen Grotesk', 'Archivo', system-ui, sans-serif";
@@ -83,14 +83,28 @@ function formatMonthYear(iso, lang) {
 }
 
 // ── Pass header with PR logo tile ────────────────────────────────────────────
+// Gym initials for the logo-less fallback tile. White-label: NEVER hardcode
+// "PR" (TuGymPR's mark) on a gym's member pass — derive from the gym name.
+// "Iron Temple" → "IT", "Powerhouse" → "PO", empty → "GP".
+function gymInitials(name) {
+  const words = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 'GP';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
 function PassHeader({ label = 'MEMBER PASS', title = 'TuGymPR', logoUrl = '' }) {
   const { t } = useTranslation('pages');
+  // Fall back to the initials tile if the signed logo URL is missing OR the
+  // image fails to load (expired signature, deleted object, offline).
+  const [imgFailed, setImgFailed] = useState(false);
+  const showLogo = !!logoUrl && !imgFailed;
   return (
     <div
       className="flex items-center justify-between px-[18px] pt-4 pb-3.5 relative"
     >
       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-        {logoUrl ? (
+        {showLogo ? (
           <div
             className="flex items-center justify-center overflow-hidden flex-shrink-0"
             style={{
@@ -102,6 +116,7 @@ function PassHeader({ label = 'MEMBER PASS', title = 'TuGymPR', logoUrl = '' }) 
             <img
               src={logoUrl}
               alt={title}
+              onError={() => setImgFailed(true)}
               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
           </div>
@@ -116,7 +131,7 @@ function PassHeader({ label = 'MEMBER PASS', title = 'TuGymPR', logoUrl = '' }) 
             <span
               className="text-[14px] font-extrabold leading-none"
               style={{ fontFamily: FONT_DISPLAY, color: '#1a1208', letterSpacing: '-0.5px' }}
-            >PR</span>
+            >{gymInitials(title)}</span>
           </div>
         )}
         <div className="min-w-0">
@@ -187,43 +202,88 @@ function PassFields({ fields }) {
  */
 export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_code', gymName, onClose, skipSigning = false }) {
   const { t, i18n } = useTranslation('pages');
-  const { profile, gymLogoUrl } = useAuth() || {};
+  const { profile, gymLogoUrl, gymConfig } = useAuth() || {};
   const codeRef = useRef(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState('');
-  const [signedPayload, setSignedPayload] = useState(null);
-  const [signError, setSignError] = useState(null);
 
   // Detect special payload types for display tweaks
   const isReferral = typeof payload === 'string' && payload.startsWith('gym-referral:');
   const isRewardPayload = typeof payload === 'string' && payload.startsWith('gym-reward:');
   const isSpecial = isReferral || isRewardPayload || skipSigning;
 
-  // Sign the QR payload with HMAC to prevent forgery (skip for raw URLs like referral links).
-  // Each .then() is paired with a .catch() — if the sign-qr edge function rejects (e.g.
-  // network blip, expired session), an unhandled rejection bubbles up to Capacitor as
-  // `[reject]@capacitor` and crashes the page. We swallow + show the unsigned payload
-  // as a graceful fallback so the modal still renders something useful.
+  // ── Gym-configured payload source (gyms.qr_payload_type, 0084) ────────────
+  // The platform GymSettingsTab can point the member pass at the gym's own
+  // access system instead of the signed TuGymPR payload:
+  //   auto_id (default) → rawSource null: HMAC-signed flow below, unchanged.
+  //   external_id       → the member's profiles.qr_external_id RAW (their
+  //                       existing door/keypad code — the gym's scanner owns
+  //                       verification, so no HMAC). No external id on file →
+  //                       fall back to auto_id silently.
+  //   custom_template   → gyms.qr_payload_template with {member_id},
+  //                       {external_id}, {full_name}, {username} substituted,
+  //                       rendered raw. Empty/missing template → auto_id.
+  // Special payloads (referral / reward / skipSigning) keep their contracts.
+  const rawSource = useMemo(() => {
+    if (isSpecial) return null;
+    const type = gymConfig?.qrPayloadType;
+    if (type === 'external_id') {
+      const ext = typeof profile?.qr_external_id === 'string' ? profile.qr_external_id.trim() : '';
+      return ext || null;
+    }
+    if (type === 'custom_template') {
+      const tpl = typeof gymConfig?.qrPayloadTemplate === 'string' ? gymConfig.qrPayloadTemplate.trim() : '';
+      if (!tpl) return null;
+      return tpl
+        .replace(/\{member_id\}/g, profile?.id || '')
+        .replace(/\{external_id\}/g, typeof profile?.qr_external_id === 'string' ? profile.qr_external_id.trim() : '')
+        .replace(/\{full_name\}/g, profile?.full_name || '')
+        .replace(/\{username\}/g, profile?.username || '');
+    }
+    return null;
+  }, [isSpecial, gymConfig?.qrPayloadType, gymConfig?.qrPayloadTemplate, profile?.id, profile?.qr_external_id, profile?.full_name, profile?.username]);
+
+  // Sign the QR payload with HMAC to prevent forgery (skip for raw URLs like
+  // referral links). rawSource short-circuits signing: external/template codes
+  // are for the gym's own scanner and are displayed verbatim.
+  // sign-qr only signs allowlisted `gym-*` payload types (security pass).
+  // The member check-in payload is the BARE 8-char code from profiles (0084),
+  // so wrap it as gym-checkin: — without this every check-in QR signing 400'd
+  // ("Unsupported payload type") and fell back unsigned. scanRouter strips the
+  // prefix back off on the scanner side.
+  // useSignedQR re-signs every 45s while the modal is open (verify-qr expires
+  // signatures after 60s, so a pass held open at the desk used to scan as
+  // "expired") and never exposes the unsigned→signed mid-render swap.
+  const toSign = (!payload || skipSigning || rawSource)
+    ? null
+    : (payload.startsWith('gym-') ? payload : `gym-checkin:${payload}`);
+  const { signed: signedPayload, failed: signFailed, pending: signPending } = useSignedQR(toSign);
+  // Reward QRs MUST be signed (admin scanner rejects unsigned ones), so
+  // surface the failure to the member instead of showing a dead QR. Other
+  // payloads degrade gracefully to the unsigned code (check-in catch-all
+  // accepts bare codes).
+  const signError = signFailed && isRewardPayload
+    ? t('qrCode.signFailed', "Couldn't generate a valid QR — check your connection and reopen")
+    : null;
+
+  // Real last check-in (latest check_ins row). profile.last_active_at is
+  // "last app activity" — ANY action bumps it — and was wrongly shown under
+  // the "Last check-in" label (said "2h ago" after a workout with zero gym
+  // visits). No row yet → the QuickStats line is hidden.
+  const [lastCheckinAt, setLastCheckinAt] = useState(null);
   useEffect(() => {
-    if (!payload || skipSigning) return;
+    if (isSpecial || !profile?.id) return undefined;
     let cancelled = false;
-    signQRPayload(payload)
-      .then((signed) => {
-        if (!cancelled) { setSignedPayload(signed); setSignError(null); }
-      })
-      .catch((err) => {
-        console.warn('[QRCodeModal] signQRPayload failed, falling back to unsigned payload:', err);
-        if (!cancelled) {
-          setSignedPayload(payload);
-          // Reward QRs MUST be signed (admin scanner rejects unsigned ones), so
-          // surface the failure to the member instead of showing a dead QR.
-          if (isRewardPayload) {
-            setSignError(err?.message || 'Could not sign QR. Tap to retry.');
-          }
-        }
-      });
+    supabase
+      .from('check_ins')
+      .select('checked_in_at')
+      .eq('profile_id', profile.id)
+      .order('checked_in_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (!cancelled) setLastCheckinAt(data?.checked_in_at ?? null); });
     return () => { cancelled = true; };
-  }, [payload, skipSigning, isRewardPayload]);
+  }, [isSpecial, profile?.id]);
 
   // Max screen brightness while QR is displayed. Wrapped in catches so a plugin-
   // missing or permission-denied response doesn't crash the modal.
@@ -350,12 +410,12 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
         const { Share } = await import('@capacitor/share');
         await Share.share({
           title: memberName ? `${memberName} — ${gymName || 'TuGymPR'}` : t('qrCode.gymPass', 'Gym Pass'),
-          text: t('qrCode.shareText', 'Check out my gym pass on TuGymPR'),
+          text: t('qrCode.shareText', { defaultValue: 'Check out my gym pass on {{gym}}', gym: gymName || 'TuGymPR' }),
         });
       } else if (navigator.share) {
         await navigator.share({
           title: memberName || t('qrCode.gymPass', 'Gym Pass'),
-          text: t('qrCode.shareText', 'Check out my gym pass on TuGymPR'),
+          text: t('qrCode.shareText', { defaultValue: 'Check out my gym pass on {{gym}}', gym: gymName || 'TuGymPR' }),
         });
       }
     } catch { /* user cancelled */ }
@@ -464,9 +524,26 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
             }}
           >
             <div className="inline-block bg-white rounded-[12px] p-3" ref={codeRef}>
-              {isBarcode ? (
+              {/* Never render the unsigned payload while the signature is in
+                  flight — the code would visibly morph into a different QR a
+                  beat later, and a scan in that window misroutes. Spinner
+                  until settled; on failure fall back unsigned (valid for
+                  check-in / non-reward payloads). */}
+              {signPending ? (
+                <div
+                  className="flex items-center justify-center"
+                  style={{ width: 176, height: isBarcode ? 80 : 176 }}
+                  role="status"
+                  aria-label={t('common.loading', 'Loading')}
+                >
+                  <div
+                    className="w-8 h-8 rounded-full animate-spin"
+                    style={{ border: '3px solid #E5E7EB', borderTopColor: '#111827' }}
+                  />
+                </div>
+              ) : isBarcode ? (
                 <Barcode
-                  value={signedPayload || payload}
+                  value={rawSource || signedPayload || payload}
                   format={barcodeFormat}
                   width={2}
                   height={80}
@@ -476,7 +553,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
                 />
               ) : (
                 <QRCodeSVG
-                  value={signedPayload || payload}
+                  value={rawSource || signedPayload || payload}
                   size={176}
                   level="H"
                   includeMargin={false}
@@ -524,7 +601,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
         </div>
 
         {/* ── QuickStats (only for member pass) ───────────────────── */}
-        {!isSpecial && profile?.last_active_at && (
+        {!isSpecial && lastCheckinAt && (
           <div
             className="mt-3.5 mx-0 px-4 py-3.5 rounded-[16px] flex items-center gap-3"
             style={{
@@ -540,7 +617,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-[12px] font-extrabold text-[var(--color-text-primary)] truncate" style={{ letterSpacing: '-0.1px' }}>
-                {t('qrCode.lastCheckIn', 'Last check-in')} · {formatRelative(profile.last_active_at, i18n.language)}
+                {t('qrCode.lastCheckIn', 'Last check-in')} · {formatRelative(lastCheckinAt, i18n.language)}
               </div>
               {gymName && (
                 <div className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{gymName}</div>

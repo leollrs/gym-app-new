@@ -266,7 +266,10 @@ export function computeStreakFromSessions(sessions, {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dow = d.getDay();
-    const dateStr = d.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    // LOCAL YYYY-MM-DD — toISOString() converts to UTC and, in AST (UTC-4)
+    // evenings, yields TOMORROW's date, mismatching trainedSet (keyed by local
+    // toDateString) and closureDateSet. Build it from local parts instead.
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     if (trainedSet.has(d.toDateString())) {
       streak++;
@@ -506,6 +509,142 @@ export async function fetchAchievementData(userId, gymId, supabase) {
   };
 }
 
+// ── Custom (platform-authored) achievement definitions ───────────────────────
+// Rows in `achievement_definitions` authored from the platform tier (GymDetail
+// content tab / PlatformSettings). criteria JSONB contract — the platform UI
+// documents exactly these keys, each "stat ≥ value", ALL must hold (AND):
+//   workouts → totalSessions, checkins → totalCheckins, prs → totalPRs,
+//   streak → currentStreak, volume → totalVolumeLbs
+// Unknown keys → the definition is never auto-awarded (safer than partial
+// matching). Empty criteria {} → admin-granted only, never auto-awarded.
+const CUSTOM_CRITERIA_FIELDS = {
+  workouts: 'totalSessions',
+  checkins: 'totalCheckins',
+  prs:      'totalPRs',
+  streak:   'currentStreak',
+  volume:   'totalVolumeLbs',
+};
+
+export const CUSTOM_ACHIEVEMENT_PREFIX = 'custom_';
+const CUSTOM_ACHIEVEMENT_COLOR = '#D4AF37';
+
+// Intentionally-missing i18n keys. Every consumer (AchievementToast, Profile
+// cards, ShareAchievementSheet) calls t(key, { defaultValue }) / tg(t, key,
+// { defaultValue }) — a missing key resolves to the defaultValue (the DB
+// text), while an undefined key would make i18next return undefined and blank
+// the toast title. Do NOT add these keys to the locale files.
+const CUSTOM_LABEL_KEY = 'milestones.__custom__.label';
+const CUSTOM_DESC_KEY  = 'milestones.__custom__.desc';
+
+// Parse a custom def's criteria into [[key, numericTarget], …] or null when
+// the def is not auto-awardable (empty, malformed, unknown key, bad value).
+function parseCustomCriteria(criteria) {
+  if (!criteria || typeof criteria !== 'object' || Array.isArray(criteria)) return null;
+  const entries = Object.entries(criteria);
+  if (entries.length === 0) return null;
+  const parsed = [];
+  for (const [key, value] of entries) {
+    const target = Number(value);
+    if (!Object.prototype.hasOwnProperty.call(CUSTOM_CRITERIA_FIELDS, key)) return null;
+    if (!Number.isFinite(target) || target <= 0) return null;
+    parsed.push([key, target]);
+  }
+  return parsed;
+}
+
+// Convert an achievement_definitions row into the same display shape as the
+// hardcoded ACHIEVEMENT_DEFS entries, so AchievementToast / SessionSummary /
+// Profile render it with zero changes. icon is an emoji string from the DB.
+export function customDefToDisplay(row) {
+  const entries = parseCustomCriteria(row.criteria);
+  // Single-criterion defs get a Profile progress bar; multi-criterion defs
+  // only show earned/unearned state (progressOf is a single {key, target}).
+  const progressOf = entries?.length === 1
+    ? { key: CUSTOM_CRITERIA_FIELDS[entries[0][0]], target: entries[0][1] }
+    : null;
+  return {
+    key: `${CUSTOM_ACHIEVEMENT_PREFIX}${row.id}`,
+    id: row.id,
+    isCustom: true,
+    label: row.name,
+    labelKey: CUSTOM_LABEL_KEY,
+    icon: row.icon,
+    desc: row.description,
+    descKey: CUSTOM_DESC_KEY,
+    color: CUSTOM_ACHIEVEMENT_COLOR,
+    category: row.category,
+    check: null,
+    progressOf,
+  };
+}
+
+// Evaluate + award custom definitions for this user. Reuses the data object
+// fetchAchievementData already produced — only check-ins (not part of the
+// hardcoded stats) are fetched, lazily, as a zero-row head count.
+async function awardCustomAchievements(userId, gymId, supabase, data, existingKeys, now) {
+  const { data: defRows, error: defErr } = await supabase
+    .from('achievement_definitions')
+    .select('id, gym_id, name, description, icon, category, criteria, key')
+    .or(`gym_id.eq.${gymId},gym_id.is.null`);
+  if (defErr || !defRows?.length) {
+    if (defErr) console.warn('Custom achievement defs fetch error:', defErr.message);
+    return [];
+  }
+
+  const earnedSet = new Set(existingKeys);
+  const candidates = [];
+  let needsCheckins = false;
+  for (const row of defRows) {
+    // Defs with a `key` mirror hardcoded ACHIEVEMENT_DEFS entries (the 0019
+    // seeds: first_workout, streak_7, …). The hardcoded engine already owns
+    // those — evaluating them here would double-award and double-display.
+    if (row.key) continue;
+    if (earnedSet.has(`${CUSTOM_ACHIEVEMENT_PREFIX}${row.id}`)) continue;
+    const entries = parseCustomCriteria(row.criteria);
+    if (!entries) continue;
+    if (entries.some(([key]) => key === 'checkins')) needsCheckins = true;
+    candidates.push({ row, entries });
+  }
+  if (candidates.length === 0) return [];
+
+  let totalCheckins = 0;
+  if (needsCheckins) {
+    const { count } = await supabase
+      .from('check_ins')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', userId);
+    totalCheckins = count ?? 0;
+  }
+
+  const stats = { ...data, totalCheckins };
+  const satisfied = candidates.filter(({ entries }) =>
+    entries.every(([key, target]) => (Number(stats[CUSTOM_CRITERIA_FIELDS[key]]) || 0) >= target)
+  );
+  if (satisfied.length === 0) return [];
+
+  const inserts = satisfied.map(({ row }) => ({
+    user_id: userId,
+    profile_id: userId,
+    gym_id: row.gym_id ?? gymId,           // user_achievements.gym_id is NOT NULL
+    achievement_id: row.id,                // lights up the platform "Earned N" join
+    achievement_key: `${CUSTOM_ACHIEVEMENT_PREFIX}${row.id}`,
+    earned_at: now,
+    unlocked_at: now,
+  }));
+
+  const { error } = await supabase
+    .from('user_achievements')
+    .upsert(inserts, { onConflict: 'user_id,achievement_key', ignoreDuplicates: true });
+  if (error) {
+    // Real failure (RLS/constraint) — don't celebrate achievements that
+    // didn't persist, or the toast would repeat on every workout.
+    console.warn('Custom achievement upsert error:', error.message);
+    return [];
+  }
+
+  return satisfied.map(({ row }) => customDefToDisplay(row));
+}
+
 // ── Award new achievements ────────────────────────────────────────────────────
 export async function awardAchievements(userId, gymId, supabase) {
   if (!userId || !gymId) return [];
@@ -520,24 +659,33 @@ export async function awardAchievements(userId, gymId, supabase) {
 
   const existingKeys = (existingRows ?? []).map((r) => r.achievement_key);
   const data = await fetchAchievementData(userId, gymId, supabase);
-  const newDefs = checkNewAchievements(data, existingKeys);
-  if (newDefs.length === 0) return [];
-
   const now = new Date().toISOString();
-  const inserts = newDefs.map((def) => ({
-    user_id: userId,
-    profile_id: userId,
-    gym_id: gymId,
-    achievement_key: def.key,
-    earned_at: now,
-    unlocked_at: now,
-  }));
 
-  const { error } = await supabase
-    .from('user_achievements')
-    .upsert(inserts, { onConflict: 'user_id,achievement_key', ignoreDuplicates: true });
+  const newDefs = checkNewAchievements(data, existingKeys);
+  if (newDefs.length > 0) {
+    const inserts = newDefs.map((def) => ({
+      user_id: userId,
+      profile_id: userId,
+      gym_id: gymId,
+      achievement_key: def.key,
+      earned_at: now,
+      unlocked_at: now,
+    }));
 
-  if (error) console.warn('Achievement upsert error:', error.message);
+    const { error } = await supabase
+      .from('user_achievements')
+      .upsert(inserts, { onConflict: 'user_id,achievement_key', ignoreDuplicates: true });
 
-  return newDefs;
+    if (error) console.warn('Achievement upsert error:', error.message);
+  }
+
+  // Custom platform-authored definitions — never let this break workout completion.
+  let newCustom = [];
+  try {
+    newCustom = await awardCustomAchievements(userId, gymId, supabase, data, existingKeys, now);
+  } catch (err) {
+    console.warn('Custom achievement check error:', err?.message);
+  }
+
+  return [...newDefs, ...newCustom];
 }

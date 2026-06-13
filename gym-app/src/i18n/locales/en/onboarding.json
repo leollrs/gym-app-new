@@ -31,7 +31,8 @@
       "wrongGym": "This code is for a different gym.",
       "rateLimited": "Too many attempts. Please wait and try again."
     },
-    "enterNow": "Enter invite code"
+    "enterNow": "Enter invite code",
+    "pendingClaim": "Your gym code didn't finish linking at signup — verify it below to finish connecting your account."
   },
   "stepHead": {
     "lets": "Let's set you up",

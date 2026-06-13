@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ChevronDown, ChevronRight, ChevronLeft, ClipboardList,
   Dumbbell, Pencil, Trophy, Play, Flame, QrCode, CheckCircle2, MessageCircle, CalendarCheck,
-  Activity, ArrowLeftRight, Trash2, Leaf, CalendarPlus, History,
+  Activity, ArrowLeftRight, Trash2, Leaf, CalendarPlus, History, X,
 } from 'lucide-react';
 import { programTemplateNames } from '../data/programTemplateNames';
 import { isSameDay, isBefore, startOfDay, startOfWeek, format } from 'date-fns';
@@ -41,6 +41,7 @@ import ReadinessModal from '../components/ReadinessModal';
 import { useRecentSessionsWithSets } from '../hooks/useSupabaseQuery';
 import { computeDashboardReadiness } from '../lib/readinessEngine';
 import { useRecoveryMetrics } from '../hooks/useRecoveryMetrics';
+import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import CoachMark from '../components/CoachMark';
 // 8 modals lazy-loaded — most users never open them in a session, but eagerly
 // importing them inflated the Dashboard chunk by ~30-50 KB. Each is gated by
@@ -332,6 +333,9 @@ const Dashboard = () => {
   const [activeProgram, setActiveProgram] = useState(null);
   const [showPlanInfo, setShowPlanInfo] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  // Platform kill switch (Operations → feature_qr) — hides the QR quick
+  // button + modal, mirroring CheckIn's gate. Fails open while loading.
+  const qrFeatureEnabled = useFeatureEnabled('qr');
   const [showCardioLog, setShowCardioLog] = useState(false);
   const [showWellnessCheckin, setShowWellnessCheckin] = useState(false);
   const [planWeek, setPlanWeek] = useState(1);
@@ -1077,6 +1081,8 @@ const Dashboard = () => {
       });
       showToast(t('dashboard.sessionDeleted', 'Session deleted'), 'success');
       setWeekCardioSessions(prev => prev.filter(s => s.id !== id));
+      // Parity with the lifting branch below — let GymWOD/others re-check.
+      try { window.dispatchEvent(new CustomEvent('tugympr:workouts-changed')); } catch { /* noop */ }
       setDeleteConfirm(null);
       return;
     }
@@ -1092,6 +1098,9 @@ const Dashboard = () => {
 
     setTodaysSessions(prev => prev.filter(s => s.id !== id));
     setWeekSessions(prev => prev.filter(s => s.id !== id));
+    // Let the WOD card (same screen, stays mounted) re-check completion so a
+    // deleted WOD stops showing "Completed today".
+    try { window.dispatchEvent(new CustomEvent('tugympr:workouts-changed')); } catch { /* noop */ }
 
     const backupId = data?.backup_id;
     const refunded = data?.points_refunded || 0;
@@ -1111,6 +1120,7 @@ const Dashboard = () => {
           }
           showToast(t('dashboard.sessionRestored', 'Session restored'), 'success');
           setRefreshKey(k => k + 1);
+          try { window.dispatchEvent(new CustomEvent('tugympr:workouts-changed')); } catch { /* noop */ }
         },
       },
     } : undefined);
@@ -1327,42 +1337,45 @@ const Dashboard = () => {
                 <CalendarCheck size={17} style={{ color: 'var(--color-text-primary)' }} strokeWidth={2} />
               </Link>
             )}
-            {/* QR — dark prominent button.
+            {/* QR — dark prominent button. Hidden while the platform kill
+                switch (feature_qr) is off — same gate as CheckIn's QR section.
                 The QRCodeModal calls into Capacitor plugins (screen-brightness,
                 wallet, share) and signQRPayload, any of which can reject on
                 unsupported devices. We open the modal only when we have a real
                 payload AND the auth profile is loaded so the modal never mounts
                 in a half-initialised state, and we wrap the open call in
                 try/catch so a plugin rejection can't crash the page. */}
-            <button
-              type="button"
-              onClick={() => {
-                try {
-                  if (!profile && !user?.id) {
+            {qrFeatureEnabled && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    if (!profile && !user?.id) {
+                      showToast(
+                        t('dashboard.qrError', { defaultValue: 'Could not open QR' }),
+                        'error'
+                      );
+                      return;
+                    }
+                    setShowQR(true);
+                  } catch (err) {
+                    console.error('[QR] open failed:', err);
                     showToast(
                       t('dashboard.qrError', { defaultValue: 'Could not open QR' }),
                       'error'
                     );
-                    return;
                   }
-                  setShowQR(true);
-                } catch (err) {
-                  console.error('[QR] open failed:', err);
-                  showToast(
-                    t('dashboard.qrError', { defaultValue: 'Could not open QR' }),
-                    'error'
-                  );
-                }
-              }}
-              className="w-[46px] h-[46px] rounded-[14px] flex items-center justify-center active:scale-[0.96] transition-all duration-200 focus:ring-2 focus:outline-none"
-              style={{
-                background: 'var(--color-text-primary, #0A0D10)',
-                boxShadow: '0 4px 10px rgba(0,0,0,0.18)',
-              }}
-              aria-label={t('dashboard.ariaQRCode', 'QR Code')}
-            >
-              <QrCode size={22} style={{ color: 'var(--color-bg-primary, #F7F7F5)' }} strokeWidth={2.2} />
-            </button>
+                }}
+                className="w-[46px] h-[46px] rounded-[14px] flex items-center justify-center active:scale-[0.96] transition-all duration-200 focus:ring-2 focus:outline-none"
+                style={{
+                  background: 'var(--color-text-primary, #0A0D10)',
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.18)',
+                }}
+                aria-label={t('dashboard.ariaQRCode', 'QR Code')}
+              >
+                <QrCode size={22} style={{ color: 'var(--color-bg-primary, #F7F7F5)' }} strokeWidth={2.2} />
+              </button>
+            )}
           </div>
         </header>
 
@@ -1798,22 +1811,52 @@ const Dashboard = () => {
                           const completed = draftSets.filter(s => s.completed).length;
                           const total = draftSets.length;
                           return (
-                            <Link
+                            <div
                               key={draft.routineId}
-                              to={`/session/${draft.routineId}`}
-                              className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#60A5FA]/10 border border-[#60A5FA]/20 hover:bg-[#60A5FA]/15 transition-colors mb-1.5"
+                              className="flex items-center gap-1 rounded-xl bg-[#60A5FA]/10 border border-[#60A5FA]/20 hover:bg-[#60A5FA]/15 transition-colors mb-1.5"
                             >
-                              <div className="w-8 h-8 rounded-lg bg-[#60A5FA]/15 flex items-center justify-center flex-shrink-0">
-                                <Play size={13} fill="var(--color-blue-soft)" className="text-[#60A5FA]" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{draft.routineName || t('dashboard.workout')}</p>
-                                <p className="text-[10px] text-[#60A5FA]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                                  {completed}/{total} {t('dashboard.sets')} · {t('dashboard.tapToResume')}
-                                </p>
-                              </div>
-                              <ChevronRight size={12} className="text-[#60A5FA]" />
-                            </Link>
+                              <Link
+                                to={`/session/${draft.routineId}`}
+                                className="flex-1 min-w-0 flex items-center gap-3 px-4 py-3"
+                              >
+                                <div className="w-8 h-8 rounded-lg bg-[#60A5FA]/15 flex items-center justify-center flex-shrink-0">
+                                  <Play size={13} fill="var(--color-blue-soft)" className="text-[#60A5FA]" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{draft.routineName || t('dashboard.workout')}</p>
+                                  <p className="text-[10px] text-[#60A5FA]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                    {completed}/{total} {t('dashboard.sets')} · {t('dashboard.tapToResume')}
+                                  </p>
+                                </div>
+                                <ChevronRight size={12} className="text-[#60A5FA]" />
+                              </Link>
+                              {/* Discard the draft WITHOUT opening it — clears the
+                                  localStorage draft AND the session_drafts row (the DB
+                                  copy resurrects the chip on reopen if it survives). */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (!window.confirm(t('dashboard.discardDraftConfirm', 'Discard this unfinished workout? Logged sets will be lost.'))) return;
+                                  try { localStorage.removeItem(`gym_session_${draft.routineId}`); } catch { /* noop */ }
+                                  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(draft.routineId);
+                                  if (isUuid && user?.id) {
+                                    supabase.from('session_drafts').delete()
+                                      .eq('profile_id', user.id).eq('routine_id', draft.routineId)
+                                      .then(() => {}, () => {});
+                                  }
+                                  setAllActiveDrafts(readAllActiveSessions());
+                                  // Refresh GymWOD's resume/complete state — it
+                                  // only re-checks on this event or visibilitychange.
+                                  try { window.dispatchEvent(new CustomEvent('tugympr:workouts-changed')); } catch { /* noop */ }
+                                }}
+                                aria-label={t('dashboard.discardDraft', 'Discard workout')}
+                                className="w-10 h-10 mr-1 rounded-lg flex items-center justify-center flex-shrink-0 active:scale-95"
+                                style={{ color: 'var(--color-text-muted)' }}
+                              >
+                                <X size={15} />
+                              </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -2724,8 +2767,10 @@ const Dashboard = () => {
           Only mount when we actually have a payload to render. Without this
           guard, QRCodeModal would mount with payload="" which causes
           signQRPayload to reject (and the rejection bubbles up as the cryptic
-          [reject]@capacitor stack the field tester reported). */}
-      {showQR && (profile?.qr_code_payload || user?.id) && (
+          [reject]@capacitor stack the field tester reported).
+          qrFeatureEnabled auto-closes it if the kill switch flips while open
+          (mirrors CheckIn). */}
+      {showQR && qrFeatureEnabled && (profile?.qr_code_payload || user?.id) && (
         <Suspense fallback={null}>
           <QRCodeModal
             payload={profile?.qr_code_payload || user?.id || ''}

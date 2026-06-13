@@ -17,6 +17,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import QRCodeModal from '../components/QRCodeModal';
+import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
+import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale';
 import { usePostHog } from '@posthog/react';
@@ -65,6 +67,7 @@ export default function Referrals() {
   const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   const posthog = usePostHog();
+  const referralsEnabled = useFeatureEnabled('referrals');
 
   const [referralCode, setReferralCode] = useState(null);
   const [referralConfig, setReferralConfig] = useState(null);
@@ -203,29 +206,38 @@ export default function Referrals() {
   }, [referralCode, showToast, t, posthog]);
 
   // ── Share ───────────────────────────────────────────────────────────────
+  // The invitee isn't a member yet, so an in-app /referral/<code> deep link is
+  // useless to them (and on a phone WITH the app it just opens the app). Give
+  // them the CODE (copied to clipboard, to paste at signup) + a link to GET the
+  // app — never the deep link. In-person sharing still uses the QR button,
+  // which shows the QR + the code below it (and is what the gym scans).
   const handleShare = useCallback(async () => {
     if (!referralCode) return;
     const message = t('referrals.shareMessage', {
       gymName: gymName || 'TuGymPR',
       code: referralCode,
     });
+    try { await navigator.clipboard?.writeText(referralCode); } catch { /* clipboard blocked */ }
     try {
       if (Capacitor.isNativePlatform()) {
         await Share.share({
           title: t('referrals.shareTitle'),
           text: message,
-          url: referralLink,
+          url: PROD_WEB_URL,
         });
         posthog?.capture('referral_code_shared', { method: 'native_share' });
+      } else if (navigator.share) {
+        await navigator.share({ title: t('referrals.shareTitle'), text: `${message}\n${PROD_WEB_URL}` });
+        posthog?.capture('referral_code_shared', { method: 'native_share' });
       } else {
-        await navigator.clipboard.writeText(`${message}\n${referralLink}`);
+        await navigator.clipboard.writeText(`${message}\n${PROD_WEB_URL}`);
         posthog?.capture('referral_code_shared', { method: 'copy' });
         showToast(t('referrals.linkCopied'), 'success');
       }
     } catch {
       /* user cancelled */
     }
-  }, [referralCode, referralLink, gymName, showToast, t, posthog]);
+  }, [referralCode, gymName, showToast, t, posthog]);
 
   // ── Add to Apple/Google Wallet ──────────────────────────────────────────
   const handleAddToWallet = useCallback(async () => {
@@ -336,6 +348,10 @@ export default function Referrals() {
   // Typography tokens per user spec (Familjen Grotesk for display, Archivo for body)
   const FONT_DISPLAY = "'Familjen Grotesk', 'Archivo', system-ui, -apple-system, sans-serif";
   const FONT_BODY = "'Archivo', 'Familjen Grotesk', system-ui, -apple-system, sans-serif";
+
+  // Platform kill switch (Operations → feature_referrals). After all hooks so
+  // a mid-session flip can't change the hook order.
+  if (!referralsEnabled) return <FeatureDisabledScreen />;
 
   return (
     <div

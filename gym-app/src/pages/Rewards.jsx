@@ -13,7 +13,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
-import { signQRPayload } from '../lib/qrSecurity';
+import useSignedQR from '../hooks/useSignedQR';
 import logger from '../lib/logger';
 import { RewardSymbol } from '../lib/rewardSymbols';
 import { useAuth } from '../contexts/AuthContext';
@@ -264,26 +264,11 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
 const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, onClose }) => {
   const { t } = useTranslation('pages');
   const payload = `gym-reward:${gymId}:${userId}:${redemptionId}`;
-  const [signedPayload, setSignedPayload] = useState(null);
-  const [signError, setSignError] = useState(null);
-  const [retryNonce, setRetryNonce] = useState(0);
-
-  useEffect(() => {
-    // Signed payload is REQUIRED — the admin scanner rejects unsigned
-    // `gym-reward:` QRs with "Invalid QR — please refresh in the app".
-    // If signing fails, surface the error so the member knows to retry
-    // instead of handing the admin a QR that can never validate.
-    let cancelled = false;
-    setSignedPayload(null);
-    setSignError(null);
-    signQRPayload(payload)
-      .then((signed) => { if (!cancelled) setSignedPayload(signed); })
-      .catch((err) => {
-        logger.warn('signQRPayload failed (redemption)', err);
-        if (!cancelled) setSignError(err?.message || 'Could not sign QR. Tap to retry.');
-      });
-    return () => { cancelled = true; };
-  }, [payload, retryNonce]);
+  // Signed payload is REQUIRED — the admin scanner rejects unsigned
+  // `gym-reward:` QRs. useSignedQR re-signs every 45s while open (verify-qr
+  // expires signatures at 60s — a redemption QR held up in line used to die
+  // before the staff could scan it) and keeps retrying after failures.
+  const { signed: signedPayload, failed: signError, retry } = useSignedQR(payload);
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -348,7 +333,7 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
             />
           ) : signError ? (
             <button
-              onClick={() => setRetryNonce(n => n + 1)}
+              onClick={retry}
               className="flex flex-col items-center justify-center gap-2 px-4 py-12"
               style={{ minHeight: 220 }}
             >
@@ -357,7 +342,7 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
                 {t('rewards.qrSignFailed', "Couldn't generate QR")}
               </p>
               <p style={{ fontSize: 11, color: '#6B7280', textAlign: 'center', maxWidth: 200 }}>
-                {signError}
+                {t('rewards.qrSignFailedHint', 'Check your connection and try again')}
               </p>
               <p style={{ fontSize: 12, fontWeight: 700, color: '#2563EB', marginTop: 8 }}>
                 {t('rewards.tapToRetry', 'Tap to retry')}
@@ -536,13 +521,10 @@ const ChallengePrizesBanner = ({ prizes, t, onShowQr }) => {
 const ChallengePrizeQRModal = ({ prize, onClose }) => {
   const { t } = useTranslation('pages');
   const challengePayload = `challenge-prize:${prize.qr_code}`;
-  const [signedPayload, setSignedPayload] = useState(null);
-
-  useEffect(() => {
-    signQRPayload(challengePayload)
-      .then(setSignedPayload)
-      .catch((err) => logger.warn('signQRPayload failed (challenge prize)', err));
-  }, [challengePayload]);
+  // Signed + 45s auto-refresh; on failure fall back unsigned — the scanner
+  // parses unsigned challenge-prize: and the handler validates the code
+  // against the DB (possession of the random code is the proof).
+  const { signed: signedPayload, pending: signPending } = useSignedQR(challengePayload);
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -584,14 +566,23 @@ const ChallengePrizeQRModal = ({ prize, onClose }) => {
         </div>
 
         <div className="bg-white flex flex-col items-center p-8" role="img" aria-label={t('rewards.challengePrizeQRCode', 'Challenge prize QR code')}>
-          <QRCodeSVG
-            value={signedPayload || challengePayload}
-            size={220}
-            level="H"
-            includeMargin={false}
-            bgColor="#FFFFFF"
-            fgColor="#000000"
-          />
+          {signPending ? (
+            <div className="flex items-center justify-center" style={{ width: 220, height: 220 }} role="status">
+              <div
+                className="w-8 h-8 rounded-full animate-spin"
+                style={{ border: '3px solid #E5E7EB', borderTopColor: '#111827' }}
+              />
+            </div>
+          ) : (
+            <QRCodeSVG
+              value={signedPayload || challengePayload}
+              size={220}
+              level="H"
+              includeMargin={false}
+              bgColor="#FFFFFF"
+              fgColor="#000000"
+            />
+          )}
           <p className="text-[14px] font-mono font-bold text-gray-800 mt-4 tracking-widest">{prize.qr_code}</p>
         </div>
 
@@ -690,13 +681,9 @@ const EarnedRewardsBanner = ({ rewards, onClaim, onShowQr, t, isEs, claiming }) 
 // ── Earned Reward QR Modal ──────────────────────────────────────────────────
 const EarnedRewardQRModal = ({ reward, onClose, t, isEs }) => {
   const payload = `earned-reward:${reward.qr_code}`;
-  const [signedPayload, setSignedPayload] = useState(null);
-
-  useEffect(() => {
-    signQRPayload(payload)
-      .then(setSignedPayload)
-      .catch((err) => logger.warn('signQRPayload failed (earned reward)', err));
-  }, [payload]);
+  // Signed + 45s auto-refresh; unsigned fallback is valid (scanner parses
+  // unsigned earned-reward: and the handler validates the code in the DB).
+  const { signed: signedPayload, pending: signPending } = useSignedQR(payload);
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -738,14 +725,23 @@ const EarnedRewardQRModal = ({ reward, onClose, t, isEs }) => {
         </div>
 
         <div className="bg-white flex flex-col items-center p-8" role="img" aria-label={t('rewards.earnedRewardQRCode', 'Earned reward QR code')}>
-          <QRCodeSVG
-            value={signedPayload || payload}
-            size={220}
-            level="H"
-            includeMargin={false}
-            bgColor="#FFFFFF"
-            fgColor="#000000"
-          />
+          {signPending ? (
+            <div className="flex items-center justify-center" style={{ width: 220, height: 220 }} role="status">
+              <div
+                className="w-8 h-8 rounded-full animate-spin"
+                style={{ border: '3px solid #E5E7EB', borderTopColor: '#111827' }}
+              />
+            </div>
+          ) : (
+            <QRCodeSVG
+              value={signedPayload || payload}
+              size={220}
+              level="H"
+              includeMargin={false}
+              bgColor="#FFFFFF"
+              fgColor="#000000"
+            />
+          )}
           <p className="text-[14px] font-mono font-bold text-gray-800 mt-4 tracking-widest">{reward.qr_code}</p>
         </div>
 
@@ -1334,7 +1330,7 @@ const PurchasesList = ({ purchases, t }) => {
               )}
             </div>
             <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-              {formatDistanceToNow(new Date(purchase.created_at), { addSuffix: true, locale: useTranslation().i18n.language?.startsWith('es') ? esLocale : undefined })}
+              {formatDistanceToNow(new Date(purchase.created_at), { addSuffix: true, locale: i18n.language?.startsWith('es') ? esLocale : undefined })}
             </p>
           </div>
           <div className="flex flex-col items-end flex-shrink-0">
@@ -1370,7 +1366,6 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
   const [walletError, setWalletError] = useState('');
   const [qrProduct, setQrProduct] = useState(null);
   const [heroIdx, setHeroIdx] = useState(0);
-  const [signedPayloads, setSignedPayloads] = useState({});
 
   // Sort: least remaining first so hero is the one closest to completion
   const sortedCards = [...punchCards].sort((a, b) => {
@@ -1380,20 +1375,6 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
   });
   const heroCard = sortedCards[heroIdx] || sortedCards[0];
   const otherCards = sortedCards.filter((c) => c.id !== heroCard?.id);
-
-  // Sign hero punch card QR payload (same format as ProductQRModal)
-  useEffect(() => {
-    if (!heroCard || !profile?.id || !profile?.gym_id) return;
-    const productId = heroCard.gym_products?.id || heroCard.product_id;
-    if (!productId) return;
-    const raw = `gym-purchase:${profile.gym_id}:${profile.id}:${productId}`;
-    if (signedPayloads[heroCard.id]) return;
-    let cancelled = false;
-    signQRPayload(raw).then((signed) => {
-      if (!cancelled) setSignedPayloads((prev) => ({ ...prev, [heroCard.id]: signed }));
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [heroCard?.id, profile?.id, profile?.gym_id]);
 
   const heroCaption = useMemo(() => {
     if (!heroCard) return '';
@@ -1513,10 +1494,13 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
             </div>
           ) : (
             <div className="space-y-5">
-              {/* Hero punch pass — if signing hasn't completed yet (or failed
-                  offline), fall back to the unsigned raw payload so the QR
-                  always renders. Admin scanners can validate the signature
-                  separately when they re-attempt online. */}
+              {/* Hero punch pass — UNSIGNED on purpose, same contract as the
+                  Apple/Google Wallet pass barcode. This card sits on screen
+                  indefinitely, and verify-qr expires signatures after 60s, so
+                  a signed-on-load payload was guaranteed stale by scan time
+                  ("signature expired" at the counter). The scanner accepts
+                  unsigned gym-purchase: and record_gym_purchase requires
+                  admin auth, so forging buys nothing. */}
               {heroCard && (() => {
                 const productId = heroCard.gym_products?.id || heroCard.product_id;
                 const rawPayload = productId && profile?.gym_id && profile?.id
@@ -1525,7 +1509,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
                 return (
                   <PunchPassHero
                     card={heroCard}
-                    payload={signedPayloads[heroCard.id] || rawPayload}
+                    payload={rawPayload}
                     caption={heroCaption}
                     t={t}
                     onAddToWallet={handleAddToWallet}
@@ -1649,9 +1633,12 @@ export default function Rewards() {
   const availablePoints = (pointsData.total_points || 0) - heldPoints;
 
   const loadData = useCallback(async () => {
-    if (!user?.id || !profile?.gym_id) return;
+    // Clear the skeleton even when there's no gym to load for — otherwise a
+    // gym-less member is stranded on the spinner forever (loading inits true).
+    if (!user?.id || !profile?.gym_id) { setLoading(false); setGymRewardsLoading(false); return; }
     setLoading(true);
 
+    try {
     const [pts, hist, punchCardsRes, purchasesRes, prizesRes, pendingRes, gymRewardsRes, earnedRes] = await Promise.all([
       getUserPoints(user.id),
       getPointsHistory(user.id, 20),
@@ -1707,7 +1694,13 @@ export default function Rewards() {
     setPurchases(purchasesRes.data || []);
     setChallengePrizes(prizesRes.data || []);
     setEarnedRewards(earnedRes.data || []);
-    setLoading(false);
+    } catch {
+      // A rejected query (5xx / flaky connection while still nominally online)
+      // must not strand the skeleton on a first visit with no cache.
+    } finally {
+      setLoading(false);
+      setGymRewardsLoading(false);
+    }
   }, [user?.id, profile?.gym_id]);
 
   useEffect(() => { loadData(); }, [loadData]);

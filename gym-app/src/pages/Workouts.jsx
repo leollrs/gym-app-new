@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
 import GenerateWorkoutModal from '../components/GenerateWorkoutModal';
 import CreateRoutineModal from '../components/CreateRoutineModal';
+import TrainerPlanSection from '../components/TrainerPlanSection';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import { timeAgo } from '../lib/dateUtils';
@@ -216,9 +217,20 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
               <button onClick={handleLeave} disabled={acting} className="px-4 py-3 text-[12px] font-semibold rounded-xl border hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-40" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>{t('challenges.leave')}</button>
             </div>
           ) : (
-            <button onClick={handleEnroll} disabled={acting} className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors disabled:opacity-50">
-              {acting ? t('workouts.enrolling') : t('workouts.startThisProgram')}
-            </button>
+            <>
+              {/* Hollow program guard: same condition as the "no exercises
+                  assigned" empty state above (weekNums.length === 0 — e.g. a
+                  platform-created shell the gym hasn't filled yet). Enrolling
+                  would start a program with nothing to do. */}
+              <button onClick={handleEnroll} disabled={acting || weekNums.length === 0} className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                {acting ? t('workouts.enrolling') : t('workouts.startThisProgram')}
+              </button>
+              {weekNums.length === 0 && (
+                <p className="text-[11px] text-center mt-2" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('workouts.programEmptyHint', 'This program has no workouts yet — ask your gym to finish it.')}
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1717,6 +1729,8 @@ const Workouts = () => {
 
       {/* ── HUB VIEW: today's hero + entry cards into the focused pages ── */}
       {workoutsView === 'hub' && (<>
+      {/* Trainer-assigned plan (renders nothing when the member has none) */}
+      <TrainerPlanSection />
       {/* ════════════════════════════════════════════════════════
           SECTION 1: CURRENT PROGRAM — Hero
          ════════════════════════════════════════════════════════ */}

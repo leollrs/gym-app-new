@@ -27,7 +27,7 @@ export default function TrainerHelp() {
   const FAQS = [
     {
       q: t('pages:trainerHelp.faq.client.q', 'How do I add a new client?'),
-      a: t('pages:trainerHelp.faq.client.a', 'Go to Clients → tap the + Add button. Enter the client\'s gym membership ID or scan their QR code. They\'ll receive a notification confirming the trainer-client link.'),
+      a: t('pages:trainerHelp.faq.client.a', 'Go to Clients → tap + Add Client and search for the member by name. When you add them, they get a notification letting them know you\'re now their trainer.'),
     },
     {
       q: t('pages:trainerHelp.faq.plan.q', 'How do I assign a plan to a client?'),

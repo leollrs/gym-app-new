@@ -12,4 +12,7 @@
         narrowing the scope is safe and required for App Store / Play UGC review.
     -->
     <cache-path name="my_cache_images" path="camera_temp/" />
+    <!-- Scoped to ig_share/ only — the InstagramShare plugin writes the recap
+         PNG here and hands Instagram a granted content:// URI to it. -->
+    <cache-path name="ig_share" path="ig_share/" />
 </paths>

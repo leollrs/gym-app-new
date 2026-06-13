@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft, ChevronDown, Archive, ArchiveRestore, RotateCcw, Trash2, MoreHorizontal, Ban, Lock, Dumbbell } from 'lucide-react';
+import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft, ChevronDown, Archive, ArchiveRestore, RotateCcw, Trash2, MoreHorizontal, Ban, Lock, Dumbbell, UserPlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
 import { selectInBatches } from '../lib/churn/batchedSelect';
 import UserAvatar from '../components/UserAvatar';
+import FriendsPanel from '../components/FriendsPanel';
 import EmptyState from '../components/EmptyState';
 import ContentActionMenu from '../components/ContentActionMenu';
+import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
+import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import { encryptMessage, decryptMessage } from '../lib/messageEncryption';
 import { checkContentBeforeSend } from '../lib/moderationFilter';
 import { sanitize } from '../lib/sanitize';
@@ -1217,11 +1220,25 @@ function conversationBucket(state) {
 // ── Conversation List View (iMessage style) ─────────────────────
 const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, headerExtra }) => {
   const { t, i18n } = useTranslation('pages');
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [openRowId, setOpenRowId] = useState(null);
+  // Add-friends panel (DMs are friends-only, so adding friends from here is
+  // the natural entry point). Reuses the shared FriendsPanel.
+  const [showFriends, setShowFriends] = useState(false);
+  const [friendships, setFriendships] = useState([]);
+  const loadFriendships = useCallback(async () => {
+    if (!user?.id) return;
+    const { data } = await supabase
+      .from('friendships')
+      .select('id, requester_id, addressee_id, status')
+      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+      .limit(500);
+    setFriendships(data || []);
+  }, [user?.id]);
+  useEffect(() => { loadFriendships(); }, [loadFriendships]);
   // Per-conversation state (archived/deleted/purged) keyed by conversation id,
   // sourced from conversation_member_state. Drives which tab each chat lands in.
   const [stateMap, setStateMap] = useState({});
@@ -1231,6 +1248,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
   const loadConversations = useCallback(async () => {
     setLoading(true);
 
+    try {
     const { data: convs } = await supabase
       .from('conversations')
       .select('id, participant_1, participant_2, last_message_at, encryption_seed')
@@ -1297,7 +1315,11 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
     }));
 
     setConversations(enriched);
-    setLoading(false);
+    } finally {
+      // The per-conversation enrichment Promise.all (decrypt + count) can throw;
+      // without this the full-page spinner never clears on a first visit.
+      setLoading(false);
+    }
   }, [user.id]);
 
   useEffect(() => { document.title = t('messages.title'); }, [t]);
@@ -1408,6 +1430,14 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
         <div className="flex items-center gap-2 flex-shrink-0">
           {headerExtra}
           <button
+            onClick={() => setShowFriends(s => !s)}
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-white/[0.06] transition-colors"
+            style={{ color: showFriends ? 'var(--color-accent, #D4AF37)' : 'var(--color-text-muted)' }}
+            aria-label={t('messages.addFriends', { defaultValue: 'Add friends' })}
+          >
+            <UserPlus size={22} strokeWidth={2.2} />
+          </button>
+          <button
             onClick={onNewMessage}
             className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-white/[0.06] transition-colors"
             style={{ color: 'var(--color-accent, #D4AF37)' }}
@@ -1417,6 +1447,19 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
           </button>
         </div>
       </div>
+
+      {/* Add-friends modal (toggled from the header) — portals over the page */}
+      {showFriends && (
+        <FriendsPanel
+          userId={user.id}
+          gymId={profile?.gym_id}
+          gymName={profile?.gym_name}
+          friendships={friendships}
+          loadFriendships={loadFriendships}
+          onClose={() => setShowFriends(false)}
+          t={t}
+        />
+      )}
 
       {/* Folder tabs: Inbox / Archived / Recently Deleted */}
       {!loading && conversations.length > 0 && (
@@ -1651,6 +1694,7 @@ const Messages = ({ embedded = false, hideBackButton = false, headerExtra = null
   const posthog = usePostHog();
   const [showPicker, setShowPicker] = useState(false);
   const [embeddedConvId, setEmbeddedConvId] = useState(null);
+  const messagingEnabled = useFeatureEnabled('messaging');
 
   const basePath = location.pathname.startsWith('/trainer') ? '/trainer/messages' : '/messages';
   const conversationId = embedded ? embeddedConvId : routeConvId;
@@ -1674,6 +1718,11 @@ const Messages = ({ embedded = false, hideBackButton = false, headerExtra = null
   const handleNewMessage = () => {
     setShowPicker(true);
   };
+
+  // Platform kill switch (Operations → feature_messaging). After all hooks so
+  // a mid-session flip can't change the hook order. Member-only surface —
+  // trainer messaging lives in TrainerMessages, which doesn't use this page.
+  if (!messagingEnabled) return <FeatureDisabledScreen embedded={embedded} />;
 
   const handleSelectMember = async (member) => {
     setShowPicker(false);

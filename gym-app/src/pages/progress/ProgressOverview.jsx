@@ -180,6 +180,7 @@ export default function ProgressOverview() {
       const volRaw = volumeData?.data ?? [];
       const weeklyMap = {};
       volRaw.forEach(s => {
+        if (!s.completed_at) return; // null → Invalid Date → format() throws
         const wk = format(startOfWeek(new Date(s.completed_at), { weekStartsOn: 1 }), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined });
         weeklyMap[wk] = (weeklyMap[wk] || 0) + (parseFloat(s.total_volume_lbs) || 0);
       });

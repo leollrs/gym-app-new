@@ -200,8 +200,8 @@ function drawAchievement(ctx, cx, y, text, w) {
 function drawBrand(ctx, w, h, { gymName, gymLogo, userName }) {
   let y = h - 48;
 
-  // "Tracked with TuGymPR"
-  txt(ctx, 'Tracked with TuGymPR', w / 2, y, { font: ff(400, 13), color: C.t3 });
+  // "Tracked with <gym>" — white-label: highlight the gym, not the app.
+  txt(ctx, `Tracked with ${gymName || 'TuGymPR'}`, w / 2, y, { font: ff(400, 13), color: C.t3 });
   y -= 36;
 
   // User name

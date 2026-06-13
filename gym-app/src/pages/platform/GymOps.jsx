@@ -186,7 +186,16 @@ export default function GymOps() {
   }
 
   const isPending = gym.lifecycle_state === 'pending_deletion';
-  const lifecycleColor = isPending ? 'red' : gym.lifecycle_state === 'paused' ? 'amber' : 'emerald';
+  // Static class map — template-string Tailwind classes (`bg-${color}-500/10`)
+  // only render when the literal happens to be in the CSS bundle; the JIT
+  // compiler can't see them. Full literals per state instead.
+  const LIFECYCLE_BADGE = {
+    pending_deletion: 'bg-red-500/10 text-red-400 border-red-500/20',
+    paused:           'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    active:           'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    deleted:          'bg-slate-500/10 text-slate-400 border-slate-500/20',
+  };
+  const lifecycleBadgeCls = LIFECYCLE_BADGE[gym.lifecycle_state] || LIFECYCLE_BADGE.active;
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
@@ -204,7 +213,7 @@ export default function GymOps() {
           <h1 className="text-[18px] font-bold text-[#E5E7EB] truncate">{gym.name}</h1>
         </div>
         <span
-          className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-${lifecycleColor}-500/10 text-${lifecycleColor}-400 border-${lifecycleColor}-500/20`}
+          className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${lifecycleBadgeCls}`}
         >
           {gym.lifecycle_state.replace('_', ' ')}
         </span>
@@ -218,11 +227,12 @@ export default function GymOps() {
             <div className="flex-1 min-w-0">
               <p className="text-[14px] font-bold text-red-400">Scheduled for deletion</p>
               <p className="text-[12px] text-[#FCA5A5] mt-1">
-                All data will be permanently deleted on{' '}
+                A daily automated sweep will permanently delete all data on{' '}
                 <span className="font-semibold">
                   {format(new Date(gym.scheduled_deletion_at), 'PPP')}
                 </span>{' '}
                 ({formatDistanceToNow(new Date(gym.scheduled_deletion_at), { addSuffix: true })}).
+                No further action is needed — cancel below to keep the gym.
               </p>
               <button
                 onClick={() => cancelMutation.mutate()}
@@ -257,7 +267,7 @@ export default function GymOps() {
             <OpsCard
               icon={Clock}
               title="Schedule deletion"
-              sub="Soft-delete with a grace window. Members lose access immediately; data is preserved for restore until the deletion date."
+              sub="Soft-delete with a grace window. Members lose access immediately; data is preserved for restore until the deletion date, then a daily automated sweep permanently deletes the gym — no manual step needed."
               actionLabel={scheduleMutation.isPending ? 'Scheduling…' : `Schedule (${scheduleDays} days)`}
               actionLoading={scheduleMutation.isPending}
               actionIcon={Clock}
@@ -498,6 +508,7 @@ const EVENT_LABEL = {
   deletion_cancelled:     'Deletion cancelled',
   deletion_executed:      'Hard deleted',
   restored_from_pending:  'Restored from pending',
+  auto_delete_executed:   'Auto-deleted (scheduled sweep)',
 };
 const EVENT_ICON = {
   created:                '🟢',
@@ -508,4 +519,5 @@ const EVENT_ICON = {
   deletion_cancelled:     '↩️',
   deletion_executed:      '🗑️',
   restored_from_pending:  '✅',
+  auto_delete_executed:   '🗑️',
 };

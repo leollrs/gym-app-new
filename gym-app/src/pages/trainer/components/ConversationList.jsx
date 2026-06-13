@@ -56,7 +56,6 @@ function SwipeRow({ lang,
   onArchive,
   onDelete,
   onBlock,
-  renderTime,
   t,
 }) {
   const u = conv.otherUser;
@@ -205,7 +204,8 @@ function SwipeRow({ lang,
                 {name}
               </p>
               {isPinned && <Pin size={11} style={{ color: TT.accent }} />}
-              <span className="ml-auto text-[11px] shrink-0" style={{ color: TT.textMute }}>
+              {/* mr-7 clears the corner pin button so text never sits under it */}
+              <span className="ml-auto mr-7 text-[11px] shrink-0" style={{ color: TT.textMute }}>
                 {formatRelative(conv.last_message_at, t, lang)}
               </span>
             </div>
@@ -230,18 +230,22 @@ function SwipeRow({ lang,
             </div>
           </div>
         </button>
-        {/* Pin shortcut (kept for desktop hover; hidden visually on swipe-open) */}
+        {/* Pin shortcut — always visible (faint when unpinned) so the tap
+            target is never invisible on touch devices; full opacity when
+            pinned, hovered, or focused. Hidden while swipe-open. */}
         {!isOpen && (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
-            className="absolute top-1.5 right-1.5 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg opacity-0 hover:opacity-100 focus:opacity-100"
+            className={`absolute top-1 right-1 min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg transition-opacity ${
+              isPinned ? 'opacity-100' : 'opacity-40 hover:opacity-100 focus:opacity-100'
+            }`}
             style={{ color: isPinned ? TT.accent : TT.textMute }}
             aria-label={isPinned
               ? t('trainerMessages.list.unpinAria', 'Unpin')
               : t('trainerMessages.list.pinAria', 'Pin')}
           >
-            <Pin size={13} />
+            <Pin size={13} fill={isPinned ? TT.accent : 'none'} />
           </button>
         )}
       </motion.div>
@@ -397,7 +401,6 @@ export default function ConversationList({
                     onArchive={() => onArchive(conv.id)}
                     onDelete={() => onDelete(conv.id)}
                     onBlock={() => onBlock(conv)}
-                    renderTime={renderTime}
                     t={t}
                     lang={lang}
                   />

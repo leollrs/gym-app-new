@@ -109,6 +109,7 @@ export default function SimpleShareSheet({
   defaultCaption,
   renderCard,
   allowSticker = true,
+  gymName,
 }) {
   const { t } = useTranslation('pages');
   const [format, setFormat] = useState('story');
@@ -193,7 +194,7 @@ export default function SimpleShareSheet({
         if (blob) {
           await shareBlob(blob, 'tugympr-share.png', full);
         } else {
-          try { await Share.share({ title: 'TuGymPR', text: full, url: shareLink }); } catch {}
+          try { await Share.share({ title: gymName || 'TuGymPR', text: full, url: shareLink }); } catch {}
         }
       }
     } catch (err) {

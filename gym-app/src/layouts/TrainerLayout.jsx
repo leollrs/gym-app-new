@@ -4,6 +4,7 @@ import { Home, Users, CalendarDays, ClipboardList, MessageSquare, Bell, LogOut, 
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import useKeyboardOpen from '../hooks/useKeyboardOpen';
 
 const BASE_NAV = [
   { to: '/trainer',          labelKey: 'trainerNav.home',     icon: Home,           exact: true },
@@ -18,14 +19,17 @@ const BASE_NAV = [
 const sidebarLinkClass = (active) =>
   `flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium transition-colors ${
     active
-      ? 'text-[#19B8B8]'
+      ? 'text-[#1E9C8E]'
       : 'text-[var(--tt-text-sub)] hover:text-[var(--tt-text)] hover:bg-[var(--tt-surface-2)]'
   }`;
 
 export default function TrainerLayout({ children }) {
+  const keyboardOpen = useKeyboardOpen();
   const { t } = useTranslation('common');
   const { profile, gymName, gymLogoUrl, gymConfig, signOut } = useAuth();
-  const classesEnabled = gymConfig?.classesEnabled !== false;
+  // Match AuthContext's gating (`classes_enabled ?? false`) — treating
+  // "missing" as enabled made the Classes tab flash while config loaded.
+  const classesEnabled = gymConfig?.classesEnabled === true;
   const NAV = BASE_NAV.filter(n => !n.requiresClasses || classesEnabled);
   // Mobile bottom nav stays at 5–6 tabs; the money tracker lives in the desktop
   // sidebar + the dashboard money card on mobile.
@@ -47,14 +51,17 @@ export default function TrainerLayout({ children }) {
         .is('dismissed_at', null)
         .then(({ count }) => setUnreadNotifs(count || 0));
     };
+    const refreshMessages = () => {
+      supabase
+        .from('direct_messages')
+        .select('id, conversation_id, conversations!inner(participant_1, participant_2)', { count: 'exact', head: true })
+        .neq('sender_id', profile.id)
+        .is('read_at', null)
+        .or(`participant_1.eq.${profile.id},participant_2.eq.${profile.id}`, { referencedTable: 'conversations' })
+        .then(({ count }) => setUnreadMessages(count || 0));
+    };
     refreshUnread();
-    supabase
-      .from('direct_messages')
-      .select('id, conversation_id, conversations!inner(participant_1, participant_2)', { count: 'exact', head: true })
-      .neq('sender_id', profile.id)
-      .is('read_at', null)
-      .or(`participant_1.eq.${profile.id},participant_2.eq.${profile.id}`, { referencedTable: 'conversations' })
-      .then(({ count }) => setUnreadMessages(count || 0));
+    refreshMessages();
 
     // Live update the trainer bell badge.
     const ch = supabase
@@ -66,7 +73,36 @@ export default function TrainerLayout({ children }) {
         filter: `profile_id=eq.${profile.id}`,
       }, refreshUnread)
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+
+    // Live update the messages badge — any INSERT the trainer can see (RLS
+    // scopes events to their conversations) triggers a debounced recount,
+    // mirroring the bell pattern above.
+    let msgDebounce = null;
+    const msgCh = supabase
+      .channel(`trainer-msgs-${profile.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'direct_messages',
+      }, () => {
+        if (msgDebounce) clearTimeout(msgDebounce);
+        msgDebounce = setTimeout(refreshMessages, 1500);
+      })
+      .subscribe();
+
+    // Recount both badges when the tab/app returns to the foreground (covers
+    // reads done elsewhere + missed realtime while backgrounded).
+    const onVis = () => {
+      if (document.visibilityState === 'visible') { refreshUnread(); refreshMessages(); }
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      if (msgDebounce) clearTimeout(msgDebounce);
+      document.removeEventListener('visibilitychange', onVis);
+      supabase.removeChannel(ch);
+      supabase.removeChannel(msgCh);
+    };
   }, [profile?.id]);
 
   const handleSignOut = async () => {
@@ -84,7 +120,7 @@ export default function TrainerLayout({ children }) {
         style={{ borderRight: '1px solid var(--tt-border)', background: 'var(--tt-surface)' }}
       >
         <Link to="/trainer" className="px-5 py-5 no-underline" style={{ borderBottom: '1px solid var(--tt-border)' }}>
-          <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#19B8B8' }}>{t('trainerNav.trainer')}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#1E9C8E' }}>{t('trainerNav.trainer')}</p>
           <div className="flex items-center gap-2.5">
             {gymLogoUrl && (
               <img src={gymLogoUrl} alt={gymName || 'Gym'} className="w-7 h-7 rounded-lg object-contain flex-shrink-0"
@@ -105,13 +141,45 @@ export default function TrainerLayout({ children }) {
         </nav>
 
         <div className="px-3 py-4" style={{ borderTop: '1px solid var(--tt-border)' }}>
+          {/* Social + Notifications — desktop access to /trainer/social and
+              /trainer/notifications (mobile reaches them via the header). */}
+          <div className="flex gap-1.5 mb-1.5">
+            <button
+              type="button"
+              onClick={() => navigate('/trainer/social')}
+              aria-label={t('trainerNav.social', 'Social')}
+              title={t('trainerNav.social', 'Social')}
+              className="flex-1 flex items-center justify-center py-2 rounded-xl transition-colors hover:bg-[var(--tt-surface-2)]"
+              style={{ border: '1px solid var(--tt-border)', color: 'var(--tt-text-sub)', background: 'transparent' }}
+            >
+              <Users size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/trainer/notifications')}
+              aria-label={t('trainerNav.notifications', 'Notifications')}
+              title={t('trainerNav.notifications', 'Notifications')}
+              className="flex-1 flex items-center justify-center py-2 rounded-xl transition-colors hover:bg-[var(--tt-surface-2)]"
+              style={{ border: '1px solid var(--tt-border)', color: 'var(--tt-text-sub)', background: 'transparent' }}
+            >
+              <span className="relative">
+                <Bell size={16} />
+                {unreadNotifs > 0 && (
+                  <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-0.5 rounded-full text-[9px] font-bold flex items-center justify-center"
+                    style={{ background: '#1E9C8E', color: '#fff' }}>
+                    {unreadNotifs > 9 ? '9+' : unreadNotifs}
+                  </span>
+                )}
+              </span>
+            </button>
+          </div>
           <button
             onClick={() => navigate('/trainer/profile')}
             aria-label={`${profile?.full_name ?? 'Trainer'} profile`}
-            className="w-full flex items-center gap-3 px-3 py-2 mb-1 rounded-xl hover:bg-white/[0.04] transition-colors text-left"
+            className="w-full flex items-center gap-3 px-3 py-2 mb-1 rounded-xl hover:bg-[var(--tt-surface-2)] transition-colors text-left"
           >
             <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--tt-accent-soft)' }}>
-              <span className="text-[11px] font-bold" style={{ color: '#19B8B8' }}>{profile?.full_name?.[0]?.toUpperCase() ?? 'T'}</span>
+              <span className="text-[11px] font-bold" style={{ color: '#1E9C8E' }}>{profile?.full_name?.[0]?.toUpperCase() ?? 'T'}</span>
             </div>
             <div className="min-w-0">
               <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--tt-text)' }}>{profile?.full_name ?? 'Trainer'}</p>
@@ -165,7 +233,7 @@ export default function TrainerLayout({ children }) {
               <Bell size={16} />
               {unreadNotifs > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full text-[10px] font-bold flex items-center justify-center"
-                  style={{ background: '#19B8B8', color: '#06363B' }}>
+                  style={{ background: '#1E9C8E', color: '#fff' }}>
                   {unreadNotifs > 9 ? '9+' : unreadNotifs}
                 </span>
               )}
@@ -174,7 +242,7 @@ export default function TrainerLayout({ children }) {
               className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform focus:ring-2 focus:outline-none"
               style={{ background: 'var(--tt-accent-soft)' }}
               aria-label={t('trainerNav.profile', 'Profile')}>
-              <span className="text-[14px] font-bold" style={{ color: '#19B8B8' }}>
+              <span className="text-[14px] font-bold" style={{ color: '#1E9C8E' }}>
                 {profile?.full_name?.[0]?.toUpperCase() ?? 'T'}
               </span>
             </button>
@@ -189,7 +257,7 @@ export default function TrainerLayout({ children }) {
       {/* ── Mobile bottom nav (5 tabs) ──────────────── */}
       <nav
         aria-label="Trainer mobile navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex backdrop-blur-2xl"
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-50 flex backdrop-blur-2xl ${keyboardOpen ? 'hidden' : ''}`}
         style={{
           backgroundColor: '#0E1316',
           borderTop: '1px solid rgba(255,255,255,0.08)',
@@ -203,13 +271,13 @@ export default function TrainerLayout({ children }) {
                 isActive ? '' : ''
               }`
             }
-            style={({ isActive }) => ({ color: isActive ? '#19B8B8' : '#96A0AA' })}
+            style={({ isActive }) => ({ color: isActive ? '#27B0A0' : '#96A0AA' })}
           >
             <span className="relative">
               <Icon size={20} />
               {to === '/trainer/messages' && unreadMessages > 0 && (
                 <span className="absolute -top-1 -right-2 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center"
-                  style={{ background: '#19B8B8', color: '#06363B' }}>
+                  style={{ background: '#27B0A0', color: '#fff' }}>
                   {unreadMessages > 9 ? '9+' : unreadMessages}
                 </span>
               )}

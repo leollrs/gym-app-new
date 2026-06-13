@@ -44,6 +44,9 @@ export default function ShareTplBoldSport({
   // proportional from preview (270 wide) to export (1080 wide).
   const s = w / 270;
   const light = themeMode === 'light';
+  // White-label: show the gym name (string), not the app name. data.gym may be
+  // an object ({name,location}) or a string.
+  const gymLabel = (typeof data?.gym === 'string' ? data.gym : data?.gym?.name) || 'TuGymPR';
   const surface = light ? '#EEEBE3' : '#0A0D10';
   return (
     <div
@@ -238,7 +241,7 @@ export default function ShareTplBoldSport({
             <div />
           )}
           <div style={{ fontFamily: TuFont.display, fontSize: 11 * s, fontWeight: 800, color: '#fff', letterSpacing: -0.3 * s }}>
-            TuGym<span style={{ color: accent }}>PR</span>
+            {gymLabel}
           </div>
         </div>
       </div>

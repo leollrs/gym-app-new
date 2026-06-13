@@ -7,8 +7,6 @@ const roleConfig = {
   member:      { key: 'member',      bg: 'bg-white/6',       text: 'text-[#9CA3AF]',  border: 'border-white/10' },
 };
 
-export { roleConfig };
-
 export default function RoleBadge({ role }) {
   const { t } = useTranslation('pages');
   const cfg = roleConfig[role] ?? roleConfig.member;

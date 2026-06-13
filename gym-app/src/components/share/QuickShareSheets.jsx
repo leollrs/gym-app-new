@@ -37,6 +37,7 @@ export function SharePRSheet({ open, onClose, pr, user, gym, gymLogo }) {
     <SimpleShareSheet
       open={open}
       onClose={onClose}
+      gymName={gym}
       title={t('share.titlePR', 'Share PR')}
       shareLink={`${PROD_WEB_URL}/pr/${pr.id || ''}`}
       shareText={caption}
@@ -66,13 +67,14 @@ export function ShareStreakSheet({ open, onClose, streakDays, milestone, user, g
     user: user?.full_name || user?.username,
   };
   const caption = t('share.streakCaption', {
-    defaultValue: '{{n}}-day streak on TuGymPR 🔥', n: streakDays,
+    defaultValue: '{{n}}-day streak on {{gym}} 🔥', n: streakDays, gym: gym || 'TuGymPR',
   });
 
   return (
     <SimpleShareSheet
       open={open}
       onClose={onClose}
+      gymName={gym}
       title={t('share.titleStreak', 'Share streak')}
       shareLink={`${PROD_WEB_URL}/streak`}
       shareText={caption}
@@ -108,17 +110,19 @@ export function ShareBodyCompSheet({ open, onClose, comp, user, gym, gymLogo }) 
   const direction = comp.deltaLbs < 0 ? 'lost' : 'gained';
   const caption = comp.deltaLbs != null && comp.daysApart
     ? t('share.bodyCompCaption', {
-        defaultValue: '{{dir}} {{n}} lb in {{d}} days on TuGymPR',
+        defaultValue: '{{dir}} {{n}} lb in {{d}} days on {{gym}}',
         dir: direction,
         n: Math.abs(comp.deltaLbs).toFixed(1),
         d: comp.daysApart,
+        gym: gym || 'TuGymPR',
       })
-    : t('share.bodyCompCaptionShort', { defaultValue: 'Progress on TuGymPR' });
+    : t('share.bodyCompCaptionShort', { defaultValue: 'Progress on {{gym}}', gym: gym || 'TuGymPR' });
 
   return (
     <SimpleShareSheet
       open={open}
       onClose={onClose}
+      gymName={gym}
       title={t('share.titleBodyComp', 'Share progress')}
       shareLink={`${PROD_WEB_URL}/progress`}
       shareText={caption}
@@ -147,15 +151,17 @@ export function ShareMonthlySheet({ open, onClose, recap, user, gym, gymLogo }) 
     user: user?.full_name || user?.username,
   };
   const caption = t('share.monthlyCaption', {
-    defaultValue: '{{label}} on TuGymPR — {{n}} workouts',
+    defaultValue: '{{label}} on {{gym}} — {{n}} workouts',
     label: recap.monthLabel,
     n: recap.workouts,
+    gym: gym || 'TuGymPR',
   });
 
   return (
     <SimpleShareSheet
       open={open}
       onClose={onClose}
+      gymName={gym}
       title={t('share.titleMonthly', 'Share month')}
       shareLink={`${PROD_WEB_URL}/recap`}
       shareText={caption}

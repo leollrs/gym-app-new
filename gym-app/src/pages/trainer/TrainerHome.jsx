@@ -2,12 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  AlertTriangle, X, ChevronRight,
+  AlertTriangle, ChevronRight,
   Users, TrendingUp, CalendarCheck, Activity, DollarSign,
-  Play, MessageSquare, FileText,
+  Play, MessageSquare, User,
 } from 'lucide-react';
-// eslint-disable-next-line no-unused-vars
-import { motion } from 'framer-motion';
 import { subDays, format, startOfWeek, startOfDay, endOfDay, isTomorrow } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { enUS } from 'date-fns/locale/en-US';
@@ -17,34 +15,20 @@ import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
+import { deriveClientStatus, needsAttention, weeklyAdherence, daysSince, RISK } from '../../lib/clientStatus';
 import {
   TCard, TAvatar, TSparkBars, TPill,
-  TEyebrow, TDarkButton, TSegmented,
+  TEyebrow, TDarkButton,
   TSectionHeader, TPrimaryButton,
 } from './components/designPrimitives';
 
 // ─────────────────────────────────────────────────────────────────────
-// Helper: derive a client status (on_track / at_risk / behind / inactive)
-// from churn score + last_active_at.
-// ─────────────────────────────────────────────────────────────────────
-function deriveClientStatus(client, churnScore) {
-  const lastActive = client.last_active_at ? new Date(client.last_active_at) : null;
-  const daysInactive = lastActive
-    ? Math.floor((Date.now() - lastActive.getTime()) / (1000 * 60 * 60 * 24))
-    : 999;
-  if (daysInactive >= 14) return 'inactive';
-  if (churnScore != null && churnScore >= 70) return 'behind';
-  if (churnScore != null && churnScore >= 50) return 'at_risk';
-  if (daysInactive >= 7) return 'at_risk';
-  return 'on_track';
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Build a 7-bar weekly activity sparkline from the client's recent sessions
+// Build a 7-bar weekly activity sparkline from the client's recent sessions.
+// Monday-start, matching the weekStart the fetch queries with (weekStartsOn:1).
 // ─────────────────────────────────────────────────────────────────────
 function buildWeekBars(profileId, weekSessions) {
   const bars = [0, 0, 0, 0, 0, 0, 0];
-  const ws = startOfWeek(new Date(), { weekStartsOn: 0 });
+  const ws = startOfWeek(new Date(), { weekStartsOn: 1 });
   weekSessions.forEach(s => {
     if (s.profile_id !== profileId) return;
     const d = new Date(s.started_at);
@@ -52,6 +36,15 @@ function buildWeekBars(profileId, weekSessions) {
     if (dayIdx >= 0 && dayIdx < 7) bars[dayIdx] += 1;
   });
   return bars;
+}
+
+// 12h tick label for the desktop timeline axis ("7a", "12p", "9p").
+function tickLabel(hr) {
+  const h = ((hr % 24) + 24) % 24;
+  if (h === 0) return '12a';
+  if (h < 12) return `${h}a`;
+  if (h === 12) return '12p';
+  return `${h - 12}p`;
 }
 
 export default function TrainerHome() {
@@ -70,21 +63,34 @@ export default function TrainerHome() {
   const [churnScores, setChurnScores] = useState({});
   const [moneyOverview, setMoneyOverview] = useState(null);
   const [upcomingSessions, setUpcomingSessions] = useState([]);
-  // Set of client profile ids who currently have an in-progress workout draft.
-  // Hook is intentionally minimal here — full real-time updates happen on
-  // /trainer/live/:sessionId itself.
+  // Set of client profile ids who currently have an in-progress workout draft —
+  // feeds the "Training now" indicators on hero/lineup/roster. Kept fresh by
+  // the realtime effect below.
   const [liveClientIds, setLiveClientIds] = useState(new Set());
+  // Full draft rows behind those ids — feeds the "En vivo ahora" rail
+  // (routine name + pause-aware elapsed), not just the dot indicators.
+  const [liveDrafts, setLiveDrafts] = useState([]);
   const [recentPRs, setRecentPRs] = useState([]);
-  const [callModal, setCallModal] = useState(null);
-  const [callNote, setCallNote] = useState('');
-  const [callOutcome, setCallOutcome] = useState('no_answer');
-  const [submittingAction, setSubmittingAction] = useState(null);
+  // gym_programs.id → name for the roster's assigned programs; null = fetch failed.
+  const [programNames, setProgramNames] = useState({});
 
   useEffect(() => { document.title = `${t('trainerHome.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;
     fetchHomeData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.gym_id, profile?.id]);
+
+  // Cheap freshness: silently refetch when the tab/app comes back to the
+  // foreground (no skeleton flash). Pull-to-refresh is deferred to v2.
+  useEffect(() => {
+    if (!profile?.gym_id || !profile?.id) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') fetchHomeData({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.gym_id, profile?.id]);
 
@@ -102,13 +108,17 @@ export default function TrainerHome() {
     const clientIds = clients.map(c => c.id);
 
     const refreshLiveDrafts = async () => {
+      // 6h window — same freshness rule as TrainerLiveSession/client detail,
+      // so "Training now" can never come from yesterday's abandoned draft.
       const { data, error } = await selectInBatches(
-        (ids) => supabase.from('session_drafts').select('profile_id')
+        (ids) => supabase.from('session_drafts')
+          .select('profile_id, routine_name, started_at, elapsed_time, is_paused, updated_at')
           .in('profile_id', ids)
-          .gte('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+          .gte('updated_at', new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()),
         clientIds,
       );
       if (error) { logger.error('TrainerHome: live drafts refresh failed:', error); return; }
+      setLiveDrafts(data || []);
       setLiveClientIds(new Set((data || []).map(r => r.profile_id)));
     };
 
@@ -130,8 +140,8 @@ export default function TrainerHome() {
     };
   }, [profile?.id, clients.map(c => c.id).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function fetchHomeData() {
-    setLoading(true);
+  async function fetchHomeData({ silent = false } = {}) {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).toISOString();
@@ -141,7 +151,7 @@ export default function TrainerHome() {
 
       const { data: tcRows, error: tcError } = await supabase
         .from('trainer_clients')
-        .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name, username, avatar_url, avatar_type, avatar_value, last_active_at, created_at)')
+        .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name, username, avatar_url, avatar_type, avatar_value, last_active_at, created_at, assigned_program_id)')
         .eq('trainer_id', profile.id)
         .eq('is_active', true);
       if (tcError) logger.error('TrainerHome: failed to load clients:', tcError);
@@ -182,16 +192,30 @@ export default function TrainerHome() {
       setUpcomingSessions(upcomingRes.data || []);
       setMoneyOverview(moneyRes?.error ? null : (moneyRes?.data || null));
 
+      // supabase-js never throws — surface CORE query failures (roster,
+      // sessions, money) as the page error state instead of silent empties.
+      // A missing money RPC (migration 0451 not applied) is "unconfigured",
+      // not an error.
+      const moneyRpcMissing = moneyRes?.error &&
+        (moneyRes.error.code === 'PGRST202' || moneyRes.error.code === '42883');
+      const coreError = tcError || todayRes.error || upcomingRes.error ||
+        (moneyRpcMissing ? null : moneyRes?.error) || null;
+      if (coreError) setError(t('trainerHome.loadError', 'Failed to load dashboard data'));
+
+      const programIds = [...new Set(assignedClients.map(c => c.assigned_program_id).filter(Boolean))];
+
       if (clientIds.length === 0) {
         setWeekSessions([]);
         setRecentPRs([]);
         setChurnScores({});
         setLiveClientIds(new Set());
+        setLiveDrafts([]);
+        setProgramNames({});
         setLoading(false);
         return;
       }
 
-      const [churnRes, weekRes, prsRes, liveRes] = await Promise.all([
+      const [churnRes, weekRes, prsRes, liveRes, progRes] = await Promise.all([
         selectInBatches(
           (ids) => supabase.from('churn_risk_scores').select('profile_id, score, computed_at')
             .in('profile_id', ids).order('computed_at', { ascending: false }),
@@ -210,13 +234,20 @@ export default function TrainerHome() {
             .order('achieved_at', { ascending: false }).limit(8),
           clientIds,
         ),
-        // In-progress workout drafts — feeds the "Watch live" button. 24h cutoff.
+        // In-progress workout drafts — feeds the live "Training now"
+        // indicators + the "En vivo ahora" rail. 6h cutoff (same freshness
+        // rule as TrainerLiveSession, so stale drafts never read as live).
         selectInBatches(
-          (ids) => supabase.from('session_drafts').select('profile_id')
+          (ids) => supabase.from('session_drafts')
+            .select('profile_id, routine_name, started_at, elapsed_time, is_paused, updated_at')
             .in('profile_id', ids)
-            .gte('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+            .gte('updated_at', new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()),
           clientIds,
         ),
+        // Program names for the roster's "Program" column.
+        programIds.length
+          ? supabase.from('gym_programs').select('id, name').in('id', programIds)
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
       if (churnRes.error) logger.error('TrainerHome: churn fetch failed:', churnRes.error);
@@ -225,12 +256,25 @@ export default function TrainerHome() {
       if (liveRes.error)  logger.error('TrainerHome: live drafts fetch failed:', liveRes.error);
 
       const cmap = {};
-      (churnRes.data || []).forEach(r => { cmap[r.profile_id] = r; });
+      // Rows come newest-first (order by computed_at desc) — keep the first
+      // (= most recent) score per profile so the staleness check is honest.
+      (churnRes.data || []).forEach(r => { if (!cmap[r.profile_id]) cmap[r.profile_id] = r; });
       setChurnScores(cmap);
 
       setWeekSessions(weekRes.data || []);
       setRecentPRs(prsRes.data || []);
+      setLiveDrafts(liveRes.data || []);
       setLiveClientIds(new Set((liveRes.data || []).map(r => r.profile_id)));
+
+      if (progRes.error) {
+        // Don't render "No program" on a failed read — '—' (unknown) instead.
+        logger.error('TrainerHome: program names fetch failed:', progRes.error);
+        setProgramNames(null);
+      } else {
+        const pmap = {};
+        (progRes.data || []).forEach(p => { pmap[p.id] = p.name; });
+        setProgramNames(pmap);
+      }
     } catch (err) {
       logger.error('TrainerHome: fetchHomeData crashed', err);
       // Display only the translated fallback — raw err.message stays in the log.
@@ -250,30 +294,42 @@ export default function TrainerHome() {
   const activeIn30Days = clients.filter(c => c.last_active_at && new Date(c.last_active_at) >= thirtyDaysAgo).length;
   const retentionPct = totalClients > 0 ? Math.round((activeIn30Days / totalClients) * 100) : 0;
 
-  const sevenDaysAgoDate = subDays(new Date(), 7);
+  // "Needs attention" — derived from the shared canonical risk model
+  // (lib/clientStatus), so Home agrees with TrainerClients page-to-page.
   const atRiskClients = useMemo(() => {
     return clients
-      .filter(c => {
-        const lastActive = c.last_active_at ? new Date(c.last_active_at) : null;
-        const isInactive = !lastActive || lastActive < sevenDaysAgoDate;
-        const churn = churnScores[c.id];
-        const isHighChurn = churn && churn.score >= 60;
-        return isInactive || isHighChurn;
-      })
       .map(c => {
-        const lastActive = c.last_active_at ? new Date(c.last_active_at) : null;
-        const daysInactive = lastActive ? Math.floor((Date.now() - lastActive.getTime()) / (1000 * 60 * 60 * 24)) : 30;
         const churn = churnScores[c.id];
-        return { client: c, daysInactive, churnScore: churn ? Math.round(churn.score) : null };
+        const info = {
+          lastActiveAt: c.last_active_at,
+          createdAt: c.created_at,
+          churnScore: churn ? Number(churn.score) : null,
+          churnComputedAt: churn?.computed_at,
+        };
+        return {
+          client: c,
+          status: deriveClientStatus(info),
+          attention: needsAttention(info),
+          daysInactive: daysSince(c.last_active_at),
+          churnScore: churn ? Math.round(churn.score) : null,
+        };
       })
-      .sort((a, b) => b.daysInactive - a.daysInactive)
+      .filter(item => item.attention)
+      .sort((a, b) => (b.daysInactive ?? 9999) - (a.daysInactive ?? 9999))
       .slice(0, 5);
-  }, [clients, churnScores, sevenDaysAgoDate]);
+  }, [clients, churnScores]);
 
-  // KPI sparkline = workouts/day for the past 7 days across all clients
+  const attentionReason = (item) => item.daysInactive == null
+    ? t('trainerHome.attentionReasonNever', "Hasn't trained yet")
+    : (item.churnScore != null && item.churnScore >= RISK.AT_RISK_SCORE
+      ? t('trainerHome.attentionReasonChurn', '{{days}} days quiet · churn {{score}}', { days: item.daysInactive, score: item.churnScore })
+      : t('trainerHome.attentionReasonInactive', '{{days}} days quiet', { days: item.daysInactive }));
+
+  // KPI sparkline = workouts/day this week across all clients (Monday-start,
+  // same week the fetch queries).
   const weekDaySpark = useMemo(() => {
     const bars = [0, 0, 0, 0, 0, 0, 0];
-    const ws = startOfWeek(new Date(), { weekStartsOn: 0 });
+    const ws = startOfWeek(new Date(), { weekStartsOn: 1 });
     weekSessions.forEach(s => {
       const d = new Date(s.started_at);
       const idx = Math.floor((d - ws) / (1000 * 60 * 60 * 24));
@@ -281,6 +337,21 @@ export default function TrainerHome() {
     });
     return bars;
   }, [weekSessions]);
+
+  // Desktop timeline domain — dynamic, so evening sessions (PR prime time)
+  // always render inside the card: start = min(7a, earliest session hour),
+  // end = max(9p, latest session end hour), capped at midnight.
+  const tlDomain = useMemo(() => {
+    let start = 7, end = 21;
+    todaySessions.forEach(s => {
+      const d = new Date(s.scheduled_at);
+      const h = d.getHours() + d.getMinutes() / 60;
+      start = Math.min(start, Math.floor(h));
+      end = Math.max(end, Math.ceil(h + Math.max(1, (s.duration_mins || 60) / 60)));
+    });
+    end = Math.min(24, end);
+    return { start, end, span: Math.max(1, end - start) };
+  }, [todaySessions]);
 
   // Greeting based on hour. The greeting* keys bake in ", {{name}}" — pass an
   // empty name and strip the trailing separator so we get just the salutation
@@ -299,11 +370,6 @@ export default function TrainerHome() {
   // ── Home (V3 redesign) derived values ──
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
   const homeEyebrow = cap(format(new Date(), 'EEEE · d MMMM · h:mm a', { locale: dateFnsLocale }));
-  const todayTotalMins = todaySessions.reduce((a, s) => a + (s.duration_mins || 60), 0);
-  const hoursLabel = (() => {
-    const h = Math.floor(todayTotalMins / 60), m = todayTotalMins % 60;
-    return h > 0 ? (m > 0 ? `${h} h ${m} m` : `${h} h`) : `${m} m`;
-  })();
   const todayUpcoming = todaySessions.filter(s => s.status !== 'completed'); // not-yet-done today
   const allUpcoming = [...todayUpcoming, ...upcomingSessions];               // chronological (today's open, then future)
   // Feature the next session that hasn't finished yet — otherwise an earlier
@@ -323,6 +389,48 @@ export default function TrainerHome() {
     ? (minsUntilNext != null && minsUntilNext > 0 ? t('trainerHome.nextIn', 'Next · in {{n}} min', { n: minsUntilNext }) : t('trainerHome.nextNow', 'Up next'))
     : t('trainerHome.nextOn', 'Next · {{when}}', { when: isTomorrow(new Date(heroSession.scheduled_at)) ? t('trainerHome.tomorrow', 'tomorrow') : format(new Date(heroSession.scheduled_at), 'EEE d', { locale: dateFnsLocale }) }));
   const upcomingList = allUpcoming.slice(heroIdx + 1); // everything after the hero (today's rest + future)
+  // "Today's lineup" is strictly today — future-day sessions stay out, and the
+  // count/hours line is computed from the SAME list it sits above.
+  const lineupToday = upcomingList.filter(s => todayUpcoming.some(x => x.id === s.id));
+  const lineupMins = lineupToday.reduce((a, s) => a + (s.duration_mins || 60), 0);
+  const lineupHours = (() => {
+    const h = Math.floor(lineupMins / 60), m = lineupMins % 60;
+    return h > 0 ? (m > 0 ? `${h} h ${m} m` : `${h} h`) : `${m} m`;
+  })();
+  const heroIsLive = !!heroClientId && liveClientIds.has(heroClientId);
+
+  // "En vivo ahora" rail — drafts touched in the last 45 min are genuinely
+  // in-progress (the member app autosaves constantly during a workout); the
+  // wider 6h fetch window only backs the softer "Training now" dots. Joined
+  // to the roster for name/avatar; pause-aware elapsed minutes.
+  const liveNow = useMemo(() => {
+    const cutoff = Date.now() - 45 * 60 * 1000;
+    return liveDrafts
+      .filter(d => d.updated_at && new Date(d.updated_at).getTime() >= cutoff)
+      .map(d => {
+        const c = clients.find(cl => cl.id === d.profile_id);
+        if (!c) return null;
+        const baseSec = d.elapsed_time || 0;
+        const runSec = d.is_paused ? 0 : Math.max(0, (Date.now() - new Date(d.updated_at).getTime()) / 1000);
+        return { client: c, draft: d, mins: Math.max(1, Math.round((baseSec + runSec) / 60)) };
+      })
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.draft.started_at || 0) - new Date(a.draft.started_at || 0));
+  }, [liveDrafts, clients]);
+  // Recent PRs (already fetched) — compact celebration list, max 5.
+  const prRows = useMemo(() => {
+    return (recentPRs || []).slice(0, 5).map(p => {
+      const c = clients.find(cl => cl.id === p.profile_id);
+      return {
+        id: p.id,
+        clientId: p.profile_id,
+        clientName: c?.full_name || c?.username || t('trainerCalendar.client', 'Client'),
+        avatarUrl: c?.avatar_url,
+        exercise: p.exercises?.name || '',
+        detail: `${p.weight_lbs} lb × ${p.reps}`,
+      };
+    });
+  }, [recentPRs, clients, t]);
   const cobrosPending = Number(moneyOverview?.pending_total || 0);
   const cobrosPendingCount = moneyOverview?.pending_count || 0;
   const cobrosAvatars = (Array.isArray(moneyOverview?.clients) ? moneyOverview.clients : [])
@@ -381,11 +489,15 @@ export default function TrainerHome() {
   const rosterClients = useMemo(() => {
     return clients.slice(0, 5).map(c => {
       const churn = churnScores[c.id];
-      const status = deriveClientStatus(c, churn?.score);
+      const status = deriveClientStatus({
+        lastActiveAt: c.last_active_at,
+        createdAt: c.created_at,
+        churnScore: churn ? Number(churn.score) : null,
+        churnComputedAt: churn?.computed_at,
+      });
       const bars = buildWeekBars(c.id, weekSessions);
       const sessionCount = bars.reduce((a, b) => a + b, 0);
-      // crude adherence: capped to 5 sessions/wk target
-      const adh = Math.min(1, sessionCount / 4);
+      const adh = weeklyAdherence(sessionCount).pct / 100;
       const isLive = liveClientIds.has(c.id);
       // When the client is mid-workout, show that prominently instead of the
       // stale "last active 2 days ago" label.
@@ -404,6 +516,7 @@ export default function TrainerHome() {
         adh,
         lastLabel,
         isLive,
+        programId: c.assigned_program_id || null,
       };
     });
   }, [clients, churnScores, weekSessions, liveClientIds, dateFnsLocale, t]);
@@ -419,36 +532,6 @@ export default function TrainerHome() {
     }
     navigate(`/trainer/messages/${convId}`);
   }
-
-  async function handleCallSubmit() {
-    if (!callModal) return;
-    setSubmittingAction(`call-${callModal.id}`);
-    try {
-      await supabase.from('trainer_followups').insert({
-        trainer_id: profile.id,
-        client_id: callModal.id,
-        gym_id: profile.gym_id,
-        method: 'call',
-        note: callNote || null,
-        outcome: callOutcome,
-      });
-      setCallModal(null);
-      setCallNote('');
-      setCallOutcome('no_answer');
-    } catch (err) {
-      logger.error('TrainerHome: log call failed:', err);
-    } finally {
-      setSubmittingAction(null);
-    }
-  }
-
-  const outcomeOptions = [
-    { value: 'no_answer',      label: t('trainerDashboard.outcomes.noAnswer') },
-    { value: 'rescheduled',    label: t('trainerDashboard.outcomes.rescheduled') },
-    { value: 'coming_back',    label: t('trainerDashboard.outcomes.comingBack') },
-    { value: 'not_interested', label: t('trainerDashboard.outcomes.notInterested') },
-    { value: 'other',          label: t('trainerDashboard.outcomes.other') },
-  ];
 
   // ── Loading skeleton ──
   if (loading) {
@@ -483,6 +566,8 @@ export default function TrainerHome() {
     : 'linear-gradient(160deg,#E9F7F4 0%,#F3FBF9 60%,#FFFFFF 100%)';
 
   // ── KPIs (desktop) ──
+  // The workouts/day sparkline only belongs on the workouts KPI — repeating it
+  // on the other cards implied per-KPI trend data that doesn't exist.
   const kpiCards = [
     {
       key: 'active',
@@ -492,7 +577,6 @@ export default function TrainerHome() {
       tone: TT.accent,
       soft: TT.accentSoft,
       Icon: Users,
-      spark: weekDaySpark,
     },
     {
       key: 'sessions',
@@ -505,14 +589,15 @@ export default function TrainerHome() {
       spark: weekDaySpark,
     },
     {
-      key: 'adherence',
-      label: t('trainerHome.kpi.avgAdherence', 'Avg adherence'),
+      // Honest label: this is "% of roster active in the last 30 days", not
+      // plan adherence.
+      key: 'active30',
+      label: t('trainerHome.kpi.active30', 'Active (30d)'),
       value: `${retentionPct}%`,
       sub: t('trainerHome.kpi.last30', 'last 30 days'),
       tone: TT.good,
       soft: TT.goodSoft,
       Icon: Activity,
-      spark: weekDaySpark,
     },
     {
       key: 'attention',
@@ -522,7 +607,6 @@ export default function TrainerHome() {
       tone: TT.hot,
       soft: TT.hotSoft,
       Icon: TrendingUp,
-      spark: weekDaySpark,
     },
   ];
 
@@ -577,6 +661,11 @@ export default function TrainerHome() {
                   <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: heroIsToday ? TT.hot : TT.accentInk }}>
                     {heroWhen}
                   </span>
+                  {heroIsLive && (
+                    <TPill tone="good" size="s" style={{ marginLeft: 'auto' }}>
+                      ● {t('trainerHome.trainingNow', 'Training now')}
+                    </TPill>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
                   <TAvatar name={heroName} size={52} idx={avatarIdx(heroClientId)} src={heroSession.profiles?.avatar_url} style={{ boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.65)' }} />
@@ -624,18 +713,18 @@ export default function TrainerHome() {
                     {t('trainerHome.openClientCta', 'Open client')}
                   </TPrimaryButton>
                 )}
+                {/* Icon pair — real tactile buttons (radius + surface chrome), not
+                    bare boxes; member-info always sits next to message. */}
                 <button type="button" onClick={() => openConversation(heroClientId)} aria-label={t('trainerHome.message', 'Message')}
                   className="tt-btn tt-btn--secondary"
-                  style={{ width: 48, height: 48, padding: 0, display: 'grid', placeItems: 'center' }}>
-                  <MessageSquare size={18} />
+                  style={{ width: 48, height: 48, padding: 0, borderRadius: 14, display: 'grid', placeItems: 'center' }}>
+                  <MessageSquare size={19} strokeWidth={2.1} />
                 </button>
-                {heroIsToday && (
-                  <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)} aria-label={t('trainerHome.openClientShort', 'Open client')}
-                    className="tt-btn tt-btn--secondary"
-                    style={{ width: 48, height: 48, padding: 0, display: 'grid', placeItems: 'center' }}>
-                    <FileText size={18} />
-                  </button>
-                )}
+                <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)} aria-label={t('trainerHome.openClientShort', 'Open client')}
+                  className="tt-btn tt-btn--secondary"
+                  style={{ width: 48, height: 48, padding: 0, borderRadius: 14, display: 'grid', placeItems: 'center' }}>
+                  <User size={19} strokeWidth={2.1} />
+                </button>
               </div>
             </TCard>
           ) : (
@@ -654,36 +743,91 @@ export default function TrainerHome() {
           )}
         </div>
 
-        {/* Today's lineup — vertical rows (today's rest + future days) */}
-        {upcomingList.length > 0 && (
-          <div style={{ padding: '0 20px 18px' }}>
-            <TSectionHeader
-              title={t('trainerHome.todaysLineup', "Today's lineup")}
-              action={`${upcomingList.length} · ${hoursLabel}`}
-            />
-            <TCard padded={0} style={{ overflow: 'hidden' }}>
-              {upcomingList.map((s, i) => {
+        {/* Live sessions — every client working out right now, one tap from
+            the live spectator view. Realtime on session_drafts keeps it hot. */}
+        {liveNow.length > 0 && (
+          <div style={{ padding: '0 0 18px' }}>
+            <div style={{ padding: '0 20px' }}>
+              <TSectionHeader
+                title={t('trainerHome.liveNow', 'En vivo ahora')}
+                action={String(liveNow.length)}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: '0 20px' }}>
+              {liveNow.map(({ client: c, draft: d, mins }) => {
+                const name = c.full_name || c.username || t('trainerMessages.list.clientFallback', 'Client');
+                return (
+                  <TCard
+                    key={c.id}
+                    padded={13}
+                    onClick={() => navigate(`/trainer/live/${c.id}`)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', position: 'relative' }}
+                  >
+                    <div style={{ position: 'absolute', left: 0, top: 14, bottom: 14, width: 3, borderRadius: 999, background: TT.good }} />
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <TAvatar name={name} size={40} idx={avatarIdx(c.id)} src={c.avatar_url} />
+                      <span style={{
+                        position: 'absolute', right: -2, bottom: -2, width: 11, height: 11, borderRadius: 999,
+                        background: TT.good, border: `2px solid ${TT.surface}`,
+                        animation: 'live-pulse 2s ease-in-out infinite',
+                      }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+                      <div style={{ fontSize: 12, color: TT.textSub, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ color: TT.good, fontWeight: 800 }}>● {t('trainerHome.trainingNow', 'Training now')}</span>
+                        {' · '}{mins} min{d.routine_name ? ` · ${d.routine_name}` : ''}
+                        {d.is_paused ? ` · ${t('trainerHome.livePaused', 'Paused')}` : ''}
+                      </div>
+                    </div>
+                    <TPrimaryButton
+                      onClick={(e) => { e.stopPropagation(); navigate(`/trainer/live/${c.id}`); }}
+                      style={{ padding: '8px 13px', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      {t('trainerHome.watchLive', 'Watch live')}
+                    </TPrimaryButton>
+                  </TCard>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Today's lineup — horizontal swipe cards (today's remaining sessions
+            only; future days live in the hero fallback + calendar, not here) */}
+        {lineupToday.length > 0 && (
+          <div style={{ padding: '0 0 18px' }}>
+            <div style={{ padding: '0 20px' }}>
+              <TSectionHeader
+                title={t('trainerHome.todaysLineup', "Today's lineup")}
+                action={`${lineupToday.length} · ${lineupHours}`}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10, padding: '0 20px', overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+              {lineupToday.map((s) => {
                 const cId = s.profiles?.id || s.client_id;
                 const cName = s.profiles?.full_name || s.profiles?.username || t('trainerCalendar.client', 'Client');
                 const d = new Date(s.scheduled_at);
-                const isToday = todaySessions.some(x => x.id === s.id);
-                const dayLabel = isToday ? t('trainerHome.todayShort', 'Today') : (isTomorrow(d) ? t('trainerHome.tomorrow', 'tomorrow') : format(d, 'EEE d', { locale: dateFnsLocale }));
-                const sub = s.title ? `${dayLabel} · ${s.title}` : dayLabel;
+                const isLive = !!cId && liveClientIds.has(cId);
                 return (
-                  <button key={s.id} type="button" onClick={() => navigate(`/trainer/clients/${cId}`)}
-                    className="tt-tap"
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 13, padding: '13px 15px', borderTop: i > 0 ? `1px solid ${TT.border}` : 'none', background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
-                    <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: isToday ? TT.text : TT.textSub, width: 44, letterSpacing: -0.3 }}>{format(d, 'h:mm', { locale: dateFnsLocale })}</div>
-                    <TAvatar name={cName} size={34} idx={avatarIdx(cId)} src={s.profiles?.avatar_url} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cName}</div>
-                      <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
+                  <button key={s.id} type="button" onClick={() => navigate(`/trainer/clients/${cId}`)} className="tt-tap"
+                    style={{ minWidth: 156, padding: 12, borderRadius: 14, background: TT.surface, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, flexShrink: 0, textAlign: 'left', cursor: 'pointer' }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: isLive ? TT.good : TT.accentInk, letterSpacing: 0.6, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      {isLive ? `● ${t('trainerHome.trainingNow', 'Training now')}` : t('trainerHome.todayShort', 'Today')}
                     </div>
-                    <ChevronRight size={16} color={TT.textMute} />
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 2 }}>
+                      <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.4, lineHeight: 1 }}>{format(d, 'h:mm', { locale: dateFnsLocale })}</div>
+                      <span style={{ fontFamily: TFont.mono, fontSize: 10, color: TT.textMute, fontWeight: 700 }}>{s.duration_mins || 60}m</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+                      <TAvatar name={cName} size={24} idx={avatarIdx(cId)} src={s.profiles?.avatar_url} />
+                      <div style={{ fontSize: 12, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 110 }}>{cName.split(' ')[0]}</div>
+                    </div>
+                    {s.title && <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>{s.title}</div>}
                   </button>
                 );
               })}
-            </TCard>
+            </div>
           </div>
         )}
 
@@ -701,11 +845,9 @@ export default function TrainerHome() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 14 }}>
                 {atRiskClients.slice(0, 3).map((item, idx) => {
                   const c = item.client;
-                  const tone = statusTone(deriveClientStatus(c, item.churnScore));
+                  const tone = statusTone(item.status);
                   const name = c.full_name || c.username || t('trainerDashboard.unknownFallback');
-                  const reason = item.churnScore != null && item.churnScore >= 60
-                    ? t('trainerHome.attentionReasonChurn', '{{days}} days quiet · churn {{score}}', { days: item.daysInactive, score: item.churnScore })
-                    : t('trainerHome.attentionReasonInactive', '{{days}} days quiet', { days: item.daysInactive });
+                  const reason = attentionReason(item);
                   // Top item (most inactive after the sort) gets the loud primary
                   // CTA; the rest get the quieter secondary treatment.
                   const isTop = idx === 0;
@@ -725,7 +867,7 @@ export default function TrainerHome() {
                       ) : (
                         <button type="button" onClick={() => openConversation(c.id)}
                           className="tt-btn tt-btn--secondary"
-                          style={{ padding: '8px 13px', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                          style={{ padding: '8px 13px', borderRadius: 14, fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>
                           {t('trainerHome.greet', 'Say hi')}
                         </button>
                       )}
@@ -736,33 +878,45 @@ export default function TrainerHome() {
             </>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'stretch' }}>
-            {/* Cobros — teal */}
-            <button type="button" onClick={() => navigate('/trainer/payments')}
-              style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', display: 'block', height: '100%' }}>
-              <TCard padded={14} style={{ height: '100%', boxShadow: `inset 3px 0 0 ${TT.accent}, ${TT.shadow}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: 7, background: TT.accentSoft, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                    <DollarSign size={13} strokeWidth={2.6} style={{ color: TT.accent }} />
+          <div style={{ display: 'grid', gridTemplateColumns: moneyOverview ? '1fr 1fr' : '1fr', gap: 8, alignItems: 'stretch' }}>
+            {/* Cobros — teal. Hidden entirely when the money RPC errored or is
+                missing; setup copy when no client has a fee yet — never a fake
+                "$0 · All paid". */}
+            {moneyOverview && (
+              <button type="button" onClick={() => navigate('/trainer/payments')}
+                style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', display: 'block', height: '100%' }}>
+                <TCard padded={14} style={{ height: '100%', boxShadow: `inset 3px 0 0 ${TT.accent}, ${TT.shadow}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: 7, background: TT.accentSoft, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      <DollarSign size={13} strokeWidth={2.6} style={{ color: TT.accent }} />
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: TT.accentInk, letterSpacing: 1, textTransform: 'uppercase' }}>{t('trainerPayments.title', 'Payments')}</span>
                   </div>
-                  <span style={{ fontSize: 10, fontWeight: 800, color: TT.accentInk, letterSpacing: 1, textTransform: 'uppercase' }}>{t('trainerPayments.title', 'Payments')}</span>
-                </div>
-                <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.text, letterSpacing: -0.8, lineHeight: 1 }}>${cobrosPending.toFixed(0)}</div>
-                <div style={{ fontSize: 11, color: cobrosPendingCount > 0 ? TT.hot : TT.good, fontWeight: 700, marginTop: 4 }}>
-                  {cobrosPendingCount > 0 ? t('trainerHome.nPending', '{{count}} pending', { count: cobrosPendingCount }) : t('trainerHome.allPaidShort', 'All paid')}
-                </div>
-                {cobrosAvatars.length > 0 && (
-                  <div style={{ display: 'flex', marginTop: 8 }}>
-                    {cobrosAvatars.map((c, i) => (
-                      <div key={i} style={{ marginLeft: i ? -8 : 0, border: `2px solid ${TT.surface}`, borderRadius: 999 }}>
-                        <TAvatar name={c.full_name || '?'} size={22} idx={avatarIdx(c.client_id)} src={c.avatar_url} />
+                  {(moneyOverview.with_fee || 0) === 0 ? (
+                    <div style={{ fontSize: 12, color: TT.textSub, fontWeight: 600 }}>
+                      {t('trainerHome.money.setup', 'Set client fees to track payments')}
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.text, letterSpacing: -0.8, lineHeight: 1 }}>${cobrosPending.toFixed(0)}</div>
+                      <div style={{ fontSize: 11, color: cobrosPendingCount > 0 ? TT.hot : TT.good, fontWeight: 700, marginTop: 4 }}>
+                        {cobrosPendingCount > 0 ? t('trainerHome.nPending', '{{count}} pending', { count: cobrosPendingCount }) : t('trainerHome.allPaidShort', 'All paid')}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </TCard>
-            </button>
-            {/* Adherencia — green, taps to clients */}
+                      {cobrosAvatars.length > 0 && (
+                        <div style={{ display: 'flex', marginTop: 8 }}>
+                          {cobrosAvatars.map((c, i) => (
+                            <div key={i} style={{ marginLeft: i ? -8 : 0, border: `2px solid ${TT.surface}`, borderRadius: 999 }}>
+                              <TAvatar name={c.full_name || '?'} size={22} idx={avatarIdx(c.client_id)} src={c.avatar_url} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </TCard>
+              </button>
+            )}
+            {/* Activos (30d) — green, taps to clients */}
             <button type="button" onClick={() => navigate('/trainer/clients')}
               style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', display: 'block', height: '100%' }}>
               <TCard padded={14} style={{ height: '100%', background: TT.goodSoft, borderColor: 'transparent', boxShadow: `inset 3px 0 0 ${TT.good}, ${TT.shadow}` }}>
@@ -770,20 +924,55 @@ export default function TrainerHome() {
                   <div style={{ width: 24, height: 24, borderRadius: 7, background: TT.surface, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                     <Activity size={13} strokeWidth={2.6} style={{ color: TT.good }} />
                   </div>
-                  <span style={{ fontSize: 10, fontWeight: 800, color: TT.goodInk, letterSpacing: 1, textTransform: 'uppercase' }}>{t('trainerHome.kpi.avgAdherence', 'Adherence')}</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: TT.goodInk, letterSpacing: 1, textTransform: 'uppercase' }}>{t('trainerHome.kpi.active30', 'Active (30d)')}</span>
                 </div>
                 <div style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.goodInk, letterSpacing: -0.8, lineHeight: 1 }}>{retentionPct}<span style={{ fontSize: 13, color: TT.good, opacity: 0.7 }}>%</span></div>
                 <div style={{ fontSize: 11, color: TT.goodInk, opacity: 0.75, fontWeight: 600, marginTop: 4 }}>{t('trainerHome.kpi.last30', 'last 30 days')}</div>
-                <div style={{ marginTop: 6 }}><TSparkBars data={weekDaySpark} w={120} h={18} color={TT.good} track={`color-mix(in srgb, ${TT.goodInk} 15%, transparent)`} /></div>
               </TCard>
             </button>
           </div>
         </div>
+
+        {/* Recent PRs — compact celebration list, taps through to the client */}
+        {prRows.length > 0 && (
+          <div style={{ padding: '0 16px 18px' }}>
+            <TSectionHeader title={t('trainerHome.recentPRs', 'Recent PRs')} />
+            <TCard padded={0} style={{ overflow: 'hidden' }}>
+              {prRows.map((p, i) => (
+                <button key={p.id} type="button" onClick={() => navigate(`/trainer/clients/${p.clientId}`)}
+                  className="tt-tap"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '11px 14px', background: 'transparent', border: 'none', borderTop: i > 0 ? `1px solid ${TT.border}` : 'none', textAlign: 'left', cursor: 'pointer' }}>
+                  <TAvatar name={p.clientName} size={30} idx={avatarIdx(p.clientId)} src={p.avatarUrl} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.clientName}</div>
+                    <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.exercise}</div>
+                  </div>
+                  <span style={{ fontFamily: TFont.mono, fontSize: 11.5, fontWeight: 800, color: TT.accentInk, whiteSpace: 'nowrap' }}>{p.detail}</span>
+                </button>
+              ))}
+            </TCard>
+          </div>
+        )}
       </div>
 
       {/* ─────────────────── DESKTOP LAYOUT ─────────────────── */}
       <div className="hidden md:block">
         <main style={{ padding: '24px 28px 32px', maxWidth: 1280, margin: '0 auto' }}>
+          {/* Error banner (mirrors mobile) */}
+          {error && (
+            <div className="flex items-start gap-3 px-4 py-3 rounded-2xl"
+              style={{ background: TT.hotSoft, color: TT.hot, marginBottom: 18 }}>
+              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold">{t('trainerDashboard.errorTitle', 'Failed to load dashboard')}</p>
+                <p className="text-[12px] mt-0.5 truncate">{error}</p>
+              </div>
+              <button type="button" onClick={() => fetchHomeData()} className="shrink-0 text-[12px] font-bold px-2 py-1 rounded-lg" style={{ background: TT.surface, color: TT.hot }}>
+                {t('trainerDashboard.retry', 'Retry')}
+              </button>
+            </div>
+          )}
+
           {/* Header */}
           <div style={{
             display: 'flex', alignItems: 'flex-end',
@@ -825,7 +1014,7 @@ export default function TrainerHome() {
                   }}>
                     <k.Icon size={16} color={k.tone} strokeWidth={2.2} />
                   </div>
-                  <TSparkBars data={k.spark} w={64} h={24} color={k.tone} />
+                  {k.spark ? <TSparkBars data={k.spark} w={64} h={24} color={k.tone} /> : null}
                 </div>
                 <div style={{
                   fontFamily: TFont.display, fontSize: 28, fontWeight: 800,
@@ -839,7 +1028,7 @@ export default function TrainerHome() {
 
           {/* Today's schedule timeline */}
           <div style={{ marginBottom: 16 }}>
-            <TCard padded={0}>
+            <TCard padded={0} style={{ overflow: 'hidden' }}>
               <div style={{
                 padding: '14px 18px',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -856,30 +1045,26 @@ export default function TrainerHome() {
                     {t('trainerHome.scheduleSub', '{{count}} sessions today', { count: todaySessionsCount })}
                   </div>
                 </div>
-                <div style={{ minWidth: 220 }}>
-                  <TSegmented
-                    options={[
-                      { value: 'day',   label: t('trainerCalendar.day', 'Day') },
-                      { value: 'week',  label: t('trainerCalendar.week', 'Week') },
-                      { value: 'month', label: t('trainerCalendar.month', 'Month') },
-                    ]}
-                    value="week"
-                    onChange={() => navigate('/trainer/calendar')}
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/trainer/calendar')}
+                  className="tt-tap"
+                  style={{ color: TT.accent, fontSize: 12, fontWeight: 700, background: 'transparent', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  {t('trainerHome.viewAgenda', 'View calendar')} →
+                </button>
               </div>
 
               {/* Timeline body */}
-              <div style={{ padding: '16px 18px', position: 'relative' }}>
+              <div style={{ padding: '16px 18px', position: 'relative', overflow: 'hidden' }}>
                 <div style={{ position: 'relative', height: 120 }}>
-                  {/* hour ticks: 2a..9p (8 ticks) */}
-                  {Array.from({ length: 8 }).map((_, i) => {
-                    const hr = 2 + i * 2;
-                    const label = hr < 12 ? `${hr}a` : `${hr === 12 ? 12 : hr - 12}p`;
+                  {/* hour ticks — every 2h across the dynamic domain */}
+                  {Array.from({ length: Math.floor(tlDomain.span / 2) + 1 }).map((_, i) => {
+                    const hr = tlDomain.start + i * 2;
                     return (
                       <div key={i} style={{
                         position: 'absolute',
-                        left: `${(i / 7) * 100}%`,
+                        left: `${((hr - tlDomain.start) / tlDomain.span) * 100}%`,
                         top: 0, bottom: 0,
                         borderLeft: `1px dashed ${TT.border}`,
                       }}>
@@ -887,7 +1072,7 @@ export default function TrainerHome() {
                           position: 'absolute', top: -2, left: 4,
                           fontSize: 10, color: TT.textMute,
                           fontFamily: TFont.mono, fontWeight: 700,
-                        }}>{label}</div>
+                        }}>{tickLabel(hr)}</div>
                       </div>
                     );
                   })}
@@ -895,7 +1080,7 @@ export default function TrainerHome() {
                   {(() => {
                     const now = new Date();
                     const hours = now.getHours() + now.getMinutes() / 60;
-                    const pct = Math.max(0, Math.min(100, ((hours - 2) / 14) * 100));
+                    const pct = Math.max(0, Math.min(100, ((hours - tlDomain.start) / tlDomain.span) * 100));
                     return (
                       <div style={{
                         position: 'absolute',
@@ -921,11 +1106,10 @@ export default function TrainerHome() {
                     const start = new Date(s.scheduled_at);
                     const startHr = start.getHours() + start.getMinutes() / 60;
                     const dur = (s.duration_mins || 60) / 60;
-                    const left = Math.max(0, ((startHr - 2) / 14) * 100);
-                    const width = Math.min(20, (dur / 14) * 100);
+                    const left = Math.max(0, Math.min(100, ((startHr - tlDomain.start) / tlDomain.span) * 100));
+                    const width = Math.max(2, Math.min(20, (dur / tlDomain.span) * 100, 100 - left));
                     const isNext = i === todaySessions.findIndex(x => x.status !== 'completed' && sessionEndMs(x) >= Date.now());
-                    const status = s.status === 'completed' ? 'on_track' : 'on_track';
-                    const tone = statusTone(status);
+                    const tone = statusTone('on_track');
                     const name = (s.profiles?.full_name || s.profiles?.username || t('trainerCalendar.client', 'Client')).split(' ')[0];
                     return (
                       <div key={s.id} style={{
@@ -1000,7 +1184,11 @@ export default function TrainerHome() {
                 </div>
                 {rosterClients.map((c, i) => {
                   const tone = statusTone(c.status);
-                  const program = t('trainerHome.programFallback', 'No program');
+                  // Real program name from gym_programs; "No program" only when
+                  // truly unassigned; '—' when the lookup itself failed.
+                  const program = c.programId
+                    ? (programNames == null ? '—' : (programNames[c.programId] || t('trainerHome.programFallback', 'No program')))
+                    : t('trainerHome.programFallback', 'No program');
                   return (
                     <button
                       key={c.id}
@@ -1056,6 +1244,8 @@ export default function TrainerHome() {
               </div>
             </TCard>
 
+            {/* Right column: Need attention + Recent PRs */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
             {/* Need attention card (replaces Active plans, since attention data is real) */}
             <TCard padded={0}>
               <div style={{
@@ -1083,14 +1273,9 @@ export default function TrainerHome() {
               ) : (
                 atRiskClients.map((item, i) => {
                   const c = item.client;
-                  const status = deriveClientStatus(c, item.churnScore);
-                  const tone = statusTone(status);
+                  const tone = statusTone(item.status);
                   const name = c.full_name || c.username || t('trainerDashboard.unknownFallback');
-                  const reason = item.churnScore != null && item.churnScore >= 60
-                    ? t('trainerHome.attentionReasonChurn', '{{days}} days quiet · churn {{score}}', {
-                        days: item.daysInactive, score: item.churnScore,
-                      })
-                    : t('trainerHome.attentionReasonInactive', '{{days}} days quiet', { days: item.daysInactive });
+                  const reason = attentionReason(item);
                   return (
                     <div key={c.id} style={{
                       padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12,
@@ -1113,6 +1298,31 @@ export default function TrainerHome() {
                 })
               )}
             </TCard>
+
+            {/* Recent PRs — compact celebration list, taps through to the client */}
+            {prRows.length > 0 && (
+              <TCard padded={0}>
+                <div style={{
+                  padding: '14px 18px', borderBottom: `1px solid ${TT.border}`,
+                  fontFamily: TFont.display, fontSize: 16, fontWeight: 800,
+                  color: TT.text, letterSpacing: -0.3,
+                }}>
+                  {t('trainerHome.recentPRs', 'Recent PRs')}
+                </div>
+                {prRows.map((p, i) => (
+                  <button key={p.id} type="button" onClick={() => navigate(`/trainer/clients/${p.clientId}`)}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '11px 18px', background: 'transparent', border: 'none', borderTop: i > 0 ? `1px solid ${TT.border}` : 'none', textAlign: 'left', cursor: 'pointer' }}>
+                    <TAvatar name={p.clientName} size={28} idx={avatarIdx(p.clientId)} src={p.avatarUrl} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.clientName}</div>
+                      <div style={{ fontSize: 11, color: TT.textSub, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.exercise}</div>
+                    </div>
+                    <span style={{ fontFamily: TFont.mono, fontSize: 11, fontWeight: 800, color: TT.accentInk, whiteSpace: 'nowrap' }}>{p.detail}</span>
+                  </button>
+                ))}
+              </TCard>
+            )}
+            </div>
           </div>
 
           {todayDate && (
@@ -1122,102 +1332,6 @@ export default function TrainerHome() {
           )}
         </main>
       </div>
-
-      {/* Call Note Modal — center aligned (per design system) */}
-      {callModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-          <div style={{
-            background: TT.surface, borderRadius: 18, border: `1px solid ${TT.border}`,
-            width: '100%', maxWidth: 400, padding: 24,
-          }}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 style={{ fontSize: 16, fontWeight: 800, color: TT.text }}>
-                {t('trainerDashboard.reachOut.logCall')}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setCallModal(null)}
-                className="p-2 -m-2 rounded-full"
-                style={{ color: TT.textMute }}
-                aria-label={t('trainerDashboard.reachOut.cancel')}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <p style={{ fontSize: 13, color: TT.textSub, marginBottom: 16 }}>
-              {callModal.full_name || callModal.username || t('trainerDashboard.clientFallback')}
-            </p>
-
-            <label style={{
-              fontSize: 12, color: TT.textMute, textTransform: 'uppercase',
-              letterSpacing: 1, marginBottom: 6, display: 'block', fontWeight: 700,
-            }}>
-              {t('trainerDashboard.reachOut.outcome')}
-            </label>
-            <select
-              value={callOutcome}
-              onChange={(e) => setCallOutcome(e.target.value)}
-              style={{
-                width: '100%', background: TT.surface2,
-                border: `1px solid ${TT.borderSolid}`, borderRadius: 10,
-                padding: '10px 12px', fontSize: 14, color: TT.text, marginBottom: 14,
-              }}
-            >
-              {outcomeOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-
-            <label style={{
-              fontSize: 12, color: TT.textMute, textTransform: 'uppercase',
-              letterSpacing: 1, marginBottom: 6, display: 'block', fontWeight: 700,
-            }}>
-              {t('trainerDashboard.reachOut.noteLabel')}
-            </label>
-            <textarea
-              value={callNote}
-              onChange={(e) => setCallNote(e.target.value)}
-              placeholder={t('trainerDashboard.reachOut.notePlaceholder')}
-              style={{
-                width: '100%', background: TT.surface2,
-                border: `1px solid ${TT.borderSolid}`, borderRadius: 10,
-                padding: 12, fontSize: 14, color: TT.text, marginBottom: 16,
-                resize: 'none',
-              }}
-              rows={3}
-            />
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setCallModal(null)}
-                style={{
-                  flex: 1, padding: '12px 14px', borderRadius: 10,
-                  border: `1px solid ${TT.borderSolid}`, background: 'transparent',
-                  fontSize: 13, fontWeight: 700, color: TT.textSub,
-                }}
-              >
-                {t('trainerDashboard.reachOut.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={handleCallSubmit}
-                disabled={submittingAction === `call-${callModal.id}`}
-                style={{
-                  flex: 1, padding: '12px 14px', borderRadius: 10,
-                  border: 'none', background: TT.accent,
-                  color: '#06363B', fontSize: 13, fontWeight: 800,
-                  opacity: submittingAction === `call-${callModal.id}` ? 0.5 : 1,
-                }}
-              >
-                {submittingAction === `call-${callModal.id}` ? t('trainerDashboard.reachOut.saving') : t('trainerDashboard.reachOut.logCallBtn')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

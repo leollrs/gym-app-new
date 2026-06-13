@@ -8,7 +8,9 @@ const ROLE_META = {
   member:      { Icon: User,     landing: '/' },
   trainer:     { Icon: Dumbbell, landing: '/trainer' },
   admin:       { Icon: Shield,   landing: '/admin' },
-  super_admin: { Icon: Star,     landing: '/platform/operations' },
+  // Landing must match PlatformLayout's primary tab — /platform/operations was
+  // the pre-Attention landing and left switchers on a secondary page.
+  super_admin: { Icon: Star,     landing: '/platform/attention' },
 };
 
 /**

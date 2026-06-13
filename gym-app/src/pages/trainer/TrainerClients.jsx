@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { useNavigate } from 'react-router-dom';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
-import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, MessageCircle, CheckSquare, Square, ClipboardList, Send, UserMinus, Ban, AlertTriangle, ShieldBan, MoreHorizontal, MoreVertical, CheckCheck, Activity, Plus, SlidersHorizontal } from 'lucide-react';
+import { Users, X, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, MessageCircle, CheckSquare, Square, ClipboardList, Send, UserMinus, AlertTriangle, ShieldBan, MoreHorizontal, MoreVertical, Plus, SlidersHorizontal, RotateCcw, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -10,7 +11,7 @@ import { encryptMessage } from '../../lib/messageEncryption';
 import { openWhatsApp, hasWhatsApp } from '../../lib/whatsapp';
 import posthog from 'posthog-js';
 import logger from '../../lib/logger';
-import { formatDistanceToNow, subDays } from 'date-fns';
+import { formatDistanceToNow, subDays, startOfWeek } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 import useFocusTrap from '../../hooks/useFocusTrap';
@@ -18,6 +19,7 @@ import Skeleton from '../../components/Skeleton';
 import TrainerEmptyState from './components/TrainerEmptyState';
 import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
 import { TCard, TPill, TAvatar, TRing, TPrimaryButton, TIconButton } from './components/designPrimitives';
+import { deriveClientStatus, weeklyAdherence } from '../../lib/clientStatus';
 
 // ── Client quick-preview modal ──────────────────────────────────────────────
 const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemove, onBlock }) => {
@@ -26,21 +28,22 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const focusTrapRef = useFocusTrap(true, onClose);
 
-  const daysInactive = client.last_active_at
-    ? Math.floor((Date.now() - new Date(client.last_active_at)) / 86400000)
-    : null;
-  const isActive = daysInactive !== null && daysInactive <= 7;
-  const isAtRisk = churnScore
-    ? churnScore.score >= 30
-    : (daysInactive === null || daysInactive > 14);
-
-  const statusLabel = isActive
-    ? t('trainerClients.statusActive', 'Active')
-    : isAtRisk
-      ? t('trainerClients.statusAtRisk', 'At Risk')
-      : t('trainerClients.statusInactive', 'Inactive');
-  const statusTone = isActive ? 'good' : isAtRisk ? 'warn' : 'neutral';
-  const statusDot = isActive ? TT.good : isAtRisk ? TT.warn : TT.textFaint;
+  // Same canonical model as the roster list + chips (lib/clientStatus) so the
+  // preview never disagrees with the row that opened it.
+  const status = deriveClientStatus({
+    lastActiveAt: client.last_active_at,
+    createdAt: client.created_at,
+    churnScore: churnScore?.score,
+    churnComputedAt: churnScore?.computed_at,
+  });
+  const statusLabel = {
+    on_track: t('trainerClients.tabOnTrack', 'On track'),
+    at_risk: t('trainerClients.tabAtRisk', 'At risk'),
+    churn: t('trainerClients.tabChurn', 'Churn'),
+    new: t('trainerClients.statusNew', 'New'),
+  }[status];
+  const statusPillTone = { on_track: 'good', at_risk: 'warn', churn: 'hot', new: 'teal' }[status];
+  const statusDot = { on_track: TT.good, at_risk: TT.warn, churn: TT.hot, new: TT.accent }[status];
 
   const statCardStyle = {
     background: TT.surface2, borderRadius: 14, padding: 12,
@@ -99,7 +102,7 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
           <p id="client-preview-title" style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: TT.text, textAlign: 'center', letterSpacing: -0.3 }}>
             {client.full_name}
           </p>
-          <TPill tone={statusTone} size="m" style={{ marginTop: 6 }}>{statusLabel}</TPill>
+          <TPill tone={statusPillTone} size="m" style={{ marginTop: 6 }}>{statusLabel}</TPill>
           {/* Summary line */}
           <p style={{ marginTop: 8, fontSize: 12, color: TT.textMute, textAlign: 'center' }}>
             {client.created_at
@@ -143,15 +146,16 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
           {/* Churn risk */}
           <div style={statCardStyle}>
             <p style={statLabelStyle}>{t('trainerClients.churnRisk', 'Churn Risk')}</p>
-            {churnScore && churnScore.score >= 30 ? (
-              <p style={{
-                ...statValueStyle,
-                color: churnScore.score >= 80 ? TT.hot : churnScore.score >= 55 ? TT.warn : TT.warnInk,
-              }}>
+            {churnScore && (status === 'churn' || status === 'at_risk') ? (
+              <p style={{ ...statValueStyle, color: status === 'churn' ? TT.hot : TT.warnInk }}>
                 {Math.round(churnScore.score)}%
               </p>
             ) : (
-              <p style={{ ...statValueStyle, color: TT.goodInk }}>{t('trainerClients.low', 'Low')}</p>
+              <p style={{ ...statValueStyle, color: status === 'churn' || status === 'at_risk' ? TT.warnInk : TT.goodInk }}>
+                {status === 'churn' || status === 'at_risk'
+                  ? statusLabel
+                  : t('trainerClients.low', 'Low')}
+              </p>
             )}
           </div>
         </div>
@@ -243,28 +247,52 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [addingId, setAddingId] = useState(null);
+  const [addedIds, setAddedIds] = useState(() => new Set());
+  const [coachedIds, setCoachedIds] = useState(() => new Set());
   const debounceRef = useRef(null);
   const focusTrapRef = useFocusTrap(true, onClose);
 
   const searchMembers = useCallback(async (query) => {
-    if (query.trim().length < 2) {
+    // Commas/parens break the PostgREST .or() filter grammar (they are its
+    // delimiters) — strip them before interpolating so "Pérez, Ana (la de
+    // CrossFit)" doesn't silently 400 into an empty list.
+    const sanitized = query.replace(/[,()]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (sanitized.length < 2) {
       setMembers([]);
+      setCoachedIds(new Set());
       setLoadingMembers(false);
       return;
     }
     setLoadingMembers(true);
-    const pattern = `%${query.trim()}%`;
+    const pattern = `%${sanitized}%`;
     const { data, error } = await supabase
       .from('gym_member_profiles_safe')
-      .select('id, full_name, username, last_active_at')
+      .select('id, full_name, username')
       .eq('role', 'member')
       .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
       .order('full_name')
       .limit(50);
     if (error) logger.error('AddClientModal: failed to search members:', error);
-    setMembers(data || []);
+    const rows = data || [];
+    setMembers(rows);
     setLoadingMembers(false);
-  }, [gymId]);
+
+    // Informational "already has a coach" tag — best-effort batch check via
+    // the 0530 RPC (trainer_clients RLS hides other trainers' rows, so a
+    // direct select can't see them). On error: no tags, still addable.
+    if (rows.length > 0) {
+      const { data: coached, error: coachedErr } = await supabase
+        .rpc('get_clients_with_other_trainer', { p_client_ids: rows.map(r => r.id) });
+      if (coachedErr) {
+        logger.warn('AddClientModal: other-trainer check unavailable:', coachedErr);
+        setCoachedIds(new Set());
+      } else {
+        setCoachedIds(new Set((coached || []).map(r => r.client_id)));
+      }
+    } else {
+      setCoachedIds(new Set());
+    }
+  }, []);
 
   const handleSearchChange = useCallback((e) => {
     const val = e.target.value;
@@ -279,27 +307,30 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
 
   const filtered = useMemo(() => {
     const excluded = new Set(existingClientIds);
-    return members.filter(m => !excluded.has(m.id));
-  }, [members, existingClientIds]);
+    // Keep just-added members visible (marked "Added") even after the parent
+    // roster refresh folds them into existingClientIds.
+    return members.filter(m => addedIds.has(m.id) || !excluded.has(m.id));
+  }, [members, existingClientIds, addedIds]);
 
-  const handleAdd = async (memberId) => {
-    setAddingId(memberId);
-    try {
-      const { error } = await supabase.from('trainer_clients').upsert({
-        trainer_id: trainerId,
-        client_id: memberId,
-        gym_id: gymId,
-        is_active: true,
-      }, { onConflict: 'trainer_id,client_id' });
-      if (error) throw error;
-      posthog?.capture('trainer_client_added');
-      onAdded(memberId);
-    } catch (err) {
-      logger.error('AddClientModal: failed to assign client:', err);
+  const handleAdd = async (member) => {
+    setAddingId(member.id);
+    const { error } = await supabase.from('trainer_clients').upsert({
+      trainer_id: trainerId,
+      client_id: member.id,
+      gym_id: gymId,
+      is_active: true,
+    }, { onConflict: 'trainer_id,client_id' });
+    if (error) {
+      logger.error('AddClientModal: failed to assign client:', error);
       showToast(t('trainerClients.addClientFailed', 'Could not add client. Try again.'), 'error');
-    } finally {
-      setAddingId(null);
+    } else {
+      posthog?.capture('trainer_client_added');
+      setAddedIds(prev => new Set(prev).add(member.id));
+      showToast(t('trainerClients.clientAdded', '{{name}} added to your clients', { name: member.full_name || '' }), 'success');
+      // Refresh the roster behind the modal; modal stays open for multi-add.
+      onAdded(member.id);
     }
+    setAddingId(null);
   };
 
   return (
@@ -386,40 +417,65 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
               </p>
             </div>
           ) : (
-            filtered.map(m => (
-              <div
-                key={m.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '10px 14px', background: TT.surface2,
-                  border: `1px solid ${TT.border}`, borderRadius: 12,
-                }}
-              >
-                <TAvatar name={m.full_name || '?'} size={36} idx={avatarIdx(m.id)} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: TT.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name}</p>
-                  {m.username && (
-                    <p style={{ fontSize: 11, color: TT.textMute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{m.username}</p>
+            filtered.map(m => {
+              const isAdded = addedIds.has(m.id);
+              const hasCoach = coachedIds.has(m.id);
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 14px', background: TT.surface2,
+                    border: `1px solid ${TT.border}`, borderRadius: 12,
+                  }}
+                >
+                  <TAvatar name={m.full_name || '?'} size={36} idx={avatarIdx(m.id)} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: TT.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                      {m.username && (
+                        <p style={{ fontSize: 11, color: TT.textMute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{m.username}</p>
+                      )}
+                      {hasCoach && !isAdded && (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, color: TT.warnInk, background: TT.warnSoft,
+                          borderRadius: 999, padding: '1px 8px', whiteSpace: 'nowrap', flexShrink: 0,
+                        }}>
+                          {t('trainerClients.hasCoach', 'Has a coach')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {isAdded ? (
+                    <span style={{
+                      display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
+                      borderRadius: 12, padding: '8px 12px', minHeight: 36,
+                      background: TT.goodSoft, color: TT.goodInk, fontSize: 12, fontWeight: 700,
+                    }}>
+                      <Check size={14} strokeWidth={2.6} />
+                      {t('trainerClients.added', 'Added')}
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleAdd(m)}
+                      disabled={addingId === m.id}
+                      style={{
+                        minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: 12, border: 'none', background: TT.accentSoft, color: TT.accentInk,
+                        cursor: addingId === m.id ? 'default' : 'pointer', opacity: addingId === m.id ? 0.5 : 1,
+                      }}
+                      aria-label={t('trainerClients.addMember', 'Add {{name}}', { name: m.full_name })}
+                    >
+                      {addingId === m.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <UserPlus size={16} />
+                      )}
+                    </button>
                   )}
                 </div>
-                <button
-                  onClick={() => handleAdd(m.id)}
-                  disabled={addingId === m.id}
-                  style={{
-                    minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: 12, border: 'none', background: TT.accentSoft, color: TT.accentInk,
-                    cursor: addingId === m.id ? 'default' : 'pointer', opacity: addingId === m.id ? 0.5 : 1,
-                  }}
-                  aria-label={t('trainerClients.addMember', 'Add {{name}}', { name: m.full_name })}
-                >
-                  {addingId === m.id ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <UserPlus size={16} />
-                  )}
-                </button>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -435,6 +491,7 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
   const [loading, setLoading] = useState(true);
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [assigning, setAssigning] = useState(false);
+  const focusTrapRef = useFocusTrap(true, onClose);
 
   useEffect(() => {
     supabase
@@ -478,7 +535,13 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
             profile_id: c.id,
             gym_id: gymId,
           }, { onConflict: 'program_id,profile_id', ignoreDuplicates: true });
-          if (retryErr) logger.error('AssignProgram: enrollment upsert failed for client', c.id, retryErr);
+          if (retryErr) {
+            // Enrollment never landed — this client is NOT assigned, count it
+            // as a failure instead of toasting success.
+            logger.error('AssignProgram: enrollment upsert failed for client', c.id, retryErr);
+            failCount += 1;
+            continue;
+          }
         }
         successCount += 1;
       }
@@ -511,6 +574,7 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
       }}
     >
       <div
+        ref={focusTrapRef}
         onClick={e => e.stopPropagation()}
         style={{
           background: TT.surface, borderRadius: 18,
@@ -613,19 +677,38 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
         const results = await Promise.all(
           batch.map(async (client) => {
             try {
-              const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: client.id });
-              if (!convId) return false;
-              const { data: conv } = await supabase
+              const { data: convId, error: convErr } = await supabase.rpc('get_or_create_conversation', { p_other_user: client.id });
+              if (convErr || !convId) {
+                logger.error('ComposeMessage: conversation failed for client', client.id, convErr);
+                return false;
+              }
+              // A failed seed read MUST skip this client — encrypting with an
+              // undefined seed produces ciphertext the recipient can't decrypt.
+              const { data: conv, error: seedErr } = await supabase
                 .from('conversations')
                 .select('encryption_seed')
                 .eq('id', convId)
                 .single();
+              if (seedErr) {
+                logger.error('ComposeMessage: seed fetch failed for client', client.id, seedErr);
+                return false;
+              }
               const encrypted = await encryptMessage(text, convId, conv?.encryption_seed);
-              await supabase.from('direct_messages').insert({
+              const { error: insertErr } = await supabase.from('direct_messages').insert({
                 conversation_id: convId,
                 sender_id: senderId,
                 body: encrypted,
               });
+              if (insertErr) {
+                logger.error('ComposeMessage: insert failed for client', client.id, insertErr);
+                return false;
+              }
+              // Reorder the recipient's/our thread list (same as the thread composer).
+              const { error: bumpErr } = await supabase
+                .from('conversations')
+                .update({ last_message_at: new Date().toISOString() })
+                .eq('id', convId);
+              if (bumpErr) logger.warn('ComposeMessage: last_message_at bump failed', convId, bumpErr);
               return true;
             } catch (err) {
               logger.error('ComposeMessage: failed for client', client.id, err);
@@ -639,13 +722,17 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
         setProgress({ sent: Math.min(i + BATCH_SIZE, total), total });
       }
 
+      if (successCount === 0) {
+        showToast(t('trainerClients.messageSendFailed', 'Could not send messages. Try again.'), 'error');
+        return; // keep the modal open so the trainer can retry
+      }
       if (failCount > 0) {
         showToast(
-          t('trainerClients.messageSentPartial', '{{success}} sent, {{failed}} failed', { success: successCount, failed: failCount }),
+          t('trainerClients.messageSentPartial', '{{success}} sent · {{failed}} failed', { success: successCount, failed: failCount }),
           'warning'
         );
       } else {
-        showToast(t('trainerClients.messageSentSuccess', 'Message sent to {{count}} clients', { count: successCount }), 'success');
+        showToast(t('trainerClients.messageSentSuccess', 'Sent to {{count}}', { count: successCount }), 'success');
       }
       onDone();
     } catch (err) {
@@ -703,12 +790,23 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
             placeholder={t('trainerClients.typeMessage', 'Type your message...')}
             autoFocus
             rows={3}
+            maxLength={1400}
             style={{
               width: '100%', background: TT.surface2, border: `1px solid ${TT.borderSolid}`,
               borderRadius: 12, padding: '12px 14px', fontSize: 13, color: TT.text,
               outline: 'none', resize: 'none', minHeight: 90, fontFamily: 'inherit',
             }}
           />
+          {/* The ciphertext CHECK on direct_messages.body is ≤2000 chars
+              (≈1450 plaintext) — 1400 keeps every send under it, same cap as
+              the thread composer. */}
+          <p style={{
+            marginTop: 4, fontSize: 11, textAlign: 'right',
+            color: message.length >= 1300 ? TT.warnInk : TT.textMute,
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {message.length}/1400
+          </p>
         </div>
         <div style={{ padding: '0 20px 20px' }}>
           <button
@@ -745,9 +843,11 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
 };
 
 // ── Filter / sort constants ──────────────────────────────────────────────────
-const FILTER_KEYS = ['all', 'active', 'at_risk', 'has_program', 'no_program'];
+// Status filters map 1:1 to deriveClientStatus() values (lib/clientStatus) so
+// every chip count equals what its filter shows.
+const STATUS_FILTERS = ['on_track', 'at_risk', 'churn', 'new'];
 const SORT_KEYS = ['last_active', 'name', 'workouts'];
-const SORT_DEFAULTS = { last_active: 'Last active', name: 'Name', workouts: 'Workouts', adherence: 'Adherence', streak: 'Streak', churn: 'Churn risk' };
+const SORT_DEFAULTS = { last_active: 'Last active', name: 'Name', workouts: 'Workouts' };
 
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function TrainerClients() {
@@ -761,11 +861,14 @@ export default function TrainerClients() {
   const [selected, setSelected] = useState(null);
   const [search,   setSearch]   = useState('');
   const [filter,   setFilter]   = useState('all');
-  const [activeChip, setActiveChip] = useState('all'); // visual chip selection (churn + at_risk share the same filter)
   const [sortBy,   setSortBy]   = useState('last_active');
   const [churnScores, setChurnScores] = useState({});
   const [showAddClient, setShowAddClient] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // Removed (is_active=false) clients — loaded on demand for the chip
+  const [removedClients, setRemovedClients] = useState(null); // null = not loaded yet
+  const [removedLoading, setRemovedLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState(null);
   // Bulk selection
   const [selectMode, setSelectMode] = useState(false);
   const [bulkSelected, setBulkSelected] = useState(new Set());
@@ -776,6 +879,8 @@ export default function TrainerClients() {
   const [blockTarget, setBlockTarget] = useState(null);
   const [removingClient, setRemovingClient] = useState(false);
   const [blockingClient, setBlockingClient] = useState(false);
+  const removeTrapRef = useFocusTrap(!!removeTarget, () => setRemoveTarget(null));
+  const blockTrapRef = useFocusTrap(!!blockTarget, () => setBlockTarget(null));
 
   const handleMessageClient = async (clientId) => {
     const { data: convId, error } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
@@ -849,13 +954,9 @@ export default function TrainerClients() {
     [clients, bulkSelected]
   );
 
-  function getChurnLevel(score) {
-    if (score >= 80) return { label: t('trainerClients.churnCritical', 'Critical'), color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
-    if (score >= 55) return { label: t('trainerClients.churnHigh', 'High'), color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' };
-    return { label: t('trainerClients.churnMedium', 'Medium'), color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
-  }
-
-  useEffect(() => { document.title = t('trainerClients.pageTitle', `Trainer - Clients | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
+  // Composed in code — the old trainerClients.pageTitle JSON value hardcoded
+  // "TuGymPR", so white-label gyms never saw their own name in the tab.
+  useEffect(() => { document.title = `${t('trainerClients.title', 'Clients')} · ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;
@@ -868,9 +969,8 @@ export default function TrainerClients() {
         .from('trainer_clients')
         .select(`
           client_id,
-          notes,
           profiles!trainer_clients_client_id_fkey (
-            id, full_name, username, avatar_url, last_active_at, created_at, assigned_program_id, phone_number
+            id, full_name, username, avatar_url, last_active_at, created_at, assigned_program_id, phone_number, membership_status
           )
         `)
         .eq('trainer_id', profile.id)
@@ -890,16 +990,32 @@ export default function TrainerClients() {
       const clientIds = assignedClients.map(c => c.id);
 
       const { data: recentSessions, error: recSessError } = await selectInBatches(
-        (ids) => supabase.from('workout_sessions').select('profile_id')
+        (ids) => supabase.from('workout_sessions').select('profile_id, started_at')
           .in('profile_id', ids).eq('status', 'completed').gte('started_at', fourteenDaysAgo),
         clientIds,
       );
       if (recSessError) logger.error('TrainerClients: failed to load recent sessions:', recSessError);
 
+      const weekStartMs = startOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
       const recentCounts = {};
+      const weekCounts = {};
       (recentSessions || []).forEach(s => {
         recentCounts[s.profile_id] = (recentCounts[s.profile_id] || 0) + 1;
+        if (s.started_at && new Date(s.started_at).getTime() >= weekStartMs) {
+          weekCounts[s.profile_id] = (weekCounts[s.profile_id] || 0) + 1;
+        }
       });
+
+      // Plan days/week for the adherence ring — real target per client
+      // (member_onboarding trainer read policy: onboarding_trainer_read, 0002).
+      const { data: onboardingRows, error: onboardingError } = await selectInBatches(
+        (ids) => supabase.from('member_onboarding').select('profile_id, training_days_per_week')
+          .in('profile_id', ids),
+        clientIds,
+      );
+      if (onboardingError) logger.error('TrainerClients: failed to load training days:', onboardingError);
+      const planDaysMap = {};
+      (onboardingRows || []).forEach(r => { planDaysMap[r.profile_id] = r.training_days_per_week; });
 
       // Fetch churn risk scores
       const { data: churnRows, error: churnError } = await selectInBatches(
@@ -913,15 +1029,94 @@ export default function TrainerClients() {
       (churnRows || []).forEach(row => { churnMap[row.profile_id] = row; });
       setChurnScores(churnMap);
 
-      setClients(assignedClients.map(m => ({ ...m, recentWorkouts: recentCounts[m.id] ?? 0 })));
+      setClients(assignedClients.map(m => ({
+        ...m,
+        recentWorkouts: recentCounts[m.id] ?? 0,
+        weekSessions: weekCounts[m.id] ?? 0,
+        planDaysPerWeek: planDaysMap[m.id] ?? null,
+      })));
       setLoading(false);
     };
     load();
   }, [profile?.gym_id, profile?.id, reloadKey]);
 
+  // ── Removed clients (is_active = false) — fetched when the chip is opened ──
+  useEffect(() => {
+    if (filter !== 'removed' || !profile?.id) return undefined;
+    let cancelled = false;
+    const loadRemoved = async () => {
+      setRemovedLoading(true);
+      const { data: rows, error } = await supabase
+        .from('trainer_clients')
+        .select('client_id')
+        .eq('trainer_id', profile.id)
+        .eq('is_active', false);
+      if (error) {
+        logger.error('TrainerClients: failed to load removed clients:', error);
+        if (!cancelled) { setRemovedClients([]); setRemovedLoading(false); }
+        return;
+      }
+      const ids = (rows || []).map(r => r.client_id);
+      if (ids.length === 0) {
+        if (!cancelled) { setRemovedClients([]); setRemovedLoading(false); }
+        return;
+      }
+      // The full-PII profiles policy only covers ACTIVE clients (is_trainer_of),
+      // so resolve removed clients' names through the same-gym safe view.
+      const { data: profs, error: profErr } = await selectInBatches(
+        (batch) => supabase.from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url, last_active_at, created_at')
+          .in('id', batch),
+        ids,
+      );
+      if (profErr) logger.error('TrainerClients: failed to load removed client profiles:', profErr);
+      const byId = {};
+      (profs || []).forEach(p => { byId[p.id] = p; });
+      if (!cancelled) {
+        setRemovedClients(ids.map(id => byId[id] || { id, full_name: null }));
+        setRemovedLoading(false);
+      }
+    };
+    loadRemoved();
+    return () => { cancelled = true; };
+  }, [filter, profile?.id, reloadKey]);
+
+  const handleRestoreClient = async (client) => {
+    setRestoringId(client.id);
+    const { error } = await supabase
+      .from('trainer_clients')
+      .update({ is_active: true })
+      .eq('trainer_id', profile.id)
+      .eq('client_id', client.id);
+    if (error) {
+      logger.error('RestoreClient: error', error);
+      showToast(t('trainerClients.restoreFailed', 'Could not restore the client. Try again.'), 'error');
+    } else {
+      setRemovedClients(prev => (prev || []).filter(c => c.id !== client.id));
+      setReloadKey(k => k + 1);
+      showToast(t('trainerClients.restored', '{{name}} is back on your roster', { name: client.full_name || '' }), 'success');
+    }
+    setRestoringId(null);
+  };
+
+  // ── Canonical status per client (single model: lib/clientStatus) ──────────
+  const statusById = useMemo(() => {
+    const map = {};
+    clients.forEach(c => {
+      const churn = churnScores[c.id];
+      map[c.id] = deriveClientStatus({
+        lastActiveAt: c.last_active_at,
+        createdAt: c.created_at,
+        churnScore: churn?.score,
+        churnComputedAt: churn?.computed_at, // stale scores are ignored by the helper
+      });
+    });
+    return map;
+  }, [clients, churnScores]);
+
   // Client-side search, filter, sort
   const filtered = useMemo(() => {
-    let list = [...clients];
+    let list = filter === 'removed' ? [...(removedClients || [])] : [...clients];
 
     // Search
     if (search.trim()) {
@@ -932,16 +1127,9 @@ export default function TrainerClients() {
       );
     }
 
-    // Filter
-    const now = Date.now();
-    if (filter === 'active') {
-      list = list.filter(c => c.last_active_at && (now - new Date(c.last_active_at)) / 86400000 <= 7);
-    } else if (filter === 'at_risk') {
-      list = list.filter(c => {
-        const churn = churnScores[c.id];
-        if (churn) return churn.score >= 30;
-        return !c.last_active_at || (now - new Date(c.last_active_at)) / 86400000 > 14;
-      });
+    // Filter — status chips use the SAME predicate as their counts
+    if (STATUS_FILTERS.includes(filter)) {
+      list = list.filter(c => statusById[c.id] === filter);
     } else if (filter === 'has_program') {
       list = list.filter(c => c.assigned_program_id);
     } else if (filter === 'no_program') {
@@ -952,7 +1140,7 @@ export default function TrainerClients() {
     if (sortBy === 'name') {
       list.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
     } else if (sortBy === 'workouts') {
-      list.sort((a, b) => b.recentWorkouts - a.recentWorkouts);
+      list.sort((a, b) => (b.recentWorkouts || 0) - (a.recentWorkouts || 0));
     } else {
       list.sort((a, b) => {
         const aT = a.last_active_at ? new Date(a.last_active_at).getTime() : 0;
@@ -962,39 +1150,20 @@ export default function TrainerClients() {
     }
 
     return list;
-  }, [clients, search, filter, sortBy, churnScores]);
+  }, [clients, removedClients, search, filter, sortBy, statusById]);
 
-  // ── Compute funnel counts + status mapping ─────────────────
-  const now = Date.now();
-  const isActiveClient = (c) => c.last_active_at && (now - new Date(c.last_active_at).getTime()) / 86400000 <= 7;
-  const isChurnClient = (c) => {
-    const churn = churnScores[c.id];
-    if (churn && churn.score >= 80) return true;
-    return c.last_active_at ? (now - new Date(c.last_active_at).getTime()) / 86400000 > 30 : true;
-  };
-  const isAtRiskClient = (c) => {
-    if (isChurnClient(c)) return false;
-    const churn = churnScores[c.id];
-    if (churn) return churn.score >= 30;
-    return c.last_active_at ? (now - new Date(c.last_active_at).getTime()) / 86400000 > 14 : false;
-  };
-  const onTrackCount = clients.filter(c => isActiveClient(c) && !isAtRiskClient(c) && !isChurnClient(c)).length;
-  const atRiskCount  = clients.filter(c => isAtRiskClient(c)).length;
-  const churnCount   = clients.filter(c => isChurnClient(c)).length;
-  const noPlanCount  = clients.filter(c => !c.assigned_program_id).length;
-  const onProgramCount = clients.filter(c => c.assigned_program_id).length;
-
-  // Atelier filter chips. Each carries its own visual `id` (so the Churn and
-  // At-risk chips, which share the existing `at_risk` filter, don't both light
-  // up) but maps back to the existing FILTER_KEYS to preserve filter behaviour
-  // (the old funnel also routed Churn → the at_risk view).
+  // Chip counts derive from statusById — by construction they always equal
+  // what the chip's filter lists.
+  const statusCount = (key) => clients.reduce((n, c) => n + (statusById[c.id] === key ? 1 : 0), 0);
   const STATUS_CHIPS = [
-    { id: 'all',         filter: 'all',         label: t('trainerClients.tabAll', 'All'),               count: clients.length },
-    { id: 'on_track',    filter: 'active',      label: t('trainerClients.tabOnTrack', 'On track'),      count: onTrackCount },
-    { id: 'at_risk',     filter: 'at_risk',     label: t('trainerClients.tabAtRisk', 'At risk'),        count: atRiskCount },
-    { id: 'churn',       filter: 'at_risk',     label: t('trainerClients.funnel.churn', 'Churn'),       count: churnCount },
-    { id: 'no_program',  filter: 'no_program',  label: t('trainerClients.tabNoPlan', 'No plan'),        count: noPlanCount },
-    { id: 'has_program', filter: 'has_program', label: t('trainerClients.tabHasProgram', 'On program'), count: onProgramCount },
+    { id: 'all',         label: t('trainerClients.tabAll', 'All'),               count: clients.length },
+    { id: 'on_track',    label: t('trainerClients.tabOnTrack', 'On track'),      count: statusCount('on_track') },
+    { id: 'at_risk',     label: t('trainerClients.tabAtRisk', 'At risk'),        count: statusCount('at_risk') },
+    { id: 'churn',       label: t('trainerClients.tabChurn', 'Churn'),           count: statusCount('churn') },
+    { id: 'new',         label: t('trainerClients.tabNew', 'New'),               count: statusCount('new') },
+    { id: 'no_program',  label: t('trainerClients.tabNoPlan', 'No plan'),        count: clients.filter(c => !c.assigned_program_id).length },
+    { id: 'has_program', label: t('trainerClients.tabHasProgram', 'On program'), count: clients.filter(c => c.assigned_program_id).length },
+    { id: 'removed',     label: t('trainerClients.tabRemoved', 'Removed'),       count: removedClients ? removedClients.length : null },
   ];
 
   return (
@@ -1023,11 +1192,11 @@ export default function TrainerClients() {
         </div>
 
         {/* Search + sort + select row */}
-        {!loading && clients.length > 0 && (
+        {!loading && (clients.length > 0 || filter === 'removed') && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             <div
               style={{
-                flex: 1, height: 46, background: TT.surface, borderRadius: 14,
+                flex: 1, minWidth: 0, height: 46, background: TT.surface, borderRadius: 14,
                 boxShadow: 'inset 0 0 0 1px var(--tt-border)',
                 display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px',
               }}
@@ -1054,15 +1223,21 @@ export default function TrainerClients() {
               title={`${t('trainerClients.sortPrefix', 'Sort')}: ${t(`trainerClients.sort_${sortBy}`, SORT_DEFAULTS[sortBy] || sortBy)}`}
               className="tt-tap"
               style={{
+                // Shrinkable (minWidth 0 + ellipsis) — a long locale label
+                // ("Última actividad") must never push the select button
+                // off-screen.
                 display: 'flex', alignItems: 'center', gap: 6,
                 height: 46, padding: '0 13px', borderRadius: 14,
                 background: TT.surface, boxShadow: 'inset 0 0 0 1px var(--tt-border)',
                 color: TT.text, fontSize: 12.5, fontWeight: 700,
-                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, border: 'none',
+                cursor: 'pointer', whiteSpace: 'nowrap', border: 'none',
+                flexShrink: 1, minWidth: 0,
               }}
             >
-              <SortAsc size={15} style={{ color: TT.text }} />
-              {t(`trainerClients.sort_${sortBy}`, SORT_DEFAULTS[sortBy] || sortBy)}
+              <SortAsc size={15} style={{ color: TT.text, flexShrink: 0 }} />
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {t(`trainerClients.sort_${sortBy}`, SORT_DEFAULTS[sortBy] || sortBy)}
+              </span>
             </button>
             <TIconButton
               size={46}
@@ -1072,8 +1247,8 @@ export default function TrainerClients() {
                 else setSelectMode(true);
               }}
               style={selectMode
-                ? { background: TT.accentSoft, border: 'none', boxShadow: `inset 0 0 0 1px ${TT.accent}` }
-                : { background: TT.surface, border: 'none', boxShadow: 'inset 0 0 0 1px var(--tt-border)' }}
+                ? { background: TT.accentSoft, border: 'none', boxShadow: `inset 0 0 0 1px ${TT.accent}`, flexShrink: 0 }
+                : { background: TT.surface, border: 'none', boxShadow: 'inset 0 0 0 1px var(--tt-border)', flexShrink: 0 }}
             >
               <SlidersHorizontal size={17} color={selectMode ? TT.accentInk : TT.text} />
             </TIconButton>
@@ -1081,15 +1256,15 @@ export default function TrainerClients() {
         )}
 
         {/* Filter chips */}
-        {!loading && clients.length > 0 && (
+        {!loading && (clients.length > 0 || filter === 'removed') && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto' }} className="scrollbar-hide">
             {STATUS_CHIPS.map((chip) => {
-              const isOn = activeChip === chip.id;
+              const isOn = filter === chip.id;
               return (
                 <button
                   key={chip.id}
                   type="button"
-                  onClick={() => { setFilter(chip.filter); setActiveChip(chip.id); }}
+                  onClick={() => setFilter(chip.id)}
                   className="tt-tap"
                   style={{
                     padding: '8px 14px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0,
@@ -1100,7 +1275,7 @@ export default function TrainerClients() {
                     cursor: 'pointer',
                   }}
                 >
-                  {chip.label} {chip.count}
+                  {chip.label}{chip.count != null ? ` ${chip.count}` : ''}
                 </button>
               );
             })}
@@ -1115,35 +1290,116 @@ export default function TrainerClients() {
             <Skeleton variant="list-item" />
             <Skeleton variant="list-item" />
           </div>
+        ) : filter === 'removed' ? (
+          removedLoading || removedClients === null ? (
+            <div className="space-y-3 py-2">
+              <Skeleton variant="list-item" />
+              <Skeleton variant="list-item" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <TrainerEmptyState
+              icon={Users}
+              title={t('trainerClients.noRemovedClients', 'No removed clients')}
+              description={t('trainerClients.noRemovedDesc', 'Clients you remove land here so you can bring them back anytime.')}
+              actionLabel={t('trainerClients.clearFilters', 'Clear filters')}
+              onAction={() => { setSearch(''); setFilter('all'); }}
+              compact
+            />
+          ) : (
+            <TCard padded={0} style={{ overflow: 'hidden' }}>
+              {filtered.map((c, idx) => (
+                <div
+                  key={c.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 13,
+                    padding: '13px 15px',
+                    borderTop: idx > 0 ? '1px solid var(--tt-border)' : 'none',
+                  }}
+                >
+                  <TAvatar name={c.full_name || '?'} size={42} idx={avatarIdx(c.id)} src={c.avatar_url} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {c.full_name || t('trainerClients.formerClient', 'Former client')}
+                    </div>
+                    <div style={{ fontSize: 12, color: TT.textSub, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {t('trainerClients.removedTag', 'Removed')}
+                      {c.last_active_at
+                        ? ` · ${formatDistanceToNow(new Date(c.last_active_at), { addSuffix: true, locale: dateFnsLocale })}`
+                        : ''}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRestoreClient(c)}
+                    disabled={restoringId === c.id}
+                    className="tt-tap"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                      padding: '9px 13px', borderRadius: 12, border: 'none',
+                      background: TT.accentSoft, color: TT.accentInk,
+                      fontWeight: 700, fontSize: 12.5, minHeight: 44,
+                      cursor: restoringId === c.id ? 'default' : 'pointer',
+                      opacity: restoringId === c.id ? 0.6 : 1,
+                    }}
+                  >
+                    {restoringId === c.id ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <RotateCcw size={14} strokeWidth={2.4} />
+                    )}
+                    {t('trainerClients.restore', 'Restore')}
+                  </button>
+                </div>
+              ))}
+            </TCard>
+          )
         ) : clients.length === 0 ? (
-          <TrainerEmptyState
-            icon={Users}
-            title={t('trainerClients.noClients', 'No clients assigned yet')}
-            description={t('trainerClients.emptyDesc', 'Add a client from your gym roster to start tracking their journey.')}
-            actionLabel={t('trainerClients.addFirstClient', 'Add your first client')}
-            actionIcon={UserPlus}
-            onAction={() => setShowAddClient(true)}
-          />
+          <>
+            <TrainerEmptyState
+              icon={Users}
+              title={t('trainerClients.noClients', 'No clients assigned yet')}
+              description={t('trainerClients.emptyDesc', 'Add a client from your gym roster to start tracking their journey.')}
+              actionLabel={t('trainerClients.addFirstClient', 'Add your first client')}
+              actionIcon={UserPlus}
+              onAction={() => setShowAddClient(true)}
+            />
+            <button
+              type="button"
+              onClick={() => setFilter('removed')}
+              className="tt-tap"
+              style={{
+                display: 'block', margin: '10px auto 0', padding: '10px 14px',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                fontSize: 12.5, fontWeight: 700, color: TT.textMute, textDecoration: 'underline',
+              }}
+            >
+              {t('trainerClients.viewRemoved', 'View removed clients')}
+            </button>
+          </>
         ) : filtered.length === 0 ? (
           <TrainerEmptyState
             icon={Search}
             title={t('trainerClients.noMatchingClients', 'No clients match your filters')}
             description={t('trainerClients.noMatchDesc', 'Try widening the filter or clearing your search.')}
             actionLabel={t('trainerClients.clearFilters', 'Clear filters')}
-            onAction={() => { setSearch(''); setFilter('all'); setActiveChip('all'); }}
+            onAction={() => { setSearch(''); setFilter('all'); }}
             compact
           />
         ) : (
           <TCard padded={0} style={{ overflow: 'hidden' }}>
             {filtered.map((c, idx) => {
-              const status = isChurnClient(c) ? 'churn' : isAtRiskClient(c) ? 'at_risk' : 'on_track';
+              const status = statusById[c.id];
               const tone = statusTone(status);
               const churn = churnScores[c.id];
-              const adherenceVal = (() => {
-                const wk = c.recentWorkouts || 0;
-                return Math.max(0, Math.min(1, wk / 6));
-              })();
-              const adherencePct = Math.round(adherenceVal * 100);
+              // Real weekly compliance: sessions this week vs the client's own
+              // plan days/week (member_onboarding), not a hardcoded /6.
+              const adherence = weeklyAdherence(c.weekSessions, c.planDaysPerWeek);
+              const membershipFlag = c.membership_status && c.membership_status !== 'active'
+                ? ({
+                    frozen: t('trainerClients.membershipPaused', 'Paused'),
+                    cancelled: t('trainerClients.membershipCancelled', 'Cancelled'),
+                  }[c.membership_status] || t('trainerClients.membershipInactive', 'Inactive'))
+                : null;
               const programLabel = c.assigned_program_id
                 ? t('trainerClients.programAssigned', 'Program assigned')
                 : t('trainerClients.noProgram', 'No program');
@@ -1204,24 +1460,35 @@ export default function TrainerClients() {
                     </span>
                   )}
                   <TAvatar name={c.full_name || '?'} size={42} idx={avatarIdx(c.id)} src={c.avatar_url} />
+                  {/* Name + (pills · subtitle) live in the one column that is
+                      allowed to shrink — pills can never push the name off
+                      screen or shove the trailing controls past the edge. */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {c.full_name}
                     </div>
-                    <div style={{ fontSize: 12, color: TT.textSub, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {programLabel} · {lastActiveLabel}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, minWidth: 0 }}>
+                      {membershipFlag && (
+                        <TPill tone="warn" size="s" style={{ flexShrink: 0 }}>{membershipFlag}</TPill>
+                      )}
+                      {status === 'churn' && (
+                        <TPill tone="hot" size="s" style={{ flexShrink: 0 }}>
+                          {churn ? `${Math.round(churn.score)}%` : t('trainerClients.churnPill', 'Churn')}
+                        </TPill>
+                      )}
+                      {status === 'at_risk' && (
+                        <TPill tone="warn" size="s" style={{ flexShrink: 0 }}>
+                          {churn ? `${Math.round(churn.score)}%` : t('trainerClients.riskPill', 'Risk')}
+                        </TPill>
+                      )}
+                      {status === 'new' && (
+                        <TPill tone="teal" size="s" style={{ flexShrink: 0 }}>{t('trainerClients.statusNew', 'New')}</TPill>
+                      )}
+                      <span style={{ fontSize: 12, color: TT.textSub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                        {programLabel} · {lastActiveLabel}
+                      </span>
                     </div>
                   </div>
-                  {status === 'churn' && (
-                    <TPill tone="hot" size="m">
-                      {churn ? `${Math.round(churn.score)}%` : t('trainerClients.churnPill', 'Churn')}
-                    </TPill>
-                  )}
-                  {status === 'at_risk' && (
-                    <TPill tone="warn" size="m">
-                      {churn ? `${Math.round(churn.score)}%` : t('trainerClients.riskPill', 'Risk')}
-                    </TPill>
-                  )}
                   {canWA && !selectMode && (
                     <span
                       role="button"
@@ -1238,7 +1505,11 @@ export default function TrainerClients() {
                       <MessageCircle size={16} strokeWidth={2.4} />
                     </span>
                   )}
-                  <TRing value={adherenceVal} size={40} stroke={4} color={tone} label={`${adherencePct}`} />
+                  <TRing
+                    value={adherence.target ? adherence.done / adherence.target : 0}
+                    size={40} stroke={4} color={tone}
+                    label={`${adherence.done}/${adherence.target}`}
+                  />
                   {!selectMode && (
                     <span
                       role="button"
@@ -1283,10 +1554,8 @@ export default function TrainerClients() {
           gymId={profile.gym_id}
           existingClientIds={clients.map(c => c.id)}
           onClose={() => setShowAddClient(false)}
-          onAdded={() => {
-            setShowAddClient(false);
-            setReloadKey(k => k + 1);
-          }}
+          // Stays open for multi-add — each add just refreshes the roster
+          onAdded={() => setReloadKey(k => k + 1)}
         />
       )}
 
@@ -1377,6 +1646,7 @@ export default function TrainerClients() {
           }}
         >
           <div
+            ref={removeTrapRef}
             onClick={e => e.stopPropagation()}
             style={{
               background: TT.surface, borderRadius: 18,
@@ -1443,6 +1713,7 @@ export default function TrainerClients() {
           }}
         >
           <div
+            ref={blockTrapRef}
             onClick={e => e.stopPropagation()}
             style={{
               background: TT.surface, borderRadius: 18,

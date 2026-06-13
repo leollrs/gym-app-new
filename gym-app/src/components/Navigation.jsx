@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import useKeyboardOpen from '../hooks/useKeyboardOpen';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
 import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight, QrCode, Gift, Apple, Settings, User, BookOpen, LogOut, Shield, Calendar as CalendarIcon } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -8,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { selectInBatches } from '../lib/churn/batchedSelect';
 import UserAvatar from './UserAvatar';
 import { useCachedState } from '../hooks/useCachedState';
+import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 
 // ── Prefetch map for lazy-loaded route chunks ────────────────────────────────
 const PREFETCH_MAP = {
@@ -75,7 +77,20 @@ const SIDEBAR_SECTIONS = [
 ];
 
 const Navigation = () => {
+  const keyboardOpen = useKeyboardOpen();
   const { gymName, gymLogoUrl, user, profile, unreadNotifications, gymConfig } = useAuth();
+
+  // Platform kill switches (Operations → feature_messaging / feature_nutrition).
+  // useFeatureEnabled returns true while flags load, so entries never blink off.
+  // Of the 7 kill switches only these two have nav entries; /checkin stays
+  // (only its QR section is gated) and the rest are reached via in-page cards.
+  const messagingEnabled = useFeatureEnabled('messaging');
+  const nutritionEnabled = useFeatureEnabled('nutrition');
+  const navItemVisible = (id) => {
+    if (id === 'messages') return messagingEnabled;
+    if (id === 'nutrition') return nutritionEnabled;
+    return true;
+  };
 
   // Filter tabs based on gymConfig feature flags
   const activeTabs = MEMBER_TABS.filter(tab => {
@@ -497,7 +512,7 @@ const Navigation = () => {
               {t(section.labelKey, { defaultValue: section.defaultLabel })}
             </p>
             <div className="space-y-0.5">
-              {section.items.map(({ id: itemId, to, icon: Icon, labelKey, defaultLabel, end }) => (
+              {section.items.filter(({ id: itemId }) => navItemVisible(itemId)).map(({ id: itemId, to, icon: Icon, labelKey, defaultLabel, end }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -641,6 +656,7 @@ const Navigation = () => {
 
           {/* Desktop messages + notifications + profile */}
           <div className="flex items-center gap-2 ml-2">
+            {messagingEnabled && (
             <button
               type="button"
               onClick={() => navigate('/messages')}
@@ -655,6 +671,7 @@ const Navigation = () => {
                 </span>
               )}
             </button>
+            )}
             <button
               type="button"
               onClick={() => navigate('/notifications')}
@@ -759,7 +776,7 @@ const Navigation = () => {
     {/* ── Mobile Bottom Navigation (Strava-style 5 tabs with center Record) ─── */}
     <nav
       aria-label={t('navigation.mobileNavigation', { ns: 'pages', defaultValue: 'Mobile navigation' })}
-      className="member-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-50 backdrop-blur-2xl border-t border-white/6 flex items-end justify-around px-2"
+      className={`member-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-50 backdrop-blur-2xl border-t border-white/6 flex items-end justify-around px-2 ${keyboardOpen ? 'hidden' : ''}`}
       style={{
         backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)',
         paddingBottom: 'calc(0.75rem + var(--safe-area-bottom, env(safe-area-inset-bottom)))',

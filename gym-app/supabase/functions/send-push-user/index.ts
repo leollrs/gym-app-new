@@ -387,7 +387,7 @@ serve(async (req) => {
         .select('*', { count: 'exact', head: true })
         .eq('profile_id', userId)
         .eq('endpoint', 'send-push-user')
-        .gte('requested_at', oneHourAgo);
+        .gte('created_at', oneHourAgo);
       if ((count ?? 0) >= 20) {
         return jsonResp({ error: 'Rate limit exceeded — too many pushes' }, 429);
       }

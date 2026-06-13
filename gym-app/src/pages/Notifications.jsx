@@ -318,11 +318,12 @@ export default function Notifications() {
                     key={n.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => !n.read_at && markRead(n.id)}
+                    onClick={() => { if (!n.read_at) markRead(n.id); if (n.data?.route) navigate(n.data.route); }}
                     onKeyDown={(e) => {
-                      if ((e.key === 'Enter' || e.key === ' ') && !n.read_at) {
+                      if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        markRead(n.id);
+                        if (!n.read_at) markRead(n.id);
+                        if (n.data?.route) navigate(n.data.route);
                       }
                     }}
                     aria-label={n.read_at ? t('notifications.alreadyRead') : t('notifications.markAsRead')}

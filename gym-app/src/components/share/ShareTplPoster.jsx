@@ -38,6 +38,9 @@ export default function ShareTplPoster({
   // Single scale factor — see PosterStat. Keeps every literal pixel value
   // proportional across preview (270 wide) and export (1080 wide).
   const s = w / 270;
+  // data.gym may be an object ({name,location}) or a string — render only the
+  // name as text (a raw object as a React child crashes the share sheet).
+  const gymLabel = (typeof data?.gym === 'string' ? data.gym : data?.gym?.name) || 'TuGymPR';
   const nameWords = (data.name || '').split(' ').slice(0, 2);
   const headlineFs = w * (mode === 'tall' ? 0.22 : mode === 'portrait' ? 0.18 : 0.14);
   const statCardBottom = pad * (mode === 'square' ? 2.6 : 3.8);
@@ -224,7 +227,7 @@ export default function ShareTplPoster({
           <div style={{ fontSize: 10 * s, fontWeight: 700, color: '#fff' }}>@{data.userHandle || data.user}</div>
         )}
         <div style={{ fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontSize: 11 * s, fontWeight: 800, letterSpacing: -0.3 * s }}>
-          TuGymPR
+          {gymLabel}
         </div>
       </div>
     </div>

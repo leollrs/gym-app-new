@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, useRef, useMemo, useCallback } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { usePostHog } from '@posthog/react';
 import { useQueryClient } from '@tanstack/react-query';
 import QRCodeModal from './components/QRCodeModal';
@@ -19,6 +19,8 @@ import { useTranslation } from 'react-i18next';
 import { WifiOff } from 'lucide-react';
 import { getQueue } from './lib/offlineQueue';
 import { setNavigateFn, safeReload } from './lib/navigationRef';
+import useResumeEpoch from './hooks/useResumeEpoch';
+import { useFeatureEnabled } from './hooks/usePlatformFlags';
 
 // ── Eagerly loaded (critical path for members) ──────────────
 import Navigation from './components/Navigation';
@@ -323,8 +325,13 @@ const LoadingScreen = () => {
 
 // ── GYM DEACTIVATED SCREEN ────────────────────────────────
 const GymDeactivatedScreen = () => {
-  const { signOut, gymName } = useAuth();
+  const { signOut, gymName, availableRoles } = useAuth();
   const { t } = useTranslation('pages');
+  // The gym's own staff shouldn't be told to "contact your gym owner" — they
+  // ARE the gym. Point admins/trainers at TuGymPR support instead. (The route
+  // guards resolve availableRoles before ever rendering this screen.)
+  const isStaff = Array.isArray(availableRoles)
+    && (availableRoles.includes('admin') || availableRoles.includes('trainer'));
   return (
     <div className="min-h-screen bg-[#05070B] flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center">
@@ -335,12 +342,16 @@ const GymDeactivatedScreen = () => {
         </div>
         <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">{t('blocking.gymDeactivatedTitle')}</h1>
         <p className="text-[14px] text-[#9CA3AF] mb-2">
-          {gymName
-            ? t('blocking.gymDeactivatedBodyNamed', { gymName })
-            : t('blocking.gymDeactivatedBody')}
+          {isStaff
+            ? t('blocking.gymDeactivatedStaffBody', "This gym's TuGymPR access is currently deactivated.")
+            : gymName
+              ? t('blocking.gymDeactivatedBodyNamed', { gymName })
+              : t('blocking.gymDeactivatedBody')}
         </p>
         <p className="text-[13px] text-[#6B7280] mb-8">
-          {t('blocking.gymDeactivatedDetail')}
+          {isStaff
+            ? t('blocking.gymDeactivatedStaffDetail', 'If you believe this is a mistake, contact TuGymPR support.')
+            : t('blocking.gymDeactivatedDetail')}
         </p>
         <button
           onClick={signOut}
@@ -760,6 +771,14 @@ const isSuperAdminView = (activeView) => activeView === 'super_admin';
 const isAdminView = (activeView) => activeView === 'admin' || activeView === 'super_admin';
 const isTrainerView = (activeView) => activeView === 'trainer';
 
+// <Navigate to> does NOT interpolate :params — the legacy /trainer/client/:id
+// redirect needs a component that rebuilds the target from useParams, or old
+// links land on the literal string ":clientId".
+function LegacyTrainerClientRedirect() {
+  const { clientId } = useParams();
+  return <Navigate to={`/trainer/clients/${clientId}`} replace />;
+}
+
 // Redirects a logged-out user to /login, but first remembers where they were
 // trying to go (e.g. a challenge deep link scanned from the gym TV while signed
 // out) so PublicRoute can send them back there after they authenticate. The
@@ -1046,6 +1065,34 @@ const MemberRoutes = () => {
   );
 };
 
+// Map the add_friend_by_code RPC result → a toast. Shared by the deep-link
+// handler and the post-login replay so both stay in sync.
+function showAddFriendResult(data, showToast, t) {
+  switch (data?.status) {
+    case 'sent':
+      showToast(
+        data.name
+          ? t('addFriend.sent', { name: data.name, defaultValue: 'Friend request sent to {{name}}!' })
+          : t('addFriend.sentGeneric', 'Friend request sent!'),
+        'success'
+      );
+      break;
+    case 'already':
+      showToast(t('addFriend.alreadyConnected', "You're already friends or have a pending request."), 'info');
+      break;
+    case 'not_same_gym':
+      showToast(t('addFriend.notSameGym', "That member isn't part of your gym."), 'error');
+      break;
+    case 'self':
+      break; // opened your own link — nothing to do
+    case 'not_found':
+      showToast(t('addFriend.notFound', "We couldn't find that friend code."), 'error');
+      break;
+    default:
+      showToast(t('addFriend.sendFailed', "Couldn't send the friend request."), 'error');
+  }
+}
+
 // ── APP ────────────────────────────────────────────────────
 function App() {
   const { user, profile, gymName, gymConfig, loading } = useAuth();
@@ -1056,8 +1103,16 @@ function App() {
   const { showToast } = useToast();
   const { t } = useTranslation('common');
   const [watchQROpen, setWatchQROpen] = useState(false);
+  // Platform kill switch (Operations → feature_qr). App renders inside the
+  // QueryClientProvider (see useQueryClient above), so the react-query-backed
+  // flag hook is valid here; gates the Apple-Watch-triggered QR modal.
+  const qrFeatureEnabled = useFeatureEnabled('qr');
   const [offlineDismissed, setOfflineDismissed] = useState(false);
   const deepLinkProcessed = useRef(false);
+  // Bumps after a 15+ min hidden spell (appResume) — keys <Routes> below so
+  // the current page fully remounts and re-runs its own data loading, even
+  // when it fetches outside React Query.
+  const resumeEpoch = useResumeEpoch();
 
   // ── Register navigate for non-component callers (AuthContext, error
   // handlers, deep-link processors). Lets them call safeNavigate() instead of
@@ -1245,7 +1300,9 @@ function App() {
 
   // Listen for Watch-triggered actions
   useEffect(() => {
-    const qrHandler = () => setWatchQROpen(true);
+    // No-op while the platform feature_qr kill switch is off — the Watch can
+    // still send the event, but the phone won't pop a dead/disabled QR.
+    const qrHandler = () => { if (qrFeatureEnabled) setWatchQROpen(true); };
     const navHandler = (e) => {
       if (e.detail) {
         // Store in localStorage so it survives app restarts
@@ -1265,7 +1322,7 @@ function App() {
       window.removeEventListener('watch-open-qr', qrHandler);
       window.removeEventListener('watch-navigate', navHandler);
     };
-  }, [navigate, user, loading]);
+  }, [navigate, user, loading, qrFeatureEnabled]);
 
   // Process pending Watch navigation once auth is loaded
   useEffect(() => {
@@ -1365,6 +1422,32 @@ function App() {
     return () => window.removeEventListener('deeplink', handler);
   }, [navigate]);
 
+  // ── Invite deep links: /challenge/:id and /class/:id ──
+  // Reactive (not the one-shot processor below) so they redirect whether opened
+  // cold (web) or tapped while the app is already running. They translate to
+  // the in-app focus query the Challenges / Classes pages already understand,
+  // so the invitee lands right on the item, ready to join. Logged-out → stash
+  // the target and bounce through login.
+  useEffect(() => {
+    if (loading) return;
+    const p = location.pathname;
+    const chal = p.match(/^\/challenge\/([^/]+)$/);
+    const cls = p.match(/^\/class\/([^/]+)$/);
+    if (!chal && !cls) return;
+    const target = chal
+      ? `/challenges?challenge=${chal[1]}`
+      : `/classes?class=${cls[1]}${location.search ? `&${location.search.slice(1)}` : ''}`;
+    if (!user) {
+      // Save the TRANSLATED target via the same sessionStorage key PublicRoute
+      // consumes after login (the proven TV-QR deep-link flow). Using a custom
+      // key meant PublicRoute saw nothing and bounced to "/" (home) post-login.
+      try { sessionStorage.setItem('postLoginRedirect', target); } catch { /* noop */ }
+      navigate('/login', { replace: true });
+      return;
+    }
+    navigate(target, { replace: true });
+  }, [loading, location.pathname, location.search, user, navigate]);
+
   // ── Deep link handling: /referral/:code, ?ref=:code, /add-friend/:code ──
   useEffect(() => {
     if (loading || deepLinkProcessed.current) return;
@@ -1447,65 +1530,22 @@ function App() {
         return;
       }
 
-      // Look up the profile by friend_code and send a friend request
+      // Resolve the code + create the friendship server-side. A SECURITY
+      // DEFINER RPC (migration 0558) is required: migration 0289 blocks regular
+      // members from reading another member's profiles row by friend_code, so a
+      // client-side lookup always returned null ("friend code not found").
       (async () => {
         try {
-          const { data: friendProfile, error: lookupErr } = await supabase
-            .from('profiles')
-            .select('id, full_name')
-            .eq('friend_code', friendCode)
-            .eq('gym_id', profile.gym_id)
-            .single();
-
-          if (lookupErr || !friendProfile) {
-            showToast('Friend code not found', 'error');
-            navigate('/', { replace: true });
-            return;
-          }
-
-          // Don't send to self
-          if (friendProfile.id === user.id) {
-            navigate('/', { replace: true });
-            return;
-          }
-
-          // Check if friendship already exists
-          const { count } = await supabase
-            .from('friendships')
-            .select('id', { count: 'exact', head: true })
-            .or(
-              `and(requester_id.eq.${user.id},addressee_id.eq.${friendProfile.id}),and(requester_id.eq.${friendProfile.id},addressee_id.eq.${user.id})`
-            );
-
-          if (count > 0) {
-            showToast('You are already friends or have a pending request', 'info');
-            navigate('/', { replace: true });
-            return;
-          }
-
-          // Insert friend request
-          const { error: insertErr } = await supabase
-            .from('friendships')
-            .insert({
-              requester_id: user.id,
-              addressee_id: friendProfile.id,
-              gym_id: profile.gym_id,
-              status: 'pending',
-            });
-
-          if (insertErr) {
-            showToast('Could not send friend request', 'error');
-          } else {
-            showToast(`Friend request sent to ${friendProfile.full_name}!`, 'success');
-          }
+          const { data, error } = await supabase.rpc('add_friend_by_code', { p_code: friendCode });
+          showAddFriendResult(error ? null : data, showToast, t);
         } catch {
-          showToast('Could not send friend request', 'error');
+          showToast(t('addFriend.sendFailed', "Couldn't send the friend request."), 'error');
         }
         navigate('/', { replace: true });
       })();
       return;
     }
-  }, [loading, user, profile, location.pathname, location.search, navigate, showToast]);
+  }, [loading, user, profile, location.pathname, location.search, navigate, showToast, t]);
 
   // Process pending friend code after login (stored from deep link while unauthenticated)
   useEffect(() => {
@@ -1517,46 +1557,13 @@ function App() {
 
     (async () => {
       try {
-        const { data: friendProfile, error: lookupErr } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .eq('friend_code', pendingFriendCode)
-          .eq('gym_id', profile.gym_id)
-          .single();
-
-        if (lookupErr || !friendProfile || friendProfile.id === user.id) return;
-
-        const { count } = await supabase
-          .from('friendships')
-          .select('id', { count: 'exact', head: true })
-          .or(
-            `and(requester_id.eq.${user.id},addressee_id.eq.${friendProfile.id}),and(requester_id.eq.${friendProfile.id},addressee_id.eq.${user.id})`
-          );
-
-        if (count > 0) {
-          showToast('You are already friends or have a pending request', 'info');
-          return;
-        }
-
-        const { error: insertErr } = await supabase
-          .from('friendships')
-          .insert({
-            requester_id: user.id,
-            addressee_id: friendProfile.id,
-            gym_id: profile.gym_id,
-            status: 'pending',
-          });
-
-        if (insertErr) {
-          showToast('Could not send friend request', 'error');
-        } else {
-          showToast(`Friend request sent to ${friendProfile.full_name}!`, 'success');
-        }
+        const { data, error } = await supabase.rpc('add_friend_by_code', { p_code: pendingFriendCode });
+        showAddFriendResult(error ? null : data, showToast, t);
       } catch {
-        showToast('Could not send friend request', 'error');
+        showToast(t('addFriend.sendFailed', "Couldn't send the friend request."), 'error');
       }
     })();
-  }, [loading, user, profile, showToast]);
+  }, [loading, user, profile, showToast, t]);
 
   return (
     <Suspense fallback={<LoadingScreen />}>
@@ -1578,7 +1585,7 @@ function App() {
         </button>
       </div>
     )}
-    {watchQROpen && profile?.qr_code_payload && (
+    {watchQROpen && qrFeatureEnabled && profile?.qr_code_payload && (
       <QRCodeModal
         payload={profile.qr_code_payload}
         memberName={profile?.full_name}
@@ -1594,7 +1601,7 @@ function App() {
         for recovering inside a single page, but without this wrapper a throw
         in the auth-state cascade paints a black screen on Capacitor. */}
     <ErrorBoundary>
-    <Routes>
+    <Routes key={resumeEpoch}>
 
       {/* Public — unauthenticated only */}
       <Route path="/login"  element={<PublicRoute><ErrorBoundary><Login /></ErrorBoundary></PublicRoute>} />
@@ -1607,6 +1614,9 @@ function App() {
       <Route path="/invite/:code"     element={<LoadingScreen />} />
       <Route path="/referral/:code"   element={<LoadingScreen />} />
       <Route path="/add-friend/:code" element={<LoadingScreen />} />
+      {/* Invite deep links → focus the class / challenge in-app so they can join */}
+      <Route path="/challenge/:id"    element={<LoadingScreen />} />
+      <Route path="/class/:id"        element={<LoadingScreen />} />
 
       {/* Onboarding */}
       <Route path="/onboarding" element={<OnboardingRoute><ErrorBoundary><Onboarding /></ErrorBoundary></OnboardingRoute>} />
@@ -1819,7 +1829,7 @@ function App() {
                 <Route path="/live/:sessionId"          element={<TrainerLiveSession />} />
                 <Route path="/notification-settings"    element={<NotificationSettings />} />
                 {/* Backward-compatible redirects */}
-                <Route path="/client/:clientId" element={<Navigate to="/trainer/clients/:clientId" replace />} />
+                <Route path="/client/:clientId" element={<LegacyTrainerClientRedirect />} />
                 <Route path="/schedule"         element={<Navigate to="/trainer/calendar" replace />} />
                 <Route path="/analytics"        element={<Navigate to="/trainer" replace />} />
                 <Route path="/programs"         element={<Navigate to="/trainer/plans" replace />} />

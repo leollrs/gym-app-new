@@ -12,6 +12,7 @@ import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import QRCodeModal from '../components/QRCodeModal';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
+import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 
 // GPS check-in is intentionally omitted: GPS is reserved for cardio tracking.
 // Members check in via QR (admin scan) or manual entry only. Legacy rows with
@@ -27,6 +28,10 @@ export default function CheckIn() {
   const { t, i18n } = useTranslation('pages');
   const dfLocale = i18n.language?.startsWith('es') ? esLocale : undefined;
   const posthog = usePostHog();
+  // Platform kill switch (Operations → feature_qr) gates ONLY the QR display
+  // section below — check-in history, streak, and admin-side manual check-in
+  // keep working while QR is paused.
+  const qrEnabled = useFeatureEnabled('qr');
 
   const checkinsCacheKey = `checkin-list-${user?.id || 'anon'}`;
   const streakCacheKey   = `checkin-streak-${user?.id || 'anon'}`;
@@ -59,7 +64,7 @@ export default function CheckIn() {
   // ── Streak (from streak_cache — same source as Navigation) ──────────────────
   // Cached so the streak number paints instantly on remount / app cold start.
   const [streak, setStreak] = useCachedState(streakCacheKey, 0);
-  useEffect(() => {
+  const loadStreak = useCallback(() => {
     if (!user) return;
     supabase
       .from('streak_cache')
@@ -70,6 +75,25 @@ export default function CheckIn() {
         if (data) setStreak(data.current_streak_days || 0);
       });
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadStreak(); }, [loadStreak]);
+
+  // Keep-alive refresh: /checkin is a core tab that stays mounted, and its
+  // whole job is showing data written from OUTSIDE the app — the admin scanner
+  // writes the check_in row, and a workout updates the streak. Without this the
+  // history + streak stayed frozen at the pre-action state until a full remount
+  // (same keep-alive staleness class as the GymWOD fix). Re-pull on foreground
+  // and on the workout-changed signal.
+  useEffect(() => {
+    if (!user) return undefined;
+    const refresh = () => { load(); loadStreak(); };
+    const onVis = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('tugympr:workouts-changed', refresh);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('tugympr:workouts-changed', refresh);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [user, load, loadStreak]);
 
   // ── Group history by date label ──────────────────────────────────────────────
   const grouped = useMemo(() => checkins.reduce((acc, c) => {
@@ -116,7 +140,7 @@ export default function CheckIn() {
               {t('checkIn.checkedInAt', { time: format(new Date(todayCheckIn.checked_in_at), 'h:mm a', { locale: dfLocale }) })}
             </p>
           </>
-        ) : (
+        ) : qrEnabled ? (
           <>
             {/* QR Code button */}
             <button
@@ -134,6 +158,22 @@ export default function CheckIn() {
             </button>
             <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
               {t('checkIn.showQRInstruction')}
+            </p>
+          </>
+        ) : (
+          <>
+            {/* QR display paused by the platform kill switch (feature_qr) */}
+            <div
+              className="w-36 h-36 rounded-full flex flex-col items-center justify-center gap-2 mb-5"
+              style={{
+                background: 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)',
+                border: '3px solid color-mix(in srgb, var(--color-text-muted) 18%, transparent)',
+              }}
+            >
+              <QrCode size={44} style={{ color: 'var(--color-text-subtle)' }} strokeWidth={1.5} />
+            </div>
+            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+              {t('checkIn.qrUnavailable', 'QR check-in is temporarily unavailable. Ask the front desk to check you in.')}
             </p>
           </>
         )}
@@ -201,8 +241,9 @@ export default function CheckIn() {
         </div>
       )}
 
-      {/* QR Code Modal — portaled to body so fixed positioning isn't broken by parent transforms */}
-      {showQR && createPortal(
+      {/* QR Code Modal — portaled to body so fixed positioning isn't broken by parent transforms.
+          qrEnabled guard auto-closes it if the kill switch flips while open. */}
+      {showQR && qrEnabled && createPortal(
         <QRCodeModal
           payload={qrPayload}
           memberName={profile?.full_name}

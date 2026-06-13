@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { format, startOfMonth, endOfMonth, addMonths, getDay, getDaysInMonth, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale/es';
@@ -18,6 +18,7 @@ export default function TrainerClientAttendance({ clientId }) {
   const [withTrainer, setWithTrainer] = useState(() => new Set());
   const [alone, setAlone] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const fmtKey = (d) => format(d, 'yyyy-MM-dd');
 
@@ -33,7 +34,14 @@ export default function TrainerClientAttendance({ clientId }) {
         if (r.with_trainer) wt.add(r.day); else al.add(r.day);
       });
       setWithTrainer(wt); setAlone(al);
-    } catch (e) { logger.error('TrainerClientAttendance load failed', e); setWithTrainer(new Set()); setAlone(new Set()); }
+      setLoadError(false);
+    } catch (e) {
+      // A failed read must not render as a silently-empty calendar ("client
+      // never trained") — flag it and offer Retry.
+      logger.error('TrainerClientAttendance load failed', e);
+      setWithTrainer(new Set()); setAlone(new Set());
+      setLoadError(true);
+    }
     finally { setLoading(false); }
   }, [clientId, viewMonth]);
 
@@ -84,6 +92,20 @@ export default function TrainerClientAttendance({ clientId }) {
         </div>
       </div>
 
+      {loadError && !loading ? (
+        <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 'var(--tt-card-radius, 20px)', boxShadow: TT.shadow, padding: 18, marginBottom: 22, textAlign: 'center' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, marginBottom: 4 }}>
+            {t('trainerAttendance.loadError', "Couldn't load attendance")}
+          </div>
+          <div style={{ fontSize: 12, color: TT.textSub, marginBottom: 12 }}>
+            {t('trainerAttendance.loadErrorHint', 'Check your connection and try again.')}
+          </div>
+          <button type="button" onClick={load} className="tt-btn tt-btn--secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 11, fontFamily: TFont.display, fontWeight: 700, fontSize: 12.5 }}>
+            <RefreshCw size={13} strokeWidth={2.4} /> {t('trainerAttendance.retry', 'Retry')}
+          </button>
+        </div>
+      ) : (
       <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 'var(--tt-card-radius, 20px)', boxShadow: TT.shadow, padding: 14, marginBottom: 22, opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
         {/* Weekday header */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 6 }}>
@@ -127,6 +149,7 @@ export default function TrainerClientAttendance({ clientId }) {
           </span>
         </div>
       </div>
+      )}
     </>
   );
 }

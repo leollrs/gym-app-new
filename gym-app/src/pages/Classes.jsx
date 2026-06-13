@@ -1,12 +1,16 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight, Clock, Users, CalendarCheck, Dumbbell, Star, X, ListChecks } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Users, CalendarCheck, Dumbbell, Star, X, ListChecks, Share2, Check, Hourglass, Calendar } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import EmptyState from '../components/EmptyState';
-import { useNavigate } from 'react-router-dom';
+import UserAvatar from '../components/UserAvatar';
+import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
+import { useFeatureEnabled } from '../hooks/usePlatformFlags';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { classImageUrl } from '../lib/classImageUrl';
+import { PROD_WEB_URL } from '../lib/appUrls';
 import { format, addDays, startOfWeek, isSameDay, subDays, addWeeks } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import posthogClient from 'posthog-js';
@@ -346,6 +350,358 @@ function MonthGridView({ anchor, today, allSchedules, dayLabels, dateFnsLocale, 
   );
 }
 
+/* ============================================================
+   Class detail — "Cinematic" bottom sheet (design: Class Modal A)
+   Full-bleed hero, tags+title over the photo, fact strip,
+   instructor row, capacity, sticky action bar. Slides up over a
+   blurred scrim; closes via ✕, scrim tap, or Esc.
+   ============================================================ */
+const CFD = '"Archivo","Familjen Grotesk",system-ui,sans-serif';   // display
+const CFB = '"Familjen Grotesk",-apple-system,system-ui,sans-serif'; // body
+const CFM = '"JetBrains Mono","SF Mono",ui-monospace,monospace';     // mono
+const GOLD = '#D4AF37';
+
+/* status pill (gold available · accent booked · danger full · muted passed) */
+function ClassStatusPill({ stateKey, accent, t, waitlistPos }) {
+  const map = {
+    available: { txt: t('classes.statusAvailable', 'Disponible'), c: GOLD, bg: 'rgba(212,175,55,0.15)', ln: 'rgba(212,175,55,0.4)' },
+    booked:    { txt: t('classes.booked', 'Reservada'), c: accent, bg: `color-mix(in srgb, ${accent} 13%, transparent)`, ln: `color-mix(in srgb, ${accent} 32%, transparent)`, check: true },
+    waitlisted:{ txt: t('classes.waitlistedShort', { position: waitlistPos || 1, defaultValue: `Lista · #${waitlistPos || 1}` }), c: '#F59E0B', bg: 'rgba(245,158,11,0.15)', ln: 'rgba(245,158,11,0.35)' },
+    full:      { txt: t('classes.full', 'Llena'), c: 'var(--color-danger)', bg: 'rgba(240,99,75,0.12)', ln: 'rgba(240,99,75,0.34)' },
+    attended:  { txt: t('classes.attended', 'Asistida'), c: 'var(--color-success)', bg: 'color-mix(in srgb, var(--color-success) 14%, transparent)', ln: 'color-mix(in srgb, var(--color-success) 32%, transparent)', check: true },
+    passed:    { txt: t('classes.statusFinished', 'Finalizada'), c: 'var(--color-text-muted)', bg: 'rgba(255,255,255,0.06)', ln: 'rgba(255,255,255,0.09)' },
+  };
+  const s = map[stateKey] || map.available;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px',
+      background: s.bg, border: `1px solid ${s.ln}`, borderRadius: 999,
+      fontFamily: CFB, fontSize: 11.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: s.c }}>
+      {s.check && <Check size={12} strokeWidth={2.6} />}
+      {s.txt}
+    </span>
+  );
+}
+
+/* gold category tag (Workout — only when the class carries a template) */
+function ClassCatTag({ t }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 12px 6px 10px',
+      background: 'rgba(212,175,55,0.15)', border: '1px solid rgba(212,175,55,0.4)', borderRadius: 999,
+      fontFamily: CFB, fontSize: 12.5, fontWeight: 800, letterSpacing: 0.2, color: GOLD }}>
+      <Dumbbell size={14} strokeWidth={2.2} />
+      {t('classes.hasWorkout', { defaultValue: 'Workout' }).split(' ').slice(-1)[0]}
+    </span>
+  );
+}
+
+/* round glass control over the hero photo */
+function GlassCircleBtn({ children, onClick, label }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={label}
+      style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.18)',
+        background: 'rgba(10,12,14,0.5)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+        display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0, color: '#fff' }}>
+      {children}
+    </button>
+  );
+}
+
+/* one cell of the fact strip */
+function SheetFact({ icon, label, value, accent }) {
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'center', textAlign: 'center' }}>
+      <span style={{ color: accent, display: 'grid', placeItems: 'center' }}>{icon}</span>
+      <span style={{ fontFamily: CFM, fontSize: 9.5, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>{label}</span>
+      <span style={{ fontFamily: CFD, fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)' }}>{value}</span>
+    </div>
+  );
+}
+
+function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingCounts, todayStr,
+  actionLoading, onBook, onCancel, onCheckIn, onRate, navigate, gymName }) {
+  const { sched, cls, booking, dateStr } = data;
+  const [vis, setVis] = useState(false);
+  useEffect(() => { const id = requestAnimationFrame(() => setVis(true)); return () => cancelAnimationFrame(id); }, []);
+  const close = useCallback(() => { setVis(false); setTimeout(onClose, 420); }, [onClose]);
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [close]);
+
+  // Friends with a confirmed booking for this slot (SECURITY DEFINER RPC,
+  // 0552 — bookings RLS is own-only for members). Hidden quietly if the RPC
+  // isn't applied yet or errors.
+  const [friends, setFriends] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc('get_class_friend_attendees', { p_schedule_id: sched.id, p_booking_date: dateStr })
+      .then(({ data: rows, error }) => {
+        if (!cancelled) setFriends(error ? [] : (rows || []));
+      })
+      .catch(() => { if (!cancelled) setFriends([]); });
+    return () => { cancelled = true; };
+  }, [sched.id, dateStr]);
+
+  const imgUrl = classImageUrl(cls.image_path);
+  const dur = durationMinutes(sched.start_time, sched.end_time);
+  const accent = cls.color || cls.accent_color || 'var(--color-accent)';
+  const count = bookingCounts[sched.id] || 0;
+  const capacity = sched.override_capacity || cls.max_capacity || 30;
+  const left = Math.max(0, capacity - count);
+  const status = booking?.status;
+  const isToday = dateStr === todayStr;
+  const isFuture = dateStr > todayStr;
+  let isPastClass = dateStr < todayStr;
+  if (!isPastClass && isToday && sched.end_time) {
+    const [hh, mm] = String(sched.end_time).split(':');
+    const endDt = new Date();
+    endDt.setHours(parseInt(hh, 10) || 0, parseInt(mm, 10) || 0, 0, 0);
+    if (endDt.getTime() < Date.now()) isPastClass = true;
+  }
+  const isFull = count >= capacity;
+  const stateKey = status === 'confirmed' ? 'booked'
+    : status === 'waitlisted' ? 'waitlisted'
+    : status === 'attended' ? 'attended'
+    : isPastClass ? 'passed'
+    : isFull ? 'full' : 'available';
+  const capColor = left === 0 ? 'var(--color-danger)' : left <= 5 ? GOLD : accent;
+  const isActing = actionLoading === sched.id || actionLoading === booking?.id;
+  const desc = (isEs && cls.description_es) ? cls.description_es : cls.description;
+  const trainerName = cls.trainer?.full_name || cls.instructor || '';
+  const dateLabel = format(new Date(dateStr + 'T00:00:00'), 'EEE · d MMM', dateFnsLocale);
+
+  const handleShare = async () => {
+    // Deep link → App.jsx routes /class/:scheduleId?d=DATE to the in-app
+    // focus query, so the invitee lands on this exact class ready to book.
+    const url = `${PROD_WEB_URL}/class/${sched.id}?d=${dateStr}`;
+    // White-label: name the GYM, not the app.
+    const gym = gymName || 'TuGymPR';
+    const text = t('classes.inviteText', { name: cls.name, when: `${dateLabel} · ${fmt(sched.start_time)}`, gym, defaultValue: `Join me at ${cls.name} (${dateLabel} · ${fmt(sched.start_time)}) on ${gym}` });
+    try {
+      if (navigator.share) await navigator.share({ title: cls.name, text, url });
+      else await navigator.clipboard?.writeText(`${text} ${url}`);
+    } catch { /* user cancelled */ }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
+      {/* scrim */}
+      <div onClick={close} style={{ position: 'absolute', inset: 0, background: 'rgba(5,7,9,0.62)',
+        backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)',
+        opacity: vis ? 1 : 0, transition: 'opacity .32s ease' }} />
+      {/* sheet */}
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', justifyContent: 'center',
+        transform: vis ? 'translateY(0)' : 'translateY(102%)', transition: 'transform .46s cubic-bezier(.32,.72,0,1)' }}>
+        <div style={{ width: '100%', maxWidth: 480, maxHeight: '92dvh',
+          background: 'var(--color-bg-card)', borderTopLeftRadius: 30, borderTopRightRadius: 30,
+          boxShadow: '0 -8px 40px rgba(0,0,0,0.5)', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+          border: '1px solid var(--color-border-subtle)', borderBottom: 'none', position: 'relative' }}>
+          {/* grabber */}
+          <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 30,
+            width: 42, height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.3)' }} />
+          {/* hero */}
+          <div style={{ position: 'relative', flexShrink: 0, height: 208 }}>
+            {imgUrl ? (
+              <img src={imgUrl} alt={cls.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(150deg, color-mix(in srgb, ${accent} 42%, #12161a) 0%, #12161a 55%, #0c0f12 100%)` }} />
+            )}
+            <div style={{ position: 'absolute', inset: 0,
+              background: 'linear-gradient(180deg, rgba(9,11,13,0.35) 0%, rgba(9,11,13,0) 32%, rgba(9,11,13,0.55) 72%, var(--color-bg-card) 100%)' }} />
+            {stateKey === 'passed' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(9,11,13,0.5)' }} />}
+            {/* controls */}
+            <div style={{ position: 'absolute', top: 18, right: 16, display: 'flex', gap: 9 }}>
+              <GlassCircleBtn onClick={handleShare} label={t('classes.shareClass', 'Compartir clase')}><Share2 size={16} strokeWidth={2.1} /></GlassCircleBtn>
+              <GlassCircleBtn onClick={close} label={t('classes.close', { defaultValue: 'Cerrar' })}><X size={17} strokeWidth={2.1} /></GlassCircleBtn>
+            </div>
+            {/* tags + title */}
+            <div style={{ position: 'absolute', left: 20, right: 20, bottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11, flexWrap: 'wrap' }}>
+                {cls.workout_template_id && <ClassCatTag t={t} />}
+                <ClassStatusPill stateKey={stateKey} accent={accent} t={t} waitlistPos={booking?.waitlist_position} />
+              </div>
+              <div style={{ fontFamily: CFD, fontWeight: 900, fontSize: 30, lineHeight: 0.98,
+                letterSpacing: -0.8, color: '#fff', textShadow: '0 2px 24px rgba(0,0,0,0.5)' }}>{cls.name}</div>
+            </div>
+          </div>
+
+          {/* body */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 16px', display: 'flex', flexDirection: 'column', gap: 15, minHeight: 0 }}>
+            {/* date + time */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11, whiteSpace: 'nowrap' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: CFB, fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                <Calendar size={15} style={{ color: 'var(--color-text-secondary)' }} />{dateLabel}
+              </span>
+              <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--color-text-muted)', flexShrink: 0 }} />
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: CFM, fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                <Clock size={15} style={{ color: 'var(--color-text-secondary)' }} />{fmt(sched.start_time)} – {fmt(sched.end_time)}
+              </span>
+            </div>
+
+            {/* fact strip — real data: duration / spots / type */}
+            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--color-surface-hover, rgba(255,255,255,0.05))',
+              borderRadius: 16, border: '1px solid var(--color-border-subtle)', padding: '15px 10px' }}>
+              <SheetFact accent={accent} icon={<Clock size={17} strokeWidth={2} />} label={t('classes.durationLabel', 'Duración')} value={dur ? `${dur} min` : '—'} />
+              <div style={{ width: 1, height: 34, background: 'var(--color-border-subtle)' }} />
+              <SheetFact accent={accent} icon={<Users size={17} strokeWidth={2} />} label={t('classes.spotsLabel', 'Cupos')}
+                value={left === 0 ? t('classes.full', 'Llena') : t('classes.spotsFree', { count: left, defaultValue: `${left} libres` })} />
+              <div style={{ width: 1, height: 34, background: 'var(--color-border-subtle)' }} />
+              <SheetFact accent={accent} icon={<Dumbbell size={17} strokeWidth={2} />} label={t('classes.typeLabel', 'Tipo')}
+                value={cls.workout_template_id ? t('classes.hasWorkout', { defaultValue: 'Workout' }).split(' ').slice(-1)[0] : t('classes.typeClass', 'Clase')} />
+            </div>
+
+            {/* description */}
+            {desc && <p style={{ margin: 0, fontFamily: CFB, fontSize: 14, lineHeight: 1.5, color: 'var(--color-text-secondary)', textWrap: 'pretty' }}>{desc}</p>}
+
+            {/* instructor */}
+            {trainerName && (
+              <button type="button"
+                onClick={() => { if (cls.trainer?.id) { close(); navigate(`/trainers/${cls.trainer.id}`); } }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', width: '100%', textAlign: 'left',
+                  background: 'var(--color-surface-hover, rgba(255,255,255,0.05))', border: '1px solid var(--color-border-subtle)',
+                  borderRadius: 16, cursor: cls.trainer?.id ? 'pointer' : 'default' }}>
+                <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'linear-gradient(135deg,#FFC78A,#FF6A00)',
+                  display: 'grid', placeItems: 'center', flexShrink: 0, fontFamily: CFD, fontWeight: 800, fontSize: 17, color: '#1a1207' }}>
+                  {trainerName.trim()[0]?.toUpperCase() || '?'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: CFD, fontWeight: 800, fontSize: 15.5, color: 'var(--color-text-primary)' }}>{trainerName}</div>
+                  <div style={{ fontFamily: CFB, fontSize: 12.5, color: 'var(--color-text-muted)', marginTop: 1 }}>{t('classes.instructor')}</div>
+                </div>
+                {cls.trainer?.id && <ChevronRight size={18} style={{ color: 'var(--color-text-muted)' }} />}
+              </button>
+            )}
+
+            {/* friends going — real friendships, real avatars */}
+            {friends.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  {friends.slice(0, 5).map((f, i) => (
+                    <div key={f.id} style={{ marginLeft: i ? -10 : 0, zIndex: 5 - i, borderRadius: '50%',
+                      boxShadow: '0 0 0 2px var(--color-bg-card)' }}>
+                      <UserAvatar user={f} size={28} />
+                    </div>
+                  ))}
+                  {friends.length > 5 && (
+                    <div style={{ marginLeft: -10, width: 28, height: 28, borderRadius: '50%',
+                      background: 'var(--color-surface-hover, rgba(255,255,255,0.08))', boxShadow: '0 0 0 2px var(--color-bg-card)',
+                      display: 'grid', placeItems: 'center', fontFamily: CFM, fontSize: 10, fontWeight: 700, color: 'var(--color-text-secondary)' }}>
+                      +{friends.length - 5}
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontFamily: CFB, fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                  {t('classes.friendsGoing', { count: friends.length, defaultValue: `${friends.length} amigos van` })}
+                </span>
+              </div>
+            )}
+
+            {/* capacity */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                <span style={{ fontFamily: CFB, fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                  <b style={{ color: 'var(--color-text-primary)' }}>{count}</b> {t('classes.reservedCount', 'reservados')}
+                </span>
+                <span style={{ fontFamily: CFM, fontSize: 12.5, fontWeight: 600, color: capColor }}>
+                  {left === 0 ? t('classes.noSpots', 'Sin cupos') : `${left} ${t('classes.ofCapacity', { count: capacity, defaultValue: `de ${capacity}` })}`}
+                </span>
+              </div>
+              <div style={{ height: 8, borderRadius: 99, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, Math.round((count / capacity) * 100))}%`, height: '100%', borderRadius: 99, background: capColor, transition: 'width .4s' }} />
+              </div>
+            </div>
+          </div>
+
+          {/* sticky action bar */}
+          <div style={{ flexShrink: 0, padding: '14px 20px calc(22px + env(safe-area-inset-bottom, 0px))',
+            borderTop: '1px solid var(--color-border-subtle)',
+            background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-bg-card) 0%, transparent) 0%, var(--color-bg-card) 22%)' }}>
+            {/* primary CTA per state */}
+            {stateKey === 'available' && (
+              <button onClick={() => { close(); onBook(sched.id, cls.id, dateStr); }} disabled={isActing}
+                className="active:scale-[0.98] transition-transform disabled:opacity-50"
+                style={{ width: '100%', height: 54, borderRadius: 15, border: 'none', cursor: 'pointer',
+                  background: accent, color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                  fontFamily: CFD, fontWeight: 800, fontSize: 16.5, letterSpacing: -0.2,
+                  boxShadow: `0 8px 22px color-mix(in srgb, ${accent} 28%, transparent)` }}>
+                <Check size={18} strokeWidth={2.6} />{t('classes.book')}
+              </button>
+            )}
+            {stateKey === 'full' && (
+              <button onClick={() => { close(); onBook(sched.id, cls.id, dateStr); }} disabled={isActing}
+                className="active:scale-[0.98] transition-transform disabled:opacity-50"
+                style={{ width: '100%', height: 54, borderRadius: 15, border: 'none', cursor: 'pointer',
+                  background: GOLD, color: '#241d09', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                  fontFamily: CFD, fontWeight: 800, fontSize: 16.5, letterSpacing: -0.2,
+                  boxShadow: '0 8px 22px rgba(212,175,55,0.26)' }}>
+                <Hourglass size={17} strokeWidth={2.2} />{t('classes.joinWaitlist')}
+              </button>
+            )}
+            {(stateKey === 'booked' || stateKey === 'waitlisted') && (
+              <>
+                <div style={{ width: '100%', height: 54, borderRadius: 15,
+                  border: `1.5px solid ${stateKey === 'booked' ? `color-mix(in srgb, ${accent} 32%, transparent)` : 'rgba(245,158,11,0.35)'}`,
+                  color: stateKey === 'booked' ? accent : '#F59E0B',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                  fontFamily: CFD, fontWeight: 800, fontSize: 16.5, letterSpacing: -0.2 }}>
+                  {stateKey === 'booked' ? <Check size={18} strokeWidth={2.6} /> : <Hourglass size={17} strokeWidth={2.2} />}
+                  {stateKey === 'booked' ? t('classes.booked') : t('classes.waitlisted', { position: booking?.waitlist_position || 1 })}
+                </div>
+                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                  {stateKey === 'booked' && isToday && !isPastClass && (
+                    <button onClick={() => { close(); onCheckIn(booking.id, cls.name); }} disabled={isActing}
+                      className="active:scale-[0.98] transition-transform disabled:opacity-50"
+                      style={{ flex: 1, height: 48, borderRadius: 14, border: 'none', cursor: 'pointer',
+                        background: 'var(--color-success)', color: 'var(--color-text-on-secondary, #000)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        fontFamily: CFB, fontWeight: 700, fontSize: 14.5 }}>
+                      <Check size={16} strokeWidth={2.4} />{t('classes.checkIn')}
+                    </button>
+                  )}
+                  <button onClick={async () => { close(); await onCancel(booking.id); }} disabled={isActing}
+                    className="active:scale-[0.98] transition-transform disabled:opacity-50"
+                    style={{ flex: 1, height: 48, borderRadius: 14, border: '1px solid rgba(240,99,75,0.34)', cursor: 'pointer',
+                      background: 'rgba(240,99,75,0.12)', color: 'var(--color-danger)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      fontFamily: CFB, fontWeight: 700, fontSize: 14.5 }}>
+                    <X size={15} strokeWidth={2.4} />{t('classes.cancelBooking')}
+                  </button>
+                </div>
+              </>
+            )}
+            {stateKey === 'attended' && (
+              booking?.rating ? (
+                <div style={{ width: '100%', height: 54, borderRadius: 15, border: '1px solid var(--color-border-subtle)',
+                  background: 'var(--color-surface-hover, rgba(255,255,255,0.05))', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  fontFamily: CFB, fontWeight: 700, fontSize: 14.5, color: 'var(--color-text-secondary)' }}>
+                  <Star size={16} style={{ color: GOLD, fill: GOLD }} />{t('classes.rated')}
+                </div>
+              ) : (
+                <button onClick={() => { close(); onRate(booking.id, cls.name); }}
+                  className="active:scale-[0.98] transition-transform"
+                  style={{ width: '100%', height: 54, borderRadius: 15, border: 'none', cursor: 'pointer',
+                    background: GOLD, color: '#241d09', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                    fontFamily: CFD, fontWeight: 800, fontSize: 16.5, boxShadow: '0 8px 22px rgba(212,175,55,0.26)' }}>
+                  <Star size={17} strokeWidth={2} />{t('classes.rateClass')}
+                </button>
+              )
+            )}
+            {stateKey === 'passed' && (
+              <div style={{ width: '100%', height: 54, borderRadius: 15,
+                background: 'rgba(255,255,255,0.06)', color: 'var(--color-text-muted)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                fontFamily: CFD, fontWeight: 800, fontSize: 16, border: '1px solid var(--color-border-subtle)' }}>
+                <Clock size={17} strokeWidth={2} />{t('classes.statusFinishedFull', 'Clase finalizada')}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Week list (vertical day-by-day) ---------- */
 function WeekListView({ weekDays, allSchedules, bookingsByDate, countsByKey, todayStr, fmt, dateFnsLocale, onSelectClass, t }) {
   return (
@@ -428,7 +784,10 @@ export default function Classes() {
   const fmt = (timeStr) => fmtTime(timeStr, use24h);
   const { user, profile, gymConfig } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const pendingFocusRef = useRef(null); // invite deep-link: { sid, d } awaiting schedule load
   const posthog = usePostHog();
+  const classesEnabled = useFeatureEnabled('classes');
 
   useEffect(() => { document.title = `${t('classes.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -552,7 +911,9 @@ export default function Classes() {
   // Re-runs when viewMode / week offset / selected month changes — NOT on
   // every day click within the same range.
   const loadBookingsRange = useCallback(async (rangeStart, rangeEnd) => {
-    if (!profile?.gym_id || !user?.id) return;
+    // Gym-less member: clear the skeleton rather than stranding it (loading
+    // inits true; this early return ran before the setLoading(true) below).
+    if (!profile?.gym_id || !user?.id) { setLoading(false); return; }
     const myToken = ++bookingsTokenRef.current;
     setLoading(true);
 
@@ -612,6 +973,30 @@ export default function Classes() {
   useEffect(() => {
     loadBookingsRange(visibleRange.start, visibleRange.end);
   }, [visibleRange.start, visibleRange.end, loadBookingsRange]);
+
+  // ── Invite deep-link focus: /classes?class=<scheduleId>&d=<YYYY-MM-DD> ──
+  // Step 1: jump the day strip to the invited date (reactive to the query so it
+  // also works when the app is already open — Classes is keep-alive).
+  useEffect(() => {
+    let sid = null, d = null;
+    try { const sp = new URLSearchParams(location.search); sid = sp.get('class'); d = sp.get('d'); } catch { /* noop */ }
+    if (!sid || pendingFocusRef.current?.sid === sid) return;
+    pendingFocusRef.current = { sid, d };
+    if (d) { const dt = new Date(`${d}T00:00:00`); if (!isNaN(dt.getTime())) setSelectedDate(dt); }
+  }, [location.search]);
+
+  // Step 2: once the schedules covering that date have loaded, open the detail
+  // sheet for the invited class so the member lands ready to book.
+  useEffect(() => {
+    const pf = pendingFocusRef.current;
+    if (!pf || !allSchedules.length) return;
+    const sched = allSchedules.find(s => String(s.id) === String(pf.sid));
+    if (!sched) return;
+    const dateStr = pf.d || format(selectedDate, 'yyyy-MM-dd');
+    const booking = (bookingsByDate[dateStr] || []).find(b => String(b.schedule_id) === String(pf.sid)) || null;
+    pendingFocusRef.current = null;
+    setDetailModal({ sched, cls: sched.gym_classes, booking, dateStr });
+  }, [allSchedules, bookingsByDate, selectedDate]);
 
   // Convenience: bookings + counts + schedules slice for the currently-selected day.
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -775,6 +1160,10 @@ export default function Classes() {
     upcoming.sort((a, b) => a.booking_date.localeCompare(b.booking_date));
     return { upcomingBookings: upcoming, todayBookings: todayList, pastBookings: past };
   }, [myUpcoming, todayStr]);
+
+  // Platform kill switch (Operations → feature_classes). After all hooks so
+  // a mid-session flip can't change the hook order.
+  if (!classesEnabled) return <FeatureDisabledScreen />;
 
   return (
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
@@ -1038,7 +1427,7 @@ export default function Classes() {
               // Was reading non-existent columns sched.capacity / cls.capacity
               // which both returned undefined → fell back to 20 always
               // (e.g. a 30-cap class showed "20 spaces free" forever).
-              const capacity = sched.override_capacity || cls.max_capacity || 20;
+              const capacity = sched.override_capacity || cls.max_capacity || 30;
               const isFull = count >= capacity;
               const spotsLeft = capacity - count;
               const dur = durationMinutes(sched.start_time, sched.end_time);
@@ -1070,178 +1459,110 @@ export default function Classes() {
               return (
                 <div
                   key={sched.id}
-                  className="relative rounded-2xl overflow-hidden"
-                  style={{ border: `1px solid ${accentColor}33`, minHeight: 180 }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetailModal({ sched, cls, booking, dateStr: selectedDateOnly })}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailModal({ sched, cls, booking, dateStr: selectedDateOnly }); } }}
+                  className="rounded-[20px] overflow-hidden cursor-pointer"
+                  style={{ border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)',
+                    opacity: isPastClass && !isAttended ? 0.82 : 1,
+                    boxShadow: '0 14px 30px -18px rgba(0,0,0,0.7)' }}
                 >
-                  {/* Background image */}
-                  {imgUrl && (
-                    <img
-                      src={imgUrl}
-                      alt={`${cls.name} class`}
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                  )}
-                  {/* Gradient overlay */}
-                  <div className="absolute inset-0" style={{
-                    background: imgUrl
-                      ? `linear-gradient(to top, rgba(0,0,0,0.92) 40%, rgba(0,0,0,0.4) 100%)`
-                      : 'var(--color-bg-card)',
-                  }} />
-
-                  {/* Content */}
-                  <div className="relative z-10 p-5 flex flex-col justify-end h-full" style={{ minHeight: 180 }}>
-                    {/* Color accent bar + template badge + recurring indicator */}
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-8 h-1 rounded-full" style={{ backgroundColor: accentColor }} />
-                      {hasTemplate && (
-                        <div
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                          style={{ backgroundColor: 'rgba(212,175,55,0.15)', color: '#D4AF37' }}
-                        >
-                          <Dumbbell size={10} />
-                          <span>{t('classes.hasWorkout').split(' ').slice(-1)[0]}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <h3 className="text-[17px] font-bold mb-1" style={{ color: '#fff' }}>{cls.name}</h3>
-
-                    <div className="flex items-center gap-3 mb-1 flex-wrap">
-                      <span className="flex items-center gap-1 text-[12px]" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                        <Clock size={12} />
-                        {fmt(sched.start_time)} – {fmt(sched.end_time)}
-                      </span>
-                      {dur && (
-                        <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                          {t('classes.minutes', { count: dur })}
-                        </span>
-                      )}
-                    </div>
-
-                    {cls.trainer?.id ? (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/trainers/${cls.trainer.id}`); }}
-                        className="text-[12px] mb-3 underline-offset-2 hover:underline active:opacity-80 transition-opacity text-left"
-                        style={{ color: 'rgba(255,255,255,0.85)', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}
-                        aria-label={t('publicTrainerProfile.viewProfile', { defaultValue: 'View profile' })}
-                      >
-                        {t('classes.instructor')}: {cls.trainer.full_name || cls.instructor || ''}
-                      </button>
-                    ) : cls.instructor && (
-                      <p className="text-[12px] mb-3" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                        {t('classes.instructor')}: {cls.instructor}
-                      </p>
+                  {/* hero — photo finally earns its place; melts into the card */}
+                  <div className="relative" style={{ height: 132 }}>
+                    {imgUrl ? (
+                      <img src={imgUrl} alt={`${cls.name} class`} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="absolute inset-0" style={{ background: `linear-gradient(150deg, color-mix(in srgb, ${accentColor} 42%, #12161a) 0%, #12161a 55%, #0c0f12 100%)` }} />
                     )}
+                    <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(9,11,13,0.25), rgba(9,11,13,0.05) 45%, var(--color-bg-card) 100%)' }} />
+                    {hasTemplate && <div style={{ position: 'absolute', top: 13, left: 14 }}><ClassCatTag t={t} /></div>}
+                    <div style={{ position: 'absolute', top: 13, right: 14 }}>
+                      <ClassStatusPill
+                        stateKey={isAttended ? 'attended' : isWaitlisted ? 'waitlisted' : isBooked ? 'booked' : isPastClass ? 'passed' : isFull ? 'full' : 'available'}
+                        accent={accentColor} t={t} waitlistPos={waitlistPos}
+                      />
+                    </div>
+                    <div style={{ position: 'absolute', left: 14, right: 14, bottom: 11,
+                      fontFamily: CFD, fontWeight: 900, fontSize: 24, color: '#fff',
+                      letterSpacing: -0.6, textShadow: '0 2px 18px rgba(0,0,0,0.5)' }}>{cls.name}</div>
+                  </div>
 
-                    {/* Capacity bar */}
-                    <div className="mb-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                          <Users size={11} />
-                          {count}/{capacity}
-                        </span>
-                        <span className="text-[11px]" style={{ color: isFull ? 'var(--color-danger)' : 'rgba(255,255,255,0.5)' }}>
-                          {isFull ? t('classes.full') : t('classes.spotsLeft', { count: spotsLeft })}
-                        </span>
-                      </div>
-                      <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${Math.min((count / capacity) * 100, 100)}%`,
-                            backgroundColor: isFull ? 'var(--color-danger)' : accentColor,
-                          }}
-                        />
-                      </div>
+                  {/* body */}
+                  <div style={{ padding: '13px 16px 15px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 11, whiteSpace: 'nowrap' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: CFM, fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        <Clock size={15} style={{ color: accentColor }} strokeWidth={2} />{fmt(sched.start_time)} – {fmt(sched.end_time)}
+                      </span>
+                      <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--color-text-muted)', flexShrink: 0 }} />
+                      {dur && <span style={{ fontFamily: CFB, fontSize: 13, color: 'var(--color-text-muted)' }}>{t('classes.minutes', { count: dur })}</span>}
+                      <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Users size={14} style={{ color: 'var(--color-text-muted)' }} />
+                        <span style={{ fontFamily: CFM, fontSize: 12, fontWeight: 600,
+                          color: spotsLeft === 0 ? 'var(--color-danger)' : spotsLeft <= 5 ? GOLD : accentColor }}>{count}/{capacity}</span>
+                      </span>
                     </div>
 
-                    {/* Action button — state-based */}
-                    {isPastClass && !isAttended && !isConfirmedFuture ? (
-                      /* Past class with no actionable booking state — render a non-tappable "Passed" pill. */
-                      <div
-                        className="w-full py-2.5 rounded-xl text-[13px] font-semibold text-center min-h-[44px] flex items-center justify-center gap-2"
-                        style={{
-                          background: 'rgba(255,255,255,0.06)',
-                          color: 'rgba(255,255,255,0.5)',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                        }}
-                      >
-                        <Clock size={14} />
-                        {t('classes.passed', { defaultValue: 'Pasada' })}
+                    {/* state strip — actionable states act directly; informational
+                        states open the sheet (where Cancel etc. live) */}
+                    {isPastClass && !isAttended ? (
+                      <div className="flex items-center justify-center gap-2" style={{ height: 46, borderRadius: 13,
+                        background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border-subtle)',
+                        color: 'var(--color-text-muted)', fontFamily: CFD, fontWeight: 800, fontSize: 15 }}>
+                        <Clock size={16} strokeWidth={2.2} />{t('classes.statusFinished', 'Finalizada')}
                       </div>
                     ) : isAttendedRated ? (
-                      /* Attended + rated: show stars */
-                      <div className="flex items-center justify-center gap-2 py-2.5">
+                      <div className="flex items-center justify-center gap-2" style={{ height: 46 }}>
                         <StarRating value={bookingRating} readOnly size={18} />
-                        <span className="text-[12px] font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                          {t('classes.rated')}
-                        </span>
+                        <span style={{ fontFamily: CFB, fontSize: 12, fontWeight: 500, color: 'var(--color-text-muted)' }}>{t('classes.rated')}</span>
                       </div>
                     ) : isAttendedNoRating ? (
-                      /* Attended + no rating: Rate button */
                       <button
-                        onClick={() => setRatingModal({ bookingId, className: cls.name })}
-                        className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                        style={{ backgroundColor: '#D4AF37', color: '#000' }}
-                      >
-                        {t('classes.rateClass')}
+                        onClick={(e) => { e.stopPropagation(); setRatingModal({ bookingId, className: cls.name }); }}
+                        className="flex items-center justify-center gap-2 w-full transition-all active:scale-[0.98] focus:outline-none"
+                        style={{ height: 46, borderRadius: 13, border: 'none', cursor: 'pointer',
+                          background: GOLD, color: '#241d09', fontFamily: CFD, fontWeight: 800, fontSize: 15 }}>
+                        <Star size={16} strokeWidth={2.2} />{t('classes.rateClass')}
                       </button>
                     ) : isWaitlisted ? (
-                      /* Waitlisted: amber button with position */
-                      <button
-                        onClick={() => handleCancel(bookingId)}
-                        disabled={isActing}
-                        className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97] min-h-[44px] flex items-center justify-center gap-2 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none disabled:opacity-50"
-                        style={{
-                          backgroundColor: 'rgba(245,158,11,0.15)',
-                          color: '#F59E0B',
-                          border: '1px solid rgba(245,158,11,0.3)',
-                        }}
-                      >
-                        <Clock size={14} />
-                        {isActing ? '...' : t('classes.waitlisted', { position: waitlistPos })}
-                      </button>
+                      <div className="flex items-center justify-center gap-2" style={{ height: 46, borderRadius: 13,
+                        background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)',
+                        color: '#F59E0B', fontFamily: CFD, fontWeight: 800, fontSize: 15 }}>
+                        <Hourglass size={15} strokeWidth={2.2} />{t('classes.waitlisted', { position: waitlistPos })}
+                      </div>
                     ) : isConfirmedToday ? (
-                      /* Confirmed + today: Check In button (green) */
                       <button
-                        onClick={() => handleCheckIn(bookingId, cls.name)}
+                        onClick={(e) => { e.stopPropagation(); handleCheckIn(bookingId, cls.name); }}
                         disabled={isActing}
-                        className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none disabled:opacity-50"
-                        style={{ backgroundColor: 'var(--color-success)', color: 'var(--color-text-on-secondary, #000)' }}
-                      >
-                        {isActing ? '...' : t('classes.checkIn')}
+                        className="flex items-center justify-center gap-2 w-full transition-all active:scale-[0.98] focus:outline-none disabled:opacity-50"
+                        style={{ height: 46, borderRadius: 13, border: 'none', cursor: 'pointer',
+                          background: 'var(--color-success)', color: 'var(--color-text-on-secondary, #000)',
+                          fontFamily: CFD, fontWeight: 800, fontSize: 15 }}>
+                        <Check size={16} strokeWidth={2.4} />{isActing ? '...' : t('classes.checkIn')}
                       </button>
                     ) : isConfirmedFuture ? (
-                      /* Confirmed + future: muted Booked with cancel */
-                      <button
-                        onClick={() => handleCancel(bookingId)}
-                        disabled={isActing}
-                        className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none disabled:opacity-50"
-                        style={{
-                          backgroundColor: 'rgba(255,255,255,0.1)',
-                          color: 'var(--color-danger)',
-                          border: '1px solid rgba(239,68,68,0.3)',
-                        }}
-                      >
-                        {isActing ? '...' : t('classes.cancelBooking')}
-                      </button>
+                      <div className="flex items-center justify-center gap-2" style={{ height: 46, borderRadius: 13,
+                        background: `color-mix(in srgb, ${accentColor} 13%, transparent)`,
+                        border: `1px solid color-mix(in srgb, ${accentColor} 32%, transparent)`,
+                        color: accentColor, fontFamily: CFD, fontWeight: 800, fontSize: 15 }}>
+                        <Check size={16} strokeWidth={2.4} />{t('classes.booked')}
+                      </div>
                     ) : (
-                      /* Not booked: Book button (joins waitlist if full) */
                       <button
-                        onClick={() => handleBook(sched.id, cls.id)}
+                        onClick={(e) => { e.stopPropagation(); handleBook(sched.id, cls.id); }}
                         disabled={isActing}
-                        className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none disabled:opacity-50"
-                        style={{
-                          backgroundColor: isFull ? 'rgba(245,158,11,0.15)' : accentColor,
-                          color: isFull ? '#F59E0B' : '#000',
-                          border: isFull ? '1px solid rgba(245,158,11,0.3)' : 'none',
-                        }}
-                      >
-                        {isActing ? '...' : isFull ? t('classes.joinWaitlist') : t('classes.book')}
+                        className="flex items-center justify-center gap-2 w-full transition-all active:scale-[0.98] focus:outline-none disabled:opacity-50"
+                        style={{ height: 46, borderRadius: 13, cursor: 'pointer',
+                          background: isFull ? GOLD : `color-mix(in srgb, ${accentColor} 13%, transparent)`,
+                          border: isFull ? 'none' : `1px solid color-mix(in srgb, ${accentColor} 32%, transparent)`,
+                          color: isFull ? '#241d09' : accentColor,
+                          fontFamily: CFD, fontWeight: 800, fontSize: 15 }}>
+                        {isFull && <Hourglass size={15} strokeWidth={2.2} />}
+                        {isActing ? '...' : isFull
+                          ? t('classes.joinWaitlist')
+                          : `${t('classes.book')} · ${t('classes.spotsFree', { count: spotsLeft, defaultValue: `${spotsLeft} libres` })}`}
                       </button>
                     )}
-
                   </div>
                 </div>
               );
@@ -1429,11 +1750,12 @@ export default function Classes() {
                 </div>
               )}
 
-              {/* Past attended bookings */}
+              {/* Past bookings (attended or not — neutral label, since a booked
+                  class the member skipped also lands here with status confirmed) */}
               {pastBookings.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
-                    {t('classes.attended')}
+                    {t('classes.pastClasses')}
                   </p>
                   {pastBookings.map(b => {
                     const sched = b.gym_class_schedules;
@@ -1495,225 +1817,26 @@ export default function Classes() {
       {/* Class detail modal — opened from any booking row in the Mis Reservas
           sheet. Shows the class image, capacity bar, time/instructor/description
           and a contextual action button (cancel or check in). */}
-      {detailModal && (() => {
-        const { sched, cls, booking, dateStr } = detailModal;
-        const imgUrl = classImageUrl(cls.image_path);
-        const dur = durationMinutes(sched.start_time, sched.end_time);
-        const accent = cls.color || cls.accent_color || 'var(--color-accent)';
-        const count = bookingCounts[sched.id] || 0;
-        const capacity = sched.override_capacity || cls.max_capacity || 20;
-        const status = booking?.status;
-        const isToday = dateStr === todayStr;
-        const isFuture = dateStr > todayStr;
-        // Past class: either a date strictly before today, OR today + class
-        // already ended. Used to swap the Reserve button for a "ya pasada" pill.
-        let isPastClass = dateStr < todayStr;
-        if (!isPastClass && isToday && sched.end_time) {
-          const [hh, mm] = String(sched.end_time).split(':');
-          const endDt = new Date();
-          endDt.setHours(parseInt(hh, 10) || 0, parseInt(mm, 10) || 0, 0, 0);
-          if (endDt.getTime() < Date.now()) isPastClass = true;
-        }
-        const closeModal = () => setDetailModal(null);
-        return (
-          <div
-            className="fixed inset-0 z-[120] flex items-center justify-center p-4"
-            onClick={closeModal}
-            style={{ background: 'rgba(0,0,0,0.6)' }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-[420px] rounded-[28px] overflow-hidden"
-              style={{
-                background: 'var(--color-bg-card)',
-                // Content-sized: only as tall as it needs to be, capped so it
-                // never overflows on small phones (uses 100dvh so iOS safe
-                // area doesn't lop off the action button).
-                maxHeight: 'min(85dvh, 600px)',
-                display: 'flex',
-                flexDirection: 'column',
-                boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-              }}
-            >
-              {/* Hero image */}
-              <div className="relative" style={{ minHeight: 160 }}>
-                {imgUrl ? (
-                  <img src={imgUrl} alt={cls.name} className="absolute inset-0 w-full h-full object-cover" />
-                ) : (
-                  <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${accent}66, ${accent}22)` }} />
-                )}
-                <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.15))' }} />
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  aria-label={t('classes.close', { defaultValue: 'Cerrar' })}
-                  className="absolute top-3 right-3 w-9 h-9 rounded-full grid place-items-center"
-                  style={{ background: 'rgba(0,0,0,0.55)', color: '#fff' }}
-                >
-                  <X size={18} />
-                </button>
-                <div className="absolute bottom-0 left-0 right-0 p-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="w-8 h-1 rounded-full" style={{ background: accent }} />
-                    {cls.workout_template_id && (
-                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'rgba(212,175,55,0.18)', color: '#D4AF37' }}>
-                        <Dumbbell size={10} /> {t('classes.hasWorkout', { defaultValue: 'Workout' }).split(' ').slice(-1)[0]}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-[20px] font-bold" style={{ color: '#fff' }}>{cls.name}</h3>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {/* Time + duration */}
-                <div className="flex items-center gap-3 flex-wrap text-[13px]" style={{ color: 'var(--color-text-secondary)' }}>
-                  <span className="inline-flex items-center gap-1">
-                    <Clock size={14} />
-                    {format(new Date(dateStr + 'T00:00:00'), 'EEE, d MMM', dateFnsLocale)} · {fmt(sched.start_time)} – {fmt(sched.end_time)}
-                  </span>
-                  {dur && (
-                    <span style={{ color: 'var(--color-text-muted)' }}>{t('classes.minutes', { count: dur })}</span>
-                  )}
-                </div>
-
-                {/* Instructor */}
-                {(cls.trainer?.full_name || cls.instructor) && (
-                  <p className="text-[13px]" style={{ color: 'var(--color-text-secondary)' }}>
-                    {t('classes.instructor')}: {cls.trainer?.full_name || cls.instructor}
-                  </p>
-                )}
-
-                {/* Capacity bar */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                      <Users size={12} />
-                      {count}/{capacity}
-                    </span>
-                    <span className="text-[12px]" style={{ color: count >= capacity ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
-                      {count >= capacity ? t('classes.full') : t('classes.spotsLeft', { count: capacity - count })}
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${Math.min((count / capacity) * 100, 100)}%`, background: count >= capacity ? 'var(--color-danger)' : accent }}
-                    />
-                  </div>
-                </div>
-
-                {/* Description (es/en aware) */}
-                {(cls.description_es && isEs ? cls.description_es : cls.description) && (
-                  <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-                    {(isEs && cls.description_es) ? cls.description_es : cls.description}
-                  </p>
-                )}
-
-
-
-                {/* Status pill */}
-                {status && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] uppercase tracking-wider font-bold" style={{ color: 'var(--color-text-muted)' }}>
-                      {t('classes.statusLabel', { defaultValue: 'Estado' })}:
-                    </span>
-                    <span
-                      className="text-[12px] px-2 py-0.5 rounded-full font-semibold"
-                      style={{
-                        background: status === 'waitlisted'
-                          ? 'rgba(245,158,11,0.15)'
-                          : status === 'attended'
-                            ? 'color-mix(in srgb, var(--color-success) 15%, transparent)'
-                            : 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
-                        color: status === 'waitlisted' ? '#F59E0B' : status === 'attended' ? 'var(--color-success)' : 'var(--color-accent)',
-                      }}
-                    >
-                      {status === 'waitlisted'
-                        ? t('classes.waitlisted', { position: booking?.waitlist_position || 1 })
-                        : status === 'attended'
-                          ? t('classes.attended')
-                          : t('classes.booked')}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Footer action — flex-shrink-0 so the body scrolls but the
-                  Reserve / Cancel button can never get pushed off-screen. */}
-              <div className="p-4 pt-3 flex gap-2 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}>
-                {/* Cancel button for any active booking. */}
-                {(status === 'confirmed' || status === 'waitlisted') && (
-                  <button
-                    onClick={async () => {
-                      closeModal();
-                      await handleCancel(booking.id);
-                    }}
-                    disabled={actionLoading === booking?.id}
-                    className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-50"
-                    style={{
-                      background: 'rgba(239,68,68,0.12)',
-                      color: 'var(--color-danger)',
-                      border: '1px solid rgba(239,68,68,0.3)',
-                    }}
-                  >
-                    {t('classes.cancelBooking')}
-                  </button>
-                )}
-                {status === 'confirmed' && isToday && (
-                  <button
-                    onClick={() => { handleCheckIn(booking.id, cls.name); closeModal(); }}
-                    disabled={actionLoading === booking?.id}
-                    className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-50"
-                    style={{ background: 'var(--color-success)', color: 'var(--color-text-on-secondary, #000)' }}
-                  >
-                    {t('classes.checkIn')}
-                  </button>
-                )}
-                {status === 'attended' && !booking?.rating && (
-                  <button
-                    onClick={() => { setRatingModal({ bookingId: booking.id, className: cls.name }); closeModal(); }}
-                    className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98]"
-                    style={{ background: '#D4AF37', color: '#000' }}
-                  >
-                    {t('classes.rateClass')}
-                  </button>
-                )}
-                {/* Bookable: future date OR today's class that hasn't ended yet, with no existing booking.
-                    Pass the modal's dateStr explicitly so the booking lands
-                    on the date the user is viewing — not the day-strip's
-                    selected date (they can differ in Week / Month views). */}
-                {!status && !isPastClass && (isFuture || isToday) && (
-                  <button
-                    onClick={() => { handleBook(sched.id, cls.id, dateStr); closeModal(); }}
-                    disabled={actionLoading === sched.id}
-                    className="flex-1 py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-50"
-                    style={{ background: accent, color: '#000' }}
-                  >
-                    {count >= capacity ? t('classes.joinWaitlist') : t('classes.book')}
-                  </button>
-                )}
-                {/* Past class with no booking — no action button, just an
-                    informational pill so the user knows why. */}
-                {!status && isPastClass && (
-                  <div
-                    className="flex-1 py-3 rounded-xl text-[13px] font-semibold text-center inline-flex items-center justify-center gap-2"
-                    style={{
-                      background: 'rgba(255,255,255,0.06)',
-                      color: 'var(--color-text-muted)',
-                      border: '1px solid var(--color-border-subtle)',
-                    }}
-                  >
-                    <Clock size={14} />
-                    {t('classes.alreadyPassed', { defaultValue: 'Esta clase ya pasó' })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Class detail — Cinematic bottom sheet (Class Modal A) */}
+      {detailModal && (
+        <ClassDetailSheet
+          data={detailModal}
+          onClose={() => setDetailModal(null)}
+          t={t}
+          isEs={isEs}
+          fmt={fmt}
+          dateFnsLocale={dateFnsLocale}
+          bookingCounts={bookingCounts}
+          todayStr={todayStr}
+          actionLoading={actionLoading}
+          onBook={(schedId, clsId, dateStr) => handleBook(schedId, clsId, dateStr)}
+          onCancel={(bookingId) => handleCancel(bookingId)}
+          onCheckIn={(bookingId, name) => handleCheckIn(bookingId, name)}
+          onRate={(bookingId, name) => setRatingModal({ bookingId, className: name })}
+          navigate={navigate}
+          gymName={profile?.gym_name}
+        />
+      )}
 
       {/* Toast */}
       {toast && (

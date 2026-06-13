@@ -3,7 +3,10 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { tg } from '../lib/genderText';
-import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift, Swords, CheckCircle2, XCircle, Target, UserPlus, Crown, Search } from 'lucide-react';
+import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift, Swords, CheckCircle2, XCircle, Target, UserPlus, Crown, Search, CalendarDays, Share2 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { PROD_WEB_URL } from '../lib/appUrls';
+import UserAvatar from '../components/UserAvatar';
 import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,6 +19,8 @@ import SwipeableTabView from '../components/SwipeableTabView';
 
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
+import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
+import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import { sanitize } from '../lib/sanitize';
 import { useToast } from '../contexts/ToastContext';
 import { DAILY_CHALLENGES, seededIndex } from '../lib/dailyChallenges';
@@ -898,10 +903,13 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
         console.error('[team invites] insert failed:', inviteErr);
         showToast(t('challenges.team.inviteError', { defaultValue: 'Failed to send invites' }), 'error');
       } else {
-        // Send notifications
+        // Send notifications. sendNotification is (userId, gymId, {...}) — the
+        // old single-object form silently threw (caught below) so invites
+        // never notified; and type must be a real notification_type enum
+        // ('challenge' is not one — 'challenge_update' is).
         for (const fId of selectedFriends) {
-          sendNotification({
-            profileId: fId, gymId, type: 'challenge',
+          sendNotification(fId, gymId, {
+            type: 'challenge_update',
             title: t('challenges.team.inviteTitle', 'Team Invite!'),
             body: t('challenges.team.inviteBody', { team: teamName.trim(), challenge: challenge.name }),
             dedupKey: `team_invite_${team.id}_${fId}`,
@@ -1240,7 +1248,7 @@ const DailyChallenge = ({ userId, gymId, t }) => {
 };
 
 // ── Featured Hero Card ────────────────────────────────────
-const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, onJoin, onLeave, t }) => {
+const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, friends = [], onJoin, onLeave, onInvite, t }) => {
   const [open, setOpen] = useState(false);
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -1313,58 +1321,112 @@ const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, on
           </h2>
 
           {/* Subtitle */}
-          <p style={{ fontSize: 12, color: '#fff', opacity: 0.8, margin: '0 0 16px' }}>
+          <p style={{ fontSize: 12, color: '#fff', opacity: 0.8, margin: '0 0 6px' }}>
             {participantCount > 0 && <><Users size={11} style={{ display: 'inline', verticalAlign: '-1px' }} /> {participantCount} · </>}
             {status === 'live' && <><Clock size={11} style={{ display: 'inline', verticalAlign: '-1px' }} /> {formatDistanceToNow(new Date(challenge.end_date), { addSuffix: false, locale: dfLocale })} {t('challenges.timeLeft', 'left')}</>}
             {status === 'upcoming' && <><Clock size={11} style={{ display: 'inline', verticalAlign: '-1px' }} /> {t('challenges.startsIn')} {formatDistanceToNow(new Date(challenge.start_date), { addSuffix: false, locale: dfLocale })}</>}
           </p>
 
-          {/* Join / Leave button */}
+          {/* Date range — local-parsed (DATE columns as UTC shift a day in PR) */}
+          <p style={{ fontSize: 11.5, fontWeight: 600, color: '#fff', opacity: 0.7, margin: '0 0 10px' }}>
+            <CalendarDays size={11} style={{ display: 'inline', verticalAlign: '-1px' }} />{' '}
+            {format(new Date(`${String(challenge.start_date).slice(0, 10)}T00:00:00`), 'd MMM', { locale: dfLocale })}
+            {' – '}
+            {format(new Date(`${String(challenge.end_date).slice(0, 10)}T00:00:00`), 'd MMM yyyy', { locale: dfLocale })}
+          </p>
+
+          {/* Description — visible on the card, no tap needed */}
+          {challenge.description && (
+            <p style={{
+              fontSize: 12.5, lineHeight: 1.45, color: '#fff', opacity: 0.85, margin: '0 0 14px',
+              display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}>
+              {sanitize(challenge.description)}
+            </p>
+          )}
+
+          {/* Friends who joined — real avatars */}
+          {friends.length > 0 && (
+            <div className="flex items-center gap-2.5" style={{ margin: '0 0 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                {friends.slice(0, 5).map((f, i) => (
+                  <div key={f.id} style={{ marginLeft: i ? -9 : 0, zIndex: 5 - i, borderRadius: '50%',
+                    boxShadow: '0 0 0 2px rgba(255,255,255,0.35)' }}>
+                    <UserAvatar user={f} size={26} />
+                  </div>
+                ))}
+                {friends.length > 5 && (
+                  <div style={{ marginLeft: -9, width: 26, height: 26, borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.25)', boxShadow: '0 0 0 2px rgba(255,255,255,0.35)',
+                    display: 'grid', placeItems: 'center', fontSize: 9.5, fontWeight: 800, color: '#fff' }}>
+                    +{friends.length - 5}
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', opacity: 0.9 }}>
+                {t('challenges.friendsJoined', { count: friends.length, defaultValue: `${friends.length} amigos participan` })}
+              </span>
+            </div>
+          )}
+
+          {/* Join / Leave + Invite */}
           {status !== 'ended' && (
-            joined ? (
-              <button
-                type="button"
-                onClick={handleLeave}
-                disabled={leaving}
-                style={{
-                  borderRadius: 12, background: 'rgba(255,255,255,0.2)',
-                  color: '#fff', fontSize: 13, fontWeight: 800,
-                  padding: '10px 24px', border: 'none', cursor: 'pointer',
-                }}
-              >
-                {leaving ? '...' : t('challenges.leave')}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleJoin}
-                disabled={joining}
-                style={{
-                  borderRadius: 12, background: '#fff',
-                  color: COACH_PURPLE, fontSize: 13, fontWeight: 800,
-                  padding: '10px 24px', border: 'none', cursor: 'pointer',
-                }}
-              >
-                {joining ? '...' : t('challenges.join')}
-              </button>
-            )
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {joined ? (
+                <button
+                  type="button"
+                  onClick={handleLeave}
+                  disabled={leaving}
+                  style={{
+                    borderRadius: 12, background: 'rgba(255,255,255,0.2)',
+                    color: '#fff', fontSize: 13, fontWeight: 800,
+                    padding: '10px 24px', border: 'none', cursor: 'pointer',
+                  }}
+                >
+                  {leaving ? '...' : t('challenges.leave')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleJoin}
+                  disabled={joining}
+                  style={{
+                    borderRadius: 12, background: '#fff',
+                    color: COACH_PURPLE, fontSize: 13, fontWeight: 800,
+                    padding: '10px 24px', border: 'none', cursor: 'pointer',
+                  }}
+                >
+                  {joining ? '...' : t('challenges.join')}
+                </button>
+              )}
+              {onInvite && (
+                <button
+                  type="button"
+                  onClick={() => onInvite(challenge)}
+                  aria-label={t('challenges.invite', 'Invite friends')}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    borderRadius: 12, background: 'rgba(255,255,255,0.16)',
+                    color: '#fff', fontSize: 13, fontWeight: 800,
+                    padding: '10px 16px', border: '1px solid rgba(255,255,255,0.32)', cursor: 'pointer',
+                  }}
+                >
+                  <Share2 size={14} strokeWidth={2.2} /> {t('challenges.invite', 'Invite')}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Expanded detail */}
+      {/* Expanded detail — description + dates live on the card face now,
+          so the expansion is purely the leaderboard / participants. */}
       {open && (
         <div style={{
           borderRadius: '0 0 22px 22px', marginTop: -4,
           background: 'var(--color-bg-card)', padding: '20px',
           boxShadow: CARD_SHADOW,
         }}>
-          {challenge.description && (
-            <p className="text-[14px] text-[var(--color-text-muted)] leading-relaxed mb-3">{sanitize(challenge.description)}</p>
-          )}
-          <div className="text-[12px] text-[var(--color-text-muted)] font-medium mb-2">
-            {format(new Date(challenge.start_date), 'MMM d', { locale: dfLocale })} – {format(new Date(challenge.end_date), 'MMM d, yyyy', { locale: dfLocale })}
-          </div>
           {status === 'upcoming'
             ? <ParticipantList challengeId={challenge.id} t={t} />
             : challenge.type === 'team'
@@ -1388,7 +1450,7 @@ const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, on
 };
 
 // ── Challenge card ─────────────────────────────────────────
-const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoin, onLeave, t }) => {
+const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoin, onLeave, onInvite, t }) => {
   const { i18n } = useTranslation('pages');
   const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
   const [open, setOpen] = useState(false);
@@ -1510,6 +1572,22 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
           )
         )}
 
+        {status !== 'ended' && onInvite && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onInvite(challenge); }}
+            aria-label={t('challenges.invite', 'Invite friends')}
+            className="flex-shrink-0 active:scale-95 transition-all"
+            style={{
+              width: 34, height: 34, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              background: 'var(--color-bg-secondary, rgba(255,255,255,0.06))', color: 'var(--color-text-muted)',
+              border: '1px solid var(--color-border-subtle)', cursor: 'pointer',
+            }}
+          >
+            <Share2 size={15} strokeWidth={2.1} />
+          </button>
+        )}
+
         <ChevronDown size={18} className={`flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
       </div>
 
@@ -1577,7 +1655,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
 // ── Discover Card (2-col grid) ────────────────────────────
 const DISCOVER_COLORS = ['#6D5FDB', '#FF5A2E', '#2EC4C4', '#E84393', '#0984E3', '#00B894'];
 
-const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin, onLeave, t }) => {
+const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin, onLeave, onInvite, t }) => {
   const { i18n } = useTranslation('pages');
   const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
   const [open, setOpen] = useState(false);
@@ -1646,21 +1724,39 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
           }
         </p>
 
-        {/* Join button for upcoming */}
-        {status === 'upcoming' && !joined && (
-          <button
-            type="button"
-            onClick={handleJoin}
-            disabled={joining}
-            className="mt-2 active:scale-95 transition-all disabled:opacity-50"
-            style={{
-              fontSize: 11, fontWeight: 800, padding: '5px 12px',
-              borderRadius: 10, background: accentColor + '18',
-              color: accentColor, border: 'none', cursor: 'pointer',
-            }}
-          >
-            {joining ? '...' : t('challenges.join')}
-          </button>
+        {/* Join + Invite for upcoming */}
+        {status === 'upcoming' && (
+          <div className="mt-2 flex items-center gap-1.5">
+            {!joined && (
+              <button
+                type="button"
+                onClick={handleJoin}
+                disabled={joining}
+                className="active:scale-95 transition-all disabled:opacity-50"
+                style={{
+                  fontSize: 11, fontWeight: 800, padding: '5px 12px',
+                  borderRadius: 10, background: accentColor + '18',
+                  color: accentColor, border: 'none', cursor: 'pointer',
+                }}
+              >
+                {joining ? '...' : t('challenges.join')}
+              </button>
+            )}
+            {onInvite && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onInvite(challenge); }}
+                aria-label={t('challenges.invite', 'Invite friends')}
+                className="active:scale-95 transition-all"
+                style={{
+                  width: 28, height: 28, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: accentColor + '18', color: accentColor, border: 'none', cursor: 'pointer',
+                }}
+              >
+                <Share2 size={13} strokeWidth={2.1} />
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -1920,7 +2016,10 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
           const theirScore = iAmChallenger ? duel.challenged_score : duel.challenger_score;
           const opponent = iAmChallenger ? duel.challenged : duel.challenger;
           const opponentName = opponent?.full_name || 'Someone';
-          const daysLeft = Math.max(0, differenceInDays(new Date(duel.end_date), new Date()));
+          // friend_challenges.end_date is a DATE column — parse with a local
+          // midnight suffix so AST (UTC-4) doesn't read it as the prior day in
+          // the evening window and undercount "days left" by one.
+          const daysLeft = Math.max(0, differenceInDays(new Date(`${String(duel.end_date).slice(0, 10)}T00:00:00`), new Date()));
 
           return (
             <div key={duel.id} className="rounded-[18px] p-4" style={{ background: 'var(--color-bg-card)', boxShadow: CARD_SHADOW }}>
@@ -1997,6 +2096,7 @@ export default function Challenges({ embedded = false }) {
   const { profile, user } = useAuth();
   const { showToast } = useToast();
   const posthog = usePostHog();
+  const challengesEnabled = useFeatureEnabled('challenges');
   const chalCacheKey = `challenges-${profile?.gym_id}`;
   const [challenges, setChallenges]       = useCachedState(chalCacheKey, []);
   const [participants, setParticipants]   = useCachedState(`${chalCacheKey}-parts`, []);
@@ -2007,39 +2107,114 @@ export default function Challenges({ embedded = false }) {
 
   useEffect(() => { document.title = `${t('challenges.title', 'Challenges')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
+  // Declared before the load effect (lists chalRefreshKey in deps — const TDZ).
+  const [chalRefreshKey, setChalRefreshKey] = useState(0);
   useEffect(() => {
-    if (!profile?.gym_id || !user?.id) return;
-
+    // Gym-less member: clear the skeleton instead of stranding it (loading
+    // inits true and was only cleared on the gym-present success path).
+    if (!profile?.gym_id || !user?.id) { setLoading(false); return undefined; }
+    let cancelled = false;
     const load = async () => {
-      const [{ data: cData }, { data: pData }] = await Promise.all([
-        supabase.from('challenges').select('id, name, description, type, start_date, end_date, reward_description, gym_id, exercise_id, scoring_metric, team_size, exercise_ids, milestone_target').eq('gym_id', profile.gym_id).order('start_date', { ascending: false }).limit(50),
-        supabase.from('challenge_participants').select('challenge_id, profile_id, score').eq('gym_id', profile.gym_id).limit(500),
-      ]);
-      setChallenges(cData || []);
-      setParticipants(pData || []);
-      setLoading(false);
+      try {
+        const [{ data: cData }, { data: pData }] = await Promise.all([
+          // status filter: drafts/archived are admin-side states — members only
+          // ever see launched challenges (live/upcoming/ended tabs come from
+          // dates via statusOf, which assumes the row was actually published).
+          supabase.from('challenges').select('id, name, description, type, start_date, end_date, reward_description, gym_id, exercise_id, scoring_metric, team_size, exercise_ids, milestone_target, status').eq('gym_id', profile.gym_id).in('status', ['active', 'completed']).order('start_date', { ascending: false }).limit(50),
+          supabase.from('challenge_participants').select('challenge_id, profile_id, score').eq('gym_id', profile.gym_id).limit(500),
+        ]);
+        if (cancelled) return;
+        setChallenges(cData || []);
+        setParticipants(pData || []);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
     load();
-  }, [profile?.gym_id, user?.id]);
+    return () => { cancelled = true; };
+  }, [profile?.gym_id, user?.id, chalRefreshKey]);
+
+  // Keep-alive refresh: /challenges stays mounted, so a newly-published
+  // challenge or join/leave counts changed by others would stay stale until
+  // remount. Per-challenge leaderboards self-heal via realtime; this refreshes
+  // the LIST on foreground.
+  useEffect(() => {
+    if (!profile?.gym_id) return undefined;
+    const onVis = () => { if (document.visibilityState === 'visible') setChalRefreshKey(k => k + 1); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [profile?.gym_id]);
+
+  // Friends who joined the FEATURED challenge — accepted friendships ∩ the
+  // already-loaded participants, then avatar-safe profiles for the matches.
+  const [featuredFriends, setFeaturedFriends] = useState([]);
+  useEffect(() => {
+    if (!user?.id || challenges.length === 0) { setFeaturedFriends([]); return; }
+    const live = challenges.filter(c => statusOf(c) === 'live');
+    const featuredId = live[0]?.id;
+    if (!featuredId) { setFeaturedFriends([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: fr, error: frErr } = await supabase.from('friendships')
+        .select('requester_id, addressee_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+      if (cancelled || frErr) { if (!cancelled) setFeaturedFriends([]); return; }
+      const ids = new Set((fr || []).map(f => (f.requester_id === user.id ? f.addressee_id : f.requester_id)));
+      const inChallenge = participants
+        .filter(p => p.challenge_id === featuredId && ids.has(p.profile_id))
+        .map(p => p.profile_id);
+      if (!inChallenge.length) { if (!cancelled) setFeaturedFriends([]); return; }
+      const { data: profs } = await supabase.from('gym_member_profiles_safe')
+        .select('id, full_name, avatar_url, avatar_type, avatar_value')
+        .in('id', inChallenge.slice(0, 12));
+      if (!cancelled) setFeaturedFriends(profs || []);
+    })().catch(() => { if (!cancelled) setFeaturedFriends([]); });
+    return () => { cancelled = true; };
+  }, [user?.id, challenges, participants]);
 
   // Deep-link focus: /challenges?challenge=<id> (e.g. scanned from the gym TV
   // "Join now" QR) jumps to the tab that holds that challenge and scrolls it
   // into view, so the member lands right on it to join instead of on the
   // generic list.
-  const deepLinkDone = useRef(false);
+  // Reactive to location.search: Challenges is keep-alive, so an invite link
+  // tapped while the app is already open changes the query without a remount.
+  // Guard per-cid so each distinct target focuses exactly once.
+  const location = useLocation();
+  const focusedCidRef = useRef(null);
   useEffect(() => {
-    if (loading || deepLinkDone.current || !challenges.length) return;
+    if (loading || !challenges.length) return;
     let cid = null;
-    try { cid = new URLSearchParams(window.location.search).get('challenge'); } catch { /* noop */ }
-    if (!cid) return;
+    try { cid = new URLSearchParams(location.search).get('challenge'); } catch { /* noop */ }
+    if (!cid || focusedCidRef.current === cid) return;
     const target = challenges.find((c) => c.id === cid);
     if (!target) return;
-    deepLinkDone.current = true;
+    focusedCidRef.current = cid;
     setTab(statusOf(target));
     setTimeout(() => {
       try { document.getElementById(`ch-${cid}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch { /* noop */ }
     }, 300);
-  }, [loading, challenges]);
+  }, [loading, challenges, location.search]);
+
+  // Invite a friend to a challenge — shares a deep link that opens the app
+  // straight on this challenge (App.jsx routes /challenge/:id → the
+  // ?challenge=<id> focus handled above) so they land ready to join.
+  const handleInviteChallenge = useCallback(async (challenge) => {
+    if (!challenge?.id) return;
+    const url = `${PROD_WEB_URL}/challenge/${challenge.id}`;
+    // White-label: the invite names the GYM, not the app — to the member it's
+    // their gym, even though it's our platform.
+    const gym = profile?.gym_name || 'TuGymPR';
+    const text = t('challenges.inviteText', { name: sanitize(challenge.name), gym, defaultValue: `Join me in "${sanitize(challenge.name)}" on ${gym}` });
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: sanitize(challenge.name), text, url });
+      } else {
+        await navigator.clipboard?.writeText(`${text} ${url}`);
+        showToast(t('challenges.inviteCopied', 'Invite link copied'), 'success');
+      }
+    } catch { /* user cancelled the share sheet */ }
+  }, [t, showToast]);
 
   // Check if the user has already earned challenge_joined points for a specific challenge.
   // This prevents the farming exploit: join → leave → rejoin → repeat for unlimited points.
@@ -2149,6 +2324,11 @@ export default function Challenges({ embedded = false }) {
   const featuredChallenge = liveChallenges[0] || null;
   const remainingLive = liveChallenges.slice(1);
 
+  // Platform kill switch (Operations → feature_challenges). After all hooks
+  // so a mid-session flip can't change the hook order. Also covers the
+  // Community tab embed (members are the kill-switch audience).
+  if (!challengesEnabled) return <FeatureDisabledScreen embedded={embedded} />;
+
   return (
     <div className={`${embedded ? '' : 'min-h-screen pb-28 md:pb-12'}`} style={{ background: 'var(--color-bg-primary)' }}>
       {/* Header */}
@@ -2250,8 +2430,10 @@ export default function Challenges({ embedded = false }) {
                         myId={user.id}
                         joined={myJoinedIds.has(featuredChallenge.id)}
                         participantCount={countMap[featuredChallenge.id] ?? 0}
+                        friends={featuredFriends}
                         onJoin={handleJoin}
                         onLeave={handleLeave}
+                        onInvite={handleInviteChallenge}
                         t={t}
                       />
                     </div>
@@ -2292,6 +2474,7 @@ export default function Challenges({ embedded = false }) {
                                 participantCount={countMap[c.id] ?? 0}
                                 onJoin={handleJoin}
                                 onLeave={handleLeave}
+                                onInvite={handleInviteChallenge}
                                 t={t}
                               />
                             </div>
@@ -2309,6 +2492,7 @@ export default function Challenges({ embedded = false }) {
                                 participantCount={countMap[c.id] ?? 0}
                                 onJoin={handleJoin}
                                 onLeave={handleLeave}
+                                onInvite={handleInviteChallenge}
                                 t={t}
                               />
                             </div>

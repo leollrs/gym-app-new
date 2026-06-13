@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from 'react-i18next';
-import { signQRPayload } from '../lib/qrSecurity';
+import useSignedQR from '../hooks/useSignedQR';
 
 /**
  * Modal showing a per-product QR code for a member.
@@ -11,18 +11,16 @@ import { signQRPayload } from '../lib/qrSecurity';
  */
 export default function ProductQRModal({ memberId, memberName, gymId, product, onClose }) {
   const { t } = useTranslation('pages');
-  const [signedPayload, setSignedPayload] = useState(null);
 
   const payload = `gym-purchase:${gymId}:${memberId}:${product?.id}`;
 
-  useEffect(() => {
-    if (product && memberId) {
-      // Swallow rejections — unhandled promise rejections from the edge
-      // function crash the Capacitor WebView. QR falls back to unsigned
-      // payload via `signedPayload || payload`.
-      signQRPayload(payload).then(setSignedPayload).catch(() => {});
-    }
-  }, [payload, product, memberId]);
+  // Signed + auto-refreshed every 45s (verify-qr expires signatures at 60s,
+  // so a modal held open used to scan as "expired"). On sign failure fall
+  // back unsigned — the scanner accepts unsigned gym-purchase (wallet-pass
+  // contract) and record_gym_purchase requires admin auth anyway.
+  const { signed: signedPayload, pending: signPending } = useSignedQR(
+    product && memberId ? payload : null
+  );
 
   // Lock body scroll while modal is mounted
   useEffect(() => {
@@ -50,16 +48,31 @@ export default function ProductQRModal({ memberId, memberName, gymId, product, o
           <X size={18} />
         </button>
 
-        {/* QR — white bg for scanability */}
+        {/* QR — white bg for scanability. Spinner until the signature lands
+            so the code never visibly morphs unsigned→signed mid-display. */}
         <div className="bg-white flex flex-col items-center p-8 pt-10">
-          <QRCodeSVG
-            value={signedPayload || payload}
-            size={220}
-            level="H"
-            includeMargin={false}
-            bgColor="#FFFFFF"
-            fgColor="#000000"
-          />
+          {signPending ? (
+            <div
+              className="flex items-center justify-center"
+              style={{ width: 220, height: 220 }}
+              role="status"
+              aria-label={t('common.loading', { defaultValue: 'Loading' })}
+            >
+              <div
+                className="w-8 h-8 rounded-full animate-spin"
+                style={{ border: '3px solid #E5E7EB', borderTopColor: '#111827' }}
+              />
+            </div>
+          ) : (
+            <QRCodeSVG
+              value={signedPayload || payload}
+              size={220}
+              level="H"
+              includeMargin={false}
+              bgColor="#FFFFFF"
+              fgColor="#000000"
+            />
+          )}
         </div>
 
         {/* Info */}

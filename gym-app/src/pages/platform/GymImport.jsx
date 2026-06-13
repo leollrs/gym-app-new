@@ -1,14 +1,13 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, X,
-  Loader2, Download, Microscope, RotateCw,
+  ArrowLeft, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
+  Loader2, Download, Microscope, RotateCw, Undo2,
 } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
-import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { logAdminAction } from '../../lib/adminAudit';
 import FadeIn from '../../components/platform/FadeIn';
@@ -31,8 +30,7 @@ const SKIP_REASON_LABEL = {
 export default function GymImport() {
   const { gymId } = useParams();
   const navigate = useNavigate();
-  const { profile } = useAuth();
-  const { t } = useTranslation('pages');
+  const { showToast } = useToast();
   const fileInputRef = useRef(null);
 
   const [phase, setPhase] = useState('upload'); // 'upload' | 'preview' | 'result'
@@ -42,6 +40,9 @@ export default function GymImport() {
   const [bucketed, setBucketed] = useState(null);
   const [parseError, setParseError] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  const [codesError, setCodesError] = useState(null);
+  const [rollbackBatch, setRollbackBatch] = useState(null); // batch row pending confirm
+  const [rollbackConfirmSlug, setRollbackConfirmSlug] = useState('');
 
   // Gym name lookup so the page header is contextual.
   const { data: gym } = useQuery({
@@ -59,12 +60,14 @@ export default function GymImport() {
 
   // Past batches for this gym — surfaces "yes you've already imported once,
   // here's what happened" so the operator doesn't double-import by accident.
-  const { data: pastBatches = [] } = useQuery({
+  // select('*') (not an explicit column list) so the strip keeps working
+  // before migration 0545 adds rolled_back_at.
+  const { data: pastBatches = [], refetch: refetchBatches } = useQuery({
     queryKey: ['platform-gym-batches', gymId],
     queryFn: async () => {
       const { data } = await supabase
         .from('gym_import_batches')
-        .select('id, label, source_filename, created_at, row_count, imported_active_count, imported_archived_count, skipped_count')
+        .select('*')
         .eq('gym_id', gymId)
         .order('created_at', { ascending: false })
         .limit(5);
@@ -154,6 +157,45 @@ export default function GymImport() {
     },
   });
 
+  // ── Rollback mutation ─────────────────────────────────────────
+  // rollback_import_batch (migration 0545) removes the batch's UNCLAIMED
+  // shell profiles + their unused invite codes; claimed members are kept.
+  const rollbackMutation = useMutation({
+    mutationFn: async (batchId) => {
+      const { data, error } = await supabase.rpc('rollback_import_batch', {
+        p_batch_id: batchId,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      logAdminAction('rollback_import_batch', 'gym', gymId, {
+        batch_id: data?.batch_id,
+        profiles_deleted: data?.profiles_deleted,
+        invites_deleted: data?.invites_deleted,
+        claimed_kept: data?.claimed_kept,
+      });
+      showToast(
+        `Rollback complete — ${data?.profiles_deleted ?? 0} unclaimed profiles and ${data?.invites_deleted ?? 0} invite codes removed`
+        + (data?.claimed_kept > 0 ? ` (${data.claimed_kept} already-claimed members kept)` : ''),
+        'success'
+      );
+      setRollbackBatch(null);
+      setRollbackConfirmSlug('');
+      refetchBatches();
+    },
+    onError: (err) => {
+      logger.error('Import rollback failed:', err);
+      // Surfaced inline in the confirm modal via rollbackMutation.error.
+    },
+  });
+
+  // PostgREST PGRST202 = function not in the schema cache → migration 0545
+  // hasn't been applied yet. Surface that honestly instead of a raw error.
+  const isMissingRollbackRpc = (err) =>
+    err?.code === 'PGRST202'
+    || /could not find the function|function .*rollback_import_batch.* does not exist/i.test(err?.message || '');
+
   const handleReset = () => {
     setPhase('upload');
     setParseResult(null);
@@ -162,6 +204,7 @@ export default function GymImport() {
     setLabel('');
     setParseError(null);
     setImportResult(null);
+    setCodesError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -172,24 +215,28 @@ export default function GymImport() {
   // and format however they want.
   const handleDownloadCodes = async () => {
     if (!importResult?.batch_id) return;
+    setCodesError(null);
     // Two-query join via phone. We can't FK-join because imported invites
     // have used_by=NULL (no profile linked until the member claims at
     // signup). Phone is the durable bridge between the imported profile
-    // and the invite the front desk needs to hand over.
+    // (profiles.phone_number, 0080/0466) and the invite (gym_invites.phone)
+    // the front desk needs to hand over.
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, phone')
+      .select('id, full_name, phone_number')
       .eq('gym_id', gymId)
       .eq('import_batch_id', importResult.batch_id)
       .eq('imported_archived', false);
 
     if (error || !data) {
       logger.error('Codes sheet fetch failed:', error);
+      setCodesError(`Couldn't build the codes sheet: ${error?.message || 'no data returned'}`);
+      showToast('Codes sheet export failed', 'error');
       return;
     }
 
-    const phones = data.map((p) => p.phone).filter(Boolean);
-    const { data: invites } = await selectInBatches(
+    const phones = data.map((p) => p.phone_number).filter(Boolean);
+    const { data: invites, error: invitesError } = await selectInBatches(
       (chunk) => supabase
         .from('gym_invites')
         .select('phone, member_name, invite_code')
@@ -198,12 +245,19 @@ export default function GymImport() {
       phones
     );
 
+    if (invitesError) {
+      logger.error('Codes sheet invite fetch failed:', invitesError);
+      setCodesError(`Couldn't load the invite codes: ${invitesError.message}`);
+      showToast('Codes sheet export failed', 'error');
+      return;
+    }
+
     const inviteByPhone = new Map((invites || []).map((i) => [i.phone, i.invite_code]));
 
     const rows = data.map((p) => ({
       name: p.full_name || '',
-      phone: p.phone || '',
-      code: inviteByPhone.get(p.phone) || '',
+      phone: p.phone_number || '',
+      code: inviteByPhone.get(p.phone_number) || '',
     }));
 
     const header = 'Name,Phone,Code\n';
@@ -260,6 +314,19 @@ export default function GymImport() {
                       <span className="text-[#6B7280]">·</span>
                       <span className="text-amber-400">{b.skipped_count} skipped</span>
                     </>
+                  )}
+                  {b.rolled_back_at ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-500/15 text-slate-400">
+                      Rolled back
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => { setRollbackBatch(b); setRollbackConfirmSlug(''); rollbackMutation.reset(); }}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+                    >
+                      <Undo2 size={10} />
+                      Rollback this import
+                    </button>
                   )}
                 </li>
               ))}
@@ -472,6 +539,13 @@ export default function GymImport() {
             )}
           </div>
 
+          {codesError && (
+            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
+              <p className="text-[12px] font-semibold text-red-400 mb-0.5">Codes sheet export failed</p>
+              <p className="text-[11px] text-[#FCA5A5] leading-relaxed">{codesError}</p>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => navigate(`/platform/gym/${gymId}/diagnostic`)}
@@ -497,6 +571,97 @@ export default function GymImport() {
           </div>
         </FadeIn>
       )}
+
+      {/* ── Rollback confirmation modal ──────────────────────────── */}
+      {rollbackBatch && (
+        <RollbackConfirmModal
+          batch={rollbackBatch}
+          gymSlug={gym?.slug || ''}
+          confirmSlug={rollbackConfirmSlug}
+          onChangeConfirmSlug={setRollbackConfirmSlug}
+          isPending={rollbackMutation.isPending}
+          error={rollbackMutation.error}
+          missingRpc={rollbackMutation.error ? isMissingRollbackRpc(rollbackMutation.error) : false}
+          onCancel={() => { setRollbackBatch(null); setRollbackConfirmSlug(''); rollbackMutation.reset(); }}
+          onConfirm={() => rollbackMutation.mutate(rollbackBatch.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Rollback confirmation modal ────────────────────────────────
+// Same typed-slug pattern as GymOps' hard-delete modal: the operator must
+// type the gym slug before the destructive RPC fires. If migration 0545
+// isn't applied yet (PGRST202), the modal says so instead of a raw error.
+function RollbackConfirmModal({ batch, gymSlug, confirmSlug, onChangeConfirmSlug, isPending, error, missingRpc, onCancel, onConfirm }) {
+  const slugMatches = gymSlug !== '' && confirmSlug === gymSlug;
+  const importedCount = (batch.imported_active_count ?? 0) + (batch.imported_archived_count ?? 0);
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.8)' }}>
+      <div className="max-w-md w-full rounded-2xl p-6 bg-[#0F172A] border border-red-500/30">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-red-500/15">
+            <Undo2 size={18} className="text-red-400" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[15px] font-bold text-white">Roll back this import?</p>
+            <p className="text-[12.5px] mt-1 leading-relaxed text-[#9CA3AF]">
+              <span className="text-[#E5E7EB]">{batch.label || batch.source_filename || 'Unlabeled'}</span>
+              {' '}({importedCount} imported on {new Date(batch.created_at).toLocaleDateString()}).
+              Removes the batch&apos;s <span className="text-[#E5E7EB]">unclaimed</span> shell profiles and their
+              unused invite codes. Members who already claimed their account are kept.{' '}
+              <span className="text-red-400 font-semibold">No undo.</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label htmlFor="rollback-slug-confirm" className="block text-[11px] uppercase tracking-wider text-[#6B7280] mb-1.5">
+            Type <code className="font-mono text-[#E5E7EB]">{gymSlug || '…'}</code> to confirm
+          </label>
+          <input
+            id="rollback-slug-confirm"
+            type="text"
+            value={confirmSlug}
+            onChange={(e) => onChangeConfirmSlug(e.target.value)}
+            placeholder={gymSlug}
+            className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-[13px] font-mono text-white focus:border-red-500/40 focus:outline-none"
+            autoFocus
+          />
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5">
+            {missingRpc ? (
+              <p className="text-[11.5px] text-amber-300 leading-relaxed">
+                Rollback isn&apos;t available yet — migration <span className="font-mono">0545_platform_lifecycle_snapshots.sql</span>{' '}
+                (which adds <span className="font-mono">rollback_import_batch</span>) hasn&apos;t been applied to this database.
+              </p>
+            ) : (
+              <p className="text-[11.5px] text-red-400 leading-relaxed">Rollback failed: {error.message}</p>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            disabled={isPending}
+            className="px-4 py-2 rounded-xl text-[12.5px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!slugMatches || isPending || missingRpc}
+            className="px-4 py-2 rounded-xl text-[12.5px] font-bold inline-flex items-center gap-2 bg-red-500 text-white disabled:opacity-30"
+          >
+            {isPending ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
+            {isPending ? 'Rolling back…' : 'Roll back import'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { logAdminAction } from '../../lib/adminAudit';
 import {
   Search, ChevronDown, ChevronUp, ExternalLink, Shield, UserCog, Eye, X,
-  Building2, Mail, RefreshCw, KeyRound, UserX, UserCheck, Link2,
+  Building2, RefreshCw, KeyRound, UserX, UserCheck, Link2, Plus,
   Activity, Clock, AlertTriangle, Dumbbell, ChevronRight, Copy, Check,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -86,6 +86,7 @@ export default function SupportConsole() {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchError, setSearchError] = useState(false);
 
   // Grouped results
   const [members, setMembers] = useState([]);
@@ -109,22 +110,33 @@ export default function SupportConsole() {
       setGymResults([]);
       setInvites([]);
       setHasSearched(false);
+      setSearchError(false);
       return;
     }
     const timeout = setTimeout(() => { performSearch(query.trim()); }, 300);
     return () => clearTimeout(timeout);
   }, [query]);
 
+  // Pre-0543 the email RPC / member_invites super_admin arm don't exist yet —
+  // treat "missing DB object" as feature-unavailable, not a search failure.
+  const isMissingDbObject = (e) => e && (
+    e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01' || e.code === '42703'
+    || /does not exist|could not find/i.test(e.message || '')
+  );
+
   const performSearch = async (term) => {
     setSearching(true);
     setHasSearched(true);
     const safeTerm = term.replace(/[%_\\,()."']/g, '');
     const pattern = `%${safeTerm}%`;
+    const looksLikeEmail = term.includes('@');
 
-    const [membersRes, gymsRes, invitesRes] = await Promise.all([
+    const profileSelect = 'id, gym_id, full_name, username, role, created_at, last_active_at, membership_status, is_onboarded, avatar_url, avatar_type, avatar_value, gyms(id, name, slug)';
+
+    const [membersRes, gymsRes, gymInvitesRes, memberInvitesRes, emailRes] = await Promise.all([
       supabase
         .from('profiles')
-        .select('id, gym_id, full_name, username, role, created_at, last_active_at, membership_status, is_onboarded, avatar_url, avatar_type, avatar_value, gyms(id, name, slug)')
+        .select(profileSelect)
         .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
         .limit(30)
         .order('full_name', { ascending: true }),
@@ -136,14 +148,72 @@ export default function SupportConsole() {
         .order('name', { ascending: true }),
       supabase
         .from('gym_invites')
-        .select('id, token, gym_id, role, used_at, expires_at, created_at, gyms(id, name)')
-        .ilike('token', pattern)
+        .select('id, token, invite_code, gym_id, role, used_at, expires_at, created_at, gyms(id, name)')
+        .or(`token.ilike.${pattern},invite_code.ilike.${pattern}`)
         .limit(10),
+      // Admins hand out member_invites.invite_code — search that system too.
+      supabase
+        .from('member_invites')
+        .select('id, invite_code, gym_id, status, member_name, claimed_at, expires_at, created_at, gyms(id, name)')
+        .ilike('invite_code', pattern)
+        .limit(10),
+      // Email lookup (profiles has no email column — auth.users does).
+      looksLikeEmail
+        ? supabase.rpc('admin_lookup_by_email', { p_email: term })
+        : Promise.resolve({ data: null, error: null }),
     ]);
 
-    setMembers(membersRes.data || []);
+    // Honest failure: a query error is NOT "no results".
+    const hardErrors = [membersRes.error, gymsRes.error, gymInvitesRes.error]
+      .concat([memberInvitesRes.error, emailRes.error].filter(e => e && !isMissingDbObject(e)))
+      .filter(Boolean);
+    if (hardErrors.length > 0) console.error('[SupportConsole] search failed:', hardErrors[0]);
+    let failed = hardErrors.length > 0;
+
+    // Merge email matches into the member results (hydrated to full profile
+    // rows so the detail pane works identically for both paths).
+    let memberRows = membersRes.data || [];
+    const emailMatches = emailRes.data || [];
+    const missingIds = emailMatches.map(r => r.profile_id).filter(id => id && !memberRows.some(m => m.id === id));
+    if (missingIds.length > 0) {
+      const { data: hydrated, error: hydrateError } = await supabase
+        .from('profiles')
+        .select(profileSelect)
+        .in('id', missingIds);
+      if (hydrateError) {
+        console.error('[SupportConsole] email hydrate failed:', hydrateError);
+        failed = true;
+      } else if (hydrated?.length) {
+        memberRows = [...memberRows, ...hydrated];
+      }
+    }
+
+    // Normalize both invite systems into one list.
+    const now = new Date();
+    const normalizedInvites = [
+      ...(gymInvitesRes.data || []).map(inv => ({
+        id: `gym_${inv.id}`,
+        code: inv.invite_code || inv.token,
+        gymName: inv.gyms?.name,
+        detail: inv.role,
+        isUsed: !!inv.used_at,
+        isExpired: !inv.used_at && inv.expires_at && new Date(inv.expires_at) < now,
+      })),
+      ...(memberInvitesRes.data || []).map(inv => ({
+        id: `member_${inv.id}`,
+        code: inv.invite_code,
+        gymName: inv.gyms?.name,
+        detail: inv.member_name || 'member',
+        isUsed: inv.status === 'claimed',
+        isExpired: inv.status === 'expired' || inv.status === 'revoked'
+          || (inv.status === 'pending' && inv.expires_at && new Date(inv.expires_at) < now),
+      })),
+    ];
+
+    setSearchError(failed);
+    setMembers(memberRows);
     setGymResults(gymsRes.data || []);
-    setInvites(invitesRes.data || []);
+    setInvites(normalizedInvites);
     setSearching(false);
   };
 
@@ -178,19 +248,28 @@ export default function SupportConsole() {
         .select('id', { count: 'exact', head: true })
         .eq('profile_id', member.id)
         .gte('checked_in_at', thirtyDaysAgo),
+      // Streak: cross-gym visibility relies on 0541's streak_cache
+      // super_admin SELECT arm (pre-apply this reads 0 for other gyms).
       supabase
         .from('streak_cache')
         .select('current_streak_days')
         .eq('profile_id', member.id)
-        .single(),
+        .maybeSingle(),
       supabase
         .from('churn_risk_scores')
         .select('score, risk_tier, computed_at')
         .eq('profile_id', member.id)
         .order('computed_at', { ascending: false })
         .limit(1)
-        .single(),
+        .maybeSingle(),
     ]);
+
+    const detailError = [sessionsRes, recentSessionsRes, checkInsRes, streakRes, churnRes]
+      .some(r => r.error);
+    if (detailError) {
+      console.error('[SupportConsole] detail fetch failed:',
+        [sessionsRes, recentSessionsRes, checkInsRes, streakRes, churnRes].find(r => r.error)?.error);
+    }
 
     const allSessions = sessionsRes.data || [];
     const totalVolume = allSessions.reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
@@ -205,6 +284,7 @@ export default function SupportConsole() {
       currentStreak: streakRes.data?.current_streak_days || 0,
       churnScore: churnRes.data?.score ?? null,
       churnTier: churnRes.data?.risk_tier || null,
+      hadError: detailError,
     });
     setDetailLoading(false);
   };
@@ -225,6 +305,14 @@ export default function SupportConsole() {
 
   const handleChangeRole = async () => {
     if (!selectedMember || newRole === selectedMember.role) return;
+    // A8: never demote FROM super_admin either — the omnibox can surface the
+    // founder's own row, and flipping it locks them out of /platform with no
+    // break-glass. (The buttons are disabled too; this is belt-and-suspenders.)
+    if (selectedMember.role === 'super_admin') {
+      showToast(t('platform.support.protectedAccount', 'Protected account — super admin role and status can only be changed in the database'), 'error');
+      setRoleModal(false);
+      return;
+    }
     // Block super_admin escalation from support console
     if (newRole === 'super_admin') {
       showToast(t('platform.support.superAdminBlocked', 'Super admin can only be assigned via database'), 'error');
@@ -237,7 +325,7 @@ export default function SupportConsole() {
     if (error) {
       showToast(error.message, 'error');
     } else {
-      logAdminAction('change_role', 'member', selectedMember.id, { from: selectedMember.role, to: newRole });
+      logAdminAction('change_role', 'member', selectedMember.id, { from: selectedMember.role, to: newRole }, selectedMember.gym_id);
       showToast(t('platform.support.roleChanged', 'Role changed successfully'), 'success');
       setSelectedMember({ ...selectedMember, role: newRole });
       setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, role: newRole } : m));
@@ -247,15 +335,27 @@ export default function SupportConsole() {
 
   const handleChangeStatus = async () => {
     if (!selectedMember || newStatus === selectedMember.membership_status) return;
+    // A8: membership_status gates app access — same lockout vector as role.
+    if (selectedMember.role === 'super_admin') {
+      showToast(t('platform.support.protectedAccount', 'Protected account — super admin role and status can only be changed in the database'), 'error');
+      setStatusModal(false);
+      return;
+    }
     setModalSaving(true);
     const updatePayload = { membership_status: newStatus };
-    if (statusReason.trim()) updatePayload.membership_status_reason = statusReason.trim();
+    if (newStatus === 'active') {
+      // Back to active: the old freeze/cancel reason no longer applies — clear
+      // it instead of letting stale reasons accumulate on the profile.
+      updatePayload.membership_status_reason = null;
+    } else if (statusReason.trim()) {
+      updatePayload.membership_status_reason = statusReason.trim();
+    }
     const { error } = await supabase.from('profiles').update(updatePayload).eq('id', selectedMember.id);
     setModalSaving(false);
     if (error) {
       showToast(error.message, 'error');
     } else {
-      logAdminAction('change_status', 'member', selectedMember.id, { from: selectedMember.membership_status, to: newStatus });
+      logAdminAction('change_status', 'member', selectedMember.id, { from: selectedMember.membership_status, to: newStatus }, selectedMember.gym_id);
       showToast(t('platform.support.statusChanged', 'Status changed successfully'), 'success');
       setSelectedMember({ ...selectedMember, membership_status: newStatus });
       setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, membership_status: newStatus } : m));
@@ -276,7 +376,7 @@ export default function SupportConsole() {
       showToast(error.message, 'error');
     } else {
       setResetCode(data || 'No code returned');
-      logAdminAction('reset_password', 'member', selectedMember.id, {});
+      logAdminAction('reset_password', 'member', selectedMember.id, {}, selectedMember.gym_id);
     }
   };
 
@@ -288,43 +388,156 @@ export default function SupportConsole() {
     } catch { /* ignore */ }
   };
 
-  // ── Resend Invite ──────────────────────────────────────────
-  const handleResendInvite = async () => {
+  // ── Invite codes (replaces the dead "Resend Invite" — there is no
+  //    admin-invite-member edge fn and no invite_token_regenerated_at
+  //    column; codes are the real currency here) ────────────────────
+  const [inviteModal, setInviteModal] = useState(false);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteFetchError, setInviteFetchError] = useState(false);
+  const [memberInviteRows, setMemberInviteRows] = useState([]);
+  const [generatingInvite, setGeneratingInvite] = useState(false);
+  const [copiedCode, setCopiedCode] = useState('');
+
+  const openInviteModal = async () => {
     if (!selectedMember) return;
-    try {
-      // Try edge function first (does not currently exist — falls back below)
-      const { data: fnData, error: fnError } = await supabase.functions.invoke(
-        'admin-invite-member',
-        { body: { profileId: selectedMember.id, gymId: selectedMember.gym_id } },
-      );
-      if (!fnError && fnData) {
-        showToast(t('platform.support.inviteResent', 'Invite resent successfully'), 'success');
-        logAdminAction('resend_invite', 'member', selectedMember.id, { method: 'edge_function' });
-        return;
-      }
-      // Fallback: bump invite_token_regenerated_at so a backend job can pick it up.
-      // TODO: wire this column up to an actual transactional email send (Resend / SendGrid).
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ invite_token_regenerated_at: new Date().toISOString() })
-        .eq('id', selectedMember.id);
-      if (updateError) {
-        showToast(updateError.message, 'error');
-        return;
-      }
-      logAdminAction('resend_invite', 'member', selectedMember.id, { method: 'fallback_timestamp' });
-      showToast(
-        t('platform.support.inviteResentFallback', 'Invite flagged for resend (email send pending wiring)'),
-        'success',
-      );
-    } catch (err) {
-      showToast(err?.message || t('platform.support.inviteResendFailed', 'Failed to resend invite'), 'error');
+    setInviteModal(true);
+    setInviteFetchError(false);
+    setCopiedCode('');
+    setInviteLoading(true);
+
+    const safeName = (selectedMember.full_name || '').replace(/[%_\\,()."']/g, '').trim();
+    const namePattern = safeName ? `%${safeName}%` : null;
+    const canMatchPending = !!(selectedMember.gym_id && namePattern);
+
+    // Codes tied to this member: the one they claimed, plus any unclaimed
+    // codes created under their name in their gym.
+    const [claimedGymRes, claimedMemberRes, pendingGymRes, pendingMemberRes] = await Promise.all([
+      supabase
+        .from('gym_invites')
+        .select('id, token, invite_code, used_at, expires_at, created_at')
+        .eq('used_by', selectedMember.id)
+        .order('created_at', { ascending: false })
+        .limit(5),
+      supabase
+        .from('member_invites')
+        .select('id, invite_code, status, claimed_at, expires_at, created_at')
+        .eq('claimed_by', selectedMember.id)
+        .order('created_at', { ascending: false })
+        .limit(5),
+      canMatchPending
+        ? supabase
+            .from('gym_invites')
+            .select('id, token, invite_code, used_at, expires_at, created_at')
+            .eq('gym_id', selectedMember.gym_id)
+            .is('used_at', null)
+            .ilike('member_name', namePattern)
+            .order('created_at', { ascending: false })
+            .limit(5)
+        : Promise.resolve({ data: [], error: null }),
+      canMatchPending
+        ? supabase
+            .from('member_invites')
+            .select('id, invite_code, status, claimed_at, expires_at, created_at')
+            .eq('gym_id', selectedMember.gym_id)
+            .eq('status', 'pending')
+            .ilike('member_name', namePattern)
+            .order('created_at', { ascending: false })
+            .limit(5)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const hardErrors = [claimedGymRes.error, claimedMemberRes.error, pendingGymRes.error, pendingMemberRes.error]
+      .filter(e => e && !isMissingDbObject(e));
+    if (hardErrors.length > 0) {
+      console.error('[SupportConsole] invite lookup failed:', hardErrors[0]);
+      setInviteFetchError(true);
     }
+
+    const now = new Date();
+    const rows = [];
+    (pendingGymRes.data || []).forEach(r => rows.push({
+      id: `pg_${r.id}`,
+      code: r.invite_code || r.token,
+      status: (r.expires_at && new Date(r.expires_at) < now) ? 'expired' : 'pending',
+      createdAt: r.created_at,
+    }));
+    (pendingMemberRes.data || []).forEach(r => rows.push({
+      id: `pm_${r.id}`,
+      code: r.invite_code,
+      status: (r.expires_at && new Date(r.expires_at) < now) ? 'expired' : 'pending',
+      createdAt: r.created_at,
+    }));
+    (claimedGymRes.data || []).forEach(r => rows.push({
+      id: `cg_${r.id}`,
+      code: r.invite_code || r.token,
+      status: 'claimed',
+      createdAt: r.created_at,
+    }));
+    (claimedMemberRes.data || []).forEach(r => rows.push({
+      id: `cm_${r.id}`,
+      code: r.invite_code,
+      status: r.status === 'claimed' ? 'claimed' : (r.status || 'claimed'),
+      createdAt: r.created_at,
+    }));
+
+    // De-dup by code (the same code can surface from both lookups)
+    const seen = new Set();
+    setMemberInviteRows(rows.filter(r => {
+      if (!r.code || seen.has(r.code)) return false;
+      seen.add(r.code);
+      return true;
+    }));
+    setInviteLoading(false);
+  };
+
+  // Generate a fresh code via the existing admin_create_invite_code RPC.
+  // It is is_admin()-gated (super_admin included) and takes p_gym_id with no
+  // own-gym check, so it already works cross-gym (0305/0465 — verified).
+  const handleGenerateInvite = async () => {
+    if (!selectedMember?.gym_id) {
+      showToast(t('platform.support.inviteNoGym', 'This member has no gym — assign a gym first'), 'error');
+      return;
+    }
+    setGeneratingInvite(true);
+    const { data, error } = await supabase.rpc('admin_create_invite_code', {
+      p_gym_id: selectedMember.gym_id,
+      p_member_name: selectedMember.full_name || selectedMember.username || 'Member',
+      p_role: selectedMember.role === 'trainer' ? 'trainer' : 'member',
+    });
+    setGeneratingInvite(false);
+    if (error) {
+      showToast(error.message, 'error');
+      return;
+    }
+    const code = data?.invite_code;
+    if (!code) {
+      showToast(t('platform.support.inviteGenerateFailed', 'Could not generate an invite code'), 'error');
+      return;
+    }
+    setMemberInviteRows(prev => [
+      { id: `new_${Date.now()}`, code, status: 'pending', createdAt: new Date().toISOString(), isNew: true },
+      ...prev,
+    ]);
+    logAdminAction('generate_invite_code', 'member', selectedMember.id, { invite_code: code }, selectedMember.gym_id);
+    copyInviteCode(code);
+  };
+
+  const copyInviteCode = async (code) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode(c => (c === code ? '' : c)), 2000);
+    } catch { /* ignore */ }
   };
 
   // ── Deactivate ─────────────────────────────────────────────
   const handleDeactivate = async () => {
     if (!selectedMember) return;
+    // A8: deactivating a super_admin row = self-lockout with no break-glass.
+    if (selectedMember.role === 'super_admin') {
+      showToast(t('platform.support.protectedAccount', 'Protected account — super admin role and status can only be changed in the database'), 'error');
+      return;
+    }
     const confirmMsg = t(
       'platform.support.deactivateConfirm',
       'Deactivate {{name}}? They will lose app access until reactivated.',
@@ -343,7 +556,7 @@ export default function SupportConsole() {
     }
     logAdminAction('deactivate_member', 'member', selectedMember.id, {
       from: selectedMember.membership_status,
-    });
+    }, selectedMember.gym_id);
     showToast(t('platform.support.memberDeactivated', 'Member deactivated'), 'success');
     setSelectedMember({ ...selectedMember, membership_status: 'deactivated' });
     setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, membership_status: 'deactivated' } : m));
@@ -390,6 +603,22 @@ export default function SupportConsole() {
         <div className={`flex-1 min-w-0 ${selectedMember ? 'hidden md:block md:max-w-[55%]' : ''}`}>
           {searching && <Spinner />}
 
+          {/* Honest failure state — a failed search is not "no results" */}
+          {!searching && hasSearched && searchError && (
+            <div className="flex items-center gap-2.5 px-3.5 py-3 rounded-xl bg-red-500/10 border border-red-500/20 mb-4">
+              <AlertTriangle size={15} className="text-red-400 flex-shrink-0" />
+              <p className="text-[12px] text-red-400 flex-1 min-w-0">
+                {t('platform.support.searchFailed', 'Search failed — results may be incomplete.')}
+              </p>
+              <button
+                onClick={() => performSearch(query.trim())}
+                className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors flex-shrink-0"
+              >
+                {t('platform.support.retry', 'Retry')}
+              </button>
+            </div>
+          )}
+
           {!searching && !hasSearched && (
             <FadeIn delay={100}>
               <div className="space-y-4">
@@ -426,7 +655,7 @@ export default function SupportConsole() {
             </FadeIn>
           )}
 
-          {!searching && hasSearched && totalResults === 0 && (
+          {!searching && hasSearched && totalResults === 0 && !searchError && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Search className="w-10 h-10 text-[#1F2937] mb-3" />
               <p className="text-[14px] text-[#6B7280]">{t('platform.support.noResults', 'No results for "{{query}}"', { query })}</p>
@@ -523,30 +752,26 @@ export default function SupportConsole() {
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/5 text-[#6B7280]">{invites.length}</span>
                   </p>
                   <div className="space-y-1">
-                    {invites.map((inv) => {
-                      const isUsed = !!inv.used_at;
-                      const isExpired = inv.expires_at && new Date(inv.expires_at) < new Date();
-                      return (
-                        <div key={inv.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#0F172A] border border-white/4">
-                          <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
-                            <KeyRound size={15} className="text-purple-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-medium text-[#E5E7EB] font-mono truncate">{inv.token}</p>
-                            <p className="text-[11px] text-[#6B7280] truncate">{inv.gyms?.name || t('platform.support.unknownGym', 'Unknown gym')} &middot; {inv.role}</p>
-                          </div>
-                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                            isUsed
-                              ? 'bg-emerald-500/15 text-emerald-400'
-                              : isExpired
-                              ? 'bg-red-500/15 text-red-400'
-                              : 'bg-amber-500/15 text-amber-400'
-                          }`}>
-                            {isUsed ? t('platform.support.claimed', 'Claimed') : isExpired ? t('platform.support.expired', 'Expired') : t('platform.support.pending', 'Pending')}
-                          </span>
+                    {invites.map((inv) => (
+                      <div key={inv.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#0F172A] border border-white/4">
+                        <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                          <KeyRound size={15} className="text-purple-400" />
                         </div>
-                      );
-                    })}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-medium text-[#E5E7EB] font-mono truncate">{inv.code}</p>
+                          <p className="text-[11px] text-[#6B7280] truncate">{inv.gymName || t('platform.support.unknownGym', 'Unknown gym')} &middot; {inv.detail}</p>
+                        </div>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                          inv.isUsed
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : inv.isExpired
+                            ? 'bg-red-500/15 text-red-400'
+                            : 'bg-amber-500/15 text-amber-400'
+                        }`}>
+                          {inv.isUsed ? t('platform.support.claimed', 'Claimed') : inv.isExpired ? t('platform.support.expired', 'Expired') : t('platform.support.pending', 'Pending')}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -603,6 +828,12 @@ export default function SupportConsole() {
                   <Spinner />
                 ) : detailData ? (
                   <div className="space-y-4">
+                    {detailData.hadError && (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <AlertTriangle size={13} className="text-amber-400 flex-shrink-0" />
+                        <p className="text-[11px] text-amber-400">{t('platform.support.detailPartial', 'Some stats failed to load — numbers below may be incomplete.')}</p>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-2.5">
                       <div className="bg-[#111827] rounded-lg p-3">
                         <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">{t('platform.support.totalSessions', 'Total Sessions')}</p>
@@ -662,7 +893,10 @@ export default function SupportConsole() {
                       </div>
                     )}
 
-                    {/* Support actions */}
+                    {/* Support actions — A8: super_admin rows are protected
+                        (role/status/deactivate would lock the founder out of
+                        /platform with no break-glass). */}
+                    {(() => { const isProtected = selectedMember.role === 'super_admin'; return (
                     <div className="pt-3 border-t border-white/6">
                       <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-2">{t('platform.support.quickActions', 'Quick Actions')}</p>
                       <div className="grid grid-cols-2 gap-2">
@@ -671,23 +905,30 @@ export default function SupportConsole() {
                             <ExternalLink size={13} />{t('platform.support.viewGym', 'View Gym')}
                           </button>
                         )}
-                        <button onClick={openRoleModal} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                        <button onClick={openRoleModal} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#9CA3AF] disabled:hover:border-white/6">
                           <Shield size={13} />{t('platform.support.changeRole', 'Change Role')}
                         </button>
-                        <button onClick={openStatusModal} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                        <button onClick={openStatusModal} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#9CA3AF] disabled:hover:border-white/6">
                           <UserCog size={13} />{t('platform.support.changeStatus', 'Change Status')}
                         </button>
                         <button onClick={handleResetPassword} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
                           <RefreshCw size={13} />{t('platform.support.resetPassword', 'Reset Password')}
                         </button>
-                        <button onClick={handleResendInvite} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
-                          <Mail size={13} />{t('platform.support.resendInvite', 'Resend Invite')}
+                        <button onClick={openInviteModal} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                          <KeyRound size={13} />{t('platform.support.inviteCodes', 'Invite Codes')}
                         </button>
-                        <button onClick={handleDeactivate} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors">
+                        <button onClick={handleDeactivate} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-red-400/70 disabled:hover:border-white/6">
                           <UserX size={13} />{t('platform.support.deactivate', 'Deactivate')}
                         </button>
                       </div>
+                      {isProtected && (
+                        <p className="flex items-center gap-1.5 text-[11px] text-[#6B7280] mt-2">
+                          <Shield size={11} className="text-[#D4AF37] flex-shrink-0" />
+                          {t('platform.support.protectedAccount', 'Protected account — super admin role and status can only be changed in the database')}
+                        </p>
+                      )}
                     </div>
+                    ); })()}
                   </div>
                 ) : null}
               </div>
@@ -831,6 +1072,81 @@ export default function SupportConsole() {
             <button onClick={() => setResetModal(false)} className="w-full px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">
               {t('platform.support.close', 'Close')}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Invite Codes Modal ─────────────────────────────── */}
+      {inviteModal && selectedMember && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4" onClick={() => setInviteModal(false)}>
+          <div className="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.support.inviteCodes', 'Invite Codes')}</h3>
+              <button onClick={() => setInviteModal(false)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={16} /></button>
+            </div>
+
+            {inviteFetchError && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                <AlertTriangle size={13} className="text-red-400 flex-shrink-0" />
+                <p className="text-[11px] text-red-400">{t('platform.support.inviteLookupFailed', 'Could not load existing codes — you can still generate a new one.')}</p>
+              </div>
+            )}
+
+            {inviteLoading ? (
+              <PlatformSpinner />
+            ) : (
+              <div className="space-y-2">
+                {memberInviteRows.length === 0 ? (
+                  <p className="text-[12px] text-[#6B7280]">{t('platform.support.noInviteCodes', 'No invite codes linked to this member yet.')}</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-[240px] overflow-y-auto">
+                    {memberInviteRows.map((row) => (
+                      <div key={row.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${row.isNew ? 'bg-[#D4AF37]/10 border-[#D4AF37]/25' : 'bg-[#111827] border-white/8'}`}>
+                        <code className={`flex-1 text-[13px] font-mono tracking-wider truncate ${row.isNew ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>{row.code}</code>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
+                          row.status === 'claimed'
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : row.status === 'pending'
+                            ? 'bg-amber-500/15 text-amber-400'
+                            : 'bg-red-500/15 text-red-400'
+                        }`}>
+                          {row.status === 'claimed'
+                            ? t('platform.support.claimed', 'Claimed')
+                            : row.status === 'pending'
+                            ? t('platform.support.pending', 'Pending')
+                            : t('platform.support.expired', 'Expired')}
+                        </span>
+                        <button
+                          onClick={() => copyInviteCode(row.code)}
+                          title={t('platform.support.copyCode', 'Copy code')}
+                          className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#D4AF37] hover:bg-white/5 transition-colors flex-shrink-0"
+                        >
+                          {copiedCode === row.code ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={handleGenerateInvite}
+                disabled={generatingInvite || !selectedMember.gym_id}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-[#D4AF37] text-[12px] font-medium text-[#0F172A] hover:bg-[#C4A030] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {generatingInvite
+                  ? <><RefreshCw size={13} className="animate-spin" />{t('platform.support.generating', 'Generating...')}</>
+                  : <><Plus size={13} />{t('platform.support.generateNewCode', 'Generate new code')}</>}
+              </button>
+              {!selectedMember.gym_id && (
+                <p className="text-[10px] text-[#6B7280] text-center">{t('platform.support.inviteNoGym', 'This member has no gym — assign a gym first')}</p>
+              )}
+              <button onClick={() => setInviteModal(false)} className="w-full px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">
+                {t('platform.support.close', 'Close')}
+              </button>
+            </div>
           </div>
         </div>
       )}

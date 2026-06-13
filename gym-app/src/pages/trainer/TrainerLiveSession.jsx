@@ -16,8 +16,11 @@ import { TAvatar } from './components/designPrimitives';
 // `trainer_send_cue` RPCs (migration 0357) that land in the member's
 // ActiveSession via realtime on session_cues.
 //
-// Bidirectional set logging (writing to the member's session_drafts on
-// their behalf) is still off — that's high-risk and needs more thought.
+// Set logging (0549): the trainer taps a set, types weight/reps and
+// sends a 'set_log' cue. The member's ActiveSession applies it through
+// its normal completion path and persists the draft, which echoes the
+// confirmed values back here. We never write session_drafts directly —
+// the member app owns that row and writes it constantly.
 // ────────────────────────────────────────────────────────────────────
 
 const ELAPSED_TICK_MS = 1000;
@@ -44,6 +47,22 @@ export default function TrainerLiveSession() {
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0); // forces elapsed re-render
   const tickRef = useRef();
+
+  // End-of-workout detection: the member app DELETEs session_drafts on
+  // finish, so "we were watching a draft and now it's gone" = the session
+  // ended. lastDraftRef snapshots what we knew; endedInfo drives the
+  // "Workout completed" card (stats come from the workout_sessions row the
+  // completion wrote, when readable).
+  const lastDraftRef = useRef(null);
+  const [endedInfo, setEndedInfo] = useState(null);
+
+  // Set-entry editor (cue 'set_log', migration 0549) — which row is being
+  // edited + its inputs, and optimistic values shown until the member's
+  // draft echoes the confirmed log back.
+  const [editIdx, setEditIdx] = useState(null);
+  const [editW, setEditW] = useState('');
+  const [editR, setEditR] = useState('');
+  const [pendingLogs, setPendingLogs] = useState({}); // `${exerciseId}:${setIdx}` → { w, r }
 
   // Hide bottom nav while live session is active
   useEffect(() => {
@@ -85,15 +104,22 @@ export default function TrainerLiveSession() {
         .maybeSingle();
       setClient(clientProfile);
 
+      // ≤6h freshness window (same as TrainerClientDetail's live pill) — a
+      // 3-day-old abandoned draft used to render as a "live" session with an
+      // absurd running timer.
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
       const { data: draftRow } = await supabase
         .from('session_drafts')
         .select('routine_id, routine_name, exercises, logged_sets, current_exercise_index, elapsed_time, started_at, is_paused, updated_at')
         .eq('profile_id', sessionId)
+        .gte('updated_at', sixHoursAgo)
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (draftRow?.routine_id) {
+        lastDraftRef.current = draftRow;
+        setEndedInfo(null);
         setDraft(draftRow);
         const { data: r } = await supabase
           .from('routines')
@@ -111,6 +137,37 @@ export default function TrainerLiveSession() {
         }
         setRoutine(r);
       } else {
+        // Draft gone while we were watching one → the client just finished
+        // (or discarded). Check for the completed workout_sessions row the
+        // finish wrote: found → real stats; not found → neutral "ended".
+        const prev = lastDraftRef.current;
+        if (prev) {
+          lastDraftRef.current = null;
+          const sinceIso = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+          const { data: done } = await supabase
+            .from('workout_sessions')
+            .select('id, name, status, duration_seconds, total_volume_lbs, started_at')
+            .eq('profile_id', sessionId)
+            .gte('started_at', sinceIso)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (done?.status === 'completed') {
+            setEndedInfo({
+              completed: true,
+              name: done.name || prev.routine_name || null,
+              durationSec: done.duration_seconds || prev.elapsed_time || 0,
+              volumeLbs: done.total_volume_lbs || 0,
+            });
+          } else {
+            setEndedInfo({
+              completed: false,
+              name: prev.routine_name || null,
+              durationSec: prev.elapsed_time || 0,
+              volumeLbs: null,
+            });
+          }
+        }
         setDraft(null);
         setRoutine(null);
       }
@@ -132,16 +189,43 @@ export default function TrainerLiveSession() {
   // loadSession clears `draft` and the "no active session" empty state shows.
   useEffect(() => {
     if (!sessionId) return undefined;
+    let reloadDebounce = null;
+    const queueReload = () => {
+      if (reloadDebounce) clearTimeout(reloadDebounce);
+      reloadDebounce = setTimeout(() => { loadSession(); }, 250);
+    };
     const channel = supabase
       .channel(`trainer-live-${sessionId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'session_drafts', filter: `profile_id=eq.${sessionId}` },
-        () => { loadSession(); }
+        // UNFILTERED on purpose: DELETE payloads only carry the PK, so a
+        // profile_id server filter can never match them — the watched
+        // draft's deletion (= workout finished) used to surface only via
+        // the 30s poll. INSERT/UPDATE gate on profile_id client-side;
+        // any DELETE just triggers a cheap debounced reload.
+        { event: '*', schema: 'public', table: 'session_drafts' },
+        (payload) => {
+          if (payload?.eventType !== 'DELETE' && payload?.new?.profile_id !== sessionId) return;
+          queueReload();
+        }
+      )
+      // Cue acknowledgements: the member's ActiveSession flips
+      // session_cues.acknowledged when a cue lands (columns + ack policy from
+      // 0357 — written since then, never read back here until now). Trainer
+      // RLS only exposes cues they sent, so this just mirrors our own cues.
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'session_cues', filter: `client_id=eq.${sessionId}` },
+        (payload) => {
+          const row = payload?.new;
+          if (!row?.id || !row.acknowledged) return;
+          setSentCues(prev => prev.map(c => (c.id === row.id ? { ...c, acknowledged: true } : c)));
+        }
       )
       .subscribe();
     const poll = setInterval(() => { loadSession(); }, 30_000);
     return () => {
+      if (reloadDebounce) clearTimeout(reloadDebounce);
       supabase.removeChannel(channel);
       clearInterval(poll);
     };
@@ -187,6 +271,10 @@ export default function TrainerLiveSession() {
   const currentEx = exercises[currentExIdx] || null;
   const currentExName = currentEx?.exercises?.name_es || currentEx?.exercises?.name || '—';
 
+  // Close the set editor whenever the displayed exercise changes (the member
+  // moved on — a half-typed entry would target the wrong exercise).
+  useEffect(() => { setEditIdx(null); }, [currentExIdx, draft?.routine_id]);
+
   // Sets-completed counts
   const totalTargetSets = exercises.reduce((sum, ex) => sum + (ex.target_sets || 0), 0);
   const loggedSetsObj = draft?.logged_sets || {};
@@ -201,14 +289,20 @@ export default function TrainerLiveSession() {
     ? loggedSetsObj[currentEx.exercise_id]
     : [];
   const targetSetsForCurrent = currentEx?.target_sets || 0;
+  const fmtVal = (v) => (v == null || v === '' ? '—' : v);
   const setRows = Array.from({ length: targetSetsForCurrent }, (_, i) => {
     const logged = currentSets[i];
+    const done = !!(logged?.completed && !logged?.skipped);
+    // While a sent log hasn't echoed back through the member's draft yet,
+    // show the trainer's own numbers (dashed ring marks them unconfirmed).
+    const pend = !done ? pendingLogs[`${currentEx?.exercise_id}:${i}`] : null;
     return {
       n: i + 1,
-      w: logged?.weight ?? '—',
-      r: logged?.reps ?? '—',
+      w: fmtVal(pend ? pend.w : logged?.weight),
+      r: fmtVal(pend ? pend.r : logged?.reps),
       rpe: logged?.rpe ?? '—',
-      done: !!(logged?.completed && !logged?.skipped),
+      done,
+      pending: !!pend,
       current: !logged?.completed && (i === 0 || currentSets[i - 1]?.completed),
     };
   });
@@ -245,11 +339,14 @@ export default function TrainerLiveSession() {
 
   // ── Coach toolbar handlers — fire trainer_send_cue RPC ────────────────
   const [sending, setSending] = useState(false);
+  // Cues sent this visit ({ id, label, acknowledged }) — the realtime
+  // subscription above flips `acknowledged` when the client sees the cue.
+  const [sentCues, setSentCues] = useState([]);
   const sendCue = async (cueType, payload, label) => {
-    if (!sessionId || sending) return;
+    if (!sessionId || sending) return false;
     setSending(true);
     try {
-      const { error } = await supabase.rpc('trainer_send_cue', {
+      const { data: cueId, error } = await supabase.rpc('trainer_send_cue', {
         p_client_id: sessionId,
         p_cue_type:  cueType,
         p_payload:   payload || null,
@@ -257,9 +354,13 @@ export default function TrainerLiveSession() {
       if (error) {
         logger.error('trainer_send_cue failed', error);
         showToast(t('trainerLive.cueFailed', 'Could not send cue'), 'error');
-      } else {
-        showToast(t('trainerLive.cueSent', 'Cue sent to client') + ` · ${label}`, 'success');
+        return false;
       }
+      showToast(t('trainerLive.cueSent', 'Cue sent to client') + ` · ${label}`, 'success');
+      if (cueId) {
+        setSentCues(prev => [...prev.slice(-3), { id: cueId, label, acknowledged: false }]);
+      }
+      return true;
     } finally {
       setSending(false);
     }
@@ -269,6 +370,51 @@ export default function TrainerLiveSession() {
     const text = window.prompt(t('trainerLive.notePrompt', 'Note for client:'));
     if (!text || !text.trim()) return;
     await sendCue('note', { text: text.trim() }, text.trim().slice(0, 24));
+  };
+
+  // ── Set entry: trainer types weight/reps for a set (0549) ────────────────
+  const startEdit = (i) => {
+    if (!currentEx || sending) return;
+    const logged = currentSets[i];
+    const pend = pendingLogs[`${currentEx.exercise_id}:${i}`];
+    // Prefill: a pending/typed value wins; else the member's own numbers
+    // (ActiveSession prefills from history); else last logged weight + target reps.
+    let w = pend?.w ?? logged?.weight ?? '';
+    let r = pend?.r ?? logged?.reps ?? '';
+    if (!w || w === '—') {
+      for (let k = i - 1; k >= 0; k--) {
+        const prevW = pendingLogs[`${currentEx.exercise_id}:${k}`]?.w ?? currentSets[k]?.weight;
+        if (prevW && prevW !== '—') { w = prevW; break; }
+      }
+    }
+    if (!r || r === '—') {
+      const targetReps = parseInt(currentEx.target_reps, 10);
+      r = Number.isFinite(targetReps) && targetReps > 0 ? String(targetReps) : '';
+    }
+    setEditW(w === '—' ? '' : String(w));
+    setEditR(r === '—' ? '' : String(r));
+    setEditIdx(i);
+  };
+
+  const handleSendSet = async () => {
+    if (editIdx == null || !currentEx || sending) return;
+    const weight = editW.trim().slice(0, 8);
+    const reps = editR.trim().slice(0, 5);
+    if (!(parseInt(reps, 10) > 0)) {
+      showToast(t('trainerLive.needReps', 'Enter the reps first'), 'error');
+      return;
+    }
+    const idx = editIdx;
+    const label = `S${idx + 1} · ${weight || '—'}×${reps}`;
+    const ok = await sendCue('set_log', {
+      exercise_id: currentEx.exercise_id,
+      set_index:   idx,
+      weight,
+      reps,
+    }, label);
+    if (!ok) return;
+    setPendingLogs(prev => ({ ...prev, [`${currentEx.exercise_id}:${idx}`]: { w: weight, r: reps } }));
+    setEditIdx(null);
   };
 
   const clientName = client?.full_name || client?.username || t('trainerMessages.list.clientFallback', 'Client');
@@ -350,8 +496,73 @@ export default function TrainerLiveSession() {
           {t('trainerLive.eyebrow', 'Trainer view · live')}
         </div>
 
-        {/* Empty state — no draft */}
-        {!loading && !draft && (
+        {/* Session ended — the draft we were watching disappeared */}
+        {!loading && !draft && endedInfo && (
+          <div style={{
+            marginTop: 30, padding: '28px 18px',
+            background: 'rgba(255,255,255,0.03)', borderRadius: 18,
+            border: '1px solid rgba(39,176,160,0.25)',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 999, margin: '0 auto',
+              background: 'rgba(39,176,160,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Check size={26} color="#27B0A0" strokeWidth={2.6} />
+            </div>
+            <div style={{
+              fontFamily: TFont.display, fontSize: 22, fontWeight: 800,
+              color: '#fff', letterSpacing: -0.6, lineHeight: 1.1, marginTop: 14,
+            }}>
+              {endedInfo.completed
+                ? t('trainerLive.endedTitle', 'Workout completed!')
+                : t('trainerLive.endedNeutralTitle', 'Session ended')}
+            </div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginTop: 8, lineHeight: 1.5 }}>
+              {endedInfo.completed
+                ? t('trainerLive.endedDesc', '{{name}} finished this session.', { name: clientName })
+                : t('trainerLive.endedNeutralDesc', "There's no active workout anymore.")}
+              {endedInfo.name ? ` · ${endedInfo.name}` : ''}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 22, marginTop: 16 }}>
+              <div>
+                <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: 'rgba(243,240,233,0.45)' }}>
+                  {t('trainerLive.endedDuration', 'Duration')}
+                </div>
+                <div style={{ fontFamily: TFont.mono, fontSize: 17, fontWeight: 700, color: '#F3F0E9', marginTop: 3 }}>
+                  {formatElapsed(endedInfo.durationSec)}
+                </div>
+              </div>
+              {endedInfo.volumeLbs != null && (
+                <div>
+                  <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: 'rgba(243,240,233,0.45)' }}>
+                    {t('trainerLive.endedVolume', 'Volume')}
+                  </div>
+                  <div style={{ fontFamily: TFont.mono, fontSize: 17, fontWeight: 700, color: '#F3F0E9', marginTop: 3 }}>
+                    {endedInfo.volumeLbs >= 1000 ? `${(endedInfo.volumeLbs / 1000).toFixed(1)}k` : (endedInfo.volumeLbs || 0)} lb
+                  </div>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(`/trainer/clients/${sessionId}`)}
+              className="tt-btn"
+              style={{
+                marginTop: 20, width: '100%', height: 48, borderRadius: 14,
+                background: 'linear-gradient(180deg,#2EC9B7,#178C7E)',
+                color: '#06363B', fontSize: 14, fontWeight: 800,
+                border: 'none', cursor: 'pointer',
+              }}
+            >
+              {t('trainerLive.viewClient', 'View client')}
+            </button>
+          </div>
+        )}
+
+        {/* Empty state — no draft, none watched this visit */}
+        {!loading && !draft && !endedInfo && (
           <div style={{
             marginTop: 30, padding: '24px 18px',
             background: 'rgba(255,255,255,0.03)', borderRadius: 18,
@@ -502,48 +713,113 @@ export default function TrainerLiveSession() {
                 <span />
               </div>
 
-              {/* Set rows */}
-              {setRows.map((set) => (
-                <div key={set.n} style={{
-                  display: 'grid', gridTemplateColumns: '34px 1fr 1fr 1fr 44px',
-                  gap: 8, padding: '10px 16px', alignItems: 'center',
-                  background: set.current ? 'rgba(39,176,160,0.10)' : 'transparent',
-                  borderTop: '1px solid rgba(255,255,255,0.05)',
-                }}>
+              {/* Set rows — tap a row to type weight/reps for the client (0549) */}
+              {setRows.map((set) => {
+                const i = set.n - 1;
+                const isEditing = editIdx === i;
+                const cellInput = (value, onChange, mode, label) => (
+                  <input
+                    value={value}
+                    onChange={(e) => onChange(e.target.value.slice(0, mode === 'decimal' ? 7 : 4))}
+                    onClick={(e) => e.stopPropagation()}
+                    inputMode={mode}
+                    type="text"
+                    autoFocus={mode === 'decimal'}
+                    enterKeyHint="done"
+                    aria-label={label}
+                    placeholder="—"
+                    style={{
+                      width: '100%', height: 34, borderRadius: 9, border: 'none', outline: 'none',
+                      background: 'rgba(255,255,255,0.12)', boxShadow: 'inset 0 0 0 1.5px #27B0A0',
+                      textAlign: 'center', fontFamily: TFont.mono, fontWeight: 700, fontSize: 14,
+                      color: '#fff', minWidth: 0,
+                    }}
+                  />
+                );
+                return (
+                <div
+                  key={set.n}
+                  onClick={() => (isEditing ? setEditIdx(null) : startEdit(i))}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '34px 1fr 1fr 1fr 44px',
+                    gap: 8, padding: '10px 16px', alignItems: 'center',
+                    background: isEditing ? 'rgba(39,176,160,0.16)' : set.current ? 'rgba(39,176,160,0.10)' : 'transparent',
+                    borderTop: '1px solid rgba(255,255,255,0.05)',
+                    cursor: 'pointer',
+                  }}
+                >
                   <span style={{
                     fontFamily: TFont.display, fontWeight: 800, fontSize: 15,
-                    color: set.current ? '#27B0A0' : '#F3F0E9',
+                    color: set.current || isEditing ? '#27B0A0' : '#F3F0E9',
                   }}>{set.n}</span>
                   <span style={{
                     fontSize: 12.5, fontFamily: TFont.mono,
                     color: 'rgba(243,240,233,0.45)',
                   }}>{set.rpe}</span>
-                  <div style={{
-                    height: 34, borderRadius: 9,
-                    background: set.done ? 'transparent' : 'rgba(255,255,255,0.07)',
-                    boxShadow: set.current ? 'inset 0 0 0 1.5px #27B0A0' : 'none',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontFamily: TFont.mono, fontWeight: 700, fontSize: 14, color: '#F3F0E9',
-                  }}>{set.w}</div>
-                  <div style={{
-                    height: 34, borderRadius: 9,
-                    background: set.done ? 'transparent' : 'rgba(255,255,255,0.07)',
-                    boxShadow: set.current ? 'inset 0 0 0 1.5px #27B0A0' : 'none',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontFamily: TFont.mono, fontWeight: 700, fontSize: 14,
-                    color: set.r !== '—' ? '#F3F0E9' : 'rgba(243,240,233,0.3)',
-                  }}>{set.r}</div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  {isEditing ? cellInput(editW, setEditW, 'decimal', t('trainerLive.weightShort', 'WT')) : (
                     <div style={{
-                      width: 30, height: 30, borderRadius: 9,
-                      background: set.done ? '#27B0A0' : 'rgba(255,255,255,0.07)',
+                      height: 34, borderRadius: 9,
+                      background: set.done ? 'transparent' : 'rgba(255,255,255,0.07)',
+                      boxShadow: set.pending
+                        ? 'inset 0 0 0 1.5px rgba(39,176,160,0.55)'
+                        : set.current ? 'inset 0 0 0 1.5px #27B0A0' : 'none',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Check size={16} color={set.done ? '#06363B' : 'rgba(243,240,233,0.4)'} strokeWidth={3} />
-                    </div>
+                      fontFamily: TFont.mono, fontWeight: 700, fontSize: 14,
+                      color: set.pending ? 'rgba(243,240,233,0.75)' : '#F3F0E9',
+                    }}>{set.w}</div>
+                  )}
+                  {isEditing ? cellInput(editR, setEditR, 'numeric', t('trainerLive.repsShort', 'Reps')) : (
+                    <div style={{
+                      height: 34, borderRadius: 9,
+                      background: set.done ? 'transparent' : 'rgba(255,255,255,0.07)',
+                      boxShadow: set.pending
+                        ? 'inset 0 0 0 1.5px rgba(39,176,160,0.55)'
+                        : set.current ? 'inset 0 0 0 1.5px #27B0A0' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: TFont.mono, fontWeight: 700, fontSize: 14,
+                      color: set.pending ? 'rgba(243,240,233,0.75)' : set.r !== '—' ? '#F3F0E9' : 'rgba(243,240,233,0.3)',
+                    }}>{set.r}</div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    {isEditing ? (
+                      <button
+                        type="button"
+                        disabled={sending}
+                        onClick={(e) => { e.stopPropagation(); handleSendSet(); }}
+                        aria-label={t('trainerLive.sendSet', 'Send set {{n}}', { n: set.n })}
+                        className="tt-tap"
+                        style={{
+                          width: 30, height: 30, borderRadius: 9, border: 'none',
+                          background: '#27B0A0', cursor: sending ? 'wait' : 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          opacity: sending ? 0.6 : 1,
+                        }}
+                      >
+                        <Check size={16} color="#06363B" strokeWidth={3} />
+                      </button>
+                    ) : (
+                      <div style={{
+                        width: 30, height: 30, borderRadius: 9,
+                        background: set.done ? '#27B0A0' : 'rgba(255,255,255,0.07)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        opacity: set.pending ? 0.75 : 1,
+                      }}>
+                        {set.pending ? (
+                          <span style={{ fontSize: 12, color: 'rgba(243,240,233,0.7)', fontWeight: 800 }}>…</span>
+                        ) : (
+                          <Check size={16} color={set.done ? '#06363B' : 'rgba(243,240,233,0.4)'} strokeWidth={3} />
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
+
+              {/* Tap-to-edit hint */}
+              <div style={{ padding: '7px 16px 0', fontSize: 10.5, color: 'rgba(243,240,233,0.45)' }}>
+                {t('trainerLive.tapToEdit', 'Tap any set to log weight & reps for your client')}
+              </div>
 
               {/* Coach toolbar (inset, padded inside the card) */}
               <div style={{ padding: '0 16px 16px' }}>
@@ -600,30 +876,63 @@ export default function TrainerLiveSession() {
                       </button>
                     ))}
                   </div>
+
+                  {/* Sent cues + seen state (session_cues.acknowledged) */}
+                  {sentCues.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                      {sentCues.map((c) => (
+                        <span
+                          key={c.id}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            padding: '4px 9px', borderRadius: 999,
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.10)',
+                            fontSize: 10.5, fontWeight: 700,
+                            color: 'rgba(243,240,233,0.65)',
+                          }}
+                        >
+                          {c.label}
+                          {c.acknowledged ? (
+                            <span style={{ color: '#27B0A0', fontWeight: 800 }}>
+                              ✓ {t('trainerLive.cueSeen', 'Seen')}
+                            </span>
+                          ) : (
+                            <span style={{ opacity: 0.45 }}>…</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Footer actions — primary log (spectator-disabled, v2 RPC) + note quick-action */}
+            {/* Footer actions — log/send the selected set (0549) + note quick-action */}
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
               <button
                 type="button"
-                disabled
-                aria-disabled="true"
-                onClick={() => showToast(t('trainerLive.spectatorMode', 'Spectator mode'), 'info')}
-                title={t('trainerLive.comingSoon', 'Coming soon')}
+                disabled={sending}
+                onClick={() => {
+                  if (editIdx != null) handleSendSet();
+                  else startEdit(currentSetIdx >= 0 ? currentSetIdx : Math.max(0, setRows.length - 1));
+                }}
                 className="tt-btn"
                 style={{
                   flex: 1, height: 52, borderRadius: 14,
                   background: 'linear-gradient(180deg,#2EC9B7,#178C7E)',
                   color: '#06363B', fontSize: 15,
                   boxShadow: '0 8px 18px -6px rgba(10,90,82,0.6), inset 0 1px 0 rgba(255,255,255,0.3)',
+                  cursor: sending ? 'wait' : 'pointer',
+                  opacity: sending ? 0.6 : 1,
                 }}
                 aria-label={t('trainerLive.logSet', 'Log set {{n}}', { n: currentSetN })}
               >
                 <Check size={18} color="#06363B" strokeWidth={2.6} />
-                {currentEx.rest_seconds
-                  ? t('trainerLive.logSetRest', 'Log set · rest {{rest}}', { rest: formatElapsed(currentEx.rest_seconds) })
+                {editIdx != null
+                  ? (setRows[editIdx]?.done
+                    ? t('trainerLive.updateSet', 'Update set {{n}}', { n: editIdx + 1 })
+                    : t('trainerLive.sendSet', 'Send set {{n}}', { n: editIdx + 1 }))
                   : t('trainerLive.logSet', 'Log set {{n}}', { n: currentSetN })}
               </button>
               <button

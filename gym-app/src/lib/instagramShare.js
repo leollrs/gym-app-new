@@ -31,9 +31,13 @@ async function blobToBase64DataUrl(blob) {
 }
 
 // `isAvailable` answers: "can we even attempt the deep link on this device?".
-// Web + Android fall straight back to the native share sheet via shareBlob().
+// iOS + Android both have a native deep-link plugin; web falls straight back
+// to the native share sheet via shareBlob().
 export async function isInstagramStoriesAvailable() {
-  if (Capacitor.getPlatform() !== 'ios') return false;
+  // Native deep link is implemented for iOS (UIPasteboard) AND Android
+  // (ADD_TO_STORY intent). Web has no native plugin → fall back to shareBlob.
+  const platform = Capacitor.getPlatform();
+  if (platform !== 'ios' && platform !== 'android') return false;
   try {
     const res = await InstagramSharePlugin.isInstagramInstalled();
     return !!res?.installed;
@@ -63,7 +67,8 @@ export async function shareToInstagramStory({
   backgroundBottomColor,
   contentURL,
 } = {}) {
-  if (Capacitor.getPlatform() !== 'ios') return { ok: false, reason: 'not-ios' };
+  const platform = Capacitor.getPlatform();
+  if (platform !== 'ios' && platform !== 'android') return { ok: false, reason: 'unsupported-platform' };
   if (!backgroundBlob && !stickerBlob) return { ok: false, reason: 'no-image' };
 
   try {

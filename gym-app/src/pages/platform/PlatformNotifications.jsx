@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
 import {
-  Bell, AlertTriangle, Bug, Megaphone, Server, CheckCheck, X, Inbox,
+  Bell, AlertTriangle, Bug, Megaphone, Server, CheckCheck, X, Inbox, MessageSquare, Trash2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { useNotifications, useInvalidate } from '../../hooks/useSupabaseQuery';
 import logger from '../../lib/logger';
 import { sanitize } from '../../lib/sanitize';
@@ -22,24 +23,32 @@ const TYPE_META = {
   system:       { icon: Server,        color: '#9CA3AF' },
   announcement: { icon: Megaphone,     color: '#D4AF37' },
   daily_digest: { icon: Bug,           color: '#D4AF37' },
+  // Gym-ops notices (morning queue, card deliveries, NPS/moderation pings)
+  // land here with type admin_message — was falling to the generic bell.
+  admin_message: { icon: MessageSquare, color: '#6366F1' },
 };
 const metaFor = (type) => TYPE_META[type] || { icon: Bell, color: '#9CA3AF' };
 
 export default function PlatformNotifications() {
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
-  const { user, refreshAdminNotifications } = useAuth();
+  const { user, refreshAdminNotifications, activeView, switchView } = useAuth();
+  const { showToast } = useToast();
   const { data: queryItems, isLoading } = useNotifications(user?.id, 'admin');
   const { invalidateNotifications } = useInvalidate();
 
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(0);
   const [marking, setMarking] = useState(false);
+  const [dismissingRead, setDismissingRead] = useState(false);
 
   useEffect(() => { document.title = `${t('platform.notifications.title', 'Alerts')} | TuGymPR`; }, [t]);
   useEffect(() => { if (queryItems) setItems(queryItems); }, [queryItems]);
 
   // Live-append new alerts targeted at this super admin.
+  // NOTE: intentionally a second channel on notifications — AuthContext's
+  // 'unread-notif-badge' channel only refreshes the badge COUNT; this one
+  // feeds the page list. Separate lifecycles, harmless duplication.
   useEffect(() => {
     if (!user?.id) return;
     const ch = supabase
@@ -60,6 +69,7 @@ export default function PlatformNotifications() {
   }, [user?.id]);
 
   const unreadCount = items.filter(n => !n.read_at).length;
+  const readCount = items.length - unreadCount;
 
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -122,10 +132,56 @@ export default function PlatformNotifications() {
     afterMutation();
   }, [items, afterMutation]);
 
-  const handleTap = (n) => {
+  // "Descartar leídas" — bulk-dismiss everything already read. Optimistic
+  // (read rows vanish immediately) with snapshot rollback, mirroring the
+  // per-row dismiss incl. its delete fallback for a missing dismissed_at.
+  const dismissRead = useCallback(async () => {
+    if (!user?.id) return;
+    const snapshot = items;
+    const readIds = items.filter(n => n.read_at).map(n => n.id);
+    if (readIds.length === 0) return;
+    setDismissingRead(true);
+    setItems(prev => prev.filter(n => !n.read_at));
+    let { error } = await supabase
+      .from('notifications')
+      .update({ dismissed_at: new Date().toISOString() })
+      .eq('profile_id', user.id)
+      .in('audience', ['admin', 'super_admin'])
+      .not('read_at', 'is', null)
+      .is('dismissed_at', null);
+    if (error && /dismissed_at/i.test(error.message || '')) {
+      ({ error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('profile_id', user.id)
+        .in('audience', ['admin', 'super_admin'])
+        .not('read_at', 'is', null));
+    }
+    if (error) {
+      logger.error('PlatformNotifications: dismissRead failed:', error);
+      setItems(snapshot);
+      showToast(t('platform.notifications.dismissReadFailed', 'Could not dismiss read alerts'), 'error');
+    }
+    afterMutation();
+    setDismissingRead(false);
+  }, [user?.id, items, afterMutation, showToast, t]);
+
+  const handleTap = async (n) => {
     if (!n.read_at) markRead(n.id);
     const route = n.data?.route;
-    if (route) navigate(route);
+    if (!route) return;
+    // Admin deep links (NPS, moderation, cards…) can't render inside the
+    // platform tier: /admin/* guards bounce a super_admin view back to
+    // /platform/attention. Flip the active view first — switchView is async
+    // (re-verifies roles server-side) and returns false on rejection.
+    if (route.startsWith('/admin') && activeView === 'super_admin') {
+      const ok = await switchView('admin');
+      if (!ok) {
+        showToast(t('platform.notifications.switchFailed', 'Could not open the admin view. Try again.'), 'error');
+        return;
+      }
+    }
+    navigate(route);
   };
 
   return (
@@ -137,21 +193,34 @@ export default function PlatformNotifications() {
             {t('platform.notifications.title', 'Alerts')}
           </h1>
           <p className="text-[13px] text-[#6B7280] mt-1">
-            {t('platform.notifications.subtitle', 'App crashes and platform alerts.')}
+            {t('platform.notifications.subtitle', 'Crashes, platform alerts and notices from your gym.')}
           </p>
         </div>
-        {unreadCount > 0 && (
-          <button
-            type="button"
-            onClick={markAllRead}
-            disabled={marking}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors disabled:opacity-50"
-            style={{ background: '#D4AF37', color: '#000' }}
-          >
-            <CheckCheck size={13} />
-            {t('platform.notifications.markAllRead', 'Mark all read')}
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {readCount > 0 && (
+            <button
+              type="button"
+              onClick={dismissRead}
+              disabled={dismissingRead}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold whitespace-nowrap border border-white/10 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/[0.04] transition-colors disabled:opacity-50"
+            >
+              <Trash2 size={13} />
+              {t('platform.notifications.dismissRead', 'Dismiss read')}
+            </button>
+          )}
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={markAllRead}
+              disabled={marking}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold whitespace-nowrap transition-colors disabled:opacity-50"
+              style={{ background: '#D4AF37', color: '#000' }}
+            >
+              <CheckCheck size={13} />
+              {t('platform.notifications.markAllRead', 'Mark all read')}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* List */}

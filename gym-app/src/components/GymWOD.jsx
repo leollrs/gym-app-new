@@ -47,7 +47,10 @@ function GymWOD() {
 
   // ── Load or generate today's WOD ──────────────────────────────────────────
   useEffect(() => {
-    if (!gymId) return;
+    // Clear the spinner for a gym-less member — this card renders
+    // unconditionally on the Dashboard, so a bare `return` left it spinning
+    // forever (loading inits true).
+    if (!gymId) { setLoading(false); return; }
     let cancelled = false;
 
     const loadWOD = async () => {
@@ -169,24 +172,41 @@ function GymWOD() {
     } catch {}
   }, []);
 
-  // Check if user already completed a WOD today
+  // Check whether the user has a completed WOD session today. Re-runnable and
+  // TWO-WAY: it must set wodCompleted back to FALSE when none is found, not
+  // just latch to true — otherwise deleting today's WOD (which soft-deletes
+  // the session) leaves the card stuck on "Completed today". Re-checks on a
+  // workout-changed event (same-screen delete/restore on the Dashboard) and
+  // on app foreground, since the card stays mounted across those.
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    supabase
-      .from('workout_sessions')
-      .select('id, name')
-      .eq('profile_id', user.id)
-      .eq('status', 'completed')
-      .like('name', 'WOD:%')
-      .gte('completed_at', todayStart.toISOString())
-      .limit(1)
-      .then(({ data }) => {
-        if (!cancelled && data?.length > 0) setWodCompleted(true);
-      });
-    return () => { cancelled = true; };
+    const check = () => {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      supabase
+        .from('workout_sessions')
+        .select('id')
+        .eq('profile_id', user.id)
+        .eq('status', 'completed')
+        .like('name', 'WOD:%')
+        .gte('completed_at', todayStart.toISOString())
+        .limit(1)
+        .then(({ data, error }) => {
+          if (cancelled || error) return; // keep prior state on transient error
+          setWodCompleted((data?.length ?? 0) > 0);
+        });
+    };
+    check();
+    const onChange = () => check();
+    const onVis = () => { if (document.visibilityState === 'visible') check(); };
+    window.addEventListener('tugympr:workouts-changed', onChange);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('tugympr:workouts-changed', onChange);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [user?.id]);
 
   // Check if user has a scheduled workout today

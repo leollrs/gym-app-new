@@ -78,9 +78,13 @@ export default function AdminTour() {
   const { t } = useTranslation('pages');
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile } = useAuth();
+  const { profile, gymConfig } = useAuth();
   const gymId = profile?.gym_id;
   const pid = profile?.id;
+  // AdminOnboardingWizard (gyms.setup_completed=false) renders at z-[100];
+  // the tour overlay (z-[200]) would bury it. Only explicit `false` blocks —
+  // undefined means an older gym with no setup flow (treated as complete).
+  const setupPending = gymConfig?.setupCompleted === false;
 
   const [active, setActive] = useState(false);
   const [step, setStep] = useState(0);
@@ -89,8 +93,11 @@ export default function AdminTour() {
   const timerRef = useRef(null);
 
   // ── First-run auto-show (only when landing on the overview) ──
+  // Waits for the setup wizard: while gyms.setup_completed === false the
+  // wizard owns the screen, so the auto-start bails and this effect re-runs
+  // (setupPending in deps) to fire on the /admin visit after setup completes.
   useEffect(() => {
-    if (!gymId || !pid) return;
+    if (!gymId || !pid || setupPending) return;
     let done = false;
     try { done = localStorage.getItem(flagKey(gymId, pid)) === '1'; } catch { /* ignore */ }
     if (done) return;
@@ -101,7 +108,7 @@ export default function AdminTour() {
       }
     }, 1200);
     return () => clearTimeout(id);
-  }, [gymId, pid]);
+  }, [gymId, pid, setupPending]);
 
   // ── Manual launch (Admin Profile button) ──
   useEffect(() => {

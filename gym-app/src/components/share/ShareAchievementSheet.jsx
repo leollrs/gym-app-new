@@ -298,13 +298,13 @@ function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl }) {
         }}
       >
         <div style={{ fontSize: 12, fontWeight: 800, color: '#0A0D10' }}>
-          {user ? `@${user}` : 'TuGymPR'}
+          {user ? `@${user}` : (gym?.name || 'TuGymPR')}
         </div>
         {gym ? (
           <GymLockup gym={gym} logoUrl={gymLogoUrl} size="sm" tone="dark" />
         ) : (
           <div style={{ fontFamily: TuFont.display, fontSize: 13, fontWeight: 800, color: '#0A0D10', letterSpacing: -0.3 }}>
-            TuGymPR
+            {gym?.name || 'TuGymPR'}
           </div>
         )}
       </div>
@@ -360,7 +360,7 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
       try {
         const blob = await buildCard();
         const link = `${PROD_WEB_URL}/share/achievement/${achievement.key || ''}`;
-        const text = `${achievement.label} — TuGymPR`;
+        const text = `${achievement.label} — ${gym?.name || 'TuGymPR'}`;
         const full = `${text}\n${link}`;
 
         if (dest === 'link') {
@@ -404,7 +404,7 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
             await shareBlob(blob, 'tugympr-achievement.png', full);
           } else {
             try {
-              await Share.share({ title: 'TuGymPR', text: full, url: link });
+              await Share.share({ title: gym?.name || 'TuGymPR', text: full, url: link });
             } catch {}
           }
         }
@@ -575,7 +575,7 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
             <Dest active={activeDest === 'im'} onClick={() => setActiveDest('im')} label="Messages" color="#34C759">
               <MsgIcon />
             </Dest>
-            <Dest active={activeDest === 'tu'} onClick={() => setActiveDest('tu')} label="TuGymPR" color="var(--color-accent)">
+            <Dest active={activeDest === 'tu'} onClick={() => setActiveDest('tu')} label={gym?.name || 'TuGymPR'} color="var(--color-accent)">
               <TuShareIcon />
             </Dest>
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('sessionSummary.share.save', 'Save')} color="#5A6570" light>

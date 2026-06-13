@@ -170,6 +170,12 @@ const composeFullName = (f) =>
     .filter(Boolean)
     .join(' ');
 
+// gyms_public only exposes registration_mode from migration 0551 on — treat
+// a missing column as "not enforced yet" (same resilience pattern as
+// GymClosuresCard).
+const isMissingColumn = (err) =>
+  !!err && (err.code === '42703' || err.code === 'PGRST204' || /column .* does not exist/i.test(err.message || ''));
+
 // Today as YYYY-MM-DD for the date picker `max` attribute.
 const todayISO = () => {
   const d = new Date();
@@ -226,6 +232,11 @@ const Signup = () => {
   // QR Scanner state
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanError, setScanError] = useState('');
+
+  // registration_mode enforcement (invite-only gyms reject slug joins)
+  const [slugBlocked, setSlugBlocked] = useState(false);      // gymcode screen: typed slug hit an invite-only gym
+  const [slugChecking, setSlugChecking] = useState(false);    // gymcode Continue is resolving the gym
+  const [inviteRequiredNotice, setInviteRequiredNotice] = useState(''); // invite screen banner after a blocked ?gym= link
 
   const [form, setForm] = useState({
     firstName: '', middleName: '', lastName1: '', lastName2: '',
@@ -284,13 +295,32 @@ const Signup = () => {
     // gyms_public is a security-barrier view explicitly granted to anon
     // (see migration 0110). Querying the raw gyms table from a logged-out
     // signup page can 401 if a stale auth token is still in storage.
-    supabase
-      .from('gyms_public')
-      .select('id, name')
-      .eq('slug', inviteSlug.toLowerCase())
-      .single()
-      .then(({ data }) => { if (data) setGymName(data.name || 'your gym'); });
-  }, [inviteSlug]);
+    // registration_mode (exposed in 0551) gates open ?gym= links: an
+    // invite-only gym must not be joinable just by guessing its slug.
+    (async () => {
+      let { data, error } = await supabase
+        .from('gyms_public')
+        .select('id, name, registration_mode')
+        .eq('slug', inviteSlug.toLowerCase())
+        .single();
+      if (error && isMissingColumn(error)) {
+        // Pre-0551 schema — proceed exactly as before (no enforcement).
+        ({ data } = await supabase
+          .from('gyms_public')
+          .select('id, name')
+          .eq('slug', inviteSlug.toLowerCase())
+          .single());
+      }
+      if (!data) return;
+      setGymName(data.name || 'your gym');
+      if (data.registration_mode === 'invite_only') {
+        // Surface the invite-code entry instead of the open account form.
+        // A valid code later auto-advances back to 'account' (effect below).
+        setInviteRequiredNotice(t('signup.gymInviteOnly', 'This gym requires an invite code — ask your gym for yours.'));
+        setEntryMode('invite');
+      }
+    })();
+  }, [inviteSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-advance once invite validates
   useEffect(() => {
@@ -656,6 +686,15 @@ const Signup = () => {
       });
 
       if (inviteStatus === 'valid' && inviteCode && signUpResult?.user) {
+        // The auth user already exists at this point, so a failed claim must
+        // NOT block signup — but it must not be swallowed either: signUp
+        // pre-attached gym_id, so onboarding would skip its invite step and
+        // the invite would never burn (imported shells never merge). Persist
+        // the code so Onboarding step 0 re-surfaces prefilled and retries.
+        const codeToClaim = inviteCode.trim().toUpperCase();
+        const rememberPendingClaim = () => {
+          try { localStorage.setItem('tugympr_pending_invite_claim', codeToClaim); } catch { /* ignore */ }
+        };
         try {
           if (inviteData?._source === 'gym_invites') {
             // claim_imported_invite is a superset of claim_invite_code: it
@@ -663,19 +702,26 @@ const Signup = () => {
             // profile into the new auth profile) and falls back to the
             // legacy single-member-invite behavior when no shell exists.
             // Safe for all gym_invites codes, imported or admin-created.
-            const { error: claimErr } = await supabase.rpc('claim_imported_invite', {
-              p_code: inviteCode.trim().toUpperCase(),
+            const { data: claimRes, error: claimErr } = await supabase.rpc('claim_imported_invite', {
+              p_code: codeToClaim,
             });
-            if (claimErr) console.warn('claim_imported_invite error:', claimErr);
+            if (claimErr || claimRes?.success === false) {
+              console.warn('claim_imported_invite error:', claimErr || claimRes?.error);
+              rememberPendingClaim();
+            }
           } else {
             const { error: claimErr } = await supabase.rpc('claim_member_invite', {
-              p_invite_code: inviteCode.trim().toUpperCase(),
+              p_invite_code: codeToClaim,
               p_profile_id: signUpResult.user.id,
             });
-            if (claimErr) console.warn('claim_member_invite error:', claimErr);
+            if (claimErr) {
+              console.warn('claim_member_invite error:', claimErr);
+              rememberPendingClaim();
+            }
           }
         } catch (err) {
           console.warn('Invite claim failed:', err);
+          rememberPendingClaim();
         }
       }
 
@@ -893,7 +939,7 @@ const Signup = () => {
             <div className="flex items-center mb-6">
               <button
                 type="button"
-                onClick={() => { setEntryMode('welcome'); setInviteCode(''); setInviteStatus('idle'); setInviteData(null); }}
+                onClick={() => { setEntryMode('welcome'); setInviteCode(''); setInviteStatus('idle'); setInviteData(null); setInviteRequiredNotice(''); }}
                 aria-label={t('common:back')}
                 style={{
                   width: 40, height: 40, borderRadius: 999, background: OB.surface,
@@ -915,6 +961,20 @@ const Signup = () => {
             <p style={{ fontSize: 15, color: OB.sub, marginTop: 6, lineHeight: 1.4 }}>
               {t('signup.inviteSubtitle', 'Enter the code from your gym — or scan the QR on the wall at reception.')}
             </p>
+
+            {/* Invite-only gym reached via an open ?gym= link — explain why
+                the code is required before the account form opens. */}
+            {inviteRequiredNotice && (
+              <div style={{
+                marginTop: 16, display: 'flex', alignItems: 'center', gap: 10,
+                background: OB.tealSoft, borderRadius: 14, padding: '12px 14px',
+              }}>
+                <AlertCircle size={15} color={OB.tealDeep} />
+                <p style={{ fontSize: 13, color: OB.tealDeep, margin: 0, fontWeight: 600 }}>
+                  {gymName ? `${gymName}: ${inviteRequiredNotice}` : inviteRequiredNotice}
+                </p>
+              </div>
+            )}
 
             {scanError && (
               <div style={{
@@ -1080,22 +1140,66 @@ const Signup = () => {
               {errors.gymSlug && <p style={{ fontSize: 12, color: OB.orange, marginTop: 8 }}>{errors.gymSlug}</p>}
             </div>
 
-            <div style={{ marginTop: 26 }}>
+            <div style={{ marginTop: 26, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
                 type="button"
-                onClick={() => {
-                  if (!form.gymSlug.trim()) {
+                disabled={slugChecking}
+                onClick={async () => {
+                  const slug = form.gymSlug.trim().toLowerCase();
+                  if (!slug) {
                     setErrors({ gymSlug: t('common:required') });
                     return;
                   }
                   setErrors({});
+                  setSlugBlocked(false);
+                  // Enforce registration_mode (0551): invite-only gyms can't
+                  // be joined by slug. Resilient pre-migration: a missing
+                  // column (or any lookup hiccup) proceeds exactly as before.
+                  setSlugChecking(true);
+                  try {
+                    let { data, error } = await supabase
+                      .from('gyms_public')
+                      .select('id, name, registration_mode')
+                      .eq('slug', slug)
+                      .maybeSingle();
+                    if (error && isMissingColumn(error)) {
+                      ({ data } = await supabase
+                        .from('gyms_public')
+                        .select('id, name')
+                        .eq('slug', slug)
+                        .maybeSingle());
+                    }
+                    if (data?.name) setGymName(data.name);
+                    if (data?.registration_mode === 'invite_only') {
+                      setSlugBlocked(true);
+                      setErrors({ gymSlug: t('signup.gymInviteOnly', 'This gym requires an invite code — ask your gym for yours.') });
+                      return;
+                    }
+                  } catch { /* lookup failed — don't block, behave as today */ }
+                  finally {
+                    setSlugChecking(false);
+                  }
                   goAccount();
                 }}
-                style={primaryBtn(false)}
+                style={primaryBtn(slugChecking)}
               >
                 {t('common:continue', 'Continue')}
-                <ArrowRight size={18} />
+                {slugChecking ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
               </button>
+              {slugBlocked && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSlugBlocked(false);
+                    setErrors({});
+                    setEntryMode('invite');
+                  }}
+                  style={darkBtn(false)}
+                >
+                  <Ticket size={18} strokeWidth={2.2} />
+                  {t('haveGymCode', 'I Have a Gym Code')}
+                </button>
+              )}
             </div>
           </div>
         )}

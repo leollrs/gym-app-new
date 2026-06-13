@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { CheckCircle2, Circle, Bell, X, Pencil, MessageCircle } from 'lucide-react';
+import { CheckCircle2, Circle, Bell, X, Pencil, MessageCircle, Package, Plus, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -15,6 +15,31 @@ const localToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// Date-ONLY strings ('yyyy-MM-dd' — period_month / next_due_date from the RPC)
+// must be parsed as LOCAL dates. `new Date('2026-06-01')` parses as UTC
+// midnight, which is the previous day 8pm in PR — history rows rendered the
+// PREVIOUS month and next-due showed a day early. Timestamptz strings (paid_at)
+// carry zone info and fall through to normal Date parsing.
+const parseLocalDate = (v) => {
+  if (!v) return null;
+  if (typeof v === 'string') {
+    const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+// First-of-month options for "which month does this cover?" — current month
+// first, then up to 3 months back.
+const coverMonthOptions = () => {
+  const now = new Date();
+  return Array.from({ length: 4 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+};
+
 // Trainer-facing payment tracker (manual — no billing integration). Sets the
 // client's monthly fee (or a per-session rate that estimates the monthly),
 // marks a month paid on a chosen date, shows the next expected due date +
@@ -24,6 +49,8 @@ export default function TrainerClientPayment({ clientId }) {
   const { profile } = useAuth();
   const { showToast } = useToast();
   const [status, setStatus] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loadErr, setLoadErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [marking, setMarking] = useState(false);
   const [editingFee, setEditingFee] = useState(false);
@@ -31,24 +58,60 @@ export default function TrainerClientPayment({ clientId }) {
   const [method, setMethod] = useState('cash');
   const [note, setNote] = useState('');
   const [payDate, setPayDate] = useState(localToday);
+  const [coverMonth, setCoverMonth] = useState(() => coverMonthOptions()[0]);
   // fee editor
   const [feeAmount, setFeeAmount] = useState('');
   const [feeMethod, setFeeMethod] = useState('cash');
   const [feeDay, setFeeDay] = useState('');
   const [feeCps, setFeeCps] = useState('');
+  // session packs (table may not exist yet — migration 0534; hide silently)
+  const [packs, setPacks] = useState([]);
+  const [packsAvailable, setPacksAvailable] = useState(false);
+  const [sellingPack, setSellingPack] = useState(false);
+  const [packSessions, setPackSessions] = useState('10');
+  const [packAmount, setPackAmount] = useState('');
+  const [packNote, setPackNote] = useState('');
+  const [packBusy, setPackBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const { data, error } = await supabase.rpc('get_client_payment_status', { p_client_id: clientId });
       if (error) throw error;
       setStatus(data);
-    } catch (e) { logger.error(e); }
+      setLoadErr(false);
+    } catch (e) {
+      logger.error(e);
+      setLoadErr(true);
+    } finally { setLoaded(true); }
   }, [clientId]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadPacks = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('session_packs')
+      .select('id, sessions_total, sessions_used, amount, note, is_active, created_at')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      // 42P01 / PGRST205 = table not deployed yet → hide the block silently.
+      // Any other failure also hides it quietly (payment card must not break).
+      if (error.code !== '42P01' && error.code !== 'PGRST205') logger.error('session_packs load failed', error);
+      setPacksAvailable(false);
+      return;
+    }
+    setPacksAvailable(true);
+    setPacks(data || []);
+  }, [clientId]);
 
-  const fmtDate = (d) => d ? new Date(d).toLocaleDateString(i18n.language === 'es' ? 'es' : 'en', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
-  const fmtMonth = (d) => d ? new Date(d).toLocaleDateString(i18n.language === 'es' ? 'es' : 'en', { month: 'short', year: 'numeric' }) : '';
+  useEffect(() => { load(); loadPacks(); }, [load, loadPacks]);
+
+  const fmtDate = (d) => {
+    const dt = parseLocalDate(d);
+    return dt ? dt.toLocaleDateString(i18n.language === 'es' ? 'es' : 'en', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+  };
+  const fmtMonth = (d) => {
+    const dt = parseLocalDate(d);
+    return dt ? dt.toLocaleDateString(i18n.language === 'es' ? 'es' : 'en', { month: 'short', year: 'numeric' }) : '';
+  };
   const methodLabel = (key) => METHODS.includes(key) ? t(`trainerPayment.method.${key}`, METHOD_DEFAULT[key]) : null;
 
   const run = async (fn, okMsg) => {
@@ -89,6 +152,7 @@ export default function TrainerClientPayment({ clientId }) {
     setMethod(status?.payment_method && METHODS.includes(status.payment_method) ? status.payment_method : 'cash');
     setNote('');
     setPayDate(localToday());
+    setCoverMonth(coverMonthOptions()[0]);
     setMarking(true);
   };
 
@@ -97,12 +161,62 @@ export default function TrainerClientPayment({ clientId }) {
     const composedNote = [methodLabel(method), note.trim()].filter(Boolean).join(' · ') || null;
     await run(() => supabase.rpc('mark_client_paid', {
       p_client_id: clientId,
-      p_period_month: null,
+      // Explicit covered month (defaults to the current one) — without it the
+      // period silently follows p_paid_at, so a backdated payment covered the
+      // wrong month.
+      p_period_month: coverMonth || coverMonthOptions()[0],
       p_amount: Number.isFinite(amt) ? amt : null,
       p_note: composedNote,
       p_paid_at: `${payDate || localToday()}T12:00:00`,
     }), t('trainerPayment.markedPaid', 'Marked paid'));
     setMarking(false); setAmount(''); setMethod('cash'); setNote('');
+  };
+
+  // ── Session packs ──────────────────────────────────────────────────────────
+  const activePack = packs.find(p => p.is_active) || null;
+
+  const sellPack = async () => {
+    if (packBusy) return;
+    const n = parseInt(packSessions, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      showToast(t('trainerPayment.packInvalid', 'Enter how many sessions the pack includes'), 'error');
+      return;
+    }
+    const amt = packAmount ? Number(packAmount) : null;
+    setPackBusy(true);
+    try {
+      const { error } = await supabase.from('session_packs').insert({
+        gym_id: profile?.gym_id,
+        trainer_id: profile?.id,
+        client_id: clientId,
+        sessions_total: n,
+        amount: Number.isFinite(amt) ? amt : null,
+        note: packNote.trim() || null,
+      });
+      if (error) throw error;
+      showToast(t('trainerPayment.packSold', 'Pack sold'), 'success');
+      setSellingPack(false); setPackSessions('10'); setPackAmount(''); setPackNote('');
+      await loadPacks();
+    } catch (e) {
+      logger.error('session pack insert failed', e);
+      showToast(t('trainerPayment.error', 'Something went wrong'), 'error');
+    } finally { setPackBusy(false); }
+  };
+
+  const closePack = async () => {
+    if (packBusy || !activePack) return;
+    const ok = window.confirm(t('trainerPayment.packCloseConfirm', 'Close this pack? Remaining sessions will no longer be tracked.'));
+    if (!ok) return;
+    setPackBusy(true);
+    try {
+      const { error } = await supabase.from('session_packs').update({ is_active: false }).eq('id', activePack.id);
+      if (error) throw error;
+      showToast(t('trainerPayment.packClosed', 'Pack closed'), 'success');
+      await loadPacks();
+    } catch (e) {
+      logger.error('session pack close failed', e);
+      showToast(t('trainerPayment.error', 'Something went wrong'), 'error');
+    } finally { setPackBusy(false); }
   };
 
   const openFeeEditor = () => {
@@ -145,6 +259,32 @@ export default function TrainerClientPayment({ clientId }) {
   // theme-aware via color-mix so it survives dark mode.
   const greenWash = 'color-mix(in srgb, #2FA66B 9%, var(--tt-surface))';
   const greenBorder = 'color-mix(in srgb, #2FA66B 22%, transparent)';
+
+  if (!loaded) return null;
+
+  // Failed load → error + Retry, never the editable-empty card (mark-paid /
+  // fee writes from a blind state would stomp real data).
+  if (loadErr) {
+    return (
+      <>
+        <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, marginBottom: 11 }}>
+          {t('trainerPayment.title', 'Payment')}
+        </div>
+        <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 'var(--tt-card-radius, 20px)', boxShadow: TT.shadow, padding: 18, marginBottom: 22, textAlign: 'center' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, marginBottom: 4 }}>
+            {t('trainerPayment.loadError', "Couldn't load payment info")}
+          </div>
+          <div style={{ fontSize: 12, color: TT.textSub, marginBottom: 12 }}>
+            {t('trainerPayment.loadErrorHint', 'Check your connection and try again.')}
+          </div>
+          <button type="button" onClick={() => { setLoaded(false); load(); loadPacks(); }} className="tt-btn tt-btn--secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 11, fontFamily: TFont.display, fontWeight: 700, fontSize: 12.5 }}>
+            <RefreshCw size={13} strokeWidth={2.4} /> {t('trainerPayment.retry', 'Retry')}
+          </button>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -359,6 +499,21 @@ export default function TrainerClientPayment({ clientId }) {
                 </button>
               </div>
             </div>
+            {/* Which month does this payment cover? (explicit period, so a
+                backdated payment doesn't silently cover the wrong month) */}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: TT.textMute, textTransform: 'uppercase', marginBottom: 6 }}>
+                {t('trainerPayment.coverMonth', 'Which month does it cover?')}
+              </div>
+              <select value={coverMonth} onChange={e => setCoverMonth(e.target.value)}
+                style={{ width: '100%', padding: '9px 11px', borderRadius: 10, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.text, fontSize: 13.5, fontFamily: TFont.display, fontWeight: 700, outline: 'none', cursor: 'pointer', textTransform: 'capitalize' }}>
+                {coverMonthOptions().map((m, i) => (
+                  <option key={m} value={m}>
+                    {fmtMonth(m)}{i === 0 ? ` · ${t('trainerPayment.currentMonth', 'current')}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 18, fontWeight: 800, color: TT.textSub }}>$</span>
               <input
@@ -395,6 +550,109 @@ export default function TrainerClientPayment({ clientId }) {
                 <X size={16} />
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Session pack — balance of a prepaid bundle (table from migration
+            0534; the whole block hides when it isn't deployed). Decrement is a
+            DB trigger when a session for this pair flips to completed. */}
+        {packsAvailable && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${TT.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: TT.textMute, textTransform: 'uppercase' }}>
+                <Package size={13} strokeWidth={2.2} style={{ color: '#1E9C8E' }} /> {t('trainerPayment.packTitle', 'Session pack')}
+              </div>
+              {activePack && (
+                <button type="button" onClick={closePack} disabled={packBusy}
+                  style={{ border: 'none', background: 'transparent', color: TT.textSub, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', opacity: packBusy ? 0.5 : 1 }}>
+                  {t('trainerPayment.packClose', 'Close pack')}
+                </button>
+              )}
+            </div>
+
+            {activePack ? (() => {
+              const total = Number(activePack.sessions_total) || 0;
+              const used = Math.max(0, Number(activePack.sessions_used) || 0);
+              const left = Math.max(0, total - used);
+              return (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontFamily: TFont.display, fontSize: 19, fontWeight: 800, color: left > 0 ? TT.text : TT.warnInk, letterSpacing: -0.5 }}>
+                      {t('trainerPayment.packRemaining', '{{left}} of {{total}} left', { left, total })}
+                    </span>
+                    {activePack.amount != null && (
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: TT.textSub }}>${Number(activePack.amount).toFixed(0)}</span>
+                    )}
+                  </div>
+                  {/* progress pips */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
+                    {Array.from({ length: Math.min(total, 40) }).map((_, k) => (
+                      <span key={k} style={{ width: total > 20 ? 8 : 14, height: 6, borderRadius: 999, background: k < used ? TT.border : '#1E9C8E' }} />
+                    ))}
+                  </div>
+                  {activePack.note && (
+                    <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activePack.note}</div>
+                  )}
+                  {left === 0 && (
+                    <div style={{ fontSize: 11.5, color: TT.warnInk, fontWeight: 700, marginTop: 6 }}>
+                      {t('trainerPayment.packEmpty', 'No sessions left — close it and sell a new pack.')}
+                    </div>
+                  )}
+                </div>
+              );
+            })() : sellingPack ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {['5', '10', '20'].map(n => {
+                    const on = packSessions === n;
+                    return (
+                      <button key={n} type="button" onClick={() => setPackSessions(n)}
+                        style={{ padding: '7px 13px', borderRadius: 999, fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                          border: on ? 'none' : `1px solid ${TT.border}`,
+                          background: on ? TT.accent : TT.surface2, color: on ? '#fff' : TT.textSub }}>
+                        {n}
+                      </button>
+                    );
+                  })}
+                  <input
+                    inputMode="numeric" value={['5', '10', '20'].includes(packSessions) ? '' : packSessions}
+                    onChange={e => setPackSessions(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                    placeholder={t('trainerPayment.packCustomN', 'Other')}
+                    style={{ width: 70, padding: '7px 10px', borderRadius: 999, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.text, fontSize: 12.5, fontFamily: TFont.display, fontWeight: 700, outline: 'none', textAlign: 'center' }}
+                  />
+                  <span style={{ fontSize: 11, color: TT.textMute, fontWeight: 700 }}>{t('trainerPayment.packSessions', 'sessions')}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16, fontWeight: 800, color: TT.textSub }}>$</span>
+                  <input
+                    inputMode="decimal" value={packAmount} onChange={e => setPackAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                    placeholder={t('trainerPayment.amount', 'Amount')}
+                    style={{ flex: 1, padding: '9px 11px', borderRadius: 10, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.text, fontSize: 14, fontFamily: TFont.display, fontWeight: 700, outline: 'none' }}
+                  />
+                </div>
+                <input
+                  value={packNote} onChange={e => setPackNote(e.target.value)}
+                  placeholder={t('trainerPayment.notePlaceholder', 'Note (optional)')}
+                  style={{ padding: '9px 11px', borderRadius: 10, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.text, fontSize: 13, outline: 'none' }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={sellPack} disabled={packBusy}
+                    style={{ flex: 1, padding: '10px 12px', borderRadius: 12, border: 'none', background: TT.accent, color: '#fff', fontFamily: TFont.display, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', opacity: packBusy ? 0.5 : 1 }}>
+                    {t('trainerPayment.packConfirmSell', 'Sell pack')}
+                  </button>
+                  <button onClick={() => { setSellingPack(false); setPackAmount(''); setPackNote(''); }} disabled={packBusy}
+                    style={{ width: 44, display: 'grid', placeItems: 'center', padding: '10px', borderRadius: 12, border: `1px solid ${TT.border}`, background: TT.surface2, color: TT.textSub, cursor: 'pointer' }}>
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setSellingPack(true)} disabled={packBusy}
+                className="tt-tap"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 13px', borderRadius: 11, border: `1px dashed ${TT.border}`, background: 'transparent', color: TT.accent, fontFamily: TFont.display, fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>
+                <Plus size={14} strokeWidth={2.4} /> {t('trainerPayment.packSell', 'Sell pack')}
+              </button>
+            )}
           </div>
         )}
 

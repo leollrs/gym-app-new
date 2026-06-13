@@ -65,7 +65,7 @@ serve(async (req: Request) => {
       .select('*', { count: 'exact', head: true })
       .eq('profile_id', user.id)
       .eq('endpoint', 'generate-google-pass')
-      .gte('requested_at', oneHourAgo);
+      .gte('created_at', oneHourAgo);
 
     if (rlError) {
       console.error('Rate limit check failed:', rlError);

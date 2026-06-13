@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Bug, AlertTriangle, Search, Filter, ChevronDown, ChevronRight,
-  Monitor, Smartphone, Clock, Building2, Loader2, TrendingUp,
+  Monitor, Smartphone, Clock, Building2, Loader2, TrendingUp, CheckCircle2,
 } from 'lucide-react';
 import { formatDistanceToNow, subDays, subHours } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
 
@@ -21,7 +23,6 @@ const TYPE_CONFIG = {
   slow_api:           { color: 'purple', labelKey: 'platform.errors.typeSlowApi',          fallback: 'Slow API' },
   auth_error:         { color: 'red',    labelKey: 'platform.errors.typeAuthError',        fallback: 'Auth Error' },
   http_error:         { color: 'orange', labelKey: 'platform.errors.typeHttpError',        fallback: 'HTTP Error' },
-  action_failed:      { color: 'amber',  labelKey: 'platform.errors.typeActionFailed',     fallback: 'Action Failed' },
 };
 
 const COLOR_MAP = {
@@ -51,11 +52,18 @@ const ERROR_TYPES = [
   { labelKey: 'platform.errors.typeSlowApi',          fallback: 'Slow API',          value: 'slow_api' },
   { labelKey: 'platform.errors.typeAuthError',        fallback: 'Auth Error',        value: 'auth_error' },
   { labelKey: 'platform.errors.typeHttpError',        fallback: 'HTTP Error',        value: 'http_error' },
-  { labelKey: 'platform.errors.typeActionFailed',     fallback: 'Action Failed',     value: 'action_failed' },
 ];
 
-function ErrorRow({ entry, t }) {
+// device_info.platform is navigator.platform ("iPhone", "MacIntel", "Win32"…),
+// never the literal 'mobile' — detect handhelds from the UA/platform strings.
+function isMobileDevice(deviceInfo) {
+  const probe = `${deviceInfo?.userAgent || ''} ${deviceInfo?.platform || ''}`;
+  return /iPhone|iPad|iPod|Android/i.test(probe);
+}
+
+function ErrorRow({ entry, t, ackSupported, onResolve }) {
   const [expanded, setExpanded] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const config = TYPE_CONFIG[entry.type] || { color: 'blue', labelKey: null, fallback: entry.type };
   const colors = COLOR_MAP[config.color] || COLOR_MAP.blue;
   const typeLabel = config.labelKey ? t(config.labelKey, config.fallback) : config.fallback;
@@ -64,6 +72,14 @@ function ErrorRow({ entry, t }) {
   const createdAt = new Date(entry.created_at);
   const message = entry.message || t('platform.errors.noMessage', 'No message');
   const truncatedMessage = message.length > 120 ? message.slice(0, 120) + '...' : message;
+  const isResolved = !!entry.acknowledged_at;
+
+  const handleResolveClick = async () => {
+    if (resolving || isResolved) return;
+    setResolving(true);
+    await onResolve(entry);
+    setResolving(false);
+  };
 
   return (
     <div className="border-b border-white/4">
@@ -97,9 +113,17 @@ function ErrorRow({ entry, t }) {
           {/* User */}
           <span className="text-[11px] text-[#E5E7EB] truncate">{userName}</span>
 
-          {/* Type badge */}
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${colors.bg} ${colors.text}`}>
-            {typeLabel}
+          {/* Type badge (+ resolved marker) */}
+          <span className="flex flex-col gap-1 w-fit">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${colors.bg} ${colors.text}`}>
+              {typeLabel}
+            </span>
+            {isResolved && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit bg-emerald-500/15 text-emerald-400">
+                <CheckCircle2 size={10} />
+                {t('platform.errors.resolved', 'Resolved')}
+              </span>
+            )}
           </span>
 
           {/* Message */}
@@ -112,6 +136,27 @@ function ErrorRow({ entry, t }) {
 
       {expanded && (
         <div className="pl-8 pr-4 pb-4 space-y-3">
+          {/* Resolve workflow */}
+          {ackSupported && (
+            <div className="flex items-center justify-between gap-3">
+              {isResolved ? (
+                <p className="text-[11px] text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 size={12} />
+                  {t('platform.errors.resolvedOn', { date: formatDistanceToNow(new Date(entry.acknowledged_at), { addSuffix: true }), defaultValue: 'Resolved {{date}}' })}
+                </p>
+              ) : (
+                <button
+                  onClick={handleResolveClick}
+                  disabled={resolving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+                >
+                  {resolving ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                  {t('platform.errors.markResolved', 'Mark resolved')}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Full message */}
           <div>
             <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1 font-medium">{t('platform.errors.fullMessage', 'Full Message')}</p>
@@ -138,7 +183,7 @@ function ErrorRow({ entry, t }) {
           {entry.device_info && (
             <div>
               <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1 font-medium flex items-center gap-1">
-                {entry.device_info?.platform === 'mobile' ? <Smartphone size={12} /> : <Monitor size={12} />}
+                {isMobileDevice(entry.device_info) ? <Smartphone size={12} /> : <Monitor size={12} />}
                 {t('platform.errors.deviceInfo', 'Device Info')}
               </p>
               <div className="bg-[#111827]/60 rounded-lg p-3">
@@ -169,6 +214,9 @@ function ErrorRow({ entry, t }) {
 export default function ErrorLogs() {
   const { user } = useAuth();
   const { t } = useTranslation('pages');
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     document.title = `${t('platform.errors.title', 'Errors')} | ${window.__APP_NAME || 'TuGymPR'}`;
@@ -179,16 +227,30 @@ export default function ErrorLogs() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
+  const [fetchError, setFetchError] = useState(false);
 
   const [dateRange, setDateRange] = useState('7d');
   const [errorType, setErrorType] = useState('all');
-  const [gymFilter, setGymFilter] = useState('all');
+  // ?gym=<id> pre-sets the gym filter (Attention links here with context)
+  const [gymFilter, setGymFilter] = useState(searchParams.get('gym') || 'all');
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceRef = useRef(null);
 
+  // Resolve workflow — 0543 adds acknowledged_at/by. Pre-apply (42703) we
+  // hide the buttons and query without the columns.
+  const [ackSupported, setAckSupported] = useState(true);
+  const ackSupportedRef = useRef(true);
+  const [showResolved, setShowResolved] = useState(false);
+
   const [gyms, setGyms] = useState([]);
   const [breakdown, setBreakdown] = useState([]);
+
+  // Keep the gym filter in sync if the URL context changes
+  useEffect(() => {
+    const g = searchParams.get('gym');
+    if (g) setGymFilter(g);
+  }, [searchParams]);
 
   // Fetch gyms for the filter dropdown
   useEffect(() => {
@@ -239,19 +301,21 @@ export default function ErrorLogs() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchTerm]);
 
-  const fetchEntries = useCallback(async (offset = 0, append = false) => {
-    if (!append) setLoading(true);
-    else setLoadingMore(true);
-
+  const buildQuery = useCallback((offset, withAck) => {
     let query = supabase
       .from('error_logs')
       .select(`
-        id, gym_id, profile_id, type, message, stack, page, component, device_info, metadata, created_at,
+        id, gym_id, profile_id, type, message, stack, page, component, device_info, metadata, created_at${withAck ? ', acknowledged_at, acknowledged_by' : ''},
         user:profiles!error_logs_profile_id_fkey ( id, full_name, username ),
         gym:gyms!error_logs_gym_id_fkey ( id, name )
       `, { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1);
+
+    // Default view = unresolved only (toggle to include resolved)
+    if (withAck && !showResolved) {
+      query = query.is('acknowledged_at', null);
+    }
 
     // Date range filter
     if (dateRange === '24h') {
@@ -277,15 +341,42 @@ export default function ErrorLogs() {
       query = query.ilike('message', `%${debouncedSearch.trim()}%`);
     }
 
-    const { data, error, count } = await query;
+    return query;
+  }, [dateRange, errorType, gymFilter, debouncedSearch, showResolved]);
+
+  const isMissingAckColumn = (error) => error && (
+    error.code === '42703'
+    || /acknowledged_(at|by)/i.test(error.message || '')
+  );
+
+  const fetchEntries = useCallback(async (offset = 0, append = false) => {
+    if (!append) setLoading(true);
+    else setLoadingMore(true);
+
+    let { data, error, count } = await buildQuery(offset, ackSupportedRef.current);
+
+    // Pre-0543 database: acknowledged_at doesn't exist yet — degrade
+    // gracefully (no resolve buttons) instead of erroring the whole page.
+    if (error && ackSupportedRef.current && isMissingAckColumn(error)) {
+      ackSupportedRef.current = false;
+      setAckSupported(false);
+      ({ data, error, count } = await buildQuery(offset, false));
+    }
 
     if (error) {
       logger.error('Error fetching error logs:', error);
-      if (!append) setLoading(false);
-      else setLoadingMore(false);
+      if (!append) {
+        setFetchError(true);
+        setEntries([]);
+        setTotalCount(0);
+        setLoading(false);
+      } else {
+        setLoadingMore(false);
+      }
       return;
     }
 
+    setFetchError(false);
     const results = data || [];
 
     if (append) {
@@ -298,7 +389,27 @@ export default function ErrorLogs() {
     setHasMore(results.length === PAGE_SIZE);
     if (!append) setLoading(false);
     else setLoadingMore(false);
-  }, [dateRange, errorType, gymFilter, debouncedSearch]);
+  }, [buildQuery]);
+
+  // Mark a single error resolved (super_admin UPDATE policy from 0543)
+  const handleResolve = useCallback(async (entry) => {
+    const ackAt = new Date().toISOString();
+    const { error } = await supabase
+      .from('error_logs')
+      .update({ acknowledged_at: ackAt, acknowledged_by: user?.id || null })
+      .eq('id', entry.id);
+    if (error) {
+      logger.error('Error resolving error log:', error);
+      showToast(error.message, 'error');
+      return;
+    }
+    if (showResolved) {
+      setEntries(prev => prev.map(e => (e.id === entry.id ? { ...e, acknowledged_at: ackAt } : e)));
+    } else {
+      setEntries(prev => prev.filter(e => e.id !== entry.id));
+      setTotalCount(c => Math.max(0, c - 1));
+    }
+  }, [user?.id, showResolved, showToast]);
 
   // Re-fetch when filters change
   useEffect(() => {
@@ -318,52 +429,61 @@ export default function ErrorLogs() {
           <p className="text-[12px] text-[#6B7280] mt-0.5">{t('platform.errors.subtitle', 'Platform failures and crash analysis')}</p>
         </div>
         <button
-          onClick={() => window.open('/platform/operations', '_self')}
+          onClick={() => navigate('/platform/operations')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6 transition-colors flex-shrink-0"
         >
           {t('platform.errors.openOperations', 'Open Operations')}
         </button>
       </div>
 
-      {/* Failure summary */}
-      {!loading && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 mb-6">
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
-            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{totalCount.toLocaleString()}</p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.totalErrors', 'Total Errors')}</p>
+      {/* Failure summary — only Total Errors is a server count; the rest are
+          computed from the loaded page(s), so qualify them when partial. */}
+      {!loading && !fetchError && (() => {
+        const loadedOnly = entries.length < totalCount;
+        const qualifier = loadedOnly ? ` (${t('platform.errors.fromLoaded', 'of loaded')})` : '';
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 mb-6">
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+              <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{totalCount.toLocaleString()}</p>
+              <p className="text-[10px] text-[#6B7280] mt-0.5">
+                {ackSupported && !showResolved
+                  ? t('platform.errors.totalUnresolved', 'Unresolved Errors')
+                  : t('platform.errors.totalErrors', 'Total Errors')}
+              </p>
+            </div>
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+              <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
+                {[...new Set(entries.map(e => e.gym_id).filter(Boolean))].length}
+              </p>
+              <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.gymsAffected', 'Gyms Affected')}{qualifier}</p>
+            </div>
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+              <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
+                {[...new Set(entries.map(e => e.profile_id).filter(Boolean))].length}
+              </p>
+              <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.usersAffected', 'Users Affected')}{qualifier}</p>
+            </div>
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+              <p className="text-[18px] font-bold text-red-400 tabular-nums">
+                {entries.filter(e => e.type === 'react_crash' || e.type === 'auth_error').length}
+              </p>
+              <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.criticalErrors', 'Critical Errors')}{qualifier}</p>
+            </div>
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+              <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums truncate">
+                {(() => {
+                  const typeCounts = {};
+                  entries.forEach(e => { typeCounts[e.type] = (typeCounts[e.type] || 0) + 1; });
+                  const top = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
+                  const cfg = top ? TYPE_CONFIG[top[0]] : null;
+                  return cfg ? t(cfg.labelKey, cfg.fallback) : '—';
+                })()}
+              </p>
+              <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.topErrorType', 'Top Error Type')}{qualifier}</p>
+            </div>
           </div>
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
-            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
-              {[...new Set(entries.map(e => e.gym_id).filter(Boolean))].length}
-            </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.gymsAffected', 'Gyms Affected')}</p>
-          </div>
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
-            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
-              {[...new Set(entries.map(e => e.profile_id).filter(Boolean))].length}
-            </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.usersAffected', 'Users Affected')}</p>
-          </div>
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
-            <p className="text-[18px] font-bold text-red-400 tabular-nums">
-              {entries.filter(e => e.type === 'react_crash' || e.type === 'auth_error').length}
-            </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.criticalErrors', 'Critical Errors')}</p>
-          </div>
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
-            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums truncate">
-              {(() => {
-                const typeCounts = {};
-                entries.forEach(e => { typeCounts[e.type] = (typeCounts[e.type] || 0) + 1; });
-                const top = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
-                const cfg = top ? TYPE_CONFIG[top[0]] : null;
-                return cfg ? t(cfg.labelKey, cfg.fallback) : '—';
-              })()}
-            </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.topErrorType', 'Top Error Type')}</p>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Per-gym breakdown — which gyms are having issues, ranked, with spike
           flags. Click a gym to filter the log below to just that gym. */}
@@ -434,6 +554,23 @@ export default function ErrorLogs() {
             ))}
           </div>
 
+          {/* Resolved toggle (hidden pre-0543) */}
+          {ackSupported && (
+            <button
+              onClick={() => setShowResolved(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] border transition-colors ${
+                showResolved
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  : 'text-[#6B7280] border-white/6 hover:text-[#9CA3AF]'
+              }`}
+            >
+              <CheckCircle2 size={12} />
+              {showResolved
+                ? t('platform.errors.showingResolved', 'Including resolved')
+                : t('platform.errors.showResolved', 'Show resolved')}
+            </button>
+          )}
+
           {/* Error type */}
           <select
             value={errorType}
@@ -488,19 +625,35 @@ export default function ErrorLogs() {
       <div className="bg-[#0F172A] border border-white/6 rounded-b-xl md:rounded-t-none rounded-xl md:rounded-xl p-4 md:border-t-0 md:rounded-t-none overflow-hidden">
         {loading ? (
           <PlatformSpinner />
+        ) : fetchError ? (
+          <div className="text-center py-16">
+            <AlertTriangle size={32} className="mx-auto text-red-400 mb-3" />
+            <p className="text-[14px] text-red-400">{t('platform.errors.fetchFailed', 'Could not load error logs')}</p>
+            <p className="text-[12px] text-[#6B7280]/60 mt-1">
+              {t('platform.errors.fetchFailedHint', 'The query failed — this is not an empty log.')}
+            </p>
+            <button
+              onClick={() => fetchEntries(0, false)}
+              className="mt-4 px-4 py-2 rounded-lg text-[12px] font-medium bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+            >
+              {t('platform.errors.retry', 'Retry')}
+            </button>
+          </div>
         ) : entries.length === 0 ? (
           <div className="text-center py-16">
             <Bug size={32} className="mx-auto text-[#6B7280] mb-3" />
             <p className="text-[14px] text-[#6B7280]">{t('platform.errors.noErrors', 'No errors found')}</p>
             <p className="text-[12px] text-[#6B7280]/60 mt-1">
-              {t('platform.errors.noErrorsHint', 'Errors from across the platform will appear here')}
+              {ackSupported && !showResolved
+                ? t('platform.errors.noErrorsUnresolvedHint', 'No unresolved errors match these filters — toggle "Show resolved" to see history')
+                : t('platform.errors.noErrorsHint', 'Errors from across the platform will appear here')}
             </p>
           </div>
         ) : (
           <>
             <div className="divide-y divide-white/4">
               {entries.map((entry) => (
-                <ErrorRow key={entry.id} entry={entry} t={t} />
+                <ErrorRow key={entry.id} entry={entry} t={t} ackSupported={ackSupported} onResolve={handleResolve} />
               ))}
             </div>
 

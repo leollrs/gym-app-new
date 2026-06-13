@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -7,71 +7,49 @@ import {
 import {
   Heart, TrendingUp, TrendingDown, Minus, Search,
   ChevronRight, AlertTriangle, Shield,
-  Activity, Users, UserCheck, BarChart3, Sparkles,
-  UserX, LogIn, Moon,
+  Activity, UserCheck, BarChart3, Sparkles,
+  UserX, LogIn, Moon, UserPlus, RefreshCw,
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { healthScoreFromStatsRow, healthTier } from '../../lib/platform/healthScore';
 import ChartTooltip from '../../components/ChartTooltip';
 import FadeIn from '../../components/platform/FadeIn';
 import StatCard from '../../components/platform/StatCard';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
 import SortHeader from '../../components/platform/SortHeader';
 
-// ── Health tier config ───────────────────────────────────────
-const HEALTH_TIERS = [
-  { key: 'thriving',  label: 'Thriving',  min: 80, max: 100, color: '#10B981', bg: 'bg-emerald-500/15', text: 'text-emerald-400', icon: Sparkles },
-  { key: 'healthy',   label: 'Healthy',   min: 60, max: 79,  color: '#22C55E', bg: 'bg-green-500/15',   text: 'text-green-400',   icon: Heart },
-  { key: 'moderate',  label: 'Moderate',  min: 40, max: 59,  color: '#F59E0B', bg: 'bg-amber-500/15',   text: 'text-amber-400',   icon: Activity },
-  { key: 'at_risk',   label: 'At Risk',   min: 20, max: 39,  color: '#F97316', bg: 'bg-orange-500/15',  text: 'text-orange-400',  icon: AlertTriangle },
-  { key: 'critical',  label: 'Critical',  min: 0,  max: 19,  color: '#EF4444', bg: 'bg-red-500/15',     text: 'text-red-400',     icon: Shield },
+// ── Health tier presentation (score math lives in lib/platform/healthScore) ──
+// Keys match healthTier(): thriving / healthy / watch / critical, plus 'new'
+// for gyms with 0 members (unscored — they used to read "Critical" and drag
+// the platform average down before they ever launched).
+const TIER_META = [
+  { key: 'thriving', label: 'Thriving', range: '75+',   color: '#10B981', bg: 'bg-emerald-500/15', text: 'text-emerald-400', icon: Sparkles },
+  { key: 'healthy',  label: 'Healthy',  range: '55–74', color: '#22C55E', bg: 'bg-green-500/15',   text: 'text-green-400',   icon: Heart },
+  { key: 'watch',    label: 'Watch',    range: '40–54', color: '#F59E0B', bg: 'bg-amber-500/15',   text: 'text-amber-400',   icon: Activity },
+  { key: 'critical', label: 'Critical', range: '<40',   color: '#EF4444', bg: 'bg-red-500/15',     text: 'text-red-400',     icon: Shield },
+  { key: 'new',      label: 'New',      range: null,    color: '#6B7280', bg: 'bg-white/[0.06]',   text: 'text-[#9CA3AF]',   icon: UserPlus },
 ];
-
-const getTier = (score) => HEALTH_TIERS.find(t => score >= t.min && score <= t.max) || HEALTH_TIERS[4];
+const TIER_BY_KEY = Object.fromEntries(TIER_META.map(m => [m.key, m]));
 
 const getScoreColor = (score) => {
-  if (score >= 80) return '#10B981';
-  if (score >= 60) return '#22C55E';
+  if (score == null) return '#6B7280';
+  if (score >= 75) return '#10B981';
+  if (score >= 55) return '#22C55E';
   if (score >= 40) return '#F59E0B';
-  if (score >= 20) return '#F97316';
   return '#EF4444';
 };
 
-// ── Compute health score for a gym ───────────────────────────
-function computeHealthScore({
-  totalMembers,
-  activeMembers30d,
-  totalSessions30d,
-  checkedInMembers30d,
-  onboardedMembers,
-  avgChurnScore,
-  newMembers30d,
-}) {
-  if (totalMembers === 0) return 0;
+// platform_snapshots.snapshot_date is a DATE ('YYYY-MM-DD') — parse as LOCAL
+// so the chart's axis doesn't drift a day back in Puerto Rico (UTC-4).
+const parseDateOnly = (value) => {
+  if (!value) return null;
+  const [y, m, d] = String(value).slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
 
-  // member_retention: (30d active / total) * 25
-  const retention = (activeMembers30d / totalMembers) * 25;
-
-  // engagement: (avg sessions/member, capped at 12) / 12 * 20
-  const sessionsPerMember = Math.min(totalSessions30d / totalMembers, 12);
-  const engagement = (sessionsPerMember / 12) * 20;
-
-  // checkin_rate: (members checked in 30d / total) * 15
-  const checkinRate = (checkedInMembers30d / totalMembers) * 15;
-
-  // onboarding: (onboarded / total) * 15
-  const onboarding = (onboardedMembers / totalMembers) * 15;
-
-  // churn_health: (100 - avg churn) / 100 * 15
-  const churnHealth = ((100 - (avgChurnScore || 0)) / 100) * 15;
-
-  // growth: (new 30d / total, capped at 0.3) / 0.3 * 10
-  const growthRatio = Math.min(newMembers30d / totalMembers, 0.3);
-  const growth = (growthRatio / 0.3) * 10;
-
-  return Math.round(Math.min(retention + engagement + checkinRate + onboarding + churnHealth + growth, 100));
-}
+const isMissingTable = (error) => error?.code === '42P01';
 
 // ── Main Component ───────────────────────────────────────────
 export default function GymHealth() {
@@ -83,6 +61,10 @@ export default function GymHealth() {
   const [stats, setStats] = useState([]);
   const [adminPresence, setAdminPresence] = useState([]);
   const [activityPulse, setActivityPulse] = useState([]);
+  const [snapshots, setSnapshots] = useState([]);
+  const [loadError, setLoadError] = useState(null);      // critical: gyms/stats failed
+  const [degradedSources, setDegradedSources] = useState([]); // non-critical failures
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Table state
   const [sortKey, setSortKey] = useState('healthScore');
@@ -97,28 +79,49 @@ export default function GymHealth() {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
+      setLoadError(null);
       const sevenDaysAgo = subDays(new Date(), 7).toISOString();
 
       // Aggregates are computed server-side (one row per gym) so this scales
-      // with gym count, not member count — see migration 0437.
-      const [gymRes, statsRes, adminRes, pulseRes] = await Promise.all([
+      // with gym count, not member count — see migrations 0437/0540.
+      const [gymRes, statsRes, adminRes, pulseRes, snapRes] = await Promise.all([
         supabase.from('gyms').select('id, name, slug, is_active, created_at'),
         supabase.rpc('platform_gym_stats'),
         supabase.from('admin_presence').select('gym_id, last_seen_at').gte('last_seen_at', sevenDaysAgo),
         supabase.rpc('platform_gym_activity_pulse', { p_window_days: 14 }),
+        // Weekly captures (0545). Tolerate absence pre-apply — the trend
+        // chart simply stays in its single-point empty state.
+        supabase.from('platform_snapshots')
+          .select('snapshot_date, gym_id, data')
+          .eq('kind', 'gym_stats')
+          .order('snapshot_date', { ascending: true }),
       ]);
+
+      // supabase-js v2 never throws — surface failures instead of rendering
+      // zeros that look like real (terrible) numbers.
+      if (gymRes.error || statsRes.error) {
+        setLoadError((gymRes.error || statsRes.error).message || 'Query failed');
+      }
+      const degraded = [];
+      if (adminRes.error) degraded.push(t('platform.gymHealth.srcAdminPresence', 'admin presence'));
+      if (pulseRes.error) degraded.push(t('platform.gymHealth.srcActivityPulse', 'activity pulse'));
+      if (snapRes.error && !isMissingTable(snapRes.error)) degraded.push(t('platform.gymHealth.srcSnapshots', 'history snapshots'));
+      setDegradedSources(degraded);
 
       setGyms(gymRes.data || []);
       setStats(statsRes.data || []);
       setAdminPresence(adminRes.data || []);
       setActivityPulse(pulseRes.data || []);
+      setSnapshots(snapRes.data || []);
       setLoading(false);
     };
 
     fetchAll();
-  }, []);
+  }, [reloadKey, t]);
 
-  // ── Compute per-gym health data (from server-side aggregates) ──
+  const retry = useCallback(() => setReloadKey(k => k + 1), []);
+
+  // ── Compute per-gym health data (lib formula — single source of truth) ──
   const gymHealthData = useMemo(() => {
     const byId = Object.fromEntries(stats.map(s => [s.gym_id, s]));
     return gyms.map(gym => {
@@ -136,11 +139,8 @@ export default function GymHealth() {
       const onboardingPct = totalMembers > 0 ? +((onboardedMembers / totalMembers) * 100).toFixed(1) : 0;
       const activePct = totalMembers > 0 ? +((activeMembers30d / totalMembers) * 100).toFixed(1) : 0;
 
-      const healthScore = computeHealthScore({
-        totalMembers, activeMembers30d, totalSessions30d, checkedInMembers30d,
-        onboardedMembers, avgChurnScore, newMembers30d,
-      });
-      const tier = getTier(healthScore);
+      const healthScore = healthScoreFromStatsRow(s); // null when 0 members → tier 'new'
+      const tier = TIER_BY_KEY[healthTier(healthScore)] || TIER_BY_KEY.new;
       const hasRecentAdmin = adminPresence.some(a => a.gym_id === gym.id);
 
       return {
@@ -153,21 +153,57 @@ export default function GymHealth() {
 
   // ── Health distribution counts ─────────────────────────────
   const healthDistribution = useMemo(() => {
-    const counts = { thriving: 0, healthy: 0, moderate: 0, at_risk: 0, critical: 0 };
-    gymHealthData.forEach(g => { counts[g.tier.key]++; });
+    const counts = { thriving: 0, healthy: 0, watch: 0, critical: 0, new: 0 };
+    gymHealthData.forEach(g => { counts[g.tier.key] = (counts[g.tier.key] || 0) + 1; });
     return counts;
   }, [gymHealthData]);
 
+  // Average over SCORED, ACTIVE gyms only — unscored "new" gyms and paused
+  // gyms used to drag this down (the pulse RPC excludes inactive gyms too).
   const avgHealthScore = useMemo(() => {
-    if (gymHealthData.length === 0) return 0;
-    return Math.round(gymHealthData.reduce((s, g) => s + g.healthScore, 0) / gymHealthData.length);
+    const scored = gymHealthData.filter(g => g.healthScore != null && g.isActive !== false);
+    if (scored.length === 0) return null;
+    return Math.round(scored.reduce((s, g) => s + g.healthScore, 0) / scored.length);
   }, [gymHealthData]);
 
-  // ── Trend chart data (single current point, ready for future) ──
+  // ── Trend series from weekly snapshots (0545) ──────────────
+  // Avg health score per snapshot_date via the same lib formula over the
+  // frozen stats row, plus today's live point. Renders once ≥2 points exist.
   const trendChartData = useMemo(() => {
-    const now = new Date();
-    return [{ week: format(now, 'MMM d'), score: avgHealthScore }];
-  }, [avgHealthScore]);
+    const byDate = new Map();
+    snapshots.forEach((row) => {
+      if (!row?.data) return;
+      if (row.data.is_active === false) return;
+      const score = healthScoreFromStatsRow(row.data);
+      if (score == null) return;
+      const list = byDate.get(row.snapshot_date) || [];
+      list.push(score);
+      byDate.set(row.snapshot_date, list);
+    });
+    const points = Array.from(byDate.entries())
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      .map(([dateStr, scores]) => ({
+        week: format(parseDateOnly(dateStr), 'MMM d'),
+        score: Math.round(scores.reduce((s, v) => s + v, 0) / scores.length),
+      }));
+    if (avgHealthScore != null) {
+      points.push({ week: format(new Date(), 'MMM d'), score: avgHealthScore });
+    }
+    return points;
+  }, [snapshots, avgHealthScore]);
+
+  // Per-gym score at the most recent snapshot — feeds the real trend arrows.
+  const prevScoreByGym = useMemo(() => {
+    if (!snapshots.length) return {};
+    const latestDate = snapshots.reduce((max, r) => (String(r.snapshot_date) > max ? String(r.snapshot_date) : max), '');
+    const map = {};
+    snapshots.forEach((r) => {
+      if (String(r.snapshot_date) !== latestDate || !r?.data) return;
+      const score = healthScoreFromStatsRow(r.data);
+      if (score != null) map[r.gym_id] = score;
+    });
+    return map;
+  }, [snapshots]);
 
   // ── Filtered + sorted gym table ────────────────────────────
   const filteredGyms = useMemo(() => {
@@ -177,8 +213,8 @@ export default function GymHealth() {
       list = list.filter(g => g.name.toLowerCase().includes(q));
     }
     return [...list].sort((a, b) => {
-      const aVal = a[sortKey] ?? 0;
-      const bVal = b[sortKey] ?? 0;
+      const aVal = a[sortKey] ?? -1; // null (unscored) sorts below 0
+      const bVal = b[sortKey] ?? -1;
       if (typeof aVal === 'string') return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
     });
@@ -195,20 +231,17 @@ export default function GymHealth() {
 
   // ── Insights ───────────────────────────────────────────────
   const insights = useMemo(() => {
-    const sorted = [...gymHealthData].sort((a, b) => b.healthScore - a.healthScore);
+    const scored = gymHealthData.filter(g => g.healthScore != null);
+    const sorted = [...scored].sort((a, b) => b.healthScore - a.healthScore);
 
-    // Biggest improvement: highest engagement rate relative to member count
-    const biggestImprovement = [...gymHealthData]
-      .filter(g => g.totalMembers > 0)
-      .sort((a, b) => {
-        const aEngagement = a.activePct + a.sessionsPerMember * 10;
-        const bEngagement = b.activePct + b.sessionsPerMember * 10;
-        return bEngagement - aEngagement;
-      })[0] || null;
+    // Honest "top" — the gym with the highest health score (same formula
+    // as the table), not an undocumented engagement blend.
+    const topScore = sorted[0] || null;
 
-    // Needs attention: top 3 at-risk/critical
+    // Needs attention: top 3 critical (scored gyms only — "new" isn't a risk)
     const needsAttention = sorted
       .filter(g => g.healthScore < 40)
+      .sort((a, b) => a.healthScore - b.healthScore)
       .slice(0, 3)
       .map(g => {
         let issue = t('platform.gymHealth.issue.lowOverall', 'Low overall health');
@@ -230,7 +263,7 @@ export default function GymHealth() {
       .filter(g => !g.hasRecentAdmin && g.totalMembers > 0)
       .slice(0, 5);
 
-    return { biggestImprovement, needsAttention, onboardingGap, adminInactive };
+    return { topScore, needsAttention, onboardingGap, adminInactive };
   }, [gymHealthData, t]);
 
   // ── Gyms going quiet ───────────────────────────────────────
@@ -257,11 +290,20 @@ export default function GymHealth() {
       .slice(0, 8);
   }, [activityPulse]);
 
-  // ── Trend arrow helper ─────────────────────────────────────
-  const TrendArrow = ({ score }) => {
-    if (score >= 60) return <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />;
-    if (score >= 40) return <Minus className="w-3.5 h-3.5 text-amber-400" />;
-    return <TrendingDown className="w-3.5 h-3.5 text-red-400" />;
+  // ── Trend arrow: REAL delta vs the latest snapshot ─────────
+  // No snapshot for the gym (or unscored gym) → render nothing. The old
+  // version mapped the score LEVEL to an arrow — fake motion.
+  const TrendArrow = ({ current, prev }) => {
+    if (current == null || prev == null) return null;
+    const delta = current - prev;
+    const title = `${delta >= 0 ? '+' : ''}${delta} ${t('platform.gymHealth.vsLastSnapshot', 'vs last snapshot')}`;
+    return (
+      <span title={title} className="inline-flex">
+        {delta > 2 ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+          : delta < -2 ? <TrendingDown className="w-3.5 h-3.5 text-red-400" />
+          : <Minus className="w-3.5 h-3.5 text-[#6B7280]" />}
+      </span>
+    );
   };
 
   // ── Render ─────────────────────────────────────────────────
@@ -279,21 +321,52 @@ export default function GymHealth() {
         </p>
       </FadeIn>
 
+      {/* ── Critical load failure: banner + retry, no fake zeros ── */}
+      {loadError && (
+        <div className="bg-red-500/5 border border-red-500/25 rounded-xl p-5 mb-6 flex flex-col items-center text-center">
+          <AlertTriangle className="w-5 h-5 text-red-400 mb-2" />
+          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">
+            {t('platform.common.loadFailed', "Couldn't load this page's data")}
+          </p>
+          <p className="text-[11px] text-[#9CA3AF] mb-3 max-w-md">{loadError}</p>
+          <button
+            onClick={retry}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#D4AF37]/15 text-[#D4AF37] text-[12px] font-semibold hover:bg-[#D4AF37]/25 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {t('platform.common.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+
+      {!loadError && degradedSources.length > 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3 mb-6 flex items-center gap-3">
+          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <p className="text-[12px] text-[#9CA3AF] flex-1">
+            {t('platform.common.degraded', { sources: degradedSources.join(', '), defaultValue: 'Some data failed to load: {{sources}}. Affected sections may be incomplete.' })}
+          </p>
+          <button onClick={retry} className="text-[11px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors flex-shrink-0">
+            {t('platform.common.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+
+      {!loadError && (<>
       {/* ── Section 1: Health Distribution Strip ─────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-        {HEALTH_TIERS.map((tier, i) => (
+        {TIER_META.map((tier, i) => (
           <StatCard
             key={tier.key}
             value={healthDistribution[tier.key]}
-            label={t(`platform.gymHealth.tier.${tier.key}`, tier.label) + ` (${tier.min === 0 ? '<' + (tier.max + 1) : tier.min + '-' + tier.max})`}
+            label={t(`platform.gymHealth.tier.${tier.key}`, tier.label) + (tier.range ? ` (${tier.range})` : '')}
             icon={tier.icon}
             color={tier.color}
             delay={i * 50}
           />
         ))}
         <StatCard
-          value={avgHealthScore}
-          label={t('platform.gymHealth.avgScore', 'Avg Health Score')}
+          value={avgHealthScore == null ? '—' : avgHealthScore}
+          label={t('platform.gymHealth.avgScoreActive', 'Avg Health (active gyms)')}
           icon={BarChart3}
           color="#D4AF37"
           delay={250}
@@ -357,21 +430,21 @@ export default function GymHealth() {
                   {t('platform.gymHealth.trendTitle', 'Platform Health Trend')}
                 </h2>
                 <span className="text-[11px] text-[#6B7280] bg-white/[0.04] px-2 py-1 rounded-full">
-                  {t('platform.gymHealth.last90d', 'Last 90 days')}
+                  {t('platform.gymHealth.weeklySnapshots', 'Weekly snapshots')}
                 </span>
               </div>
               {trendChartData.length <= 1 ? (
                 <div className="h-[200px] flex flex-col items-center justify-center text-center">
                   <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3" style={{ background: `${getScoreColor(avgHealthScore)}18` }}>
                     <span className="text-[28px] font-bold" style={{ color: getScoreColor(avgHealthScore) }}>
-                      {avgHealthScore}
+                      {avgHealthScore == null ? '—' : avgHealthScore}
                     </span>
                   </div>
                   <p className="text-[13px] text-[#9CA3AF] mb-1">
                     {t('platform.gymHealth.currentScore', 'Current Platform Score')}
                   </p>
                   <p className="text-[11px] text-[#4B5563]">
-                    {t('platform.gymHealth.trendNote', 'Historical tracking begins from first refresh')}
+                    {t('platform.gymHealth.firstSnapshot', 'First snapshot: this Sunday — the trend line starts there')}
                   </p>
                 </div>
               ) : (
@@ -474,7 +547,7 @@ export default function GymHealth() {
                                 className="text-[13px] font-bold tabular-nums"
                                 style={{ color: getScoreColor(gym.healthScore) }}
                               >
-                                {gym.healthScore}
+                                {gym.healthScore == null ? '—' : gym.healthScore}
                               </span>
                             </td>
                             <td className="px-3 py-3">
@@ -525,7 +598,7 @@ export default function GymHealth() {
                               </span>
                             </td>
                             <td className="px-3 py-3">
-                              <TrendArrow score={gym.healthScore} />
+                              <TrendArrow current={gym.healthScore} prev={prevScoreByGym[gym.id]} />
                             </td>
                           </tr>
                         );
@@ -540,7 +613,7 @@ export default function GymHealth() {
 
         {/* ── Section 4: Key Insights Panel (right sidebar) ──── */}
         <div className="space-y-4 order-1 lg:order-2">
-          {/* Biggest Improvement */}
+          {/* Top Health Score */}
           <FadeIn delay={200}>
             <div className="bg-[#0F172A] border border-white/[0.06] rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -548,28 +621,28 @@ export default function GymHealth() {
                   <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
                 </div>
                 <h3 className="text-[13px] font-semibold text-[#E5E7EB]">
-                  {t('platform.gymHealth.insight.improvement', 'Top Performer')}
+                  {t('platform.gymHealth.insight.topScore', 'Top Health Score')}
                 </h3>
               </div>
-              {insights.biggestImprovement ? (
+              {insights.topScore ? (
                 <div
                   className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/10 cursor-pointer hover:bg-emerald-500/8 transition-colors"
-                  onClick={() => navigate(`/platform/gym/${insights.biggestImprovement.id}`)}
+                  onClick={() => navigate(`/platform/gym/${insights.topScore.id}`)}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{insights.biggestImprovement.name}</p>
+                    <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{insights.topScore.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[11px] text-emerald-400">
-                        {insights.biggestImprovement.activePct}% {t('platform.gymHealth.active', 'active')}
+                        {insights.topScore.activePct}% {t('platform.gymHealth.active', 'active')}
                       </span>
                       <span className="text-[11px] text-[#4B5563]">|</span>
                       <span className="text-[11px] text-[#9CA3AF]">
-                        {insights.biggestImprovement.sessionsPerMember} {t('platform.gymHealth.sessPerMember', 'sess/member')}
+                        {insights.topScore.sessionsPerMember} {t('platform.gymHealth.sessPerMember', 'sess/member')}
                       </span>
                     </div>
                   </div>
-                  <span className="text-[16px] font-bold tabular-nums" style={{ color: getScoreColor(insights.biggestImprovement.healthScore) }}>
-                    {insights.biggestImprovement.healthScore}
+                  <span className="text-[16px] font-bold tabular-nums" style={{ color: getScoreColor(insights.topScore.healthScore) }}>
+                    {insights.topScore.healthScore}
                   </span>
                 </div>
               ) : (
@@ -699,6 +772,7 @@ export default function GymHealth() {
           </FadeIn>
         </div>
       </div>
+      </>)}
     </div>
   );
 }

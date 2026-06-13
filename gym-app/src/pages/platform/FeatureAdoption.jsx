@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -8,10 +8,11 @@ import {
 import {
   Puzzle, Users, Activity, BarChart3, Eye, TrendingUp,
   ChevronRight, Grid3X3, List, Clock,
-  AlertTriangle, CheckCircle2, Building2, UserCheck,
+  AlertTriangle, CheckCircle2, UserCheck, Download, RefreshCw,
 } from 'lucide-react';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { exportCSV } from '../../lib/csvExport';
 import ChartTooltip from '../../components/ChartTooltip';
 import FadeIn from '../../components/platform/FadeIn';
 import StatCard from '../../components/platform/StatCard';
@@ -19,64 +20,39 @@ import PlatformSpinner from '../../components/platform/PlatformSpinner';
 import SortHeader from '../../components/platform/SortHeader';
 
 // ── Feature definitions ─────────────────────────────────────
-// hasCreatedAt: true means the table has a created_at column and we can filter by recency
+// Keys match the rows returned by the platform_feature_adoption() RPC
+// (migration 0541). The RPC replaced 12 direct table reads — 8 of which were
+// RLS-dead for super_admin and silently rendered "Never used" for features
+// gyms use daily. Definitions are honest:
+//   rewards          → gym_rewards        (the actual rewards system)
+//   referral_rewards → referral_milestones (referral reward config)
+// The old fake "analytics" feature (churn cron rows ≠ admin usage) is gone.
 const FEATURES_DEF = [
-  { key: 'classes',     labelKey: 'platform.adoption.feat.classes',     labelDefault: 'Classes',       table: 'gym_classes',       field: 'gym_id', hasCreatedAt: true },
-  { key: 'challenges',  labelKey: 'platform.adoption.feat.challenges',  labelDefault: 'Challenges',    table: 'challenges',        field: 'gym_id', hasCreatedAt: true },
-  { key: 'winback',     labelKey: 'platform.adoption.feat.winback',     labelDefault: 'Churn/Win-back',table: 'win_back_attempts', field: 'gym_id', hasCreatedAt: true },
-  { key: 'messaging',   labelKey: 'platform.adoption.feat.messaging',   labelDefault: 'Messaging',     table: 'conversations',     field: 'gym_id', hasCreatedAt: false, timeField: 'last_message_at' },
-  { key: 'programs',    labelKey: 'platform.adoption.feat.programs',    labelDefault: 'Programs',       table: 'gym_programs',      field: 'gym_id', hasCreatedAt: true },
-  { key: 'referrals',   labelKey: 'platform.adoption.feat.referrals',   labelDefault: 'Referrals',      table: 'referral_codes',    field: 'gym_id', hasCreatedAt: true },
-  { key: 'rewards',     labelKey: 'platform.adoption.feat.rewards',     labelDefault: 'Rewards',        table: 'referral_milestones', field: 'gym_id', hasCreatedAt: true },
-  { key: 'nps',         labelKey: 'platform.adoption.feat.nps',         labelDefault: 'NPS',            table: 'nps_responses',     field: 'gym_id', hasCreatedAt: true },
-  { key: 'announcements',labelKey: 'platform.adoption.feat.announcements',labelDefault: 'Announcements', table: 'announcements',     field: 'gym_id', hasCreatedAt: true },
-  { key: 'analytics',   labelKey: 'platform.adoption.feat.analytics',   labelDefault: 'Analytics',      table: 'churn_risk_scores', field: 'gym_id', hasCreatedAt: false, timeField: 'computed_at' },
-  { key: 'store',       labelKey: 'platform.adoption.feat.store',       labelDefault: 'Store',          table: 'gym_products',      field: 'gym_id', hasCreatedAt: true },
-  { key: 'segments',    labelKey: 'platform.adoption.feat.segments',    labelDefault: 'Segments',       table: 'member_segments',   field: 'gym_id', hasCreatedAt: true },
+  { key: 'classes',          labelKey: 'platform.adoption.feat.classes',         labelDefault: 'Classes' },
+  { key: 'challenges',       labelKey: 'platform.adoption.feat.challenges',      labelDefault: 'Challenges' },
+  { key: 'winback',          labelKey: 'platform.adoption.feat.winback',         labelDefault: 'Churn/Win-back' },
+  { key: 'messaging',        labelKey: 'platform.adoption.feat.messaging',       labelDefault: 'Messaging' },
+  { key: 'programs',         labelKey: 'platform.adoption.feat.programs',        labelDefault: 'Programs' },
+  { key: 'referrals',        labelKey: 'platform.adoption.feat.referrals',       labelDefault: 'Referrals' },
+  { key: 'referral_rewards', labelKey: 'platform.adoption.feat.referralRewards', labelDefault: 'Referral Rewards' },
+  { key: 'nps',              labelKey: 'platform.adoption.feat.nps',             labelDefault: 'NPS' },
+  { key: 'announcements',    labelKey: 'platform.adoption.feat.announcements',   labelDefault: 'Announcements' },
+  { key: 'store',            labelKey: 'platform.adoption.feat.store',           labelDefault: 'Store' },
+  { key: 'segments',         labelKey: 'platform.adoption.feat.segments',        labelDefault: 'Segments' },
+  { key: 'rewards',          labelKey: 'platform.adoption.feat.rewards',         labelDefault: 'Rewards' },
 ];
 
-// ── Safe query helper ───────────────────────────────────────
-// Returns { recent: Set<gym_id>, ever: Set<gym_id> }
-// recent = rows from last 90 days (only when timeCol is provided)
-// ever   = all rows regardless of date
-async function safeQuery(table, field, { timeCol = null, cutoff = null } = {}) {
-  try {
-    // We only need distinct gym_ids — select just that field, cap at 5000
-    let query = supabase.from(table).select(field).limit(5000);
-    const { data, error } = await query;
-    if (error) return { recent: new Set(), ever: new Set() };
-    const rows = data || [];
-    const ever = new Set(rows.map(r => r[field]).filter(Boolean));
-
-    // If table supports time filtering, do a second query for recent rows
-    if (timeCol && cutoff) {
-      try {
-        const { data: recentData, error: recentErr } = await supabase
-          .from(table)
-          .select(field)
-          .gte(timeCol, cutoff)
-          .limit(5000);
-        if (!recentErr && recentData) {
-          return { recent: new Set(recentData.map(r => r[field]).filter(Boolean)), ever };
-        }
-      } catch {
-        // fall through — treat all as "ever"
-      }
-    }
-    return { recent: ever, ever };
-  } catch {
-    return { recent: new Set(), ever: new Set() };
-  }
-}
+const isMissingFunction = (error) =>
+  error?.code === '42883' || error?.code === 'PGRST202';
 
 // ── Main Component ──────────────────────────────────────────
 export default function FeatureAdoption() {
   const navigate = useNavigate();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
 
   const FEATURES = useMemo(() =>
     FEATURES_DEF.map(f => ({ ...f, label: t(f.labelKey, f.labelDefault) })),
-    [t]
+    [t, i18n.language]
   );
 
   const [loading, setLoading] = useState(true);
@@ -84,6 +60,9 @@ export default function FeatureAdoption() {
   const [featureData, setFeatureData] = useState({});   // { featureKey: { recent: Set<gym_id>, ever: Set<gym_id> } }
   const [adminPresence, setAdminPresence] = useState([]);
   const [admins, setAdmins] = useState([]);
+  const [loadError, setLoadError] = useState(null);          // gyms / adoption RPC (page-critical)
+  const [degradedSources, setDegradedSources] = useState([]); // presence/admins failures
+  const [reloadKey, setReloadKey] = useState(0);
   const [viewMode, setViewMode] = useState('heatmap');  // 'heatmap' | 'table'
   const [sortKey, setSortKey] = useState('featuresActive');
   const [sortDir, setSortDir] = useState('desc');
@@ -96,63 +75,63 @@ export default function FeatureAdoption() {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const now = new Date();
-      const thirtyDaysAgo = subDays(now, 30).toISOString();
+      setLoadError(null);
+      const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
 
-      // Fetch gyms
-      const { data: gymData } = await supabase
-        .from('gyms')
-        .select('id, name, slug, is_active, created_at');
-      setGyms(gymData || []);
-
-      // Fetch feature usage in parallel (with 90-day recency filter)
-      const ninetyDaysAgo = subDays(now, 90).toISOString();
-      const featureResults = await Promise.all(
-        FEATURES_DEF.map(async (f) => {
-          const timeCol = f.timeField || (f.hasCreatedAt ? 'created_at' : null);
-          const result = await safeQuery(f.table, f.field, {
-            timeCol,
-            cutoff: timeCol ? ninetyDaysAgo : null,
-          });
-          return { key: f.key, ...result };
-        })
-      );
-
-      const fData = {};
-      featureResults.forEach(({ key, recent, ever }) => {
-        fData[key] = { recent, ever };
-      });
-      setFeatureData(fData);
-
-      // Fetch admin presence (last 30d)
-      try {
-        const { data: presenceData } = await supabase
+      // Feature usage comes from one SECURITY DEFINER RPC (0541) — one row
+      // per (gym, feature) with ever/recent counts. No more per-table reads,
+      // no more silent RLS empties, no 5000-row caps.
+      const [gymRes, adoptionRes, presenceRes, adminRes] = await Promise.all([
+        supabase.from('gyms').select('id, name, slug, is_active, created_at'),
+        supabase.rpc('platform_feature_adoption'),
+        supabase
           .from('admin_presence')
           .select('gym_id, profile_id, current_page, last_seen_at')
           .gte('last_seen_at', thirtyDaysAgo)
           .order('last_seen_at', { ascending: false })
-          .limit(2000);
-        setAdminPresence(presenceData || []);
-      } catch {
-        setAdminPresence([]);
-      }
-
-      // Fetch admin profiles
-      try {
-        const { data: adminData } = await supabase
+          .limit(2000),
+        supabase
           .from('profiles')
           .select('id, full_name, gym_id, role')
-          .in('role', ['admin', 'super_admin']);
-        setAdmins(adminData || []);
-      } catch {
-        setAdmins([]);
+          .in('role', ['admin', 'super_admin']),
+      ]);
+
+      if (gymRes.error || adoptionRes.error) {
+        const err = gymRes.error || adoptionRes.error;
+        setLoadError(
+          isMissingFunction(adoptionRes.error)
+            ? t('platform.adoption.rpcMissing', 'The adoption RPC is not deployed yet — apply migration 0541, then retry.')
+            : (err.message || 'Query failed')
+        );
       }
 
+      const degraded = [];
+      if (presenceRes.error) degraded.push(t('platform.adoption.srcPresence', 'admin presence'));
+      if (adminRes.error) degraded.push(t('platform.adoption.srcAdmins', 'admin profiles'));
+      setDegradedSources(degraded);
+
+      setGyms(gymRes.data || []);
+
+      // Build { featureKey: { recent: Set, ever: Set } } from RPC rows.
+      const fData = {};
+      FEATURES_DEF.forEach(f => { fData[f.key] = { recent: new Set(), ever: new Set() }; });
+      (adoptionRes.data || []).forEach((row) => {
+        const bucket = fData[row.feature];
+        if (!bucket || !row.gym_id) return;
+        if ((row.ever_count || 0) > 0) bucket.ever.add(row.gym_id);
+        if ((row.recent_count || 0) > 0) bucket.recent.add(row.gym_id);
+      });
+      setFeatureData(fData);
+
+      setAdminPresence(presenceRes.data || []);
+      setAdmins(adminRes.data || []);
       setLoading(false);
     };
 
     fetchAll();
-  }, []);
+  }, [reloadKey, t]);
+
+  const retry = useCallback(() => setReloadKey(k => k + 1), []);
 
   // ── Gym name lookup ───────────────────────────────────────
   const gymNameMap = useMemo(() => {
@@ -180,7 +159,7 @@ export default function FeatureAdoption() {
         everCount: d.ever.size,
       };
     });
-  }, [featureData]);
+  }, [featureData, FEATURES]);
 
   // Most / least used
   const mostUsed = useMemo(() => {
@@ -234,6 +213,29 @@ export default function FeatureAdoption() {
     return [...gyms].sort((a, b) => a.name.localeCompare(b.name));
   }, [gyms]);
 
+  // ── Matrix CSV export ─────────────────────────────────────
+  const handleExportMatrix = async () => {
+    const columns = [
+      { key: 'name', label: t('platform.adoption.gym', 'Gym') },
+      ...FEATURES.map(f => ({ key: f.key, label: f.label })),
+      { key: 'total', label: t('platform.adoption.total', 'Total') },
+    ];
+    const data = heatmapGyms.map(g => {
+      const active = gymFeatureMap[g.id] || new Set();
+      const ever = gymFeatureEverMap[g.id] || new Set();
+      const row = { name: g.name, total: `${active.size}/${FEATURES.length}` };
+      FEATURES.forEach(f => {
+        row[f.key] = active.has(f.key)
+          ? t('platform.adoption.csvActive', 'Active')
+          : ever.has(f.key)
+            ? t('platform.adoption.csvStale', 'Inactive 90d+')
+            : t('platform.adoption.csvNever', 'Never');
+      });
+      return row;
+    });
+    await exportCSV({ filename: 'feature-adoption-matrix', columns, data });
+  };
+
   // ── Table data (by gym, sortable) ────────────────────────
   const gymTableData = useMemo(() => {
     return gyms.map(g => {
@@ -267,6 +269,7 @@ export default function FeatureAdoption() {
   };
 
   // ── Section 2: Admin Engagement Metrics ───────────────────
+  // (Direct admin_presence reads — cross-gym SELECT unlocked by 0541.)
 
   // Score = distinct (date, profile_id) per gym in last 30d
   const adminScoresByGym = useMemo(() => {
@@ -285,8 +288,9 @@ export default function FeatureAdoption() {
     })).sort((a, b) => b.score - a.score);
   }, [adminPresence, gymNameMap, t]);
 
-  // Average admin logins/week
-  const avgAdminLoginsWeek = useMemo(() => {
+  // Average admin active-days/week — denominator is gyms WITH activity
+  // (noted in the UI footnote, it is not "all gyms").
+  const avgAdminActiveDays = useMemo(() => {
     if (!adminScoresByGym.length) return '0';
     const totalScore = adminScoresByGym.reduce((s, g) => s + g.score, 0);
     // 30 days ~ 4.3 weeks
@@ -297,10 +301,17 @@ export default function FeatureAdoption() {
     return adminScoresByGym[0]?.name || 'N/A';
   }, [adminScoresByGym]);
 
+  // Least active across ALL gyms — zero-activity gyms (no presence rows at
+  // all) used to be invisible here, which hid exactly the gyms that matter.
   const leastActiveGym = useMemo(() => {
-    if (!adminScoresByGym.length) return 'N/A';
-    return adminScoresByGym[adminScoresByGym.length - 1]?.name || 'N/A';
-  }, [adminScoresByGym]);
+    if (!gyms.length) return 'N/A';
+    const scoreByGym = {};
+    adminScoresByGym.forEach(g => { scoreByGym[g.gymId] = g.score; });
+    const ranked = gyms
+      .map(g => ({ name: g.name, score: scoreByGym[g.id] || 0 }))
+      .sort((a, b) => (a.score - b.score) || a.name.localeCompare(b.name));
+    return ranked[0]?.name || 'N/A';
+  }, [gyms, adminScoresByGym]);
 
   // Gyms with no admin activity in 7d
   const gymsNoActivity7d = useMemo(() => {
@@ -313,14 +324,14 @@ export default function FeatureAdoption() {
     return gyms.filter(g => !activeGymIds.has(g.id)).length;
   }, [gyms, adminPresence]);
 
-  // Bar chart data for admin engagement
+  // Bar chart data for admin engagement (gold = ≥75% of the max score)
   const adminBarData = useMemo(() => {
     if (!adminScoresByGym.length) return [];
     const maxScore = adminScoresByGym[0]?.score || 1;
-    const topQuartileThreshold = maxScore * 0.75;
+    const goldThreshold = maxScore * 0.75;
     return adminScoresByGym.slice(0, 20).map(g => ({
       ...g,
-      fill: g.score >= topQuartileThreshold ? '#D4AF37' : '#4B5563',
+      fill: g.score >= goldThreshold ? '#D4AF37' : '#4B5563',
     }));
   }, [adminScoresByGym]);
 
@@ -333,6 +344,25 @@ export default function FeatureAdoption() {
       when: entry.last_seen_at,
     }));
   }, [adminPresence, gymNameMap, adminNameMap, t]);
+
+  // Tooltip for the feature-usage chart. The previous version passed a
+  // 3-arg formatter to ChartTooltip, which only calls formatter(value) —
+  // the active/ever breakdown never rendered. This local content component
+  // reads the full datum from recharts' payload instead.
+  const FeatureUsageTooltip = ({ active, payload }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0]?.payload;
+    if (!d) return null;
+    return (
+      <div className="bg-[#0F172A] border border-white/10 rounded-xl px-3.5 py-2.5 shadow-2xl shadow-black/50 text-[12px] min-w-[120px]">
+        <p className="text-[#6B7280] text-[10px] font-medium uppercase tracking-wider mb-1">{d.label}</p>
+        <p className="font-semibold text-emerald-400">
+          {d.count} {t('platform.adoption.active', 'active')}
+          <span className="text-[#9CA3AF] font-normal"> / {d.everCount} {t('platform.adoption.everTotal', 'ever')}</span>
+        </p>
+      </div>
+    );
+  };
 
   // ── Render ────────────────────────────────────────────────
   if (loading) return <PlatformSpinner />;
@@ -347,6 +377,37 @@ export default function FeatureAdoption() {
         <p className="text-[12px] text-[#6B7280] mb-6">{t('platform.adoption.subtitle', 'Feature usage across gyms & admin engagement')}</p>
       </FadeIn>
 
+      {/* ── Critical load failure: banner + retry, no fake "Never used" ── */}
+      {loadError && (
+        <div className="bg-red-500/5 border border-red-500/25 rounded-xl p-5 mb-6 flex flex-col items-center text-center">
+          <AlertTriangle className="w-5 h-5 text-red-400 mb-2" />
+          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">
+            {t('platform.common.loadFailed', "Couldn't load this page's data")}
+          </p>
+          <p className="text-[11px] text-[#9CA3AF] mb-3 max-w-md">{loadError}</p>
+          <button
+            onClick={retry}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#D4AF37]/15 text-[#D4AF37] text-[12px] font-semibold hover:bg-[#D4AF37]/25 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {t('platform.common.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+
+      {!loadError && degradedSources.length > 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3 mb-6 flex items-center gap-3">
+          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <p className="text-[12px] text-[#9CA3AF] flex-1">
+            {t('platform.common.degraded', { sources: degradedSources.join(', '), defaultValue: 'Some data failed to load: {{sources}}. Affected sections may be incomplete.' })}
+          </p>
+          <button onClick={retry} className="text-[11px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors flex-shrink-0">
+            {t('platform.common.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+
+      {!loadError && (<>
       {/* ═══════════════════════════════════════════════════════
           SECTION 1: Feature Adoption
          ═══════════════════════════════════════════════════════ */}
@@ -385,31 +446,41 @@ export default function FeatureAdoption() {
 
       {/* View Toggle */}
       <FadeIn delay={180}>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <h2 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.adoption.matrix', 'Feature Adoption Matrix')}</h2>
-          <div className="flex gap-1 bg-[#0F172A] border border-white/6 rounded-lg p-0.5">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setViewMode('heatmap')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
-                viewMode === 'heatmap'
-                  ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
-              }`}
+              onClick={handleExportMatrix}
+              disabled={heatmapGyms.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0F172A] border border-white/6 text-[11px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Grid3X3 className="w-3.5 h-3.5" />
-              {t('platform.adoption.heatmap', 'Heatmap')}
+              <Download className="w-3.5 h-3.5" />
+              {t('platform.adoption.exportCsv', 'Export CSV')}
             </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
-                viewMode === 'table'
-                  ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-              {t('platform.adoption.byGym', 'By Gym')}
-            </button>
+            <div className="flex gap-1 bg-[#0F172A] border border-white/6 rounded-lg p-0.5">
+              <button
+                onClick={() => setViewMode('heatmap')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
+                  viewMode === 'heatmap'
+                    ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
+                    : 'text-[#6B7280] hover:text-[#9CA3AF]'
+                }`}
+              >
+                <Grid3X3 className="w-3.5 h-3.5" />
+                {t('platform.adoption.heatmap', 'Heatmap')}
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
+                    : 'text-[#6B7280] hover:text-[#9CA3AF]'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                {t('platform.adoption.byGym', 'By Gym')}
+              </button>
+            </div>
           </div>
         </div>
       </FadeIn>
@@ -442,7 +513,7 @@ export default function FeatureAdoption() {
                     </tr>
                   </thead>
                   <tbody>
-                    {heatmapGyms.map((gym, i) => {
+                    {heatmapGyms.map((gym) => {
                       const features = gymFeatureMap[gym.id] || new Set();
                       return (
                         <tr
@@ -632,17 +703,11 @@ export default function FeatureAdoption() {
                     width={100}
                   />
                   <Tooltip
-                    content={<ChartTooltip formatter={(v, _name, props) => {
-                      const entry = featureCounts.find(f => f.label === props?.payload?.label);
-                      const ever = entry?.everCount ?? v;
-                      return ever > v
-                        ? `${v} ${t('platform.adoption.active', 'active')} / ${ever} ${t('platform.adoption.everTotal', 'ever')}`
-                        : `${v} ${t('platform.adoption.gyms', 'gyms')}`;
-                    }} />}
+                    content={<FeatureUsageTooltip />}
                     cursor={{ fill: 'rgba(212,175,55,0.05)' }}
                   />
                   <Bar dataKey="count" name={t('platform.adoption.gymsUsing', 'Gyms Using (90d)')} radius={[0, 4, 4, 0]} barSize={18}>
-                    {featureCounts.map((entry, idx) => (
+                    {featureCounts.map((entry) => (
                       <Cell
                         key={entry.key}
                         fill={entry.count > 0 ? '#10B981' : '#374151'}
@@ -667,10 +732,10 @@ export default function FeatureAdoption() {
       </FadeIn>
 
       {/* Engagement Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
         <StatCard
-          value={avgAdminLoginsWeek}
-          label={t('platform.adoption.avgLogins', 'Avg Admin Logins/Week')}
+          value={avgAdminActiveDays}
+          label={t('platform.adoption.avgActiveDays', 'Admin Active Days/Week')}
           icon={Activity}
           color="#3B82F6"
           delay={300}
@@ -697,13 +762,19 @@ export default function FeatureAdoption() {
           delay={450}
         />
       </div>
+      <p className="text-[10.5px] text-[#6B7280] mb-6">
+        {t('platform.adoption.avgDenominatorNote', {
+          count: adminScoresByGym.length,
+          defaultValue: 'Average computed over the {{count}} gyms with any admin activity in the last 30 days. "Least active" considers all gyms, including zero activity.',
+        })}
+      </p>
 
       {/* Admin Engagement Bar Chart */}
       <FadeIn delay={480}>
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
           <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.adoption.adminActivityByGym', 'Admin Activity by Gym')}</h2>
           <p className="text-[11px] text-[#6B7280] mb-3">
-            {t('platform.adoption.scoreExplanation', 'Score = distinct admin-day sessions in last 30 days. Gold = top quartile.')}
+            {t('platform.adoption.scoreExplanationMax', 'Score = distinct admin-days in the last 30 days. Gold = at least 75% of the top gym’s score.')}
           </p>
           {adminBarData.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -738,7 +809,7 @@ export default function FeatureAdoption() {
                     width={120}
                   />
                   <Tooltip
-                    content={<ChartTooltip formatter={(v) => `${v} ${t('platform.adoption.sessions30d', 'sessions (30d)')}`} />}
+                    content={<ChartTooltip formatter={(v) => `${v} ${t('platform.adoption.adminDays30d', 'admin-days (30d)')}`} />}
                     cursor={{ fill: 'rgba(212,175,55,0.05)' }}
                   />
                   <Bar dataKey="score" name={t('platform.adoption.activityScore', 'Activity Score')} radius={[0, 4, 4, 0]} barSize={16}>
@@ -798,6 +869,7 @@ export default function FeatureAdoption() {
           )}
         </div>
       </FadeIn>
+      </>)}
     </div>
   );
 }

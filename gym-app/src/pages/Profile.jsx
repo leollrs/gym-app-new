@@ -23,10 +23,10 @@ import logger from '../lib/logger';
 import AvatarPicker from '../components/AvatarPicker';
 import UserAvatar from '../components/UserAvatar';
 import ShareAchievementSheet from '../components/share/ShareAchievementSheet';
-import { ShareMonthlySheet } from '../components/share/QuickShareSheets';
+import ShareMonthSheet from '../components/share/ShareMonthSheet';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { ACHIEVEMENT_DEFS, ACHIEVEMENT_CATEGORIES, fetchAchievementData, awardAchievements } from '../lib/achievements';
+import { ACHIEVEMENT_DEFS, ACHIEVEMENT_CATEGORIES, fetchAchievementData, awardAchievements, customDefToDisplay } from '../lib/achievements';
 import { getRewardTier, getUserPoints } from '../lib/rewardsEngine';
 import { getLevel } from '../components/LevelBadge';
 import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
@@ -41,8 +41,17 @@ const ICON_MAP = {
 const AchievementIcon = ({ name, size = 24, color }) => {
   const Icon = ICON_MAP[name];
   if (Icon) return <Icon size={size} style={{ color }} strokeWidth={2} />;
+  // Gym-authored achievement_definitions store an emoji rather than a lucide
+  // name — render it as text instead of falling back to the dumbbell.
+  if (name && !/^[A-Za-z][A-Za-z0-9_ ]*$/.test(name)) {
+    return <span style={{ fontSize: size, lineHeight: 1, userSelect: 'none' }}>{name}</span>;
+  }
   return <Dumbbell size={size} style={{ color }} strokeWidth={2} />;
 };
+
+// Keys owned by the hardcoded engine — used to keep the summary-bar totals
+// honest now that user_achievements also holds custom_<id> keys.
+const HARDCODED_ACHIEVEMENT_KEYS = new Set(ACHIEVEMENT_DEFS.map(d => d.key));
 
 // ── Setup option data ─────────────────────────────────────────────────────────
 const FITNESS_LEVELS = [
@@ -157,6 +166,145 @@ const HeroStat = ({ label, value, sub, color, isFirst }) => {
   );
 };
 
+// ── Achievement card ──────────────────────────────────────────────────────────
+// Shared by the hardcoded categories and the gym-authored (custom) section —
+// `a` is an ACHIEVEMENT_DEFS entry or a customDefToDisplay() result, `stats`
+// feeds the progress bar (fetchAchievementData shape).
+const AchievementCard = ({ a, earned, earnedAt, stats, onShare, t, i18n }) => {
+  // Progress calculation
+  let progressValue = 0;
+  let progressTarget = 1;
+  let progressPct = earned ? 100 : 0;
+  if (!earned && a.progressOf && stats) {
+    progressValue = Math.min(
+      stats[a.progressOf.key] ?? 0,
+      a.progressOf.target
+    );
+    progressTarget = a.progressOf.target;
+    progressPct = Math.min((progressValue / progressTarget) * 100, 100);
+  }
+
+  return (
+    <div
+      className="rounded-2xl border flex items-center gap-4 px-4 py-4 transition-all"
+      style={{
+        background: earned ? 'var(--color-bg-card)' : 'var(--color-bg-secondary)',
+        borderColor: earned ? `${a.color}40` : 'var(--color-border-subtle)',
+        boxShadow: earned ? `0 0 20px ${a.color}12` : 'none',
+        opacity: earned ? 1 : 0.75,
+      }}
+    >
+      {/* Icon badge */}
+      <div
+        className="relative flex-shrink-0 flex items-center justify-center"
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: 14,
+          background: earned ? `${a.color}18` : 'var(--color-surface-hover)',
+          border: earned ? `1.5px solid ${a.color}40` : '1.5px solid var(--color-border-subtle)',
+          filter: earned ? 'none' : 'grayscale(1)',
+        }}
+      >
+        <AchievementIcon name={a.icon} size={24} color={earned ? a.color : 'var(--color-text-subtle)'} />
+        {!earned && (
+          <div
+            className="absolute inset-0 flex items-center justify-center rounded-[13px]"
+            style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 55%, transparent)' }}
+          >
+            <Lock size={14} style={{ color: 'var(--color-text-subtle)' }} />
+          </div>
+        )}
+      </div>
+
+      {/* Text + progress */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p
+            className="font-semibold text-[14px] truncate"
+            style={{ color: earned ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}
+          >
+            {tg(t, a.labelKey, { defaultValue: a.label })}
+          </p>
+          {earned && (
+            <span
+              className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
+              style={{
+                background: `${a.color}20`,
+                color: a.color,
+                border: `1px solid ${a.color}40`,
+              }}
+            >
+              {t('profile.earned')}
+            </span>
+          )}
+        </div>
+        <p className="text-[12px] mt-0.5 leading-snug text-[var(--color-text-muted)]">
+          {t(a.descKey, a.desc)}
+        </p>
+
+        {/* Progress bar for countable achievements */}
+        {!earned && a.progressOf && progressValue > 0 && (
+          <div className="mt-2">
+            <div className="h-1.5 rounded-full bg-[var(--color-bg-deep)] overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${progressPct}%`,
+                  background: `linear-gradient(90deg, ${a.color}88, ${a.color})`,
+                }}
+              />
+            </div>
+            <p className="text-[10px] mt-1" style={{ color: a.color + 'CC' }}>
+              {a.progressOf.key === 'totalVolumeLbs'
+                ? `${formatStatNumber(Math.round(progressValue))} / ${formatStatNumber(progressTarget)} lbs`
+                : `${progressValue} / ${progressTarget}`}
+            </p>
+          </div>
+        )}
+
+        {/* Earned date */}
+        {earned && earnedAt && (
+          <p className="text-[11px] mt-1" style={{ color: `${a.color}99` }}>
+            {t('profile.earned')} {new Date(earnedAt).toLocaleDateString(i18n.language || 'en', {
+              month: 'short', day: 'numeric', year: 'numeric',
+            })}
+          </p>
+        )}
+      </div>
+
+      {/* Share button (earned only) */}
+      {earned && (
+        <button
+          type="button"
+          aria-label={t('profile.share', 'Share')}
+          onClick={(e) => {
+            e.stopPropagation();
+            onShare({
+              key: a.key,
+              label: tg(t, a.labelKey, { defaultValue: a.label }),
+              description: t(a.descKey, a.desc),
+              icon: a.icon,
+              color: a.color,
+              unlockedAt: earnedAt,
+            });
+          }}
+          className="flex-shrink-0 flex items-center justify-center rounded-full transition-colors"
+          style={{
+            width: 36,
+            height: 36,
+            background: `${a.color}18`,
+            border: `1px solid ${a.color}40`,
+            color: a.color,
+          }}
+        >
+          <Share2 size={16} strokeWidth={2.2} />
+        </button>
+      )}
+    </div>
+  );
+};
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 const Profile = () => {
   const { t, i18n } = useTranslation('pages');
@@ -188,6 +336,8 @@ const Profile = () => {
   const [earnedAchievements, setEarnedAchievements]   = useCachedState(`${cacheKey}-earned`, {});
   // Live achievement data for progress bars
   const [achievementStats, setAchievementStats]       = useCachedState(`${cacheKey}-achStats`, null);
+  // Gym-authored achievement_definitions (gym + global), display shape
+  const [customDefs, setCustomDefs]                   = useCachedState(`${cacheKey}-customDefs`, []);
 
   // Level / points
   const [userPoints, setUserPoints] = useState(ctxLifetimePoints ?? 0);
@@ -241,6 +391,9 @@ const Profile = () => {
     return () => { document.body.style.overflow = prev; };
   }, [showGymInfo]);
 
+  // Declared before the load effect because that effect lists refreshKey in
+  // its deps (const is not hoisted — referencing it earlier would TDZ-throw).
+  const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
     if (!user || !profile) return;
 
@@ -250,6 +403,7 @@ const Profile = () => {
       // revalidate silently in the background.
       if (!hasCached) setLoading(true);
 
+      try {
       // 1. Gym info + user points in parallel (independent queries)
       const [{ data: gym }, ptsData] = await Promise.all([
         supabase.from('gyms').select('id, name, slug, is_active').eq('id', profile.gym_id).single(),
@@ -372,13 +526,18 @@ const Profile = () => {
       // 6. Award any missing achievements, then load earned + stats
       await awardAchievements(user.id, profile.gym_id, supabase);
 
-      const [{ data: dbUnlocked }, achStats] = await Promise.all([
+      const [{ data: dbUnlocked }, achStats, { data: customRows }] = await Promise.all([
         supabase
           .from('user_achievements')
           .select('achievement_key, earned_at')
           .eq('user_id', user.id)
           .eq('gym_id', profile.gym_id),
         fetchAchievementData(user.id, profile.gym_id, supabase),
+        supabase
+          .from('achievement_definitions')
+          .select('id, gym_id, name, description, icon, category, criteria, key')
+          .or(`gym_id.eq.${profile.gym_id},gym_id.is.null`)
+          .order('sort_order', { ascending: true }),
       ]);
 
       const earnedMap = {};
@@ -387,13 +546,36 @@ const Profile = () => {
       });
       setEarnedAchievements(earnedMap);
       setAchievementStats(achStats);
+      // Rows with a `key` mirror hardcoded ACHIEVEMENT_DEFS entries (0019
+      // seeds) — those already render in the hardcoded categories above.
+      setCustomDefs((customRows ?? []).filter(r => !r.key).map(customDefToDisplay));
       setUnlockedAchievementIds(new Set(Object.keys(earnedMap)));
-
-      setLoading(false);
+      } catch {
+        // One rejected query must not strand the section skeletons forever.
+      } finally {
+        setLoading(false);
+      }
     };
 
     load();
-  }, [user, profile]);
+    // refreshKey re-runs the load: Profile is keep-alive, so after the member
+    // completes a workout (stats/PRs/points/volume all change) the mounted page
+    // would otherwise show pre-workout numbers until a full remount.
+  }, [user, profile, refreshKey]);
+
+  // Bump refreshKey on foreground + workout-changed to revalidate silently
+  // (hasCached → no skeleton flash on the re-run).
+  useEffect(() => {
+    if (!user) return undefined;
+    const bump = () => setRefreshKey(k => k + 1);
+    const onVis = () => { if (document.visibilityState === 'visible') bump(); };
+    window.addEventListener('tugympr:workouts-changed', bump);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('tugympr:workouts-changed', bump);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [user]);
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const { level, xpIntoLevel, xpForNext, progress: levelProgress } = getLevel(userPoints);
@@ -416,6 +598,19 @@ const Profile = () => {
     ? new Date(profile.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
     : '';
   const maxMuscleSets = muscleBalance[0]?.sets ?? 1;
+
+  // Achievements summary — count only keys we actually display (hardcoded +
+  // currently-existing custom defs) so the totals can't drift past 100% now
+  // that user_achievements also holds custom_<id> keys.
+  const customKeySet = new Set(customDefs.map(d => d.key));
+  const totalAchievementCount = ACHIEVEMENT_DEFS.length + customDefs.length;
+  const earnedAchievementCount = Object.keys(earnedAchievements)
+    .filter(k => HARDCODED_ACHIEVEMENT_KEYS.has(k) || customKeySet.has(k)).length;
+  // The `checkins` criteria stat isn't part of fetchAchievementData — splice
+  // in the lifetime check-in count Profile already fetches for the stats strip.
+  const customAchievementStats = achievementStats
+    ? { ...achievementStats, totalCheckins: lifetimeStats?.checkIns ?? 0 }
+    : null;
 
   // Short, member-safe reason for "Failed to …: {{message}}" toast templates.
   // The raw error stays in the console (logger) only.
@@ -1072,10 +1267,10 @@ const Profile = () => {
           {!loading && (
             <div className="rounded-[22px] bg-[var(--color-bg-card)] px-5 py-4 flex items-center justify-between">
               <div>
-                <p className={`${statFontSize(Object.keys(earnedAchievements).length, 'text-[22px]')} font-black text-[var(--color-accent)] leading-none truncate`} style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '-0.3px', fontVariantNumeric: 'tabular-nums' }}>
-                  {Object.keys(earnedAchievements).length}
+                <p className={`${statFontSize(earnedAchievementCount, 'text-[22px]')} font-black text-[var(--color-accent)] leading-none truncate`} style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '-0.3px', fontVariantNumeric: 'tabular-nums' }}>
+                  {earnedAchievementCount}
                   <span className="text-[14px] font-semibold text-[var(--color-text-muted)] ml-1">
-                    / {ACHIEVEMENT_DEFS.length}
+                    / {totalAchievementCount}
                   </span>
                 </p>
                 <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mt-1">
@@ -1088,13 +1283,13 @@ const Profile = () => {
                   <div
                     className="h-full rounded-full transition-all duration-700"
                     style={{
-                      width: `${(Object.keys(earnedAchievements).length / ACHIEVEMENT_DEFS.length) * 100}%`,
+                      width: `${(earnedAchievementCount / totalAchievementCount) * 100}%`,
                       background: 'linear-gradient(90deg, var(--color-accent), var(--color-warning))',
                     }}
                   />
                 </div>
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-1 text-right">
-                  {Math.round((Object.keys(earnedAchievements).length / ACHIEVEMENT_DEFS.length) * 100)}% {t('profile.complete')}
+                  {Math.round((earnedAchievementCount / totalAchievementCount) * 100)}% {t('profile.complete')}
                 </p>
               </div>
             </div>
@@ -1124,148 +1319,52 @@ const Profile = () => {
                   </div>
 
                   <div className="flex flex-col gap-3 stagger-fade-in">
-                    {defs.map(a => {
-                      const earned = !!earnedAchievements[a.key];
-                      const earnedAt = earnedAchievements[a.key];
-
-                      // Progress calculation
-                      let progressValue = 0;
-                      let progressTarget = 1;
-                      let progressPct = earned ? 100 : 0;
-                      if (!earned && a.progressOf && achievementStats) {
-                        progressValue = Math.min(
-                          achievementStats[a.progressOf.key] ?? 0,
-                          a.progressOf.target
-                        );
-                        progressTarget = a.progressOf.target;
-                        progressPct = Math.min((progressValue / progressTarget) * 100, 100);
-                      }
-
-                      return (
-                        <div
-                          key={a.key}
-                          className="rounded-2xl border flex items-center gap-4 px-4 py-4 transition-all"
-                          style={{
-                            background: earned ? 'var(--color-bg-card)' : 'var(--color-bg-secondary)',
-                            borderColor: earned ? `${a.color}40` : 'var(--color-border-subtle)',
-                            boxShadow: earned ? `0 0 20px ${a.color}12` : 'none',
-                            opacity: earned ? 1 : 0.75,
-                          }}
-                        >
-                          {/* Icon badge */}
-                          <div
-                            className="relative flex-shrink-0 flex items-center justify-center"
-                            style={{
-                              width: 52,
-                              height: 52,
-                              borderRadius: 14,
-                              background: earned ? `${a.color}18` : 'var(--color-surface-hover)',
-                              border: earned ? `1.5px solid ${a.color}40` : '1.5px solid var(--color-border-subtle)',
-                              filter: earned ? 'none' : 'grayscale(1)',
-                            }}
-                          >
-                            <AchievementIcon name={a.icon} size={24} color={earned ? a.color : 'var(--color-text-subtle)'} />
-                            {!earned && (
-                              <div
-                                className="absolute inset-0 flex items-center justify-center rounded-[13px]"
-                                style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 55%, transparent)' }}
-                              >
-                                <Lock size={14} style={{ color: 'var(--color-text-subtle)' }} />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Text + progress */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p
-                                className="font-semibold text-[14px] truncate"
-                                style={{ color: earned ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}
-                              >
-                                {tg(t, a.labelKey, { defaultValue: a.label })}
-                              </p>
-                              {earned && (
-                                <span
-                                  className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
-                                  style={{
-                                    background: `${a.color}20`,
-                                    color: a.color,
-                                    border: `1px solid ${a.color}40`,
-                                  }}
-                                >
-                                  {t('profile.earned')}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[12px] mt-0.5 leading-snug text-[var(--color-text-muted)]">
-                              {t(a.descKey, a.desc)}
-                            </p>
-
-                            {/* Progress bar for countable achievements */}
-                            {!earned && a.progressOf && progressValue > 0 && (
-                              <div className="mt-2">
-                                <div className="h-1.5 rounded-full bg-[var(--color-bg-deep)] overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full transition-all duration-700"
-                                    style={{
-                                      width: `${progressPct}%`,
-                                      background: `linear-gradient(90deg, ${a.color}88, ${a.color})`,
-                                    }}
-                                  />
-                                </div>
-                                <p className="text-[10px] mt-1" style={{ color: a.color + 'CC' }}>
-                                  {a.progressOf.key === 'totalVolumeLbs'
-                                    ? `${formatStatNumber(Math.round(progressValue))} / ${formatStatNumber(progressTarget)} lbs`
-                                    : `${progressValue} / ${progressTarget}`}
-                                </p>
-                              </div>
-                            )}
-
-                            {/* Earned date */}
-                            {earned && earnedAt && (
-                              <p className="text-[11px] mt-1" style={{ color: `${a.color}99` }}>
-                                {t('profile.earned')} {new Date(earnedAt).toLocaleDateString(i18n.language || 'en', {
-                                  month: 'short', day: 'numeric', year: 'numeric',
-                                })}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Share button (earned only) */}
-                          {earned && (
-                            <button
-                              type="button"
-                              aria-label={t('profile.share', 'Share')}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setShareAchievement({
-                                  key: a.key,
-                                  label: tg(t, a.labelKey, { defaultValue: a.label }),
-                                  description: t(a.descKey, a.desc),
-                                  icon: a.icon,
-                                  color: a.color,
-                                  unlockedAt: earnedAt,
-                                });
-                              }}
-                              className="flex-shrink-0 flex items-center justify-center rounded-full transition-colors"
-                              style={{
-                                width: 36,
-                                height: 36,
-                                background: `${a.color}18`,
-                                border: `1px solid ${a.color}40`,
-                                color: a.color,
-                              }}
-                            >
-                              <Share2 size={16} strokeWidth={2.2} />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {defs.map(a => (
+                      <AchievementCard
+                        key={a.key}
+                        a={a}
+                        earned={!!earnedAchievements[a.key]}
+                        earnedAt={earnedAchievements[a.key]}
+                        stats={achievementStats}
+                        onShare={setShareAchievement}
+                        t={t}
+                        i18n={i18n}
+                      />
+                    ))}
                   </div>
                 </section>
               );
             })
+          )}
+
+          {/* Gym-authored achievements (achievement_definitions rows; earned
+              state keyed by custom_<id> in user_achievements) */}
+          {!loading && customDefs.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>
+                  {t('profile.achievementCategories.gym', 'Gym achievements')}
+                </h3>
+                <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                  {customDefs.filter(a => earnedAchievements[a.key]).length}/{customDefs.length}
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-3 stagger-fade-in">
+                {customDefs.map(a => (
+                  <AchievementCard
+                    key={a.key}
+                    a={a}
+                    earned={!!earnedAchievements[a.key]}
+                    earnedAt={earnedAchievements[a.key]}
+                    stats={customAchievementStats}
+                    onShare={setShareAchievement}
+                    t={t}
+                    i18n={i18n}
+                  />
+                ))}
+              </div>
+            </section>
           )}
         </div>
       )}
@@ -1680,10 +1779,11 @@ const Profile = () => {
         };
         const monthSessions = sessions.filter(s => inMonth(s.completed_at || s.started_at));
         const monthVolume = monthSessions.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
-        const monthPRs = prs.filter(p => inMonth(p.achieved_at || p.created_at)).length;
+        const monthPRList = prs.filter(p => inMonth(p.achieved_at || p.created_at));
+        const monthPRs = monthPRList.length;
         const monthLabel = now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }).toUpperCase();
         return (
-          <ShareMonthlySheet
+          <ShareMonthSheet
             open={monthlyShareOpen}
             onClose={() => setMonthlyShareOpen(false)}
             recap={{
@@ -1692,12 +1792,12 @@ const Profile = () => {
               totalVolumeLbs: Math.round(monthVolume),
               prCount: monthPRs,
               streakDays: profile?.current_streak_days || 0,
-              headline: monthPRs > 0
-                ? `${monthPRs} new ${monthPRs === 1 ? 'PR' : 'PRs'} this month`
-                : `${monthSessions.length} workouts logged`,
             }}
+            monthSessions={monthSessions}
+            monthPRs={monthPRList}
             user={profile}
             gym={profile?.gym_name}
+            shareLink={`${PROD_WEB_URL}/recap`}
           />
         );
       })()}

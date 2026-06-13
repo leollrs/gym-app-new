@@ -81,7 +81,7 @@ serve(async (req) => {
         .select('*', { count: 'exact', head: true })
         .eq('profile_id', user.id)
         .eq('endpoint', 'sign-qr')
-        .gte('requested_at', oneHourAgo);
+        .gte('created_at', oneHourAgo);
       if ((count ?? 0) >= 60) {
         return jsonResp({ error: 'Rate limit exceeded — too many QR sign requests' }, 429);
       }
@@ -104,6 +104,11 @@ serve(async (req) => {
     const ALLOWED_PREFIXES = [
       'gym-checkin:', 'gym-member:', 'gym-reward:', 'gym-purchase:',
       'gym-voucher:', 'gym-referral:', 'gym-reward-redemption:',
+      // Opaque-code reward families (member shows, admin scans). These were
+      // missing, so every challenge-prize/earned-reward QR render 400'd here
+      // and fell back unsigned. Not identity-bound: they carry a random
+      // secret code, not a profile id at index 2.
+      'earned-reward:', 'challenge-prize:',
     ];
     if (!ALLOWED_PREFIXES.some((p) => payload.startsWith(p))) {
       return jsonResp({ error: 'Unsupported payload type' }, 400);

@@ -162,11 +162,7 @@ export default function GymContentTab({
                         }`}>
                           {p.is_published ? t('platform.gymDetail.contentTab.published') : t('platform.gymDetail.contentTab.draft')}
                         </span>
-                        {p.difficulty_level && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/6 text-[#9CA3AF] border border-white/10">
-                            {t(`platform.gymDetail.contentTab.difficulty.${p.difficulty_level}`, p.difficulty_level)}
-                          </span>
-                        )}
+                        {/* difficulty chip removed — gym_programs has no such column */}
                       </div>
                       {p.description && (
                         <p className="text-[12px] text-[#6B7280] mb-1 line-clamp-1">{p.description}</p>
@@ -236,12 +232,16 @@ export default function GymContentTab({
                 return (
                   <div key={a.id} className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      {/* Real achievement_definitions columns: icon / category / criteria */}
+                      <div className="w-10 h-10 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0 text-[18px]">
+                        {a.icon || '\u{1F3C6}'}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{a.name}</h4>
-                          {a.type && (
+                          {a.category && (
                             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20">
-                              {t(`platform.gymDetail.contentTab.achievementType.${a.type}`, a.type)}
+                              {t(`platform.gymDetail.contentTab.achievementCategory.${a.category}`, String(a.category).replace(/_/g, ' '))}
                             </span>
                           )}
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -251,9 +251,9 @@ export default function GymContentTab({
                         {a.description && (
                           <p className="text-[12px] text-[#6B7280] mb-1 line-clamp-1">{a.description}</p>
                         )}
-                        {a.requirement_value != null && (
-                          <span className="text-[11px] text-[#6B7280]">
-                            {t('platform.gymDetail.contentTab.requirement', { value: a.requirement_value })}
+                        {a.criteria && Object.keys(a.criteria).length > 0 && (
+                          <span className="text-[11px] text-[#6B7280] font-mono">
+                            {JSON.stringify(a.criteria)}
                           </span>
                         )}
                       </div>
@@ -284,12 +284,14 @@ export default function GymContentTab({
 
       {contentSubTab === 'rewards' && (
         <div>
+          {/* gym_rewards catalog (0187) — the old tab read reward_points (per-member
+              balances, select_own RLS) and rendered columns that never existed. */}
           {rewardsAvailable === false ? (
             <div className="bg-[#0F172A] border border-white/6 rounded-xl py-20 text-center">
               <Gift className="w-10 h-10 text-[#D4AF37]/40 mx-auto mb-4" />
-              <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">{t('platform.gymDetail.contentTab.rewardsComingSoon')}</h3>
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">{t('platform.gymDetail.contentTab.rewardsLoadFailed', "Couldn't load the rewards catalog")}</h3>
               <p className="text-[12px] text-[#6B7280] max-w-sm mx-auto">
-                {t('platform.gymDetail.contentTab.rewardsComingSoonDesc')}
+                {t('platform.gymDetail.contentTab.rewardsLoadFailedDesc', 'Reload the page to try again. If this persists, the gym_rewards read policy (migration 0542) may not be applied yet.')}
               </p>
             </div>
           ) : Array.isArray(rewardsAvailable) && rewardsAvailable.length === 0 ? (
@@ -299,26 +301,36 @@ export default function GymContentTab({
             </div>
           ) : Array.isArray(rewardsAvailable) ? (
             <div className="space-y-3">
-              {rewardsAvailable.map(r => (
-                <div key={r.id} className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                      <Gift className="w-5 h-5 text-[#D4AF37]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{r.name ?? r.title ?? t('platform.gymDetail.contentTab.rewardFallback')}</h4>
-                      {r.description && (
-                        <p className="text-[12px] text-[#6B7280] line-clamp-1">{r.description}</p>
-                      )}
-                    </div>
-                    {r.points != null && (
-                      <span className="text-[12px] font-semibold text-[#D4AF37] bg-[#D4AF37]/10 px-3 py-1 rounded-lg">
-                        {r.points} {t('platform.gymDetail.contentTab.pointsSuffix')}
+              {rewardsAvailable.map(r => {
+                const isEs = i18n.language?.startsWith('es');
+                const name = (isEs ? r.name_es : null) || r.name || t('platform.gymDetail.contentTab.rewardFallback');
+                const description = (isEs ? r.description_es : null) || r.description;
+                return (
+                  <div key={r.id} className={`bg-[#0F172A] border border-white/6 rounded-xl p-4 ${r.is_active === false ? 'opacity-60' : ''}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 text-[18px]">
+                        {r.emoji_icon || <Gift className="w-5 h-5 text-[#D4AF37]" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{name}</h4>
+                          {r.is_active === false && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/6 text-[#9CA3AF] border border-white/10">
+                              {t('platform.gymDetail.contentTab.rewardInactive', 'Inactive')}
+                            </span>
+                          )}
+                        </div>
+                        {description && (
+                          <p className="text-[12px] text-[#6B7280] line-clamp-1">{description}</p>
+                        )}
+                      </div>
+                      <span className="text-[12px] font-semibold text-[#D4AF37] bg-[#D4AF37]/10 px-3 py-1 rounded-lg whitespace-nowrap">
+                        {(r.cost_points ?? 0).toLocaleString()} {t('platform.gymDetail.contentTab.pointsSuffix')}
                       </span>
-                    )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : null}
         </div>

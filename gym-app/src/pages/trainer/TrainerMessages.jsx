@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { createPortal } from 'react-dom';
 import {
   ChevronLeft, MessageCircle, Send, Search, X, Loader2, Edit,
-  Dumbbell, CalendarPlus, ExternalLink,
+  Dumbbell, CalendarPlus, ExternalLink, AlertTriangle,
 } from 'lucide-react';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
@@ -27,9 +28,17 @@ if (Capacitor.isNativePlatform()) {
   import('@capacitor/keyboard').then(mod => { Keyboard = mod.Keyboard; }).catch(() => {});
 }
 
+// Pin stays in localStorage: conversation_member_state (migration 0449) has no
+// pinned column — only archived_at / deleted_at / purged_at. Archive + delete
+// now live server-side via the same RPCs the member Messages page uses, so
+// they sync across devices and deleted threads resurface on new messages
+// (trg_resurface_on_message).
 const PIN_STORAGE_KEY = 'trainer_pinned_conversations_v1';
-const ARCHIVE_STORAGE_KEY = 'trainer_archived_conversations_v1';
-const HIDDEN_STORAGE_KEY = 'trainer_hidden_conversations_v1';
+// Legacy keys — only read once to migrate old local state to the server.
+const LEGACY_ARCHIVE_STORAGE_KEY = 'trainer_archived_conversations_v1';
+const LEGACY_HIDDEN_STORAGE_KEY = 'trainer_hidden_conversations_v1';
+const STATE_MIGRATED_KEY = 'trainer_conv_state_migrated_v1';
+const UUID_RE = /^[0-9a-fA-F-]{36}$/;
 
 function loadIdSet(storageKey) {
   try {
@@ -46,10 +55,6 @@ function saveIdSet(storageKey, set) {
 
 function loadPinned() { return loadIdSet(PIN_STORAGE_KEY); }
 function savePinned(set) { saveIdSet(PIN_STORAGE_KEY, set); }
-function loadArchived() { return loadIdSet(ARCHIVE_STORAGE_KEY); }
-function saveArchived(set) { saveIdSet(ARCHIVE_STORAGE_KEY, set); }
-function loadHidden() { return loadIdSet(HIDDEN_STORAGE_KEY); }
-function saveHidden(set) { saveIdSet(HIDDEN_STORAGE_KEY, set); }
 
 function shouldShowTimestamp(prev, curr) {
   if (!prev) return true;
@@ -175,63 +180,6 @@ function MessageBody({ body, t }) {
   );
 }
 
-// ── Coming soon mini-modal for "Schedule session" ───────────────
-function ScheduleSoonModal({ open, onClose, t }) {
-  const navigate = useNavigate();
-  if (!open) return null;
-  return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center px-4 backdrop-blur-sm"
-      style={{ background: 'rgba(0,0,0,0.6)' }}
-      onClick={onClose}
-    >
-      <motion.div
-        role="dialog"
-        aria-modal="true"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 20 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-3xl overflow-hidden"
-        style={{ background: TT.surface, border: `1px solid ${TT.border}`, boxShadow: TT.shadowLg }}
-      >
-        <div className="px-5 py-5 text-center">
-          <div
-            className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center"
-            style={{ background: TT.accentSoft }}
-          >
-            <CalendarPlus size={22} style={{ color: TT.accent }} />
-          </div>
-          <h3 className="text-[16px] font-bold mb-1" style={{ color: TT.text }}>
-            {t('trainerMessages.scheduleSoon.title')}
-          </h3>
-          <p className="text-[13px]" style={{ color: TT.textSub }}>
-            {t('trainerMessages.scheduleSoon.body')}
-          </p>
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 min-h-[44px] rounded-xl text-[13px] font-semibold"
-              style={{ border: `1px solid ${TT.borderSolid}`, color: TT.textSub }}
-            >
-              {t('trainerMessages.scheduleSoon.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={() => { onClose(); navigate('/trainer/calendar'); }}
-              className="flex-1 min-h-[44px] rounded-xl text-[13px] font-bold"
-              style={{ background: TT.accent, color: '#06363B' }}
-            >
-              {t('trainerMessages.scheduleSoon.openCalendar')}
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
 // ── Client picker (start a new chat with one of the trainer's clients) ──
 function ClientPicker({ open, onClose, trainerId, onPick, t }) {
   const [clients, setClients] = useState([]);
@@ -273,7 +221,7 @@ function ClientPicker({ open, onClose, trainerId, onPick, t }) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[200] flex items-start sm:items-center justify-center px-4 pt-20 sm:pt-0 backdrop-blur-sm"
       style={{ background: 'rgba(0,0,0,0.6)' }}
@@ -354,7 +302,7 @@ function ClientPicker({ open, onClose, trainerId, onPick, t }) {
         </div>
       </motion.div>
     </div>
-  );
+  , document.body);
 }
 
 // ── Main page ─────────────────────────────────────────────────────
@@ -374,8 +322,9 @@ export default function TrainerMessages() {
   const [tabIndex, setTabIndex] = useState(0); // 0=All, 1=Unread, 2=Pinned
 
   const [pinnedIds, setPinnedIds] = useState(loadPinned);
-  const [archivedIds, setArchivedIds] = useState(loadArchived);
-  const [hiddenIds, setHiddenIds] = useState(loadHidden);
+  // Server-derived (conversation_member_state): archived / soft-deleted ids.
+  const [archivedIds, setArchivedIds] = useState(() => new Set());
+  const [hiddenIds, setHiddenIds] = useState(() => new Set());
   // Tracks which conversation row is currently swiped open (only one at a
   // time, iMessage-style). null = nothing swiped.
   const [swipedConvId, setSwipedConvId] = useState(null);
@@ -384,17 +333,24 @@ export default function TrainerMessages() {
   const [otherUser, setOtherUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [threadLoading, setThreadLoading] = useState(false);
+  const [threadError, setThreadError] = useState(false);
+  const [threadReloadKey, setThreadReloadKey] = useState(0);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const encryptionSeedRef = useRef(null);
 
   // Modals
   const [showShare, setShowShare] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
 
   const inputRef = useRef(null);
   const bottomRef = useRef(null);
+  const messagesBoxRef = useRef(null);
+  // Set when prepending older history so the scroll-to-bottom effect skips one
+  // run (otherwise "load earlier" would yank the user to the newest message).
+  const skipAutoScrollRef = useRef(false);
 
   // ── Page title ─────────────
   useEffect(() => { document.title = `${t('trainerMessages.list.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
@@ -423,6 +379,30 @@ export default function TrainerMessages() {
     if (!profile?.id) return;
     setConvsLoading(true);
     try {
+      // One-time: migrate legacy localStorage archive/hidden state onto the
+      // server (conversation_member_state) so swipe state survives devices and
+      // deleted threads resurface on new client messages. The RPCs no-op for
+      // ids the caller isn't a participant of, so stale ids are harmless.
+      try {
+        if (!localStorage.getItem(STATE_MIGRATED_KEY)) {
+          const legacyArchived = [...loadIdSet(LEGACY_ARCHIVE_STORAGE_KEY)].filter(id => UUID_RE.test(id));
+          const legacyHidden = [...loadIdSet(LEGACY_HIDDEN_STORAGE_KEY)].filter(id => UUID_RE.test(id));
+          if (legacyArchived.length || legacyHidden.length) {
+            const results = await Promise.all([
+              ...legacyArchived.map(id => supabase.rpc('set_conversation_archived', { p_conversation_id: id, p_archived: true })),
+              ...legacyHidden.map(id => supabase.rpc('soft_delete_conversation', { p_conversation_id: id })),
+            ]);
+            if (results.every(r => !r?.error)) {
+              localStorage.setItem(STATE_MIGRATED_KEY, '1');
+              localStorage.removeItem(LEGACY_ARCHIVE_STORAGE_KEY);
+              localStorage.removeItem(LEGACY_HIDDEN_STORAGE_KEY);
+            }
+          } else {
+            localStorage.setItem(STATE_MIGRATED_KEY, '1');
+          }
+        }
+      } catch { /* retry on next load */ }
+
       const { data: rawConvs, error } = await supabase
         .from('conversations')
         .select('id, participant_1, participant_2, last_message_at, encryption_seed')
@@ -430,6 +410,24 @@ export default function TrainerMessages() {
         .order('last_message_at', { ascending: false })
         .limit(500); // a trainer won't realistically have >500 active conversations
       if (error) throw error;
+
+      // Per-user archive / soft-delete state (RLS scopes rows to this user).
+      // On error keep the previous sets — never blank out swipe state mid-session.
+      const { data: stateRows, error: stateError } = await supabase
+        .from('conversation_member_state')
+        .select('conversation_id, archived_at, deleted_at, purged_at');
+      if (stateError) {
+        logger.error('TrainerMessages: failed to load conversation state', stateError);
+      } else {
+        const arch = new Set();
+        const hid = new Set();
+        (stateRows || []).forEach(s => {
+          if (s.purged_at || s.deleted_at) hid.add(s.conversation_id);
+          else if (s.archived_at) arch.add(s.conversation_id);
+        });
+        setArchivedIds(arch);
+        setHiddenIds(hid);
+      }
 
       // Filter out any self-conversations (participant_1 === participant_2 === me).
       // Migration 0355 blocks creating new ones at the RPC layer, but legacy
@@ -517,19 +515,32 @@ export default function TrainerMessages() {
     if (!activeConvId || !profile?.id) {
       setMessages([]);
       setOtherUser(null);
+      setThreadError(false);
+      setHasOlderMessages(false);
       return undefined;
     }
     let cancelled = false;
     setThreadLoading(true);
+    setThreadError(false);
+    setHasOlderMessages(false);
 
     (async () => {
       try {
-        const { data: conv } = await supabase
+        const { data: conv, error: convError } = await supabase
           .from('conversations')
           .select('participant_1, participant_2, encryption_seed')
           .eq('id', activeConvId)
           .single();
-        if (cancelled || !conv) return;
+        if (cancelled) return;
+        if (convError || !conv) {
+          // Without the conversation row (and its encryption seed) the thread
+          // can't render — surface a real error instead of the misleading
+          // "start chatting" empty state.
+          logger.error('TrainerMessages: failed to load conversation', convError);
+          setOtherUser(null);
+          setThreadError(true);
+          return;
+        }
 
         encryptionSeedRef.current = conv.encryption_seed;
         const otherId = conv.participant_1 === profile.id ? conv.participant_2 : conv.participant_1;
@@ -542,12 +553,17 @@ export default function TrainerMessages() {
         if (!cancelled) setOtherUser(u);
 
         // Fetch the 200 most-recent messages, then re-sort ascending for display
-        const { data: msgsDesc } = await supabase
+        const { data: msgsDesc, error: msgsError } = await supabase
           .from('direct_messages')
           .select('*')
           .eq('conversation_id', activeConvId)
           .order('created_at', { ascending: false })
           .limit(200);
+        if (msgsError) {
+          logger.error('TrainerMessages: failed to load messages', msgsError);
+          if (!cancelled) setThreadError(true);
+          return;
+        }
         const msgs = (msgsDesc || []).reverse();
 
         if (!cancelled) {
@@ -556,28 +572,75 @@ export default function TrainerMessages() {
             body: await decryptMessage(m.body, activeConvId, conv.encryption_seed),
           })));
           setMessages(decrypted);
+          // A full page means there may be earlier history to page back into.
+          setHasOlderMessages((msgsDesc || []).length === 200);
         }
 
-        // Mark unread as read
-        await supabase
-          .from('direct_messages')
-          .update({ read_at: new Date().toISOString() })
-          .eq('conversation_id', activeConvId)
-          .neq('sender_id', profile.id)
-          .is('read_at', null);
+        // Mark the whole conversation read via the RLS-proof RPC (0449) — a
+        // direct UPDATE can be silently blocked by the gym-scoped
+        // messages_update policy. Then clear the list badge in place so the
+        // Unread tab/badges update without a full reload.
+        const { error: readError } = await supabase
+          .rpc('mark_conversation_read', { p_conversation_id: activeConvId });
+        if (!readError && !cancelled) {
+          setConversations(prev => prev.map(c => (
+            c.id === activeConvId ? { ...c, unreadCount: 0 } : c
+          )));
+          try { window.dispatchEvent(new CustomEvent('dm:read', { detail: { conversationId: activeConvId } })); } catch { /* no-op */ }
+        }
       } catch (err) {
         logger.error('TrainerMessages: failed to load thread', err);
+        if (!cancelled) setThreadError(true);
       } finally {
         if (!cancelled) setThreadLoading(false);
       }
     })();
 
     return () => { cancelled = true; };
-  }, [activeConvId, profile?.id]);
+  }, [activeConvId, profile?.id, threadReloadKey]);
+
+  // ── Page back into older history (200 at a time, before the oldest loaded) ──
+  const loadOlderMessages = useCallback(async () => {
+    const oldest = messages[0]?.created_at;
+    if (!activeConvId || loadingOlder || !oldest) return;
+    setLoadingOlder(true);
+    try {
+      const { data: olderDesc, error } = await supabase
+        .from('direct_messages')
+        .select('*')
+        .eq('conversation_id', activeConvId)
+        .lt('created_at', oldest)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      const older = (olderDesc || []).reverse();
+      const decrypted = await Promise.all(older.map(async m => ({
+        ...m,
+        body: await decryptMessage(m.body, activeConvId, encryptionSeedRef.current),
+      })));
+      setHasOlderMessages((olderDesc || []).length === 200);
+      if (decrypted.length) {
+        // Keep the viewport anchored on the message the user was reading.
+        const el = messagesBoxRef.current;
+        const prevHeight = el ? el.scrollHeight : 0;
+        skipAutoScrollRef.current = true;
+        setMessages(prev => [...decrypted, ...prev]);
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop += el.scrollHeight - prevHeight;
+        });
+      }
+    } catch (err) {
+      logger.error('TrainerMessages: failed to load older messages', err);
+      showToast(t('trainerMessages.thread.loadOlderFailed', { defaultValue: 'Couldn’t load earlier messages.' }), 'error');
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [activeConvId, loadingOlder, messages, showToast, t]);
 
   // ── Scroll to bottom on new message ──
   useEffect(() => {
     if (!activeConvId) return;
+    if (skipAutoScrollRef.current) { skipAutoScrollRef.current = false; return; }
     bottomRef.current?.scrollIntoView({ behavior: messages.length <= 20 ? 'auto' : 'smooth' });
   }, [messages, activeConvId]);
 
@@ -611,7 +674,11 @@ export default function TrainerMessages() {
               return [...prev, { ...payload.new, body: decryptedBody }];
             });
           });
-          if (payload.new.sender_id !== profile.id) {
+          // Only auto-mark-read while the tab is actually visible — otherwise
+          // a backgrounded thread shows "Leído" to the client while the
+          // trainer never saw it. Refocus catch-up lives in the
+          // visibilitychange effect below.
+          if (payload.new.sender_id !== profile.id && document.visibilityState === 'visible') {
             supabase
               .from('direct_messages')
               .update({ read_at: new Date().toISOString() })
@@ -633,6 +700,25 @@ export default function TrainerMessages() {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
+  }, [activeConvId, profile?.id]);
+
+  // ── Mark the open thread read when the tab regains focus ─────
+  // Messages that arrived while backgrounded were intentionally not marked
+  // read (receipt honesty); catch up the moment the trainer actually looks.
+  useEffect(() => {
+    if (!activeConvId || !profile?.id) return undefined;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      supabase.rpc('mark_conversation_read', { p_conversation_id: activeConvId }).then(({ error }) => {
+        if (error) return;
+        setConversations(prev => prev.map(c => (
+          c.id === activeConvId ? { ...c, unreadCount: 0 } : c
+        )));
+        try { window.dispatchEvent(new CustomEvent('dm:read', { detail: { conversationId: activeConvId } })); } catch { /* no-op */ }
+      });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [activeConvId, profile?.id]);
 
   // ── Filter conversations by query + tab ─────
@@ -664,7 +750,8 @@ export default function TrainerMessages() {
       if (aP !== bP) return bP - aP;
       return new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0);
     });
-  }, [conversations, tabIndex, debouncedQuery, pinnedIds]);
+    // hiddenIds/archivedIds in deps: swipe actions must take effect instantly.
+  }, [conversations, tabIndex, debouncedQuery, pinnedIds, hiddenIds, archivedIds]);
 
   // ── Actions ─────────
   const togglePin = (id) => {
@@ -676,30 +763,54 @@ export default function TrainerMessages() {
     });
   };
 
-  // Archive: locally-stored flag, hides the row from default tabs.
+  // Archive: server-side per-user flag (conversation_member_state via RPC) —
+  // same system the member Messages page uses, so it syncs across devices.
+  // Optimistic toggle; revert + toast if the RPC fails.
   const handleArchive = (id) => {
+    const wasArchived = archivedIds.has(id);
     setArchivedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      saveArchived(next);
+      if (wasArchived) next.delete(id); else next.add(id);
       return next;
     });
     setSwipedConvId(null);
-    if (activeConvId === id) setActiveConvId(null);
+    if (activeConvId === id && !wasArchived) setActiveConvId(null);
+    supabase
+      .rpc('set_conversation_archived', { p_conversation_id: id, p_archived: !wasArchived })
+      .then(({ error }) => {
+        if (!error) return;
+        logger.error('TrainerMessages: set_conversation_archived failed', error);
+        setArchivedIds(prev => {
+          const next = new Set(prev);
+          if (wasArchived) next.add(id); else next.delete(id);
+          return next;
+        });
+        showToast(t('trainerMessages.actionFailed', { defaultValue: 'Couldn’t update the conversation. Try again.' }), 'error');
+      });
   };
 
-  // Delete: hides the conversation from this trainer's view (does not delete
-  // the underlying record — preserves audit trail and the other party's copy).
+  // Delete: server-side soft delete. The 0449 resurface trigger un-deletes the
+  // thread when the client writes again, so a deleted client is never
+  // invisible forever (the old localStorage hide was permanent + per-device).
   const handleDelete = (id) => {
-    setHiddenIds(prev => {
-      const next = new Set(prev);
-      next.add(id);
-      saveHidden(next);
-      return next;
-    });
+    setHiddenIds(prev => new Set(prev).add(id));
     setSwipedConvId(null);
     if (activeConvId === id) setActiveConvId(null);
-    showToast(t('trainerMessages.deleted', { defaultValue: 'Conversation removed.' }), 'info');
+    supabase
+      .rpc('soft_delete_conversation', { p_conversation_id: id })
+      .then(({ error }) => {
+        if (error) {
+          logger.error('TrainerMessages: soft_delete_conversation failed', error);
+          setHiddenIds(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+          showToast(t('trainerMessages.actionFailed', { defaultValue: 'Couldn’t update the conversation. Try again.' }), 'error');
+          return;
+        }
+        showToast(t('trainerMessages.deleted', { defaultValue: 'Conversation removed.' }), 'info');
+      });
   };
 
   // Block: insert into blocked_users + hide the conversation locally. Mirrors
@@ -768,6 +879,24 @@ export default function TrainerMessages() {
         .from('conversations')
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', activeConvId);
+
+      // Push to the client — fire-and-forget, mirrors member Messages.jsx.
+      // Workout-share tokens are stripped from the preview text (the raw
+      // [workout:…] token means nothing on a lock screen). Covers the share
+      // path too, since WorkoutShareModal sends through sendText.
+      if (otherUser?.id) {
+        const pushBody = plaintext.replace(/\[workout:[^\]]+\]/g, '').trim()
+          || t('trainerMessages.list.workoutShared', 'Workout plan');
+        supabase.functions.invoke('send-push-user', {
+          body: {
+            profile_id: otherUser.id,
+            gym_id: profile?.gym_id,
+            title: profile?.full_name || t('messages.newMessage', { defaultValue: 'New message' }),
+            body: pushBody.substring(0, 100),
+            data: { type: 'direct_message', conversation_id: activeConvId },
+          },
+        }).catch(() => { /* non-fatal */ });
+      }
     } catch (err) {
       logger.error('TrainerMessages: send failed', err);
       // Mark optimistic message as failed (simple visual fade)
@@ -776,7 +905,7 @@ export default function TrainerMessages() {
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [activeConvId, profile?.id]);
+  }, [activeConvId, profile?.id, profile?.gym_id, profile?.full_name, otherUser?.id, t]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -815,6 +944,19 @@ export default function TrainerMessages() {
       showToast(toastMsg, 'error');
       return;
     }
+    // If the trainer had archived / soft-deleted this thread, explicitly
+    // starting a chat with that client should bring it back to the inbox
+    // (otherwise the row stays invisible while the thread is open).
+    if (hiddenIds.has(convId) || archivedIds.has(convId)) {
+      const { error: restoreError } = await supabase
+        .rpc('restore_conversation', { p_conversation_id: convId });
+      if (restoreError) {
+        logger.error('TrainerMessages: restore_conversation failed', restoreError);
+      } else {
+        setHiddenIds(prev => { const next = new Set(prev); next.delete(convId); return next; });
+        setArchivedIds(prev => { const next = new Set(prev); next.delete(convId); return next; });
+      }
+    }
     await loadConversations();
     handleSelect(convId);
   };
@@ -841,8 +983,6 @@ export default function TrainerMessages() {
   }, [messages, profile?.id, t]);
 
   const showThreadOnMobile = !!activeConvId;
-  const trainerName = profile?.full_name || profile?.username || t('trainerMessages.list.clientFallback');
-  void trainerName;
 
   // Hide the trainer mobile bottom nav whenever a thread is open so the
   // composer sits flush with the screen edge (iMessage-style fullscreen).
@@ -976,7 +1116,13 @@ export default function TrainerMessages() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowSchedule(true)}
+                    onClick={() => {
+                      // Straight to the calendar with this client pre-selected
+                      // for booking (no interstitial — the feature exists).
+                      const params = new URLSearchParams({ book: '1' });
+                      if (otherUser?.id) params.set('client', otherUser.id);
+                      navigate(`/trainer/calendar?${params.toString()}`);
+                    }}
                     className="shrink-0 min-h-[36px] h-9 px-3 rounded-xl flex items-center gap-1.5 text-[12px] font-semibold transition-colors"
                     style={{
                       background: TT.surface2,
@@ -991,12 +1137,22 @@ export default function TrainerMessages() {
 
                 {/* Messages */}
                 <div
+                  ref={messagesBoxRef}
                   className="flex-1 overflow-y-auto px-3 py-2"
                 >
                   {threadLoading ? (
                     <div className="flex items-center justify-center py-16">
                       <Loader2 size={20} className="animate-spin" style={{ color: TT.accent }} />
                     </div>
+                  ) : threadError ? (
+                    <EmptyState
+                      icon={AlertTriangle}
+                      title={t('trainerMessages.thread.errorTitle', 'Couldn’t load this conversation')}
+                      description={t('trainerMessages.thread.errorDesc', 'Check your connection and try again.')}
+                      actionLabel={t('trainerMessages.thread.retry', 'Retry')}
+                      onAction={() => setThreadReloadKey(k => k + 1)}
+                      compact
+                    />
                   ) : messages.length === 0 ? (
                     <EmptyState
                       icon={MessageCircle}
@@ -1005,7 +1161,26 @@ export default function TrainerMessages() {
                       compact
                     />
                   ) : (
-                    chatItems.map(item => {
+                    <>
+                    {hasOlderMessages && (
+                      <div className="flex justify-center py-2">
+                        <button
+                          type="button"
+                          onClick={loadOlderMessages}
+                          disabled={loadingOlder}
+                          className="min-h-[36px] px-4 rounded-full text-[12px] font-semibold inline-flex items-center gap-1.5 transition-colors disabled:opacity-60"
+                          style={{
+                            background: TT.surface2,
+                            color: TT.accentInk,
+                            border: `1px solid ${TT.borderSolid}`,
+                          }}
+                        >
+                          {loadingOlder && <Loader2 size={12} className="animate-spin" />}
+                          {t('trainerMessages.thread.loadOlder', 'View earlier messages')}
+                        </button>
+                      </div>
+                    )}
+                    {chatItems.map(item => {
                       if (item.type === 'timestamp') {
                         return (
                           <div key={item.key} className="flex items-center justify-center py-2">
@@ -1054,7 +1229,8 @@ export default function TrainerMessages() {
                           )}
                         </div>
                       );
-                    })
+                    })}
+                    </>
                   )}
                   <div ref={bottomRef} />
                 </div>
@@ -1123,12 +1299,9 @@ export default function TrainerMessages() {
         open={showShare}
         onClose={() => setShowShare(false)}
         trainerId={profile?.id}
+        activeClientId={otherUser?.id}
+        activeClientName={otherUser?.full_name || otherUser?.username || ''}
         onShare={(text) => { setShowShare(false); sendText(text); }}
-        t={t}
-      />
-      <ScheduleSoonModal
-        open={showSchedule}
-        onClose={() => setShowSchedule(false)}
         t={t}
       />
       <ClientPicker

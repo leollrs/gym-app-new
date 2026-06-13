@@ -42,6 +42,10 @@ export default function ShareTplEditorial({
   // every literal pixel value multiplied by `s` stays proportional across
   // all export sizes (1080×1920 Story, 1080×1080 square, 1080×1350 portrait).
   const s = w / 270;
+  // data.gym is an object ({name, location}) on the workout path, but may be a
+  // plain string from other callers. Render only the NAME as text — never the
+  // raw object, which crashes React ("Objects are not valid as a React child").
+  const gymLabel = (typeof data?.gym === 'string' ? data.gym : data?.gym?.name) || 'TuGymPR';
 
   return (
     <div
@@ -162,7 +166,7 @@ export default function ShareTplEditorial({
           <GymLockup s={s} gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="dark" />
         ) : (
           <div style={{ fontSize: 10 * s, fontWeight: 700, color: '#96A0AA', letterSpacing: 0.8 * s, textTransform: 'uppercase' }}>
-            TuGymPR
+            {gymLabel}
           </div>
         )}
         <div
@@ -177,7 +181,7 @@ export default function ShareTplEditorial({
             textTransform: 'uppercase',
           }}
         >
-          TuGymPR
+          {gymLabel}
         </div>
       </div>
     </div>

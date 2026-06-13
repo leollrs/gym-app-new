@@ -130,6 +130,34 @@ function getGoalMeta(goalType) {
   return GOAL_TYPES.find(g => g.key === goalType) || GOAL_TYPES[0];
 }
 
+/**
+ * Direction-aware progress percentage (0–100).
+ *
+ * The naive current/target formula only works for goals that count UP toward
+ * the target (lift_1rm, workout_count, volume, streak). body_weight / body_fat
+ * goals start ABOVE the target and move DOWN, so current/target is >1 and pins
+ * the bar at 100% from day one.
+ *
+ * When a baseline (start_value) is recorded we measure distance covered,
+ * (start - current) / (start - target), which is correct in BOTH directions —
+ * losing weight (200→170) or gaining it (100→150) both read 0% at the start and
+ * 100% at the target. Legacy goals with no start_value fall back to the original
+ * current/target ratio.
+ */
+function goalProgressPct(goal) {
+  const current = parseFloat(goal.current_value);
+  const target = parseFloat(goal.target_value);
+  const start = goal.start_value != null ? parseFloat(goal.start_value) : NaN;
+  let raw;
+  if (!isNaN(start) && start !== target) {
+    raw = ((start - current) / (start - target)) * 100;
+  } else {
+    raw = (current / target) * 100;
+  }
+  if (!isFinite(raw)) return 0;
+  return Math.min(100, Math.max(0, Math.round(raw)));
+}
+
 // ── Main Goals Section ───────────────────────────────────────────────────
 export default function GoalsSection() {
   const { t } = useTranslation('pages');
@@ -144,14 +172,18 @@ export default function GoalsSection() {
   const [celebrateGoal, setCelebrateGoal] = useState(null);
 
   const loadGoals = async () => {
-    if (!user?.id) return;
-    const { data } = await supabase
-      .from('member_goals')
-      .select('*, exercises(name, name_es, muscle_group, equipment)')
-      .eq('profile_id', user.id)
-      .order('created_at', { ascending: false });
-    setGoals(data ?? []);
-    setLoading(false);
+    if (!user?.id) { setLoading(false); return; }
+    try {
+      const { data } = await supabase
+        .from('member_goals')
+        .select('*, exercises(name, name_es, muscle_group, equipment)')
+        .eq('profile_id', user.id)
+        .order('created_at', { ascending: false });
+      setGoals(data ?? []);
+    } finally {
+      // Clear the skeleton even if the query rejects on a first visit.
+      setLoading(false);
+    }
   };
 
   useEffect(() => { loadGoals(); }, [user?.id]);
@@ -310,7 +342,7 @@ export default function GoalsSection() {
 function GoalCard({ goal, onTap }) {
   const { t } = useTranslation('pages');
   const isAchieved = !!goal.achieved_at;
-  const pct = Math.min(100, Math.max(0, Math.round((parseFloat(goal.current_value) / parseFloat(goal.target_value)) * 100)));
+  const pct = goalProgressPct(goal);
   const meta = getGoalMeta(goal.goal_type);
   const Icon = meta.icon;
   const color = meta.color;
@@ -321,7 +353,9 @@ function GoalCard({ goal, onTap }) {
 
   let daysLeft = null;
   if (goal.target_date && !isAchieved) {
-    const diff = Math.ceil((new Date(goal.target_date) - new Date()) / (1000 * 60 * 60 * 24));
+    // target_date is a DATE column — parse at local midnight (the modal already
+    // does this at line ~641) so AST evenings don't undercount by a day.
+    const diff = Math.ceil((new Date(`${String(goal.target_date).slice(0, 10)}T00:00:00`) - new Date()) / (1000 * 60 * 60 * 24));
     daysLeft = diff > 0 ? diff : 0;
   }
 
@@ -506,7 +540,7 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isAchieved = !!goal.achieved_at;
-  const pct = Math.min(100, Math.max(0, Math.round((parseFloat(goal.current_value) / parseFloat(goal.target_value)) * 100)));
+  const pct = goalProgressPct(goal);
   const meta = getGoalMeta(goal.goal_type);
   const Icon = meta.icon;
   const color = meta.color;
@@ -1002,21 +1036,62 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     setSaving(true);
     setSaveError('');
 
+    // Seed BOTH current_value and start_value with the member's current metric so
+    // the progress bar measures distance covered from where they started (see
+    // goalProgressPct). lift goals start from current 1RM; body goals from the
+    // latest logged weight / body-fat; count/streak/volume from 0. Body goals
+    // created before any metric exists seed 0 and get backfilled on the first
+    // body-metric log (lib/goalUpdater.js updateBodyMetricGoals).
+    let seedValue = 0;
+    if (goalType === 'lift_1rm') {
+      seedValue = current1RM ?? 0;
+    } else if (goalType === 'body_weight') {
+      const { data } = await supabase
+        .from('body_weight_logs')
+        .select('weight_lbs')
+        .eq('profile_id', user.id)
+        .order('logged_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      seedValue = data?.weight_lbs != null ? parseFloat(data.weight_lbs) : 0;
+    } else if (goalType === 'body_fat') {
+      const { data } = await supabase
+        .from('body_measurements')
+        .select('body_fat_pct')
+        .eq('profile_id', user.id)
+        .not('body_fat_pct', 'is', null)
+        .order('measured_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      seedValue = data?.body_fat_pct != null ? parseFloat(data.body_fat_pct) : 0;
+    }
+
     const payload = {
       profile_id: user.id,
       gym_id: gymId,
       goal_type: goalType,
       target_value: parseFloat(targetValue),
-      current_value: current1RM ?? 0,
+      current_value: seedValue,
+      start_value: seedValue,
       unit,
       title: title.trim(),
       target_date: targetDate || null,
       exercise_id: needsExercise ? exerciseId : null,
     };
 
-    const { error } = await supabase.from('member_goals').upsert(payload, {
+    let { error } = await supabase.from('member_goals').upsert(payload, {
       onConflict: 'profile_id,goal_type,exercise_id',
     });
+    // start_value ships in migration 0557, which may not be applied yet. If the
+    // column is missing, retry without the baseline so goal creation still works
+    // — progress falls back to the legacy current/target formula until the
+    // migration lands. (Same resilient-write pattern as GymClosuresCard.)
+    if (error && (error.code === '42703' || error.code === 'PGRST204' || /column .* does not exist/i.test(error.message || ''))) {
+      const { start_value, ...base } = payload;
+      ({ error } = await supabase.from('member_goals').upsert(base, {
+        onConflict: 'profile_id,goal_type,exercise_id',
+      }));
+    }
 
     setSaving(false);
     if (!error) {

@@ -40,23 +40,23 @@ const TrainingAvatar = ({ friend, index, onTap }) => (
             className="w-full h-full object-cover rounded-full"
           />
         ) : (
-          <span className="text-[13px] font-bold text-[#D4AF37]">
+          <span className="text-[13px] font-bold" style={{ color: 'var(--color-accent)' }}>
             {getInitials(friend.full_name)}
           </span>
         )}
       </div>
-      {/* Green active dot */}
-      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#0F172A]" />
+      {/* Green active dot — border matches the card bg so it reads as a cutout in both themes */}
+      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2" style={{ borderColor: 'var(--color-bg-card)' }} />
     </div>
 
     {/* Name */}
-    <p className="text-[11px] font-semibold text-[#E5E7EB] truncate w-full text-center leading-tight">
+    <p className="text-[11px] font-semibold truncate w-full text-center leading-tight" style={{ color: 'var(--color-text-primary)' }}>
       {firstName(friend.full_name)}
     </p>
 
     {/* Routine / workout name */}
     {friend.routine_name && (
-      <p className="text-[10px] text-[#6B7280] truncate w-full text-center -mt-0.5 leading-tight">
+      <p className="text-[10px] truncate w-full text-center -mt-0.5 leading-tight" style={{ color: 'var(--color-text-muted)' }}>
         {friend.routine_name}
       </p>
     )}
@@ -64,7 +64,7 @@ const TrainingAvatar = ({ friend, index, onTap }) => (
 );
 
 // ── LiveTrainingIndicator ───────────────────────────────────────────────────
-const LiveTrainingIndicator = () => {
+const LiveTrainingIndicator = ({ onFriendTap }) => {
   const { user } = useAuth();
   const { t } = useTranslation('pages');
   const [activeTrainers, setActiveTrainers] = useState([]);
@@ -136,10 +136,11 @@ const LiveTrainingIndicator = () => {
     };
   }, [user]);
 
-  // Placeholder action for tapping a friend avatar
+  // Tapping a friend opens the parent's profile preview (SocialFeed passes
+  // setPreviewUserId). Falls back to a debug log if mounted without a handler.
   const handleTapFriend = (friend) => {
-    // Future: navigate to friend profile
-    logger.log('Navigate to profile:', friend.id);
+    if (onFriendTap) onFriendTap(friend.id);
+    else logger.log('LiveTrainingIndicator tap (no handler):', friend.id);
   };
 
   // Show nothing if no friends are training
@@ -151,7 +152,8 @@ const LiveTrainingIndicator = () => {
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4"
+      className="rounded-[14px] p-4 mb-6"
+      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
       aria-live="polite"
       aria-label={t('liveTraining.ariaLabel', { defaultValue: 'Friends currently training' })}
     >
@@ -161,7 +163,7 @@ const LiveTrainingIndicator = () => {
           <span className="absolute inline-flex w-2 h-2 rounded-full bg-emerald-400 opacity-50 animate-ping" />
           <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-400" />
         </span>
-        <p className="text-[13px] font-semibold text-[#E5E7EB]">
+        <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
           {t('liveTraining.friendsTraining', {
             count: activeTrainers.length,
             defaultValue: '{{count}} friend training now',

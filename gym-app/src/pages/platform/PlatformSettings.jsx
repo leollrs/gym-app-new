@@ -16,8 +16,6 @@ import {
   Pencil,
   Video,
   Mail,
-  ToggleLeft,
-  ToggleRight,
   Settings2,
   Activity,
   CheckCircle2,
@@ -26,10 +24,6 @@ import {
   Database,
   HardDrive,
   Users,
-  Zap,
-  Globe,
-  Moon,
-  Sun,
   Save,
   Smartphone,
   AlertTriangle,
@@ -37,26 +31,29 @@ import {
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
 import { useAuth } from '../../contexts/AuthContext';
-import { exercises as localExercises } from '../../data/exercises';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
 
-// Build a lookup of local hardcoded videos by exercise name
-const LOCAL_VIDEO_MAP = {};
-localExercises.forEach(ex => {
-  if (ex.videoUrl) LOCAL_VIDEO_MAP[ex.name.toLowerCase()] = ex.videoUrl;
-});
-
+// The REAL muscle_group enum: 0001 (Chest…Full Body) + 0044 (Forearms,
+// Traps) + 0247 (Warm-Up). The old list offered Quads/Hamstrings/Cardio —
+// values that don't exist (insert/update failed) — and omitted
+// Legs/Traps/Warm-Up (Legs exercises unfilterable, blank select on edit).
 const MUSCLE_GROUPS = [
-  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms',
-  'Core', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Full Body', 'Cardio',
+  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms', 'Traps',
+  'Legs', 'Glutes', 'Core', 'Calves', 'Full Body', 'Warm-Up',
 ];
 
+// The REAL equipment_type enum: 0001 + 0044 (EZ Bar). 'Other' was not an
+// enum value (save failed); the column is NOT NULL so there is no "None".
 const EQUIPMENT = [
   'Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight',
-  'Kettlebell', 'Resistance Band', 'Smith Machine', 'EZ Bar', 'Other',
+  'Kettlebell', 'Resistance Band', 'Smith Machine', 'EZ Bar',
 ];
 
+// fitness_level enum (0001) — program_templates.level
 const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'advanced'];
+
+// achievement_category enum (0001) — achievement_definitions.category
+const ACHIEVEMENT_CATEGORIES = ['milestone', 'challenge', 'strength_standard', 'streak', 'social'];
 
 /* ───────────────────────── tiny helpers ───────────────────────── */
 
@@ -167,7 +164,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
   const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.muscle_group) return;
+    if (!form.name.trim() || !form.muscle_group || !form.equipment) return;
     setSaving(true);
 
     let videoPath = ex.video_url || null;
@@ -192,13 +189,18 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
       const { error: uploadError } = await supabase.storage
         .from('exercise-videos')
         .upload(path, newVideoFile, { contentType: newVideoFile.type });
-      if (!uploadError) {
-        // Delete old video if replacing
-        if (ex.video_url) {
-          await supabase.storage.from('exercise-videos').remove([ex.video_url]);
-        }
-        videoPath = path;
+      if (uploadError) {
+        // Don't save the exercise silently without the video the admin just
+        // picked — abort so they can retry or remove the file.
+        alert(t('platformSettings.videoUploadFailed', 'Video upload failed: {{msg}}. The exercise was NOT saved — retry or remove the video.', { msg: uploadError.message }));
+        setSaving(false);
+        return;
       }
+      // Delete old video if replacing (best effort — orphan is harmless)
+      if (ex.video_url) {
+        await supabase.storage.from('exercise-videos').remove([ex.video_url]);
+      }
+      videoPath = path;
     } else if (removeVideo && ex.video_url) {
       await supabase.storage.from('exercise-videos').remove([ex.video_url]);
       videoPath = null;
@@ -207,7 +209,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
     const updates = {
       name: form.name.trim(),
       muscle_group: form.muscle_group,
-      equipment: form.equipment || null,
+      equipment: form.equipment, // NOT NULL enum — required by the form
       default_sets: Number(form.default_sets) || 3,
       default_reps: Number(form.default_reps) || 10,
       instructions: form.instructions.trim() || null,
@@ -367,9 +369,10 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                     {MUSCLE_GROUPS.map((m) => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </Field>
-                <Field label={tp('equipment')}>
+                <Field label={`${tp('equipment')} *`}>
+                  {/* equipment is a NOT NULL enum — no "None" option */}
                   <select className={inputCls} value={form.equipment} onChange={(e) => set('equipment', e.target.value)}>
-                    <option value="">{tp('none')}</option>
+                    {!EQUIPMENT.includes(form.equipment) && <option value="">{tp('select')}</option>}
                     {EQUIPMENT.map((e) => <option key={e} value={e}>{e}</option>)}
                   </select>
                 </Field>
@@ -416,7 +419,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                   </button>
                   <button
                     onClick={handleSave}
-                    disabled={saving || !form.name.trim() || !form.muscle_group}
+                    disabled={saving || !form.name.trim() || !form.muscle_group || !form.equipment}
                     className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
                   >
                     {saving ? (newVideoFile ? tp('uploading') : tp('saving')) : tp('saveChanges')}
@@ -434,29 +437,6 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
 /* ═══════════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════════ */
-
-/* ── Edge function names for system health display ── */
-const EDGE_FUNCTIONS = [
-  'analyze-body-photo', 'analyze-food-photo', 'apple-wallet-webhook',
-  'calibrate-churn-weights', 'compute-churn-scores', 'generate-apple-pass',
-  'generate-google-pass', 'generate-punch-card-pass', 'push-wallet-update',
-  'reset-password', 'send-push', 'send-push-user', 'send-reset-email',
-  'sign-qr', 'verify-qr',
-];
-
-const STORAGE_BUCKETS = [
-  'exercise-videos', 'progress-photos', 'avatars', 'gym-logos', 'food-images',
-];
-
-const FEATURE_FLAG_KEYS = [
-  { key: 'aiFoodScanner', descKey: 'aiFoodScannerDesc' },
-  { key: 'aiBodyAnalysis', descKey: 'aiBodyAnalysisDesc' },
-  { key: 'pushNotifications', descKey: 'pushNotificationsDesc' },
-  { key: 'referralSystem', descKey: 'referralSystemDesc' },
-  { key: 'punchCards', descKey: 'punchCardsDesc' },
-  { key: 'socialFeed', descKey: 'socialFeedDesc' },
-  { key: 'classBooking', descKey: 'classBookingDesc' },
-];
 
 const DEFAULT_GYM_CONFIG = {
   dailyCalories: 2200,
@@ -482,7 +462,6 @@ export default function PlatformSettings() {
   const [programsOpen, setProgramsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(true);
-  const [flagsOpen, setFlagsOpen] = useState(true);
   const [versionOpen, setVersionOpen] = useState(true);
   const [defaultsOpen, setDefaultsOpen] = useState(true);
   const [healthOpen, setHealthOpen] = useState(true);
@@ -493,34 +472,21 @@ export default function PlatformSettings() {
   const [programs, setPrograms] = useState([]);
   const [platformStats, setPlatformStats] = useState({ gyms: 0, members: 0 });
 
-  /* ── email template toggles (persisted to platform_config) ── */
-  const [emailToggles, setEmailToggles] = useState({
-    welcome: true,
-    passwordReset: true,
-    weeklyDigest: true,
-  });
-
-  /* ── feature flags (persisted to platform_config) ── */
-  const [featureFlags, setFeatureFlags] = useState({
-    aiFoodScanner: true,
-    aiBodyAnalysis: true,
-    pushNotifications: true,
-    referralSystem: true,
-    punchCards: true,
-    socialFeed: true,
-    classBooking: false,
-  });
-
-  /* ── default gym config (persisted to platform_config) ── */
+  /* ── default gym config (persisted to platform_config; read by
+        platform_create_gym, migration 0542) ── */
   const [gymDefaults, setGymDefaults] = useState({ ...DEFAULT_GYM_CONFIG });
   const [defaultsSaved, setDefaultsSaved] = useState(false);
+  const [defaultsError, setDefaultsError] = useState(null);
 
-  /* ── system health ── */
+  /* ── system health (real probes only) ── */
   const [health, setHealth] = useState({
-    supabase: null, // true/false/null
+    supabase: null,      // true/false/null
     activeUsers: null,
+    storageOk: null,     // true/false/null
+    bucketCount: null,
     loadingHealth: false,
   });
+  const [accountEmail, setAccountEmail] = useState(null);
 
   /* ── app version gate (persisted to app_config) ── */
   const [appVersion, setAppVersion] = useState({
@@ -589,9 +555,15 @@ export default function PlatformSettings() {
 
   const fetchStats = async () => {
     setLoadingStats(true);
+    // Members = real members only: staff and imported_archived history
+    // ghosts (0421) inflated this count before.
     const [gymsRes, membersRes] = await Promise.all([
       supabase.from('gyms').select('id', { count: 'exact', head: true }),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }),
+      supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'member')
+        .eq('imported_archived', false),
     ]);
     setPlatformStats({
       gyms: gymsRes.count ?? 0,
@@ -600,12 +572,14 @@ export default function PlatformSettings() {
     setLoadingStats(false);
   };
 
-  /* ────────────────── system health check ────────────────── */
+  /* ────────────────── system health check (real probes) ────────────────── */
 
   const fetchHealth = useCallback(async () => {
     setHealth(h => ({ ...h, loadingHealth: true }));
     let sbOk = false;
     let activeCount = null;
+    let storageOk = null;
+    let bucketCount = null;
 
     try {
       // Test supabase connectivity with a simple query
@@ -623,78 +597,70 @@ export default function PlatformSettings() {
       activeCount = count ?? 0;
     } catch { activeCount = null; }
 
-    setHealth({ supabase: sbOk, activeUsers: activeCount, loadingHealth: false });
+    try {
+      // Storage reachability — a real listBuckets round-trip, not the old
+      // hardcoded bucket-name chips.
+      const { data: buckets, error } = await supabase.storage.listBuckets();
+      storageOk = !error;
+      bucketCount = error ? null : (buckets?.length ?? 0);
+    } catch { storageOk = false; bucketCount = null; }
+
+    setHealth({ supabase: sbOk, activeUsers: activeCount, storageOk, bucketCount, loadingHealth: false });
+  }, []);
+
+  /* ────────────────── account email (real auth value) ────────────────── */
+  // profiles has no email column (0466) — profile?.email was always "—".
+  const fetchAccountEmail = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      setAccountEmail(error ? null : (data?.user?.email || null));
+    } catch { setAccountEmail(null); }
   }, []);
 
   /* ────────────────── platform_config persistence ────────────────── */
+  // Only gym_defaults lives here now. The duplicate feature-flag panel and
+  // the email toggles were removed (P0-3): they wrote platform_config keys
+  // nothing reads — the REAL kill switches live on Operations and are read
+  // by get_platform_flags (0547).
 
   const fetchPlatformConfig = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('platform_config')
         .select('key, value')
-        .or('key.like.feature_%,key.like.email_%,key.eq.gym_defaults');
+        .eq('key', 'gym_defaults')
+        .maybeSingle();
 
-      if (!error && data) {
-        const flags = {};
-        const emails = {};
-        data.forEach(({ key, value }) => {
-          if (key.startsWith('feature_')) {
-            const flagKey = key.replace('feature_', '');
-            flags[flagKey] = value === 'true' || value === true;
-          } else if (key.startsWith('email_')) {
-            const emailKey = key.replace('email_', '');
-            emails[emailKey] = value === 'true' || value === true;
-          } else if (key === 'gym_defaults') {
-            try {
-              const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-              setGymDefaults(prev => ({ ...prev, ...parsed }));
-            } catch { /* keep defaults */ }
+      if (!error && data?.value != null) {
+        try {
+          // Tolerate both storage shapes: jsonb object (current) and the
+          // legacy JSON-encoded string (0542's reader handles both too).
+          const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+          if (parsed && typeof parsed === 'object') {
+            setGymDefaults(prev => ({ ...prev, ...parsed }));
           }
-        });
-        if (Object.keys(flags).length) setFeatureFlags(prev => ({ ...prev, ...flags }));
-        if (Object.keys(emails).length) setEmailToggles(prev => ({ ...prev, ...emails }));
+        } catch { /* keep defaults */ }
       }
     } catch { /* silent — use defaults */ }
   }, []);
 
-  const toggleFeatureFlag = async (key) => {
-    const newVal = !featureFlags[key];
-    setFeatureFlags(prev => ({ ...prev, [key]: newVal }));
-    try {
-      await supabase.from('platform_config').upsert({
-        key: `feature_${key}`,
-        value: String(newVal),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'key' });
-      logAdminAction('toggle_feature_flag', 'platform_config', null, { flag: key, enabled: newVal });
-    } catch { /* silent */ }
-  };
-
-  const toggleEmailFlag = async (key) => {
-    const newVal = !emailToggles[key];
-    setEmailToggles(prev => ({ ...prev, [key]: newVal }));
-    try {
-      await supabase.from('platform_config').upsert({
-        key: `email_${key}`,
-        value: String(newVal),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'key' });
-      logAdminAction('toggle_email_flag', 'platform_config', null, { flag: key, enabled: newVal });
-    } catch { /* silent */ }
-  };
-
   /* ────────────────── save gym defaults ────────────────── */
+  // Read by platform_create_gym (0542) when a new gym is created. Stored as
+  // a jsonb OBJECT so the SQL side can value->>'…' directly.
 
   const saveGymDefaults = async () => {
-    try {
-      await supabase.from('platform_config').upsert({
-        key: 'gym_defaults',
-        value: JSON.stringify(gymDefaults),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'key' });
-      logAdminAction('save_gym_defaults', 'platform_config', null, { defaults: gymDefaults });
-    } catch { /* silent */ }
+    setDefaultsError(null);
+    const { error } = await supabase.from('platform_config').upsert({
+      key: 'gym_defaults',
+      value: gymDefaults,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+
+    if (error) {
+      setDefaultsError(t('platformSettings.defaultsSaveFailed', "Couldn't save the defaults: {{msg}}", { msg: error.message }));
+      return;
+    }
+    logAdminAction('save_gym_defaults', 'platform_config', null, { defaults: gymDefaults });
     setDefaultsSaved(true);
     setTimeout(() => setDefaultsSaved(false), 2000);
   };
@@ -754,17 +720,35 @@ export default function PlatformSettings() {
     fetchPrograms();
     fetchStats();
     fetchHealth();
+    fetchAccountEmail();
     fetchPlatformConfig();
     fetchAppVersion();
   }, []);
 
   /* ────────────────── delete handler ────────────────── */
+  // .select('id') returns the deleted rows: a clean response with ZERO rows
+  // means RLS filtered the delete (this exact failure hid the missing
+  // program_templates super_admin policy until 0545) — warn, don't pretend.
 
   const handleDelete = async () => {
     if (!confirmDelete) return;
-    const { table, id } = confirmDelete;
-    await supabase.from(table).delete().eq('id', id);
+    const { table, id, label } = confirmDelete;
+    const { data: deletedRows, error } = await supabase
+      .from(table)
+      .delete()
+      .eq('id', id)
+      .select('id');
     setConfirmDelete(null);
+
+    if (error) {
+      alert(t('platformSettings.deleteFailed', 'Delete failed: {{msg}}', { msg: error.message }));
+      return;
+    }
+    if (!deletedRows || deletedRows.length === 0) {
+      alert(t('platformSettings.deleteNoRows', 'Nothing was deleted — "{{name}}" may be protected by permissions or already gone.', { name: label }));
+      return;
+    }
+    logAdminAction('delete_global_content', table, id, { label });
     if (table === 'exercises') fetchExercises();
     if (table === 'achievement_definitions') fetchAchievements();
     if (table === 'program_templates') fetchPrograms();
@@ -830,7 +814,8 @@ export default function PlatformSettings() {
       >
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <InfoCard label={tp('name')} value={profile?.full_name || profile?.username || '—'} />
-          <InfoCard label={tp('email')} value={profile?.email || '—'} />
+          {/* profiles has no email column — the real value lives on auth.users */}
+          <InfoCard label={tp('email')} value={accountEmail || '—'} />
           <InfoCard label={tp('role')} value={profile?.role || '—'} />
         </div>
       </CollapsibleSection>
@@ -928,11 +913,17 @@ export default function PlatformSettings() {
                   key={ach.id}
                   className="flex items-center justify-between bg-[#111827] border border-white/6 rounded-lg px-3 py-2"
                 >
-                  <div className="min-w-0">
-                    <p className="text-[13px] text-[#E5E7EB] truncate">{ach.name}</p>
-                    <p className="text-[11px] text-[#6B7280]">
-                      {ach.type} &middot; {tp('req')}: {ach.requirement_value} &middot; {ach.description || '—'}
-                    </p>
+                  <div className="min-w-0 flex items-center gap-2.5">
+                    <span className="text-[18px] shrink-0 w-7 text-center">{ach.icon || '🏆'}</span>
+                    <div className="min-w-0">
+                      <p className="text-[13px] text-[#E5E7EB] truncate">{ach.name}</p>
+                      <p className="text-[11px] text-[#6B7280] truncate">
+                        <span className="bg-indigo-500/15 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded-full mr-1.5">
+                          {ach.category || '—'}
+                        </span>
+                        {ach.description || '—'}
+                      </p>
+                    </div>
                   </div>
                   <button
                     onClick={() => setConfirmDelete({ table: 'achievement_definitions', id: ach.id, label: ach.name })}
@@ -982,8 +973,8 @@ export default function PlatformSettings() {
                 >
                   <div className="min-w-0">
                     <p className="text-[13px] text-[#E5E7EB] truncate">{prog.name}</p>
-                    <p className="text-[11px] text-[#6B7280]">
-                      {prog.difficulty_level} &middot; {prog.duration_weeks} {tp('weeks')} &middot; {prog.description || '—'}
+                    <p className="text-[11px] text-[#6B7280] truncate">
+                      {prog.level || '—'} &middot; {t('platformSettings.daysPerWeekShort', '{{n}} days/wk', { n: prog.days_per_week })} &middot; {prog.duration_weeks} {tp('weeks')} &middot; {prog.description || '—'}
                     </p>
                   </div>
                   <button
@@ -1024,55 +1015,27 @@ export default function PlatformSettings() {
         )}
       </CollapsibleSection>
 
-      {/* ──────── 6. Email Configuration ──────── */}
+      {/* ──────── 6. Email Configuration (informational) ────────
+          The 3 template toggles were removed (P0-3): they wrote
+          platform_config keys nothing reads. No fake "Active" badge —
+          we don't probe the mail pipeline from here, so we only state
+          the configured provider. */}
       <CollapsibleSection
         title={tp('emailConfig')}
         icon={<Mail className="w-4 h-4 text-[#D4AF37]" />}
         open={emailOpen}
         toggle={() => setEmailOpen(!emailOpen)}
       >
-        {/* Status card */}
-        <div className="bg-[#111827] border border-emerald-500/20 rounded-lg p-3 mb-4">
-          <div className="flex items-center gap-2 mb-1">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <p className="text-[13px] font-medium text-emerald-400">{tp('emailService')}: {tp('emailServiceActive')}</p>
-          </div>
-          <p className="text-[11px] text-[#6B7280] ml-6">{tp('emailServiceDesc')}</p>
+        <div className="bg-[#111827] border border-white/6 rounded-lg p-3 mb-3">
+          <p className="text-[13px] font-medium text-[#E5E7EB] mb-0.5">{tp('emailService')}</p>
+          <p className="text-[11px] text-[#6B7280]">{tp('emailServiceDesc')}</p>
         </div>
-        <div className="bg-[#111827] border border-white/6 rounded-lg p-3 mb-4">
+        <div className="bg-[#111827] border border-white/6 rounded-lg p-3">
           <div className="flex items-center justify-between">
             <p className="text-[12px] text-[#6B7280]">{tp('smtpProvider')}</p>
             <p className="text-[12px] text-[#E5E7EB] font-medium">{tp('supabaseBuiltIn')}</p>
           </div>
         </div>
-
-        {/* Email template toggles */}
-        <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3">{tp('emailTemplates')}</p>
-        <div className="space-y-2 mb-3">
-          {[
-            { key: 'welcome', label: tp('welcomeEmail'), desc: tp('welcomeEmailDesc') },
-            { key: 'passwordReset', label: tp('passwordReset'), desc: tp('passwordResetDesc') },
-            { key: 'weeklyDigest', label: tp('weeklyDigest'), desc: tp('weeklyDigestDesc') },
-          ].map(({ key, label, desc }) => (
-            <div key={key} className="bg-[#111827] border border-white/6 rounded-lg px-3 py-2.5 flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] text-[#E5E7EB]">{label}</p>
-                <p className="text-[11px] text-[#6B7280]">{desc}</p>
-              </div>
-              <button
-                onClick={() => toggleEmailFlag(key)}
-                className="ml-3 shrink-0"
-              >
-                {emailToggles[key] ? (
-                  <ToggleRight className="w-6 h-6 text-emerald-400" />
-                ) : (
-                  <ToggleLeft className="w-6 h-6 text-[#4B5563]" />
-                )}
-              </button>
-            </div>
-          ))}
-        </div>
-        <p className="text-[11px] text-[#4B5563] italic">{tp('perGymNote')}</p>
       </CollapsibleSection>
 
       </>)}
@@ -1156,39 +1119,11 @@ export default function PlatformSettings() {
         </div>
       </CollapsibleSection>
 
-      {/* ──────── 7. Feature Flags ──────── */}
-      <CollapsibleSection
-        title={tp('featureFlags')}
-        icon={<Zap className="w-4 h-4 text-[#D4AF37]" />}
-        open={flagsOpen}
-        toggle={() => setFlagsOpen(!flagsOpen)}
-      >
-        <p className="text-[11px] text-[#6B7280] mb-4 bg-[#111827] border border-white/6 rounded-lg px-3 py-2">
-          {tp('featureFlagsDesc')}
-        </p>
-        <div className="space-y-2">
-          {FEATURE_FLAG_KEYS.map(({ key, descKey }) => (
-            <div key={key} className="bg-[#111827] border border-white/6 rounded-lg px-3 py-2.5 flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] text-[#E5E7EB]">{tp(key)}</p>
-                <p className="text-[11px] text-[#6B7280]">{tp(descKey)}</p>
-              </div>
-              <div className="flex items-center gap-2 ml-3 shrink-0">
-                <span className={`text-[10px] font-medium ${featureFlags[key] ? 'text-emerald-400' : 'text-[#6B7280]'}`}>
-                  {featureFlags[key] ? tp('enabled') : tp('disabled')}
-                </span>
-                <button onClick={() => toggleFeatureFlag(key)}>
-                  {featureFlags[key] ? (
-                    <ToggleRight className="w-6 h-6 text-emerald-400" />
-                  ) : (
-                    <ToggleLeft className="w-6 h-6 text-[#4B5563]" />
-                  )}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CollapsibleSection>
+      {/* The duplicate feature-flag panel was removed (P0-3): it wrote
+          feature_aiFoodScanner-style platform_config keys that NOTHING
+          reads, while Operations' kill switches (feature_referrals…) are
+          the real ones consumed by get_platform_flags (0547). One config
+          surface, one truth. */}
 
       </>)}
 
@@ -1245,6 +1180,9 @@ export default function PlatformSettings() {
             </select>
           </Field>
         </div>
+        {defaultsError && (
+          <p className="text-[11px] text-red-400 mb-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{defaultsError}</p>
+        )}
         <div className="flex items-center justify-end gap-3">
           {defaultsSaved && (
             <span className="text-[11px] text-emerald-400 flex items-center gap-1">
@@ -1312,38 +1250,31 @@ export default function PlatformSettings() {
               </div>
             </div>
 
-            {/* Edge functions */}
-            <div className="bg-[#111827] border border-white/6 rounded-lg px-3 py-3 mb-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-[#9CA3AF]" />
-                  <p className="text-[12px] text-[#9CA3AF]">{tp('edgeFunctions')}</p>
-                </div>
-                <span className="bg-[#D4AF37]/15 text-[#D4AF37] text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                  {EDGE_FUNCTIONS.length} {tp('deployed')}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5 ml-6">
-                {EDGE_FUNCTIONS.map(fn => (
-                  <span key={fn} className="bg-[#0F172A] text-[#9CA3AF] text-[10px] px-2 py-0.5 rounded border border-white/6">
-                    {fn}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Storage buckets */}
-            <div className="bg-[#111827] border border-white/6 rounded-lg px-3 py-3 mb-4">
-              <div className="flex items-center gap-2 mb-2">
+            {/* Storage reachability — a real listBuckets probe. The old
+                section here was a stale hardcoded edge-function list (15 of
+                29, never probed) + invented bucket-name chips (one name was
+                even wrong) — removed; Operations has the full probe set. */}
+            <div className={`bg-[#111827] border rounded-lg px-3 py-3 mb-4 ${health.storageOk === true ? 'border-emerald-500/20' : health.storageOk === false ? 'border-red-500/20' : 'border-white/6'}`}>
+              <div className="flex items-center gap-2 mb-1">
                 <HardDrive className="w-4 h-4 text-[#9CA3AF]" />
-                <p className="text-[12px] text-[#9CA3AF]">{tp('storageUsage')}</p>
+                <p className="text-[12px] text-[#9CA3AF]">{t('platformSettings.storageProbe', 'Storage buckets')}</p>
               </div>
-              <div className="flex flex-wrap gap-1.5 ml-6">
-                {STORAGE_BUCKETS.map(b => (
-                  <span key={b} className="bg-[#0F172A] text-[#9CA3AF] text-[10px] px-2 py-0.5 rounded border border-white/6 flex items-center gap-1">
-                    <HardDrive className="w-2.5 h-2.5" /> {b}
-                  </span>
-                ))}
+              <div className="flex items-center gap-1.5 ml-6">
+                {health.storageOk === null ? (
+                  <span className="text-[13px] text-[#6B7280]">{tp('checking')}</span>
+                ) : health.storageOk ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-[13px] text-emerald-400 font-medium">
+                      {t('platformSettings.storageReachable', '{{count}} buckets reachable', { count: health.bucketCount ?? 0 })}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-3.5 h-3.5 text-red-400" />
+                    <span className="text-[13px] text-red-400 font-medium">{tp('disconnected')}</span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1473,7 +1404,14 @@ function ExerciseModal({ onClose, onSaved }) {
       const { error: uploadError } = await supabase.storage
         .from('exercise-videos')
         .upload(path, videoFile, { contentType: videoFile.type });
-      if (!uploadError) videoPath = path;
+      if (uploadError) {
+        // Don't insert the exercise silently without the video the admin
+        // attached — abort so they can retry or drop the file.
+        setError(t('platformSettings.videoUploadFailed', 'Video upload failed: {{msg}}. The exercise was NOT saved — retry or remove the video.', { msg: uploadError.message }));
+        setSaving(false);
+        return;
+      }
+      videoPath = path;
     }
 
     const id = `global_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -1557,31 +1495,58 @@ function ExerciseModal({ onClose, onSaved }) {
 }
 
 /* ───────────────── Achievement Modal ───────────────── */
+// Writes the REAL achievement_definitions schema (0001): name + description
+// + icon are NOT NULL, category is the achievement_category enum, criteria
+// is optional JSONB. The old form wrote imagined type/requirement_value
+// columns — every insert failed and the modal reported success anyway.
 
 function AchievementModal({ onClose, onSaved }) {
   const { t } = useTranslation('pages');
   const tp = (key) => t(`platformSettings.${key}`);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [form, setForm] = useState({
     name: '',
     description: '',
-    type: '',
-    requirement_value: 1,
+    icon: '🏆',
+    category: 'milestone',
+    criteria: '',
   });
 
   const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
 
+  const canSave = form.name.trim() && form.description.trim() && form.icon.trim() && form.category;
+
   const handleSave = async () => {
-    if (!form.name.trim() || !form.type.trim()) return;
+    if (!canSave) return;
+    setError('');
+
+    // criteria is optional, but if provided it must be valid JSON.
+    let criteria = {};
+    if (form.criteria.trim()) {
+      try {
+        criteria = JSON.parse(form.criteria);
+      } catch {
+        setError(t('platformSettings.criteriaInvalid', 'Criteria must be valid JSON (e.g. {"workouts": 50}).'));
+        return;
+      }
+    }
+
     setSaving(true);
-    await supabase.from('achievement_definitions').insert({
+    const { error: insertError } = await supabase.from('achievement_definitions').insert({
       gym_id: null,
       name: form.name.trim(),
-      description: form.description.trim() || null,
-      type: form.type.trim(),
-      requirement_value: Number(form.requirement_value) || 1,
+      description: form.description.trim(),
+      icon: form.icon.trim(),
+      category: form.category,
+      criteria,
     });
     setSaving(false);
+    if (insertError) {
+      // Stay open so the admin can fix and retry — no fake success.
+      setError(insertError.message);
+      return;
+    }
     onSaved();
   };
 
@@ -1590,20 +1555,33 @@ function AchievementModal({ onClose, onSaved }) {
       <Field label={`${tp('nameLabel')} *`}>
         <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={tp('achievementNamePlaceholder')} />
       </Field>
-      <Field label={`${tp('type')} *`}>
-        <input className={inputCls} value={form.type} onChange={(e) => set('type', e.target.value)} placeholder={tp('typePlaceholder')} />
+      <Field label={`${tp('description')} *`}>
+        <textarea className={`${inputCls} min-h-[60px] resize-none`} value={form.description} onChange={(e) => set('description', e.target.value)} />
       </Field>
-      <Field label={tp('requirementValue')}>
-        <input className={inputCls} type="number" min={1} value={form.requirement_value} onChange={(e) => set('requirement_value', e.target.value)} />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={`${t('platformSettings.iconLabel', 'Icon (emoji)')} *`}>
+          <input className={inputCls} value={form.icon} onChange={(e) => set('icon', e.target.value)} placeholder="🏆" maxLength={16} />
+        </Field>
+        <Field label={`${tp('category')} *`}>
+          <select className={inputCls} value={form.category} onChange={(e) => set('category', e.target.value)}>
+            {ACHIEVEMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
+          </select>
+        </Field>
+      </div>
+      <Field label={t('platformSettings.criteriaLabel', 'Criteria (JSON, optional)')}>
+        <textarea
+          className={`${inputCls} min-h-[60px] resize-none font-mono`}
+          value={form.criteria}
+          onChange={(e) => set('criteria', e.target.value)}
+          placeholder='{"workouts": 50}'
+        />
       </Field>
-      <Field label={tp('description')}>
-        <textarea className={`${inputCls} min-h-[60px] resize-none`} value={form.description} onChange={(e) => set('description', e.target.value)} placeholder={tp('optionalDescription')} />
-      </Field>
+      {error && <p className="text-[12px] text-red-400">{error}</p>}
       <div className="flex justify-end gap-3 mt-4">
         <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">{tp('cancel')}</button>
         <button
           onClick={handleSave}
-          disabled={saving || !form.name.trim() || !form.type.trim()}
+          disabled={saving || !canSave}
           className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
         >
           {saving ? tp('saving') : tp('saveAchievement')}
@@ -1614,31 +1592,51 @@ function AchievementModal({ onClose, onSaved }) {
 }
 
 /* ───────────────── Program Template Modal ───────────────── */
+// Writes the REAL program_templates columns (0001): `level` is the
+// fitness_level enum (the old form wrote difficulty_level — a column that
+// exists in zero migrations, so every insert failed silently), and
+// days_per_week + duration_weeks are NOT NULL. created_by is nullable but
+// sent for provenance. Writes work via the 0545 super_admin policy.
 
 function ProgramModal({ onClose, onSaved }) {
   const { t } = useTranslation('pages');
   const tp = (key) => t(`platformSettings.${key}`);
+  const { profile } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [form, setForm] = useState({
     name: '',
     description: '',
-    difficulty_level: 'beginner',
+    level: 'beginner',
+    days_per_week: 4,
     duration_weeks: 8,
   });
 
   const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
 
+  const daysOk = Number(form.days_per_week) >= 1 && Number(form.days_per_week) <= 7;
+  const weeksOk = Number(form.duration_weeks) >= 1;
+  const canSave = form.name.trim() && daysOk && weeksOk;
+
   const handleSave = async () => {
-    if (!form.name.trim()) return;
+    if (!canSave) return;
     setSaving(true);
-    await supabase.from('program_templates').insert({
+    setError('');
+    const { error: insertError } = await supabase.from('program_templates').insert({
       gym_id: null,
+      created_by: profile?.id ?? null,
       name: form.name.trim(),
       description: form.description.trim() || null,
-      difficulty_level: form.difficulty_level,
-      duration_weeks: Number(form.duration_weeks) || 8,
+      level: form.level,
+      days_per_week: Number(form.days_per_week),
+      duration_weeks: Number(form.duration_weeks),
     });
     setSaving(false);
+    if (insertError) {
+      // Stay open so the admin can fix and retry — no fake success.
+      setError(insertError.message);
+      return;
+    }
     onSaved();
   };
 
@@ -1648,21 +1646,27 @@ function ProgramModal({ onClose, onSaved }) {
         <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={tp('templateNamePlaceholder')} />
       </Field>
       <Field label={tp('difficultyLevel')}>
-        <select className={inputCls} value={form.difficulty_level} onChange={(e) => set('difficulty_level', e.target.value)}>
+        <select className={inputCls} value={form.level} onChange={(e) => set('level', e.target.value)}>
           {DIFFICULTY_LEVELS.map((d) => <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>)}
         </select>
       </Field>
-      <Field label={tp('durationWeeks')}>
-        <input className={inputCls} type="number" min={1} max={52} value={form.duration_weeks} onChange={(e) => set('duration_weeks', e.target.value)} />
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={`${t('platformSettings.daysPerWeek', 'Days per week')} *`}>
+          <input className={inputCls} type="number" min={1} max={7} value={form.days_per_week} onChange={(e) => set('days_per_week', e.target.value)} />
+        </Field>
+        <Field label={`${tp('durationWeeks')} *`}>
+          <input className={inputCls} type="number" min={1} max={52} value={form.duration_weeks} onChange={(e) => set('duration_weeks', e.target.value)} />
+        </Field>
+      </div>
       <Field label={tp('description')}>
         <textarea className={`${inputCls} min-h-[60px] resize-none`} value={form.description} onChange={(e) => set('description', e.target.value)} placeholder={tp('optionalProgramDescription')} />
       </Field>
+      {error && <p className="text-[12px] text-red-400">{error}</p>}
       <div className="flex justify-end gap-3 mt-4">
         <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">{tp('cancel')}</button>
         <button
           onClick={handleSave}
-          disabled={saving || !form.name.trim()}
+          disabled={saving || !canSave}
           className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
         >
           {saving ? tp('saving') : tp('saveTemplate')}
