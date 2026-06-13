@@ -101,7 +101,8 @@ const BlockUserModal = ({ open, name, onClose, onConfirm, t }) => {
             type="button"
             onClick={handleConfirm}
             disabled={submitting}
-            className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-50"
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold transition-colors disabled:opacity-50"
+            style={{ background: 'rgb(220,38,38)', color: '#fff' }}
           >
             {submitting ? t('social.report.submitting') : t('social.confirmBlock.confirm')}
           </button>
@@ -193,7 +194,8 @@ const ReportModal = ({ open, onClose, onSubmit, t }) => {
             type="button"
             onClick={handleSubmit}
             disabled={!selected || submitting}
-            className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: 'rgb(220,38,38)', color: '#fff' }}
           >
             {submitting ? t('social.report.submitting') : t('social.report.submit')}
           </button>
@@ -457,7 +459,8 @@ const FriendButton = ({ status, onAdd, onAccept, t }) => {
       <button
         type="button"
         onClick={onAccept}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 bg-emerald-500 text-white hover:bg-emerald-600"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0"
+        style={{ background: 'rgb(16,185,129)', color: '#fff' }}
       >
         <Check size={12} strokeWidth={2.5} /> {t('social.friendStatus.accept')}
       </button>
@@ -835,7 +838,8 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
             <button
               type="button"
               onClick={() => { onDelete(item.id); setConfirmDelete(false); }}
-              className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors"
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+              style={{ background: 'rgb(220,38,38)', color: '#fff' }}
             >
               {t('social.deletePost')}
             </button>

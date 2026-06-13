@@ -302,7 +302,8 @@ const BlockUserModal = ({ open, name, onClose, onConfirm, t }) => {
             type="button"
             onClick={handleConfirm}
             disabled={submitting}
-            className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-50"
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold transition-colors disabled:opacity-50"
+            style={{ background: 'rgb(220,38,38)', color: '#fff' }}
           >
             {submitting ? t('social.report.submitting') : t('social.confirmBlock.confirm')}
           </button>

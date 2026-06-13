@@ -405,7 +405,8 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
                 type="button"
                 onClick={handleBlock}
                 disabled={blocking}
-                className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-50"
+                className="flex-1 py-3 rounded-xl text-[14px] font-semibold transition-colors disabled:opacity-50"
+                style={{ background: 'rgb(220,38,38)', color: '#fff' }}
               >
                 {blocking ? t('social.report.submitting') : t('social.confirmBlock.confirm')}
               </button>
