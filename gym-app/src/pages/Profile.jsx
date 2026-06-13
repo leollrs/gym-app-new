@@ -875,7 +875,7 @@ const Profile = () => {
 
             {/* Name / username — view or edit */}
             {editingIdentity ? (
-              <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+              <div className="flex flex-col gap-2 min-w-0 flex-1">
                 <input
                   id="profile-full-name"
                   type="text"
@@ -884,20 +884,22 @@ const Profile = () => {
                   placeholder={t('profile.fullName', 'Full name')}
                   aria-label={t('profile.fullName', 'Full name')}
                   maxLength={80}
-                  className="bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1 text-[14px] font-bold text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] w-full max-w-[180px]"
+                  className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5 text-[14px] font-bold text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                 />
                 <p className="text-[12px] text-[var(--color-text-muted)]">@{profile?.username}</p>
-                {/* Phone with editable country code + local number — chip-style country code box on the left, larger phone box on the right. */}
-                <div className="flex items-center gap-1.5 mt-0.5">
+                {/* Phone — one grouped field: a fixed "+1" country-code segment on the
+                    left, then the full number filling the rest of the row. */}
+                <div className="flex items-stretch w-full rounded-lg overflow-hidden border border-[var(--color-border-subtle)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
                   <input
                     type="tel"
-                    inputMode="numeric"
+                    inputMode="tel"
                     value={countryCode}
                     onChange={e => setCountryCode(e.target.value.replace(/[^+\d]/g, '').slice(0, 4))}
                     placeholder="+1"
                     aria-label={t('profile.countryCode', 'Country code')}
-                    className="w-14 bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-2 py-1 text-[14px] font-bold text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] text-center"
+                    className="w-12 flex-shrink-0 bg-[var(--color-bg-elevated)] px-2 py-1.5 text-[14px] font-bold text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none text-center"
                   />
+                  <span aria-hidden className="w-px self-stretch bg-[var(--color-border-subtle)]" />
                   <input
                     type="tel"
                     inputMode="numeric"
@@ -906,23 +908,24 @@ const Profile = () => {
                     placeholder="787 555 1234"
                     aria-label={t('profile.phoneNumber', 'Phone number')}
                     maxLength={20}
-                    className="flex-1 min-w-0 max-w-[180px] bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-2 py-1 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                    className="flex-1 min-w-0 bg-[var(--color-bg-input)] px-2.5 py-1.5 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none"
                   />
                 </div>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-0.5">
                   <button
                     type="button"
                     onClick={saveIdentity}
                     disabled={savingIdentity}
-                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-[12px] font-semibold bg-[var(--color-accent)] text-[var(--color-text-on-accent,#000)] disabled:opacity-50 hover:opacity-90 transition-colors"
+                    style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 65%, #000)' }}
+                    className="flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-[12px] font-bold bg-[var(--color-accent)] text-[var(--color-text-on-accent,#000)] border shadow-sm disabled:opacity-50 active:scale-95 transition-transform"
                   >
-                    {savingIdentity ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                    {savingIdentity ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} strokeWidth={2.5} />}
                     {t('profile.save')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditingIdentity(false)}
-                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-[12px] font-semibold border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-elevated)] transition-colors duration-200"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-semibold border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-elevated)] transition-colors duration-200"
                   >
                     <X size={12} /> {t('profile.cancel')}
                   </button>
