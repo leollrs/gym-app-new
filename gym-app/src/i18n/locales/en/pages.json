@@ -584,6 +584,8 @@
     "noOneJoined": "No one has joined yet",
     "noOneJoinedFirst": "No one has joined yet — be the first!",
     "signedUp": "Signed up",
+    "signedUpMore": "+{{count}} more",
+    "signedUpLess": "Show less",
     "noActiveChallenges": "No active challenges right now",
     "noUpcomingChallenges": "No upcoming challenges",
     "noPastChallenges": "No past challenges",

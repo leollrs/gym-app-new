@@ -99,6 +99,8 @@ const fetchMemberProfiles = async (profileIds) => {
 const ParticipantList = ({ challengeId, t, refreshKey }) => {
   const [names, setNames] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const PREVIEW = 6; // collapsed by default so a big roster doesn't stack tall
 
   useEffect(() => {
     let cancelled = false;
@@ -126,10 +128,13 @@ const ParticipantList = ({ challengeId, t, refreshKey }) => {
     <p className="text-[13px] text-[var(--color-text-muted)] text-center py-5">{t('challenges.noOneJoinedFirst')}</p>
   );
 
+  const visible = showAll ? names : names.slice(0, PREVIEW);
+  const extra = names.length - visible.length;
+
   return (
     <div className="mt-4 space-y-2">
-      <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest mb-2">{t('challenges.signedUp')}</p>
-      {names.map((name, i) => (
+      <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest mb-2">{t('challenges.signedUp')} · {names.length}</p>
+      {visible.map((name, i) => (
         <div key={`${name}-${i}`} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border)]">
           <div className="w-8 h-8 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
             <span className="text-[12px] font-bold text-[var(--color-accent,#2EC4C4)]">{name[0]}</span>
@@ -137,6 +142,24 @@ const ParticipantList = ({ challengeId, t, refreshKey }) => {
           <p className="text-[14px] font-medium text-[var(--color-text-primary)]">{name}</p>
         </div>
       ))}
+      {extra > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="w-full text-center text-[13px] font-semibold text-[var(--color-accent,#2EC4C4)] py-2.5 rounded-2xl bg-[var(--color-accent,#2EC4C4)]/5 hover:bg-[var(--color-accent,#2EC4C4)]/10 transition-colors"
+        >
+          {t('challenges.signedUpMore', { count: extra })}
+        </button>
+      )}
+      {showAll && names.length > PREVIEW && (
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="w-full text-center text-[13px] font-medium text-[var(--color-text-muted)] py-2"
+        >
+          {t('challenges.signedUpLess')}
+        </button>
+      )}
     </div>
   );
 };
