@@ -1636,7 +1636,7 @@
   },
   "ageVerify": {
     "title": "Confirm your age",
-    "body": "TuGymPR requires all members to be 16 or older to comply with privacy regulations. Please confirm your date of birth to continue.",
+    "body": "Please confirm your date of birth so we can keep your experience age-appropriate.",
     "dobLabel": "Date of birth",
     "required": "Date of birth is required.",
     "invalid": "Please enter a valid date.",

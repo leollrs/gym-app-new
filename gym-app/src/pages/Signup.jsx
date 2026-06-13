@@ -618,18 +618,9 @@ const Signup = () => {
       setDobError(t('dobInvalid', 'Please enter a valid date'));
       return;
     }
-    if (age < MIN_AGE) {
-      // Under MIN_AGE — only allowed via a verified gym invite code (gym
-      // vouches for parental consent collected at the membership counter).
-      if (inviteStatus !== 'valid') {
-        setDobError(t('dobUnderMinNeedsInvite', {
-          defaultValue: 'You must be {{min}} or older to sign up directly. Ask your gym to send you an invite code to register.',
-          min: MIN_AGE,
-        }));
-        return;
-      }
-      // With a valid invite — gym vouches, allow signup.
-    }
+    // No minimum-age block: the gym vouches for every member's eligibility when
+    // they enroll (membership waiver / invite handles parental consent in the
+    // real world). DOB is still recorded above for age-appropriate features.
 
     // ToS / Privacy
     if (!termsAccepted) {
@@ -844,11 +835,11 @@ const Signup = () => {
   const allPwRulesPass = pwRules.every(r => r.pass);
 
   // Submit disabled when email is being checked / invalid OR pw rules incomplete
-  // OR DOB invalid (missing / future / under MIN_AGE) OR either compliance
-  // checkbox is unchecked. App Store / Play Store require explicit consent.
+  // OR DOB invalid (missing / future) OR either compliance checkbox is
+  // unchecked. App Store / Play Store require explicit consent. No minimum-age
+  // gate — the gym vouches for member eligibility at enrollment.
   const dobAge = computeAge(dateOfBirth);
-  const dobOk = !!dateOfBirth && !Number.isNaN(dobAge)
-    && (dobAge >= MIN_AGE || inviteStatus === 'valid');
+  const dobOk = !!dateOfBirth && !Number.isNaN(dobAge) && dobAge >= 0;
   const submitDisabled =
     loading ||
     emailValidStatus === 'invalid' ||

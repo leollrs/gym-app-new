@@ -473,13 +473,11 @@ const MemberBlockedScreen = () => {
 
 // ── AGE VERIFICATION REQUIRED (legacy users) ──────────────
 // Shown to users whose `date_of_birth` was never set (signed up before
-// migration 0344 added the column). New signups are gated at Signup.jsx
-// so they always have DOB. GDPR-K Article 8: 16+ globally.
-// Self-signup floor. Under-13 users sign up via gym invite code only;
-// the gym handles parental consent in the real world (membership waiver
-// signed at the counter). Once signed up, no runtime age gate fires —
-// age handling is collected at signup and never re-prompted.
-const AGE_VERIFY_MIN = 13;
+// migration 0344 added the column). It only COLLECTS the birthday for
+// age-appropriate features — there is NO minimum-age block. Gyms vouch for
+// member eligibility at enrollment (the membership waiver handles parental
+// consent in the real world), and members can legitimately be teens or younger.
+// New signups provide DOB at Signup.jsx; this only catches legacy accounts.
 const AgeVerificationScreen = () => {
   const { signOut, user, refreshProfile, patchProfile } = useAuth();
   const { showToast } = useToast();
@@ -541,10 +539,8 @@ const AgeVerificationScreen = () => {
     if (!dob) { setErr(t('ageVerify.required', { defaultValue: 'Date of birth is required.' })); return; }
     const age = computeAge(dob);
     if (Number.isNaN(age) || age < 0) { setErr(t('ageVerify.invalid', { defaultValue: 'Please enter a valid date.' })); return; }
-    if (age < AGE_VERIFY_MIN) {
-      setErr(t('ageVerify.tooYoung', { defaultValue: `You must be ${AGE_VERIFY_MIN} or older to use TuGymPR.`, min: AGE_VERIFY_MIN }));
-      return;
-    }
+    // No minimum-age block — the gym vouches for member eligibility at
+    // enrollment. We just record DOB for age-appropriate features.
     setSubmitting(true);
     const nowIso = new Date().toISOString();
     const { error } = await supabase
@@ -581,7 +577,7 @@ const AgeVerificationScreen = () => {
           {t('ageVerify.title', { defaultValue: 'Confirm your age' })}
         </h1>
         <p className="text-[14px] text-[#9CA3AF] mb-6">
-          {t('ageVerify.body', { defaultValue: 'TuGymPR requires all members to be 16 or older to comply with privacy regulations. Please confirm your date of birth to continue.' })}
+          {t('ageVerify.body', { defaultValue: 'Please confirm your date of birth so we can keep your experience age-appropriate.' })}
         </p>
         <label className="block text-left text-[12px] text-[#9CA3AF] mb-2 px-1">
           {t('ageVerify.dobLabel', { defaultValue: 'Date of birth' })}

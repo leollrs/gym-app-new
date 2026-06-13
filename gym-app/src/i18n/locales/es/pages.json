@@ -1636,7 +1636,7 @@
   },
   "ageVerify": {
     "title": "Confirma tu edad",
-    "body": "TuGymPR requiere que todos los miembros tengan 16 años o más para cumplir con la normativa de privacidad. Confirma tu fecha de nacimiento para continuar.",
+    "body": "Confirma tu fecha de nacimiento para mantener tu experiencia apropiada para tu edad.",
     "dobLabel": "Fecha de nacimiento",
     "required": "La fecha de nacimiento es obligatoria.",
     "invalid": "Introduce una fecha válida.",
