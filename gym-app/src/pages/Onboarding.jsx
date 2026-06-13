@@ -4,7 +4,7 @@ import {
   ChevronLeft, ArrowRight, Check, Heart, Flame, Dumbbell, Zap,
   Sun, Sunrise, Moon, Sparkles, Trophy, Pin, Camera, Activity,
   Shield, BarChart3, Gift, X, Users, AlertTriangle, Loader2,
-  UtensilsCrossed, Search, ExternalLink, Sprout, Smartphone,
+  UtensilsCrossed, Search, ExternalLink, Sprout, Smartphone, ChevronDown,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
@@ -460,6 +460,37 @@ const TOTAL_STEPS = 13;  // + step 11 (Program) + step 12 (Nutrition)
 const STEP_LABEL_KEYS = ['invite', 'language', 'level', 'goal', 'training', 'schedule', 'privacy', 'health', 'body', 'phone', 'squad', 'program', 'nutrition'];
 const STEP_LABELS = STEP_LABEL_KEYS.map(k => `stepLabels.${k}`);
 const STEP_NAMES  = ['invite', 'language', 'fitness_level', 'goal', 'equipment', 'schedule', 'data_consent', 'health_sync', 'body_stats', 'phone', 'social', 'program', 'nutrition'];
+
+// Country dial codes for the onboarding phone step (PR/US-first, then LatAm + a
+// couple common others). Picked from a dropdown rather than typed.
+const COUNTRY_CODES = [
+  { code: '+1',   label: '+1 (US / PR)' },
+  { code: '+52',  label: '+52 (MX)' },
+  { code: '+34',  label: '+34 (ES)' },
+  { code: '+57',  label: '+57 (CO)' },
+  { code: '+58',  label: '+58 (VE)' },
+  { code: '+51',  label: '+51 (PE)' },
+  { code: '+54',  label: '+54 (AR)' },
+  { code: '+56',  label: '+56 (CL)' },
+  { code: '+593', label: '+593 (EC)' },
+  { code: '+502', label: '+502 (GT)' },
+  { code: '+503', label: '+503 (SV)' },
+  { code: '+507', label: '+507 (PA)' },
+  { code: '+44',  label: '+44 (UK)' },
+];
+
+// Auto-format a phone number as the user types. +1 (NANP) gets "(XXX) XXX-XXXX";
+// other codes get simple 3-digit grouping. Digits-only is recovered on save via
+// replace(/\D/g,''), so the cosmetic separators here are harmless.
+function formatPhoneInput(raw, countryCode) {
+  const d = String(raw || '').replace(/\D/g, '').slice(0, 15);
+  if (countryCode === '+1') {
+    if (d.length <= 3) return d;
+    if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+    return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6, 10)}`;
+  }
+  return d.replace(/(\d{3})(?=\d)/g, '$1 ').trim();
+}
 
 // ── MAIN COMPONENT ─────────────────────────────────────────
 const Onboarding = () => {
@@ -3357,38 +3388,40 @@ const Onboarding = () => {
         )}
 
         {/* ══════════════════════════════════════════════════════
-            STEP 9 · PHONE NUMBER (skippable)
+            STEP 9 · PHONE NUMBER (required)
             ══════════════════════════════════════════════════════ */}
         {step === 9 && (
           <div className="animate-fade-in">
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-              <div style={{ width: 92, flexShrink: 0 }}>
+              <div style={{ width: 138, flexShrink: 0 }}>
                 <OBLabel>{t('phoneStep.countryCode')}</OBLabel>
                 <div style={{
                   height: 54, borderRadius: 14, background: OB.surface,
-                  border: `1.5px solid ${OB.line}`, padding: '0 14px',
+                  border: `1.5px solid ${OB.line}`, padding: '0 8px 0 14px',
                   display: 'flex', alignItems: 'center',
                 }}>
-                  <input
-                    type="tel"
-                    inputMode="numeric"
+                  <select
                     aria-label={t('phoneStep.countryCode')}
                     value={phoneCountryCode}
                     onChange={e => {
-                      let v = e.target.value.replace(/[^+\d]/g, '');
-                      if (!v.startsWith('+')) v = '+' + v.replace(/\+/g, '');
-                      // '+' followed by up to 3 digits
-                      v = '+' + v.slice(1).replace(/\D/g, '').slice(0, 3);
-                      setPhoneCountryCode(v);
+                      const cc = e.target.value;
+                      setPhoneCountryCode(cc);
+                      // Reformat the existing number for the newly selected code.
+                      setPhoneNumber(p => formatPhoneInput(p, cc));
                     }}
-                    placeholder="+1"
                     style={{
                       flex: 1, minWidth: 0, width: '100%',
                       background: 'transparent', border: 'none', outline: 'none',
-                      fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 18,
-                      color: OB.ink, letterSpacing: -0.3,
+                      appearance: 'none', WebkitAppearance: 'none',
+                      fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 16,
+                      color: OB.ink, letterSpacing: -0.3, cursor: 'pointer',
                     }}
-                  />
+                  >
+                    {COUNTRY_CODES.map(c => (
+                      <option key={c.code} value={c.code}>{c.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} color={OB.sub} style={{ flexShrink: 0, marginLeft: 2 }} />
                 </div>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -3403,8 +3436,8 @@ const Onboarding = () => {
                     inputMode="numeric"
                     aria-label={t('phoneStep.title')}
                     value={phoneNumber}
-                    onChange={e => setPhoneNumber(e.target.value)}
-                    placeholder={t('phoneStep.phonePlaceholder')}
+                    onChange={e => setPhoneNumber(formatPhoneInput(e.target.value, phoneCountryCode))}
+                    placeholder={phoneCountryCode === '+1' ? '(787) 555-1234' : t('phoneStep.phonePlaceholder')}
                     style={{
                       flex: 1, minWidth: 0, width: '100%',
                       background: 'transparent', border: 'none', outline: 'none',
@@ -3421,24 +3454,12 @@ const Onboarding = () => {
               {t('phoneStep.subtitle')}
             </p>
 
-            {/* Buttons: Skip (left) + Continue (right) */}
-            <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <OBButton
-                tone="ghost"
-                onClick={() => {
-                  setPhoneNumber('');
-                  setStep(s => s + 1);
-                }}
-              >
-                {t('phoneStep.skip')}
-              </OBButton>
+            {/* Continue only — phone is required (no skip). */}
+            <div style={{ marginTop: 24 }}>
               {(() => {
-                // Validation: country code is "+" + 1-3 digits, phone has at least 7 digits.
                 const ccDigits = (phoneCountryCode || '').replace(/\D/g, '');
                 const localDigits = (phoneNumber || '').replace(/\D/g, '');
-                const isCcValid = phoneCountryCode.startsWith('+') && ccDigits.length >= 1 && ccDigits.length <= 3;
-                const isPhoneValid = localDigits.length >= 7;
-                const canContinue = isCcValid && isPhoneValid;
+                const canContinue = ccDigits.length >= 1 && localDigits.length >= 7;
                 return (
                   <OBButton
                     full
