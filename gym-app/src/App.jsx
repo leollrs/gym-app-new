@@ -801,11 +801,8 @@ const ProtectedRoute = ({ children }) => {
   if (!Array.isArray(availableRoles) || availableRoles.length === 0) return <LoadingScreen />;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
-  // Age gate (App Store compliance): prompt once for a DOB if none is on file.
-  // DOB is normally collected at signup, so this only ever fires for legacy /
-  // pre-DOB accounts — anyone with a DOB has requiresAgeVerification === false
-  // and is never re-prompted.
-  if (requiresAgeVerification) return <AgeVerificationScreen />;
+  // No runtime age gate — DOB is collected at signup for new accounts; existing
+  // accounts are never force-prompted (there's no hard age block anyway).
   // Super admins always go to /platform — they don't have a member
   // experience even if technically `member` is in additional_roles.
   if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
@@ -827,9 +824,7 @@ const OnboardingRoute = ({ children }) => {
   if (!profile) return <ProfileUnavailableScreen />;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
-  // Age gate (App Store compliance): prompt once for a DOB if none is on file.
-  // Only fires for legacy / pre-DOB accounts; users with a DOB are never re-prompted.
-  if (requiresAgeVerification) return <AgeVerificationScreen />;
+  // No runtime age gate (see ProtectedRoute) — DOB is collected at signup only.
   if (profile.is_onboarded) {
     if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
     if (isAdminView(activeView))      return <Navigate to="/admin" replace />;

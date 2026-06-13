@@ -1564,32 +1564,6 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
         </header>
         )}
 
-        {/* Embedded (inside Community → Feed): the full header above is hidden,
-            so surface a compact Friends button here too — otherwise there's no
-            way to reach your friends list or accept incoming requests from the
-            feed. Same toggle, same request-count badge, same panel. */}
-        {embedded && (
-          <div className="flex justify-end mb-4">
-            <button
-              type="button"
-              onClick={() => setShowFriends(s => !s)}
-              aria-label={t('social.friendsButton')}
-              className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold active:scale-95 transition-all ${
-                showFriends ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]' : 'border border-white/[0.06]'
-              }`}
-              style={!showFriends ? { background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' } : undefined}
-            >
-              <Users size={15} />
-              {t('social.friendsButton')}
-              {pendingIncoming > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full text-[10px] font-bold flex items-center justify-center text-white bg-red-500">
-                  {pendingIncoming}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
-
         {/* Add-friends CTA — opens the find-friends modal so you can connect
             with members already in your gym. (Referrals — inviting NEW people
             to join the gym — live on the separate Referrals page.) */}
@@ -1645,11 +1619,39 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
             no phantom margin) when nobody's training; owns its own mb when shown. */}
         <LiveTrainingIndicator onFriendTap={setPreviewUserId} />
 
-        {/* Friends Streaks (shared, above swipeable area) */}
-        {friendStreaks.length > 0 && (
+        {/* Friends row — quick access (friends list + requests) inline with the
+            friend-streak avatars. The big header Friends button is hidden when
+            embedded in Community, so the chip lives here as the first item. */}
+        {!hideComposer && (embedded || friendStreaks.length > 0) && (
           <div className="mb-6">
-            <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('social.friendsStreaks')}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>
+              {friendStreaks.length > 0 ? t('social.friendsStreaks') : t('social.friendsButton')}
+            </p>
             <div className="flex overflow-x-auto gap-3 pb-2 scrollbar-hide">
+              {embedded && (
+                <button
+                  type="button"
+                  onClick={() => setShowFriends(true)}
+                  aria-label={t('social.friendsButton')}
+                  className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer"
+                  style={{ width: 64 }}
+                >
+                  <span
+                    className="relative flex items-center justify-center rounded-full"
+                    style={{
+                      width: 40, height: 40,
+                      background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',
+                      border: '1.5px solid color-mix(in srgb, var(--color-accent) 45%, transparent)',
+                    }}
+                  >
+                    <Users size={18} style={{ color: 'var(--color-accent)' }} />
+                    {pendingIncoming > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full text-[9px] font-bold flex items-center justify-center text-white bg-red-500">{pendingIncoming}</span>
+                    )}
+                  </span>
+                  <p className="text-[11px] mt-1.5 truncate w-full text-center font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('social.friendsButton')}</p>
+                </button>
+              )}
               {friendStreaks.map(f => (
                 <button key={f.id} type="button" onClick={() => setPreviewUserId(f.id)} aria-label={`${f.name} - ${t('social.streak', { count: f.streak })}`} className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer" style={{ width: 64 }}>
                   <Avatar src={f.avatar_url} name={f.name ?? '?'} size={40} avatarType={f.avatar_type} avatarValue={f.avatar_value} />
