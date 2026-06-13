@@ -473,7 +473,7 @@ export async function generateAdaptiveWorkout(userId, variant = 0) {
   if (recentSessions?.length > 0) {
     const sessionIds = recentSessions.map(s => s.id);
     const { data: sets } = await supabase
-      .from('sets')
+      .from('session_exercises')
       .select('exercise_id, session_id')
       .in('session_id', sessionIds);
 

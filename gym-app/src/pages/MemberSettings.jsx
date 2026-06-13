@@ -91,7 +91,7 @@ export default function MemberSettings() {
       await revokeAIConsent(feature);
       setAiConsentState(getConsentStatus());
       posthog?.capture('ai_consent_revoked', { feature });
-      showToast(t('settingsPrivacy.consentNotGranted'), 'success');
+      showToast(t('settingsPrivacy.consentRevoked', { defaultValue: 'AI consent removed' }), 'success');
     } catch (err) {
       showToast(err?.message || t('settingsPrivacy.failedToRevoke', 'Failed to revoke consent'), 'error');
     } finally {

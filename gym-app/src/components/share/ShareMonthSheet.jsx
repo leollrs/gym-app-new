@@ -14,11 +14,12 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, Download, Loader2 } from 'lucide-react';
 import { Share } from '@capacitor/share';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { saveBlob } from '../../lib/saveBlob';
 import { shareBlob } from '../ShareCardRenderer';
-import { rasterizeNode } from './ShareSheet';
+import { rasterizeNode, urlToDataUrl } from './ShareSheet';
 import { ShareExportSizes } from './ShareFormats';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
+import { shareToInstagramFeed, isInstagramInstalled, shareToWhatsApp, shareToMessages, isWhatsAppInstalled, canShareViaMessages } from '../../lib/socialShare';
 import { ShareMonthCard, SM_CARD_IDS, buildShareMonthData, smVol } from './ShareMonthCard';
 
 // dark sheet chrome (only the CARDS go vivid — the app sheet stays dark,
@@ -39,7 +40,7 @@ function previewDims(maxW, maxH) {
   return { w: Math.round(w), h: Math.round(h) };
 }
 
-export default function ShareMonthSheet({ open, onClose, recap, monthSessions = [], monthPRs = [], user, gym, shareLink }) {
+export default function ShareMonthSheet({ open, onClose, recap, monthSessions = [], monthPRs = [], user, gym, gymLogoUrl, shareLink }) {
   const { t, i18n } = useTranslation('pages');
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -47,6 +48,13 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
   const [sticker, setSticker] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeDest, setActiveDest] = useState('ig-story');
+  // Story (9:16) or Feed (1:1). The recap cards scale to fit either via
+  // smScale, so the same designs render correctly for both sizes.
+  const [format, setFormat] = useState('story');
+  // Gym logo pre-resolved to a data URL (same pattern the other sheets use).
+  // The card's <img> is then ALREADY inlined before rasterization, so the logo
+  // survives the export instead of relying on the rasterizer's inline step.
+  const [logoDataUrl, setLogoDataUrl] = useState(null);
   const cardRef = useRef(null);
 
   useEffect(() => {
@@ -61,12 +69,23 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
     return () => { document.body.style.overflow = prev; };
   }, [mounted]);
 
-  // Map recap + this month's data → card data (memo-free; cheap, and recap
-  // identity is stable while the sheet is open).
-  const data = recap ? buildShareMonthData({ recap, monthSessions, monthPRs, user, gym, t, lang: i18n.language }) : null;
+  // Resolve the gym logo (https → inline data URL) on open so the recap card's
+  // <img> is already a data URL by share time — the logo then survives the
+  // export (matches how the workout/cardio/achievement sheets do it).
+  useEffect(() => {
+    let cancelled = false;
+    if (!open || !gymLogoUrl || String(gymLogoUrl).startsWith('data:')) { setLogoDataUrl(null); return undefined; }
+    urlToDataUrl(gymLogoUrl).then((d) => { if (!cancelled) setLogoDataUrl(d); });
+    return () => { cancelled = true; };
+  }, [open, gymLogoUrl]);
 
-  const exp = ShareExportSizes.story; // 1080×1920
-  const prev = previewDims(248, 372);
+  // Map recap + this month's data → card data (memo-free; cheap, and recap
+  // identity is stable while the sheet is open). Use the inlined logo when ready.
+  const data = recap ? buildShareMonthData({ recap, monthSessions, monthPRs, user, gym, gymLogoUrl: logoDataUrl || gymLogoUrl, t, lang: i18n.language }) : null;
+
+  // Story → 1080×1920 (9:16); Feed → 1080×1080 (1:1).
+  const exp = format === 'feed' ? ShareExportSizes.square : ShareExportSizes.story;
+  const prev = format === 'feed' ? { w: 300, h: 300 } : previewDims(248, 372);
 
   const buildBlob = useCallback(async () => {
     if (!cardRef.current) return null;
@@ -89,16 +108,9 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
     try {
       const blob = await buildBlob();
       if (dest === 'save') {
-        if (blob) {
-          const b64 = await new Promise((res) => {
-            const r = new FileReader();
-            r.onloadend = () => res(String(r.result).split(',')[1]);
-            r.readAsDataURL(blob);
-          });
-          try {
-            await Filesystem.writeFile({ path: `tugympr-month-${Date.now()}.png`, data: b64, directory: Directory.Documents });
-          } catch { await shareBlob(blob, 'tugympr-month.png', fullText); }
-        }
+        // saveBlob → Cache + native share sheet ("Save Image") / web download.
+        // Old code wrote to Directory.Documents (app sandbox) — image was lost.
+        if (blob) await saveBlob(`tugympr-month-${Date.now()}.png`, blob);
       } else if (dest === 'ig-story') {
         let landed = false;
         if (blob && await isInstagramStoriesAvailable()) {
@@ -110,8 +122,29 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
         }
         // Fallback (web / Android / IG not installed): native share sheet.
         if (!landed && blob) await shareBlob(blob, 'tugympr-month.png', fullText);
+      } else if (dest === 'ig-feed') {
+        // IG Feed: save the image to Photos and open IG's library picker with
+        // it pre-selected (same flow as the workout/cardio sheets).
+        let landed = false;
+        if (blob && await isInstagramInstalled()) {
+          const res = await shareToInstagramFeed({ blob });
+          landed = res.ok;
+        }
+        if (!landed && blob) await shareBlob(blob, 'tugympr-month.png', fullText);
+      } else if (dest === 'wa') {
+        // WhatsApp: attach the IMAGE via the native helper (not a link). Falls
+        // back to the OS share sheet (still image-first via shareBlob).
+        let landed = false;
+        if (blob && await isWhatsAppInstalled()) { const r = await shareToWhatsApp({ blob, text: fullText }); landed = r.ok; }
+        if (!landed && blob) await shareBlob(blob, 'tugympr-month.png', fullText);
+      } else if (dest === 'im') {
+        // Messages: attach the IMAGE via the native composer (not a link).
+        let landed = false;
+        if (blob && await canShareViaMessages()) { const r = await shareToMessages({ blob, text: fullText }); landed = r.ok; }
+        if (!landed && blob) await shareBlob(blob, 'tugympr-month.png', fullText);
       } else {
-        // wa / im / more → OS share sheet, so non-IG users can share anywhere.
+        // fb / other → OS share sheet (image-first; Facebook has no clean
+        // image deep-link without the FB SDK, so you tap Facebook there).
         if (blob) await shareBlob(blob, 'tugympr-month.png', fullText);
         else await Share.share({ title: gym || 'TuGymPR', text: fullText, url: shareLink });
       }
@@ -165,6 +198,23 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
           </div>
         </div>
 
+        {/* format — Story 9:16 / Feed 1:1 (cards scale to fit either) */}
+        <div style={{ padding: '0 18px 6px' }}>
+          <div style={{ display: 'flex', gap: 6, background: C.panel2, padding: 3, borderRadius: 12 }}>
+            {[{ id: 'story', label: t('shareMonth.story', 'Story') }, { id: 'feed', label: t('shareMonth.feed', 'Feed') }].map(o => {
+              const on = format === o.id;
+              return (
+                <button key={o.id} type="button" onClick={() => setFormat(o.id)} style={{
+                  flex: 1, padding: '9px 4px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                  background: on ? C.accent : 'transparent', color: on ? '#04201F' : C.textSub,
+                  fontWeight: 800, fontSize: 13, fontFamily: FONT_D }}>
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* card style flip */}
         <div style={{ padding: '0 18px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.8, textTransform: 'uppercase', color: C.textMute }}>
@@ -208,7 +258,9 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
             {t('shareMonth.shareTo', 'Share to')}
           </div>
           <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
-            <SMDest active={activeDest === 'ig-story'} onClick={() => setActiveDest('ig-story')} label="IG Story" color="#E1306C"><IGGlyph size={21}/></SMDest>
+            <SMDest active={activeDest === 'ig-story'} onClick={() => { setActiveDest('ig-story'); setFormat('story'); }} label="IG Story" color="#E1306C"><IGGlyph size={21}/></SMDest>
+            <SMDest active={activeDest === 'ig-feed'} onClick={() => { setActiveDest('ig-feed'); setFormat('feed'); }} label="IG Feed" color="#C13584"><IGGlyph size={21}/></SMDest>
+            <SMDest active={activeDest === 'fb'} onClick={() => setActiveDest('fb')} label="Facebook" color="#1877F2"><FBGlyph/></SMDest>
             <SMDest active={activeDest === 'wa'} onClick={() => setActiveDest('wa')} label="WhatsApp" color="#25D366"><WAGlyph/></SMDest>
             <SMDest active={activeDest === 'im'} onClick={() => setActiveDest('im')} label={t('shareMonth.messages', 'Messages')} color="#34C759"><MsgGlyph/></SMDest>
             <SMDest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('shareMonth.saveShort', 'Save')} color="#5A6570"><Download size={19} color="#fff"/></SMDest>
@@ -219,8 +271,9 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
         <div style={{ padding: '16px 18px', paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}>
           <button type="button" onClick={() => handleDest(activeDest)} disabled={busy} style={{
             width: '100%', padding: 17, borderRadius: 16, border: 'none', cursor: busy ? 'default' : 'pointer',
-            background: activeDest === 'ig-story'
+            background: (activeDest === 'ig-story' || activeDest === 'ig-feed')
               ? 'linear-gradient(135deg,#FEDA75,#FA7E1E 28%,#D62976 62%,#962FBF 100%)'
+              : activeDest === 'fb' ? '#1877F2'
               : C.accent,
             color: '#fff', fontWeight: 800, fontSize: 16, letterSpacing: -0.2,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
@@ -228,7 +281,8 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
             {busy ? <Loader2 size={18} className="animate-spin"/> : <DestGlyph dest={activeDest}/>}
             {busy
               ? t('shareMonth.preparing', 'Preparing…')
-              : activeDest === 'ig-story' ? t('shareMonth.shareToIG', 'Share to Instagram')
+              : (activeDest === 'ig-story' || activeDest === 'ig-feed') ? t('shareMonth.shareToIG', 'Share to Instagram')
+              : activeDest === 'fb' ? t('shareMonth.shareToFB', 'Share to Facebook')
               : activeDest === 'save' ? t('shareMonth.save', 'Save image')
               : t('shareMonth.shareNow', 'Share')}
           </button>
@@ -272,12 +326,17 @@ function MsgGlyph() {
   return <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.5 2 2 5.8 2 10.5c0 2.4 1.2 4.6 3.1 6.1L4 22l4.7-2.5c1 .3 2.2.5 3.3.5 5.5 0 10-3.8 10-8.5S17.5 2 12 2z"/></svg>;
 }
 
+function FBGlyph() {
+  return <svg width="14" height="22" viewBox="0 0 320 512" fill="#fff" aria-hidden="true"><path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z"/></svg>;
+}
+
 // Icon shown inside the confirm CTA — mirrors the active destination.
 function DestGlyph({ dest }) {
   if (dest === 'wa') return <WAGlyph/>;
   if (dest === 'im') return <MsgGlyph/>;
+  if (dest === 'fb') return <FBGlyph/>;
   if (dest === 'save') return <Download size={18} color="#fff"/>;
-  return <IGGlyph size={19}/>;
+  return <IGGlyph size={19}/>; // ig-story + ig-feed
 }
 
 function IGGlyph({ size = 20, color = '#fff' }) {

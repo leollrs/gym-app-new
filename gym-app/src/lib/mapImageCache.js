@@ -117,11 +117,31 @@ export async function clearCachedMapImage(sessionId) {
 
 // Helper: convert a data URL back to a Blob so the caller can pass either
 // to cacheMapImage without thinking about it.
+//
+// Decodes the data URL MANUALLY rather than `fetch(dataUrl)` — the app's CSP
+// `connect-src` deliberately doesn't allow `data:`, so fetching a data URL is
+// refused in the iOS WebView ("Refused to connect to data:image/png…"). atob →
+// bytes → Blob has no such restriction and is faster anyway.
 export async function dataUrlToBlob(dataUrl) {
-  if (!dataUrl) return null;
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
   try {
-    const res = await fetch(dataUrl);
-    return await res.blob();
+    const comma = dataUrl.indexOf(',');
+    if (comma === -1) return null;
+    const header = dataUrl.slice(0, comma);
+    const body = dataUrl.slice(comma + 1);
+    const mime = (header.match(/data:([^;,]+)/i) || [])[1] || 'image/png';
+    let bytes;
+    if (/;base64/i.test(header)) {
+      const bin = atob(body);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } else {
+      // URL-encoded (e.g. SVG) data URL
+      const decoded = decodeURIComponent(body);
+      bytes = new Uint8Array(decoded.length);
+      for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
   } catch {
     return null;
   }

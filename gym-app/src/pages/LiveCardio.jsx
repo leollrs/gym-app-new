@@ -19,7 +19,7 @@ import {
   Footprints, Bike, Waves, CircleDot, TrendingUp,
   Zap, Droplets, PersonStanding, Flame,
   Swords, CircleDashed, Music, Mountain, Snowflake, Heart,
-  Play, Pause, Square, MapPin, Activity as ActivityIcon, Share2,
+  Play, Pause, Square, MapPin, Activity as ActivityIcon, Share2, Trash2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -185,9 +185,14 @@ export default function LiveCardio() {
   const [cardioType, setCardioType] = useState(initialType);
   const [showMore, setShowMore] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  // When a GPS-eligible activity is started but location permission is denied
+  // (or the tracker fails to start), flip to a pure stopwatch. Without this,
+  // useGps stays true forever and the timer-only interval never runs — the big
+  // clock would sit frozen at 00:00:00 for the whole session.
+  const [gpsOverridden, setGpsOverridden] = useState(false);
 
   const selectedType = ALL_TYPES.find(c => c.key === cardioType) || CARDIO_MAIN[0];
-  const useGps = !!selectedType.gps;
+  const useGps = !!selectedType.gps && !gpsOverridden;
 
   // ── GPS pre-warm ──────────────────────────────────────────
   // The moment the user lands on the cardio picker with a GPS-eligible type
@@ -240,11 +245,15 @@ export default function LiveCardio() {
     };
   }, [running, useGps]);
 
-  // ── Summary input (manual distance, intensity) ────────────
+  // ── Summary input (manual distance, intensity, notes) ─────
   const [manualDistance, setManualDistance] = useState('');
   const [intensity, setIntensity] = useState('moderate');
+  const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [savedSession, setSavedSession] = useState(null);
+  // Two-tap arm for the destructive "Delete session" button on the done
+  // screen, so a single stray tap can't discard a finished run.
+  const [deleteArmed, setDeleteArmed] = useState(false);
 
   const bodyWeightLbs = profile?.weight_lbs ?? 165;
   const sessionEndedRef = useRef(false);
@@ -423,6 +432,7 @@ export default function LiveCardio() {
     // responsive. GPS permission request happens asynchronously in the
     // background — if it eventually resolves to "granted", we attach the
     // GPS tracker on top of the timer.
+    setGpsOverridden(false); // retry GPS fresh on each Start
     setPhase('tracking');
     startTimerOnlyFallback();
 
@@ -461,15 +471,22 @@ export default function LiveCardio() {
       const granted = loc === 'granted' || loc === 'granted-always' || loc === 'granted-when-in-use';
 
       if (!granted) {
+        setGpsOverridden(true); // unblock the stopwatch — run as timer-only
         setGpsError(t('cardio.gpsUnavailableTimerOnly', 'GPS unavailable — tracking time only'));
         return;
       }
 
       tracker.onUpdate((snap) => setGpsState(snap));
       try {
-        await tracker.start();
+        // Pass the permission-wait latency so the GPS timer's startedAt is
+        // wound back to when the user tapped Start, not just when permission
+        // was granted. startRef.current was set by startTimerOnlyFallback()
+        // before the async permission request began.
+        const elapsedOffsetSec = startRef.current ? (Date.now() - startRef.current) / 1000 : 0;
+        await tracker.start({ elapsedOffsetSec });
       } catch (err) {
         console.warn('[LiveCardio] tracker.start() failed:', err);
+        setGpsOverridden(true); // unblock the stopwatch — run as timer-only
         setGpsError(t('cardio.gpsUnavailableTimerOnly', 'GPS unavailable — tracking time only'));
       }
     })();
@@ -497,8 +514,13 @@ export default function LiveCardio() {
 
   const handleFinish = async () => {
     if (useGps && trackerRef.current) {
-      const final = await trackerRef.current.stop();
-      setGpsState(final);
+      // PAUSE (not stop) so the user can still resume from the done screen via
+      // the back arrow. The tracker is only stopped for good when the run is
+      // finalized (Finish & Log) or explicitly discarded (Delete session).
+      // Capture the current snapshot so the done screen + payload have the run.
+      try { trackerRef.current.pause?.(); } catch {}
+      const snap = trackerRef.current.snapshot?.();
+      if (snap) setGpsState(snap);
     } else if (running) {
       accumRef.current += (Date.now() - startRef.current) / 1000;
       startRef.current = null;
@@ -528,12 +550,19 @@ export default function LiveCardio() {
   const currentPaceSecPerUnit = gpsState?.currentPaceSecPerUnit;
   const elevationGainM = gpsState?.elevationGainM ?? 0;
   // GPS activities: calories track distance, not time. Stationary = 0 cal.
-  const cal = estimateCardioCalories(cardioType, elapsedSec, bodyWeightLbs, distanceKm, { requireMovement: useGps });
+  // For non-distance sessions, apply the same intensity multiplier that
+  // CardioLogModal uses so the two entry paths produce consistent values.
+  const rawCal = estimateCardioCalories(cardioType, elapsedSec, bodyWeightLbs, distanceKm, { requireMovement: useGps });
+  const intensityMult = { easy: 0.75, moderate: 1.0, hard: 1.25, max: 1.5 }[intensity] ?? 1.0;
+  const cal = !distanceKm ? Math.round(rawCal * intensityMult) : rawCal;
 
   const handleSubmit = useCallback(async () => {
     if (submitting) return;
     setSubmitting(true);
     try {
+      // Finalized — release the paused GPS tracker (End only paused it so the
+      // user could resume). gpsState already holds the captured route/splits.
+      try { const p = trackerRef.current?.stop?.(); if (p?.catch) p.catch(() => {}); } catch {}
       const route = useGps ? (gpsState?.route ?? []) : [];
       const splits = useGps ? (gpsState?.splits ?? []) : [];
       const avgPaceSecPerKm = useGps
@@ -550,6 +579,7 @@ export default function LiveCardio() {
         distance_km: distanceKm,
         calories_burned: cal,
         intensity,
+        notes: notes.trim() || null,
         source: useGps ? 'gps' : 'manual',
         route,
         splits,
@@ -584,6 +614,7 @@ export default function LiveCardio() {
               distance_km: payload.distance_km,
               calories_burned: payload.calories_burned,
               intensity: payload.intensity,
+              notes: payload.notes,
               source: payload.source,
               route: payload.route,
               splits: payload.splits,
@@ -661,11 +692,12 @@ export default function LiveCardio() {
         // the route is in memory. Cached in IndexedDB by session id so the
         // share sheet opens instantly later — and works offline. Non-blocking.
         if (sessionId && Array.isArray(payload.route) && payload.route.length >= 2) {
+          const resolvedAccent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#2EC4C4';
           prerenderAndCache({
             route: payload.route,
             width: 1080,
             height: 1080,
-            accent,
+            accent: resolvedAccent,
             sessionId,
           }).catch((err) => console.warn('[LiveCardio] map pre-render failed:', err?.message));
         }
@@ -685,21 +717,57 @@ export default function LiveCardio() {
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, useGps, gpsState, cardioType, elapsedSec, distanceKm, cal, intensity, elevationGainM, unit, showToast, t, user?.id]);
+  }, [submitting, useGps, gpsState, cardioType, elapsedSec, distanceKm, cal, intensity, notes, elevationGainM, unit, showToast, t, user?.id]);
+
+  // Back out of the 'done' (finished-but-unsaved) screen → RESUME the live
+  // session instead of throwing it away. handleFinish only paused the tracker,
+  // so the GPS run / timer picks up exactly where it left off.
+  const resumeSession = () => {
+    setDeleteArmed(false);
+    if (useGps && trackerRef.current) {
+      try { trackerRef.current.resume?.(); } catch {}
+    } else {
+      // timer-only: continue counting from the accumulated time
+      startRef.current = Date.now();
+      setRunning(true);
+    }
+    setPhase('tracking');
+  };
+
+  // Explicit discard from the 'done' screen (two-tap armed). The run was never
+  // saved (we're pre-Finish & Log), so this just tears the session down: stop
+  // the tracker for good, scrub the draft, end the Live Activity, go home.
+  const handleDeleteSession = () => {
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      setTimeout(() => setDeleteArmed(false), 3000); // auto-disarm
+      return;
+    }
+    try { const p = trackerRef.current?.stop?.(); if (p?.catch) p.catch(() => {}); } catch {}
+    sessionEndedRef.current = true;
+    localStorage.removeItem(STORAGE_KEY);
+    endLiveActivity({ elapsedSeconds: Math.floor(elapsedSec), completedSets: 0, totalSets: 0 }).catch(() => {});
+    posthogClient?.capture('cardio_discarded', { source: 'live', type: cardioType, duration_seconds: Math.floor(elapsedSec) });
+    navigate('/', { replace: true });
+  };
 
   const handleBack = () => {
-    // 'done' is post-End, pre-Log — the run is finished but unsaved. Treat
-    // it the same as 'pick'/'summary': scrub the live-cardio draft so the
-    // dashboard doesn't keep showing it as "in progress" forever after the
-    // user backs out without tapping Log.
-    if (phase === 'pick' || phase === 'summary' || phase === 'done') {
+    // From 'done' (finished but NOT yet saved): the user tapped End and is on
+    // the log screen. Back RETURNS them to the live session — it does NOT
+    // discard the run. (Previously it scrubbed the draft + went home, silently
+    // losing the run.) Discarding is now only via the explicit Delete button.
+    if (phase === 'done') {
+      resumeSession();
+      return;
+    }
+    if (phase === 'pick' || phase === 'summary') {
       sessionEndedRef.current = true;
       localStorage.removeItem(STORAGE_KEY);
       endLiveActivity({ elapsedSeconds: Math.floor(elapsedSec), completedSets: 0, totalSets: 0 }).catch(() => {});
       navigate('/', { replace: true });
     } else {
-      // preserve in progress — Live Activity continues so the user sees it on
-      // the lock screen and can resume via the app icon.
+      // 'tracking' — preserve in progress; Live Activity continues so the user
+      // sees it on the lock screen and can resume via the app icon.
       navigate('/', { replace: true });
     }
   };
@@ -854,7 +922,7 @@ export default function LiveCardio() {
               width: '100%', height: 56, borderRadius: 16,
               border: 'none', cursor: 'pointer',
               background: accent,
-              color: 'var(--color-bg-card, #0A0D10)',
+              color: 'var(--color-text-on-accent, #1D1D1F)',
               fontFamily: FONT_BODY, fontWeight: 900, fontSize: 15,
               letterSpacing: 0.4,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -989,7 +1057,7 @@ export default function LiveCardio() {
             style={{
               flex: 2, height: 56, borderRadius: 16,
               border: 'none', cursor: 'pointer',
-              background: accent, color: 'var(--color-bg-card, #0A0D10)',
+              background: accent, color: 'var(--color-text-on-accent, #1D1D1F)',
               fontFamily: FONT_BODY, fontWeight: 900, fontSize: 15,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               boxShadow: '0 6px 18px color-mix(in srgb, var(--color-accent, #2EC4C4) 30%, transparent)',
@@ -1064,7 +1132,7 @@ export default function LiveCardio() {
                 <div
                   style={{
                     padding: '0 16px', borderRadius: 16,
-                    background: accent, color: 'var(--color-bg-card)',
+                    background: accent, color: 'var(--color-text-on-accent, #1D1D1F)',
                     fontWeight: 800, fontSize: 13,
                     display: 'flex', alignItems: 'center',
                   }}
@@ -1103,17 +1171,39 @@ export default function LiveCardio() {
               );
             })}
           </div>
+
+          {/* Notes — optional "how did it feel" field, saved with the session */}
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 8 }}>
+              {t('cardio.notes', 'Notes')}
+            </div>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder={t('cardio.notesPlaceholder', 'How did it feel? (optional)')}
+              rows={3}
+              maxLength={500}
+              style={{
+                width: '100%', padding: '12px 14px', borderRadius: 16,
+                border: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
+                background: 'var(--color-surface-hover, rgba(15,20,25,0.04))',
+                color: 'var(--color-text-primary)',
+                fontSize: 15, fontFamily: FONT_BODY, outline: 'none',
+                resize: 'none', boxSizing: 'border-box',
+              }}
+            />
+          </div>
         </div>
       )}
 
       {phase === 'done' && (
-        <div style={{ padding: '12px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)', display: 'flex', gap: 10 }}>
+        <div style={{ padding: '12px 20px calc(env(safe-area-inset-bottom, 0px) + 16px)', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <button
             type="button" onClick={handleSubmit} disabled={submitting}
             style={{
-              flex: 1, height: 56, borderRadius: 16,
+              width: '100%', height: 56, borderRadius: 16,
               border: 'none', cursor: submitting ? 'default' : 'pointer',
-              background: accent, color: 'var(--color-bg-card, #0A0D10)',
+              background: accent, color: 'var(--color-text-on-accent, #1D1D1F)',
               fontFamily: FONT_BODY, fontWeight: 900, fontSize: 15,
               opacity: submitting ? 0.6 : 1,
               boxShadow: '0 6px 18px color-mix(in srgb, var(--color-accent, #2EC4C4) 30%, transparent)',
@@ -1123,19 +1213,25 @@ export default function LiveCardio() {
               ? t('cardio.logging', 'Logging…')
               : t('cardio.finishAndLog', 'Finish & Log')}
           </button>
+          {/* Discard the unsaved run (two-tap armed — see handleDeleteSession).
+              Sharing lives on the SAVED summary screen: you Finish & Log first,
+              then share the summary — so there's no share button here. */}
           <button
-            type="button"
-            onClick={() => { setShowShare(true); }}
-            aria-label={t('cardio.shareThisRun', 'Share this run')}
+            type="button" onClick={handleDeleteSession}
+            aria-label={t('cardio.deleteSession', 'Delete session')}
             style={{
-              width: 56, height: 56, borderRadius: 16,
-              border: '1.5px solid var(--color-border-subtle, rgba(15,20,25,0.18))',
-              background: 'transparent', cursor: 'pointer',
-              color: 'var(--color-text-primary)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '100%', height: 48, borderRadius: 16,
+              border: `1.5px solid ${deleteArmed ? '#EF4444' : 'var(--color-border-subtle, rgba(15,20,25,0.18))'}`,
+              background: deleteArmed ? 'color-mix(in srgb, #EF4444 10%, transparent)' : 'transparent',
+              color: deleteArmed ? '#EF4444' : 'var(--color-text-muted)',
+              cursor: 'pointer',
+              fontFamily: FONT_BODY, fontWeight: 800, fontSize: 13,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              transition: 'color 160ms, border-color 160ms, background 160ms',
             }}
           >
-            <Share2 size={20} />
+            <Trash2 size={16} />
+            {deleteArmed ? t('cardio.deleteConfirm', 'Tap again to delete') : t('cardio.deleteSession', 'Delete session')}
           </button>
         </div>
       )}
@@ -1190,7 +1286,7 @@ export default function LiveCardio() {
             style={{
               width: '100%', height: 54, borderRadius: 16,
               border: 'none', cursor: 'pointer',
-              background: accent, color: 'var(--color-bg-card, #0A0D10)',
+              background: accent, color: 'var(--color-text-on-accent, #1D1D1F)',
               fontFamily: FONT_BODY, fontWeight: 900, fontSize: 14,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               boxShadow: '0 6px 18px color-mix(in srgb, var(--color-accent, #2EC4C4) 30%, transparent)',
@@ -1222,6 +1318,7 @@ export default function LiveCardio() {
       <ShareCardioSheet
         open={showShare}
         onClose={() => setShowShare(false)}
+        accent={getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#2EC4C4'}
         data={savedSession ? {
           sessionId: savedSession.id,
           cardioType: savedSession.cardio_type,
@@ -1240,7 +1337,9 @@ export default function LiveCardio() {
           durationSeconds: Math.floor(elapsedSec),
           distanceKm: distanceKm || null,
           calories: cal,
-          avgPaceSecPerKm: gpsState?.avgPaceSecPerUnit ?? null,
+          avgPaceSecPerKm: gpsState?.avgPaceSecPerUnit != null
+            ? (unit === 'mi' ? gpsState.avgPaceSecPerUnit / 1.60934 : gpsState.avgPaceSecPerUnit)
+            : null,
           elevationGainM: elevationGainM || 0,
           route: gpsState?.route || [],
           unit,

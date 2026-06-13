@@ -287,14 +287,22 @@ export function createGpsTracker({
     emit();
   }
 
-  async function start() {
+  // elapsedOffsetSec — optional override for the time already elapsed before
+  // start() is called (e.g. the latency of the permission-request dialog). When
+  // provided, startedAt is wound back so the GPS timer reflects wall-clock time
+  // from the moment the user tapped Start, not just from when permission was
+  // granted.
+  async function start({ elapsedOffsetSec: callElapsedOffsetSec } = {}) {
     if (state.active) return;
     state.active = true;
     state.paused = false;
     // If we're resuming a backgrounded session, wind startedAt back so
     // elapsedSec() returns the correct accumulated time on the very first
     // emit — without this, the timer would visibly jump from 0 → real time.
-    const offsetMs = (seed?.elapsedOffsetSec || 0) * 1000;
+    // callElapsedOffsetSec (permission-wait latency) takes precedence over the
+    // seed value (which is for session resume from draft, not permission wait).
+    const resolvedOffsetSec = callElapsedOffsetSec ?? seed?.elapsedOffsetSec ?? 0;
+    const offsetMs = resolvedOffsetSec * 1000;
     state.startedAt = Date.now() - offsetMs;
     state.pausedAccumMs = 0;
 

@@ -30,14 +30,24 @@ import {
   Apple,
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { saveBlob } from '../../lib/saveBlob';
 import { supabase } from '../../lib/supabase';
 import { PROD_WEB_URL } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
-import { rasterizeNode } from './ShareSheet';
+import { rasterizeNode, urlToDataUrl } from './ShareSheet';
+import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
+import {
+  shareToMessages,
+  shareToWhatsApp,
+  shareToInstagramFeed,
+  canShareViaMessages,
+  isWhatsAppInstalled,
+  isInstagramInstalled,
+} from '../../lib/socialShare';
 import GymLockup from './GymLockup';
-import { TuFont } from './ShareFormats';
+import ShareCtaButton from './ShareCtaButton';
+import { TuFont, ShareFormats, ShareExportSizes } from './ShareFormats';
 
 // Achievement icon name → Lucide component
 const ICON_MAP = {
@@ -50,7 +60,7 @@ function AchIcon({ name, size = 56, color = '#0A0D10' }) {
   return <Icon size={size} color={color} strokeWidth={2} />;
 }
 
-// ── Destination chips (light set, mirrors ShareSheet) ──────────────────────
+// ── Destination chips (mirror ShareSheet / ShareCardioSheet) ────────────────
 const IGIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
     <rect x="3" y="3" width="18" height="18" rx="5" />
@@ -68,6 +78,11 @@ const MsgIcon = () => (
     <path d="M12 2C6.5 2 2 5.8 2 10.5c0 2.4 1.2 4.6 3.1 6.1L4 22l4.7-2.5c1 .3 2.2.5 3.3.5 5.5 0 10-3.8 10-8.5S17.5 2 12 2z" />
   </svg>
 );
+const FBIcon = () => (
+  <svg width="14" height="22" viewBox="0 0 320 512" fill="#fff" aria-hidden="true">
+    <path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z" />
+  </svg>
+);
 const TuShareIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-on-accent, #fff)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2" />
@@ -75,16 +90,12 @@ const TuShareIcon = () => (
     <path d="M18 8v6M21 11h-6" />
   </svg>
 );
+// stroke=currentColor so the Save chip's icon inherits the Dest container's
+// text color — visible on the neutral chip in BOTH light and dark mode.
 const SaveIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0A0D10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
     <path d="M7 10l5 5 5-5M12 15V3" />
-  </svg>
-);
-const LinkIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0A0D10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10 13a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1" />
-    <path d="M14 11a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1" />
   </svg>
 );
 
@@ -144,12 +155,12 @@ function Dest({ children, label, color, active, onClick, light }) {
 }
 
 // ── Achievement card template (1080x1350 portrait) ─────────────────────────
-function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl }) {
+function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl, t, lang }) {
   const pad = Math.round(w * 0.08);
   const color = achievement.color || '#D4AF37';
   const iconSize = Math.round(w * 0.22);
   const dateStr = achievement.unlockedAt
-    ? new Date(achievement.unlockedAt).toLocaleDateString('en-US', {
+    ? new Date(achievement.unlockedAt).toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -168,7 +179,7 @@ function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl }) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         padding: pad,
         boxSizing: 'border-box',
       }}
@@ -200,18 +211,24 @@ function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl }) {
         }}
       />
 
-      {/* Eyebrow */}
+      {/* Centered content region — flex:1 so it fills the space ABOVE the
+          footer and the footer (below, in-flow) never overlaps the date even
+          in the shorter Feed (1:1) / Portrait formats. */}
+      <div style={{ position: 'relative', zIndex: 2, flex: 1, width: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+
+      {/* Eyebrow — sized off w so it scales with the export (was a hardcoded
+          12px, which is microscopic on a 1080-wide card). */}
       <div
         style={{
-          fontSize: 12,
+          fontSize: Math.round(w * 0.026),
           fontWeight: 800,
-          letterSpacing: 3,
+          letterSpacing: w * 0.006,
           color,
           textTransform: 'uppercase',
           zIndex: 2,
         }}
       >
-        Achievement Unlocked
+        {t('profile.achievementUnlocked', 'Achievement Unlocked')}
       </div>
 
       {/* Icon badge */}
@@ -237,11 +254,11 @@ function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl }) {
       <div
         style={{
           marginTop: pad * 0.9,
-          fontFamily: '"Archivo", "Familjen Grotesk", sans-serif',
-          fontSize: Math.round(w * 0.085),
+          fontFamily: TuFont.display,
+          fontSize: Math.round(w * 0.092),
           fontWeight: 800,
           color: '#0A0D10',
-          letterSpacing: -1,
+          letterSpacing: w * -0.002,
           textAlign: 'center',
           lineHeight: 1,
           zIndex: 2,
@@ -271,10 +288,10 @@ function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl }) {
       {dateStr && (
         <div
           style={{
-            marginTop: 18,
-            fontSize: 11,
+            marginTop: pad * 0.5,
+            fontSize: Math.round(w * 0.022),
             fontWeight: 700,
-            letterSpacing: 2,
+            letterSpacing: w * 0.004,
             textTransform: 'uppercase',
             color: 'rgba(10,13,16,0.45)',
             zIndex: 2,
@@ -283,25 +300,27 @@ function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl }) {
           {dateStr}
         </div>
       )}
+      </div>{/* end centered content region */}
 
-      {/* Footer: user + gym */}
+      {/* Footer: user + gym — IN-FLOW (not absolute) so it sits below the
+          content and never covers the date in compact formats. */}
       <div
         style={{
-          position: 'absolute',
-          left: pad,
-          right: pad,
-          bottom: pad,
+          position: 'relative',
+          width: '100%',
+          marginTop: pad * 0.6,
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           zIndex: 2,
         }}
       >
-        <div style={{ fontSize: 12, fontWeight: 800, color: '#0A0D10' }}>
+        <div style={{ fontSize: Math.round(w * 0.026), fontWeight: 800, color: '#0A0D10' }}>
           {user ? `@${user}` : (gym?.name || 'TuGymPR')}
         </div>
         {gym ? (
-          <GymLockup gym={gym} logoUrl={gymLogoUrl} size="sm" tone="dark" />
+          <GymLockup gym={gym} logoUrl={gymLogoUrl} size="sm" tone="dark" s={w / 270} />
         ) : (
           <div style={{ fontFamily: TuFont.display, fontSize: 13, fontWeight: 800, color: '#0A0D10', letterSpacing: -0.3 }}>
             {gym?.name || 'TuGymPR'}
@@ -314,13 +333,25 @@ function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl }) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function ShareAchievementSheet({ open = true, onClose, achievement }) {
-  const { t } = useTranslation('pages');
-  const { user, profile } = useAuth();
+  const { t, i18n } = useTranslation('pages');
+  const { user, profile, gymName, gymLogoUrl } = useAuth();
   const [activeDest, setActiveDest] = useState(null);
+  const [format, setFormat] = useState('portrait'); // 'story' | 'square' | 'portrait'
   const [busy, setBusy] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
+  // Gym logo inlined as a data URL so it survives the SVG rasterization and
+  // actually appears in the exported/shared image (external <img> URLs don't
+  // load inside an SVG-as-image).
+  const [logoDataUrl, setLogoDataUrl] = useState(null);
   const cardRef = useRef(null);
+
+  // Identity + gym come from useAuth (same source the workout/cardio sheets
+  // use) — the old code read profile?.gym?.logo_url, a nested object that the
+  // profile doesn't carry, so the logo + gym name were always missing.
+  const displayName = profile?.username || profile?.full_name || user?.email?.split('@')[0] || '';
+  const gym = gymName ? { name: gymName, location: '' } : null;
+  const accent = achievement?.color || '#D4AF37';
 
   useEffect(() => {
     if (open) {
@@ -342,46 +373,61 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
     };
   }, [mounted]);
 
-  // Preview + export sizes (portrait 4:5)
-  const previewW = 300;
-  const previewH = 375;
-  const exportW = 1080;
-  const exportH = 1350;
+  // Resolve the gym logo (https → inline data URL) when the sheet opens.
+  useEffect(() => {
+    let cancelled = false;
+    if (!open || !gymLogoUrl || String(gymLogoUrl).startsWith('data:')) { setLogoDataUrl(null); return undefined; }
+    urlToDataUrl(gymLogoUrl).then((d) => { if (!cancelled) setLogoDataUrl(d); });
+    return () => { cancelled = true; };
+  }, [open, gymLogoUrl]);
+
+  const resolvedLogo = logoDataUrl || gymLogoUrl || null;
+
+  // Preview + export sizes adapt to the chosen format (story 9:16 / square 1:1
+  // / portrait 4:5). Cap the preview height so the sheet still fits the screen.
+  const { w: fW, h: fH } = ShareFormats[format];
+  const PREVIEW_MAX_H = 380;
+  const previewScale = Math.min(300 / fW, PREVIEW_MAX_H / fH);
+  const previewW = Math.round(fW * previewScale);
+  const previewH = Math.round(fH * previewScale);
+  const exportW = ShareExportSizes[format].w;
+  const exportH = ShareExportSizes[format].h;
 
   const buildCard = useCallback(async () => {
+    // Wait up to ~600ms for the offscreen card to mount on the first click.
+    for (let i = 0; i < 6; i++) {
+      if (cardRef.current) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
     if (!cardRef.current) return null;
+    // Wait for the gym logo <img> to finish decoding so it's in the raster.
+    const imgs = Array.from(cardRef.current.querySelectorAll('img'));
+    await Promise.all(imgs.map((img) => {
+      if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+      return new Promise((resolve) => {
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+        setTimeout(resolve, 4000);
+      });
+    }));
     return await rasterizeNode(cardRef.current, exportW, exportH);
-  }, []);
+  }, [exportW, exportH]);
 
   const handleDest = useCallback(
     async (dest) => {
       if (busy || !achievement) return;
       setBusy(true);
+      let blob = null;
       try {
-        const blob = await buildCard();
+        try { blob = await buildCard(); } catch (e) { console.error('[ShareAchievementSheet] buildCard failed', e); }
         const link = `${PROD_WEB_URL}/share/achievement/${achievement.key || ''}`;
-        const text = `${achievement.label} — ${gym?.name || 'TuGymPR'}`;
+        const text = `${achievement.label}${gym?.name ? ` — ${gym.name}` : ''}`;
         const full = `${text}\n${link}`;
 
-        if (dest === 'link') {
-          try { await navigator.clipboard.writeText(link); } catch {}
-        } else if (dest === 'save') {
-          if (blob) {
-            const reader = new FileReader();
-            const b64 = await new Promise((resolve) => {
-              reader.onloadend = () => resolve(String(reader.result).split(',')[1]);
-              reader.readAsDataURL(blob);
-            });
-            try {
-              await Filesystem.writeFile({
-                path: `tugympr-achievement-${Date.now()}.png`,
-                data: b64,
-                directory: Directory.Documents,
-              });
-            } catch {
-              await shareBlob(blob, 'tugympr-achievement.png', full);
-            }
-          }
+        if (dest === 'save') {
+          // saveBlob → Cache + native share sheet ("Save Image") / web download.
+          // Old code wrote to Directory.Documents (app sandbox) — image was lost.
+          if (blob) await saveBlob(`tugympr-achievement-${Date.now()}.png`, blob);
         } else if (dest === 'tu') {
           if (user?.id && profile?.gym_id) {
             const { error: postErr } = await supabase.from('activity_feed_items').insert({
@@ -399,14 +445,48 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
             });
             if (postErr) console.error('[ShareAchievementSheet] post failed', postErr);
           }
-        } else if (dest === 'wa' || dest === 'im' || dest === 'ig-story' || dest === 'ig-feed') {
-          if (blob) {
-            await shareBlob(blob, 'tugympr-achievement.png', full);
-          } else {
-            try {
-              await Share.share({ title: gym?.name || 'TuGymPR', text: full, url: link });
-            } catch {}
+        } else if (dest === 'ig-story') {
+          // Story format (9:16) → fill the whole Story as a background. Other
+          // formats (4:5 / 1:1) → place as a centered sticker on a gym-color
+          // background so the footer + logo aren't cropped.
+          let landed = false;
+          if (blob && await isInstagramStoriesAvailable()) {
+            const ig = await shareToInstagramStory(
+              format === 'story'
+                ? { backgroundBlob: blob, contentURL: link }
+                : { stickerBlob: blob, contentURL: link, backgroundTopColor: accent, backgroundBottomColor: '#0A0D10' }
+            );
+            landed = ig.ok;
           }
+          if (!landed && blob) await shareBlob(blob, 'tugympr-achievement.png', full);
+        } else if (dest === 'ig-feed') {
+          let landed = false;
+          if (blob && await isInstagramInstalled()) {
+            const res = await shareToInstagramFeed({ blob });
+            landed = res.ok;
+          }
+          if (!landed && blob) await shareBlob(blob, 'tugympr-achievement.png', full);
+        } else if (dest === 'im') {
+          let landed = false;
+          if (blob && await canShareViaMessages()) {
+            const res = await shareToMessages({ blob, text: full });
+            landed = res.ok;
+          }
+          if (!landed && blob) await shareBlob(blob, 'tugympr-achievement.png', full);
+        } else if (dest === 'wa') {
+          let landed = false;
+          if (blob && await isWhatsAppInstalled()) {
+            const res = await shareToWhatsApp({ blob, text: full });
+            landed = res.ok;
+          }
+          if (!landed && blob) await shareBlob(blob, 'tugympr-achievement.png', full);
+        } else if (dest === 'fb') {
+          // Facebook has no clean image deep link without the FB SDK → OS sheet.
+          if (blob) await shareBlob(blob, 'tugympr-achievement.png', full);
+        } else if (blob) {
+          await shareBlob(blob, 'tugympr-achievement.png', full);
+        } else {
+          try { await Share.share({ title: gym?.name || 'TuGymPR', text: full, url: link }); } catch {}
         }
       } catch (err) {
         console.warn('[ShareAchievementSheet] share failed', err);
@@ -415,15 +495,10 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
         onClose?.();
       }
     },
-    [buildCard, achievement, profile, user, onClose, busy]
+    [buildCard, achievement, profile, user, onClose, busy, gym, accent, format]
   );
 
   if (!mounted || !achievement) return null;
-
-  const displayName =
-    profile?.username || profile?.full_name || user?.email?.split('@')[0] || '';
-  const gym = profile?.gym ? { name: profile.gym.name, location: profile.gym.city } : null;
-  const gymLogoUrl = profile?.gym?.logo_url || null;
 
   return createPortal(
     <div
@@ -504,7 +579,9 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
             achievement={achievement}
             user={displayName}
             gym={gym}
-            gymLogoUrl={gymLogoUrl}
+            gymLogoUrl={resolvedLogo}
+            t={t}
+            lang={i18n.language}
           />
         </div>
       </div>
@@ -521,7 +598,9 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
             achievement={achievement}
             user={displayName}
             gym={gym}
-            gymLogoUrl={gymLogoUrl}
+            gymLogoUrl={resolvedLogo}
+            t={t}
+            lang={i18n.language}
           />
         </div>
       </div>
@@ -549,6 +628,32 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
           }}
         />
 
+        {/* Format — Story 9:16 / Feed 1:1 / Portrait 4:5 */}
+        <div style={{ padding: '4px 16px 0' }}>
+          <PanelLabel>{t('cardio.share.format', 'Format')}</PanelLabel>
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, background: 'var(--color-bg-primary)', padding: 3, borderRadius: 12 }}>
+            {Object.keys(ShareFormats).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setFormat(k)}
+                style={{
+                  flex: 1, padding: '8px 4px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                  background: format === k ? 'var(--color-bg-card)' : 'transparent',
+                  color: format === k ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
+                  fontSize: 12, fontWeight: 700,
+                }}
+              >
+                {k === 'story'
+                  ? t('cardio.share.story', 'Story')
+                  : k === 'square'
+                    ? t('cardio.share.feed', 'Feed')
+                    : t('cardio.share.portrait', 'Portrait')}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Destinations */}
         <div style={{ padding: '10px 0 0 16px' }}>
           <PanelLabel>{t('sessionSummary.share.shareTo', 'Share to')}</PanelLabel>
@@ -563,16 +668,19 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
               scrollbarWidth: 'none',
             }}
           >
-            <Dest active={activeDest === 'ig-story'} onClick={() => setActiveDest('ig-story')} label="IG Story" color="#E1306C">
+            <Dest active={activeDest === 'ig-story'} onClick={() => { setActiveDest('ig-story'); setFormat('story'); }} label="IG Story" color="#E1306C">
               <IGIcon />
             </Dest>
-            <Dest active={activeDest === 'ig-feed'} onClick={() => setActiveDest('ig-feed')} label="IG Feed" color="#C13584">
+            <Dest active={activeDest === 'ig-feed'} onClick={() => { setActiveDest('ig-feed'); setFormat('square'); }} label="IG Feed" color="#C13584">
               <IGIcon />
+            </Dest>
+            <Dest active={activeDest === 'fb'} onClick={() => setActiveDest('fb')} label="Facebook" color="#1877F2">
+              <FBIcon />
             </Dest>
             <Dest active={activeDest === 'wa'} onClick={() => setActiveDest('wa')} label="WhatsApp" color="#25D366">
               <WAIcon />
             </Dest>
-            <Dest active={activeDest === 'im'} onClick={() => setActiveDest('im')} label="Messages" color="#34C759">
+            <Dest active={activeDest === 'im'} onClick={() => setActiveDest('im')} label={t('share.destMessages', { defaultValue: 'Messages' })} color="#34C759">
               <MsgIcon />
             </Dest>
             <Dest active={activeDest === 'tu'} onClick={() => setActiveDest('tu')} label={gym?.name || 'TuGymPR'} color="var(--color-accent)">
@@ -581,39 +689,19 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('sessionSummary.share.save', 'Save')} color="#5A6570" light>
               <SaveIcon />
             </Dest>
-            <Dest active={activeDest === 'link'} onClick={() => setActiveDest('link')} label={t('sessionSummary.share.copyLink', 'Copy link')} color="#5A6570" light>
-              <LinkIcon />
-            </Dest>
           </div>
         </div>
 
-        {/* CTA */}
+        {/* CTA — adaptive color/label/glyph per destination */}
         <div style={{ padding: '14px 16px 0' }}>
-          <button
-            type="button"
+          <ShareCtaButton
+            dest={activeDest}
+            busy={busy}
+            accent={accent}
+            gymLabel={gym?.name}
             onClick={() => activeDest && handleDest(activeDest)}
-            disabled={!activeDest || busy}
-            style={{
-              width: '100%',
-              padding: '14px',
-              borderRadius: 14,
-              border: 'none',
-              cursor: activeDest && !busy ? 'pointer' : 'default',
-              background: activeDest ? 'var(--color-text-primary)' : 'var(--color-bg-primary)',
-              color: activeDest ? 'var(--color-bg-card)' : 'var(--color-text-muted)',
-              fontFamily: TuFont.display,
-              fontSize: 14,
-              fontWeight: 800,
-              letterSpacing: -0.2,
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            {busy
-              ? t('sessionSummary.generating', 'Generating...')
-              : activeDest
-                ? t('sessionSummary.share.shareNow', 'Share now')
-                : t('sessionSummary.share.pickDestination', 'Pick a destination')}
-          </button>
+            t={t}
+          />
         </div>
       </div>
     </div>,

@@ -1,8 +1,31 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Share2 } from 'lucide-react';
+import {
+  Share2, Dumbbell, Flame, Zap, Star, Trophy, CalendarCheck, RotateCw, Rocket,
+  Target, TrendingUp, UserPlus, Users, Brain, Medal, Weight, Gem, Lock, Activity,
+  Heart, Sparkles, QrCode, UtensilsCrossed,
+} from 'lucide-react';
 import { tg } from '../lib/genderText';
 import ShareAchievementSheet from './share/ShareAchievementSheet';
+
+// Map achievement icon names → lucide components (mirrors Profile.jsx so the
+// celebration toast renders the real icon, not the literal name text).
+const ICON_MAP = {
+  Dumbbell, Flame, Zap, Star, Trophy, CalendarCheck, RotateCw, Rocket,
+  Target, TrendingUp, UserPlus, Users, Brain, Medal, Weight, Gem,
+  Shield: Lock, Crown: Trophy, Mountain: Activity, Award: Star, Heart,
+  Megaphone: Sparkles, Swords: Zap, MapPin: QrCode, Apple: UtensilsCrossed,
+};
+const AchievementIcon = ({ name, size = 44, color }) => {
+  const Icon = ICON_MAP[name];
+  if (Icon) return <Icon size={size} style={{ color }} strokeWidth={2} />;
+  // Gym-authored achievements store an emoji rather than a lucide name — render
+  // it as text. Anything alphabetic that isn't a known name falls back to the bell.
+  if (name && !/^[A-Za-z][A-Za-z0-9_ ]*$/.test(name)) {
+    return <span style={{ fontSize: size, lineHeight: 1, userSelect: 'none' }}>{name}</span>;
+  }
+  return <Trophy size={size} style={{ color }} strokeWidth={2} />;
+};
 
 // ── AchievementToast ──────────────────────────────────────────────────────────
 // Full-screen celebration overlay that sequences through earned achievements.
@@ -128,9 +151,7 @@ export default function AchievementToast({ achievements, onDone }) {
               WebkitMask: 'radial-gradient(ellipse at center, transparent 60%, black 65%)',
             }}
           />
-          <span style={{ fontSize: 44, lineHeight: 1, userSelect: 'none' }}>
-            {current.icon}
-          </span>
+          <AchievementIcon name={current.icon} size={44} color={current.color} />
         </div>
 
         {/* Name */}

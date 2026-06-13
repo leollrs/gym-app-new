@@ -1408,23 +1408,14 @@ const Workouts = () => {
         ? recentSessions.reduce((s, x) => s + x.duration_seconds, 0) / recentSessions.length
         : 3600; // default 60 min if no history
 
-      // 2. Delete old Auto: routines (and their exercises + schedule entries)
+      // 2. Snapshot old Auto: routine IDs — cleanup deferred to after new routines
+      //    are fully created so there is no window with zero active routines.
       const { data: oldAutoRoutines } = await supabase
         .from('routines')
         .select('id')
         .eq('created_by', user.id)
         .like('name', 'Auto:%');
-
-      if (oldAutoRoutines?.length > 0) {
-        const oldIds = oldAutoRoutines.map(r => r.id);
-        // Delete routine_exercises for these routines
-        await supabase.from('routine_exercises').delete().in('routine_id', oldIds);
-        // Delete workout_schedule entries pointing to these routines
-        await supabase.from('workout_schedule').delete().in('routine_id', oldIds).then(() => {}).catch(() => {});
-        // Delete the routines themselves
-        await supabase.from('routines').delete().in('id', oldIds);
-        logger.log(`Cleaned up ${oldIds.length} old Auto: routines`);
-      }
+      const oldAutoRoutineIds = (oldAutoRoutines || []).map(r => r.id);
 
       // 3. Create a generated_programs entry (inserted after scheduleDays is computed below)
       const startDate = new Date();
@@ -1657,6 +1648,22 @@ const Workouts = () => {
       }
 
       logger.log(`Enrollment complete: ${createdRoutineIds.length} routines created`);
+
+      // Now that new routines + program row are fully committed, safely clean up
+      // the old Auto: routines. Doing this AFTER creation prevents a window where
+      // the user has no active program routines if the network fails mid-creation.
+      if (oldAutoRoutineIds.length > 0) {
+        // Exclude any old IDs that overlap with the new routines (shouldn't happen,
+        // but guards against accidental deletion if IDs were recycled).
+        const newIds = new Set(createdRoutineIds);
+        const safeToDelete = oldAutoRoutineIds.filter(id => !newIds.has(id));
+        if (safeToDelete.length > 0) {
+          await supabase.from('routine_exercises').delete().in('routine_id', safeToDelete);
+          await supabase.from('workout_schedule').delete().in('routine_id', safeToDelete).then(() => {}).catch(() => {});
+          await supabase.from('routines').delete().in('id', safeToDelete);
+          logger.log(`Cleaned up ${safeToDelete.length} old Auto: routines`);
+        }
+      }
 
       // 4. Refresh state — programs, routines, AND workout schedule
       const [{ data: allGp }, { data: schedData }] = await Promise.all([

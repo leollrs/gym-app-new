@@ -61,6 +61,15 @@ export default function StickerComposer({
     return () => { cancelled = true; };
   }, [stickerSrc]);
 
+  // Seed the background from the caller's initial photo each time the composer
+  // opens. The useState initializer above ran at first mount (when this prop
+  // was still null), so without this sync the Photo template's already-picked
+  // photo would be ignored and the user would land on the empty "add a photo"
+  // state instead of their photo with the draggable overlay on top.
+  useEffect(() => {
+    if (open && initialPhotoSrc) setPhotoSrc(initialPhotoSrc);
+  }, [open, initialPhotoSrc]);
+
   const pickPhoto = useCallback(async () => {
     try {
       const mod = await import('@capacitor/camera');

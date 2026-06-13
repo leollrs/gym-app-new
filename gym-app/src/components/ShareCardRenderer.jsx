@@ -833,8 +833,41 @@ function drawSparkline(ctx, x, y, w, h, data) {
 // ── Share utility ───────────────────────────────────────────────────────────
 
 export async function shareBlob(blob, fileName = 'share.png', shareText = '') {
-  const file = new File([blob], fileName, { type: 'image/png' });
+  // NATIVE (iOS/Android): write the PNG to a temp file and share the FILE via
+  // the Capacitor Share plugin. The Web Share API's file support is unreliable
+  // in WKWebView — navigator.canShare({files}) returns false there — so the old
+  // path silently fell back to navigator.share({text}), i.e. it shared the LINK,
+  // not the image. Writing a real file + Share.share({ files }) guarantees the
+  // IMAGE is what gets attached (Messages, Facebook, the OS sheet, etc.).
+  // Deliberately NO `url` field: passing a url makes targets prefer the link
+  // over the image — the opposite of what we want here.
+  try {
+    const { Capacitor } = await import('@capacitor/core');
+    if (Capacitor?.isNativePlatform?.()) {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      const { Share } = await import('@capacitor/share');
+      const b64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(String(r.result).split(',')[1]);
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+      const { uri } = await Filesystem.writeFile({
+        path: fileName,
+        data: b64,
+        directory: Directory.Cache,
+      });
+      await Share.share({ files: [uri], ...(shareText ? { text: shareText } : {}) });
+      return;
+    }
+  } catch (e) {
+    const msg = String(e?.message || '').toLowerCase();
+    if (msg.includes('cancel')) return; // user dismissed the sheet
+    // any other native failure → fall through to the web path below
+  }
 
+  // WEB fallback (PWA / desktop browser).
+  const file = new File([blob], fileName, { type: 'image/png' });
   try {
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file] });

@@ -474,6 +474,10 @@
     "alreadyConnected": "Ya son amigos o tienes una solicitud pendiente.",
     "sendFailed": "No se pudo enviar la solicitud de amistad.",
     "sent": "¡Solicitud de amistad enviada a {{name}}!",
-    "sentGeneric": "¡Solicitud de amistad enviada!"
-  }
+    "sentGeneric": "¡Solicitud de amistad enviada!",
+    "added": "¡Ya eres amigo de {{name}}!",
+    "addedGeneric": "¡Amigo agregado!"
+  },
+  "inviteForNewAccounts": "Los códigos de invitación son para cuentas nuevas",
+  "referralForNewSignups": "Los códigos de referido son para nuevos registros"
 }

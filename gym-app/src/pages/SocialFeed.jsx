@@ -852,7 +852,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
             ) : comments.length === 0 ? (
               <p className="text-[13px] py-2" style={{ color: 'var(--color-text-muted)' }}>{t('social.noCommentsYet')}</p>
             ) : (
-              comments.map(c => <CommentRow key={c.id} comment={c} />)
+              comments.filter(c => !hiddenIds.has(c.profile_id)).map(c => <CommentRow key={c.id} comment={c} />)
             )}
           </div>
           {commentError && (
@@ -1534,6 +1534,32 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
             )}
           </button>
         </header>
+        )}
+
+        {/* Embedded (inside Community → Feed): the full header above is hidden,
+            so surface a compact Friends button here too — otherwise there's no
+            way to reach your friends list or accept incoming requests from the
+            feed. Same toggle, same request-count badge, same panel. */}
+        {embedded && (
+          <div className="flex justify-end mb-4">
+            <button
+              type="button"
+              onClick={() => setShowFriends(s => !s)}
+              aria-label={t('social.friendsButton')}
+              className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold active:scale-95 transition-all ${
+                showFriends ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]' : 'border border-white/[0.06]'
+              }`}
+              style={!showFriends ? { background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' } : undefined}
+            >
+              <Users size={15} />
+              {t('social.friendsButton')}
+              {pendingIncoming > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full text-[10px] font-bold flex items-center justify-center text-white bg-red-500">
+                  {pendingIncoming}
+                </span>
+              )}
+            </button>
+          </div>
         )}
 
         {/* Add-friends CTA — opens the find-friends modal so you can connect

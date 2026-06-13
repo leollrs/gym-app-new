@@ -61,6 +61,22 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
     return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
+  // Reset selection to the actual saved avatar on every open so that an
+  // abandoned selection from a previous open never persists as the default.
+  useEffect(() => {
+    if (!isOpen) return;
+    setTab(currentAvatar?.type || 'color');
+    setSelectedType(currentAvatar?.type || 'color');
+    setSelectedValue(currentAvatar?.value || '#6366F1');
+    setPreviewFile(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+  // currentAvatar intentionally not in deps — we only want to reset on open
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   // Build a preview user object
   const previewUser = {
     ...user,

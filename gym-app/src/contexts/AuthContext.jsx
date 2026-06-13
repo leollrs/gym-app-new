@@ -432,7 +432,7 @@ export const AuthProvider = ({ children }) => {
       if (rpcResult && !rpcError) {
         supabase
           .from('profiles')
-          .select('qr_external_id, gyms(qr_payload_type, qr_payload_template, multi_admin_enabled)')
+          .select('qr_external_id, gyms(qr_payload_type, qr_payload_template, multi_admin_enabled, support_email)')
           .eq('id', data.id)
           .maybeSingle()
           .then(({ data: extra, error: extraErr }) => {
@@ -446,6 +446,7 @@ export const AuthProvider = ({ children }) => {
                 qrPayloadType: extra.gyms.qr_payload_type ?? 'auto_id',
                 qrPayloadTemplate: extra.gyms.qr_payload_template ?? null,
                 multiAdminEnabled: extra.gyms.multi_admin_enabled ?? false,
+                ...(extra.gyms.support_email ? { supportEmail: extra.gyms.support_email } : {}),
               }));
             }
           })

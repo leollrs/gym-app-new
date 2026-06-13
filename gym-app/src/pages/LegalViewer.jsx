@@ -74,9 +74,14 @@ export default function LegalViewer({ page }) {
     document.title = t(config.titleKey, config.fallbackTitle);
     setLoaded(false);
     setError(false);
-    // Safety timeout — if the iframe never fires onLoad (offline, blocked),
-    // hide the spinner after 10s so the empty-frame state surfaces.
-    const to = setTimeout(() => setLoaded(true), 10000);
+    // Safety timeout — in iOS WKWebView, cross-origin iframe blocks do NOT
+    // fire onError; they fire onLoad with a blank document or never fire at
+    // all. After 10 s with no load we treat it as an error so the
+    // "Open in browser" fallback appears instead of a blank white page.
+    const to = setTimeout(() => {
+      setLoaded(true);
+      setError(true);
+    }, 10000);
     return () => clearTimeout(to);
   }, [effectivePage, config, t]);
 
@@ -138,7 +143,7 @@ export default function LegalViewer({ page }) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 relative" style={{ background: '#FFFFFF' }}>
+      <div className="flex-1 relative" style={{ background: 'var(--color-bg-primary)' }}>
         {!loaded && !error && (
           <div
             className="absolute inset-0 flex items-center justify-center"
@@ -176,16 +181,18 @@ export default function LegalViewer({ page }) {
             </button>
           </div>
         )}
-        <iframe
-          src={config.url}
-          title={t(config.titleKey, config.fallbackTitle)}
-          onLoad={() => setLoaded(true)}
-          onError={() => setError(true)}
-          style={{
-            width: '100%', height: '100%', border: 'none',
-            background: '#FFFFFF',
-          }}
-        />
+        {!error && (
+          <iframe
+            src={config.url}
+            title={t(config.titleKey, config.fallbackTitle)}
+            onLoad={() => setLoaded(true)}
+            onError={() => { setLoaded(true); setError(true); }}
+            style={{
+              width: '100%', height: '100%', border: 'none',
+              background: 'var(--color-bg-primary)',
+            }}
+          />
+        )}
       </div>
     </div>
   );

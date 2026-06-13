@@ -254,15 +254,17 @@ const NOTIFICATION_TYPE_COLUMNS: Record<string, string> = {
   friend_activity:  'notif_friend_activity',
   challenge_update: 'notif_challenge_updates',
   milestone:        'notif_milestone_alerts',
+  achievement_unlocked: 'notif_milestone_alerts', // badge unlock (SessionSummary sends this) = milestone-class
   pr_beaten:        'notif_milestone_alerts',   // PR celebration = milestone-class
   reward:           'notif_reward_reminders',
   weekly_summary:   'notif_weekly_summary',
   // Legacy short-token aliases (harmless if unused)
-  workout:   'notif_workout_reminders',
-  streak:    'notif_streak_alerts',
-  summary:   'notif_weekly_summary',
-  friend:    'notif_friend_activity',
-  challenge: 'notif_challenge_updates',
+  workout:     'notif_workout_reminders',
+  streak:      'notif_streak_alerts',
+  summary:     'notif_weekly_summary',
+  friend:      'notif_friend_activity',
+  challenge:   'notif_challenge_updates',
+  achievement: 'notif_milestone_alerts',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

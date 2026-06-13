@@ -10,17 +10,19 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { X, Image as ImageIcon, Camera as CameraIcon } from 'lucide-react';
+import { X, Image as ImageIcon, Camera as CameraIcon, Layers as LayersIcon } from 'lucide-react';
 import { Share } from '@capacitor/share';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { saveBlob } from '../../lib/saveBlob';
 import { supabase } from '../../lib/supabase';
 import { PROD_WEB_URL } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
 import ShareTplCardio from './ShareTplCardio';
 import PreviewOverlay from './PreviewOverlay';
+import StickerComposer from './StickerComposer';
+import ShareCtaButton from './ShareCtaButton';
 import { ShareFormats, ShareExportSizes, TuFont } from './ShareFormats';
-import { rasterizeNode } from './ShareSheet';
+import { rasterizeNode, urlToDataUrl } from './ShareSheet';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
 import {
   shareToMessages,
@@ -94,6 +96,11 @@ const MsgIcon = () => (
     <path d="M12 2C6.5 2 2 5.8 2 10.5c0 2.4 1.2 4.6 3.1 6.1L4 22l4.7-2.5c1 .3 2.2.5 3.3.5 5.5 0 10-3.8 10-8.5S17.5 2 12 2z" />
   </svg>
 );
+const FBIcon = () => (
+  <svg width="14" height="22" viewBox="0 0 320 512" fill="#fff" aria-hidden="true">
+    <path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z" />
+  </svg>
+);
 const TuShareIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-on-accent, #fff)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2" />
@@ -101,16 +108,13 @@ const TuShareIcon = () => (
     <path d="M18 8v6M21 11h-6" />
   </svg>
 );
+// stroke=currentColor so the Save chip's icon inherits the Dest container's
+// color (var(--color-text-primary)) — visible on the neutral chip in BOTH
+// light and dark mode. (Was hardcoded near-black → invisible in dark.)
 const SaveIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0A0D10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
     <path d="M7 10l5 5 5-5M12 15V3" />
-  </svg>
-);
-const LinkIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0A0D10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10 13a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1" />
-    <path d="M14 11a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1" />
   </svg>
 );
 
@@ -131,6 +135,16 @@ function TemplateChip({ active, onClick, label, accent }) {
       {label}
     </button>
   );
+}
+
+// blob → data URL (for handing the rasterized overlay to the photo composer).
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
 }
 
 // Tolerant data mapper — the sheet receives either the in-memory object
@@ -177,6 +191,15 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   // with a transparent canvas so the exported PNG carries alpha and the
   // user can layer it on whatever they compose in IG Stories.
   const [clearBackground, setClearBackground] = useState(false);
+  // Photo composer: place the stats/logo overlay anywhere on the user's photo,
+  // then ship the single flattened composite to every destination.
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerStickerSrc, setComposerStickerSrc] = useState(null);
+  const [composerInitialPhoto, setComposerInitialPhoto] = useState(null);
+  const [composedBlob, setComposedBlob] = useState(null);
+  // Gym logo inlined as a data URL so it survives rasterization (external <img>
+  // URLs don't load inside the SVG-as-image used to export the card).
+  const [logoDataUrl, setLogoDataUrl] = useState(null);
   // Bumping mapVersion forces StaticRouteMapImage to re-mount so its useEffect
   // re-runs the renderRouteMap chain. Used by the "Regenerate" button after we
   // clear the IndexedDB cache for the current session.
@@ -189,6 +212,9 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   // itself was painted transparent, so the rasterizer ends up painting black
   // BEHIND a transparent DOM (visible result = black).
   const cardOpaqueRef = useRef(null);
+  // Overlay-only (transparent, no photo) render — rasterized as the draggable
+  // sticker for the photo composer.
+  const overlayCardRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const pickBackgroundPhoto = useCallback(async () => {
@@ -256,6 +282,15 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
     }
   }, [open, data]); // eslint-disable-line
 
+  // Resolve the gym logo (https → inline data URL) so it renders in the export.
+  useEffect(() => {
+    let cancelled = false;
+    const src = data?.gymLogoUrl;
+    if (!open || !src || String(src).startsWith('data:')) { setLogoDataUrl(null); return undefined; }
+    urlToDataUrl(src).then((d) => { if (!cancelled) setLogoDataUrl(d); });
+    return () => { cancelled = true; };
+  }, [open, data?.gymLogoUrl]);
+
   // NOTE: hooks must run unconditionally on every render — keep all useCallback
   // / useMemo / useState calls ABOVE any early return. Putting them after the
   // `if (!mounted || !data) return null` guard violates the Rules of Hooks
@@ -272,6 +307,8 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   const photoTransparent = variant === 'photo' && clearBackground && !backgroundSrc;
 
   const buildCard = useCallback(async () => {
+    // A composed photo+overlay is the source of truth — ship it everywhere.
+    if (composedBlob) return composedBlob;
     // The offscreen template may not be in the DOM yet on the very first
     // click after open — wait up to ~600ms for cardRef to populate.
     for (let i = 0; i < 6; i++) {
@@ -305,7 +342,41 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       await new Promise((r) => setTimeout(r, 120));
       return await rasterizeNode(cardRef.current, exportSize.w, exportSize.h, { transparent: photoTransparent });
     }
-  }, [exportSize, photoTransparent]);
+  }, [exportSize, photoTransparent, composedBlob]);
+
+  // Drop the composite whenever anything visual changes — it'd be stale. NOT
+  // keyed on `format`: the composite is always 1080×1920, and the destination
+  // tiles call setFormat() on tap, which would otherwise wipe the composite
+  // the instant the user picks where to share it.
+  useEffect(() => { setComposedBlob(null); }, [variant, customAccent, customTitle, themeMode, showGym, showMap, backgroundSrc]);
+
+  // Object URL for the composed photo so the preview shows EXACTLY what ships
+  // (the user's positioned overlay), not the default template layout.
+  const [composedUrl, setComposedUrl] = useState(null);
+  useEffect(() => {
+    if (!composedBlob) { setComposedUrl(null); return undefined; }
+    const url = URL.createObjectURL(composedBlob);
+    setComposedUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [composedBlob]);
+
+  // Open the composer: rasterize the OVERLAY ONLY (transparent, no photo) as
+  // the sticker, with the user's picked photo as the composer's fixed bg.
+  const openComposer = useCallback(async () => {
+    const node = overlayCardRef.current;
+    if (!node) return;
+    try {
+      const blob = await rasterizeNode(node, ShareExportSizes.story.w, ShareExportSizes.story.h, { transparent: true });
+      if (!blob) return;
+      const dataUrl = await blobToDataUrl(blob);
+      setComposerStickerSrc(dataUrl);
+      setComposerInitialPhoto(backgroundSrc || null);
+      setComposerOpen(true);
+      setFormat('story');
+    } catch (err) {
+      console.warn('[ShareCardioSheet] composer open failed:', err?.message);
+    }
+  }, [backgroundSrc]);
 
   const handleDest = useCallback(async (dest) => {
     if (busy) return;
@@ -323,25 +394,10 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       const text = caption?.trim() || profile?.gym_name || 'TuGymPR';
       const full = `${text}\n${link}`;
 
-      if (dest === 'link') {
-        try { await navigator.clipboard.writeText(link); } catch {}
-      } else if (dest === 'save') {
-        if (blob) {
-          const reader = new FileReader();
-          const b64 = await new Promise((resolve) => {
-            reader.onloadend = () => resolve(String(reader.result).split(',')[1]);
-            reader.readAsDataURL(blob);
-          });
-          try {
-            await Filesystem.writeFile({
-              path: `tugympr-run-${Date.now()}.png`,
-              data: b64,
-              directory: Directory.Documents,
-            });
-          } catch {
-            await shareBlob(blob, 'tugympr-run.png', full);
-          }
-        }
+      if (dest === 'save') {
+        // saveBlob → Cache + native share sheet ("Save Image") / web download.
+        // Old code wrote to Directory.Documents (app sandbox) — image was lost.
+        if (blob) await saveBlob(`tugympr-run-${Date.now()}.png`, blob);
       } else if (dest === 'tu') {
         if (user?.id && profile?.gym_id) {
           const { error: postErr } = await supabase.from('activity_feed_items').insert({
@@ -368,14 +424,17 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         // the background slot. In sticker mode IG fills the page with a
         // gradient (top→bottom colors), so we pass the gym accent so the
         // Story isn't framed in default black.
+        // A composed photo+overlay is opaque & finished → send as BACKGROUND,
+        // not as a sticker (so the user's positioned layout fills the Story).
+        const sendAsSticker = photoTransparent && !composedBlob;
         let landedInIG = false;
         if (blob && await isInstagramStoriesAvailable()) {
           const ig = await shareToInstagramStory(
-            photoTransparent
+            sendAsSticker
               ? {
                   stickerBlob: blob,
                   contentURL: link,
-                  backgroundTopColor: accent,
+                  backgroundTopColor: customAccent || accent,
                   backgroundBottomColor: '#0A0D10',
                 }
               : { backgroundBlob: blob, contentURL: link }
@@ -407,8 +466,9 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         // IG Feed/Reels flatten alpha to black. Use the opaque sibling
         // (always rendered with transparent=false) when the user picked
         // Clear background; otherwise the regular blob is already opaque.
+        // composedBlob is already an opaque composite → ship it directly.
         let feedBlob = blob;
-        if (photoTransparent && cardOpaqueRef.current) {
+        if (!composedBlob && photoTransparent && cardOpaqueRef.current) {
           try {
             feedBlob = await rasterizeNode(
               cardOpaqueRef.current, exportSize.w, exportSize.h, { transparent: false },
@@ -425,6 +485,9 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         if (!landed && feedBlob) {
           await shareBlob(feedBlob, 'tugympr-run.png', full);
         }
+      } else if (dest === 'fb') {
+        // Facebook: OS share sheet (no clean FB image deep link without the SDK).
+        if (blob) await shareBlob(blob, 'tugympr-run.png', full);
       } else if (blob) {
         await shareBlob(blob, 'tugympr-run.png', full);
       } else {
@@ -452,7 +515,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       setBusy(false);
       onClose?.();
     }
-  }, [busy, buildCard, caption, data, profile, user, onClose]);
+  }, [busy, buildCard, caption, data, profile, user, onClose, composedBlob, photoTransparent]);
 
   const handleCta = () => {
     if (!activeDest) return;
@@ -473,7 +536,9 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   const scale = Math.min(maxW / w, maxH / h, 1);
 
   const tplProps = {
-    variant, data,
+    variant,
+    // Inject the inlined logo data URL so the gym logo survives rasterization.
+    data: logoDataUrl ? { ...data, gymLogoUrl: logoDataUrl } : data,
     accent: customAccent || accent,
     customTitle: customTitle?.trim() || undefined,
     themeMode,
@@ -562,20 +627,32 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
             backgroundPosition: photoTransparent ? '0 0, 0 10px, 10px -10px, -10px 0px' : 'auto',
           }}
         >
-          <div
-            style={{
-              transform: `scale(${scale})`, transformOrigin: 'top left',
-              width: w, height: h,
-            }}
-          >
-            <ShareTplCardio w={w} h={h} {...tplProps} />
-          </div>
+          {composedUrl ? (
+            // Composed photo+overlay → show the actual composite (what ships).
+            <img src={composedUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          ) : (
+            <div
+              style={{
+                transform: `scale(${scale})`, transformOrigin: 'top left',
+                width: w, height: h,
+              }}
+            >
+              <ShareTplCardio w={w} h={h} {...tplProps} />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Fullscreen preview — drag to move, pinch to zoom */}
-      <PreviewOverlay open={previewFull} onClose={() => setPreviewFull(false)} w={w} h={h}>
-        <ShareTplCardio w={w} h={h} {...tplProps} />
+      {/* Fullscreen preview — static fit-to-screen look at what gets shared */}
+      <PreviewOverlay
+        open={previewFull}
+        onClose={() => setPreviewFull(false)}
+        w={composedUrl ? ShareExportSizes.story.w : w}
+        h={composedUrl ? ShareExportSizes.story.h : h}
+      >
+        {composedUrl
+          ? <img src={composedUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          : <ShareTplCardio w={w} h={h} {...tplProps} />}
       </PreviewOverlay>
 
       {/* Offscreen full-res */}
@@ -610,6 +687,19 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           <ShareTplCardio w={exportSize.w} h={exportSize.h} {...tplProps} transparent={false} />
         </div>
       </div>
+
+      {/* Overlay-only (transparent, no photo) @ 1080×1920 — the draggable
+          sticker source for the photo composer. */}
+      {variant === 'photo' && (
+        <div
+          aria-hidden="true"
+          style={{ position: 'fixed', left: -99999, top: 0, pointerEvents: 'none', width: ShareExportSizes.story.w, height: ShareExportSizes.story.h }}
+        >
+          <div ref={overlayCardRef} style={{ width: ShareExportSizes.story.w, height: ShareExportSizes.story.h }}>
+            <ShareTplCardio w={ShareExportSizes.story.w} h={ShareExportSizes.story.h} {...tplProps} backgroundSrc={undefined} transparent={true} />
+          </div>
+        </div>
+      )}
 
       {/* Controls — capped to ~60% viewport with internal scrolling so the
           preview above stays visible even when the customize/photo sections
@@ -709,6 +799,27 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
                 }}
               >
                 {t('cardio.share.clearBackground', 'Clear background')}
+              </button>
+              {/* Position the stats/logo overlay anywhere on the photo, then
+                  ship the flattened composite to IG/etc. — "photo still, drag
+                  the thingy, goes to IG like that". */}
+              <button
+                type="button"
+                onClick={openComposer}
+                style={{
+                  padding: '10px 12px', borderRadius: 12,
+                  border: composedBlob ? '1.5px solid var(--color-accent)' : '1.5px dashed var(--color-border, rgba(255,255,255,0.18))',
+                  background: composedBlob ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'var(--color-bg-primary)',
+                  color: composedBlob ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                  fontSize: 12, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  cursor: 'pointer',
+                }}
+              >
+                <LayersIcon size={14} />
+                {composedBlob
+                  ? t('cardio.share.recompose', 'Re-position on photo')
+                  : (backgroundSrc ? t('cardio.share.positionLayout', 'Position on photo') : t('cardio.share.compose', 'Compose with photo'))}
               </button>
               <input
                 ref={fileInputRef} type="file" accept="image/*"
@@ -873,36 +984,36 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           >
             <Dest active={activeDest === 'ig-story'} onClick={() => { setActiveDest('ig-story'); setFormat('story'); }} label="IG Story" color="#E1306C"><IGIcon /></Dest>
             <Dest active={activeDest === 'ig-feed'} onClick={() => { setActiveDest('ig-feed'); setFormat('square'); }} label="IG Feed" color="#C13584"><IGIcon /></Dest>
+            <Dest active={activeDest === 'fb'} onClick={() => { setActiveDest('fb'); setFormat('square'); }} label="Facebook" color="#1877F2"><FBIcon /></Dest>
             <Dest active={activeDest === 'wa'} onClick={() => { setActiveDest('wa'); setFormat('square'); }} label="WhatsApp" color="#25D366"><WAIcon /></Dest>
             <Dest active={activeDest === 'im'} onClick={() => { setActiveDest('im'); setFormat('square'); }} label="Messages" color="#34C759"><MsgIcon /></Dest>
             <Dest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('square'); }} label={profile?.gym_name || 'TuGymPR'} color="var(--color-accent)"><TuShareIcon /></Dest>
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('cardio.share.save', 'Save')} color="#5A6570" light><SaveIcon /></Dest>
-            <Dest active={activeDest === 'link'} onClick={() => setActiveDest('link')} label={t('cardio.share.copyLink', 'Copy link')} color="#5A6570" light><LinkIcon /></Dest>
           </div>
         </div>
 
-        {/* CTA */}
+        {/* CTA — adaptive color/label/glyph per destination */}
         <div style={{ padding: '14px 16px 0' }}>
-          <button
-            type="button" onClick={handleCta}
-            disabled={!activeDest || busy}
-            style={{
-              width: '100%', padding: 14, borderRadius: 14,
-              border: 'none', cursor: activeDest && !busy ? 'pointer' : 'default',
-              background: activeDest ? 'var(--color-text-primary)' : 'var(--color-bg-primary)',
-              color: activeDest ? 'var(--color-bg-card)' : 'var(--color-text-muted)',
-              fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 800,
-              letterSpacing: -0.2, opacity: busy ? 0.6 : 1,
-            }}
-          >
-            {busy
-              ? t('cardio.share.generating', 'Generating…')
-              : activeDest
-                ? t('cardio.share.shareNow', 'Share now')
-                : t('cardio.share.pickDestination', 'Pick a destination')}
-          </button>
+          <ShareCtaButton
+            dest={activeDest}
+            busy={busy}
+            accent={customAccent || accent}
+            gymLabel={profile?.gym_name}
+            onClick={handleCta}
+            t={t}
+          />
         </div>
       </div>
+
+      {/* Photo composer — make the photo still, drag the stats/logo overlay
+          anywhere, then the flattened composite ships to every destination. */}
+      <StickerComposer
+        open={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        stickerSrc={composerStickerSrc}
+        initialPhotoSrc={composerInitialPhoto}
+        onDone={(blob) => { setComposedBlob(blob); setComposerOpen(false); }}
+      />
     </div>,
     document.body
   );

@@ -308,7 +308,7 @@ const AchievementCard = ({ a, earned, earnedAt, stats, onShare, t, i18n }) => {
 // ── Main ──────────────────────────────────────────────────────────────────────
 const Profile = () => {
   const { t, i18n } = useTranslation('pages');
-  const { user, profile, signOut, deleteAccount, refreshProfile, patchProfile, lifetimePoints: ctxLifetimePoints, gymConfig, availableRoles } = useAuth();
+  const { user, profile, signOut, deleteAccount, refreshProfile, patchProfile, lifetimePoints: ctxLifetimePoints, gymConfig, availableRoles, gymLogoUrl } = useAuth();
   const hasMultipleViews = Array.isArray(availableRoles) && availableRoles.length > 1;
   const [showViewSwitcher, setShowViewSwitcher] = useState(false);
   const { showToast } = useToast();
@@ -452,12 +452,15 @@ const Profile = () => {
       setSessions(allSessions);
       setWeeklyChart(buildWeeklyChart(allSessions, i18n.language || 'en'));
 
-      // 3. Personal records
+      // 3. Personal records — ordered by achieved_at DESC so the most recent PRs
+      // are always in the first 50 rows. The monthly share card filters by date,
+      // so any month-PRs that don't rank in the top-50 by 1RM would otherwise
+      // be silently excluded from the share card count.
       const { data: prData } = await supabase
         .from('personal_records')
         .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at, exercises(name, muscle_group)')
         .eq('profile_id', user.id)
-        .order('estimated_1rm', { ascending: false })
+        .order('achieved_at', { ascending: false })
         .limit(50);
       setPrs(prData ?? []);
 
@@ -676,7 +679,15 @@ const Profile = () => {
         // Validate file type via magic bytes (not just MIME which can be spoofed)
         const validation = await validateImageFile(file);
         if (!validation.valid) {
-          showToast(validation.error, 'error');
+          // Map raw English error strings from validateImageFile to translated messages.
+          const toastMsg = (() => {
+            const e = validation.error || '';
+            if (e.startsWith('Image must be under')) return t('validateImage.tooLarge', { defaultValue: `Image must be under 5 MB` });
+            if (e.startsWith('Invalid WebP')) return t('validateImage.invalidWebp', { defaultValue: 'Invalid WebP file' });
+            if (e.startsWith('Image dimensions')) return t('validateImage.tooBig', { defaultValue: 'Image dimensions must not exceed 4096×4096 pixels' });
+            return t('validateImage.invalidType', { defaultValue: 'Invalid image file. Only PNG, JPEG, and WebP are allowed' });
+          })();
+          showToast(toastMsg, 'error');
           setUploadingAvatar(false);
           return;
         }
@@ -1797,6 +1808,7 @@ const Profile = () => {
             monthPRs={monthPRList}
             user={profile}
             gym={profile?.gym_name}
+            gymLogoUrl={gymLogoUrl}
             shareLink={`${PROD_WEB_URL}/recap`}
           />
         );

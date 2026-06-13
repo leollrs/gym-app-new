@@ -407,7 +407,9 @@
     "loadingAchievements": "Cargando logros",
     "loadingGoals": "Cargando objetivos",
     "share": "Compartir",
-    "editAvatar": "Editar avatar"
+    "editAvatar": "Editar avatar",
+    "shareAchievement": "Compartir logro",
+    "shareMonth": "Compartir este mes"
   },
   "rewards": {
     "title": "Recompensas",
@@ -757,7 +759,9 @@
       "aNewProgram": "un nuevo programa",
       "exercise": "ejercicio",
       "exercises": "ejercicios",
-      "setsLabel": "series"
+      "setsLabel": "series",
+      "checkedInKicker": "Hizo check-in",
+      "programKicker": "Empezó un programa"
     },
     "createPost": "Crear Publicación",
     "postPlaceholder": "¿Qué tienes en mente?",
@@ -850,7 +854,9 @@
     "linkCopied": "¡Enlace copiado!",
     "shareFriendText": "¡Agrégame en {{gym}}!",
     "requestsSent": "Solicitudes enviadas",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "tryThis": "Prueba esto",
+    "shareSubtitle": "Toca un destino para compartir"
   },
   "nutrition": {
     "title": "Nutrición",
@@ -1245,7 +1251,8 @@
     "weeks": "semanas",
     "scanWithAi": "Escanear con IA",
     "ofSevenDays": "de 7 días",
-    "prevWeek": "Semana anterior"
+    "prevWeek": "Semana anterior",
+    "refreshSuggestion": "Actualizar sugerencia"
   },
   "sessionSummary": {
     "workoutComplete": "Entrenamiento Completo",
@@ -1332,7 +1339,7 @@
       "portrait": "Retrato",
       "poster": "Póster",
       "prs": "RPs",
-      "recompose": "Recomponer con foto",
+      "recompose": "Reposicionar en la foto",
       "resetAccent": "Restablecer",
       "save": "Guardar",
       "shareNow": "Compartir ahora",
@@ -1343,8 +1350,12 @@
       "style": "Estilo",
       "themeDark": "Oscuro",
       "themeLight": "Claro",
-      "titlePlaceholder": "Título personalizado (opcional)"
-    }
+      "titlePlaceholder": "Título personalizado (opcional)",
+      "positionLayout": "Posicionar en la foto",
+      "caption": "Pie de foto"
+    },
+    "deleteError": "No se pudo descartar el entrenamiento",
+    "sharePR": "Compartir RP"
   },
   "workoutLog": {
     "title": "Historial de Entrenamientos",
@@ -1596,7 +1607,8 @@
     "ariaDeselect": "Quitar selección",
     "ariaSelect": "Seleccionar para agrupar",
     "removeExercise": "Quitar",
-    "swapOtherMuscles": "Otros músculos"
+    "swapOtherMuscles": "Otros músculos",
+    "openExerciseList": "Ver todos los ejercicios"
   },
   "blocking": {
     "gymDeactivatedTitle": "Cuenta Desactivada",
@@ -2264,7 +2276,8 @@
     "notReady": "Tu perfil no está listo, intenta de nuevo en un momento.",
     "deleteError": "No se pudo eliminar el ejercicio. Inténtalo de nuevo.",
     "backToWorkouts": "Volver a Entrenos",
-    "seeAllInFilter": "Ver todo {{filter}}"
+    "seeAllInFilter": "Ver todo {{filter}}",
+    "filter": "Filtrar"
   },
   "leaderboard": {
     "title": "Clasificación",
@@ -2342,41 +2355,42 @@
     "friendRequestSent": "Solicitud enviada",
     "friendRequestPending": "Pendiente",
     "challengeFriend": {
-      "title": "Retar a {{name}}?",
-      "description": "Compite en {{metric}} por 7 dias. El ganador recibe 50 puntos extra!",
+      "title": "¿Retar a {{name}}?",
+      "description": "Compite en {{metric}} por 7 días. ¡El ganador recibe 50 puntos extra!",
       "addFriendFirst": "Agrega a {{name}} primero",
       "addFriendHint": "Necesitas ser amigos antes de poder retarlos a un duelo.",
-      "metricLabel": "Metrica",
-      "duration": "Duracion",
-      "thisWeek": "Esta Semana (7 dias)",
+      "metricLabel": "Métrica",
+      "duration": "Duración",
+      "thisWeek": "Esta Semana (7 días)",
       "reward": "Premio al Ganador",
       "cancel": "Cancelar",
       "challenge": "Retar",
       "addFriend": "Agregar Amigo",
-      "sent": "Enviado!",
-      "notifTitle": "{{name}} te reto!",
-      "notifBody": "{{name}} te reto a un duelo de {{metric}} esta semana!",
+      "sent": "¡Enviado!",
+      "notifTitle": "¡{{name}} te retó!",
+      "notifBody": "¡{{name}} te retó a un duelo de {{metric}} esta semana!",
       "sentTitle": "Reto Enviado",
       "sentBody": "Retaste a {{name}} a un duelo. Esperando su respuesta.",
-      "accepted": "Reto Aceptado!",
-      "acceptedBody": "Tu duelo con {{name}} esta activo. Da lo mejor de ti!",
+      "accepted": "¡Reto Aceptado!",
+      "acceptedBody": "Tu duelo con {{name}} está activo. ¡Da lo mejor de ti!",
       "declined": "Reto Rechazado",
-      "declinedBody": "{{name}} rechazo tu reto.",
-      "won": "Ganaste!",
-      "wonBody": "Le ganaste a {{name}} en el duelo de {{metric}}! +50 pts",
+      "declinedBody": "{{name}} rechazó tu reto.",
+      "won": "¡Ganaste!",
+      "wonBody": "¡Le ganaste a {{name}} en el duelo de {{metric}}! +50 pts",
       "lost": "Duelo Terminado",
-      "lostBody": "{{name}} gano el duelo de {{metric}}. Mejor suerte la proxima!",
+      "lostBody": "{{name}} ganó el duelo de {{metric}}. ¡Mejor suerte la próxima!",
       "accept": "Aceptar",
       "decline": "Rechazar",
       "metrics": {
         "volume": "Volumen (lbs)",
         "workouts": "Entrenamientos",
-        "prs": "Records Personales"
+        "prs": "Récords Personales"
       }
     },
     "emptySlot": "—",
     "viewSlide": "Ver {{slide}}",
-    "friendRequestExists": "Ya tienes una solicitud con este miembro"
+    "friendRequestExists": "Ya tienes una solicitud con este miembro",
+    "anonMember": "Miembro"
   },
   "navigation": {
     "legend": {
@@ -8528,7 +8542,8 @@
     "consentGranted": "Consentimiento concedido",
     "failedToGrant": "No se pudo conceder el consentimiento",
     "toggleFailed": "No se pudo guardar. Inténtalo de nuevo.",
-    "saved": "Guardado"
+    "saved": "Guardado",
+    "consentRevoked": "Consentimiento retirado"
   },
   "milestones": {
     "noMilestonesYet": "Aún no hay logros",
@@ -9100,7 +9115,15 @@
       "streak": "Días consecutivos",
       "volume": "Libras totales movidas"
     },
-    "suggestedChip": "Sugerido"
+    "suggestedChip": "Sugerido",
+    "completed": "Completadas",
+    "noActiveGoals": "No tienes metas activas — agrega una para seguir el ritmo.",
+    "units": {
+      "lbs": "lbs",
+      "%": "%",
+      "workouts": "entrenamientos",
+      "days": "días"
+    }
   },
   "trainer": {
     "currentStreak": "Racha Actual",
@@ -10058,7 +10081,17 @@
       "alreadyReported": "Ya has reportado esto.",
       "success": "Reporte enviado: nuestro equipo lo revisará en menos de 24 horas.",
       "complianceShort": "Los reportes se revisan en menos de 24 horas.",
-      "abuseEmailFooter": "Para reportes urgentes de abuso, escribe a <1>abuse@tugympr.com</1>"
+      "abuseEmailFooter": "Para reportes urgentes de abuso, escribe a <1>abuse@tugympr.com</1>",
+      "reasons": {
+        "spam": "Spam",
+        "harassment": "Acoso",
+        "hate_speech": "Discurso de odio",
+        "nudity": "Desnudez o contenido sexual",
+        "violence": "Violencia o daño",
+        "dangerous": "Peligroso o ilegal",
+        "inappropriate": "Inapropiado",
+        "other": "Otro"
+      }
     },
     "unknownUser": "este usuario",
     "block": {
@@ -10070,6 +10103,12 @@
       "submitting": "Bloqueando…",
       "success": "{{name}} ha sido bloqueado",
       "error": "No se pudo bloquear al usuario. Inténtalo de nuevo."
+    },
+    "contentNoun": {
+      "post": "publicación",
+      "comment": "comentario",
+      "message": "mensaje",
+      "profile": "perfil"
     }
   },
   "platformSettings": {
@@ -11348,10 +11387,16 @@
       "copyLink": "Copiar enlace",
       "generating": "Generando…",
       "shareNow": "Compartir ahora",
-      "pickDestination": "Elige un destino"
+      "pickDestination": "Elige un destino",
+      "compose": "Componer con foto",
+      "positionLayout": "Posicionar en la foto",
+      "recompose": "Reposicionar en la foto"
     },
     "inProgress": "en progreso",
-    "logFailedSignedOut": "No se pudo registrar — tu sesión está cerrada"
+    "logFailedSignedOut": "No se pudo registrar — tu sesión está cerrada",
+    "deleteSession": "Eliminar sesión",
+    "deleteConfirm": "Toca otra vez para eliminar",
+    "feedSubtitle": "Sesión de cardio"
   },
   "liveCardio": {
     "back": "Atrás"
@@ -13082,7 +13127,19 @@
     "pickPhoto": "Elegir foto",
     "retake": "Repetir",
     "changePhoto": "Cambiar",
-    "composeHint": "Arrastra para mover · Pellizca para ajustar el tamaño"
+    "composeHint": "Arrastra para mover · Pellizca para ajustar el tamaño",
+    "cta": {
+      "preparing": "Preparando…",
+      "pick": "Elige un destino",
+      "instagram": "Compartir en Instagram",
+      "facebook": "Compartir en Facebook",
+      "whatsapp": "Compartir en WhatsApp",
+      "messages": "Compartir en Mensajes",
+      "save": "Guardar imagen",
+      "gym": "Compartir en {{gym}}",
+      "share": "Compartir"
+    },
+    "stickerMode": "Sticker sobre tu foto"
   },
   "achievementToast": {
     "dismiss": "Descartar"
@@ -13313,7 +13370,8 @@
     "policyLink": "Política de privacidad",
     "revokeNotice": "Puedes retirar este consentimiento en cualquier momento en Ajustes → Privacidad.",
     "cancel": "Cancelar",
-    "agree": "Acepto"
+    "agree": "Acepto",
+    "medicalDisclaimer": "Las estimaciones de IMC y grasa corporal son informativas únicamente y no constituyen consejo médico."
   },
   "publicTrainerProfile": {
     "title": "Perfil del entrenador",
@@ -13572,7 +13630,10 @@
       "free_days": "Días gratis",
       "custom": "Oferta especial",
       "discount": "Descuento",
-      "pass": "Pase"
+      "pass": "Pase",
+      "free_trial": "Prueba gratis",
+      "bundle": "Paquete",
+      "bring_friend": "Trae un amigo"
     }
   },
   "liveActivity": {
@@ -13856,7 +13917,8 @@
       "tag": "LA SUBIDA",
       "eyebrow": "Volumen, semana a semana",
       "sub": "más peso, cada semana",
-      "quietSub": "tu primer dato en el marcador"
+      "quietSub": "tu primer dato en el marcador",
+      "week": "S"
     },
     "sticker": {
       "session": "SESIÓN",
@@ -13866,6 +13928,24 @@
     "messages": "Mensajes",
     "saveShort": "Guardar",
     "shareNow": "Compartir",
-    "preparing": "Preparando…"
+    "preparing": "Preparando…",
+    "shareToFB": "Compartir en Facebook",
+    "story": "Historia",
+    "feed": "Feed"
+  },
+  "validateImage": {
+    "tooLarge": "La imagen debe ser menor de 5 MB",
+    "invalidWebp": "Archivo WebP no válido",
+    "tooBig": "Las dimensiones de la imagen no deben superar 4096×4096 píxeles",
+    "invalidType": "Archivo de imagen no válido. Solo se permiten PNG, JPEG y WebP"
+  },
+  "stuckLoading": {
+    "resetting": "Reiniciando la app…",
+    "cacheClearing": "Limpiando la caché y volviendo a cargar. Tu sesión se mantiene.",
+    "heading": "¿La app se quedó cargando?",
+    "body": "Limpia la caché y vuelve a cargar. Tu sesión se mantiene.",
+    "resettingBtn": "Limpiando…",
+    "reset": "Restablecer",
+    "close": "Cerrar"
   }
 }

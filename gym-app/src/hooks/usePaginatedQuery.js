@@ -28,6 +28,7 @@ export default function usePaginatedQuery({
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState(null);
   const cursorRef = useRef(null);
   const loadedRef = useRef(false);
 
@@ -62,11 +63,13 @@ export default function usePaginatedQuery({
     const { data: rows, error } = await query;
 
     if (error) {
+      setError(error);
       setLoading(false);
       setInitialLoading(false);
       return;
     }
 
+    setError(null);
     const newRows = rows || [];
     setHasMore(newRows.length === pageSize);
 
@@ -100,5 +103,5 @@ export default function usePaginatedQuery({
     loadPage(true);
   }
 
-  return { data, loading: initialLoading, loadingMore: loading && !initialLoading, hasMore, loadMore, refresh };
+  return { data, loading: initialLoading, loadingMore: loading && !initialLoading, hasMore, loadMore, refresh, error };
 }

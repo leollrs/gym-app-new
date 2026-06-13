@@ -479,6 +479,7 @@ const ChatView = ({ conversationId, onBack }) => {
   const scrollContainerRef = useRef(null);
   const inputRef = useRef(null);
   const encryptionSeedRef = useRef(null);
+  const pendingRawRef = useRef([]); // messages that arrived before seed was loaded
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const headerMenuRef = useRef(null);
@@ -546,48 +547,64 @@ const ChatView = ({ conversationId, onBack }) => {
 
     const load = async () => {
       setLoading(true);
+      pendingRawRef.current = [];
 
-      const { data: conv } = await supabase
-        .from('conversations')
-        .select('participant_1, participant_2, encryption_seed')
-        .eq('id', conversationId)
-        .single();
+      try {
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('participant_1, participant_2, encryption_seed')
+          .eq('id', conversationId)
+          .single();
 
-      if (cancelled || !conv) return;
+        if (cancelled) return;
+        if (!conv) { setLoading(false); return; }
 
-      const seed = conv.encryption_seed;
-      encryptionSeedRef.current = seed;
+        const seed = conv.encryption_seed;
+        encryptionSeedRef.current = seed;
 
-      const otherId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
+        const otherId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
 
-      const { data: profile } = await supabase
-        .from('gym_member_profiles_safe')
-        .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
-        .eq('id', otherId)
-        .single();
+        const { data: profile } = await supabase
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
+          .eq('id', otherId)
+          .single();
 
-      if (!cancelled) setOtherUser(profile);
+        if (!cancelled) setOtherUser(profile);
 
-      const { data: msgs } = await supabase
-        .from('direct_messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+        const { data: msgs } = await supabase
+          .from('direct_messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: true });
 
-      if (!cancelled) {
-        const decrypted = await Promise.all(
-          (msgs || []).map(async (m) => ({ ...m, body: await decryptMessage(m.body, conversationId, seed) }))
-        );
-        setMessages(decrypted);
-        setLoading(false);
+        if (!cancelled) {
+          const decrypted = await Promise.all(
+            (msgs || []).map(async (m) => ({ ...m, body: await decryptMessage(m.body, conversationId, seed) }))
+          );
+          // Drain any messages that arrived via realtime while the seed was loading.
+          // They were buffered in pendingRawRef because encryptionSeedRef was null.
+          const pending = pendingRawRef.current.splice(0);
+          const decryptedPending = await Promise.all(
+            pending.map(async (raw) => ({ ...raw, body: await decryptMessage(raw.body, conversationId, seed) }))
+          );
+          // Merge: deduplicate by id, pending messages (more recent) override if same id.
+          const merged = [...decrypted];
+          for (const p of decryptedPending) {
+            if (!merged.some(m => m.id === p.id)) merged.push(p);
+          }
+          setMessages(merged);
+        }
+
+        // Mark the whole conversation read via the RLS-proof RPC. A direct UPDATE
+        // on direct_messages can be silently blocked by the gym-scoped
+        // messages_update policy, which left the unread bubble stuck. Then notify
+        // the nav badge / list to recount.
+        await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId });
+        try { window.dispatchEvent(new CustomEvent('dm:read', { detail: { conversationId } })); } catch { /* no-op */ }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      // Mark the whole conversation read via the RLS-proof RPC. A direct UPDATE
-      // on direct_messages can be silently blocked by the gym-scoped
-      // messages_update policy, which left the unread bubble stuck. Then notify
-      // the nav badge / list to recount.
-      await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId });
-      try { window.dispatchEvent(new CustomEvent('dm:read', { detail: { conversationId } })); } catch { /* no-op */ }
     };
 
     load();
@@ -609,6 +626,15 @@ const ChatView = ({ conversationId, onBack }) => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages', filter: `conversation_id=eq.${conversationId}` },
         (payload) => {
+          // If the encryption seed hasn't loaded yet (race: message arrived before
+          // load() finished), buffer the raw row and let load() drain it once the
+          // seed is known. This avoids decrypting with a null-derived key which
+          // would produce an '[Unable to decrypt]' placeholder that can never recover.
+          if (!encryptionSeedRef.current) {
+            pendingRawRef.current.push(payload.new);
+            return;
+          }
+
           decryptMessage(payload.new.body, conversationId, encryptionSeedRef.current)
             .then(decryptedBody => {
               setMessages(prev => {

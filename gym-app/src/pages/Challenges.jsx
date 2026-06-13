@@ -852,16 +852,18 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
     const load = async () => {
       const [teamsRes, friendsRes, invitesRes] = await Promise.all([
         supabase.rpc('get_team_leaderboard', { p_challenge_id: challenge.id }),
-        supabase.from('friendships').select('requester_id, addressee_id, requester:profiles!friendships_requester_id_fkey(id, full_name, avatar_url), addressee:profiles!friendships_addressee_id_fkey(id, full_name, avatar_url)')
+        supabase.from('friendships').select('requester_id, addressee_id')
           .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`).eq('status', 'accepted'),
         supabase.from('challenge_team_invites').select('*, team:challenge_teams(id, name, challenge_id)')
           .eq('invitee_id', userId).eq('status', 'pending'),
       ]);
       setExistingTeams((teamsRes.data || []).filter(t => t.member_count < maxMembers));
-      const friendList = (friendsRes.data || []).map(f => {
-        const friend = f.requester_id === userId ? f.addressee : f.requester;
-        return friend;
-      }).filter(Boolean);
+      // Member RLS (migration 0289) blocks the embedded profiles!fkey join from
+      // returning the OTHER member's row, so the friend-picker came back empty.
+      // Resolve friend identities through the owner-read, same-gym-safe view.
+      const friendIds = (friendsRes.data || []).map(f => (f.requester_id === userId ? f.addressee_id : f.requester_id));
+      const friendProfs = await fetchMemberProfiles(friendIds);
+      const friendList = friendIds.map(id => friendProfs.get(id)).filter(Boolean);
       setFriends(friendList);
       setMyInvites((invitesRes.data || []).filter(inv => inv.team?.challenge_id === challenge.id));
       setLoading(false);
@@ -1864,12 +1866,22 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
     const load = async () => {
       const { data } = await supabase
         .from('friend_challenges')
-        .select('*, challenger:profiles!friend_challenges_challenger_id_fkey(full_name, avatar_url), challenged:profiles!friend_challenges_challenged_id_fkey(full_name, avatar_url)')
+        .select('*')
         .or(`challenger_id.eq.${userId},challenged_id.eq.${userId}`)
         .eq('gym_id', gymId)
         .order('created_at', { ascending: false })
         .limit(20);
-      setDuels(data || []);
+      const rows = data || [];
+      // Member RLS (migration 0289) blocks reading other members' `profiles`
+      // rows, so the old embedded profiles!fkey join returned null for every
+      // opponent — duel cards showed no name/avatar. Resolve through the
+      // owner-read, same-gym-safe view instead (see fetchMemberProfiles).
+      const profs = await fetchMemberProfiles(rows.flatMap(d => [d.challenger_id, d.challenged_id]));
+      setDuels(rows.map(d => ({
+        ...d,
+        challenger: profs.get(d.challenger_id) || null,
+        challenged: profs.get(d.challenged_id) || null,
+      })));
       setLoading(false);
     };
     load();

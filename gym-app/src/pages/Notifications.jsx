@@ -21,6 +21,7 @@ const TYPE_META = {
   announcement: { icon: Megaphone, color: 'text-blue-400',    bg: 'bg-blue-500/10'   },
   pr:           { icon: Trophy,    color: 'text-[#FF5A2E]',   bg: 'bg-[#FF5A2E]/10'  },
   pr_beaten:    { icon: Trophy,    color: 'text-[#FF5A2E]',   bg: 'bg-[#FF5A2E]/10'  },
+  achievement:  { icon: Trophy,    color: 'text-[#FF5A2E]',   bg: 'bg-[#FF5A2E]/10'  },
   milestone:    { icon: Dumbbell,  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
   challenge:    { icon: Zap,       color: 'text-[#6D5FDB]',   bg: 'bg-[#6D5FDB]/10'  },
   challenge_update: { icon: Zap,   color: 'text-[#6D5FDB]',   bg: 'bg-[#6D5FDB]/10'  },
@@ -145,7 +146,10 @@ export default function Notifications() {
     if (error) {
       logger.error('Notifications: dismiss failed:', error);
       showToast(t('common:somethingWentWrong'), 'error');
-      setItems(snapshot); // revert
+      // Re-add only the deleted item rather than fully restoring the snapshot,
+      // so any notification that arrived via realtime between the optimistic
+      // removal and this revert is preserved instead of being overwritten.
+      setItems(prev => prev.some(n => n.id === id) ? prev : [snapshot.find(n => n.id === id), ...prev].filter(Boolean));
     }
     invalidateNotifications(user.id);
     refreshNotifications();

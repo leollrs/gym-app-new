@@ -5,6 +5,7 @@ import { ArrowLeft, Bell, BellOff, Settings, ShieldCheck, Megaphone, AlertTriang
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { usePostHog } from '@posthog/react';
+import { useToast } from '../contexts/ToastContext';
 
 // Notification preference columns grouped by Apple 4.5.4 category.
 // Transactional notifications relate to the user's own data + service-critical
@@ -50,6 +51,7 @@ export default function NotificationSettings() {
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
   const posthog = usePostHog();
+  const { showToast } = useToast();
   const [prefs, setPrefs] = useState({
     notif_push_enabled: true,
     notif_workout_reminders: true,
@@ -83,10 +85,16 @@ export default function NotificationSettings() {
 
   const updatePref = async (col, newVal) => {
     if (!user?.id) return;
+    const prev = prefs[col];
     setPrefs((p) => ({ ...p, [col]: newVal }));
     setSaving(true);
     try {
-      await supabase.from('profiles').update({ [col]: newVal }).eq('id', user.id);
+      const { error } = await supabase.from('profiles').update({ [col]: newVal }).eq('id', user.id);
+      if (error) {
+        setPrefs((p) => ({ ...p, [col]: prev }));
+        showToast(t('settingsPrivacy.toggleFailed', { defaultValue: 'Could not save. Try again.' }), 'error');
+        return;
+      }
       posthog?.capture('notification_setting_toggled', { setting_name: col, enabled: newVal });
     } finally {
       setSaving(false);
@@ -96,11 +104,17 @@ export default function NotificationSettings() {
   // Bulk toggle a group of columns. Used by "turn all promotional off"-style buttons.
   const updateGroup = async (cols, newVal) => {
     if (!user?.id) return;
+    const prevSlice = cols.reduce((acc, c) => ({ ...acc, [c]: prefs[c] }), {});
     const updates = cols.reduce((acc, c) => ({ ...acc, [c]: newVal }), {});
     setPrefs((p) => ({ ...p, ...updates }));
     setSaving(true);
     try {
-      await supabase.from('profiles').update(updates).eq('id', user.id);
+      const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
+      if (error) {
+        setPrefs((p) => ({ ...p, ...prevSlice }));
+        showToast(t('settingsPrivacy.toggleFailed', { defaultValue: 'Could not save. Try again.' }), 'error');
+        return;
+      }
       posthog?.capture('notification_setting_toggled', { setting_name: 'group', columns: cols, enabled: newVal });
     } finally {
       setSaving(false);

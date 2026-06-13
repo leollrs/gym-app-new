@@ -383,6 +383,16 @@ export async function reactivatePersonalProgram({ supabase, user, sourceProgram,
   if (!user?.id)        throw new Error('user is required');
   if (!sourceProgram)   throw new Error('sourceProgram is required');
 
+  // Fetch current profile.gym_id so the new program row uses the gym the
+  // member is currently enrolled in, not the gym from when the old program
+  // was created (which may differ after a gym transfer).
+  const { data: profileRow } = await supabase
+    .from('profiles')
+    .select('gym_id')
+    .eq('id', user.id)
+    .single();
+  const currentGymId = profileRow?.gym_id || sourceProgram.gym_id;
+
   const schedMap = sourceProgram.schedule_map || {};
   const routineIds = Array.isArray(schedMap.routine_ids) ? schedMap.routine_ids : [];
   if (routineIds.length === 0) {
@@ -462,7 +472,7 @@ export async function reactivatePersonalProgram({ supabase, user, sourceProgram,
     .from('generated_programs')
     .insert({
       profile_id:       user.id,
-      gym_id:           sourceProgram.gym_id,
+      gym_id:           currentGymId,
       split_type:       sourceProgram.split_type,
       program_start:    newProgramStart.toISOString(),
       expires_at:       newExpiresAt.toISOString(),
@@ -487,7 +497,7 @@ export async function reactivatePersonalProgram({ supabase, user, sourceProgram,
     if (!routineId || !existingIds.has(routineId)) continue;
     await supabase.from('workout_schedule').upsert({
       profile_id:  user.id,
-      gym_id:      sourceProgram.gym_id,
+      gym_id:      currentGymId,
       day_of_week: entry.day_of_week,
       routine_id:  routineId,
       updated_at:  new Date().toISOString(),

@@ -407,7 +407,9 @@
     "loadingAchievements": "Loading achievements",
     "loadingGoals": "Loading goals",
     "share": "Share",
-    "editAvatar": "Edit avatar"
+    "editAvatar": "Edit avatar",
+    "shareAchievement": "Share achievement",
+    "shareMonth": "Share this month"
   },
   "rewards": {
     "title": "Rewards",
@@ -757,7 +759,9 @@
       "aNewProgram": "a new program",
       "exercise": "exercise",
       "exercises": "exercises",
-      "setsLabel": "sets"
+      "setsLabel": "sets",
+      "checkedInKicker": "Checked in",
+      "programKicker": "Started a program"
     },
     "createPost": "Create Post",
     "postPlaceholder": "What's on your mind?",
@@ -850,7 +854,9 @@
     "linkCopied": "Link copied!",
     "shareFriendText": "Add me on {{gym}}!",
     "requestsSent": "Requests sent",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "tryThis": "Try this",
+    "shareSubtitle": "Tap a target to share"
   },
   "nutrition": {
     "title": "Nutrition",
@@ -1245,7 +1251,8 @@
     "weeks": "weeks",
     "scanWithAi": "Scan with AI instead",
     "ofSevenDays": "of 7 days",
-    "prevWeek": "Previous week"
+    "prevWeek": "Previous week",
+    "refreshSuggestion": "Refresh suggestion"
   },
   "sessionSummary": {
     "workoutComplete": "Workout Complete",
@@ -1332,7 +1339,7 @@
       "portrait": "Portrait",
       "poster": "Poster",
       "prs": "PRs",
-      "recompose": "Re-compose with photo",
+      "recompose": "Re-position on photo",
       "resetAccent": "Reset",
       "save": "Save",
       "shareNow": "Share now",
@@ -1343,8 +1350,12 @@
       "style": "Style",
       "themeDark": "Dark",
       "themeLight": "Light",
-      "titlePlaceholder": "Custom title (optional)"
-    }
+      "titlePlaceholder": "Custom title (optional)",
+      "positionLayout": "Position on photo",
+      "caption": "Caption"
+    },
+    "deleteError": "Failed to discard workout",
+    "sharePR": "Share PR"
   },
   "workoutLog": {
     "title": "Workout Log",
@@ -1596,7 +1607,8 @@
     "ariaDeselect": "Deselect",
     "ariaSelect": "Select to group",
     "removeExercise": "Remove",
-    "swapOtherMuscles": "Other muscles"
+    "swapOtherMuscles": "Other muscles",
+    "openExerciseList": "See all exercises"
   },
   "blocking": {
     "gymDeactivatedTitle": "Account Deactivated",
@@ -2264,7 +2276,8 @@
     "notReady": "Profile not ready, try again in a moment.",
     "deleteError": "Failed to delete exercise. Please try again.",
     "backToWorkouts": "Back to Workouts",
-    "seeAllInFilter": "See all {{filter}}"
+    "seeAllInFilter": "See all {{filter}}",
+    "filter": "Filter"
   },
   "leaderboard": {
     "title": "Leaderboard",
@@ -2376,7 +2389,8 @@
     },
     "emptySlot": "—",
     "viewSlide": "View {{slide}}",
-    "friendRequestExists": "You already have a request with this member"
+    "friendRequestExists": "You already have a request with this member",
+    "anonMember": "Member"
   },
   "navigation": {
     "legend": {
@@ -8360,7 +8374,8 @@
     "consentGranted": "Consent granted",
     "failedToGrant": "Failed to grant consent",
     "toggleFailed": "Could not save. Try again.",
-    "saved": "Saved"
+    "saved": "Saved",
+    "consentRevoked": "AI consent removed"
   },
   "milestones": {
     "noMilestonesYet": "No milestones yet",
@@ -8932,7 +8947,15 @@
       "streak": "Consecutive days",
       "volume": "Total pounds moved"
     },
-    "suggestedChip": "Suggested"
+    "suggestedChip": "Suggested",
+    "completed": "Completed",
+    "noActiveGoals": "No active goals — add one to keep the momentum.",
+    "units": {
+      "lbs": "lbs",
+      "%": "%",
+      "workouts": "workouts",
+      "days": "days"
+    }
   },
   "trainer": {
     "currentStreak": "Current Streak",
@@ -9890,7 +9913,17 @@
       "alreadyReported": "You have already reported this.",
       "success": "Report submitted — our team will review within 24 hours.",
       "complianceShort": "Reports are reviewed within 24 hours.",
-      "abuseEmailFooter": "For urgent abuse reports, email <1>abuse@tugympr.com</1>"
+      "abuseEmailFooter": "For urgent abuse reports, email <1>abuse@tugympr.com</1>",
+      "reasons": {
+        "spam": "Spam",
+        "harassment": "Harassment",
+        "hate_speech": "Hate speech",
+        "nudity": "Nudity or sexual content",
+        "violence": "Violence or harm",
+        "dangerous": "Dangerous or illegal",
+        "inappropriate": "Inappropriate",
+        "other": "Other"
+      }
     },
     "unknownUser": "this user",
     "block": {
@@ -9902,6 +9935,12 @@
       "submitting": "Blocking…",
       "success": "Blocked {{name}}",
       "error": "Could not block user. Please try again."
+    },
+    "contentNoun": {
+      "post": "post",
+      "comment": "comment",
+      "message": "message",
+      "profile": "profile"
     }
   },
   "platformSettings": {
@@ -11180,10 +11219,16 @@
       "copyLink": "Copy link",
       "generating": "Generating…",
       "shareNow": "Share now",
-      "pickDestination": "Pick a destination"
+      "pickDestination": "Pick a destination",
+      "compose": "Compose with photo",
+      "positionLayout": "Position on photo",
+      "recompose": "Re-position on photo"
     },
     "inProgress": "in progress",
-    "logFailedSignedOut": "Couldn't log — you're signed out"
+    "logFailedSignedOut": "Couldn't log — you're signed out",
+    "deleteSession": "Delete session",
+    "deleteConfirm": "Tap again to delete",
+    "feedSubtitle": "Cardio session"
   },
   "liveCardio": {
     "back": "Back"
@@ -12931,7 +12976,19 @@
     "pickPhoto": "Pick photo",
     "retake": "Retake",
     "changePhoto": "Change",
-    "composeHint": "Drag to move · Pinch to resize"
+    "composeHint": "Drag to move · Pinch to resize",
+    "cta": {
+      "preparing": "Preparing…",
+      "pick": "Pick a destination",
+      "instagram": "Share to Instagram",
+      "facebook": "Share to Facebook",
+      "whatsapp": "Share to WhatsApp",
+      "messages": "Share to Messages",
+      "save": "Save image",
+      "gym": "Share to {{gym}}",
+      "share": "Share"
+    },
+    "stickerMode": "Sticker mode (overlay on your photo)"
   },
   "achievementToast": {
     "dismiss": "Dismiss"
@@ -13162,7 +13219,8 @@
     "policyLink": "Privacy Policy",
     "revokeNotice": "You can withdraw this consent anytime in Settings → Privacy.",
     "cancel": "Cancel",
-    "agree": "I Agree"
+    "agree": "I Agree",
+    "medicalDisclaimer": "BMI and body-fat estimates are informational only and do not constitute medical advice."
   },
   "publicTrainerProfile": {
     "title": "Trainer profile",
@@ -13421,7 +13479,10 @@
       "free_days": "Free days",
       "custom": "Special offer",
       "discount": "Discount",
-      "pass": "Pass"
+      "pass": "Pass",
+      "free_trial": "Free Trial",
+      "bundle": "Bundle",
+      "bring_friend": "Bring a Friend"
     }
   },
   "liveActivity": {
@@ -13705,7 +13766,8 @@
       "tag": "THE COME-UP",
       "eyebrow": "Volume, week by week",
       "sub": "more weight, every single week",
-      "quietSub": "your first data point on the board"
+      "quietSub": "your first data point on the board",
+      "week": "W"
     },
     "sticker": {
       "session": "SESSION",
@@ -13715,6 +13777,24 @@
     "messages": "Messages",
     "saveShort": "Save",
     "shareNow": "Share",
-    "preparing": "Preparing…"
+    "preparing": "Preparing…",
+    "shareToFB": "Share to Facebook",
+    "story": "Story",
+    "feed": "Feed"
+  },
+  "validateImage": {
+    "tooLarge": "Image must be under 5 MB",
+    "invalidWebp": "Invalid WebP file",
+    "tooBig": "Image dimensions must not exceed 4096×4096 pixels",
+    "invalidType": "Invalid image file. Only PNG, JPEG, and WebP are allowed"
+  },
+  "stuckLoading": {
+    "resetting": "Restarting the app…",
+    "cacheClearing": "Clearing cache and reloading. Your session is kept.",
+    "heading": "App stuck loading?",
+    "body": "Clear the cache and reload. Your session is kept.",
+    "resettingBtn": "Clearing…",
+    "reset": "Reset",
+    "close": "Close"
   }
 }

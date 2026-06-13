@@ -107,16 +107,19 @@ function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
     projectedOrm = Math.round(trendPoints[n - 1].orm + slope * 4);
   }
 
-  // Chart data: real points + one projected point stitched to the last real point
+  // Chart data: real points + one projected point stitched to the last real point.
+  // The bridge Line needs TWO consecutive non-null bridge values to draw a segment —
+  // a single isolated point is invisible to Recharts when connectNulls=false.
+  // So we set bridge on both the last real entry AND the projected entry.
   const chartData = data.length > 0
     ? [
-        ...data,
+        ...data.slice(0, -1),
+        { ...data[data.length - 1], bridge: data[data.length - 1].orm },
         {
           date:      t('strength.fourWeekProjLabel', '~4 wks'),
           orm:       null,
           projected: projectedOrm,
-          // bridge value so the dashed line connects from the last real orm
-          bridge:    data[data.length - 1].orm,
+          bridge:    projectedOrm,
         },
       ]
     : data;

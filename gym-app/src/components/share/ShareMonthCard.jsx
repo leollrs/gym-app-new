@@ -13,6 +13,9 @@
 import { useTranslation } from 'react-i18next';
 
 // ── fonts (Anton added to index.html for the poster numerals) ──────────────
+// Brand fonts (matches the design). They render in the preview via the Google
+// CDN and in the EXPORT via the base64 @font-face embedded at raster time
+// (embeddedFonts.js + rasterizeNode), so the upload matches the preview.
 const SMFont = {
   huge:    '"Anton","Archivo Black",system-ui,sans-serif',
   numeral: '"Archivo","Familjen Grotesk",system-ui,sans-serif',
@@ -115,13 +118,19 @@ function SMTopRow({ d, p, s, tag }) {
   );
 }
 
-function SMWordmark({ s = 1, color = '#fff', sub = 'rgba(255,255,255,0.7)', label, name = 'TuGymPR' }) {
+function SMWordmark({ s = 1, color = '#fff', sub = 'rgba(255,255,255,0.7)', label, name = 'TuGymPR', logoUrl }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7 * s }}>
-      <SMDumbbell size={15 * s} color={color}/>
+      {logoUrl ? (
+        <img src={logoUrl} alt="" crossOrigin="anonymous"
+          style={{ width: 22 * s, height: 22 * s, borderRadius: 6 * s, objectFit: 'cover', flexShrink: 0 }}/>
+      ) : (
+        <SMDumbbell size={15 * s} color={color}/>
+      )}
       <span style={{ fontFamily: SMFont.display, fontWeight: 700, fontSize: 12 * s,
-        letterSpacing: 2.5 * s, color, textTransform: 'uppercase' }}>{name}</span>
-      <span style={{ fontSize: 11 * s, color: sub, marginLeft: 'auto', fontWeight: 600 }}>{label}</span>
+        letterSpacing: 2.5 * s, color, textTransform: 'uppercase', whiteSpace: 'nowrap',
+        overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 * s }}>{name}</span>
+      <span style={{ fontSize: 11 * s, color: sub, marginLeft: 'auto', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
     </div>
   );
 }
@@ -142,7 +151,7 @@ function SMBottom({ d, p, s, stats, recapLabel }) {
           ))}
         </div>
       )}
-      <SMWordmark s={s} color={p.ink} sub={p.sub} label={recapLabel} name={d.gym || 'TuGymPR'}/>
+      <SMWordmark s={s} color={p.ink} sub={p.sub} label={recapLabel} name={d.gym || 'TuGymPR'} logoUrl={d.gymLogoUrl}/>
     </div>
   );
 }
@@ -181,7 +190,9 @@ function CardVolume({ d, w, h, t }) {
         ) : (
           <>
             <SMLabel p={p} s={s}>{t('shareMonth.volume.eyebrow', 'You moved')}</SMLabel>
-            <div style={{ display: 'flex', alignItems: 'flex-start', marginTop: 2 * s }}>
+            {/* marginTop clears the Anton glyph's upward overflow (lineHeight<1)
+                so the giant number doesn't cover the eyebrow above it. */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', marginTop: 20 * s }}>
               <span style={{ fontFamily: SMFont.huge, fontSize: 158 * s, lineHeight: 0.78,
                 color: p.ink, letterSpacing: -2 * s }}>{v.n}</span>
               <span style={{ fontFamily: SMFont.huge, fontSize: 64 * s, color: p.ink,
@@ -262,11 +273,11 @@ function CardShowUp({ d, w, h, t }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 18 * s }}>
         <div>
           <SMLabel p={p} s={s}>{t('shareMonth.showup.eyebrow', 'You showed up')}</SMLabel>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24 * s, marginTop: 2 * s }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24 * s, marginTop: 14 * s }}>
             <span style={{ fontFamily: SMFont.huge, fontSize: 110 * s, lineHeight: 0.78,
-              color: p.ink, letterSpacing: -2 * s }}>{d.workouts}</span>
+              color: p.ink, letterSpacing: -2 * s }}>{d.daysTrained ?? d.workouts}</span>
             <span style={{ fontFamily: SMFont.huge, fontSize: 38 * s, color: p.ink,
-              letterSpacing: 3 * s, paddingBottom: 12 * s }}>{d.workouts === 1 ? t('shareMonth.showup.day', 'DAY') : t('shareMonth.showup.days', 'DAYS')}</span>
+              letterSpacing: 3 * s, paddingBottom: 12 * s }}>{(d.daysTrained ?? d.workouts) === 1 ? t('shareMonth.showup.day', 'DAY') : t('shareMonth.showup.days', 'DAYS')}</span>
           </div>
           <div style={{ fontSize: 14 * s, color: p.sub, fontWeight: 600, marginTop: 4 * s }}>
             {q ? t('shareMonth.showup.quietSub', 'the comeback starts here')
@@ -306,7 +317,7 @@ function CardClimb({ d, w, h, t }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14 * s }}>
         <div>
           <SMLabel p={p} s={s}>{t('shareMonth.climb.eyebrow', 'Volume, week by week')}</SMLabel>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 * s, marginTop: 2 * s }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 * s, marginTop: 14 * s }}>
             <span style={{ fontFamily: SMFont.huge, fontSize: 104 * s, lineHeight: 0.78,
               color: p.ink, letterSpacing: -2 * s }}>{q ? '+1' : `+${d.growth}`}</span>
             {!q && <span style={{ fontFamily: SMFont.huge, fontSize: 48 * s, color: p.ink, marginTop: 8 * s }}>%</span>}
@@ -314,7 +325,7 @@ function CardClimb({ d, w, h, t }) {
           <div style={{ fontSize: 15 * s, color: p.sub, fontWeight: 600, marginTop: 4 * s }}>
             {q ? t('shareMonth.climb.quietSub', 'your first data point on the board') : t('shareMonth.climb.sub', 'more weight, every single week')}</div>
         </div>
-        <svg width={cw} height={ch} style={{ overflow: 'visible' }}>
+        <svg width={cw} height={ch + 24 * s} style={{ overflow: 'visible' }}>
           <defs>
             <linearGradient id="smClimbG" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={p.ink} stopOpacity="0.28"/>
@@ -328,6 +339,14 @@ function CardClimb({ d, w, h, t }) {
             <circle key={i} cx={pt.x} cy={pt.y} r={(i === pts.length - 1 ? 7 : 4) * s}
               fill={i === pts.length - 1 ? p.ink : '#DCF84E'}
               stroke={p.ink} strokeWidth={2.5 * s}/>
+          ))}
+          {/* week labels make it explicit the plot is volume per week of month */}
+          {pts.map((pt, i) => (
+            <text key={`wk${i}`} x={pt.x} y={ch + 18 * s}
+              textAnchor={i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle'}
+              fontFamily={SMFont.display} fontWeight="700" fontSize={11 * s} fill={p.sub}>
+              {`${t('shareMonth.climb.week', 'WK')}${i + 1}`}
+            </text>
           ))}
         </svg>
       </div>
@@ -367,7 +386,7 @@ function SMSticker({ d, w, h, t }) {
             </span>
           ))}
         </div>
-        <div style={{ marginTop: 14 * s }}><SMWordmark s={s * 0.92} color={p.ink} sub={p.sub} label={t('shareMonth.recapLabel', 'Monthly Recap')} name={d.gym || 'TuGymPR'}/></div>
+        <div style={{ marginTop: 14 * s }}><SMWordmark s={s * 0.92} color={p.ink} sub={p.sub} label={t('shareMonth.recapLabel', 'Monthly Recap')} name={d.gym || 'TuGymPR'} logoUrl={d.gymLogoUrl}/></div>
       </div>
     </div>
   );
@@ -406,7 +425,7 @@ function buildComparison(lbs, t) {
   return '';
 }
 
-export function buildShareMonthData({ recap, monthSessions = [], monthPRs = [], user, gym, t, lang }) {
+export function buildShareMonthData({ recap, monthSessions = [], monthPRs = [], user, gym, gymLogoUrl, t, lang }) {
   const now = new Date();
   // Derive month + year straight from the Date (the recap is always "this
   // month"). Parsing recap.monthLabel broke on the Spanish "junio de 2026"
@@ -430,6 +449,10 @@ export function buildShareMonthData({ recap, monthSessions = [], monthPRs = [], 
     const day = new Date(ds).getDate();
     trained[day] = Math.min(3, (trained[day] || 0) + 1);
   });
+  // DISTINCT days trained — NOT the session count. Two sessions on one day is
+  // one day. The "Show-Up" headline counts days; the session total is a
+  // separate stat chip. (workouts = sessions, daysTrained = unique days.)
+  const daysTrained = Object.keys(trained).length;
 
   // Weekly volume buckets (week-of-month) + week-over-week growth.
   const weekBuckets = {};
@@ -476,8 +499,10 @@ export function buildShareMonthData({ recap, monthSessions = [], monthPRs = [], 
     monthLabel, year,
     handle: username,
     gym: gym || '',
+    gymLogoUrl: gymLogoUrl || null,
     volumeLbs,
     workouts,
+    daysTrained,
     prs: recap.prCount || 0,
     streak: recap.streakDays || 0,
     daysInMonth, firstDow, trained,

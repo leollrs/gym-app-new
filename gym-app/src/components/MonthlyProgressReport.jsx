@@ -23,6 +23,7 @@ import FadeIn from './FadeIn';
 import ChartTooltip from './ChartTooltip';
 import { fmtDuration } from '../lib/dateUtils';
 import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
+import { cmToIn } from '../pages/progress/progressConstants';
 import {
   format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval,
   isSameDay, subMonths, addMonths, isAfter, isBefore, differenceInDays,
@@ -279,7 +280,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
         // profiles.training_days_per_week doesn't exist anyway).
         supabase
           .from('member_onboarding')
-          .select('training_days_per_week')
+          .select('training_days_per_week, primary_goal')
           .eq('profile_id', targetId)
           .maybeSingle(),
       ]);
@@ -302,15 +303,17 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
         });
       }
 
-      // ── Signed URLs for progress photos ────────────────────────────────────
-      const photosWithUrls = await Promise.all(
-        (photos ?? []).map(async (p) => {
-          const { data: signed } = await supabase.storage
-            .from('progress-photos')
-            .createSignedUrl(p.storage_path, 3600);
-          return { ...p, url: signed?.signedUrl ?? '' };
-        })
-      );
+      // ── Signed URLs for progress photos (batch, one request) ───────────────
+      const paths = (photos ?? []).map(p => p.storage_path);
+      let photosWithUrls = [];
+      if (paths.length > 0) {
+        const { data: signedBatch } = await supabase.storage
+          .from('progress-photos')
+          .createSignedUrls(paths, 3600);
+        const urlByPath = {};
+        (signedBatch ?? []).forEach(s => { if (s.signedUrl) urlByPath[s.path] = s.signedUrl; });
+        photosWithUrls = (photos ?? []).map(p => ({ ...p, url: urlByPath[p.storage_path] ?? '' }));
+      }
 
       // ── Compile data ──────────────────────────────────────────────────────
       const s = sessions ?? [];
@@ -331,6 +334,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
       const trainedDates = s.map(ss => ss.completed_at.slice(0, 10));
       const uniqueTrainedDays = [...new Set(trainedDates)];
       const trainingDaysPerWeek = Number(onboardingRow?.training_days_per_week) || 3;
+      const primaryGoal = onboardingRow?.primary_goal ?? null;
       const daysPlanned = trainingDaysPerWeek * Math.ceil(monthDays.length / 7);
       const attendanceRate = daysPlanned > 0 ? Math.round((uniqueTrainedDays.length / daysPlanned) * 100) : 0;
 
@@ -459,7 +463,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
         attendanceRate, bestStreak,
         weeklyVolume,
         prs, topExercises, liftChanges,
-        startWeight, endWeight, weightChange,
+        startWeight, endWeight, weightChange, primaryGoal,
         startMeas, endMeas,
         photoComparisons,
         achievementsList,
@@ -736,11 +740,26 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
                     <span className="text-[12px] text-[var(--color-text-primary)] ml-auto whitespace-nowrap">
                       {data.startWeight.toFixed(1)} → {data.endWeight.toFixed(1)} {t('monthlyReport.lbs')}
                     </span>
-                    {data.weightChange && (
-                      <span className={`text-xs font-medium ${parseFloat(data.weightChange) < 0 ? 'text-[#10B981]' : parseFloat(data.weightChange) > 0 ? 'text-[#EF4444]' : 'text-[var(--color-text-subtle)]'}`}>
-                        {parseFloat(data.weightChange) > 0 ? '+' : ''}{data.weightChange} {t('monthlyReport.lbs')}
-                      </span>
-                    )}
+                    {data.weightChange && (() => {
+                      const wc = parseFloat(data.weightChange);
+                      // Goal-aware coloring: gaining is good for muscle_gain, losing is good for fat_loss
+                      let wColor = 'var(--color-text-subtle)';
+                      if (wc !== 0) {
+                        if (data.primaryGoal === 'muscle_gain') {
+                          wColor = wc > 0 ? 'var(--color-success)' : 'var(--color-danger)';
+                        } else if (data.primaryGoal === 'fat_loss') {
+                          wColor = wc < 0 ? 'var(--color-success)' : 'var(--color-danger)';
+                        } else {
+                          // No clear goal — neutral: loss=green, gain=red (standard convention)
+                          wColor = wc < 0 ? 'var(--color-success)' : 'var(--color-danger)';
+                        }
+                      }
+                      return (
+                        <span className="text-xs font-medium" style={{ color: wColor }}>
+                          {wc > 0 ? '+' : ''}{data.weightChange} {t('monthlyReport.lbs')}
+                        </span>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -758,16 +777,20 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
                         { key: 'body_fat_pct', labelKey: 'bodyFat' },
                       ].map(({ key, labelKey }) => {
                         const label = t(`monthlyReport.${labelKey}`);
-                        const s = data.startMeas[key];
-                        const e = data.endMeas[key];
-                        if (s == null && e == null) return null;
-                        const diff = s != null && e != null ? (e - s).toFixed(1) : null;
-                        const unit = key === 'body_fat_pct' ? '%' : 'cm';
+                        const rawS = data.startMeas[key];
+                        const rawE = data.endMeas[key];
+                        if (rawS == null && rawE == null) return null;
+                        const isBf = key === 'body_fat_pct';
+                        const unit = isBf ? '%' : 'in';
+                        // Convert cm→in for display (body_fat_pct stays as-is)
+                        const dispS = (!isBf && rawS != null) ? cmToIn(rawS) : rawS;
+                        const dispE = (!isBf && rawE != null) ? cmToIn(rawE) : rawE;
+                        const diff = dispS != null && dispE != null ? (dispE - dispS).toFixed(1) : null;
                         return (
                           <div key={key} className="bg-[var(--color-bg-deep)] rounded-lg px-3 py-2 flex justify-between items-center">
                             <span className="text-[12px] text-[var(--color-text-subtle)]">{label}</span>
                             <div className="text-right">
-                              <span className="text-[12px] text-[var(--color-text-primary)]">{e != null ? e : s}{unit}</span>
+                              <span className="text-[12px] text-[var(--color-text-primary)]">{dispE != null ? dispE : dispS}{unit}</span>
                               {diff && parseFloat(diff) !== 0 && (
                                 <span className={`text-[10px] ml-1 ${parseFloat(diff) < 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                                   ({parseFloat(diff) > 0 ? '+' : ''}{diff})

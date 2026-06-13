@@ -474,6 +474,10 @@
     "alreadyConnected": "You're already friends or have a pending request.",
     "sendFailed": "Couldn't send the friend request.",
     "sent": "Friend request sent to {{name}}!",
-    "sentGeneric": "Friend request sent!"
-  }
+    "sentGeneric": "Friend request sent!",
+    "added": "You're now friends with {{name}}!",
+    "addedGeneric": "Friend added!"
+  },
+  "inviteForNewAccounts": "Invite codes are for new accounts",
+  "referralForNewSignups": "Referral codes are for new signups"
 }

@@ -624,14 +624,9 @@ export async function readSleepLastNight() {
     // 7-day pull so we can surface the most recent night even when the user
     // didn't track last night (very common with iPhone-only sleep tracking).
     samples = await _readSamplesSafe(dt, { days: 7, limit: 500 });
-    // DEBUG: surface what the plugin returned. Remove once verified.
-    // eslint-disable-next-line no-console
-    console.log('[sleep] readSamples returned', samples?.length ?? 0, 'samples; first 3:', JSON.stringify(samples?.slice(0, 3) ?? []));
     if (samples && samples.length > 0) break;
   }
   if (!samples || samples.length === 0) {
-    // eslint-disable-next-line no-console
-    console.log('[sleep] no samples in last 2 days');
     return null;
   }
 
@@ -652,8 +647,6 @@ export async function readSleepLastNight() {
     if (end > mostRecentEnd) mostRecentEnd = end;
   }
   if (mostRecentEnd === 0) {
-    // eslint-disable-next-line no-console
-    console.log('[sleep] no sleep block ended today — returning null');
     return null;
   }
   const sessionStart = mostRecentEnd - SESSION_WINDOW_MS;
@@ -687,8 +680,6 @@ export async function readSleepLastNight() {
   // awake for iPhone-only users where only Time-in-Bed is recorded — this is
   // what their Health app actually shows as "sleep" in that scenario.
   const totalMs = asleepMs > 0 ? asleepMs : Math.max(0, inBedMs - awakeMs);
-  // eslint-disable-next-line no-console
-  console.log('[sleep] session end', new Date(mostRecentEnd).toISOString(), 'asleep=', Math.round(asleepMs / 60000), 'inBed=', Math.round(inBedMs / 60000), 'awake=', Math.round(awakeMs / 60000), 'total=', Math.round(totalMs / 60000), 'min');
   if (totalMs <= 0) return null;
 
   return {

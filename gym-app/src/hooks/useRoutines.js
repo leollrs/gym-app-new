@@ -13,7 +13,7 @@ async function getTodayProgramRoutineIds(userId, routines) {
   try {
     const { data: programs } = await supabase
       .from('generated_programs')
-      .select('program_start, expires_at')
+      .select('program_start, expires_at, schedule_map')
       .eq('profile_id', userId)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -21,6 +21,18 @@ async function getTodayProgramRoutineIds(userId, routines) {
     if (!program || new Date(program.expires_at) <= new Date()) return new Set();
     const weekNum = getProgramWeekNum(program.program_start);
     const isWeekA = weekNum % 2 === 1;
+
+    // Prefer schedule_map variant lists (authoritative for creative-name programs)
+    const sm = program.schedule_map;
+    const variantIds = sm && Array.isArray(sm.routine_ids_a) && sm.routine_ids_a.length > 0
+      ? new Set(isWeekA ? sm.routine_ids_a : (sm.routine_ids_b || []))
+      : null;
+
+    if (variantIds) {
+      return new Set(routines.filter(r => variantIds.has(r.id)).map(r => r.id));
+    }
+
+    // Legacy fallback: name-suffix heuristic for pre-creative-naming programs
     return new Set(
       routines
         .filter(r => {

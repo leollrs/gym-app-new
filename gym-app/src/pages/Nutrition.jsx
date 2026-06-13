@@ -1637,24 +1637,15 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
   const [pace, setPace] = useState(1.0);
   const [activity, setActivity] = useState('moderate');
 
-  // Auto-calculate from selections
-  const bmr = 1700;
-  const activityMult = { sedentary: 1.2, light: 1.375, moderate: 1.55, high: 1.725 }[activity];
-  const tdee = Math.round(bmr * activityMult);
-  const deficit = goalType === 'cut' ? -pace * 500 : goalType === 'bulk' ? pace * 400 : 0;
-  const autoKcal = Math.round(tdee + deficit);
-  const autoProtein = Math.round(autoKcal * (goalType === 'cut' ? 0.35 : 0.3) / 4);
-  const autoFat = Math.round(autoKcal * 0.28 / 9);
-  const autoCarbs = Math.round((autoKcal - autoProtein * 4 - autoFat * 9) / 4);
+  const kcal = parseInt(draft.daily_calories) || 2000;
+  const protein = parseInt(draft.daily_protein_g) || 150;
+  const carbs = parseInt(draft.daily_carbs_g) || 200;
+  const fat = parseInt(draft.daily_fat_g) || 65;
 
-  const kcal = parseInt(draft.daily_calories) || autoKcal;
-  const protein = parseInt(draft.daily_protein_g) || autoProtein;
-  const carbs = parseInt(draft.daily_carbs_g) || autoCarbs;
-  const fat = parseInt(draft.daily_fat_g) || autoFat;
-
-  // Apply auto on goal/pace/activity change
+  // Apply auto on goal/pace/activity change — delegate to parent which uses
+  // calculateMacros with the user's real Mifflin-St Jeor metrics.
   useEffect(() => {
-    if (open) setDraft({ daily_calories: autoKcal, daily_protein_g: autoProtein, daily_carbs_g: autoCarbs, daily_fat_g: autoFat });
+    if (open) onAutoCalculate?.();
   }, [goalType, pace, activity, open]);
 
   if (!open) return null;
@@ -1900,15 +1891,26 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
   return (
     <div className="mx-4 mb-6">
       {/* Header */}
-      <div className="flex items-baseline justify-between mb-4">
+      <div className="flex items-center justify-between mb-4">
         <div style={{ fontFamily: TU.display, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>
           {t('nutrition.dailySuggestion')}
         </div>
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold uppercase"
-          style={{ background: `${TU.coach}15`, color: TU.coach, letterSpacing: 0.5 }}>
-          <Sparkles size={11} style={{ color: TU.coach }} />
-          AI
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRegenerate}
+            aria-label={t('nutrition.refreshSuggestion', 'Refresh suggestion')}
+            className="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-transform"
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+          >
+            <RefreshCw size={13} style={{ color: 'var(--color-text-muted)' }} />
+          </button>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold uppercase"
+            style={{ background: `${TU.coach}15`, color: TU.coach, letterSpacing: 0.5 }}>
+            <Sparkles size={11} style={{ color: TU.coach }} />
+            AI
+          </span>
+        </div>
       </div>
 
       {/* Single suggestion card (show 1 at a time) */}

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Target, Plus, Trophy, Dumbbell, Scale, Flame, TrendingUp,
   Calendar, Check, X, Zap, Activity, Search,
-  Pencil, Trash2, AlertTriangle,
+  Pencil, Trash2, AlertTriangle, ChevronDown,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import logger from '../lib/logger';
@@ -170,6 +170,9 @@ export default function GoalsSection() {
   const [showModal, setShowModal] = useState(false);
   const [editGoal, setEditGoal] = useState(null);
   const [celebrateGoal, setCelebrateGoal] = useState(null);
+  // Past completed goals live behind a collapsible "Completed" section so they
+  // don't clutter the active grid (they used to render inline forever).
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const loadGoals = async () => {
     if (!user?.id) { setLoading(false); return; }
@@ -274,14 +277,51 @@ export default function GoalsSection() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
-          {activeGoals.map(goal => (
-            <GoalCard key={goal.id} goal={goal} onTap={handleGoalTap} />
-          ))}
-          {achievedGoals.map(goal => (
-            <GoalCard key={goal.id} goal={goal} onTap={handleGoalTap} />
-          ))}
-        </div>
+        <>
+          {/* Active goals */}
+          {activeGoals.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3">
+              {activeGoals.map(goal => (
+                <GoalCard key={goal.id} goal={goal} onTap={handleGoalTap} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[18px] px-4 py-3.5 text-center" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border, ' + OB_LINE + ')' }}>
+              <p className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                {t('goals.noActiveGoals', 'No active goals — add one to keep the momentum.')}
+              </p>
+            </div>
+          )}
+
+          {/* Completed goals — collapsed behind a toggle so they don't clutter
+              the active grid but stay viewable as a history. */}
+          {achievedGoals.length > 0 && (
+            <div className="mt-1">
+              <button
+                type="button"
+                onClick={() => setShowCompleted(s => !s)}
+                aria-expanded={showCompleted}
+                className="w-full flex items-center justify-between px-1 py-1.5"
+              >
+                <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                  <Check size={13} strokeWidth={2.6} style={{ color: 'var(--color-success, #10B981)' }} />
+                  {t('goals.completed', 'Completed')}
+                  <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-success, #10B981) 16%, transparent)', color: 'var(--color-success, #10B981)' }}>
+                    {achievedGoals.length}
+                  </span>
+                </span>
+                <ChevronDown size={16} className={`transition-transform duration-200 ${showCompleted ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-subtle)' }} />
+              </button>
+              {showCompleted && (
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  {achievedGoals.map(goal => (
+                    <GoalCard key={goal.id} goal={goal} onTap={handleGoalTap} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <Confetti active={!!celebrateGoal} particleCount={80} duration={2500} />
@@ -294,12 +334,12 @@ export default function GoalsSection() {
         >
           <div
             className="rounded-3xl p-8 flex flex-col items-center gap-4 max-w-[280px] mx-4 animate-fade-in"
-            style={{ background: 'var(--color-bg-card)', border: '1px solid ' + OB_LINE }}
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border, ' + OB_LINE + ')' }}
             onClick={e => e.stopPropagation()}
           >
             <div
               className="w-16 h-16 rounded-full flex items-center justify-center"
-              style={{ background: OB_TEAL_SOFT, boxShadow: '0 0 40px ' + OB_TEAL_SOFT }}
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, var(--color-bg-card))', boxShadow: '0 0 40px color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
             >
               <Trophy size={32} style={{ color: OB_TEAL_DEEP }} />
             </div>
@@ -724,7 +764,7 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
           {dateWarning && (
             <div
               style={{
-                background: OB_ORANGE_SOFT,
+                background: 'color-mix(in srgb, #FF5A2E 12%, var(--color-bg-card))',
                 border: '1px solid ' + OB_ORANGE + '33',
                 borderRadius: 14,
                 padding: '12px 14px',
@@ -733,10 +773,10 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
               <div className="flex items-start gap-2 mb-2">
                 <AlertTriangle size={14} style={{ color: OB_ORANGE, flexShrink: 0, marginTop: 2 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p className="text-[12px] leading-snug" style={{ color: '#7a2910', fontWeight: 700 }}>
+                  <p className="text-[12px] leading-snug" style={{ color: OB_ORANGE, fontWeight: 700 }}>
                     {t('goals.tooAggressiveTitle', 'That date is too aggressive')}
                   </p>
-                  <p className="text-[11px] leading-relaxed mt-1" style={{ color: '#7a2910', fontWeight: 500 }}>
+                  <p className="text-[11px] leading-relaxed mt-1" style={{ color: 'var(--color-text-muted)', fontWeight: 500 }}>
                     {t('goals.suggestRealistic', {
                       date: dateWarning.suggestedLabel,
                       defaultValue: 'Realistic target: {{date}}',
@@ -771,15 +811,15 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
 
       {/* Delete confirm */}
       {confirmDelete && (
-        <div className="mb-4 animate-fade-in" style={{ background: OB_ORANGE_SOFT, border: '1px solid ' + OB_ORANGE + '33', borderRadius: 16, padding: 14 }}>
-          <p className="text-[13px] font-bold mb-3" style={{ color: '#7a2910', fontFamily: OB_DISPLAY }}>
+        <div className="mb-4 animate-fade-in" style={{ background: 'color-mix(in srgb, #FF5A2E 12%, var(--color-bg-card))', border: '1px solid ' + OB_ORANGE + '33', borderRadius: 16, padding: 14 }}>
+          <p className="text-[13px] font-bold mb-3" style={{ color: OB_ORANGE, fontFamily: OB_DISPLAY }}>
             {t('goals.confirmDelete', 'Delete this goal? This cannot be undone.')}
           </p>
           <div className="flex gap-2">
             <button
               onClick={() => setConfirmDelete(false)}
               className="flex-1 transition-colors"
-              style={{ height: 42, borderRadius: 999, background: 'transparent', border: '1px solid ' + OB_LINE_STRONG, fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 13, color: 'var(--color-text-primary)' }}
+              style={{ height: 42, borderRadius: 999, background: 'var(--color-bg-hover)', border: '1px solid ' + OB_ORANGE + '44', fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 13, color: 'var(--color-text-primary)' }}
             >
               {t('goals.cancel')}
             </button>
@@ -819,8 +859,8 @@ function GoalDetailModal({ goal, onClose, onDelete, onUpdate, fitnessLevel }) {
                 className="flex-1 transition-colors"
                 style={{
                   height: 54, borderRadius: 999,
-                  background: saving || !targetValue || !title.trim() ? OB_TEAL_SOFT : OB_TEAL,
-                  color: saving || !targetValue || !title.trim() ? OB_SUB : '#0A2A2A',
+                  background: saving || !targetValue || !title.trim() ? 'color-mix(in srgb, var(--color-accent) 25%, var(--color-bg-card))' : OB_TEAL,
+                  color: saving || !targetValue || !title.trim() ? 'var(--color-text-muted)' : '#0A2A2A',
                   fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 15,
                 }}
               >
@@ -1226,7 +1266,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
                 />
               </div>
               {selectedExercise ? (
-                <div className="flex items-center gap-2" style={{ background: OB_TEAL_SOFT, border: '1px solid ' + OB_TEAL + '55', borderRadius: 14, padding: '10px 14px' }}>
+                <div className="flex items-center gap-2" style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, var(--color-bg-card))', border: '1px solid ' + OB_TEAL + '55', borderRadius: 14, padding: '10px 14px' }}>
                   <Check size={14} style={{ color: OB_TEAL_DEEP }} strokeWidth={2.6} />
                   <span className="text-[13px] font-bold" style={{ color: OB_TEAL_DEEP, fontFamily: OB_DISPLAY }}>{exName(selectedExercise)}</span>
                   {selectedExercise.muscle_group && (
@@ -1237,7 +1277,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
                   </button>
                 </div>
               ) : (
-                <div className="max-h-[200px] overflow-y-auto" style={{ background: 'var(--color-bg-input, var(--color-surface-hover, rgba(0,0,0,0.03)))', borderRadius: 14, border: '1px solid ' + OB_LINE }}>
+                <div className="max-h-[200px] overflow-y-auto" style={{ background: 'var(--color-bg-input, var(--color-surface-hover, rgba(0,0,0,0.03)))', borderRadius: 14, border: '1px solid var(--color-border, ' + OB_LINE + ')' }}>
                   {loadingExercises ? (
                     <div className="px-4 py-3 text-[12px] text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('goals.loading')}</div>
                   ) : exercises.length === 0 ? (
@@ -1248,7 +1288,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
                         key={ex.id}
                         onClick={() => { setExerciseId(ex.id); setSelectedExercise(ex); setSearchQuery(exName(ex)); }}
                         className="w-full text-left px-4 py-2.5 text-[13px] transition-colors flex items-center justify-between"
-                        style={{ color: 'var(--color-text-primary)', borderBottom: '1px solid ' + OB_LINE }}
+                        style={{ color: 'var(--color-text-primary)', borderBottom: '1px solid var(--color-border, ' + OB_LINE + ')' }}
                       >
                         <div className="flex flex-col min-w-0">
                           <span className="truncate font-semibold">{exName(ex)}</span>
@@ -1297,7 +1337,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
               {dateIsSuggested && targetDate && (
                 <span
                   className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: OB_TEAL_SOFT, color: OB_TEAL_DEEP, letterSpacing: 0.3, marginBottom: 8 }}
+                  style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, var(--color-bg-card))', color: 'var(--color-accent)', letterSpacing: 0.3, marginBottom: 8 }}
                 >
                   {t('goals.suggestedChip', 'Sugerido')}
                 </span>
@@ -1319,7 +1359,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
               <div
                 className="mt-2"
                 style={{
-                  background: OB_ORANGE_SOFT,
+                  background: 'color-mix(in srgb, #FF5A2E 12%, var(--color-bg-card))',
                   border: '1px solid ' + OB_ORANGE + '33',
                   borderRadius: 14,
                   padding: '12px 14px',
@@ -1328,10 +1368,10 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
                 <div className="flex items-start gap-2 mb-2">
                   <AlertTriangle size={14} style={{ color: OB_ORANGE, flexShrink: 0, marginTop: 2 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p className="text-[12px] leading-snug" style={{ color: '#7a2910', fontWeight: 700 }}>
+                    <p className="text-[12px] leading-snug" style={{ color: OB_ORANGE, fontWeight: 700 }}>
                       {t('goals.tooAggressiveTitle', 'That date is too aggressive')}
                     </p>
-                    <p className="text-[11px] leading-relaxed mt-1" style={{ color: '#7a2910', fontWeight: 500 }}>
+                    <p className="text-[11px] leading-relaxed mt-1" style={{ color: 'var(--color-text-muted)', fontWeight: 500 }}>
                       {t('goals.suggestRealistic', {
                         date: dateWarning.suggestedLabel,
                         defaultValue: 'Realistic target: {{date}}',
@@ -1397,8 +1437,8 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
               className="flex-1 transition-colors"
               style={{
                 height: 54, borderRadius: 999,
-                background: saving || !canSave ? OB_TEAL_SOFT : OB_TEAL,
-                color: saving || !canSave ? OB_SUB : '#0A2A2A',
+                background: saving || !canSave ? 'color-mix(in srgb, var(--color-accent) 25%, var(--color-bg-card))' : OB_TEAL,
+                color: saving || !canSave ? 'var(--color-text-muted)' : '#0A2A2A',
                 fontFamily: OB_DISPLAY, fontWeight: 800, fontSize: 15,
               }}
             >

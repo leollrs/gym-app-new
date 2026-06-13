@@ -33,6 +33,7 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
   const { showToast } = useToast();
   const [profileData, setProfileData] = useState(null);
   const [stats, setStats]             = useState({ workouts: 0, streak: 0, prs: 0 });
+  const [statsAvailable, setStatsAvailable] = useState(false);
   const [latestAchievement, setLatestAchievement] = useState(null);
   const [loading, setLoading]         = useState(true);
   const [visible, setVisible]         = useState(false);
@@ -101,11 +102,24 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
 
     const fetchData = async () => {
       setLoading(true);
+      setStatsAvailable(false);
 
       const { data, error } = await supabase.rpc('get_profile_preview', { p_user_id: userId });
 
       if (cancelled) return;
       if (error || !data?.profile) {
+        // RPC blocked (e.g. a private profile we're not yet allowed to fully
+        // view, pre-0562) or failed. Fall back to the same-gym safe view so the
+        // friend's name + avatar still render instead of an empty "Member" card.
+        // Stats stay hidden (—) until get_profile_preview can return them.
+        const { data: safe } = await supabase
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url, avatar_type, avatar_value, created_at')
+          .eq('id', userId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (safe) setProfileData(safe);
+        setLatestAchievement(null);
         setLoading(false);
         return;
       }
@@ -117,6 +131,7 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
         streak:   data.streak ?? 0,
         prs:      data.prs ?? 0,
       });
+      setStatsAvailable(true);
 
       if (data.latest_achievement) {
         const def = ACHIEVEMENT_DEFS.find(a => a.key === data.latest_achievement);
@@ -298,15 +313,15 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
             {/* Quick stats */}
             <div className="grid grid-cols-3 gap-3 mb-5">
               <div className="text-center py-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
-                <p className="text-[18px] font-black leading-none" style={{ color: 'var(--color-text-primary)' }}>{stats.workouts}</p>
+                <p className="text-[18px] font-black leading-none" style={{ color: 'var(--color-text-primary)' }}>{statsAvailable ? stats.workouts : '—'}</p>
                 <p className="text-[11px] mt-1.5 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('profile.preview.workouts')}</p>
               </div>
               <div className="text-center py-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
-                <p className="text-[18px] font-black text-[#D4AF37] leading-none">{stats.streak}</p>
+                <p className="text-[18px] font-black text-[#D4AF37] leading-none">{statsAvailable ? stats.streak : '—'}</p>
                 <p className="text-[11px] mt-1.5 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('profile.preview.streak')}</p>
               </div>
               <div className="text-center py-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
-                <p className="text-[18px] font-black leading-none" style={{ color: 'var(--color-text-primary)' }}>{stats.prs}</p>
+                <p className="text-[18px] font-black leading-none" style={{ color: 'var(--color-text-primary)' }}>{statsAvailable ? stats.prs : '—'}</p>
                 <p className="text-[11px] mt-1.5 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('profile.preview.prs')}</p>
               </div>
             </div>

@@ -28,6 +28,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { RefreshCw, AlertTriangle, X } from 'lucide-react';
 import { resetAppCaches } from '../lib/resetAppCaches';
+import { useTranslation } from 'react-i18next';
 
 const STUCK_THRESHOLD_MS = 10_000;
 const POLL_INTERVAL_MS = 1_500;
@@ -94,6 +95,7 @@ export default function StuckLoadingRecovery() {
   const [dismissed, setDismissed] = useState(false);
   const [autoRecovering, setAutoRecovering] = useState(false);
   const handledRef = useRef(false);
+  const { t } = useTranslation('pages');
 
   const handleReset = useCallback(async () => {
     setResetting(true);
@@ -202,10 +204,10 @@ export default function StuckLoadingRecovery() {
       >
         <RefreshCw size={28} className="animate-spin" style={{ color: '#D4AF37' }} />
         <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#FFFFFF' }}>
-          Reiniciando la app…
+          {t('stuckLoading.resetting', 'Restarting the app…')}
         </p>
         <p style={{ margin: 0, fontSize: 12, color: '#9CA3AF', maxWidth: 280, lineHeight: 1.4 }}>
-          Limpiando la caché y volviendo a cargar. Tu sesión se mantiene.
+          {t('stuckLoading.cacheClearing', 'Clearing cache and reloading. Your session is kept.')}
         </p>
       </div>
     );
@@ -263,10 +265,10 @@ export default function StuckLoadingRecovery() {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#FFFFFF' }}>
-            ¿La app se quedó cargando?
+            {t('stuckLoading.heading', 'App stuck loading?')}
           </p>
           <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#9CA3AF', lineHeight: 1.35 }}>
-            Limpia la caché y vuelve a cargar. Tu sesión se mantiene.
+            {t('stuckLoading.body', 'Clear the cache and reload. Your session is kept.')}
           </p>
         </div>
         <button
@@ -290,12 +292,12 @@ export default function StuckLoadingRecovery() {
           }}
         >
           <RefreshCw size={13} className={resetting ? 'animate-spin' : ''} />
-          {resetting ? 'Limpiando…' : 'Restablecer'}
+          {resetting ? t('stuckLoading.resettingBtn', 'Clearing…') : t('stuckLoading.reset', 'Reset')}
         </button>
         <button
           type="button"
           onClick={() => setDismissed(true)}
-          aria-label="Cerrar"
+          aria-label={t('stuckLoading.close', 'Close')}
           style={{
             background: 'transparent',
             color: '#9CA3AF',

@@ -1081,16 +1081,17 @@ export default function Classes() {
     setActionLoading(bookingId);
     const { data, error } = await supabase.rpc('checkin_class', { p_booking_id: bookingId });
     if (!error) posthogClient?.capture('class_checked_in');
-    setActionLoading(null);
 
     if (error) {
+      setActionLoading(null);
       console.error('[Classes] checkin_class failed:', error);
       setToast({ msg: t('classes.checkinFailed', "Couldn't check you in. Try again."), type: 'error' });
       return;
     }
 
     setToast({ msg: t('classes.checkedIn'), type: 'success' });
-    reloadActive();
+    await reloadActive();
+    setActionLoading(null);
 
     if (data?.has_template) {
       // Class has a workout template — ask member if they want to track it

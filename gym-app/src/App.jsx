@@ -805,7 +805,11 @@ const ProtectedRoute = ({ children }) => {
   if (!Array.isArray(availableRoles) || availableRoles.length === 0) return <LoadingScreen />;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
-  // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
+  // Age gate (App Store compliance): prompt once for a DOB if none is on file.
+  // DOB is normally collected at signup, so this only ever fires for legacy /
+  // pre-DOB accounts — anyone with a DOB has requiresAgeVerification === false
+  // and is never re-prompted.
+  if (requiresAgeVerification) return <AgeVerificationScreen />;
   // Super admins always go to /platform — they don't have a member
   // experience even if technically `member` is in additional_roles.
   if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
@@ -827,7 +831,9 @@ const OnboardingRoute = ({ children }) => {
   if (!profile) return <ProfileUnavailableScreen />;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
-  // Runtime age gate removed — DOB is collected once at signup, never re-prompted.
+  // Age gate (App Store compliance): prompt once for a DOB if none is on file.
+  // Only fires for legacy / pre-DOB accounts; users with a DOB are never re-prompted.
+  if (requiresAgeVerification) return <AgeVerificationScreen />;
   if (profile.is_onboarded) {
     if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
     if (isAdminView(activeView))      return <Navigate to="/admin" replace />;
@@ -1069,7 +1075,15 @@ const MemberRoutes = () => {
 // handler and the post-login replay so both stay in sync.
 function showAddFriendResult(data, showToast, t) {
   switch (data?.status) {
-    case 'sent':
+    case 'added':
+      showToast(
+        data.name
+          ? t('addFriend.added', { name: data.name, defaultValue: "You're now friends with {{name}}!" })
+          : t('addFriend.addedGeneric', 'Friend added!'),
+        'success'
+      );
+      break;
+    case 'sent': // legacy (pre-0563 RPC returned a pending request)
       showToast(
         data.name
           ? t('addFriend.sent', { name: data.name, defaultValue: 'Friend request sent to {{name}}!' })
@@ -1488,7 +1502,7 @@ function App() {
       deepLinkProcessed.current = true;
       if (user) {
         // Already logged in — invite codes are for new accounts
-        showToast('Invite codes are for new accounts', 'info');
+        showToast(t('inviteForNewAccounts', 'Invite codes are for new accounts'), 'info');
         navigate('/', { replace: true });
       } else {
         // Store code and redirect to signup with pre-filled invite code
@@ -1507,7 +1521,7 @@ function App() {
       deepLinkProcessed.current = true;
       if (user) {
         // User is already logged in — referral codes are for new signups
-        showToast('Referral codes are for new signups', 'info');
+        showToast(t('referralForNewSignups', 'Referral codes are for new signups'), 'info');
         navigate('/', { replace: true });
       } else {
         // Store code and redirect to signup

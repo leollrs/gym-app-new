@@ -17,6 +17,8 @@ import React from 'react';
 import { routeToSvgPoints, formatPace } from '../../lib/gpsTracker';
 import StaticRouteMapImage from './StaticRouteMapImage';
 
+// Brand fonts — embedded into the raster (embeddedFonts.js) so the export
+// matches the preview.
 const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
 const FONT_BODY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
 

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame, Unlink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
+import logger from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { computeSuggestion, computeIntraSessionSuggestion, applyReadinessToSuggestion, epley1RM as engineEpley1RM } from '../lib/overloadEngine';
 import { computeReadiness, exerciseReadiness } from '../lib/readinessEngine';
@@ -59,6 +60,7 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
   const startedAtRef = useRef(Date.now()); // auto-start immediately
   const rafRef = useRef(null);
   const completedRef = useRef(false);
+  const completeTimerRef = useRef(null);
   const lastDisplayedRef = useRef(Math.ceil(durationSec));
 
   // Reset and auto-start on exercise change
@@ -68,7 +70,7 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
     completedRef.current = false;
     startedAtRef.current = Date.now();
     lastDisplayedRef.current = Math.ceil(durationSec);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => { cancelAnimationFrame(rafRef.current); clearTimeout(completeTimerRef.current); };
   }, [durationSec]);
 
   // Drift-free tick — RAF runs every frame, but state only updates when the
@@ -89,12 +91,16 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
         setDone(true);
         // Vibrate + alert
         try { navigator.vibrate?.([200, 100, 200]); } catch {}
+        // Auto-advance to the next warm-up exercise / cooldown stretch (or exit
+        // the phase) after a brief beat so the ✓ is visible. Without this the
+        // countdown just sits at done and the user has to tap to proceed.
+        completeTimerRef.current = setTimeout(() => { onComplete?.(); }, 650);
         return;
       }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => { cancelAnimationFrame(rafRef.current); clearTimeout(completeTimerRef.current); };
   }, [durationSec, onComplete]);
 
   const progress = 1 - (timeLeft / durationSec);
@@ -1073,7 +1079,7 @@ const ActiveSession = () => {
       }
     });
     return unsub;
-  }, [exercises, currentExerciseIndex, loggedSets]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [exercises, currentExerciseIndex, loggedSets, adjustedRestSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── State for empty workout mode (add exercise picker) ────────────────────
   const isEmptyMode = IS_EMPTY_SESSION(id);
@@ -1821,7 +1827,10 @@ const ActiveSession = () => {
         exerciseCategory: curEx?.category || curEx?.muscle_group || 'unknown',
         restRemainingSeconds: watchRestRemaining,
       });
-    } catch (e) { /* Live Activity update failed — non-critical */ }
+    } catch (e) {
+      // Live Activity update failed — fall back to persistent notification
+      updateWorkoutNotification(cs, ts);
+    }
   }, [loggedSets, dataLoading, isResting, restTimer, currentExerciseIndex, isPaused, skippedExerciseIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Session timer — pauses when isPaused, drift-free via Date.now() ─────────
@@ -2090,6 +2099,7 @@ const ActiveSession = () => {
     if (restTimer <= 0) {
       setIsResting(false);
       restStartedAt.current = null;
+      restNotificationScheduled.current = false; // allow next rest to schedule
       try { localStorage.removeItem(restStateKey); } catch { }
       // Haptic feedback when rest completes (vibration pattern: buzz-pause-buzz-pause-buzz)
       try { navigator.vibrate?.([200, 100, 200, 100, 200]); } catch { }
@@ -2782,6 +2792,18 @@ const ActiveSession = () => {
       // client-side fallback formula.
       const { data: result, error: rpcError } = await supabase.rpc('complete_workout_v2', { p_payload: payload });
       if (rpcError) throw rpcError;
+
+      // Persist the post-workout "how did it feel?" rating (1-5) collected in
+      // the finish modal. Deliberately kept OFF the critical complete_workout_v2
+      // RPC — a non-blocking follow-up update on the freshly-created session row
+      // so it can never delay or fail the completion itself. (Needs migration
+      // 0561: workout_sessions.rating.)
+      if (sessionRating != null && result?.session_id) {
+        supabase.from('workout_sessions')
+          .update({ rating: sessionRating })
+          .eq('id', result.session_id)
+          .then(({ error }) => { if (error) logger.warn('session rating update failed', error.message); });
+      }
 
       // Bust the dashboard's cached state so the fresh data shows up
       // immediately when the user navigates back. Without this, the stale

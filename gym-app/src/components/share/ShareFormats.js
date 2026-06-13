@@ -14,6 +14,9 @@ export const ShareExportSizes = {
   portrait: { w: 1080, h: 1350 },
 };
 
+// Brand fonts for the cards. These render in the on-screen preview via the
+// Google-CDN @font-face, and in the EXPORT via the base64 @font-face embedded
+// at raster time (see embeddedFonts.js + rasterizeNode) — so preview === upload.
 export const TuFont = {
   display: '"Familjen Grotesk", "Archivo", system-ui, sans-serif',
   body: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',

@@ -278,29 +278,7 @@ export default function FriendsPanel({ userId, gymId, gymName, friendships, load
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
-          {/* Share my code — let a friend add you back */}
-          <div className="rounded-2xl p-4" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-            <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('social.myFriendCode', 'Your friend code')}</p>
-            <div className="flex items-center gap-2.5">
-              <div
-                className="flex-1 px-3 py-2.5 rounded-xl text-center font-mono text-[15px] font-extrabold tracking-[2px] truncate"
-                style={{ background: 'color-mix(in srgb, var(--color-text-primary) 6%, transparent)', border: '1.5px dashed var(--color-border-strong)', color: 'var(--color-text-primary)' }}
-              >
-                {friendCode || '········'}
-              </div>
-              <button
-                type="button"
-                onClick={handleShareMyCode}
-                disabled={!friendCode}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-bold active:scale-95 transition-all flex-shrink-0 disabled:opacity-40 bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] hover:opacity-90"
-              >
-                <Share2 size={15} strokeWidth={2.4} /> {codeShared ? t('social.linkCopied', 'Link copied!') : t('social.shareMyCode', 'Share')}
-              </button>
-            </div>
-            <p className="text-[12px] mt-2" style={{ color: 'var(--color-text-muted)' }}>{t('social.shareMyCodeDesc', 'Send a friend your link so they can add you back')}</p>
-          </div>
-
-          {/* Add Friends — search same-gym members only */}
+          {/* Add Friends — search same-gym members; share-me link sits beside the bar */}
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('social.addFriends')}</p>
             <p className="text-[12px] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('social.searchMembers')}</p>
@@ -310,17 +288,30 @@ export default function FriendsPanel({ userId, gymId, gymName, friendships, load
               </div>
             ) : (
               <>
-                <div className="relative">
-                  <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-subtle)' }} />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={t('social.searchPlaceholder')}
-                    aria-label={t('social.addFriends')}
-                    className="w-full rounded-xl border border-white/[0.06] pl-11 pr-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
-                    style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-subtle)' }} />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder={t('social.searchPlaceholder')}
+                      aria-label={t('social.addFriends')}
+                      className="w-full rounded-xl border border-white/[0.06] pl-11 pr-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                      style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
+                    />
+                  </div>
+                  {/* Share your add-me link — compact, beside the bar. No code is shown
+                      because there's nowhere to type one in; the link/QR is the entry point. */}
+                  <button
+                    type="button"
+                    onClick={handleShareMyCode}
+                    disabled={!friendCode}
+                    aria-label={t('social.shareMyCodeDesc', 'Send a friend your link so they can add you back')}
+                    className="flex items-center gap-1.5 px-3.5 py-3 rounded-xl text-[13px] font-bold active:scale-95 transition-all flex-shrink-0 disabled:opacity-40 bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] hover:opacity-90"
+                  >
+                    <Share2 size={15} strokeWidth={2.4} /> {codeShared ? t('social.linkCopied', 'Link copied!') : t('social.shareMyCode', 'Share')}
+                  </button>
                 </div>
                 {searching && (
                   <div className="mt-3 flex justify-center py-4" role="status" aria-busy={true} aria-label={t('social.searching', 'Searching')}>

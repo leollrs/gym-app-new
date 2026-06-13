@@ -308,18 +308,18 @@ const ExpandedListRow = React.memo(function ExpandedListRow({ index, style, entr
       {/* Rank number */}
       <span style={{ width: 28, textAlign: 'center', fontFamily: DISPLAY_FONT, fontSize: 13, fontWeight: 800, color: 'var(--color-text-primary)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{rank}</span>
       {/* Avatar */}
-      <div style={{ width: 36, height: 36, borderRadius: 999, marginLeft: 10, marginRight: 10, flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: rank <= 3 ? ['#F59E0B','#6B7280','#2EC4C4'][rank-1] : 'var(--color-bg-elevated, var(--color-bg-card))' }}>
+      <div style={{ width: 36, height: 36, borderRadius: 999, marginLeft: 10, marginRight: 10, flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: rank <= 3 ? ['#FFD166','var(--color-border-strong, #888)','#CD7F32'][rank-1] : 'var(--color-bg-elevated, var(--color-bg-card))' }}>
         {entry.avatar ? (
           <img src={entry.avatar} alt={entry.name || t('leaderboard.userAvatar', { defaultValue: 'User avatar' })} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
-          <span style={{ fontSize: 13, fontWeight: 700, color: rank <= 3 ? '#fff' : 'var(--color-text-muted)' }}>{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: rank === 1 ? '#1D1D1F' : rank <= 3 ? '#fff' : 'var(--color-text-muted)' }}>{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
         )}
       </div>
       {/* Name */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {isMe ? t('leaderboard.you') : entry.name}
-          {isMe && <span style={{ fontSize: 10, fontWeight: 800, color: ACCENT, letterSpacing: 0.8, marginLeft: 6 }}>YOU</span>}
+          {isMe && <span style={{ fontSize: 10, fontWeight: 800, color: ACCENT, letterSpacing: 0.8, marginLeft: 6 }}>{t('leaderboard.you')}</span>}
         </p>
         {isConsistency && entry.actual_days != null && (
           <p style={{ fontSize: 10, color: 'var(--color-text-subtle)' }}>{t('leaderboard.ofDays', { actual: entry.actual_days, planned: entry.planned_days })}</p>
@@ -338,8 +338,10 @@ const ExpandedListRow = React.memo(function ExpandedListRow({ index, style, entr
           is in flight (or already pending from earlier in the session); a
           swords icon for accepted friends (challenge); a UserPlus icon to
           send a new friend request. The pending state is intentionally wider
-          than the icon-only buttons so the localized label fits. */}
-      {!isMe && canChallenge && (
+          than the icon-only buttons so the localized label fits.
+          Anonymized (non-friend) rows show no action — you can't add someone
+          you can't see; friends are never anonymized so they keep Challenge. */}
+      {!isMe && canChallenge && !entry.anon && (
         isPending && !isFriend ? (
           <span
             aria-label={t('leaderboard.friendRequestPending', 'Pending')}
@@ -643,6 +645,37 @@ const Leaderboard = ({ embedded = false }) => {
   const streakEntries   = useMemo(() => normalizeStreak(streak.data), [streak.data]);
   const exStreakEntries  = useMemo(() => normalizeStreak(exStreak.data), [exStreak.data]);
 
+  // ── Privacy: reveal identity only for the viewer + their friends ──────────
+  // The leaderboard RPCs return every gym member's real name + avatar, but a
+  // member should only RECOGNIZE themselves and their friends — everyone else
+  // shows as an anonymous "Member" (their rank + score stay visible so the
+  // ranking is intact). Applied to the DATA so every surface — podium, preview
+  // cards, expanded list — is consistent. friendIds may still be empty on first
+  // paint; friends reveal automatically once it loads (it's in the deps).
+  const anonymize = useCallback((entries) => {
+    if (!Array.isArray(entries)) return entries;
+    return entries.map((e) =>
+      (e && (e.id === uid || friendIds.has(e.id)))
+        ? e
+        : { ...e, name: t('leaderboard.anonMember', 'Member'), avatar: null, username: null, anon: true }
+    );
+  }, [uid, friendIds, t]);
+
+  const aVolume       = useMemo(() => anonymize(volume.data),       [volume.data, anonymize]);
+  const aWorkouts     = useMemo(() => anonymize(workouts.data),     [workouts.data, anonymize]);
+  const aImproved     = useMemo(() => anonymize(improved.data),     [improved.data, anonymize]);
+  const aConsistency  = useMemo(() => anonymize(consistency.data),  [consistency.data, anonymize]);
+  const aPrs          = useMemo(() => anonymize(prs.data),          [prs.data, anonymize]);
+  const aCheckins     = useMemo(() => anonymize(checkins.data),     [checkins.data, anonymize]);
+  const aStreak       = useMemo(() => anonymize(streakEntries),     [streakEntries, anonymize]);
+  const aExVolume      = useMemo(() => anonymize(exVolume.data),      [exVolume.data, anonymize]);
+  const aExWorkouts    = useMemo(() => anonymize(exWorkouts.data),    [exWorkouts.data, anonymize]);
+  const aExImproved    = useMemo(() => anonymize(exImproved.data),    [exImproved.data, anonymize]);
+  const aExConsistency = useMemo(() => anonymize(exConsistency.data), [exConsistency.data, anonymize]);
+  const aExPrs         = useMemo(() => anonymize(exPrs.data),         [exPrs.data, anonymize]);
+  const aExCheckins    = useMemo(() => anonymize(exCheckins.data),    [exCheckins.data, anonymize]);
+  const aExStreak      = useMemo(() => anonymize(exStreakEntries),    [exStreakEntries, anonymize]);
+
   // Find my position in a list
   const findMe = (entries) => {
     if (!entries || !uid) return null;
@@ -663,13 +696,13 @@ const Leaderboard = ({ embedded = false }) => {
   const tUnitDays     = t('leaderboard.units.days', 'days');
   const tUnitPrs      = t('leaderboard.units.PRs', 'PRs');
   const BOARDS = {
-    volume:      { title: t('leaderboard.categories.volume'),       icon: BarChart2,    iconColor: 'var(--color-blue)', unit: tUnitLbs,       data: exVolume.data,         loading: exVolume.isLoading,      times: TIME_OPTIONS },
-    workouts:    { title: t('leaderboard.categories.workouts'),     icon: Dumbbell,     iconColor: '#8B5CF6', unit: tUnitSessions,  data: exWorkouts.data,       loading: exWorkouts.isLoading,    times: TIME_OPTIONS },
-    streak:      { title: t('leaderboard.categories.streak'),       icon: Flame,        iconColor: 'var(--color-danger)', unit: tUnitDays,      data: exStreakEntries,        loading: exStreak.isLoading,      times: [TIME_OPTIONS[2]] },
-    improved:    { title: t('leaderboard.categories.improved'),     icon: TrendingUp,   iconColor: ACCENT,    unit: tUnitLbs,       data: exImproved.data,       loading: exImproved.isLoading,    times: TIME_OPTIONS.slice(0,2), isImproved: true },
-    consistency: { title: t('leaderboard.categories.consistency'),  icon: Target,       iconColor: 'var(--color-warning)', unit: '',          data: exConsistency.data,    loading: exConsistency.isLoading, times: TIME_OPTIONS.slice(0,2), isConsistency: true },
-    prs:         { title: t('leaderboard.categories.prs'),          icon: Trophy,       iconColor: GOLD,      unit: tUnitPrs,       data: exPrs.data,            loading: exPrs.isLoading,         times: TIME_OPTIONS },
-    checkins:    { title: t('leaderboard.categories.checkins'),     icon: MapPin,       iconColor: '#06B6D4', unit: tUnitDays,      data: exCheckins.data,       loading: exCheckins.isLoading,    times: TIME_OPTIONS },
+    volume:      { title: t('leaderboard.categories.volume'),       icon: BarChart2,    iconColor: 'var(--color-blue)', unit: tUnitLbs,       data: aExVolume,         loading: exVolume.isLoading,      times: TIME_OPTIONS },
+    workouts:    { title: t('leaderboard.categories.workouts'),     icon: Dumbbell,     iconColor: '#8B5CF6', unit: tUnitSessions,  data: aExWorkouts,       loading: exWorkouts.isLoading,    times: TIME_OPTIONS },
+    streak:      { title: t('leaderboard.categories.streak'),       icon: Flame,        iconColor: 'var(--color-danger)', unit: tUnitDays,      data: aExStreak,        loading: exStreak.isLoading,      times: [TIME_OPTIONS[2]] },
+    improved:    { title: t('leaderboard.categories.improved'),     icon: TrendingUp,   iconColor: ACCENT,    unit: tUnitLbs,       data: aExImproved,       loading: exImproved.isLoading,    times: TIME_OPTIONS.slice(0,2), isImproved: true },
+    consistency: { title: t('leaderboard.categories.consistency'),  icon: Target,       iconColor: 'var(--color-warning)', unit: '',          data: aExConsistency,    loading: exConsistency.isLoading, times: TIME_OPTIONS.slice(0,2), isConsistency: true },
+    prs:         { title: t('leaderboard.categories.prs'),          icon: Trophy,       iconColor: GOLD,      unit: tUnitPrs,       data: aExPrs,            loading: exPrs.isLoading,         times: TIME_OPTIONS },
+    checkins:    { title: t('leaderboard.categories.checkins'),     icon: MapPin,       iconColor: '#06B6D4', unit: tUnitDays,      data: aExCheckins,       loading: exCheckins.isLoading,    times: TIME_OPTIONS },
   };
 
   const handleExpand = (key) => {
@@ -753,49 +786,49 @@ const Leaderboard = ({ embedded = false }) => {
               title: t('leaderboard.categories.volume', 'Volume'),
               subtitle: t('leaderboard.thisWeek', 'This week'),
               unit: t('leaderboard.units.lbs', 'lbs'),
-              entries: volume.data,
+              entries: aVolume,
             },
             {
               id: 'workouts',
               title: t('leaderboard.categories.workouts', 'Workouts'),
               subtitle: t('leaderboard.thisWeek', 'This week'),
               unit: t('leaderboard.units.sessions', 'sessions'),
-              entries: workouts.data,
+              entries: aWorkouts,
             },
             {
               id: 'improved',
               title: t('leaderboard.categories.improved', 'Most Improved'),
               subtitle: t('leaderboard.thisWeek', 'This week'),
               unit: t('leaderboard.units.lbs', 'lbs'),
-              entries: improved.data,
+              entries: aImproved,
             },
             {
               id: 'consistency',
               title: t('leaderboard.categories.consistency', 'Consistency'),
               subtitle: t('leaderboard.thisWeek', 'This week'),
               unit: '%',
-              entries: consistency.data,
+              entries: aConsistency,
             },
             {
               id: 'streak',
               title: t('leaderboard.categories.streak', 'Streak'),
               subtitle: t('leaderboard.allTime', 'All time'),
               unit: t('leaderboard.units.days', 'days'),
-              entries: streakEntries,
+              entries: aStreak,
             },
             {
               id: 'prs',
               title: t('leaderboard.categories.prs', 'PRs'),
               subtitle: t('leaderboard.thisWeek', 'This week'),
               unit: t('leaderboard.units.prs', 'PRs'),
-              entries: prs.data,
+              entries: aPrs,
             },
             {
               id: 'checkins',
               title: t('leaderboard.categories.checkins', 'Check-ins'),
               subtitle: t('leaderboard.thisWeek', 'This week'),
               unit: t('leaderboard.units.days', 'days'),
-              entries: checkins.data,
+              entries: aCheckins,
             },
           ]}
           shadow={CARD_SHADOW}
@@ -818,38 +851,38 @@ const Leaderboard = ({ embedded = false }) => {
         <div className="space-y-6">
           <CategoryCard
             icon={BarChart2} iconColor="var(--color-blue)" title={t('leaderboard.categories.volume')} subtitle={t('leaderboard.categories.volume_sub')}
-            entries={volume.data} loading={volume.isLoading} userId={uid} unit={tUnitLbs}
-            myEntry={findMe(volume.data)} onExpand={() => handleExpand('volume')} t={t}
+            entries={aVolume} loading={volume.isLoading} userId={uid} unit={tUnitLbs}
+            myEntry={findMe(aVolume)} onExpand={() => handleExpand('volume')} t={t}
           />
           <CategoryCard
             icon={Dumbbell} iconColor="#8B5CF6" title={t('leaderboard.categories.workouts')} subtitle={t('leaderboard.categories.workouts_sub')}
-            entries={workouts.data} loading={workouts.isLoading} userId={uid} unit={tUnitSessions}
-            myEntry={findMe(workouts.data)} onExpand={() => handleExpand('workouts')} t={t}
+            entries={aWorkouts} loading={workouts.isLoading} userId={uid} unit={tUnitSessions}
+            myEntry={findMe(aWorkouts)} onExpand={() => handleExpand('workouts')} t={t}
           />
           <CategoryCard
             icon={TrendingUp} iconColor={ACCENT} title={t('leaderboard.categories.improved')} subtitle={t('leaderboard.categories.improved_sub')}
-            entries={improved.data} loading={improved.isLoading} userId={uid} isImproved unit={tUnitLbs}
-            myEntry={findMe(improved.data)} onExpand={() => handleExpand('improved')} t={t}
+            entries={aImproved} loading={improved.isLoading} userId={uid} isImproved unit={tUnitLbs}
+            myEntry={findMe(aImproved)} onExpand={() => handleExpand('improved')} t={t}
           />
           <CategoryCard
             icon={Target} iconColor="var(--color-warning)" title={t('leaderboard.categories.consistency')} subtitle={t('leaderboard.categories.consistency_sub')}
-            entries={consistency.data} loading={consistency.isLoading} userId={uid} isConsistency
-            myEntry={findMe(consistency.data)} onExpand={() => handleExpand('consistency')} t={t}
+            entries={aConsistency} loading={consistency.isLoading} userId={uid} isConsistency
+            myEntry={findMe(aConsistency)} onExpand={() => handleExpand('consistency')} t={t}
           />
           <CategoryCard
             icon={Flame} iconColor="var(--color-danger)" title={t('leaderboard.categories.streak')} subtitle={t('leaderboard.categories.streak_sub')}
-            entries={streakEntries} loading={streak.isLoading} userId={uid} unit={tUnitDays}
-            myEntry={findMe(streakEntries)} onExpand={() => handleExpand('streak')} t={t}
+            entries={aStreak} loading={streak.isLoading} userId={uid} unit={tUnitDays}
+            myEntry={findMe(aStreak)} onExpand={() => handleExpand('streak')} t={t}
           />
           <CategoryCard
             icon={Trophy} iconColor={GOLD} title={t('leaderboard.categories.prs')} subtitle={t('leaderboard.categories.prs_sub')}
-            entries={prs.data} loading={prs.isLoading} userId={uid} unit={tUnitPrs}
-            myEntry={findMe(prs.data)} onExpand={() => handleExpand('prs')} t={t}
+            entries={aPrs} loading={prs.isLoading} userId={uid} unit={tUnitPrs}
+            myEntry={findMe(aPrs)} onExpand={() => handleExpand('prs')} t={t}
           />
           <CategoryCard
             icon={MapPin} iconColor="#06B6D4" title={t('leaderboard.categories.checkins')} subtitle={t('leaderboard.categories.checkins_sub')}
-            entries={checkins.data} loading={checkins.isLoading} userId={uid} unit={tUnitDays}
-            myEntry={findMe(checkins.data)} onExpand={() => handleExpand('checkins')} t={t}
+            entries={aCheckins} loading={checkins.isLoading} userId={uid} unit={tUnitDays}
+            myEntry={findMe(aCheckins)} onExpand={() => handleExpand('checkins')} t={t}
           />
         </div>
 
@@ -862,13 +895,19 @@ const Leaderboard = ({ embedded = false }) => {
                 {milestones.data.slice(0, 5).map(entry => {
                   const cfg = MILESTONE_CFG[entry.type] ?? { icon: Sparkles, color: ACCENT, label: (d, t) => t('leaderboard.milestone') };
                   const MIcon = cfg.icon;
+                  // Same privacy rule as the boards: only reveal real names for
+                  // yourself + friends. Match on profile_id (the row's `id` is the
+                  // milestone-event PK, NOT the profile UUID, so anonymize() can't
+                  // be reused here).
+                  const isSelfOrFriend = entry.profile_id === uid || friendIds.has(entry.profile_id);
+                  const displayName = isSelfOrFriend ? entry.name : t('leaderboard.anonMember', 'Member');
                   return (
                     <div key={entry.id} className="flex items-center gap-3 py-2.5 last:border-0" style={{ borderBottom: '1px solid var(--color-border, rgba(200,200,200,0.08))' }}>
                       <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `color-mix(in srgb, ${cfg.color} 10%, transparent)` }}>
                         <MIcon size={14} style={{ color: cfg.color }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold text-[var(--color-text-primary)] truncate">{entry.name}</p>
+                        <p className="text-[12px] font-semibold text-[var(--color-text-primary)] truncate">{displayName}</p>
                         <p className="text-[10px] text-[var(--color-text-muted)] truncate">{cfg.label(entry.data ?? {}, t)}</p>
                       </div>
                       <span className="text-[10px] text-[var(--color-text-subtle)] flex-shrink-0">{timeAgoShort(entry.created_at)}</span>
@@ -980,7 +1019,11 @@ const PodiumCarousel = ({ slides, shadow, displayFont, t }) => {
   ];
   const AVATAR_SIZES = [44, 54, 44];
   const RANKS_ORDERED = [2, 1, 3];
-  const AVATAR_COLORS = ['#6B7280', '#F59E0B', '#2EC4C4'];
+  // Brand-aware avatar ring backgrounds for the podium. Order: [2nd, 1st, 3rd]
+  // matching RANKS_ORDERED above. Gold (1st) is intentionally semantic yellow,
+  // not the gym accent — competition gold is universally understood. Silver uses
+  // --color-border-strong to adapt light/dark. Bronze is standard #CD7F32.
+  const AVATAR_COLORS = ['var(--color-border-strong, #888)', '#FFD166', '#CD7F32'];
 
   return (
     <div

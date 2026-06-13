@@ -834,7 +834,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                   {/* Medical disclaimer (Apple 1.4.1) — body fat %, FFMI,
                       BMI, waist-to-hip ratio are health metrics. */}
                   <p className="text-[9px] text-[var(--color-text-muted)] leading-relaxed mt-1.5">
-                    {t('aiConsent.medicalDisclaimer')}
+                    {t('aiConsent.medicalDisclaimer', 'BMI and body-fat estimates are informational only and do not constitute medical advice.')}
                   </p>
                 </div>
               </div>

@@ -496,6 +496,10 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
 
   const handleGenerate = async () => {
     if (!user?.id || !profile?.gym_id) return;
+    if (!result) {
+      setError(t('generateWorkout.generating', 'Generating…'));
+      return;
+    }
     setSaving(true);
     setError('');
     setGymHoursWarnings([]);
@@ -604,6 +608,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
       // Save all routines (A + B sets)
       const allRoutines = [...result.routinesA, ...result.routinesB];
       const savedRoutineAIds = [];
+      const savedRoutineBIds = [];
       // Creative names ("Auto: Apex Build") to match the regenerate path instead
       // of the generator's raw "Auto: Upper A" labels. Cardio routines (no
       // slotsKey) keep their themed names. Variant B's name index is bumped past
@@ -626,8 +631,10 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
           .single();
         if (rErr) throw rErr;
 
-        // Track Week A routine IDs for schedule assignment
-        if (ri < result.routinesA.length) {
+        // Track Week A and Week B routine IDs separately
+        if (isVariantB) {
+          savedRoutineBIds.push(saved.id);
+        } else {
           savedRoutineAIds.push(saved.id);
         }
 
@@ -662,6 +669,18 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
       expiresDate.setDate(expiresDate.getDate() + (form.program_weeks * 7));
       const expiresAt = expiresDate.toISOString().split('T')[0];
 
+      // Build schedule_map matching the personalProgramService structure so
+      // activeProgramRoutineIds, A/B week display, and program name all work.
+      const scheduleMapPayload = {
+        display_name:  result.splitLabel || result.split,
+        routine_ids:   [...savedRoutineAIds, ...savedRoutineBIds],
+        routine_ids_a: savedRoutineAIds,
+        routine_ids_b: savedRoutineBIds,
+        routine_day_map: scheduleDays.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
+        normal_dows:   scheduleDays,
+        start_dow:     new Date().getDay(),
+      };
+
       await supabase.from('generated_programs').insert({
         profile_id:    user.id,
         gym_id:        profile.gym_id,
@@ -672,6 +691,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         routines_a_count: result.routinesA.length,
         cardio_days:   result.cardio,
         template_weeks: result.template_weeks,
+        schedule_map:  scheduleMapPayload,
       });
 
       // Persist the chosen day count + duration to onboarding so a later

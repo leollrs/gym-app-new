@@ -327,6 +327,7 @@ export default function CardioSessionDetail() {
       <ShareCardioSheet
         open={showShare}
         onClose={() => setShowShare(false)}
+        accent={getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#2EC4C4'}
         data={{
           sessionId: session.id,
           cardioType: session.cardio_type,
