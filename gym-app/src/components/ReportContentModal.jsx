@@ -314,8 +314,17 @@ export default function ReportContentModal({
                 type="button"
                 onClick={handleSubmit}
                 disabled={!selected || submitting}
-                className="flex-1 py-3 rounded-[14px] text-[14px] font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ background: 'rgb(220,38,38)' }}
+                className="flex-1 py-3 rounded-[14px] text-[14px] font-semibold transition-colors disabled:cursor-not-allowed"
+                style={(!selected || submitting)
+                  ? {
+                      // Visible-but-inactive (a faded red button blended into the
+                      // light card and read as invisible). Neutral chip until a
+                      // reason is picked.
+                      background: 'var(--color-bg-elevated, rgba(127,127,127,0.14))',
+                      color: 'var(--color-text-subtle)',
+                      border: '1px solid var(--color-border-subtle, rgba(127,127,127,0.14))',
+                    }
+                  : { background: 'rgb(220,38,38)', color: '#fff' }}
               >
                 {submitting
                   ? t('moderation.report.submitting', { defaultValue: 'Submitting…' })
