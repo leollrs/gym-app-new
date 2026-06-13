@@ -94,7 +94,7 @@ const LiveTrainingIndicator = ({ onFriendTap }) => {
     const { data: sessions } = await selectInBatches(
       (ids) => supabase
         .from('workout_sessions')
-        .select('id, profile_id, routine_name, started_at, profiles!inner(full_name, avatar_url)')
+        .select('id, profile_id, name, started_at, profiles!inner(full_name, avatar_url)')
         .in('profile_id', ids)
         .eq('status', 'in_progress')
         .order('started_at', { ascending: false }),
@@ -117,7 +117,7 @@ const LiveTrainingIndicator = ({ onFriendTap }) => {
         session_id: s.id,
         full_name: s.profiles?.full_name,
         avatar_url: s.profiles?.avatar_url,
-        routine_name: s.routine_name ?? null,
+        routine_name: s.name ?? null,
       });
     }
 
