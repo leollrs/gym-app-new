@@ -13093,7 +13093,8 @@
     "save": "Save changes",
     "saving": "Saving…",
     "saved": "Saved",
-    "saveFailed": "Failed to save"
+    "saveFailed": "Failed to save",
+    "ageFromDob": "Calculated from your date of birth"
   },
   "support": {
     "title": "Help & Support",

@@ -45,6 +45,19 @@ function formatDob(iso, lang) {
   }
 }
 
+// Whole-years age from an ISO date of birth. Age is derived from the birthday
+// (never edited directly) so the two can't drift apart.
+function ageFromDob(iso) {
+  if (!iso) return null;
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return null;
+  const today = new Date();
+  let a = today.getFullYear() - dt.getFullYear();
+  const mo = today.getMonth() - dt.getMonth();
+  if (mo < 0 || (mo === 0 && today.getDate() < dt.getDate())) a--;
+  return a >= 0 && a < 150 ? a : null;
+}
+
 function computeAgeFromDob(iso) {
   if (!iso) return NaN;
   const d = new Date(iso);
@@ -224,9 +237,9 @@ export default function PersonalInfo() {
     if (!user?.id) return;
     setSaving(true);
     try {
-      // 1) Identity + units + dob to profiles
+      // 1) Units + dob to profiles. full_name is NOT written — members can't
+      // edit their name (it syncs with the gym's member records).
       const profilePatch = {
-        full_name: fullName.trim() || profile?.full_name || null,
         metric_units: metric,
       };
       if (dob && dob !== profile?.date_of_birth) {
@@ -238,7 +251,9 @@ export default function PersonalInfo() {
       // 2) Body identity to member_onboarding (upsert in case row missing).
       // gym_id is NOT NULL — must be sent or the insert path 23502-errors
       // for users whose onboarding row was never created.
-      const ageN = parseInt(age, 10);
+      // Age is derived from date of birth (members don't set it directly), so
+      // member_onboarding.age stays in sync with the birthday.
+      const ageN = ageFromDob(dob);
       const obRes = await supabase.from('member_onboarding').upsert({
         profile_id: user.id,
         gym_id: profile?.gym_id || null,
@@ -339,12 +354,15 @@ export default function PersonalInfo() {
         ) : (
           <>
             <Field icon={User} label={t('personalInfo.identity', 'Identity')}>
+              {/* Name is read-only — it syncs with the gym's member records, so
+                  it's managed gym-side, not edited by members. */}
               <input
                 type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                value={fullName || profile?.full_name || ''}
+                readOnly
+                aria-readonly="true"
                 placeholder={t('personalInfo.fullName', 'Full name')}
-                style={inputStyle}
+                style={{ ...inputStyle, opacity: 0.6, cursor: 'not-allowed' }}
               />
               <div className="mt-3 flex gap-2">
                 {SEX_OPTIONS.map((opt) => {
@@ -375,16 +393,18 @@ export default function PersonalInfo() {
             </Field>
 
             <Field icon={Cake} label={t('personalInfo.age', 'Age')}>
+              {/* Age is derived from the date of birth below — read-only so the
+                  two can't drift apart. */}
               <input
-                type="number"
-                inputMode="numeric"
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                placeholder="—"
-                min="13"
-                max="100"
-                style={{ ...inputStyle, fontSize: 18 }}
+                type="text"
+                value={ageFromDob(dob) != null ? String(ageFromDob(dob)) : '—'}
+                readOnly
+                aria-readonly="true"
+                style={{ ...inputStyle, fontSize: 18, opacity: 0.6, cursor: 'not-allowed' }}
               />
+              <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>
+                {t('personalInfo.ageFromDob', 'Calculated from your date of birth')}
+              </p>
             </Field>
 
             <Field icon={Gift} label={t('personalInfo.dob', 'Date of birth')}>

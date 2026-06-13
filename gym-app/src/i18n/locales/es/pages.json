@@ -13244,7 +13244,8 @@
     "save": "Guardar cambios",
     "saving": "Guardando…",
     "saved": "Guardado",
-    "saveFailed": "No se pudo guardar"
+    "saveFailed": "No se pudo guardar",
+    "ageFromDob": "Calculada a partir de tu fecha de nacimiento"
   },
   "support": {
     "title": "Ayuda y soporte",

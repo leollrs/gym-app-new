@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "4599", "--directory", "/Users/leollorens/tugympr-site"],
       "port": 4599
+    },
+    {
+      "name": "carousel",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4601", "--directory", "/Users/leollorens/Desktop/TuGymPR-Brand-Hub/Carousel-Blog-Announcement"],
+      "port": 4601
     }
   ]
 }
