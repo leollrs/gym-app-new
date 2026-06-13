@@ -930,6 +930,9 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const FEED_TABS = ['forYou', 'mine'];
   const [tab, setTab]                 = useState('forYou');
   const [friendStreaks, setFriendStreaks] = useState([]);
+  // All accepted friends (resolved via the safe view) for the feed's friend row —
+  // shown regardless of streak, with the streak overlaid as a badge when > 0.
+  const [friendsRow, setFriendsRow] = useState([]);
   const [reportedIds, setReportedIds] = useState(new Set());
   const [hiddenIds, setHiddenIds]     = useState(new Set());
   const [mutedUsers, setMutedUsers]   = useState(() => new Set(getMutedUsers()));
@@ -1013,6 +1016,37 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
       .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
     setFriendships(data ?? []);
   }, [user]);
+
+  // Resolve every accepted friend's name/avatar (safe view — member RLS blocks a
+  // direct profiles read) and overlay their streak. Drives the feed's friend row
+  // so friends ALWAYS appear, even before they've built a streak (get_friend_streaks
+  // only returns streak > 0, which hid brand-new friends entirely).
+  useEffect(() => {
+    if (!user?.id) { setFriendsRow([]); return; }
+    const accepted = friendships.filter(f => f.status === 'accepted');
+    const ids = accepted.map(f => (f.requester_id === user.id ? f.addressee_id : f.requester_id));
+    if (!ids.length) { setFriendsRow([]); return; }
+    let cancelled = false;
+    supabase
+      .from('gym_member_profiles_safe')
+      .select('id, full_name, avatar_url, avatar_type, avatar_value')
+      .in('id', ids)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const streakById = new Map((friendStreaks || []).map(s => [s.id, s.streak]));
+        const rows = (data || []).map(p => ({
+          id: p.id,
+          name: p.full_name,
+          avatar_url: p.avatar_url,
+          avatar_type: p.avatar_type,
+          avatar_value: p.avatar_value,
+          streak: streakById.get(p.id) || 0,
+        }));
+        rows.sort((a, b) => b.streak - a.streak); // streaks first, then the rest
+        setFriendsRow(rows);
+      }, () => {});
+    return () => { cancelled = true; };
+  }, [user?.id, friendships, friendStreaks]);
 
   const PAGE_SIZE = 30;
 
@@ -1622,10 +1656,10 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
         {/* Friends row — quick access (friends list + requests) inline with the
             friend-streak avatars. The big header Friends button is hidden when
             embedded in Community, so the chip lives here as the first item. */}
-        {!hideComposer && (embedded || friendStreaks.length > 0) && (
+        {!hideComposer && (embedded || friendsRow.length > 0) && (
           <div className="mb-6">
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>
-              {friendStreaks.length > 0 ? t('social.friendsStreaks') : t('social.friendsButton')}
+              {t('social.friendsButton')}
             </p>
             <div className="flex overflow-x-auto gap-3 pb-2 scrollbar-hide">
               {embedded && (
@@ -1652,11 +1686,13 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
                   <p className="text-[11px] mt-1.5 truncate w-full text-center font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('social.friendsButton')}</p>
                 </button>
               )}
-              {friendStreaks.map(f => (
-                <button key={f.id} type="button" onClick={() => setPreviewUserId(f.id)} aria-label={`${f.name} - ${t('social.streak', { count: f.streak })}`} className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer" style={{ width: 64 }}>
+              {friendsRow.map(f => (
+                <button key={f.id} type="button" onClick={() => setPreviewUserId(f.id)} aria-label={f.streak > 0 ? `${f.name} - ${t('social.streak', { count: f.streak })}` : (f.name ?? '')} className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer" style={{ width: 64 }}>
                   <Avatar src={f.avatar_url} name={f.name ?? '?'} size={40} avatarType={f.avatar_type} avatarValue={f.avatar_value} />
                   <p className="text-[11px] mt-1.5 truncate w-full text-center" style={{ color: 'var(--color-text-muted)' }}>{(f.name ?? '').split(' ')[0]}</p>
-                  <p className="text-[11px] font-semibold text-[#D4AF37]">{t('social.streak', { count: f.streak })}</p>
+                  {f.streak > 0 && (
+                    <p className="text-[11px] font-semibold text-[#D4AF37]">{t('social.streak', { count: f.streak })}</p>
+                  )}
                 </button>
               ))}
             </div>

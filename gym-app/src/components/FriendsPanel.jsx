@@ -248,14 +248,14 @@ export default function FriendsPanel({ userId, gymId, gymName, friendships, load
   const incomingWithRequester = incoming.map((f) => ({ ...f, requester: requesters[f.requester_id] }));
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label={t('social.friendsButton')}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={t('social.friendsButton')}>
       {/* Scrim — covers the page; tap to close */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Panel — bottom sheet on mobile, centered on desktop */}
+      {/* Panel — centered mid-page card; the body scrolls for long friend lists */}
       <div
-        className="relative w-full sm:max-w-[480px] max-h-[90dvh] sm:max-h-[85vh] flex flex-col rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl"
-        style={{ background: 'var(--color-bg-primary)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        className="relative w-full max-w-[480px] max-h-[85dvh] flex flex-col rounded-3xl overflow-hidden shadow-2xl"
+        style={{ background: 'var(--color-bg-primary)' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
