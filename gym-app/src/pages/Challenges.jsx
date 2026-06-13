@@ -96,7 +96,7 @@ const fetchMemberProfiles = async (profileIds) => {
 };
 
 // ── Participant List (upcoming challenges only) ─────────────
-const ParticipantList = ({ challengeId, t }) => {
+const ParticipantList = ({ challengeId, t, refreshKey }) => {
   const [names, setNames] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -114,7 +114,7 @@ const ParticipantList = ({ challengeId, t }) => {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [challengeId]);
+  }, [challengeId, refreshKey]);
 
   if (loading) return (
     <div className="py-5 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
@@ -424,7 +424,7 @@ const ChallengePodium = ({ entries, unit }) => {
 };
 
 // ── Leaderboard ────────────────────────────────────────────
-const Leaderboard = ({ challenge, gymId, myId, t }) => {
+const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
   const rewards = parseRewards(challenge);
   const hasCustomRewards = challenge.reward_description != null;
   const [entries, setEntries] = useState([]);
@@ -469,7 +469,7 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
       clearTimeout(debounceRef.current);
       supabase.removeChannel(ch);
     };
-  }, [fetch, challenge.id, gymId]);
+  }, [fetch, challenge.id, gymId, refreshKey]);
 
   const unit = t(`challenges.typeUnits.${TYPE_META[challenge.type]?.unitKey ?? challenge.type}`, TYPE_META[challenge.type]?.unitKey ?? '');
   const myRank = entries.findIndex(e => e.id === myId);
@@ -588,7 +588,7 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
 };
 
 // ── Team Leaderboard ──────────────────────────────────────
-const TeamLeaderboard = ({ challenge, gymId, myId, t }) => {
+const TeamLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedTeam, setExpandedTeam] = useState(null);
@@ -610,7 +610,7 @@ const TeamLeaderboard = ({ challenge, gymId, myId, t }) => {
       })
       .subscribe();
     return () => { clearTimeout(debounceRef.current); supabase.removeChannel(ch); };
-  }, [fetchTeams, challenge.id, gymId]);
+  }, [fetchTeams, challenge.id, gymId, refreshKey]);
 
   const myTeam = teams.find(team => team.members?.some(m => m.profile_id === myId));
   const metricLabel = t(`challenges.typeUnits.${challenge.scoring_metric || 'consistency'}`, '');
@@ -702,7 +702,7 @@ const TeamLeaderboard = ({ challenge, gymId, myId, t }) => {
 };
 
 // ── Club / Milestone Leaderboard ──────────────────────────
-const ClubLeaderboard = ({ challenge, gymId, myId, t }) => {
+const ClubLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
   const rewards = parseRewards(challenge);
   const hasCustomRewards = challenge.reward_description != null;
   const [entries, setEntries] = useState([]);
@@ -739,7 +739,7 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t }) => {
       })
       .subscribe();
     return () => { clearTimeout(debounceRef.current); supabase.removeChannel(ch); };
-  }, [fetch, challenge.id, gymId]);
+  }, [fetch, challenge.id, gymId, refreshKey]);
 
   const myEntry = entries.find(e => e.id === myId);
   const myRank = entries.findIndex(e => e.id === myId);
@@ -1430,12 +1430,12 @@ const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, fr
           boxShadow: CARD_SHADOW,
         }}>
           {status === 'upcoming'
-            ? <ParticipantList challengeId={challenge.id} t={t} />
+            ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
             : challenge.type === 'team'
-              ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+              ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
               : challenge.type === 'milestone'
-                ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
-                : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
           }
         </div>
       )}
@@ -1627,12 +1627,12 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
           )}
 
           {status === 'upcoming'
-            ? <ParticipantList challengeId={challenge.id} t={t} />
+            ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
             : challenge.type === 'team'
-              ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+              ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
               : challenge.type === 'milestone'
-                ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
-                : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
           }
         </div>
       )}
@@ -1799,10 +1799,10 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
                   {format(new Date(challenge.start_date), 'MMM d', { locale: dfLocale })} – {format(new Date(challenge.end_date), 'MMM d, yyyy', { locale: dfLocale })}
                 </p>
                 {challenge.type === 'team'
-                  ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                  ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
                   : challenge.type === 'milestone'
-                    ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
-                    : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                    ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                    : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
                 }
                 {/* Everyone who joined but didn't post / DNF teams */}
                 <PastChallengeParticipants challenge={challenge} t={t} />
@@ -1828,12 +1828,12 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
                 {format(new Date(challenge.start_date), 'MMM d', { locale: dfLocale })} – {format(new Date(challenge.end_date), 'MMM d, yyyy', { locale: dfLocale })}
               </p>
               {status === 'upcoming'
-                ? <ParticipantList challengeId={challenge.id} t={t} />
+                ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
                 : challenge.type === 'team'
-                  ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                  ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
                   : challenge.type === 'milestone'
-                    ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
-                    : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                    ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                    : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
               }
             </div>
           </div>
