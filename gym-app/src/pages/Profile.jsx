@@ -53,6 +53,20 @@ const AchievementIcon = ({ name, size = 24, color }) => {
 // honest now that user_achievements also holds custom_<id> keys.
 const HARDCODED_ACHIEVEMENT_KEYS = new Set(ACHIEVEMENT_DEFS.map(d => d.key));
 
+// Format a stored phone (e.g. "+17875551234") for read-only display. +1 numbers
+// get US/PR grouping; other country codes get light spacing; anything unrecognized
+// is shown as-is. Members can't edit their phone in-app (gym-managed), so this is
+// display-only.
+function formatPhoneDisplay(raw) {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  const us = s.match(/^\+1(\d{10})$/);
+  if (us) { const d = us[1]; return `+1 (${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`; }
+  const intl = s.match(/^(\+\d{1,3})(\d{4,})$/);
+  if (intl) return `${intl[1]} ${intl[2].replace(/(\d{3})(?=\d)/g, '$1 ').trim()}`;
+  return s;
+}
+
 // ── Setup option data ─────────────────────────────────────────────────────────
 const FITNESS_LEVELS = [
   { value: 'beginner',     icon: Sprout },
@@ -376,12 +390,6 @@ const Profile = () => {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   // avatarInputRef removed — AvatarPicker handles its own file input
-
-  // Name / username editing state
-  const [editingIdentity, setEditingIdentity] = useState(false);
-  const [identityDraft, setIdentityDraft] = useState({ full_name: '', username: '', phone_number: '' });
-  const [countryCode, setCountryCode] = useState('+1');
-  const [savingIdentity, setSavingIdentity] = useState(false);
 
   // Lock body scroll while Gym Info modal is open
   useEffect(() => {
@@ -744,65 +752,6 @@ const Profile = () => {
 
   // Legacy file-input handler removed — AvatarPicker handles photo uploads directly
 
-  // ── Save name / username ──────────────────────────────────────────────────
-  const saveIdentity = async () => {
-    const trimmedName = identityDraft.full_name.trim();
-
-    if (!trimmedName) {
-      showToast(t('profile.nameEmpty'), 'error');
-      return;
-    }
-
-    setSavingIdentity(true);
-    try {
-      const updatePayload = { full_name: trimmedName };
-      // Normalize whatever the user typed using their chosen country code.
-      // Strip non-digits from both the country code and local number, then
-      // concatenate as +<cc><local>.
-      const phoneRaw = identityDraft.phone_number?.trim() || '';
-      let phone = null;
-      if (phoneRaw) {
-        const cc = (countryCode || '+1').trim();
-        const ccDigits = cc.replace(/\D/g, '');
-        const localDigits = phoneRaw.replace(/\D/g, '');
-        if (!ccDigits) {
-          showToast(t('profile.phoneInvalid', 'Phone number is invalid'), 'error');
-          setSavingIdentity(false);
-          return;
-        }
-        if (localDigits.length < 7) {
-          showToast(t('profile.phoneInvalid', 'Phone number is invalid'), 'error');
-          setSavingIdentity(false);
-          return;
-        }
-        phone = '+' + ccDigits + localDigits;
-      }
-      updatePayload.phone_number = phone;
-
-      const { error } = await supabase
-        .from('profiles')
-        .update(updatePayload)
-        .eq('id', user.id);
-      if (error) {
-        if (error.message?.includes('unique') || error.code === '23505') {
-          showToast(t('profile.usernameTaken'), 'error');
-        } else {
-          logger.error('saveIdentity error:', error);
-          showToast(t('profile.saveFailed') + ': ' + friendlyReason(error), 'error');
-        }
-        return;
-      }
-      refreshProfile();
-      setEditingIdentity(false);
-      showToast(t('profile.saved'), 'success');
-    } catch (err) {
-      logger.error('saveIdentity error:', err);
-      showToast(t('profile.saveFailed') + ': ' + friendlyReason(err), 'error');
-    } finally {
-      setSavingIdentity(false);
-    }
-  };
-
   // ── Share friend link ──────────────────────────────────────────────────────
   const friendLink = friendCode ? `${PROD_WEB_URL}/add-friend/${friendCode}` : '';
 
@@ -873,132 +822,49 @@ const Profile = () => {
               )}
             </button>
 
-            {/* Name / username — view or edit */}
-            {editingIdentity ? (
-              <div className="flex flex-col gap-2 min-w-0 flex-1">
-                <input
-                  id="profile-full-name"
-                  type="text"
-                  value={identityDraft.full_name}
-                  onChange={e => setIdentityDraft(d => ({ ...d, full_name: e.target.value }))}
-                  placeholder={t('profile.fullName', 'Full name')}
-                  aria-label={t('profile.fullName', 'Full name')}
-                  maxLength={80}
-                  className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5 text-[14px] font-bold text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                />
-                <p className="text-[12px] text-[var(--color-text-muted)]">@{profile?.username}</p>
-                {/* Phone — one grouped field: a fixed "+1" country-code segment on the
-                    left, then the full number filling the rest of the row. */}
-                <div className="flex items-stretch w-full rounded-lg overflow-hidden border border-[var(--color-border-subtle)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    value={countryCode}
-                    onChange={e => setCountryCode(e.target.value.replace(/[^+\d]/g, '').slice(0, 4))}
-                    placeholder="+1"
-                    aria-label={t('profile.countryCode', 'Country code')}
-                    className="w-12 flex-shrink-0 bg-[var(--color-bg-elevated)] px-2 py-1.5 text-[14px] font-bold text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none text-center"
-                  />
-                  <span aria-hidden className="w-px self-stretch bg-[var(--color-border-subtle)]" />
-                  <input
-                    type="tel"
-                    inputMode="numeric"
-                    value={identityDraft.phone_number}
-                    onChange={e => setIdentityDraft(d => ({ ...d, phone_number: e.target.value }))}
-                    placeholder="787 555 1234"
-                    aria-label={t('profile.phoneNumber', 'Phone number')}
-                    maxLength={20}
-                    className="flex-1 min-w-0 bg-[var(--color-bg-input)] px-2.5 py-1.5 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none"
-                  />
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <button
-                    type="button"
-                    onClick={saveIdentity}
-                    disabled={savingIdentity}
-                    style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 65%, #000)' }}
-                    className="flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-[12px] font-bold bg-[var(--color-accent)] text-[var(--color-text-on-accent,#000)] border shadow-sm disabled:opacity-50 active:scale-95 transition-transform"
-                  >
-                    {savingIdentity ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} strokeWidth={2.5} />}
-                    {t('profile.save')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingIdentity(false)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-semibold border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-elevated)] transition-colors duration-200"
-                  >
-                    <X size={12} /> {t('profile.cancel')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="min-w-0 flex-1">
-                <h1 className="text-[22px] leading-[1.1] truncate text-[var(--color-text-primary)]" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '-0.5px' }}>
-                  {loading ? '—' : profile?.full_name}
-                </h1>
-                {profile?.username && (
-                  <p className="text-[12px] mt-0.5 text-[var(--color-text-muted)]">@{profile.username}</p>
-                )}
-                {/* Gym pill + tier chip row (Profile A) */}
-                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                  {gymName && (
-                    <span
-                      className="inline-flex items-center gap-1 px-2.5 py-[3px] rounded-full text-[11px] font-extrabold whitespace-nowrap max-w-full"
-                      style={{
-                        background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',
-                        color: 'var(--color-accent)',
-                        letterSpacing: '0.2px',
-                      }}
-                    >
-                      <Dumbbell size={11} strokeWidth={2.4} className="flex-shrink-0" />
-                      <span className="truncate">{gymName}</span>
-                    </span>
-                  )}
+            {/* Name / username / phone — READ-ONLY. Members can't edit their
+                name or phone in-app: those sync with the gym's member records,
+                so they're managed gym-side. Username is display-only too. */}
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[22px] leading-[1.1] truncate text-[var(--color-text-primary)]" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '-0.5px' }}>
+                {loading ? '—' : profile?.full_name}
+              </h1>
+              {profile?.username && (
+                <p className="text-[12px] mt-0.5 text-[var(--color-text-muted)]">@{profile.username}</p>
+              )}
+              {profile?.phone_number && (
+                <p className="text-[12px] mt-0.5 text-[var(--color-text-muted)] truncate">{formatPhoneDisplay(profile.phone_number)}</p>
+              )}
+              {/* Gym pill + tier chip row (Profile A) */}
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                {gymName && (
                   <span
-                    className="inline-flex items-center px-2 py-[3px] rounded-full text-[10px] font-black uppercase whitespace-nowrap"
+                    className="inline-flex items-center gap-1 px-2.5 py-[3px] rounded-full text-[11px] font-extrabold whitespace-nowrap max-w-full"
                     style={{
-                      background: `linear-gradient(180deg, ${tier.color}22 0%, ${tier.color}55 100%)`,
-                      color: tier.color,
-                      letterSpacing: '0.6px',
+                      background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',
+                      color: 'var(--color-accent)',
+                      letterSpacing: '0.2px',
                     }}
                   >
-                    {t(`rewards.tiers.${tier.nameKey}`, tier.name)} · {t('profile.level')} {level}
+                    <Dumbbell size={11} strokeWidth={2.4} className="flex-shrink-0" />
+                    <span className="truncate">{gymName}</span>
                   </span>
-                </div>
+                )}
+                <span
+                  className="inline-flex items-center px-2 py-[3px] rounded-full text-[10px] font-black uppercase whitespace-nowrap"
+                  style={{
+                    background: `linear-gradient(180deg, ${tier.color}22 0%, ${tier.color}55 100%)`,
+                    color: tier.color,
+                    letterSpacing: '0.6px',
+                  }}
+                >
+                  {t(`rewards.tiers.${tier.nameKey}`, tier.name)} · {t('profile.level')} {level}
+                </span>
               </div>
-            )}
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                // Parse existing phone into country code + local digits so the
-                // user can edit either piece independently. "+17875551234" →
-                // cc="+1", local="7875551234". Falls back to "+1" if nothing parses.
-                const existing = profile?.phone_number ?? '';
-                let parsedCc = '+1';
-                let parsedLocal = existing;
-                if (existing.startsWith('+')) {
-                  const m = existing.match(/^(\+\d{1,3})(\d+)$/);
-                  if (m) {
-                    parsedCc = m[1];
-                    parsedLocal = m[2];
-                  }
-                }
-                setCountryCode(parsedCc);
-                setIdentityDraft({
-                  full_name: profile?.full_name ?? '',
-                  username: profile?.username ?? '',
-                  phone_number: parsedLocal,
-                });
-                setEditingIdentity(true);
-              }}
-              className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] transition-colors hover:opacity-80 active:scale-95 bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
-              aria-label={t('profile.editNameUsername', 'Edit name & username')}
-            >
-              <Edit2 size={15} />
-            </button>
             {hasMultipleViews && (
               <button
                 type="button"
