@@ -259,7 +259,15 @@ async function preloadRoutineExercises(routineIds) {
     grouped[row.routine_id].push(row);
   }
   for (const id of uncached) {
-    routineExerciseCache.set(id, grouped[id] || []);
+    const rows = grouped[id];
+    // Only cache routines that actually have exercises. `createRoutine`
+    // refetches the routine list BEFORE the caller inserts its
+    // `routine_exercises`, so a preload triggered in that window fetches an
+    // empty set. Caching that empty would be sticky — we only ever fetch
+    // *uncached* ids — so the preview modal (RoutineDetail) would show "no
+    // exercises" until a page refresh, even though the live session has them.
+    // Skipping empties lets the next read (expand / re-preload) refetch.
+    if (rows && rows.length > 0) routineExerciseCache.set(id, rows);
   }
 }
 
@@ -1125,6 +1133,7 @@ const Workouts = () => {
         target_sets: sets, target_reps: reps, rest_seconds: rest,
       }));
       await supabase.from('routine_exercises').insert(rows);
+      routineExerciseCache.delete(routine.id); // drop any empty cached during the create→insert window
       posthog?.capture('starter_routine_added', { starter: starter.key });
       await refetch();
     } catch (err) {
@@ -1144,6 +1153,7 @@ const Workouts = () => {
         target_sets: ex.sets, target_reps: ex.reps, rest_seconds: ex.restSeconds,
       }));
       await supabase.from('routine_exercises').insert(rows);
+      routineExerciseCache.delete(routine.id); // drop any empty cached during the create→insert window
       refetch();
       navigate(`/session/${routine.id}`);
     } else {
