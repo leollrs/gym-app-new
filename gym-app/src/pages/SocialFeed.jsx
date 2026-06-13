@@ -938,6 +938,26 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const [previewUserId, setPreviewUserId] = useState(null);
   const [reportTarget, setReportTarget] = useState(null);
   const [blockTarget, setBlockTarget] = useState(null); // { id, name }
+
+  // Hydrate persisted mutes from the DB on open. localStorage (above) is a fast
+  // cache that iOS WKWebView can wipe; muted_users is the durable source, so we
+  // merge the DB set in and refresh the cache.
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    supabase.from('muted_users').select('muted_id').eq('muter_id', user.id)
+      .then(({ data }) => {
+        if (cancelled || !data?.length) return;
+        setMutedUsers((prev) => {
+          const next = new Set(prev);
+          data.forEach((r) => next.add(r.muted_id));
+          try { localStorage.setItem(MUTED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+          return next;
+        });
+      }, () => {});
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   const feedTabIndex = FEED_TABS.indexOf(tab);
   const handleFeedSwipe = (i) => setTab(FEED_TABS[i]);
 
@@ -1243,7 +1263,15 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const handleMute = useCallback((userId) => {
     const updated = addMutedUser(userId);
     setMutedUsers(new Set(updated));
-  }, []);
+    // Persist to the DB so the mute survives an iOS WKWebView storage wipe.
+    // Best-effort — the localStorage write above is the source of truth for the
+    // current session; the DB is the durable backup hydrated on next open.
+    if (user?.id && userId) {
+      supabase.from('muted_users')
+        .upsert({ muter_id: user.id, muted_id: userId }, { onConflict: 'muter_id,muted_id' })
+        .then(() => {}, () => {});
+    }
+  }, [user?.id]);
 
   // Open the confirmation modal — actual block runs in confirmBlock
   const handleBlock = useCallback((userId, name) => {

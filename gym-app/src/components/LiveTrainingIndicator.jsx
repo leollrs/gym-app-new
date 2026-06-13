@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
-import { selectInBatches } from '../lib/churn/batchedSelect';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const getInitials = (name) => {
@@ -73,53 +72,40 @@ const LiveTrainingIndicator = ({ onFriendTap }) => {
   const fetchActiveTrainers = async () => {
     if (!user) return;
 
-    // 1. Get accepted friendships
-    const { data: friendships } = await supabase
-      .from('friendships')
-      .select('id, requester_id, addressee_id, status')
-      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-      .eq('status', 'accepted');
+    // Read the live presence table. RLS already limits rows to the caller's
+    // accepted friends (+ self), so no separate friendships query is needed.
+    // Only count rows heartbeated within the last 2h — a row left behind by an
+    // app-kill goes stale instead of showing "training" forever.
+    const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const { data: rows } = await supabase
+      .from('live_training_sessions')
+      .select('profile_id, routine_name, updated_at')
+      .neq('profile_id', user.id)
+      .gt('updated_at', since)
+      .order('updated_at', { ascending: false });
 
-    if (!friendships?.length) {
+    if (!rows?.length) {
       setActiveTrainers([]);
       return;
     }
 
-    // 2. Extract friend IDs
-    const friendIds = friendships.map(f =>
-      f.requester_id === user.id ? f.addressee_id : f.requester_id
-    );
+    // Resolve names/avatars via the same-gym-safe view — a direct profiles join
+    // is RLS-blocked for member-to-member reads (migration 0289).
+    const ids = [...new Set(rows.map((r) => r.profile_id))];
+    const { data: profs } = await supabase
+      .from('gym_member_profiles_safe')
+      .select('id, full_name, avatar_url')
+      .in('id', ids);
+    const byId = new Map((profs || []).map((p) => [p.id, p]));
 
-    // 3. Fetch in-progress sessions for these friends
-    const { data: sessions } = await selectInBatches(
-      (ids) => supabase
-        .from('workout_sessions')
-        .select('id, profile_id, name, started_at, profiles!inner(full_name, avatar_url)')
-        .in('profile_id', ids)
-        .eq('status', 'in_progress')
-        .order('started_at', { ascending: false }),
-      friendIds
-    );
-
-    if (!sessions?.length) {
-      setActiveTrainers([]);
-      return;
-    }
-
-    // Deduplicate by profile_id (take most recent session)
-    const seen = new Set();
-    const trainers = [];
-    for (const s of sessions) {
-      if (seen.has(s.profile_id)) continue;
-      seen.add(s.profile_id);
-      trainers.push({
-        id: s.profile_id,
-        session_id: s.id,
-        full_name: s.profiles?.full_name,
-        avatar_url: s.profiles?.avatar_url,
-        routine_name: s.name ?? null,
-      });
-    }
+    const trainers = rows
+      .map((r) => ({
+        id: r.profile_id,
+        full_name: byId.get(r.profile_id)?.full_name,
+        avatar_url: byId.get(r.profile_id)?.avatar_url,
+        routine_name: r.routine_name ?? null,
+      }))
+      .filter((tr) => tr.full_name); // drop anyone we can't resolve
 
     setActiveTrainers(trainers);
   };

@@ -553,6 +553,40 @@ const ActiveSession = () => {
     savedSession?.routineName || cachedRoutineInitial?.routineName || ''
   );
 
+  // ── Live "training now" presence ───────────────────────────────────────────
+  // While the active-session screen is mounted, keep a presence row so friends
+  // see this member in the feed's "Friends training now" strip. Routine name is
+  // read from a ref (synced each render) so the 60s heartbeat picks up a
+  // late-resolved name without re-running the effect. Writes are best-effort —
+  // they must never block or throw into the workout flow. The row is deleted on
+  // unmount (finish / discard / leave); an app-kill leaves a row that the reader
+  // ignores after 2h via its updated_at filter.
+  const liveTrainingNameRef = useRef(routineName);
+  liveTrainingNameRef.current = routineName;
+  useEffect(() => {
+    if (!user?.id || !profile?.gym_id) return;
+    let active = true;
+    const ping = () => {
+      if (!active) return;
+      supabase.from('live_training_sessions').upsert(
+        {
+          profile_id: user.id,
+          gym_id: profile.gym_id,
+          routine_name: liveTrainingNameRef.current || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'profile_id' },
+      ).then(() => {}, () => {});
+    };
+    ping();
+    const iv = setInterval(ping, 60_000);
+    return () => {
+      active = false;
+      clearInterval(iv);
+      supabase.from('live_training_sessions').delete().eq('profile_id', user.id).then(() => {}, () => {});
+    };
+  }, [user?.id, profile?.gym_id]);
+
   // Keep the screen awake while a workout is active — released on unmount.
   useWakeLock(true);
   const [exercises, setExercises] = useState(() => {
