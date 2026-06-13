@@ -13167,7 +13167,8 @@
   "liveTraining": {
     "ariaLabel": "Amigos entrenando ahora",
     "friendsTraining": "{{count}} amigo entrenando ahora",
-    "friendsTraining_plural": "{{count}} amigos entrenando ahora"
+    "friendsTraining_plural": "{{count}} amigos entrenando ahora",
+    "trainingNow": "Entrenando"
   },
   "bodyMetrics": {
     "title": "Métricas corporales",

@@ -933,6 +933,9 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   // All accepted friends (resolved via the safe view) for the feed's friend row —
   // shown regardless of streak, with the streak overlaid as a badge when > 0.
   const [friendsRow, setFriendsRow] = useState([]);
+  // Friends currently mid-workout (live_training_sessions presence table, RLS
+  // friends-only) — drives the green "training now" ring on the friend row.
+  const [trainingIds, setTrainingIds] = useState(() => new Set());
   const [reportedIds, setReportedIds] = useState(new Set());
   const [hiddenIds, setHiddenIds]     = useState(new Set());
   const [mutedUsers, setMutedUsers]   = useState(() => new Set(getMutedUsers()));
@@ -1047,6 +1050,29 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
       }, () => {});
     return () => { cancelled = true; };
   }, [user?.id, friendships, friendStreaks]);
+
+  // Poll who's training right now (presence rows heartbeated within the last 2h).
+  // RLS limits the table to the caller's friends, so this is just the friends who
+  // are mid-workout — used to ring their avatar green in the friend row.
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const fetchTraining = () => {
+      const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      supabase
+        .from('live_training_sessions')
+        .select('profile_id, updated_at')
+        .neq('profile_id', user.id)
+        .gt('updated_at', since)
+        .then(({ data }) => {
+          if (cancelled) return;
+          setTrainingIds(new Set((data || []).map(r => r.profile_id)));
+        }, () => {});
+    };
+    fetchTraining();
+    const iv = setInterval(fetchTraining, 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [user?.id]);
 
   const PAGE_SIZE = 30;
 
@@ -1686,15 +1712,30 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
                   <p className="text-[11px] mt-1.5 truncate w-full text-center font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('social.friendsButton')}</p>
                 </button>
               )}
-              {friendsRow.map(f => (
-                <button key={f.id} type="button" onClick={() => setPreviewUserId(f.id)} aria-label={f.streak > 0 ? `${f.name} - ${t('social.streak', { count: f.streak })}` : (f.name ?? '')} className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer" style={{ width: 64 }}>
-                  <Avatar src={f.avatar_url} name={f.name ?? '?'} size={40} avatarType={f.avatar_type} avatarValue={f.avatar_value} />
+              {friendsRow.map(f => {
+                const isTraining = trainingIds.has(f.id);
+                return (
+                <button key={f.id} type="button" onClick={() => setPreviewUserId(f.id)} aria-label={isTraining ? `${f.name} — ${t('liveTraining.trainingNow', { defaultValue: 'training now' })}` : (f.streak > 0 ? `${f.name} - ${t('social.streak', { count: f.streak })}` : (f.name ?? ''))} className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer" style={{ width: 64 }}>
+                  <div className="relative" style={{ width: 40, height: 40 }}>
+                    {isTraining && (
+                      <span className="absolute inset-0 rounded-full border-2 border-emerald-400 animate-ping" style={{ opacity: 0.3 }} aria-hidden="true" />
+                    )}
+                    <div className="rounded-full" style={isTraining ? { boxShadow: '0 0 0 2px #34D399' } : undefined}>
+                      <Avatar src={f.avatar_url} name={f.name ?? '?'} size={40} avatarType={f.avatar_type} avatarValue={f.avatar_value} />
+                    </div>
+                    {isTraining && (
+                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2" style={{ borderColor: 'var(--color-bg-card)' }} aria-hidden="true" />
+                    )}
+                  </div>
                   <p className="text-[11px] mt-1.5 truncate w-full text-center" style={{ color: 'var(--color-text-muted)' }}>{(f.name ?? '').split(' ')[0]}</p>
-                  {f.streak > 0 && (
+                  {isTraining ? (
+                    <p className="text-[11px] font-semibold text-emerald-400">{t('liveTraining.trainingNow', { defaultValue: 'Training' })}</p>
+                  ) : f.streak > 0 ? (
                     <p className="text-[11px] font-semibold text-[#D4AF37]">{t('social.streak', { count: f.streak })}</p>
-                  )}
+                  ) : null}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

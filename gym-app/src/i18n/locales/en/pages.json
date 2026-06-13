@@ -13016,7 +13016,8 @@
   "liveTraining": {
     "ariaLabel": "Friends currently training",
     "friendsTraining": "{{count}} friend training now",
-    "friendsTraining_plural": "{{count}} friends training now"
+    "friendsTraining_plural": "{{count}} friends training now",
+    "trainingNow": "Training"
   },
   "bodyMetrics": {
     "title": "Body Metrics",
