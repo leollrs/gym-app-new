@@ -45,7 +45,7 @@ const FAQ_KEYS = [
 export default function Support() {
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
-  const { user, gymConfig } = useAuth();
+  const { user, profile, gymName, gymConfig } = useAuth();
   const [openIdx, setOpenIdx] = useState(null);
 
   // Per-gym override for white-label deployments; falls back to TuGymPR default.
@@ -60,20 +60,28 @@ export default function Support() {
   const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
 
   const reportMailto = useMemo(() => {
-    const subject = t('support.reportSubject');
+    // Stamp the gym in the subject so the recipient sees which gym it's from at
+    // a glance, and again in the metadata block with IDs for lookup.
+    const subject = gymName
+      ? `[${gymName}] ${t('support.reportSubject')}`
+      : t('support.reportSubject');
     const lines = [
       t('support.reportBodyIntro'),
       '',
       '',
       '— — —',
       t('support.reportBodyDevice'),
+      `Gym: ${gymName || 'unknown'}`,
+      `Gym ID: ${profile?.gym_id || 'unknown'}`,
+      `Member: ${profile?.full_name || 'unknown'}`,
+      `Email: ${user?.email || 'unknown'}`,
       `App: TuGymPR ${appVersion}`,
       `Platform: ${platform}`,
       `User ID: ${user?.id || 'unknown'}`,
       `User-Agent: ${userAgent}`,
     ];
     return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
-  }, [t, appVersion, platform, user?.id, userAgent, SUPPORT_EMAIL]);
+  }, [t, appVersion, platform, user?.id, user?.email, profile?.gym_id, profile?.full_name, gymName, userAgent, SUPPORT_EMAIL]);
 
   const emailMailto = `mailto:${SUPPORT_EMAIL}`;
 
