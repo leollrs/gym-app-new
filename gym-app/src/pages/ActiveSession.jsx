@@ -4,6 +4,7 @@ import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizon
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import logger from '../lib/logger';
+import { trackError } from '../lib/errorTracker';
 import { useAuth } from '../contexts/AuthContext';
 import { computeSuggestion, computeIntraSessionSuggestion, applyReadinessToSuggestion, epley1RM as engineEpley1RM } from '../lib/overloadEngine';
 import { computeReadiness, exerciseReadiness } from '../lib/readinessEngine';
@@ -319,6 +320,9 @@ class ActiveSessionErrorBoundary extends Component {
   componentDidCatch(error, info) {
     try { console.error('[ActiveSession] crash:', error, info?.componentStack); } catch {}
     try { this.setState({ errorStack: (info?.componentStack || '') + '\n' + (error?.stack || '') }); } catch {}
+    // Report so crashes are visible to the team even though users no longer see
+    // the stack (mirrors the app-wide ErrorBoundary).
+    try { trackError('react_crash', error, { componentStack: info?.componentStack, source: 'ActiveSession' }); } catch {}
   }
   render() {
     if (this.state.hasError) {
@@ -327,10 +331,14 @@ class ActiveSessionErrorBoundary extends Component {
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center max-w-full">
             <p className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{i18n.t('pages:activeSession.somethingWentWrong')}</p>
             <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{i18n.t('pages:activeSession.dataSavedLocally')}</p>
-            <pre className="mt-3 p-3 rounded-xl text-[11px] text-left whitespace-pre-wrap break-words max-w-full overflow-auto" style={{ background: 'rgba(239,68,68,0.08)', color: '#EF4444', fontFamily: 'ui-monospace, monospace', maxHeight: 240 }}>
+            {/* Raw error + stack only in development — never shown to real users
+                (the crash is already logged to the console / error tracker). */}
+            {import.meta.env.DEV && (this.state.errorMessage || this.state.errorStack) ? (
+              <pre className="mt-3 p-3 rounded-xl text-[11px] text-left whitespace-pre-wrap break-words max-w-full overflow-auto" style={{ background: 'rgba(239,68,68,0.08)', color: '#EF4444', fontFamily: 'ui-monospace, monospace', maxHeight: 240 }}>
 {this.state.errorMessage}
 {this.state.errorStack ? '\n\n' + this.state.errorStack : ''}
-            </pre>
+              </pre>
+            ) : null}
             <button
               onClick={() => window.history.back()}
               className="mt-2 px-6 py-3 rounded-2xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[14px]"
@@ -986,6 +994,12 @@ const ActiveSession = () => {
     };
   }, [sessionKey]);
 
+  // Overload-adjusted rest for the current exercise. Declared here (before the
+  // Watch handler + the effects that read it) so it's initialized prior to use —
+  // a later declaration caused a "Cannot access before initialization" crash on
+  // mount because the Watch effect's dependency array references it at render.
+  const [adjustedRestSeconds, setAdjustedRestSeconds] = useState(null);
+
   // ── Apple Watch message handler ────────────────────────────────────────────
   useEffect(() => {
     const unsub = onWatchMessage((msg) => {
@@ -1130,7 +1144,6 @@ const ActiveSession = () => {
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState('');
   const [previewExercise, setPreviewExercise] = useState(null);
-  const [adjustedRestSeconds, setAdjustedRestSeconds] = useState(null);
   // Favorites: user's own saved exercises are auto-favorites
   const [favoriteExerciseIds, setFavoriteExerciseIds] = useState(new Set());
   // DB exercises (gym's own catalogue + user-created customs). Fetched once
