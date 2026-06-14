@@ -1096,10 +1096,13 @@ const DailyChallenge = ({ userId, gymId, t }) => {
   const todayStart = startOfDay(today).toISOString();
   const challenge = DAILY_CHALLENGES[seededIndex(dateString)];
   const storageKey = `daily_challenge_${userId}_${dateString}`;
+  const progressKey = `daily_challenge_progress_${userId}_${dateString}`;
 
-  const [progress, setProgress] = useState(0);
   const [completed, setCompleted] = useState(() => localStorage.getItem(storageKey) === 'true');
-  const [loading, setLoading] = useState(true);
+  // Cached per user+day so today's progress bar paints instantly on revisit
+  // instead of resetting to 0 + flashing the loading state while it refetches.
+  const [progress, setProgress] = useCachedState(progressKey, 0);
+  const [loading, setLoading] = useState(() => !completed && !hasCachedState(progressKey));
 
   useEffect(() => {
     if (!userId || completed) { setLoading(false); return; }
