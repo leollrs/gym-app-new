@@ -421,6 +421,7 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
   actionLoading, onBook, onCancel, onCheckIn, onRate, navigate, gymName }) {
   const { sched, cls, booking, dateStr } = data;
   const [vis, setVis] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   useEffect(() => { const id = requestAnimationFrame(() => setVis(true)); return () => cancelAnimationFrame(id); }, []);
   const close = useCallback(() => { setVis(false); setTimeout(onClose, 420); }, [onClose]);
   useEffect(() => {
@@ -648,6 +649,34 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
                   {stateKey === 'booked' ? <Check size={18} strokeWidth={2.6} /> : <Hourglass size={17} strokeWidth={2.2} />}
                   {stateKey === 'booked' ? t('classes.booked') : t('classes.waitlisted', { position: booking?.waitlist_position || 1 })}
                 </div>
+                {confirmCancel ? (
+                  <div style={{ marginTop: 10 }}>
+                    <p style={{ textAlign: 'center', fontFamily: CFB, fontWeight: 800, fontSize: 15, color: 'var(--color-text-primary)', marginBottom: 5 }}>
+                      {t('classes.cancelConfirmTitle')}
+                    </p>
+                    <p style={{ textAlign: 'center', fontSize: 12.5, lineHeight: 1.45, color: 'var(--color-text-muted)', marginBottom: 14, padding: '0 6px' }}>
+                      {t('classes.cancelConfirmBody')}
+                    </p>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button onClick={() => setConfirmCancel(false)} disabled={isActing}
+                        className="active:scale-[0.98] transition-transform disabled:opacity-50"
+                        style={{ flex: 1, height: 48, borderRadius: 14, border: '1px solid var(--color-border-subtle)', cursor: 'pointer',
+                          background: 'var(--color-surface-hover, rgba(255,255,255,0.05))', color: 'var(--color-text-primary)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          fontFamily: CFB, fontWeight: 700, fontSize: 14.5 }}>
+                        {t('classes.keepBooking')}
+                      </button>
+                      <button onClick={async () => { close(); await onCancel(booking.id); }} disabled={isActing}
+                        className="active:scale-[0.98] transition-transform disabled:opacity-50"
+                        style={{ flex: 1, height: 48, borderRadius: 14, border: 'none', cursor: 'pointer',
+                          background: 'var(--color-danger)', color: '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          fontFamily: CFB, fontWeight: 700, fontSize: 14.5 }}>
+                        <X size={15} strokeWidth={2.4} />{t('classes.confirmCancelYes')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                 <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
                   {stateKey === 'booked' && isToday && !isPastClass && (
                     <button onClick={() => { close(); onCheckIn(booking.id, cls.name); }} disabled={isActing}
@@ -659,7 +688,7 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
                       <Check size={16} strokeWidth={2.4} />{t('classes.checkIn')}
                     </button>
                   )}
-                  <button onClick={async () => { close(); await onCancel(booking.id); }} disabled={isActing}
+                  <button onClick={() => setConfirmCancel(true)} disabled={isActing}
                     className="active:scale-[0.98] transition-transform disabled:opacity-50"
                     style={{ flex: 1, height: 48, borderRadius: 14, border: '1px solid rgba(240,99,75,0.34)', cursor: 'pointer',
                       background: 'rgba(240,99,75,0.12)', color: 'var(--color-danger)',
@@ -668,6 +697,7 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
                     <X size={15} strokeWidth={2.4} />{t('classes.cancelBooking')}
                   </button>
                 </div>
+                )}
               </>
             )}
             {stateKey === 'attended' && (
