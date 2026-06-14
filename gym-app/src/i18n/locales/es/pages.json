@@ -1164,6 +1164,8 @@
     "weekCleared": "Semana vaciada",
     "keepPlan": "Mantener",
     "cantGeneratePast": "No puedes cambiar una semana pasada",
+    "portionsBadge": "{{count}} porciones",
+    "otherItems": "Otros artículos",
     "list": "Lista",
     "unlog": "Quitar",
     "thisWeek": "Esta semana",

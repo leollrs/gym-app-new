@@ -1164,6 +1164,8 @@
     "weekCleared": "Week cleared",
     "keepPlan": "Keep",
     "cantGeneratePast": "Can't change a past week",
+    "portionsBadge": "{{count}} portions",
+    "otherItems": "Other items",
     "list": "List",
     "unlog": "Unlog",
     "thisWeek": "This week",

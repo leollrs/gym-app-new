@@ -4303,33 +4303,41 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
   // category. Each unique food appears once with all source rows merged so
   // checking the row checks every backing entry, and recipe badges from each
   // contributing recipe are surfaced as a comma list.
-  const itemGroups = useMemo(() => {
-    const map = new Map(); // key = lowercased label
+  // Grouped BY MEAL (the recipe each ingredient came from) so the list reads
+  // like a shopping plan per dish. Within a meal, identical ingredients merge;
+  // a meal added more than once shows an "N portions" badge. Items with no
+  // recipe (added manually) collect under an "Other items" group, shown last.
+  const mealGroups = useMemo(() => {
+    const map = new Map(); // key = recipe name (or '__other__')
     groceryList.forEach(item => {
-      const key = (item.label || '').trim().toLowerCase();
-      if (!key) return;
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          label: item.label,
-          ids: [item.id],
-          checked: !!item.checked,
-          recipes: item.fromRecipe ? [item.fromRecipe] : [],
-          count: 1,
-        });
-      } else {
-        const g = map.get(key);
-        g.ids.push(item.id);
-        g.checked = g.checked && !!item.checked; // all must be checked to mark group checked
-        if (item.fromRecipe && !g.recipes.includes(item.fromRecipe)) g.recipes.push(item.fromRecipe);
-        g.count += 1;
-      }
+      const mealKey = (item.fromRecipe || '').trim() || '__other__';
+      if (!map.has(mealKey)) map.set(mealKey, { key: mealKey, meal: item.fromRecipe || null, items: [] });
+      map.get(mealKey).items.push(item);
     });
-    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+    const groups = Array.from(map.values()).map(g => {
+      const byLabel = new Map();
+      g.items.forEach(item => {
+        const lk = (item.label || '').trim().toLowerCase();
+        if (!lk) return;
+        if (!byLabel.has(lk)) byLabel.set(lk, { key: lk, label: item.label, ids: [item.id], checked: !!item.checked, count: 1 });
+        else { const e = byLabel.get(lk); e.ids.push(item.id); e.checked = e.checked && !!item.checked; e.count += 1; }
+      });
+      const ingredients = Array.from(byLabel.values()).sort((a, b) => a.label.localeCompare(b.label));
+      const portions = ingredients.length ? Math.max(...ingredients.map(x => x.count)) : 1;
+      const checked = ingredients.length > 0 && ingredients.every(x => x.checked);
+      return { ...g, ingredients, portions, checked };
+    }).filter(g => g.ingredients.length > 0);
+    groups.sort((a, b) => {
+      if (a.key === '__other__') return 1;
+      if (b.key === '__other__') return -1;
+      return (a.meal || '').localeCompare(b.meal || '');
+    });
+    return groups;
   }, [groceryList]);
 
-  const checkedGroupCount = itemGroups.filter(g => g.checked).length;
-  const totalGroups = itemGroups.length;
+  const allIngredients = mealGroups.flatMap(g => g.ingredients);
+  const checkedGroupCount = allIngredients.filter(x => x.checked).length;
+  const totalGroups = allIngredients.length;
   const pct = totalGroups > 0 ? (checkedGroupCount / totalGroups) * 100 : 0;
 
   return (
@@ -4418,50 +4426,53 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
             </div>
           </div>
 
-          {/* Flat list — one row per unique food item, with a small badge
-              showing how many recipes/copies contributed to the row. */}
-          <div className="px-4 space-y-2">
-            <div className="rounded-[22px] overflow-hidden mb-3" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
-              {itemGroups.map((g, i) => (
-                <div key={g.key} className="flex items-center gap-3 px-4 py-3" style={{
-                  borderBottom: i < itemGroups.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
-                }}>
-                  <button onClick={() => g.ids.forEach(id => onToggleItem(id))}
-                    className="flex-shrink-0 w-[22px] h-[22px] rounded-[8px] flex items-center justify-center focus:outline-none"
-                    style={{
-                      background: g.checked ? TU.accent : 'transparent',
-                      border: g.checked ? 'none' : '1.5px solid var(--color-border-subtle)',
-                    }}
-                    aria-label={g.checked ? t('nutrition.uncheckItem', 'Uncheck item') : t('nutrition.checkItem', 'Check item')}>
-                    {g.checked && <Check size={14} className="text-[var(--color-text-on-accent,#fff)]" strokeWidth={3} />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[15px] font-medium truncate" style={{
-                      color: g.checked ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
-                      textDecoration: g.checked ? 'line-through' : 'none',
-                      letterSpacing: -0.2,
-                    }}>
-                      {g.label}
-                      {g.count > 1 && (
-                        <span className="ml-1.5 text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-                          ×{g.count}
-                        </span>
-                      )}
-                    </p>
-                    {g.recipes.length > 0 && (
-                      <p className="text-[11px] truncate mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                        {g.recipes.slice(0, 3).join(', ')}
-                      </p>
-                    )}
-                  </div>
-                  <button onClick={() => g.ids.forEach(id => onRemoveItem(id))}
-                    className="min-w-[44px] min-h-[44px] w-6 h-6 flex items-center justify-center flex-shrink-0 opacity-30 hover:opacity-100 transition-opacity focus:outline-none"
-                    aria-label={t('nutrition.removeItem', 'Remove item')}>
-                    <X size={12} style={{ color: 'var(--color-text-muted)' }} />
-                  </button>
+          {/* One card per MEAL — header (dish name + "N portions" when a meal
+              repeats) over its merged ingredient rows. */}
+          <div className="px-4 space-y-3">
+            {mealGroups.map((g) => (
+              <div key={g.key} className="rounded-[22px] overflow-hidden" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
+                {/* Meal header */}
+                <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-surface-hover, rgba(0,0,0,0.02))' }}>
+                  <UtensilsCrossed size={14} style={{ color: TU.accent }} className="flex-shrink-0" />
+                  <p className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)', fontFamily: TU.display, letterSpacing: -0.2 }}>
+                    {g.meal || t('nutrition.otherItems', 'Other items')}
+                  </p>
+                  {g.portions > 1 && (
+                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: `${TU.accent}15`, color: TU.accent }}>
+                      {t('nutrition.portionsBadge', { count: g.portions, defaultValue: `${g.portions} portions` })}
+                    </span>
+                  )}
                 </div>
-              ))}
-            </div>
+                {/* Ingredient rows */}
+                {g.ingredients.map((x, i) => (
+                  <div key={x.key} className="flex items-center gap-3 px-4 py-3" style={{
+                    borderBottom: i < g.ingredients.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
+                  }}>
+                    <button onClick={() => x.ids.forEach(id => onToggleItem(id))}
+                      className="flex-shrink-0 w-[22px] h-[22px] rounded-[8px] flex items-center justify-center focus:outline-none"
+                      style={{
+                        background: x.checked ? TU.accent : 'transparent',
+                        border: x.checked ? 'none' : '1.5px solid var(--color-border-subtle)',
+                      }}
+                      aria-label={x.checked ? t('nutrition.uncheckItem', 'Uncheck item') : t('nutrition.checkItem', 'Check item')}>
+                      {x.checked && <Check size={14} className="text-[var(--color-text-on-accent,#fff)]" strokeWidth={3} />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] font-medium truncate" style={{
+                        color: x.checked ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+                        textDecoration: x.checked ? 'line-through' : 'none',
+                        letterSpacing: -0.2,
+                      }}>{x.label}</p>
+                    </div>
+                    <button onClick={() => x.ids.forEach(id => onRemoveItem(id))}
+                      className="min-w-[44px] min-h-[44px] w-6 h-6 flex items-center justify-center flex-shrink-0 opacity-30 hover:opacity-100 transition-opacity focus:outline-none"
+                      aria-label={t('nutrition.removeItem', 'Remove item')}>
+                      <X size={12} style={{ color: 'var(--color-text-muted)' }} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         </>
       )}
