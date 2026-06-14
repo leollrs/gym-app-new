@@ -70,20 +70,18 @@ export const useRoutines = () => {
     if (!hasCached) setLoading(true);
     setError(null);
 
-    // Parallel fetch: routines + sessions
-    const [routinesRes, sessionsRes] = await Promise.all([
+    // Parallel fetch: routines + last-performed dates.
+    // last-performed is computed server-side (one row per routine via
+    // get_routine_last_performed) instead of pulling the member's entire
+    // completed-session history down just to fold it to a date per routine.
+    const [routinesRes, lastPerformedRes] = await Promise.all([
       supabase
         .from('routines')
         .select('id, name, created_at, updated_at, routine_exercises(id)')
         .eq('created_by', user.id)
         .eq('is_template', false)
         .order('created_at', { ascending: false }),
-      supabase
-        .from('workout_sessions')
-        .select('routine_id, completed_at')
-        .eq('profile_id', user.id)
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false }),
+      supabase.rpc('get_routine_last_performed', { p_profile_id: user.id }),
     ]);
 
     if (routinesRes.error) {
@@ -94,11 +92,10 @@ export const useRoutines = () => {
         if (cached) setRoutines(JSON.parse(cached));
       } catch {}
     } else {
+      // RPC returns one row per routine: { routine_id, last_performed_at }.
       const lastPerformedMap = {};
-      sessionsRes.data?.forEach(s => {
-        if (s.routine_id && !lastPerformedMap[s.routine_id]) {
-          lastPerformedMap[s.routine_id] = s.completed_at;
-        }
+      lastPerformedRes.data?.forEach(r => {
+        if (r.routine_id) lastPerformedMap[r.routine_id] = r.last_performed_at;
       });
 
       const enriched = (routinesRes.data || []).map(r => ({

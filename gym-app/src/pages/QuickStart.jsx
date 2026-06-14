@@ -122,19 +122,28 @@ const QuickStart = () => {
 
     const load = async () => {
       const todayDow = new Date().getDay();
+      const _todayStart = new Date(); _todayStart.setHours(0, 0, 0, 0);
+      const todayStartISO = _todayStart.toISOString();
 
-      const [{ data: routineData }, { data: sessionData }, scheduleRes, progRes] = await Promise.all([
+      const [{ data: routineData }, { data: lastPerfData }, { data: todaySessionData }, scheduleRes, progRes] = await Promise.all([
         supabase
           .from('routines')
           .select('id, name, created_at, routine_exercises(id, exercise_id, target_sets, target_reps, position, exercises(name, video_url))')
           .eq('created_by', user.id)
           .eq('is_template', false)
           .order('created_at', { ascending: false }),
+        // Last-performed per routine: server-side aggregate (one row/routine via
+        // get_routine_last_performed) instead of pulling the member's entire
+        // completed-session history down just to fold it to a date per routine.
+        supabase.rpc('get_routine_last_performed', { p_profile_id: user.id }),
+        // Today's completed sessions only — powers the "already done today"
+        // check below (needs full session fields). Bounded to today.
         supabase
           .from('workout_sessions')
           .select('id, routine_id, name, completed_at, duration_seconds, total_volume_lbs')
           .eq('profile_id', user.id)
           .eq('status', 'completed')
+          .gte('completed_at', todayStartISO)
           .order('completed_at', { ascending: false }),
         supabase
           .from('workout_schedule')
@@ -151,16 +160,15 @@ const QuickStart = () => {
       ]);
 
       const allRoutines = routineData || [];
-      const sessions = sessionData || [];
+      const todaySessions = todaySessionData || [];
       const fetchedProgram = !progRes.error ? progRes.data : null;
       const programStart = fetchedProgram ? new Date(fetchedProgram.program_start) : null;
 
-      // Build last-performed map
+      // Build last-performed map — RPC returns one row per routine:
+      // { routine_id, last_performed_at }.
       const lastPerformed = {};
-      sessions.forEach(s => {
-        if (s.routine_id && !lastPerformed[s.routine_id]) {
-          lastPerformed[s.routine_id] = s.completed_at;
-        }
+      (lastPerfData || []).forEach(r => {
+        if (r.routine_id) lastPerformed[r.routine_id] = r.last_performed_at;
       });
 
       const enriched = allRoutines.map(r => ({
@@ -271,7 +279,7 @@ const QuickStart = () => {
 
         // Check if this routine was already completed today
         const todayStr = new Date().toDateString();
-        const doneSession = sessions.find(
+        const doneSession = todaySessions.find(
           s => s.routine_id === todayR.id && new Date(s.completed_at).toDateString() === todayStr
         );
         setTodayCompleted(!!doneSession);
