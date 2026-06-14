@@ -62,7 +62,8 @@ export default function QueueItemResolveModal({
           <button
             onClick={handleConfirm}
             disabled={saving || !outcome}
-            className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#10B981] text-white hover:bg-[#0EA371] transition-colors whitespace-nowrap disabled:opacity-40"
+            style={{ background: '#10B981', color: '#fff' }}
+            className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap disabled:opacity-40"
           >
             {saving
               ? tc('saving', { defaultValue: 'Saving...' })

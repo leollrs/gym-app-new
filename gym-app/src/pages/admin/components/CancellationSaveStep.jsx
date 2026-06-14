@@ -195,7 +195,8 @@ export default function CancellationSaveStep({
                   type="button"
                   onClick={handleCustomSubmit}
                   disabled={!noteText.trim()}
-                  className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-[#10B981] text-white hover:bg-[#059669] transition-colors disabled:opacity-40"
+                  style={{ background: '#10b981', color: '#fff' }}
+                  className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-40"
                 >
                   {tk('logAttempt', 'Log attempt')}
                 </button>
@@ -213,7 +214,8 @@ export default function CancellationSaveStep({
             <button
               type="button"
               onClick={handleSaved}
-              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-semibold bg-[#10B981] text-white hover:bg-[#059669] transition-colors"
+              style={{ background: '#10b981', color: '#fff' }}
+              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-semibold transition-colors"
             >
               <Check size={14} />
               {tk('memberSaved', "Member saved! Don't cancel")}

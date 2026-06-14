@@ -593,7 +593,8 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
             <button
               onClick={handleSendTest}
               disabled={sendingTest}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-[13px] text-[var(--color-admin-text)] bg-[var(--color-admin-panel)] border border-[var(--color-admin-border)] hover:bg-[var(--color-bg-hover)] transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-[13px] text-[var(--color-admin-text)] border border-[var(--color-admin-border)] hover:bg-[var(--color-bg-hover)] transition-colors disabled:opacity-50"
+              style={{ background: 'var(--color-admin-panel)' }}
             >
               {sendingTest ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
               {t('admin.emailTemplates.sendTest')}
@@ -614,7 +615,8 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           </button>
           <button
             onClick={handleExportHtml}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-[13px] text-[var(--color-admin-text)] bg-[var(--color-admin-panel)] border border-[var(--color-admin-border)] hover:bg-[var(--color-bg-hover)] transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-[13px] text-[var(--color-admin-text)] border border-[var(--color-admin-border)] hover:bg-[var(--color-bg-hover)] transition-colors"
+            style={{ background: 'var(--color-admin-panel)' }}
           >
             <Copy size={15} /> {t('admin.emailTemplates.exportHtml')}
           </button>

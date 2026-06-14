@@ -81,7 +81,8 @@ export default function CancellationSurveyModal({
           <button
             onClick={handleConfirm}
             disabled={saving || !category}
-            className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#EF4444] text-white hover:bg-[#DC2626] transition-colors whitespace-nowrap disabled:opacity-40"
+            className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap disabled:opacity-40"
+            style={{ background: '#EF4444', color: '#fff' }}
           >
             {saving
               ? tc('saving', { defaultValue: 'Saving...' })

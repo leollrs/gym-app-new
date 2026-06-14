@@ -260,12 +260,12 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
           )}
           {step === 1 ? (
             <button onClick={() => { if (!validateStep1()) return; setError(''); setStep(2); }}
-              className="flex items-center justify-center gap-1.5 flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors">
+              className="flex items-center justify-center gap-1.5 flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center text-black transition-colors" style={{ background: '#D4AF37' }}>
               <span>{t('admin.challenges.nextStep', 'Scoring & Rewards')}</span> <ArrowRight size={14} className="flex-shrink-0" />
             </button>
           ) : (
             <button onClick={handleSave} disabled={saving}
-              className="flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center text-black bg-[#D4AF37] disabled:opacity-50 transition-opacity">
+              className="flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center text-black disabled:opacity-50 transition-opacity" style={{ background: '#D4AF37' }}>
               {saving ? (isEdit ? t('admin.challenges.saving', 'Saving...') : t('admin.challenges.creating', 'Creating...')) : isEdit ? t('admin.challenges.saveChanges', 'Save Changes') : t('admin.challenges.createChallenge', 'Create Challenge')}
             </button>
           )}

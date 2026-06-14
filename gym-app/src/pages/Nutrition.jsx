@@ -901,7 +901,8 @@ const BarcodeResultModal = ({ product, onClose, onLog }) => {
         {/* Log button */}
         <div className="px-5 pb-5 pt-2">
           <button onClick={handleLog} disabled={saving}
-            className="w-full py-3.5 rounded-xl font-bold text-[15px] text-black bg-[#D4AF37] hover:bg-[#C4A030] active:scale-[0.97] transition-all disabled:opacity-50">
+            className="w-full py-3.5 rounded-xl font-bold text-[15px] active:scale-[0.97] transition-all disabled:opacity-50"
+            style={{ background: '#D4AF37', color: '#000' }}>
             {saving ? t('nutrition.logging') : t('nutrition.logScannedFood')}
           </button>
         </div>
@@ -1458,7 +1459,8 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
               </div>
 
               <button onClick={handleLog} disabled={saving || s <= 0}
-                className="w-full py-[18px] rounded-2xl font-bold text-[15px] text-black bg-[#D4AF37] hover:bg-[#E6C766] active:scale-[0.97] transition-all disabled:opacity-40">
+                className="w-full py-[18px] rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-all disabled:opacity-40"
+                style={{ background: '#D4AF37', color: '#000' }}>
                 {saving ? t('nutrition.logging', 'Logging...') : t('nutrition.logFood')}
               </button>
             </div>

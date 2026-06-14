@@ -139,7 +139,7 @@ function ChallengeModal({ challenge, onSave, onClose }) {
           {formError && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
-            <button type="submit" disabled={saving} className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50">{saving ? t('platform.gymDetail.modals.saving') : challenge ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
+            <button type="submit" disabled={saving} className="rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50" style={{ background: '#D4AF37', color: '#000' }}>{saving ? t('platform.gymDetail.modals.saving') : challenge ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
           </div>
         </form>
       </div>
@@ -209,7 +209,7 @@ function ProgramModal({ program, onSave, onClose }) {
           {formError && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
-            <button type="submit" disabled={saving} className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50">{saving ? t('platform.gymDetail.modals.saving') : program ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
+            <button type="submit" disabled={saving} className="rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50" style={{ background: '#D4AF37', color: '#000' }}>{saving ? t('platform.gymDetail.modals.saving') : program ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
           </div>
         </form>
       </div>
@@ -305,7 +305,7 @@ function AchievementModal({ achievement, onSave, onClose }) {
           {formError && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
-            <button type="submit" disabled={saving} className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50">{saving ? t('platform.gymDetail.modals.saving') : achievement ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
+            <button type="submit" disabled={saving} className="rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50" style={{ background: '#D4AF37', color: '#000' }}>{saving ? t('platform.gymDetail.modals.saving') : achievement ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
           </div>
         </form>
       </div>
@@ -386,7 +386,7 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
           {error && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
-            <button type="submit" disabled={saving} className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50">{saving ? t('platform.gymDetail.modals.creating') : t('platform.gymDetail.modals.createMember')}</button>
+            <button type="submit" disabled={saving} className="rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50" style={{ background: '#D4AF37', color: '#000' }}>{saving ? t('platform.gymDetail.modals.creating') : t('platform.gymDetail.modals.createMember')}</button>
           </div>
         </form>
       </div>
@@ -1008,7 +1008,7 @@ export default function GymDetail() {
             <div className="mb-4"><label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">{t('platform.gymDetail.lifecycle.pauseReasonLabel')}</label><textarea value={pauseReason} onChange={e => setPauseReason(e.target.value)} placeholder={t('platform.gymDetail.lifecycle.pauseReasonPlaceholder')} rows={3} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-amber-400/40 resize-none" /></div>
             <div className="flex justify-end gap-3">
               <button onClick={() => { setLifecycleModal(null); setPauseReason(''); }} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.lifecycle.cancel')}</button>
-              <button onClick={handlePauseGym} disabled={lifecycleProcessing} className="px-4 py-2 text-[12px] font-semibold text-black bg-amber-500 hover:bg-amber-400 rounded-lg transition-colors disabled:opacity-50">{lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmPause')}</button>
+              <button onClick={handlePauseGym} disabled={lifecycleProcessing} className="px-4 py-2 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50" style={{ background: '#f59e0b', color: '#000' }}>{lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmPause')}</button>
             </div>
           </div>
         </div>
@@ -1023,7 +1023,7 @@ export default function GymDetail() {
             <div className="p-3 bg-emerald-500/8 border border-emerald-500/15 rounded-xl mb-4"><p className="text-[12px] text-emerald-300">{t('platform.gymDetail.lifecycle.reactivateWarning')}</p></div>
             <div className="flex justify-end gap-3">
               <button onClick={() => setLifecycleModal(null)} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.lifecycle.cancel')}</button>
-              <button onClick={handleReactivateGym} disabled={lifecycleProcessing} className="px-4 py-2 text-[12px] font-semibold text-black bg-emerald-500 hover:bg-emerald-400 rounded-lg transition-colors disabled:opacity-50">{lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmReactivate')}</button>
+              <button onClick={handleReactivateGym} disabled={lifecycleProcessing} className="px-4 py-2 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50" style={{ background: '#10b981', color: '#000' }}>{lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmReactivate')}</button>
             </div>
           </div>
         </div>

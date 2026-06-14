@@ -214,7 +214,8 @@ const FirstWorkoutWelcome = () => {
           <motion.div className="mb-4" variants={itemVariants}>
             <button
               onClick={handleStartWorkout}
-              className="w-full flex items-center justify-center gap-3 bg-[#D4AF37] hover:bg-[#E6C766] text-[var(--color-text-on-accent,#000)] font-bold text-[14px] py-4 px-6 rounded-[14px] transition-all shadow-[0_0_30px_rgba(212,175,55,0.15)] whitespace-nowrap focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="w-full flex items-center justify-center gap-3 text-[var(--color-text-on-accent,#000)] font-bold text-[14px] py-4 px-6 rounded-[14px] transition-all shadow-[0_0_30px_rgba(212,175,55,0.15)] whitespace-nowrap focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ background: '#D4AF37' }}
             >
               <Dumbbell size={20} strokeWidth={2.5} />
               {hasRoutines ? t('firstWorkoutWelcome.startYourFirstWorkout') : t('firstWorkoutWelcome.browseYourWorkouts')}

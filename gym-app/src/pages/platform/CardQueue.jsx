@@ -382,7 +382,8 @@ export default function CardQueue() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <button
                             onClick={() => setPreview({ gymId: gym.id, ids: pendingIds })}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#D4AF37] text-black hover:brightness-95 transition"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold text-black hover:brightness-95 transition"
+                            style={{ background: '#D4AF37' }}
                           >
                             <Printer size={13} />
                             {t('platform.cardQueue.previewPrint', 'Preview & print')}
@@ -518,7 +519,8 @@ function ConfirmModal({ t, confirm, onCancel, onConfirm }) {
           </button>
           <button
             onClick={onConfirm}
-            className="flex-1 px-3 py-2 rounded-lg text-[12px] font-bold bg-[#D4AF37] text-black hover:brightness-95 transition"
+            className="flex-1 px-3 py-2 rounded-lg text-[12px] font-bold text-black hover:brightness-95 transition"
+            style={{ background: '#D4AF37' }}
           >
             {t('platform.cardQueue.confirm', 'Confirm')}
           </button>

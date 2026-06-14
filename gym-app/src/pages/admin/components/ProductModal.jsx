@@ -106,7 +106,8 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
         <button
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
-          className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C5A028] disabled:opacity-50 transition-colors"
+          className="w-full py-3 rounded-xl font-bold text-[14px] text-black disabled:opacity-50 transition-colors"
+          style={{ background: '#D4AF37' }}
         >
           {saveMutation.isPending
             ? t('admin.store.saving', 'Saving...')

@@ -452,7 +452,8 @@ export default function FeatureAdoption() {
             <button
               onClick={handleExportMatrix}
               disabled={heatmapGyms.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0F172A] border border-white/6 text-[11px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/6 text-[11px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: '#0F172A' }}
             >
               <Download className="w-3.5 h-3.5" />
               {t('platform.adoption.exportCsv', 'Export CSV')}

@@ -113,19 +113,19 @@ export default function GymOverviewTab({
 
       {/* Quick actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-        <button onClick={() => setTab('people')} className="bg-[#0F172A] border border-white/6 rounded-xl p-3 text-left hover:bg-[#111827] transition-colors">
+        <button onClick={() => setTab('people')} className="border border-white/6 rounded-xl p-3 text-left transition-colors" style={{ background: '#0F172A' }}>
           <Users size={16} className="text-[#D4AF37] mb-2" />
           <p className="text-[12px] font-medium text-[#9CA3AF]">{t('platform.gymDetail.overview.managePeople')}</p>
         </button>
-        <button onClick={() => setTab('content')} className="bg-[#0F172A] border border-white/6 rounded-xl p-3 text-left hover:bg-[#111827] transition-colors">
+        <button onClick={() => setTab('content')} className="border border-white/6 rounded-xl p-3 text-left transition-colors" style={{ background: '#0F172A' }}>
           <Trophy size={16} className="text-[#D4AF37] mb-2" />
           <p className="text-[12px] font-medium text-[#9CA3AF]">{t('platform.gymDetail.overview.manageContent')}</p>
         </button>
-        <button onClick={() => setTab('activity')} className="bg-[#0F172A] border border-white/6 rounded-xl p-3 text-left hover:bg-[#111827] transition-colors">
+        <button onClick={() => setTab('activity')} className="border border-white/6 rounded-xl p-3 text-left transition-colors" style={{ background: '#0F172A' }}>
           <Dumbbell size={16} className="text-[#D4AF37] mb-2" />
           <p className="text-[12px] font-medium text-[#9CA3AF]">{t('platform.gymDetail.overview.viewActivity')}</p>
         </button>
-        <button onClick={() => setTab('settings')} className="bg-[#0F172A] border border-white/6 rounded-xl p-3 text-left hover:bg-[#111827] transition-colors">
+        <button onClick={() => setTab('settings')} className="border border-white/6 rounded-xl p-3 text-left transition-colors" style={{ background: '#0F172A' }}>
           <SettingsIcon size={16} className="text-[#D4AF37] mb-2" />
           <p className="text-[12px] font-medium text-[#9CA3AF]">{t('platform.gymDetail.overview.gymSettings')}</p>
         </button>

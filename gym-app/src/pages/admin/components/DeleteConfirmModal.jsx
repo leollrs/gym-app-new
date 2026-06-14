@@ -17,7 +17,8 @@ export default function DeleteConfirmModal({ className: classItem, onConfirm, on
           {tc('cancel')}
         </button>
         <button onClick={onConfirm} disabled={deleting}
-          className="flex-1 py-2.5 rounded-xl text-[13px] font-bold bg-red-500 text-white disabled:opacity-50 transition-opacity">
+          className="flex-1 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-50 transition-opacity"
+          style={{ background: '#ef4444', color: '#fff' }}>
           {deleting ? '...' : tc('delete')}
         </button>
       </div>

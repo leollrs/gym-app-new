@@ -188,7 +188,8 @@ function PreviewBrowser({ preview, genDays, allExercises, estimateDuration, onUs
           <RotateCcw size={14} /> {t('admin.programs.generate.regenerate', 'Regenerate')}
         </button>
         <button onClick={onUse}
-          className="flex-1 py-2.5 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors">
+          className="flex-1 py-2.5 rounded-xl font-bold text-[14px] text-black transition-colors"
+          style={{ background: '#D4AF37' }}>
           {t('admin.programs.generate.useThisProgram', 'Use This Program')}
         </button>
       </div>
@@ -469,7 +470,8 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
                 <p className="text-[12px] text-[#6B7280] leading-relaxed flex-1">{t(tpl.descKey, tpl.description)}</p>
                 <button
                   onClick={() => onSelect(tpl)}
-                  className="w-full py-2 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors whitespace-nowrap"
+                  className="w-full py-2 rounded-xl text-[13px] font-bold text-black transition-colors whitespace-nowrap"
+                  style={{ background: '#D4AF37' }}
                 >
                   {t('admin.programs.generate.useTemplate', 'Use Template')}
                 </button>

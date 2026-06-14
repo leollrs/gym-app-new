@@ -237,9 +237,10 @@ function StepHours({ openTime, setOpenTime, closeTime, setCloseTime, openDays, t
                 onClick={() => toggleDay(dayVal)}
                 className={`w-11 h-11 rounded-xl text-[12px] font-semibold transition-all ${
                   isOpen
-                    ? 'bg-[#D4AF37] text-[#0F172A]'
+                    ? ''
                     : 'bg-white/[0.04] text-[#6B7280] border border-white/6'
                 }`}
+                style={isOpen ? { background: '#D4AF37', color: '#0F172A' } : {}}
               >
                 {label}
               </button>
@@ -362,7 +363,8 @@ function StepInvite({ slug, copied, onCopy, t }) {
           </div>
           <button
             onClick={() => onCopy(inviteUrl)}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-[#D4AF37] text-[#0F172A] text-[13px] font-semibold hover:bg-[#C5A033] transition-colors flex-shrink-0"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors flex-shrink-0"
+            style={{ background: '#D4AF37', color: '#0F172A' }}
           >
             {copied ? <Check size={16} /> : <Copy size={16} />}
             {copied ? t('admin.onboarding.copied') : t('admin.onboarding.copyLink')}
@@ -822,7 +824,8 @@ export default function AdminOnboardingWizard({ onComplete }) {
           <button
             onClick={handleNext}
             disabled={saving || uploading}
-            className="flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-[#D4AF37] text-[#0F172A] text-[13px] font-bold hover:bg-[#C5A033] transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-colors disabled:opacity-50"
+            style={{ background: '#D4AF37', color: '#0F172A' }}
           >
             {saving ? (
               <span className="w-4 h-4 border-2 border-[#0F172A]/30 border-t-[#0F172A] rounded-full animate-spin" />

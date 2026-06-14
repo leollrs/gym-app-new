@@ -40,10 +40,10 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
           aria-label={isSelected ? t('workoutBuilder.ariaDeselect', 'Deselect exercise') : t('workoutBuilder.ariaSelect', 'Select exercise')}
           className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
             isSelected
-              ? 'bg-[#D4AF37] border-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
+              ? 'border-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
               : 'text-transparent'
           }`}
-          style={!isSelected ? { borderColor: 'var(--color-border-strong)' } : undefined}
+          style={!isSelected ? { borderColor: 'var(--color-border-strong)' } : { background: '#D4AF37' }}
         >
           {isSelected && <span className="text-[12px] font-bold leading-none">&#10003;</span>}
         </button>
@@ -981,7 +981,8 @@ const WorkoutBuilder = () => {
           <button
             onClick={() => handleSave({ andExit: true })}
             disabled={saving}
-            className="hidden md:flex w-full mt-4 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-[var(--color-text-on-accent,#000)] font-bold text-[14px] py-4 rounded-2xl transition-all items-center justify-center gap-2"
+            className="hidden md:flex w-full mt-4 disabled:opacity-50 text-[var(--color-text-on-accent,#000)] font-bold text-[14px] py-4 rounded-2xl transition-all items-center justify-center gap-2"
+            style={{ background: '#D4AF37' }}
           >
             {saving ? '…' : t('workoutBuilder.saveAndDone')}
           </button>
@@ -1022,7 +1023,8 @@ const WorkoutBuilder = () => {
           <button
             onClick={() => handleSave({ andExit: true })}
             disabled={saving}
-            className="flex-1 bg-[#D4AF37] disabled:opacity-50 text-[var(--color-text-on-accent,#000)] font-bold text-[13px] py-2.5 rounded-xl active:scale-95 transition-all flex items-center justify-center"
+            className="flex-1 disabled:opacity-50 text-[var(--color-text-on-accent,#000)] font-bold text-[13px] py-2.5 rounded-xl active:scale-95 transition-all flex items-center justify-center"
+            style={{ background: '#D4AF37' }}
           >
             {saving ? '…' : t('workoutBuilder.saveAndDone')}
           </button>

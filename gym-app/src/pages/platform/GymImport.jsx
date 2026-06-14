@@ -362,7 +362,8 @@ export default function GymImport() {
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-[13px] font-bold transition-colors"
+              className="px-5 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
+              style={{ background: '#10b981', color: '#000' }}
             >
               Choose file
             </button>
@@ -496,7 +497,8 @@ export default function GymImport() {
             <button
               onClick={() => commitMutation.mutate()}
               disabled={commitMutation.isPending || bucketed.ready.length === 0}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-[13px] font-bold transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold transition-colors disabled:opacity-40"
+              style={{ background: '#10b981', color: '#000' }}
             >
               {commitMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               Commit import ({bucketed.ready.length} rows)
@@ -549,7 +551,8 @@ export default function GymImport() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => navigate(`/platform/gym/${gymId}/diagnostic`)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-[13px] font-bold transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
+              style={{ background: '#10b981', color: '#000' }}
             >
               <Microscope size={14} />
               View retention diagnostic
@@ -655,7 +658,8 @@ function RollbackConfirmModal({ batch, gymSlug, confirmSlug, onChangeConfirmSlug
           <button
             onClick={onConfirm}
             disabled={!slugMatches || isPending || missingRpc}
-            className="px-4 py-2 rounded-xl text-[12.5px] font-bold inline-flex items-center gap-2 bg-red-500 text-white disabled:opacity-30"
+            className="px-4 py-2 rounded-xl text-[12.5px] font-bold inline-flex items-center gap-2 disabled:opacity-30"
+            style={{ background: '#ef4444', color: '#fff' }}
           >
             {isPending ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
             {isPending ? 'Rolling back…' : 'Roll back import'}

@@ -384,7 +384,8 @@ export default function AdminABTesting() {
             </button>
             <button
               onClick={() => endConfirm && doEndExperiment(endConfirm)}
-              className="flex-1 px-4 py-2 rounded-xl text-[13px] font-bold text-white bg-[#EF4444] hover:bg-[#DC2626] transition-colors"
+              className="flex-1 px-4 py-2 rounded-xl text-[13px] font-bold transition-colors"
+              style={{ background: '#EF4444', color: '#fff' }}
             >
               {t('admin.abTesting.endExperiment', 'End Experiment')}
             </button>

@@ -253,13 +253,15 @@ const PrintCardSheets = forwardRef(function PrintCardSheets(
               <div className="flex gap-2">
                 <button
                   onClick={() => setVisibleCount((n) => n + RENDER_STEP)}
-                  className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#1E293B] text-[#E5E7EB] border border-white/10 hover:brightness-110 transition"
+                  className="px-3 py-1.5 rounded-lg text-[12px] font-bold border border-white/10 hover:brightness-110 transition"
+                  style={{ background: '#1E293B', color: '#E5E7EB' }}
                 >
                   {t('admin.printCards.previewLoadMore', { defaultValue: 'Load 5 more' })}
                 </button>
                 <button
                   onClick={() => setVisibleCount(Number.MAX_SAFE_INTEGER)}
-                  className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#D4AF37] text-black hover:brightness-95 transition"
+                  className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-black hover:brightness-95 transition"
+                  style={{ background: '#D4AF37' }}
                 >
                   {t('admin.printCards.previewShowAll', { defaultValue: 'Show all' })}
                 </button>

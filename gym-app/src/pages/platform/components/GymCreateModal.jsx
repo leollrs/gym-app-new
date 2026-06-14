@@ -229,7 +229,8 @@ export default function GymCreateModal({ onClose, onCreated, t, showToast, profi
 
             <button
               onClick={onCreated}
-              className="w-full bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              style={{ background: '#D4AF37' }}
+              className="w-full text-black rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
             >
               {t('platform.gyms.done', 'Done')}
             </button>
@@ -309,7 +310,8 @@ export default function GymCreateModal({ onClose, onCreated, t, showToast, profi
             <button
               onClick={handleCreate}
               disabled={saving}
-              className="w-full bg-[#D4AF37] text-black hover:bg-[#E6C766] disabled:opacity-50 rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors"
+              style={{ background: '#D4AF37' }}
+              className="w-full text-black disabled:opacity-50 rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               {saving

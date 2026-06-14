@@ -470,7 +470,8 @@ const FriendButton = ({ status, onAdd, onAccept, t }) => {
     <button
       type="button"
       onClick={onAdd}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] hover:opacity-90"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 hover:opacity-90"
+      style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
     >
       <UserPlus size={12} strokeWidth={2} /> {t('social.friendStatus.add')}
     </button>
@@ -900,7 +901,8 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
                 onClick={handleSubmitComment}
                 disabled={!commentText.trim() || submitting}
                 aria-label={t('social.sendComment', 'Send comment')}
-                className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
               >
                 <Send size={16} />
               </button>
@@ -1612,10 +1614,10 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
             onClick={() => setShowFriends(s => !s)}
             className={`relative flex items-center gap-2 px-5 py-2.5 rounded-full text-[14px] font-semibold whitespace-nowrap active:scale-95 transition-all flex-shrink-0 ${
               showFriends
-                ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
+                ? ''
                 : 'border border-white/[0.06]'
             }`}
-            style={!showFriends ? { background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' } : undefined}
+            style={showFriends ? { background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' } : { background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
           >
             <Users size={16} />
             {t('social.friendsButton')}
@@ -2005,7 +2007,8 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
             type="button"
             onClick={handleSubmit}
             disabled={submitting || (!body.trim() && !photoFile)}
-            className="w-full py-3 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[15px] disabled:opacity-40 active:scale-[0.98] transition-all"
+            className="w-full py-3 rounded-xl font-bold text-[15px] disabled:opacity-40 active:scale-[0.98] transition-all"
+            style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
           >
             {submitting ? t('social.posting') : t('social.post')}
           </button>

@@ -420,7 +420,8 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                   <button
                     onClick={handleSave}
                     disabled={saving || !form.name.trim() || !form.muscle_group || !form.equipment}
-                    className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
+                    className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
+                    style={{ background: '#D4AF37' }}
                   >
                     {saving ? (newVideoFile ? tp('uploading') : tp('saving')) : tp('saveChanges')}
                   </button>
@@ -855,7 +856,8 @@ export default function PlatformSettings() {
               </select>
               <button
                 onClick={() => setShowExModal(true)}
-                className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+                className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+                style={{ background: '#D4AF37' }}
               >
                 <Plus className="w-3.5 h-3.5" /> {tp('addExercise')}
               </button>
@@ -901,7 +903,8 @@ export default function PlatformSettings() {
               </p>
               <button
                 onClick={() => setShowAchModal(true)}
-                className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+                className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+                style={{ background: '#D4AF37' }}
               >
                 <Plus className="w-3.5 h-3.5" /> {tp('addAchievement')}
               </button>
@@ -959,7 +962,8 @@ export default function PlatformSettings() {
               </p>
               <button
                 onClick={() => setShowProgModal(true)}
-                className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+                className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+                style={{ background: '#D4AF37' }}
               >
                 <Plus className="w-3.5 h-3.5" /> {tp('addTemplate')}
               </button>
@@ -1111,7 +1115,8 @@ export default function PlatformSettings() {
           <button
             onClick={saveAppVersion}
             disabled={appVersionSaving || !appVersionLoaded}
-            className="bg-[#D4AF37] text-black hover:bg-[#E6C766] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+            className="text-black disabled:opacity-50 disabled:cursor-not-allowed rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+            style={{ background: '#D4AF37' }}
           >
             {appVersionSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {tp('appVersionSave')}
@@ -1191,7 +1196,8 @@ export default function PlatformSettings() {
           )}
           <button
             onClick={saveGymDefaults}
-            className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+            className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+            style={{ background: '#D4AF37' }}
           >
             <Save className="w-3.5 h-3.5" /> {tp('saveDefaults')}
           </button>
@@ -1485,7 +1491,8 @@ function ExerciseModal({ onClose, onSaved }) {
         <button
           onClick={handleSave}
           disabled={saving || !form.name.trim() || !form.muscle_group || !form.equipment || !form.category}
-          className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
+          className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
+          style={{ background: '#D4AF37' }}
         >
           {saving ? (videoFile ? tp('uploading') : tp('saving')) : tp('saveExercise')}
         </button>
@@ -1582,7 +1589,8 @@ function AchievementModal({ onClose, onSaved }) {
         <button
           onClick={handleSave}
           disabled={saving || !canSave}
-          className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
+          className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
+          style={{ background: '#D4AF37' }}
         >
           {saving ? tp('saving') : tp('saveAchievement')}
         </button>
@@ -1667,7 +1675,8 @@ function ProgramModal({ onClose, onSaved }) {
         <button
           onClick={handleSave}
           disabled={saving || !canSave}
-          className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
+          className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
+          style={{ background: '#D4AF37' }}
         >
           {saving ? tp('saving') : tp('saveTemplate')}
         </button>

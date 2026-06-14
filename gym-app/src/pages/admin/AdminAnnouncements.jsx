@@ -146,7 +146,8 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
     <AdminModal isOpen={isOpen} onClose={onClose} title={t('admin.announcements.newAnnouncement', 'New Announcement')} titleIcon={Megaphone}
       footer={
         <button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}
-          className="w-full py-3 rounded-xl font-bold text-[14px] text-[var(--color-text-on-accent)] bg-[var(--color-accent)] disabled:opacity-50">
+          className="w-full py-3 rounded-xl font-bold text-[14px] disabled:opacity-50"
+          style={{ background: 'var(--color-accent)', color: '#fff' }}>
           {createMutation.isPending ? t('admin.announcements.publishing', 'Publishing...') : form.scheduled_for ? t('admin.announcements.schedule', 'Schedule') : t('admin.announcements.publishNow', 'Publish Now')}
         </button>
       }
@@ -172,9 +173,9 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
             {TYPE_OPTS.map(opt => (
               <button key={opt.value} onClick={() => set('type', opt.value)}
                 className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                  form.type === opt.value ? '' : 'bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] text-[var(--color-admin-text-sub)]'
+                  form.type === opt.value ? '' : 'border border-[var(--color-admin-border)] text-[var(--color-admin-text-sub)]'
                 }`}
-                style={form.type === opt.value ? opt.selectedStyle : undefined}>
+                style={form.type === opt.value ? opt.selectedStyle : { background: 'var(--color-bg-deep)' }}>
                 {t(`admin.announcementTypes.${opt.labelKey}`)}
               </button>
             ))}
@@ -506,9 +507,9 @@ export default function AdminAnnouncements() {
                                 {TYPE_OPTS.map(opt => (
                                   <button key={opt.value} onClick={() => setEditForm(p => ({ ...p, type: opt.value }))}
                                     className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                                      editForm.type === opt.value ? '' : 'bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] text-[var(--color-admin-text-sub)]'
+                                      editForm.type === opt.value ? '' : 'border border-[var(--color-admin-border)] text-[var(--color-admin-text-sub)]'
                                     }`}
-                                    style={editForm.type === opt.value ? opt.selectedStyle : undefined}>
+                                    style={editForm.type === opt.value ? opt.selectedStyle : { background: 'var(--color-bg-deep)' }}>
                                     {t(`admin.announcementTypes.${opt.labelKey}`)}
                                   </button>
                                 ))}
@@ -604,11 +605,13 @@ export default function AdminAnnouncements() {
                             </div>
                             <div className="flex gap-2">
                               <button onClick={cancelEditing}
-                                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-[var(--color-admin-panel)]text-[var(--color-admin-text-sub)] border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors">
+                                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors"
+                                style={{ background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-sub)' }}>
                                 {t('admin.announcements.cancel', 'Cancel')}
                               </button>
                               <button onClick={() => editMutation.mutate()} disabled={editMutation.isPending || !editForm.title || !editForm.message}
-                                className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-[var(--color-text-on-accent)] bg-[var(--color-accent)] disabled:opacity-50">
+                                className="flex-1 py-2.5 rounded-xl font-bold text-[13px] disabled:opacity-50"
+                                style={{ background: 'var(--color-accent)', color: '#fff' }}>
                                 {editMutation.isPending ? t('admin.announcements.saving', 'Saving...') : t('admin.announcements.save', 'Save')}
                               </button>
                             </div>

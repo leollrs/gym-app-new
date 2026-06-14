@@ -360,7 +360,8 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
 
               <div className="flex items-center gap-3">
                 <button onClick={() => setShowSaveConfirm(true)} disabled={savingFup}
-                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap ${fupSaved ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#D4AF37] text-black hover:bg-[#E6C766]'} disabled:opacity-50`}>
+                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap ${fupSaved ? 'bg-emerald-500/15 text-emerald-400' : ''} disabled:opacity-50`}
+                  style={fupSaved ? {} : { background: '#D4AF37', color: '#000' }}>
                   {fupSaved ? <CheckCircle size={13} /> : <Save size={13} />}
                   {savingFup ? t('adminChurn.followUp.saving', { defaultValue: 'Saving...' }) : fupSaved ? t('adminChurn.followUp.saved', { defaultValue: 'Saved!' }) : t('adminChurn.followUp.saveSettings', { defaultValue: 'Save Settings' })}
                 </button>
@@ -387,7 +388,8 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
                     <button
                       onClick={() => { setShowSaveConfirm(false); saveSettings(); }}
                       disabled={savingFup}
-                      className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#D4AF37] text-black hover:bg-[#E6C766] transition-colors whitespace-nowrap disabled:opacity-40"
+                      className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap disabled:opacity-40"
+                      style={{ background: '#D4AF37', color: '#000' }}
                     >
                       {tc('confirm')}
                     </button>
@@ -460,7 +462,8 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
 
               <div className="flex items-center gap-3">
                 <button onClick={saveTenureSettings} disabled={savingTenure}
-                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap ${tenureSaved ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#D4AF37] text-black hover:bg-[#E6C766]'} disabled:opacity-50`}>
+                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap ${tenureSaved ? 'bg-emerald-500/15 text-emerald-400' : ''} disabled:opacity-50`}
+                  style={tenureSaved ? {} : { background: '#D4AF37', color: '#000' }}>
                   {tenureSaved ? <CheckCircle size={13} /> : <Save size={13} />}
                   {savingTenure ? t('adminChurn.tenure.saving', { defaultValue: 'Saving...' }) : tenureSaved ? t('adminChurn.tenure.saved', { defaultValue: 'Saved!' }) : t('adminChurn.tenure.save', { defaultValue: 'Save Milestones' })}
                 </button>

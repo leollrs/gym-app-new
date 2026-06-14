@@ -61,7 +61,8 @@ export default function GymContentTab({
             <h3 className="text-[14px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.contentTab.gymChallenges')}</h3>
             <button
               onClick={() => { setEditingChallenge(null); setShowChallengeModal(true); }}
-              className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              style={{ background: '#D4AF37' }}
             >
               <Plus className="w-3.5 h-3.5" />
               {t('platform.gymDetail.contentTab.addChallenge')}
@@ -135,7 +136,8 @@ export default function GymContentTab({
             <h3 className="text-[14px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.contentTab.gymPrograms')}</h3>
             <button
               onClick={() => { setEditingProgram(null); setShowProgramModal(true); }}
-              className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              style={{ background: '#D4AF37' }}
             >
               <Plus className="w-3.5 h-3.5" />
               {t('platform.gymDetail.contentTab.addProgram')}
@@ -213,7 +215,8 @@ export default function GymContentTab({
             <h3 className="text-[14px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.contentTab.achievementDefs')}</h3>
             <button
               onClick={() => { setEditingAchievement(null); setShowAchievementModal(true); }}
-              className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              style={{ background: '#D4AF37' }}
             >
               <Plus className="w-3.5 h-3.5" />
               {t('platform.gymDetail.contentTab.addAchievement')}

@@ -341,7 +341,8 @@ class ActiveSessionErrorBoundary extends Component {
             ) : null}
             <button
               onClick={() => window.history.back()}
-              className="mt-2 px-6 py-3 rounded-2xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[14px]"
+              className="mt-2 px-6 py-3 rounded-2xl font-bold text-[14px]"
+              style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
             >
               {i18n.t('pages:activeSession.goBack')}
             </button>
@@ -2969,7 +2970,8 @@ const ActiveSession = () => {
           <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{error}</p>
           <button
             onClick={() => navigate(-1)}
-            className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[15px]"
+            className="mt-4 px-6 py-3 rounded-2xl font-bold text-[15px]"
+            style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
           >
             {t('activeSession.goBack')}
           </button>
@@ -2999,7 +3001,8 @@ const ActiveSession = () => {
           <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('activeSession.workoutModified')}</p>
           <button
             onClick={() => navigate(-1)}
-            className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[15px]"
+            className="mt-4 px-6 py-3 rounded-2xl font-bold text-[15px]"
+            style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
           >
             {t('activeSession.goBack')}
           </button>
@@ -3342,7 +3345,8 @@ const ActiveSession = () => {
             <div className="space-y-2.5">
               <button
                 onClick={handleResumeConflict}
-                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-[#60A5FA] hover:bg-[#4B91E8] transition-colors"
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors"
+                style={{ background: '#60A5FA', color: '#fff' }}
               >
                 {t('activeSession.conflictResume', { name: conflictSession.routineName, defaultValue: `Resume ${conflictSession.routineName}` })}
               </button>
@@ -3379,7 +3383,8 @@ const ActiveSession = () => {
             <div className="space-y-2.5">
               <button
                 onClick={() => setShowWrongDay(false)}
-                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-accent,#000)] bg-[#D4AF37] hover:bg-[#C4A030] transition-colors"
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors"
+                style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
               >
                 {t('activeSession.startAnyway', 'Yes, Start Anyway')}
               </button>
@@ -3432,7 +3437,8 @@ const ActiveSession = () => {
             <div className="space-y-2.5">
               <button
                 onClick={() => { autoEndPromptDismissed.current = true; setShowAutoEndPrompt(false); }}
-                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-accent,#000)] bg-[#D4AF37] hover:bg-[#C4A030] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
               >
                 {t('activeSession.keepGoing', 'Yes, keep going')}
               </button>
@@ -3872,7 +3878,8 @@ const ActiveSession = () => {
             <p className="text-[13px] mb-6" style={{ color: 'var(--color-text-subtle)' }}>{t('activeSession.tapToAddExercises')}</p>
             <button
               onClick={() => setShowAddExercise(true)}
-              className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[14px] active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
             >
               <Plus size={18} />
               {t('activeSession.addExercise')}
@@ -4400,8 +4407,8 @@ const ActiveSession = () => {
                     <div className="grid grid-cols-3 gap-2 mb-5">
                       <button
                         onClick={() => setSelectedMuscle('')}
-                        className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${!selectedMuscle ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]' : ''}`}
-                        style={selectedMuscle ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : {}}
+                        className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors`}
+                        style={selectedMuscle ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : { background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
                       >
                         {t('muscleGroups.All', 'All')}
                       </button>
@@ -4409,8 +4416,8 @@ const ActiveSession = () => {
                         <button
                           key={mg}
                           onClick={() => setSelectedMuscle(selectedMuscle === mg ? '' : mg)}
-                          className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${selectedMuscle === mg ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]' : ''}`}
-                          style={selectedMuscle !== mg ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : {}}
+                          className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors`}
+                          style={selectedMuscle !== mg ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : { background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
                         >
                           {t(`muscleGroups.${mg}`, mg)}
                         </button>
@@ -4422,8 +4429,8 @@ const ActiveSession = () => {
                     <div className="grid grid-cols-3 gap-2 mb-4">
                       <button
                         onClick={() => setSelectedEquipment('')}
-                        className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${!selectedEquipment ? 'bg-[#60A5FA] text-black' : ''}`}
-                        style={selectedEquipment ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : {}}
+                        className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors`}
+                        style={selectedEquipment ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : { background: '#60A5FA', color: '#000' }}
                       >
                         {t('muscleGroups.All', 'All')}
                       </button>
@@ -4431,8 +4438,8 @@ const ActiveSession = () => {
                         <button
                           key={eq}
                           onClick={() => setSelectedEquipment(selectedEquipment === eq ? '' : eq)}
-                          className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${selectedEquipment === eq ? 'bg-[#60A5FA] text-black' : ''}`}
-                          style={selectedEquipment !== eq ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : {}}
+                          className={`px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors`}
+                          style={selectedEquipment !== eq ? { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' } : { background: '#60A5FA', color: '#000' }}
                         >
                           {t(`exerciseLibrary.equipmentNames.${eq}`, eq)}
                         </button>
@@ -4442,7 +4449,8 @@ const ActiveSession = () => {
                     {/* Apply */}
                     <button
                       onClick={() => setShowFilters(false)}
-                      className="w-full py-3 rounded-xl font-bold text-[14px] bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] active:scale-[0.97] transition-transform"
+                      className="w-full py-3 rounded-xl font-bold text-[14px] active:scale-[0.97] transition-transform"
+                      style={{ background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
                     >
                       {t('activeSession.applyFilters', 'Apply')}
                     </button>
@@ -4728,10 +4736,10 @@ const ActiveSession = () => {
                   onClick={() => setSwapSelectedReason(swapSelectedReason === r.key ? null : r.key)}
                   className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors ${
                     swapSelectedReason === r.key
-                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
+                      ? ''
                       : 'bg-white/[0.06] hover:bg-white/[0.1]'
                   }`}
-                  style={swapSelectedReason !== r.key ? { color: 'var(--color-text-muted)' } : undefined}
+                  style={swapSelectedReason !== r.key ? { color: 'var(--color-text-muted)' } : { background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
                 >
                   {r.label}
                 </button>
@@ -4979,9 +4987,12 @@ const ActiveSession = () => {
                   onClick={hasNextExercise ? handleNext : () => setShowFinishModal(true)}
                   className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:outline-none ${
                     hasNextExercise
-                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
-                      : 'bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
+                      ? 'shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
+                      : 'shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
                   }`}
+                  style={hasNextExercise
+                    ? { background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }
+                    : { background: '#10B981', color: 'var(--color-text-on-secondary,#fff)' }}
                 >
                   {hasNextExercise ? `${t('activeSession.nextExerciseButton')} →` : `${t('activeSession.finishWorkoutButton')} →`}
                 </button>
@@ -4991,10 +5002,10 @@ const ActiveSession = () => {
                   disabled={!canComplete}
                   className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                     canComplete
-                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
+                      ? 'shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
                       : 'cursor-not-allowed'
                   }`}
-                  style={!canComplete ? { backgroundColor: 'var(--color-border-subtle)', color: 'var(--color-text-subtle)' } : undefined}
+                  style={!canComplete ? { backgroundColor: 'var(--color-border-subtle)', color: 'var(--color-text-subtle)' } : { background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
                 >
                   {t('activeSession.completeSet')} →
                 </button>
@@ -5046,7 +5057,8 @@ const ActiveSession = () => {
             </button>
             <button
               onClick={() => setShowFinishModal(true)}
-              className="flex-1 font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-2 focus:ring-[#10B981] focus:outline-none"
+              className="flex-1 font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-2 focus:ring-[#10B981] focus:outline-none"
+              style={{ background: '#10B981', color: 'var(--color-text-on-secondary,#fff)' }}
             >
               {t('activeSession.finishWorkoutButton')} →
             </button>
@@ -5067,9 +5079,12 @@ const ActiveSession = () => {
                   onClick={hasNextExercise ? handleNext : () => setShowFinishModal(true)}
                   className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:outline-none ${
                     hasNextExercise
-                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
-                      : 'bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
+                      ? 'shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-[#D4AF37]'
+                      : 'shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-[#10B981]'
                   }`}
+                  style={hasNextExercise
+                    ? { background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }
+                    : { background: '#10B981', color: 'var(--color-text-on-secondary,#fff)' }}
                 >
                   {hasNextExercise ? `${t('activeSession.nextExerciseButton')} →` : `${t('activeSession.finishWorkoutButton')} →`}
                 </button>
@@ -5079,10 +5094,10 @@ const ActiveSession = () => {
                   disabled={!canComplete}
                   className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                     canComplete
-                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
+                      ? 'shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
                       : 'bg-white/[0.06] cursor-not-allowed'
                   }`}
-                  style={!canComplete ? { color: 'var(--color-text-muted)' } : undefined}
+                  style={!canComplete ? { color: 'var(--color-text-muted)' } : { background: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }}
                 >
                   {t('activeSession.completeSet')} →
                 </button>

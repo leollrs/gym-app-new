@@ -139,14 +139,16 @@ export default function SegmentEditorModal({ segment, gymId, adminId, onClose, o
         <>
           <button
             onClick={onClose}
-            className="flex-1 py-2.5 text-[13px] font-medium rounded-lg transition-colors bg-[var(--color-bg-subtle)] text-[var(--color-admin-text-sub)] border border-[var(--color-admin-border)] hover:bg-[var(--color-bg-hover)]"
+            className="flex-1 py-2.5 text-[13px] font-medium rounded-lg transition-colors text-[var(--color-admin-text-sub)] border border-[var(--color-admin-border)]"
+            style={{ background: 'var(--color-bg-subtle)' }}
           >
             {t('admin.segments.cancel', 'Cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={!name.trim() || saving}
-            className="flex-1 py-2.5 text-[13px] font-bold rounded-lg transition-opacity hover:opacity-90 disabled:opacity-50 bg-[var(--color-accent)] text-[var(--color-text-on-accent)]"
+            className="flex-1 py-2.5 text-[13px] font-bold rounded-lg transition-opacity hover:opacity-90 disabled:opacity-50 text-[var(--color-text-on-accent)]"
+            style={{ background: 'var(--color-accent)' }}
           >
             {saving ? '...' : isEditing ? t('admin.segments.save', 'Save Changes') : t('admin.segments.create', 'Create Segment')}
           </button>

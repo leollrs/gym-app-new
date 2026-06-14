@@ -69,7 +69,8 @@ export default function PrintCardsView() {
           </div>
           <button
             onClick={() => { sheetsRef.current?.revealAll(); window.print(); }}
-            className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#D4AF37] text-black hover:brightness-95 transition"
+            className="px-3 py-1.5 rounded-lg text-[12px] font-bold hover:brightness-95 transition"
+            style={{ background: '#D4AF37' }}
           >
             {t('admin.printCards.printBtn', { defaultValue: 'Print' })}
           </button>

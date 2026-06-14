@@ -396,11 +396,13 @@ export default function GymOps() {
 
 // ── Helpers ──────────────────────────────────────────────────
 function OpsCard({ icon: Icon, title, sub, actionLabel, actionIcon: ActionIcon, actionTone, actionLoading, onClick, extra }) {
+  const toneStyle = {
+    accent:  { background: '#10b981', color: '#000' },
+    warning: { background: '#f59e0b', color: '#000' },
+  }[actionTone] || {};
   const toneClasses = {
-    accent:  'bg-emerald-500 text-black hover:bg-emerald-400',
-    warning: 'bg-amber-500 text-black hover:bg-amber-400',
     danger:  'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30',
-  }[actionTone] || 'bg-white/5 text-white hover:bg-white/10';
+  }[actionTone] || (actionTone === 'accent' || actionTone === 'warning' ? '' : 'bg-white/5 text-white hover:bg-white/10');
 
   return (
     <div className="rounded-2xl border border-white/10 bg-[#0F172A] p-5">
@@ -413,6 +415,7 @@ function OpsCard({ icon: Icon, title, sub, actionLabel, actionIcon: ActionIcon, 
       <button
         onClick={onClick}
         disabled={actionLoading}
+        style={toneStyle}
         className={`mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-bold transition-colors disabled:opacity-40 ${toneClasses}`}
       >
         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <ActionIcon size={13} />}
@@ -488,7 +491,8 @@ function DeleteConfirmModal({ gym, confirmSlug, onChangeConfirmSlug, isPending, 
           <button
             onClick={onConfirm}
             disabled={!slugMatches || isPending}
-            className="px-4 py-2 rounded-xl text-[12.5px] font-bold inline-flex items-center gap-2 bg-red-500 text-white disabled:opacity-30"
+            style={{ background: '#ef4444', color: '#fff' }}
+            className="px-4 py-2 rounded-xl text-[12.5px] font-bold inline-flex items-center gap-2 disabled:opacity-30"
           >
             {isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
             {isPending ? 'Deleting…' : 'Delete forever'}

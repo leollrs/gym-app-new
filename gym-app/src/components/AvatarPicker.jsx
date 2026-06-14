@@ -175,9 +175,10 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                   onClick={() => setTab(tk.key)}
                   className={`flex-1 py-2.5 text-[13px] font-semibold rounded-lg transition-all ${
                     tab === tk.key
-                      ? 'bg-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
+                      ? 'text-[var(--color-text-on-accent,#000)]'
                       : 'text-[var(--color-text-muted)] hover:text-white'
                   }`}
+                  style={tab === tk.key ? { background: '#D4AF37' } : undefined}
                 >
                   {t(tk.labelKey, tk.fallback)}
                 </button>
@@ -304,7 +305,8 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
                 type="button"
                 onClick={handleSave}
                 disabled={uploading}
-                className="w-full py-3.5 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[15px] hover:bg-[#C9A430] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[48px]"
+                className="w-full py-3.5 rounded-xl text-[var(--color-text-on-accent,#000)] font-bold text-[15px] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[48px]"
+                style={{ background: '#D4AF37' }}
               >
                 {uploading ? (
                   <>

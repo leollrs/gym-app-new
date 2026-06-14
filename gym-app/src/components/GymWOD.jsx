@@ -581,7 +581,8 @@ function GymWOD() {
             <div className="space-y-2">
               <button
                 onClick={() => { setShowConfirm(false); handleStart(); }}
-                className="w-full py-3 rounded-xl font-bold text-[13px] bg-orange-500 text-white active:scale-[0.98] transition-transform"
+                className="w-full py-3 rounded-xl font-bold text-[13px] active:scale-[0.98] transition-transform"
+                style={{ background: '#f97316', color: '#fff' }}
               >
                 {t('gymWOD.replaceConfirm', 'Yes, start WOD')}
               </button>

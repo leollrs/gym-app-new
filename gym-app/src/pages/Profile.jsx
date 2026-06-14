@@ -1554,7 +1554,8 @@ const Profile = () => {
               <button type="button"
                 onClick={saveGoals}
                 disabled={savingGoals}
-                className="flex-1 py-3.5 rounded-xl text-[15px] font-bold bg-[var(--color-accent)] text-[var(--color-text-on-accent,#000)] disabled:opacity-50">
+                className="flex-1 py-3.5 rounded-xl text-[15px] font-bold text-[var(--color-text-on-accent,#000)] disabled:opacity-50"
+                style={{ background: 'var(--color-accent)' }}>
                 {savingGoals ? t('profile.savingEllipsis') : t('profile.saveChanges')}
               </button>
             </div>

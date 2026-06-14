@@ -1767,7 +1767,8 @@ const Dashboard = () => {
                               <button
                                 type="button"
                                 onClick={() => navigate(`/cardio/${cs.id}`)}
-                                className="flex-1 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[var(--color-surface-hover)] text-left active:scale-[0.99] transition-transform"
+                                className="flex-1 flex items-center gap-3 px-4 py-2.5 rounded-xl text-left active:scale-[0.99] transition-transform"
+                                style={{ background: 'var(--color-surface-hover)' }}
                               >
                                 <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
                                   <Activity size={13} className="text-[#10B981]" />
@@ -1967,7 +1968,8 @@ const Dashboard = () => {
                           <button
                             type="button"
                             onClick={() => navigate(`/cardio/${cs.id}`)}
-                            className="w-full flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-[var(--color-surface-hover)] text-left active:scale-[0.99] transition-transform"
+                            className="w-full flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl text-left active:scale-[0.99] transition-transform"
+                            style={{ background: 'var(--color-surface-hover)' }}
                           >
                             <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
                               <Activity size={13} className="text-[#10B981]" />
@@ -2063,7 +2065,8 @@ const Dashboard = () => {
                           <button
                             type="button"
                             onClick={() => navigate(`/cardio/${cs.id}`)}
-                            className="w-full flex items-center gap-3 px-4 pr-11 py-3 rounded-xl bg-[var(--color-surface-hover)] hover:bg-[var(--color-bg-deep)] transition-colors text-left"
+                            className="w-full flex items-center gap-3 px-4 pr-11 py-3 rounded-xl transition-colors text-left"
+                            style={{ background: 'var(--color-surface-hover)' }}
                           >
                             <div className="w-9 h-9 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
                               <Activity size={13} className="text-[#10B981]" />
@@ -2168,7 +2171,8 @@ const Dashboard = () => {
                           <button
                             type="button"
                             onClick={() => navigate(`/cardio/${cs.id}`)}
-                            className="w-full flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-[var(--color-surface-hover)] text-left active:scale-[0.99] transition-transform"
+                            className="w-full flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl text-left active:scale-[0.99] transition-transform"
+                            style={{ background: 'var(--color-surface-hover)' }}
                           >
                             <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
                               <Activity size={13} className="text-[#10B981]" />

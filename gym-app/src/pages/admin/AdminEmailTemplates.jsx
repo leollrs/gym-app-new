@@ -271,7 +271,8 @@ export default function AdminEmailTemplates() {
               <button
                 onClick={() => handleDelete(deleteConfirm)}
                 disabled={deleteMutation.isPending}
-                className="px-4 py-2 rounded-xl text-[13px] font-bold text-white bg-[#EF4444] hover:bg-[#DC2626] transition-colors disabled:opacity-50"
+                className="px-4 py-2 rounded-xl text-[13px] font-bold transition-colors disabled:opacity-50"
+                style={{ background: '#EF4444', color: '#fff' }}
               >
                 {deleteMutation.isPending ? <Loader2 size={15} className="animate-spin inline mr-1" /> : null}
                 {t('admin.emailTemplates.deleteConfirm')}

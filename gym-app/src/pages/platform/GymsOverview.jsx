@@ -213,7 +213,8 @@ export default function GymsOverview() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowCreateModal(true)}
-              className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0 whitespace-nowrap"
+              className="rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0 whitespace-nowrap"
+              style={{ background: '#D4AF37' }}
             >
               <Plus size={14} />
               {t('platform.gyms.newGym', 'New Gym')}

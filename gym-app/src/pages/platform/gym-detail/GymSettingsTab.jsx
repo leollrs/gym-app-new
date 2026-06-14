@@ -166,7 +166,8 @@ export default function GymSettingsTab({
         <button
           onClick={saveGymSettings}
           disabled={savingGym}
-          className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors disabled:opacity-50"
+          className="rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors disabled:opacity-50"
+          style={{ background: '#D4AF37', color: '#000' }}
         >
           {savingGym ? t('platform.gymDetail.settings.saving') : t('platform.gymDetail.settings.saveChanges')}
         </button>
@@ -227,7 +228,8 @@ export default function GymSettingsTab({
           <button
             onClick={saveBranding}
             disabled={!brandValid || !brandDirty || brandSaving}
-            className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: '#D4AF37', color: '#000' }}
           >
             {brandSaving ? t('platform.gymDetail.settings.saving') : t('platform.gymDetail.settings.saveBranding', 'Save branding')}
           </button>
@@ -273,10 +275,11 @@ export default function GymSettingsTab({
           </div>
           <button
             onClick={() => setEditingGym(prev => ({ ...prev, qr_enabled: !prev.qr_enabled }))}
-            className={`relative w-11 h-6 rounded-full transition-colors ${editingGym.qr_enabled ? 'bg-[#D4AF37]' : 'bg-[#374151]'}`}
+            className="relative w-11 h-6 rounded-full transition-colors"
             role="switch"
             aria-checked={editingGym.qr_enabled}
             aria-label={t('platform.gymDetail.settings.toggleQrCodes')}
+            style={{ background: editingGym.qr_enabled ? '#D4AF37' : '#374151' }}
           >
             <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editingGym.qr_enabled ? 'left-[22px]' : 'left-0.5'}`} />
           </button>
@@ -296,9 +299,10 @@ export default function GymSettingsTab({
                   <button key={opt.key} onClick={() => setEditingGym(prev => ({ ...prev, qr_payload_type: opt.key }))}
                     className={`text-left p-3 rounded-xl border transition-colors ${
                       editingGym.qr_payload_type === opt.key
-                        ? 'border-[#D4AF37]/40 bg-[#D4AF37]/8'
-                        : 'border-white/6 bg-[#111827] hover:border-white/12'
-                    }`}>
+                        ? 'border-[#D4AF37]/40'
+                        : 'border-white/6 hover:border-white/12'
+                    }`}
+                    style={{ background: editingGym.qr_payload_type === opt.key ? 'rgba(212,175,55,0.08)' : '#111827' }}>
                     <p className={`text-[12px] font-semibold ${editingGym.qr_payload_type === opt.key ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
                       {opt.label}
                     </p>
@@ -348,9 +352,10 @@ export default function GymSettingsTab({
                   <button key={opt.key} onClick={() => setEditingGym(prev => ({ ...prev, qr_display_format: opt.key }))}
                     className={`flex-1 py-2 rounded-xl text-[12px] font-medium transition-colors ${
                       editingGym.qr_display_format === opt.key
-                        ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
-                        : 'bg-[#111827] border border-white/6 text-[#6B7280]'
-                    }`}>
+                        ? 'text-[#D4AF37]'
+                        : 'border border-white/6 text-[#6B7280]'
+                    }`}
+                    style={{ background: editingGym.qr_display_format === opt.key ? 'rgba(212,175,55,0.15)' : '#111827' }}>
                     {opt.label}
                   </button>
                 ))}
@@ -376,10 +381,11 @@ export default function GymSettingsTab({
           </div>
           <button
             onClick={() => setEditingGym(prev => ({ ...prev, classes_enabled: !prev.classes_enabled }))}
-            className={`relative w-11 h-6 rounded-full transition-colors ${editingGym.classes_enabled ? 'bg-[#D4AF37]' : 'bg-[#374151]'}`}
+            className="relative w-11 h-6 rounded-full transition-colors"
             role="switch"
             aria-checked={editingGym.classes_enabled}
             aria-label={t('platform.gymDetail.settings.toggleClassBooking')}
+            style={{ background: editingGym.classes_enabled ? '#D4AF37' : '#374151' }}
           >
             <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editingGym.classes_enabled ? 'left-[22px]' : 'left-0.5'}`} />
           </button>

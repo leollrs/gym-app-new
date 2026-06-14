@@ -417,7 +417,8 @@ export default function AppTour({ userId }) {
               )}
               <button
                 onClick={next}
-                className="flex-1 py-2.5 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] font-bold text-[12px] flex items-center justify-center gap-1 min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                className="flex-1 py-2.5 rounded-xl text-[var(--color-text-on-accent,#000)] font-bold text-[12px] flex items-center justify-center gap-1 min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                style={{ background: '#D4AF37' }}
               >
                 {step < TOUR_STEP_KEYS.length - 1 ? (
                   <>{t('appTour.next')} <ChevronRight size={14} /></>

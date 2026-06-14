@@ -376,7 +376,8 @@ export default function PlatformLayout({ children }) {
             </p>
             <button
               onClick={handleSessionExpiredLogout}
-              className="w-full bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-colors"
+              className="w-full text-black rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-colors"
+              style={{ background: '#D4AF37' }}
             >
               {t('platformLayout.signIn', 'Sign In')}
             </button>

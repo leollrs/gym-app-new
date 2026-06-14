@@ -1697,8 +1697,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
               {onEdit && (
                 <button
                   onClick={() => onEdit(exercise)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-[var(--color-surface-hover)] hover:bg-white/[0.06] transition-colors"
-                  style={{ color: 'var(--color-text-subtle)' }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:bg-white/[0.06] transition-colors"
+                  style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
                 >
                   <Pencil size={11} /> {t('exerciseLibrary.edit')}
                 </button>
@@ -1706,8 +1706,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
               {onDelete && (
                 <button
                   onClick={() => onDelete(exercise.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 bg-[var(--color-surface-hover)] hover:bg-red-500/10 transition-colors"
-                  style={{ color: 'var(--color-text-muted)' }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                  style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
                 >
                   <X size={11} /> {t('exerciseLibrary.delete')}
                 </button>
@@ -1720,8 +1720,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
             <div className="flex items-center gap-2 pt-2 border-t border-[var(--color-border-subtle)]">
               <button
                 onClick={() => onUnsave()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 bg-[var(--color-surface-hover)] hover:bg-red-500/10 transition-colors"
-                  style={{ color: 'var(--color-text-muted)' }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                  style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
               >
                 <X size={11} /> {t('exerciseLibrary.removeFromSaved')}
               </button>
@@ -3402,7 +3402,7 @@ export const ExerciseLibraryPage = () => {
       {editingExercise && createPortal(
         <div className="fixed inset-0 z-[110] flex flex-col animate-fade-in" style={{ background: 'var(--color-bg-primary)' }}>
           <header className="flex-shrink-0 px-5 pb-3 border-b border-[var(--color-border-subtle)] flex items-center gap-3" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))', background: 'var(--color-bg-primary)' }}>
-            <button onClick={() => setEditingExercise(null)} aria-label={t('exerciseLibrary.ariaClose', 'Close')} className="w-11 h-11 rounded-xl bg-[var(--color-surface-hover)] flex items-center justify-center hover:bg-[var(--color-surface-hover)] transition-colors">
+            <button onClick={() => setEditingExercise(null)} aria-label={t('exerciseLibrary.ariaClose', 'Close')} className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors" style={{ background: 'var(--color-surface-hover)' }}>
               <X size={18} style={{ color: 'var(--color-text-muted)' }} />
             </button>
             <h2 className="text-[18px] truncate" style={{ fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.editExercise')}</h2>

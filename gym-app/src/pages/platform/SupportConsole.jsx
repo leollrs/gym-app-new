@@ -630,7 +630,8 @@ export default function SupportConsole() {
                         <button
                           key={r.id}
                           onClick={() => setQuery(r.name || '')}
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-[#0F172A] border border-white/4 hover:border-white/10 hover:bg-[#111827] transition-colors text-left"
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-white/4 hover:border-white/10 transition-colors text-left"
+                          style={{ background: '#0F172A' }}
                         >
                           <UserAvatar user={{ full_name: r.name }} size={28} />
                           <div className="min-w-0 flex-1">
@@ -685,8 +686,9 @@ export default function SupportConsole() {
                           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
                             isSelected
                               ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/20'
-                              : 'bg-[#0F172A] border border-white/4 hover:border-white/10 hover:bg-[#111827]'
+                              : 'border border-white/4 hover:border-white/10'
                           }`}
+                          style={isSelected ? undefined : { background: '#0F172A' }}
                         >
                           <UserAvatar user={member} size={36} />
                           <div className="flex-1 min-w-0">
@@ -723,7 +725,8 @@ export default function SupportConsole() {
                       <button
                         key={gym.id}
                         onClick={() => navigate(`/platform/gym/${gym.id}`)}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#0F172A] border border-white/4 hover:border-white/10 hover:bg-[#111827] transition-colors text-left"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/4 hover:border-white/10 transition-colors text-left"
+                        style={{ background: '#0F172A' }}
                       >
                         <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
                           <Building2 size={15} className="text-blue-400" />
@@ -901,23 +904,23 @@ export default function SupportConsole() {
                       <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-2">{t('platform.support.quickActions', 'Quick Actions')}</p>
                       <div className="grid grid-cols-2 gap-2">
                         {selectedMember.gyms?.id && (
-                          <button onClick={() => navigate(`/platform/gym/${selectedMember.gyms.id}`)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                          <button onClick={() => navigate(`/platform/gym/${selectedMember.gyms.id}`)} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors" style={{ background: '#111827' }}>
                             <ExternalLink size={13} />{t('platform.support.viewGym', 'View Gym')}
                           </button>
                         )}
-                        <button onClick={openRoleModal} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#9CA3AF] disabled:hover:border-white/6">
+                        <button onClick={openRoleModal} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#9CA3AF] disabled:hover:border-white/6" style={{ background: '#111827' }}>
                           <Shield size={13} />{t('platform.support.changeRole', 'Change Role')}
                         </button>
-                        <button onClick={openStatusModal} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#9CA3AF] disabled:hover:border-white/6">
+                        <button onClick={openStatusModal} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#9CA3AF] disabled:hover:border-white/6" style={{ background: '#111827' }}>
                           <UserCog size={13} />{t('platform.support.changeStatus', 'Change Status')}
                         </button>
-                        <button onClick={handleResetPassword} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                        <button onClick={handleResetPassword} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors" style={{ background: '#111827' }}>
                           <RefreshCw size={13} />{t('platform.support.resetPassword', 'Reset Password')}
                         </button>
-                        <button onClick={openInviteModal} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                        <button onClick={openInviteModal} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors" style={{ background: '#111827' }}>
                           <KeyRound size={13} />{t('platform.support.inviteCodes', 'Invite Codes')}
                         </button>
-                        <button onClick={handleDeactivate} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-red-400/70 disabled:hover:border-white/6">
+                        <button onClick={handleDeactivate} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-red-400/70 disabled:hover:border-white/6" style={{ background: '#111827' }}>
                           <UserX size={13} />{t('platform.support.deactivate', 'Deactivate')}
                         </button>
                       </div>
@@ -972,7 +975,8 @@ export default function SupportConsole() {
               <button
                 onClick={handleChangeRole}
                 disabled={modalSaving || newRole === selectedMember.role}
-                className="flex-1 px-3 py-2 rounded-lg bg-[#D4AF37] text-[12px] font-medium text-[#0F172A] hover:bg-[#C4A030] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-3 py-2 rounded-lg text-[12px] font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                style={{ background: '#D4AF37', color: '#0F172A' }}
               >
                 {modalSaving ? t('platform.support.saving', 'Saving...') : t('platform.support.confirm', 'Confirm')}
               </button>
@@ -1032,7 +1036,8 @@ export default function SupportConsole() {
               <button
                 onClick={handleChangeStatus}
                 disabled={modalSaving || newStatus === selectedMember.membership_status}
-                className="flex-1 px-3 py-2 rounded-lg bg-[#D4AF37] text-[12px] font-medium text-[#0F172A] hover:bg-[#C4A030] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-3 py-2 rounded-lg text-[12px] font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                style={{ background: '#D4AF37', color: '#0F172A' }}
               >
                 {modalSaving ? t('platform.support.saving', 'Saving...') : t('platform.support.confirm', 'Confirm')}
               </button>
@@ -1061,7 +1066,8 @@ export default function SupportConsole() {
                   </code>
                   <button
                     onClick={copyResetCode}
-                    className="p-2.5 rounded-lg bg-[#111827] border border-white/10 text-[#9CA3AF] hover:text-[#D4AF37] hover:border-[#D4AF37]/30 transition-colors"
+                    className="p-2.5 rounded-lg border border-white/10 text-[#9CA3AF] hover:text-[#D4AF37] hover:border-[#D4AF37]/30 transition-colors"
+                    style={{ background: '#111827' }}
                   >
                     {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
                   </button>
@@ -1134,7 +1140,8 @@ export default function SupportConsole() {
               <button
                 onClick={handleGenerateInvite}
                 disabled={generatingInvite || !selectedMember.gym_id}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-[#D4AF37] text-[12px] font-medium text-[#0F172A] hover:bg-[#C4A030] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-[12px] font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                style={{ background: '#D4AF37', color: '#0F172A' }}
               >
                 {generatingInvite
                   ? <><RefreshCw size={13} className="animate-spin" />{t('platform.support.generating', 'Generating...')}</>

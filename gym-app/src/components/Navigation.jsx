@@ -497,7 +497,8 @@ const Navigation = () => {
           onClick={() => navigate('/record')}
           onMouseEnter={() => prefetchRoute('/record')}
           aria-label={t('nav.start')}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] text-[13px] font-bold shadow-sm hover:bg-[#f2d36b] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[var(--color-text-on-accent,#000)] text-[13px] font-bold shadow-sm transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ background: '#D4AF37' }}
         >
           <PlayCircle size={16} className="flex-shrink-0" />
           {t('nav.start')}
@@ -648,7 +649,8 @@ const Navigation = () => {
             onMouseEnter={() => prefetchRoute('/record')}
             onTouchStart={() => prefetchRoute('/record')}
             aria-label={t('nav.start')}
-            className="ml-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] text-[13px] font-semibold shadow-sm hover:bg-[#f2d36b] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            className="ml-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-[var(--color-text-on-accent,#000)] text-[13px] font-semibold shadow-sm transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            style={{ background: '#D4AF37' }}
           >
             <PlayCircle size={16} className="flex-shrink-0" />
             {t('nav.start')}

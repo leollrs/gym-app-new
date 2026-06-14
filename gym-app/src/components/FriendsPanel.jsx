@@ -42,7 +42,8 @@ function IncomingRequestRow({ friendship, onAccept, isAccepting, t }) {
         type="button"
         onClick={onAccept}
         disabled={isAccepting}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-emerald-500 text-white hover:bg-emerald-600"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50"
+        style={{ background: '#10b981', color: '#fff' }}
       >
         <Check size={12} strokeWidth={2.5} /> {isAccepting ? '…' : t('social.friendStatus.accept')}
       </button>
@@ -308,7 +309,8 @@ export default function FriendsPanel({ userId, gymId, gymName, friendships, load
                     onClick={handleShareMyCode}
                     disabled={!friendCode}
                     aria-label={t('social.shareMyCodeDesc', 'Send a friend your link so they can add you back')}
-                    className="flex items-center gap-1.5 px-3.5 py-3 rounded-xl text-[13px] font-bold active:scale-95 transition-all flex-shrink-0 disabled:opacity-40 bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] hover:opacity-90"
+                    className="flex items-center gap-1.5 px-3.5 py-3 rounded-xl text-[13px] font-bold active:scale-95 transition-all flex-shrink-0 disabled:opacity-40 text-[var(--color-text-on-accent,#000)] hover:opacity-90"
+                    style={{ background: '#D4AF37' }}
                   >
                     <Share2 size={15} strokeWidth={2.4} /> {codeShared ? t('social.linkCopied', 'Link copied!') : t('social.shareMyCode', 'Share')}
                   </button>
@@ -348,7 +350,8 @@ export default function FriendsPanel({ userId, gymId, gymName, friendships, load
                                 type="button"
                                 onClick={() => handleAddFriend(p.id)}
                                 disabled={isAdding}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-[#D4AF37] text-[var(--color-text-on-accent,#000)] hover:opacity-90"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 text-[var(--color-text-on-accent,#000)] hover:opacity-90"
+                                style={{ background: '#D4AF37' }}
                               >
                                 <UserPlus size={12} strokeWidth={2} /> {isAdding ? '…' : t('social.friendStatus.add')}
                               </button>

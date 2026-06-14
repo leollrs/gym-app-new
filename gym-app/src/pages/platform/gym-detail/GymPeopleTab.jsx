@@ -109,7 +109,8 @@ export default function GymPeopleTab({
             </div>
             <button
               onClick={() => setShowAddMemberModal(true)}
-              className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors whitespace-nowrap"
+              style={{ background: '#D4AF37' }}
+              className="flex items-center gap-1.5 text-black rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors whitespace-nowrap"
             >
               <UserPlus className="w-3.5 h-3.5" />
               {t('platform.gymDetail.people.addMember')}
@@ -284,7 +285,8 @@ export default function GymPeopleTab({
             </p>
             <button
               onClick={() => { setShowInviteForm(v => !v); setInviteError(''); }}
-              className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-3.5 py-2 text-[12px] font-semibold transition-colors whitespace-nowrap"
+              style={{ background: '#D4AF37' }}
+              className="flex items-center gap-1.5 text-black rounded-lg px-3.5 py-2 text-[12px] font-semibold transition-colors whitespace-nowrap"
             >
               {showInviteForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
               {showInviteForm ? t('platform.gymDetail.invites.cancelNew', 'Cancel') : t('platform.gymDetail.invites.newInvite', 'New invite')}
@@ -320,7 +322,8 @@ export default function GymPeopleTab({
                   <button
                     type="submit"
                     disabled={inviteSaving}
-                    className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+                    style={{ background: '#D4AF37' }}
+                    className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
                   >
                     {inviteSaving ? t('platform.gymDetail.modals.creating', 'Creating...') : t('platform.gymDetail.invites.createBtn', 'Create invite')}
                   </button>

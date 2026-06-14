@@ -93,7 +93,8 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 px-4 py-2.5 rounded-[14px] bg-[#0F172A] border border-white/6
+        style={{ background: '#0F172A' }}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-[14px] border border-white/6
                    text-[#E5E7EB] text-sm font-medium hover:border-[#D4AF37]/40 transition-colors cursor-pointer"
       >
         <CalendarDays size={16} className="text-[#D4AF37]" />
@@ -171,8 +172,9 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
                 type="button"
                 onClick={handleCustomApply}
                 disabled={!customFrom || !customTo}
+                style={{ background: '#D4AF37' }}
                 className="w-full py-2 text-sm font-medium rounded-xl transition-colors cursor-pointer
-                           bg-[#D4AF37] text-[var(--color-text-on-accent,#05070B)] hover:bg-[#D4AF37]/90
+                           text-[var(--color-text-on-accent,#05070B)] hover:bg-[#D4AF37]/90
                            disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {t('dateRange.apply')}

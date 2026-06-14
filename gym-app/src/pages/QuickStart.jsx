@@ -595,7 +595,8 @@ const QuickStart = () => {
             <p className="text-[13px] mt-1.5 mb-5" style={{ color: 'var(--color-text-subtle)' }}>{t('quickStart.createToGetStarted')}</p>
             <button
               onClick={() => navigate('/workouts')}
-              className="inline-block py-3 px-8 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="inline-block py-3 px-8 rounded-2xl text-black font-bold text-[14px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ background: '#D4AF37' }}
             >
               {t('quickStart.createRoutine')}
             </button>
@@ -612,7 +613,8 @@ const QuickStart = () => {
             role="switch"
             aria-checked={includeWarmUp}
             onClick={() => setIncludeWarmUp(v => !v)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${includeWarmUp ? 'bg-[#D4AF37]' : 'bg-white/[0.12]'}`}
+            className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+            style={{ background: includeWarmUp ? '#D4AF37' : 'rgba(255,255,255,0.12)' }}
           >
             <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${includeWarmUp ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
@@ -804,7 +806,8 @@ const QuickStart = () => {
                                 </button>
                                 <button
                                   onClick={() => navigate(`/session/${r.id}`, { state: { skipWarmUp: !includeWarmUp } })}
-                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-white transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-bold transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                                  style={{ background: '#D4AF37', color: '#fff' }}
                                 >
                                   <Play size={14} fill="white" strokeWidth={0} />
                                   {t('quickStart.start', 'Start')}

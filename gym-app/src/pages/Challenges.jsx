@@ -1005,7 +1005,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => handleAcceptInvite(inv)} disabled={saving}
-                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[var(--color-accent,#2EC4C4)] text-[var(--color-text-on-accent,#000)] disabled:opacity-50">
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-[var(--color-text-on-accent,#000)] disabled:opacity-50" style={{ background: 'var(--color-accent,#2EC4C4)' }}>
                     {t('challenges.team.accept', 'Accept')}
                   </button>
                   <button type="button" onClick={() => handleDeclineInvite(inv)}
@@ -1073,7 +1073,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                 {t('common.back', 'Back')}
               </button>
               <button type="button" onClick={handleCreateTeam} disabled={!teamName.trim() || saving}
-                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-on-accent,#000)] bg-[var(--color-accent,#2EC4C4)] disabled:opacity-50">
+                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-on-accent,#000)] disabled:opacity-50" style={{ background: 'var(--color-accent,#2EC4C4)' }}>
                 {saving ? '...' : t('challenges.team.create', 'Create & Join')}
               </button>
             </div>

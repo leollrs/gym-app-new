@@ -241,7 +241,8 @@ export default function WorkoutOfTheDay() {
       <button
         onClick={handleStart}
         disabled={saving}
-        className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#B8962E] text-[var(--color-text-on-accent,#000)] font-bold text-sm py-3 rounded-xl transition-colors disabled:opacity-60"
+        className="w-full flex items-center justify-center gap-2 text-[var(--color-text-on-accent,#000)] font-bold text-sm py-3 rounded-xl transition-colors disabled:opacity-60"
+        style={{ background: '#D4AF37' }}
       >
         {saving ? (
           <>

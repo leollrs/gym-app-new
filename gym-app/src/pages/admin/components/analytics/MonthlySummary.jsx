@@ -416,7 +416,8 @@ table tr:nth-child(even){background:#f8fafc}
                 <p className="text-[10px] text-[#94a3b8]">{t('admin.analytics.reportGenerated', { date: format(new Date(), 'MMMM d, yyyy', dateFnsLocale), defaultValue: 'Generated {{date}}' })} \u2014 {t('admin.analytics.reportConfidential', 'Confidential')}</p>
                 <button
                   onClick={handleDownloadReport}
-                  className="flex-shrink-0 flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-semibold bg-[#0f172a] text-white hover:bg-[#1e293b] transition-colors whitespace-nowrap"
+                  className="flex-shrink-0 flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap"
+                  style={{ background: '#0f172a', color: '#fff' }}
                 >
                   <Download size={14} />
                   {t('admin.analytics.downloadPdf', 'Download PDF')}

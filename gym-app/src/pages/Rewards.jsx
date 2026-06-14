@@ -247,8 +247,8 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
             <button
               onClick={handleConfirm}
               disabled={!canAfford || redeeming}
-              className="flex-1 py-3.5 rounded-xl text-[13px] font-extrabold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed bg-[var(--color-accent)] text-[var(--color-text-on-accent)] hover:brightness-110"
-              style={{ letterSpacing: '0.2px' }}
+              className="flex-1 py-3.5 rounded-xl text-[13px] font-extrabold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-on-accent)] hover:brightness-110"
+              style={{ letterSpacing: '0.2px', background: 'var(--color-accent)' }}
             >
               {redeeming ? t('rewards.redeeming') : t('rewards.confirm')}
             </button>
@@ -661,7 +661,8 @@ const EarnedRewardsBanner = ({ rewards, onClaim, onShowQr, t, isEs, claiming }) 
                       <button
                         onClick={() => onClaim(er)}
                         disabled={claiming === er.id}
-                        className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-[12px] font-bold text-[var(--color-text-on-accent)] bg-[var(--color-accent)] hover:opacity-90 transition-all disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-[12px] font-bold text-[var(--color-text-on-accent)] hover:opacity-90 transition-all disabled:opacity-50"
+                        style={{ background: 'var(--color-accent)' }}
                       >
                         <Gift size={13} />
                         {claiming === er.id ? t('rewards.claiming', 'Claiming…') : t('rewards.claim', 'Claim')}
@@ -805,8 +806,8 @@ const RewardsTab = ({ points, gymRewards, gymRewardsLoading, onRedeem, challenge
                 <button
                   onClick={() => onShowPendingQr(r)}
                   aria-label={t('rewards.showRedemptionQR', 'Show redemption QR code')}
-                  className="px-3 py-1.5 min-h-[44px] rounded-lg bg-[var(--color-accent)] text-[var(--color-text-on-accent)] text-[11px] font-extrabold shrink-0 active:scale-95 transition-transform"
-                  style={{ letterSpacing: '0.3px' }}
+                  className="px-3 py-1.5 min-h-[44px] rounded-lg text-[var(--color-text-on-accent)] text-[11px] font-extrabold shrink-0 active:scale-95 transition-transform"
+                  style={{ letterSpacing: '0.3px', background: 'var(--color-accent)' }}
                 >
                   {t('rewards.showQr', 'Show QR')}
                 </button>

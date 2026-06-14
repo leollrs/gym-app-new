@@ -222,7 +222,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
                   assigned" empty state above (weekNums.length === 0 — e.g. a
                   platform-created shell the gym hasn't filled yet). Enrolling
                   would start a program with nothing to do. */}
-              <button onClick={handleEnroll} disabled={acting || weekNums.length === 0} className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={handleEnroll} disabled={acting || weekNums.length === 0} className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed" style={{ background: '#10B981' }}>
                 {acting ? t('workouts.enrolling') : t('workouts.startThisProgram')}
               </button>
               {weekNums.length === 0 && (
@@ -2399,7 +2399,7 @@ const Workouts = () => {
               <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.goalsChanged')}</p>
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.goalsChangedDesc')}</p>
               <div className="flex gap-2 mt-3">
-                <button onClick={() => setShowGenerator(true)} className="px-3 py-1.5 min-h-[44px] rounded-lg text-[11px] font-semibold bg-[#10B981] text-[var(--color-text-on-secondary,#fff)]">
+                <button onClick={() => setShowGenerator(true)} className="px-3 py-1.5 min-h-[44px] rounded-lg text-[11px] font-semibold text-[var(--color-text-on-secondary,#fff)]" style={{ background: '#10B981' }}>
                   {t('workouts.newProgramBtn')}
                 </button>
                 <button onClick={() => setGoalsMismatch(false)} className="px-3 py-1.5 min-h-[44px] rounded-lg text-[11px] font-medium transition-colors" style={{ color: 'var(--color-text-subtle)' }}>
@@ -2417,7 +2417,7 @@ const Workouts = () => {
             <p className="text-[11px] mt-1 mb-4" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.createOneTailored')}</p>
             <button
               onClick={() => setShowGenerator(true)}
-              className="px-4 py-2.5 rounded-xl text-[12px] font-semibold bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] hover:bg-[#0EA572] transition-colors"
+              className="px-4 py-2.5 rounded-xl text-[12px] font-semibold text-[var(--color-text-on-secondary,#fff)] transition-colors" style={{ background: '#10B981' }}
             >
               {t('workouts.createYourFirstProgram')}
             </button>
@@ -3321,7 +3321,7 @@ const Workouts = () => {
               <button
                 onClick={handleStartTemplate}
                 disabled={switchingProgram}
-                className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.98] transition-all text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] disabled:opacity-50"
+                className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.98] transition-all text-[var(--color-text-on-secondary,#fff)] disabled:opacity-50" style={{ background: '#10B981' }}
               >
                 {switchingProgram ? t('workouts.settingUp') : t('workouts.startThisProgram')}
               </button>
@@ -3415,7 +3415,7 @@ const Workouts = () => {
               <div className="space-y-2.5">
                 <button
                   onClick={() => setSwitchStep('final')}
-                  className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors"
+                  className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] transition-colors" style={{ background: '#10B981' }}
                 >
                   {t('workouts.yesSwitchProgram')}
                 </button>
@@ -3477,7 +3477,7 @@ const Workouts = () => {
           <div className="space-y-2.5">
             <button
               onClick={proceedAfterWarnings}
-              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors"
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] transition-colors" style={{ background: '#10B981' }}
             >
               {t('workouts.dayCompressionContinue')}
             </button>
@@ -3519,7 +3519,7 @@ const Workouts = () => {
                   proceedAfterWarnings();
                 }
               }}
-              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors"
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-[var(--color-text-on-secondary,#fff)] transition-colors" style={{ background: '#10B981' }}
             >
               {t('workouts.goalMismatchContinue')}
             </button>

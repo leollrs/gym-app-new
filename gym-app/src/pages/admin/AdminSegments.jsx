@@ -702,7 +702,8 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
               <button
                 onClick={handleSendMessage}
                 disabled={sending || !msgText.trim()}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-black hover:opacity-90 disabled:opacity-50 transition-opacity"
+                style={{ background: '#D4AF37' }}
               >
                 {sending
                   ? t('admin.segments.sending', 'Sending…')
@@ -920,7 +921,8 @@ function PrebuiltCard({ segment, gymId, adminId, onCreated, t }) {
                 {t('common:cancel', 'Cancel')}
               </button>
               <button onClick={handleCreate} disabled={saving || !editName.trim()}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black disabled:opacity-50 transition-opacity">
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-black disabled:opacity-50 transition-opacity"
+                style={{ background: '#D4AF37' }}>
                 {saving ? '...' : t('admin.segments.createSegment', 'Create Segment')}
               </button>
             </div>

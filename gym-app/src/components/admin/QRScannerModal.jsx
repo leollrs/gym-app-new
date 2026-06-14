@@ -120,7 +120,8 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
             </p>
             <button
               onClick={isNative ? startNativeScan : startWebScan}
-              className="px-8 py-3.5 rounded-xl font-bold text-[15px] text-black bg-[#D4AF37] hover:bg-[#C4A030] active:scale-[0.97] transition-all"
+              style={{ background: '#D4AF37' }}
+              className="px-8 py-3.5 rounded-xl font-bold text-[15px] text-black active:scale-[0.97] transition-all"
             >
               Open Camera
             </button>
@@ -140,7 +141,8 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
             <p className="text-[14px] text-[#EF4444] text-center mb-6">{error}</p>
             <button
               onClick={() => setError('')}
-              className="px-6 py-2.5 rounded-xl text-[13px] font-semibold text-black bg-[#D4AF37]"
+              style={{ background: '#D4AF37' }}
+              className="px-6 py-2.5 rounded-xl text-[13px] font-semibold text-black"
             >
               Try Again
             </button>
