@@ -2276,7 +2276,10 @@ export default function Challenges({ embedded = false }) {
 
   // Friends who joined the FEATURED challenge — accepted friendships ∩ the
   // already-loaded participants, then avatar-safe profiles for the matches.
-  const [featuredFriends, setFeaturedFriends] = useState([]);
+  // Cached (per-user) so the "friends in this challenge" avatars paint instantly
+  // on revisit; the effect below revalidates (and corrects if the featured
+  // challenge changed).
+  const [featuredFriends, setFeaturedFriends] = useCachedState(`challenges-featuredfriends-${user?.id || 'anon'}`, []);
   useEffect(() => {
     if (!user?.id || challenges.length === 0) { setFeaturedFriends([]); return; }
     const live = challenges.filter(c => statusOf(c) === 'live');
