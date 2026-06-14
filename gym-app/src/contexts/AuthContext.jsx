@@ -916,6 +916,8 @@ export const AuthProvider = ({ children }) => {
     email,
     password,
     fullName,
+    firstName,
+    lastName,
     username,
     gymSlug,
     gymId,
@@ -997,6 +999,18 @@ export const AuthProvider = ({ children }) => {
           age_verified_at:     ageVerifiedAt ?? null,
         });
         if (profileError) throw profileError;
+
+        // Persist the structured name parts the signup form already collected
+        // (first name + first surname). Best-effort + fire-and-forget: if the
+        // columns aren't there yet (migration 0569 not applied), this no-ops and
+        // the row's full_name still carries the complete name — signup is never
+        // blocked by it.
+        if (firstName || lastName) {
+          supabase.from('profiles')
+            .update({ first_name: firstName?.trim() || null, last_name: lastName?.trim() || null })
+            .eq('id', data.user.id)
+            .then(() => {}, () => {});
+        }
 
         // Fetch the profile now that it exists — the onAuthStateChange listener
         // already called fetchProfile, but it ran before the profile row was

@@ -79,13 +79,24 @@ const Countdown = ({ date, prefix }) => {
 // trigger forces leaderboard_visible=false on every staff account, so
 // filtering on it replaces the old `profiles.is_staff = false` join filter
 // — and additionally respects members who opted out of leaderboards.
-// Display name for compact lists / leaderboards: first name + first surname
-// only. Full names (middle name + two apellidos) overflow these rows and
-// squish the layout, so everywhere a member is shown in a ranking/list we trim
-// to the first two tokens.
-const shortName = (full) => {
-  const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
-  return parts.length <= 2 ? parts.join(' ') : `${parts[0]} ${parts[1]}`;
+// Display name for compact lists / leaderboards: FIRST NAME + FIRST SURNAME
+// only — never the middle name. Prefers the structured profiles.first_name +
+// last_name columns (captured at signup / backfilled by migration 0569). Falls
+// back to parsing full_name for any row those aren't set on — PR/Latino names
+// carry two apellidos, so for 3+ tokens the first surname is the SECOND-TO-LAST
+// token (skips middle / second given names).
+//   "Leonel Antonio Llorens García" → "Leonel Llorens"
+const shortName = (p) => {
+  if (p && typeof p === 'object') {
+    const fn = (p.first_name || '').trim();
+    const ln = (p.last_name || '').trim();
+    if (fn && ln) return `${fn} ${ln}`;
+    if (fn) return fn;
+    p = p.full_name || '';
+  }
+  const parts = String(p || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 2) return parts.join(' ');
+  return `${parts[0]} ${parts[parts.length - 2]}`;
 };
 
 const fetchMemberProfiles = async (profileIds) => {
@@ -93,10 +104,21 @@ const fetchMemberProfiles = async (profileIds) => {
   const byId = new Map();
   // Batch the IN() — 500 uuids in one GET would blow past URL length limits.
   for (let i = 0; i < ids.length; i += 100) {
-    const { data } = await supabase
+    const chunk = ids.slice(i, i + 100);
+    // Prefer the structured name columns (migration 0569). If the view doesn't
+    // have them yet (deployed before the migration applied), `data` comes back
+    // null on the bad-column error — retry with the legacy column set so names
+    // never break in that window.
+    let { data } = await supabase
       .from('gym_member_profiles_safe')
-      .select('id, full_name, username, avatar_url, leaderboard_visible')
-      .in('id', ids.slice(i, i + 100));
+      .select('id, full_name, first_name, last_name, username, avatar_url, leaderboard_visible')
+      .in('id', chunk);
+    if (!data) {
+      ({ data } = await supabase
+        .from('gym_member_profiles_safe')
+        .select('id, full_name, username, avatar_url, leaderboard_visible')
+        .in('id', chunk));
+    }
     (data || []).forEach(p => {
       if (p.leaderboard_visible !== false) byId.set(p.id, p);
     });
@@ -121,7 +143,7 @@ const ParticipantList = ({ challengeId, t, refreshKey }) => {
         .limit(100);
       const profs = await fetchMemberProfiles((data || []).map(p => p.profile_id));
       if (cancelled) return;
-      setNames([...profs.values()].map(p => shortName(p.full_name) || p.username).filter(Boolean));
+      setNames([...profs.values()].map(p => shortName(p) || p.username).filter(Boolean));
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -212,7 +234,7 @@ const PastChallengeParticipants = ({ challenge, t }) => {
           (!p.score || Math.round(p.score) === 0) && profs.has(p.profile_id));
         setRows(dnf.map(p => ({
           id: p.profile_id,
-          name: shortName(profs.get(p.profile_id)?.full_name) || profs.get(p.profile_id)?.username || '—',
+          name: shortName(profs.get(p.profile_id)) || profs.get(p.profile_id)?.username || '—',
           avatar: profs.get(p.profile_id)?.avatar_url || null,
           isTeam: false,
         })));
@@ -483,7 +505,7 @@ const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
         .filter(p => profs.has(p.profile_id))
         .map(p => ({
           id:    p.profile_id,
-          name:  shortName(profs.get(p.profile_id)?.full_name) || profs.get(p.profile_id)?.username || '—',
+          name:  shortName(profs.get(p.profile_id)) || profs.get(p.profile_id)?.username || '—',
           score: Math.round(p.score ?? 0),
         }))
     );
@@ -773,7 +795,7 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
       .filter(p => profs.has(p.profile_id))
       .map(p => ({
         id: p.profile_id,
-        name: shortName(profs.get(p.profile_id)?.full_name) || profs.get(p.profile_id)?.username || '—',
+        name: shortName(profs.get(p.profile_id)) || profs.get(p.profile_id)?.username || '—',
         score: Math.round(p.score ?? 0),
       })));
     setLoading(false);
@@ -1087,7 +1109,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                       <div className="w-8 h-8 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
                         {f.avatar_url ? <img src={f.avatar_url} alt={`${f.full_name || t('challenges.team.member', 'Team member')} avatar`} className="w-8 h-8 rounded-full object-cover" /> : <span className="text-[11px] font-bold text-[var(--color-accent,#2EC4C4)]">{(f.full_name || '?')[0]}</span>}
                       </div>
-                      <p className="flex-1 text-[13px] font-medium text-[var(--color-text-primary)] truncate">{shortName(f.full_name)}</p>
+                      <p className="flex-1 text-[13px] font-medium text-[var(--color-text-primary)] truncate">{shortName(f)}</p>
                       {isSelected && <Check size={16} className="text-[var(--color-accent,#2EC4C4)]" />}
                     </button>
                   );

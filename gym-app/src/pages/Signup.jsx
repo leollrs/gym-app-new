@@ -667,6 +667,8 @@ const Signup = () => {
         email:    form.email,
         password: form.password,
         fullName: composedFullName,
+        firstName: form.firstName,
+        lastName: form.lastName1,
         username: form.username,
         gymSlug,
         gymId: inviteData?.gym_id || null,
