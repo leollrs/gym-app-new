@@ -1281,44 +1281,56 @@ const DailyChallenge = ({ userId, gymId, t }) => {
 // shown. It now opens in this overlay instead. Each card passes its own body
 // (the hero card shows just the leaderboard; the standard card also includes
 // the description + rewards that used to sit in its inline expansion).
-const ChallengeDetailModal = ({ title, label, onClose, children }) => (
-  <div
-    className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center sm:px-4"
-    style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-    role="dialog"
-    aria-modal="true"
-    aria-label={title}
-    onClick={onClose}
-  >
+const ChallengeDetailModal = ({ title, label, onClose, children }) => {
+  // Lock background scroll while open so the page behind stays put + highlighted.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  // Portal to <body> so the overlay ESCAPES the card's transformed /
+  // overflow-hidden box (otherwise `position: fixed` resolves against the card
+  // and the modal opens "inside the challenge box"). Centered, dims the page.
+  return createPortal(
     <div
-      className="w-full sm:max-w-[480px] max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl"
-      style={{ background: 'var(--color-bg-card)', WebkitOverflowScrolling: 'touch' }}
-      onClick={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.66)', backdropFilter: 'blur(5px)' }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={onClose}
     >
       <div
-        className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4"
-        style={{ background: 'var(--color-bg-card)', borderBottom: '1px solid var(--color-border-subtle, var(--color-border))' }}
+        className="w-full max-w-[460px] max-h-[85vh] overflow-y-auto rounded-3xl"
+        style={{ background: 'var(--color-bg-card)', WebkitOverflowScrolling: 'touch', boxShadow: '0 24px 60px rgba(0,0,0,0.45)' }}
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="min-w-0">
-          {label && (
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>{label}</div>
-          )}
-          <h3 className="truncate" style={{ fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)' }}>{title}</h3>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="flex-shrink-0 flex items-center justify-center"
-          style={{ width: 34, height: 34, borderRadius: 999, fontSize: 17, lineHeight: 1, background: 'var(--color-surface-hover, rgba(0,0,0,0.06))', color: 'var(--color-text-muted)' }}
+        <div
+          className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4"
+          style={{ background: 'var(--color-bg-card)', borderBottom: '1px solid var(--color-border-subtle, var(--color-border))' }}
         >
-          ✕
-        </button>
+          <div className="min-w-0">
+            {label && (
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>{label}</div>
+            )}
+            <h3 className="truncate" style={{ fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)' }}>{title}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex-shrink-0 flex items-center justify-center"
+            style={{ width: 34, height: 34, borderRadius: 999, fontSize: 17, lineHeight: 1, background: 'var(--color-surface-hover, rgba(0,0,0,0.06))', color: 'var(--color-text-muted)' }}
+          >
+            ✕
+          </button>
+        </div>
+        <div style={{ padding: '16px 20px 24px' }}>{children}</div>
       </div>
-      <div style={{ padding: '16px 20px 24px' }}>{children}</div>
-    </div>
-  </div>
-);
+    </div>,
+    document.body
+  );
+};
 
 // ── Featured Hero Card ────────────────────────────────────
 const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, friends = [], onJoin, onLeave, onInvite, t }) => {
