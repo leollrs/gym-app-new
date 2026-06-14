@@ -1313,6 +1313,23 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
     const profileMap = {};
     (profiles || []).forEach(p => { profileMap[p.id] = p; });
 
+    // Unread counts for ALL conversations in ONE query — was a per-conversation
+    // head-count (N round-trips) on every list load, realtime INSERT, and
+    // foreground. Rows are conversation_id-only (bounded by total unread), tallied
+    // client-side. (The last-message fetch below is still per-conv; the full
+    // single-round-trip fix is the get_conversation_list RPC — see notes.)
+    const convIds = convs.map(c => c.id);
+    const unreadByConv = {};
+    if (convIds.length) {
+      const { data: unreadRows } = await supabase
+        .from('direct_messages')
+        .select('conversation_id')
+        .in('conversation_id', convIds)
+        .neq('sender_id', user.id)
+        .is('read_at', null);
+      (unreadRows || []).forEach(r => { unreadByConv[r.conversation_id] = (unreadByConv[r.conversation_id] || 0) + 1; });
+    }
+
     const enriched = await Promise.all(convs.map(async (conv) => {
       const otherId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
 
@@ -1324,12 +1341,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
         .limit(1)
         .maybeSingle();
 
-      const { count: unreadCount } = await supabase
-        .from('direct_messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('conversation_id', conv.id)
-        .neq('sender_id', user.id)
-        .is('read_at', null);
+      const unreadCount = unreadByConv[conv.id] || 0;
 
       const decryptedBody = lastMsg?.body ? await decryptMessage(lastMsg.body, conv.id, conv.encryption_seed) : null;
 

@@ -5892,8 +5892,12 @@ export default function Nutrition({ embedded = false }) {
 
   useEffect(() => {
     if (!user) return;
+    // "Recent foods" only needs a recent window — bound by log_date (indexed:
+    // idx_food_logs_profile_date) so the planner doesn't top-N sort the user's
+    // ENTIRE food_logs history by the unindexed created_at to satisfy LIMIT 50.
+    const recentSince = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
     supabase.from('food_logs').select('food_item_id, food_item:food_items(id, name, name_es, brand, image_url, serving_size, serving_unit, calories, protein_g, carbs_g, fat_g)')
-      .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(50)
+      .eq('profile_id', user.id).gte('log_date', recentSince).order('created_at', { ascending: false }).limit(50)
       .then(({ data }) => {
         if (!data) return;
         const seen = new Set(); const unique = [];
