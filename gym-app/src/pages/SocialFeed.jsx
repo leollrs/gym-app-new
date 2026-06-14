@@ -947,7 +947,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const [hasMore, setHasMore]         = useState(true);
   // My Posts tab — its own paginated list (decoupled from the friend feed, so
   // surfacing your older posts no longer means paging the whole gym feed).
-  const [myPosts, setMyPosts]                     = useState([]);
+  const [myPosts, setMyPosts]                     = useCachedState(`social-myposts-${user?.id || 'anon'}`, []);
   const [myPostsLoading, setMyPostsLoading]       = useState(false);
   const [myPostsLoadingMore, setMyPostsLoadingMore] = useState(false);
   const [myPostsHasMore, setMyPostsHasMore]       = useState(true);
@@ -959,10 +959,10 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const [friendStreaks, setFriendStreaks] = useCachedState(`social-streaks-${user?.id || 'anon'}`, []);
   // All accepted friends (resolved via the safe view) for the feed's friend row —
   // shown regardless of streak, with the streak overlaid as a badge when > 0.
-  const [friendsRow, setFriendsRow] = useState([]);
+  const [friendsRow, setFriendsRow] = useCachedState(`social-friendsrow-${user?.id || 'anon'}`, []);
   // Friends currently mid-workout (live_training_sessions presence table, RLS
   // friends-only) — drives the green "training now" ring on the friend row.
-  const [trainingIds, setTrainingIds] = useState(() => new Set());
+  const [trainingIds, setTrainingIds] = useCachedState(`social-training-${user?.id || 'anon'}`, new Set());
   const [reportedIds, setReportedIds] = useState(new Set());
   const [hiddenIds, setHiddenIds]     = useState(new Set());
   const [mutedUsers, setMutedUsers]   = useState(() => new Set(getMutedUsers()));
