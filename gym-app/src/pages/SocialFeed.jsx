@@ -931,6 +931,13 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const [loading, setLoading]         = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore]         = useState(true);
+  // My Posts tab — its own paginated list (decoupled from the friend feed, so
+  // surfacing your older posts no longer means paging the whole gym feed).
+  const [myPosts, setMyPosts]                     = useState([]);
+  const [myPostsLoading, setMyPostsLoading]       = useState(false);
+  const [myPostsLoadingMore, setMyPostsLoadingMore] = useState(false);
+  const [myPostsHasMore, setMyPostsHasMore]       = useState(true);
+  const [myPostsLoaded, setMyPostsLoaded]         = useState(false);
   const [friendships, setFriendships] = useState([]);
   const [showFriends, setShowFriends]   = useState(false);
   const FEED_TABS = ['forYou', 'mine'];
@@ -1081,6 +1088,58 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   }, [user?.id]);
 
   const PAGE_SIZE = 30;
+  const MY_POSTS_PAGE_SIZE = 3; // "My Posts" loads 3 newest, then paginates
+
+  // Shared enrichment: attach reaction counts + my reaction + comment count
+  // (one server RPC) and swap storage paths for signed URLs (one storage call).
+  // Used by BOTH the For-You feed and the dedicated My-Posts query so they
+  // render identical FeedCards. Items already carry their `profiles` blob.
+  const enrichItems = useCallback(async (items) => {
+    if (!items?.length) return [];
+    const itemIds = items.map(i => i.id);
+
+    // Older posts keep the photo as a storage path in `data.photo_url`; the
+    // top-level `photo_url` column came later. Collect both so every version
+    // signs correctly. Gathering paths up front lets the enrichment RPC and the
+    // signed-URL request run in PARALLEL — they were two sequential round trips
+    // on every load of the app's slowest page.
+    const collectPath = (url) => url && !url.startsWith('http') ? url : null;
+    const pathSet = new Set();
+    items.forEach(i => {
+      const top = collectPath(i.photo_url);
+      if (top) pathSet.add(top);
+      const nested = collectPath(i?.data?.photo_url);
+      if (nested) pathSet.add(nested);
+    });
+    const photoPaths = Array.from(pathSet);
+
+    const [enrichRes, signedRes] = await Promise.all([
+      supabase.rpc('get_feed_enrichment', { p_item_ids: itemIds }),
+      photoPaths.length > 0
+        ? supabase.storage.from('social-posts').createSignedUrls(photoPaths, 3600)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const enrichmentMap = {};
+    (enrichRes.data ?? []).forEach(e => { enrichmentMap[e.feed_item_id] = e; });
+    const signedUrlMap = {};
+    (signedRes.data ?? []).forEach(s => { if (s.signedUrl) signedUrlMap[s.path] = s.signedUrl; });
+
+    return items.map(item => {
+      const e = enrichmentMap[item.id] ?? {};
+      const topSigned = item.photo_url ? (signedUrlMap[item.photo_url] || item.photo_url) : null;
+      const nestedRaw = item?.data?.photo_url;
+      const nestedSigned = nestedRaw ? (signedUrlMap[nestedRaw] || nestedRaw) : nestedRaw;
+      return {
+        ...item,
+        photo_url: topSigned,
+        data: item.data ? { ...item.data, ...(nestedRaw ? { photo_url: nestedSigned } : {}) } : item.data,
+        reactionCounts:  e.reaction_counts ?? {},
+        currentReaction: e.my_reaction ?? null,
+        commentCount:    e.comment_count ?? 0,
+      };
+    });
+  }, []);
 
   // Load feed — uses server-side RPCs (join-based) instead of .in() queries
   const loadFeed = useCallback(async (_fships, cursor = null) => {
@@ -1106,57 +1165,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
 
     setHasMore(items.length === PAGE_SIZE);
 
-    // Enrich with reactions + comment counts via server-side RPC
-    const itemIds = items.map(i => i.id);
-    const { data: enrichment } = await supabase.rpc('get_feed_enrichment', { p_item_ids: itemIds });
-
-    const enrichmentMap = {};
-    (enrichment ?? []).forEach(e => { enrichmentMap[e.feed_item_id] = e; });
-
-    // Sign photo URLs for items that have storage paths (not full URLs).
-    // Older posts store the photo as a storage path inside `item.data.photo_url`
-    // (rendered by FeedContent), while the top-level `item.photo_url` column was
-    // added later. Collect both so all images render correctly across versions.
-    const collectPath = (url) => url && !url.startsWith('http') ? url : null;
-    const pathSet = new Set();
-    items.forEach(i => {
-      const top = collectPath(i.photo_url);
-      if (top) pathSet.add(top);
-      const nested = collectPath(i?.data?.photo_url);
-      if (nested) pathSet.add(nested);
-    });
-    const photoPaths = Array.from(pathSet);
-    const signedUrlMap = {};
-    if (photoPaths.length > 0) {
-      const { data: signedUrls } = await supabase.storage.from('social-posts').createSignedUrls(photoPaths, 3600);
-      (signedUrls ?? []).forEach(s => {
-        if (s.signedUrl) signedUrlMap[s.path] = s.signedUrl;
-      });
-    }
-
-    const enriched = items.map(item => {
-      const e = enrichmentMap[item.id] ?? {};
-      // Replace storage paths with signed URLs; leave full URLs (legacy) as-is.
-      // Both the top-level column and the JSONB-nested copy must be re-signed
-      // so feed cards and post-content cards display the same image.
-      const topSigned = item.photo_url
-        ? (signedUrlMap[item.photo_url] || item.photo_url)
-        : null;
-      const nestedRaw = item?.data?.photo_url;
-      const nestedSigned = nestedRaw
-        ? (signedUrlMap[nestedRaw] || nestedRaw)
-        : nestedRaw;
-      return {
-        ...item,
-        photo_url: topSigned,
-        data: item.data
-          ? { ...item.data, ...(nestedRaw ? { photo_url: nestedSigned } : {}) }
-          : item.data,
-        reactionCounts:  e.reaction_counts ?? {},
-        currentReaction: e.my_reaction ?? null,
-        commentCount:    e.comment_count ?? 0,
-      };
-    });
+    const enriched = await enrichItems(items);
 
     if (cursor) {
       setFeed(prev => [...prev, ...enriched]);
@@ -1165,7 +1174,48 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
     }
     setLoading(false);
     setLoadingMore(false);
-  }, [user, profile]);
+  }, [user, profile, enrichItems]);
+
+  // My Posts — dedicated, independently-paginated query of the caller's OWN
+  // posts. Previously "My Posts" was a client filter of the friend feed, so
+  // surfacing your older posts meant paging the ENTIRE gym feed (the slow
+  // "pulling everything"). This hits activity_feed_items directly (RLS allows
+  // actor_id = self; backed by idx_feed_actor) and loads MY_POSTS_PAGE_SIZE at
+  // a time. The author is always the current user, so the profile is attached
+  // locally — no join needed.
+  const loadMyPosts = useCallback(async (cursor = null) => {
+    if (!user || !profile) return;
+    let q = supabase
+      .from('activity_feed_items')
+      .select('id, gym_id, actor_id, type, data, is_public, created_at, body, photo_url, post_type')
+      .eq('actor_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(MY_POSTS_PAGE_SIZE);
+    if (cursor) q = q.lt('created_at', cursor);
+    const { data: rows } = await q;
+    const withProfile = (rows ?? []).map(r => ({
+      ...r,
+      profiles: {
+        full_name:    profile.full_name,
+        username:     profile.username,
+        avatar_url:   profile.avatar_url,
+        avatar_type:  profile.avatar_type,
+        avatar_value: profile.avatar_value,
+      },
+    }));
+    setMyPostsHasMore(withProfile.length === MY_POSTS_PAGE_SIZE);
+    const enriched = await enrichItems(withProfile);
+    setMyPosts(prev => {
+      if (cursor) return [...prev, ...enriched];
+      // First page: keep any optimistic temp- items the server hasn't returned
+      // yet (covers a post created while this initial load was in flight).
+      const enrichedIds = new Set(enriched.map(i => i.id));
+      const temps = prev.filter(p => String(p.id).startsWith('temp-') && !enrichedIds.has(p.id));
+      return [...temps, ...enriched];
+    });
+    setMyPostsLoading(false);
+    setMyPostsLoadingMore(false);
+  }, [user, profile, enrichItems]);
 
   useEffect(() => {
     if (!user || !profile) return;
@@ -1221,7 +1271,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
 
   const handleReact = async (feedItemId, reactionType) => {
     posthog?.capture('social_like_toggled', { reaction_type: reactionType });
-    setFeed(prev => prev.map(item => {
+    const applyReaction = (item) => {
       if (item.id !== feedItemId) return item;
       const counts = { ...(item.reactionCounts ?? {}) };
       const prev_reaction = item.currentReaction;
@@ -1240,10 +1290,14 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
       // Add new reaction
       counts[reactionType] = (counts[reactionType] ?? 0) + 1;
       return { ...item, currentReaction: reactionType, reactionCounts: counts };
-    }));
+    };
+    // Mirror the optimistic update across both lists — a post can appear in the
+    // For-You feed and, if it's the caller's own, in My Posts.
+    setFeed(prev => prev.map(applyReaction));
+    setMyPosts(prev => prev.map(applyReaction));
 
-    // Find the current reaction before this action
-    const currentItem = feed.find(i => i.id === feedItemId);
+    // Find the current reaction before this action (check both lists)
+    const currentItem = feed.find(i => i.id === feedItemId) || myPosts.find(i => i.id === feedItemId);
     const prevReaction = currentItem?.currentReaction;
 
     if (prevReaction === reactionType) {
@@ -1378,6 +1432,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
       .eq('actor_id', user.id);
     if (!error) {
       setFeed(prev => prev.filter(item => item.id !== itemId));
+      setMyPosts(prev => prev.filter(item => item.id !== itemId));
       showToast(t('social.postDeleted'), 'success');
     } else {
       showToast(t('social.deleteError'), 'error');
@@ -1398,7 +1453,10 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
       total_volume_lbs: workoutSession.total_volume_lbs,
       session_id:       workoutSession.id,
     } : {};
-    setFeed(prev => [{
+    // New posts land in My Posts (For You excludes your own posts). Mark the
+    // tab loaded so the optimistic item renders instead of a skeleton.
+    setMyPostsLoaded(true);
+    setMyPosts(prev => [{
       id: tempId,
       actor_id: user.id,
       gym_id: profile.gym_id,
@@ -1423,7 +1481,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
     setShowCreatePost(false);
 
     const rollback = (msg) => {
-      setFeed(prev => prev.filter(i => i.id !== tempId));
+      setMyPosts(prev => prev.filter(i => i.id !== tempId));
       if (localPreview) URL.revokeObjectURL(localPreview);
       if (msg) showToast(msg, 'error');
     };
@@ -1486,7 +1544,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
       //       swaps the temporary blob preview for the signed photo URL. ──
       posthog?.capture('social_post_created', { has_photo: !!photoFile });
       const newItem = rows?.[0] || null;
-      setFeed(prev => prev.map(i => {
+      setMyPosts(prev => prev.map(i => {
         if (i.id !== tempId) return i;
         const merged = newItem ? { ...i, ...newItem, profiles: i.profiles } : i;
         return {
@@ -1513,6 +1571,21 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
     loadFeed(friendships, lastItem.created_at);
   }, [feed, friendships, loadingMore, hasMore, loadFeed]);
 
+  // Lazy-load My Posts the first time that tab is opened — keeps the default
+  // For-You load fast, and most sessions never open My Posts.
+  useEffect(() => {
+    if (tab !== 'mine' || myPostsLoaded || !user || !profile) return;
+    setMyPostsLoaded(true);
+    setMyPostsLoading(true);
+    loadMyPosts(null);
+  }, [tab, myPostsLoaded, user, profile, loadMyPosts]);
+
+  const handleLoadMoreMyPosts = useCallback(() => {
+    if (myPostsLoadingMore || !myPostsHasMore || myPosts.length === 0) return;
+    setMyPostsLoadingMore(true);
+    loadMyPosts(myPosts[myPosts.length - 1].created_at);
+  }, [myPosts, myPostsLoadingMore, myPostsHasMore, loadMyPosts]);
+
   const pendingIncoming = friendships.filter(
     f => f.addressee_id === user?.id && f.status === 'pending'
   ).length;
@@ -1538,12 +1611,9 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
     return [...items].sort((a, b) => scoreFeedItem(b, friendIds) - scoreFeedItem(a, friendIds));
   }, [visibleFeed, friendIds, user?.id]);
 
-  const myFeed = useMemo(
-    () => visibleFeed.filter(item => item.actor_id === user?.id),
-    [visibleFeed, user?.id]
-  );
-
-  const activeFeed = tab === 'forYou' ? rankedFeed : myFeed;
+  // My Posts is no longer derived from the friend feed — it has its own
+  // paginated `myPosts` query (see loadMyPosts), so your older posts surface
+  // without paging the entire gym feed.
 
   // For You pane JSX — shared between the default swipeable two-tab layout and
   // the hideComposer (trainer embed) single-pane layout.
@@ -1785,7 +1855,9 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
                 <PenSquare size={16} className="text-[var(--color-text-on-accent,#000)]" />
                 <span className="text-[14px] font-semibold text-[var(--color-text-on-accent,#000)]">{t('social.createPost')}</span>
               </button>
-              {myFeed.length === 0 ? (
+              {myPostsLoading && myPosts.length === 0 ? (
+                <Skeleton variant="feed" count={3} />
+              ) : myPosts.length === 0 ? (
                 <EmptyState
                   icon={Dumbbell}
                   title={t('social.noPostsYet')}
@@ -1793,7 +1865,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
                 />
               ) : (
                 <div className="flex flex-col gap-5">
-                  {myFeed.map((item) => (
+                  {myPosts.map((item) => (
                     <FeedCard
                       key={item.id}
                       item={item}
@@ -1810,8 +1882,8 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
                       t={t}
                     />
                   ))}
-                  <LoadMoreButton hasMore={hasMore} loading={loadingMore} onLoadMore={handleLoadMore} />
-                  {!hasMore && <p className="text-center text-[13px] py-8 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('social.allCaughtUp')}</p>}
+                  <LoadMoreButton hasMore={myPostsHasMore} loading={myPostsLoadingMore} onLoadMore={handleLoadMoreMyPosts} />
+                  {!myPostsHasMore && <p className="text-center text-[13px] py-8 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('social.allCaughtUp')}</p>}
                 </div>
               )}
             </div>
