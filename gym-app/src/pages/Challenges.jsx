@@ -1272,6 +1272,51 @@ const DailyChallenge = ({ userId, gymId, t }) => {
   );
 };
 
+// ── Challenge detail / leaderboard MODAL ──────────────────
+// The participant list / leaderboard used to expand INLINE under the card,
+// which pushed the whole list down — awkward once several challenges are
+// shown. It now opens in this overlay instead. Each card passes its own body
+// (the hero card shows just the leaderboard; the standard card also includes
+// the description + rewards that used to sit in its inline expansion).
+const ChallengeDetailModal = ({ title, label, onClose, children }) => (
+  <div
+    className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center sm:px-4"
+    style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+    role="dialog"
+    aria-modal="true"
+    aria-label={title}
+    onClick={onClose}
+  >
+    <div
+      className="w-full sm:max-w-[480px] max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl"
+      style={{ background: 'var(--color-bg-card)', WebkitOverflowScrolling: 'touch' }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4"
+        style={{ background: 'var(--color-bg-card)', borderBottom: '1px solid var(--color-border-subtle, var(--color-border))' }}
+      >
+        <div className="min-w-0">
+          {label && (
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>{label}</div>
+          )}
+          <h3 className="truncate" style={{ fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)' }}>{title}</h3>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex-shrink-0 flex items-center justify-center"
+          style={{ width: 34, height: 34, borderRadius: 999, fontSize: 17, lineHeight: 1, background: 'var(--color-surface-hover, rgba(0,0,0,0.06))', color: 'var(--color-text-muted)' }}
+        >
+          ✕
+        </button>
+      </div>
+      <div style={{ padding: '16px 20px 24px' }}>{children}</div>
+    </div>
+  </div>
+);
+
 // ── Featured Hero Card ────────────────────────────────────
 const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, friends = [], onJoin, onLeave, onInvite, t }) => {
   const [open, setOpen] = useState(false);
@@ -1444,14 +1489,14 @@ const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, fr
         </div>
       </div>
 
-      {/* Expanded detail — description + dates live on the card face now,
-          so the expansion is purely the leaderboard / participants. */}
+      {/* Leaderboard / participants — opens in a modal instead of pushing the
+          page down inline (description + dates already live on the card face). */}
       {open && (
-        <div style={{
-          borderRadius: '0 0 22px 22px', marginTop: -4,
-          background: 'var(--color-bg-card)', padding: '20px',
-          boxShadow: CARD_SHADOW,
-        }}>
+        <ChallengeDetailModal
+          title={sanitize(challenge.name)}
+          label={status === 'upcoming' ? t('challenges.participants', 'Participants') : t('challenges.leaderboard', 'Leaderboard')}
+          onClose={() => setOpen(false)}
+        >
           {status === 'upcoming'
             ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
             : challenge.type === 'team'
@@ -1460,7 +1505,7 @@ const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, fr
                 ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
                 : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
           }
-        </div>
+        </ChallengeDetailModal>
       )}
 
       {showTeamModal && (
@@ -1617,7 +1662,11 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
       </div>
 
       {open && (
-        <div style={{ padding: '4px 16px 16px', background: 'var(--color-bg-card)', borderTop: '1px solid var(--color-border-subtle, var(--color-border))' }}>
+        <ChallengeDetailModal
+          title={sanitize(challenge.name)}
+          label={status === 'upcoming' ? t('challenges.participants', 'Participants') : t('challenges.leaderboard', 'Leaderboard')}
+          onClose={() => setOpen(false)}
+        >
           {challenge.description && (
             <p className="text-[13px] leading-relaxed mt-3" style={{ color: 'var(--color-text-muted)' }}>{sanitize(challenge.description)}</p>
           )}
@@ -1657,7 +1706,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
                 ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
                 : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
           }
-        </div>
+        </ChallengeDetailModal>
       )}
 
       {showTeamModal && (
