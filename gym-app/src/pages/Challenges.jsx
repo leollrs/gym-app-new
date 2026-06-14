@@ -2125,6 +2125,13 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
 // ── Main ───────────────────────────────────────────────────
 const TABS = ['live', 'upcoming', 'ended'];
 
+// Challenges cache + revalidation throttle (mirrors SocialFeed): the list,
+// counts, and my-joined state paint instantly from cache; we only re-hit the
+// network when the cache is missing or older than this TTL — so navigating back
+// or foregrounding the app doesn't refetch every time, easing DB load at scale.
+const CHAL_TTL_MS = 60_000;
+const chalFetchedAt = new Map(); // `${gymId}:${userId}` → last full-load timestamp (ms)
+
 export default function Challenges({ embedded = false }) {
   const { t, i18n } = useTranslation('pages');
   const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
@@ -2137,10 +2144,14 @@ export default function Challenges({ embedded = false }) {
   // My own joined challenge ids — queried directly (not derived from the whole
   // gym's participant rows, which were capped at .limit(500) and silently broke
   // both the counts and this user's Join/Leave state past the cap).
-  const [myJoinedIds, setMyJoinedIds] = useState(() => new Set());
+  // Cached (per-user) so the Join/Leave state paints instantly on revisit
+  // instead of flashing "not joined" until the refetch lands. useCachedState
+  // serialises the Set via its __set form.
+  const [myJoinedIds, setMyJoinedIds] = useCachedState(`challenges-joined-${user?.id || 'anon'}`, new Set());
   // Per-challenge visible participant counts from a server-side aggregate
   // (get_challenge_participant_counts) that excludes leaderboard-hidden members.
-  const [challengeCounts, setChallengeCounts] = useState({});
+  // Cached so counts paint instantly too (gym-scoped).
+  const [challengeCounts, setChallengeCounts] = useCachedState(`challenges-counts-${profile?.gym_id || 'none'}`, {});
   const [loading, setLoading]             = useState(!hasCachedState(chalCacheKey));
   const [tab, setTab]                     = useState('live');
   const chalTabIndex = TABS.indexOf(tab);
@@ -2155,6 +2166,14 @@ export default function Challenges({ embedded = false }) {
     // inits true and was only cleared on the gym-present success path).
     if (!profile?.gym_id || !user?.id) { setLoading(false); return undefined; }
     let cancelled = false;
+    // Stale-while-revalidate: cached list/counts/joined are already painted —
+    // skip the network if we did a full load within the TTL (covers remounts and
+    // the on-foreground chalRefreshKey bump below).
+    const freshKey = `${profile.gym_id}:${user.id}`;
+    if (hasCachedState(chalCacheKey) && Date.now() - (chalFetchedAt.get(freshKey) || 0) < CHAL_TTL_MS) {
+      setLoading(false);
+      return () => {};
+    }
     const load = async () => {
       try {
         // status filter: drafts/archived are admin-side states — members only
@@ -2185,6 +2204,12 @@ export default function Challenges({ embedded = false }) {
         (data || []).forEach(r => { m[r.challenge_id] = Number(r.cnt) || 0; });
         setChallengeCounts(m);
       });
+
+    // Mark a full load so the SWR throttle can skip a refetch on a quick revisit
+    // or foreground. Optimistic join/leave updates the cached state directly, so
+    // skipping is safe; team-join refresh + a new published challenge land on the
+    // next post-TTL revalidate.
+    chalFetchedAt.set(freshKey, Date.now());
 
     return () => { cancelled = true; };
   }, [profile?.gym_id, user?.id, chalRefreshKey]);
