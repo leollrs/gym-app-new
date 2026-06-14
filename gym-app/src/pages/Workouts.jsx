@@ -649,7 +649,7 @@ const Workouts = () => {
       const [gpRes, obRes, lwRes] = await Promise.all([
         supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
         supabase.from('member_onboarding').select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, height_inches, initial_weight_lbs, age, sex, height_cm, weight_kg, gender, priority_muscles').eq('profile_id', user.id).maybeSingle(),
-        supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('logged_at', { ascending: false }).limit(1).maybeSingle(),
       ]);
       const { data: allGp, error: gpErr } = gpRes;
       const { data: ob } = obRes;
@@ -735,6 +735,11 @@ const Workouts = () => {
       .eq('profile_id', user.id)
       .eq('status', 'completed')
       .gte('completed_at', progStart.toISOString())
+      // Defensive ceiling: this is bounded by program length (~weeks × sessions/wk),
+      // but a long/backdated/reactivated program could push progStart far back.
+      // 500 covers any realistic program without dropping a displayable week.
+      .order('completed_at', { ascending: false })
+      .limit(500)
       .then(({ data }) => {
         const map = new Map();
         for (const s of (data || [])) {

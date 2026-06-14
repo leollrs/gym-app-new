@@ -308,7 +308,10 @@ const SessionSummary = () => {
         return new Date(c.start_date) <= new Date(now) && new Date(c.end_date) >= new Date(now);
       });
 
-      for (const p of active) {
+      // Score every active challenge concurrently — each targets a distinct
+      // participant row (p.id) and its delta read (session_sets / personal_records)
+      // is independent, so this is safe to fan out instead of awaiting serially.
+      await Promise.all(active.map(async (p) => {
         const c = p.challenges;
         const type = c.type;
         let delta = 0;
@@ -351,65 +354,70 @@ const SessionSummary = () => {
               p_score: combinedTotal,
             });
           }
-          continue;
+          return;
         }
 
-        if (delta === 0) continue;
+        if (delta === 0) return;
         await supabase.rpc('increment_challenge_score', {
           p_participant_id: p.id,
           p_delta: delta,
         });
-      }
+      }));
 
       const newlyEarned = await awardAchievements(user.id, profile.gym_id, supabase);
 
-      for (const ach of newlyEarned) {
-        await supabase.from('activity_feed_items').insert({
-          gym_id:    profile.gym_id,
-          actor_id:  user.id,
-          type:      'achievement_unlocked',
-          is_public: true,
-          data: {
-            achievement_key:  ach.key,
-            achievement_name: ach.label,
-            achievement_name_key: ach.labelKey,
-            achievement_desc: ach.desc,
-            achievement_desc_key: ach.descKey,
-          },
-        });
+      if (newlyEarned.length > 0) {
+        // One batched insert instead of N serial round-trips.
+        await supabase.from('activity_feed_items').insert(
+          newlyEarned.map(ach => ({
+            gym_id:    profile.gym_id,
+            actor_id:  user.id,
+            type:      'achievement_unlocked',
+            is_public: true,
+            data: {
+              achievement_key:  ach.key,
+              achievement_name: ach.label,
+              achievement_name_key: ach.labelKey,
+              achievement_desc: ach.desc,
+              achievement_desc_key: ach.descKey,
+            },
+          }))
+        );
 
-        const achLabel = ach.labelKey ? i18n.t(ach.labelKey, { ns: 'common', defaultValue: ach.label }) : ach.label;
-        const achDesc  = ach.descKey ? i18n.t(ach.descKey, { ns: 'common', defaultValue: ach.desc }) : ach.desc;
-        const quotedLabel = i18n.language === 'es' ? `\u00AB${achLabel}\u00BB` : `\u201C${achLabel}\u201D`;
-        await sendNotification(user.id, profile.gym_id, {
-          type:     'achievement',
-          title:    i18n.t('notifications.achievementUnlocked', { ns: 'common', name: (profile?.full_name || '').trim().split(/\s+/)[0] || '', label: quotedLabel, defaultValue: `Achievement Unlocked: ${quotedLabel}` }),
-          body:     achDesc,
-          dedupKey: `achievement_${ach.key}_${user.id}`,
-        });
+        // Notifications fire concurrently \u2014 each carries a unique dedupKey, so
+        // parallelism cannot create duplicates.
+        await Promise.all(newlyEarned.map(ach => {
+          const achLabel = ach.labelKey ? i18n.t(ach.labelKey, { ns: 'common', defaultValue: ach.label }) : ach.label;
+          const achDesc  = ach.descKey ? i18n.t(ach.descKey, { ns: 'common', defaultValue: ach.desc }) : ach.desc;
+          const quotedLabel = i18n.language === 'es' ? `\u00AB${achLabel}\u00BB` : `\u201C${achLabel}\u201D`;
+          return sendNotification(user.id, profile.gym_id, {
+            type:     'achievement',
+            title:    i18n.t('notifications.achievementUnlocked', { ns: 'common', name: (profile?.full_name || '').trim().split(/\s+/)[0] || '', label: quotedLabel, defaultValue: `Achievement Unlocked: ${quotedLabel}` }),
+            body:     achDesc,
+            dedupKey: `achievement_${ach.key}_${user.id}`,
+          });
+        }));
+
+        setNewAchievements(newlyEarned);
       }
 
-      if (newlyEarned.length > 0) setNewAchievements(newlyEarned);
-
-      try {
-        const adaptations = await analyzeAndAdapt(user.id, profile.gym_id);
-        if (adaptations) saveAdaptationSuggestions(adaptations);
-      } catch {}
-
-      try {
-        const prData = (sessionPRs || []).map(pr => ({
-          exerciseId: pr.exercise_id ?? pr.exerciseId ?? null,
-          estimated1RM: pr.estimated1RM ?? pr.weight ?? 0,
-        }));
-        await updateGoalsAfterWorkout(user.id, profile.gym_id, {
-          totalVolume: totalVolume ?? 0,
-          sessionPRs: prData,
-        });
-      } catch {}
-
-      try {
-        await updateWorkoutSchedulePattern(user.id, profile.gym_id);
-      } catch {}
+      // These three post-workout updates touch disjoint tables and don't depend
+      // on each other's results — run them concurrently instead of serializing
+      // three network legs on the session-summary hot path. Per-call .catch keeps
+      // one failure from rejecting the others.
+      const prData = (sessionPRs || []).map(pr => ({
+        exerciseId: pr.exercise_id ?? pr.exerciseId ?? null,
+        estimated1RM: pr.estimated1RM ?? pr.weight ?? 0,
+      }));
+      await Promise.all([
+        analyzeAndAdapt(user.id, profile.gym_id)
+          .then(adaptations => { if (adaptations) saveAdaptationSuggestions(adaptations); })
+          .catch(() => {}),
+        updateGoalsAfterWorkout(user.id, profile.gym_id, { totalVolume: totalVolume ?? 0, sessionPRs: prData })
+          .catch(() => {}),
+        updateWorkoutSchedulePattern(user.id, profile.gym_id)
+          .catch(() => {}),
+      ]);
     };
     fire();
   }, [user?.id, profile?.gym_id]); // eslint-disable-line
