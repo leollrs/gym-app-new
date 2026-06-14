@@ -450,8 +450,11 @@ const ChallengePodium = ({ entries, unit }) => {
 const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
   const rewards = parseRewards(challenge);
   const hasCustomRewards = challenge.reward_description != null;
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Cached per challenge so the leaderboard paints instantly on re-open (the
+  // modal felt slow re-fetching every time); revalidates in the background.
+  const lbCacheKey = `challenge-lb-${challenge.id}`;
+  const [entries, setEntries] = useCachedState(lbCacheKey, []);
+  const [loading, setLoading] = useState(!hasCachedState(lbCacheKey));
   const status = statusOf(challenge);
 
   const fetch = useCallback(async () => {
@@ -539,13 +542,14 @@ const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
         </p>
       ) : (
         <div className="space-y-3">
-          {/* Podium for ended challenges — renders with even 1 entry; the
-              missing 2nd/3rd slots show placeholder pedestals. */}
-          {status === 'ended' && entries.length >= 1 && (
+          {/* Top-3 podium — current standings while live, finishers when ended.
+              Renders with even 1 entry; missing slots show placeholder pedestals. */}
+          {entries.length >= 1 && (
             <ChallengePodium entries={entries} unit={unit} />
           )}
-          {(status === 'ended' && entries.length >= 1 ? entries.slice(3, 10) : entries.slice(0, 10)).map((e, idx) => {
-            const i = status === 'ended' && entries.length >= 1 ? idx + 3 : idx;
+          {/* Ranks 4–10 below the podium. */}
+          {entries.slice(3, 10).map((e, idx) => {
+            const i = idx + 3;
             const isMe = e.id === myId;
             const top = entries[0]?.score || 1;
             const barPct = Math.max((e.score / top) * 100, 2);
@@ -593,13 +597,27 @@ const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
               </div>
             );
           })}
-          {entries.length > 10 && myRank >= 10 && myEntry && (
+          {/* Everyone past the top 10. */}
+          {entries.length > 10 && (
+            <p className="text-center text-[12px] font-medium py-1" style={{ color: 'var(--color-text-muted)' }}>
+              {t('challenges.othersCount', { count: entries.length - 10, defaultValue: '+{{count}} others' })}
+            </p>
+          )}
+          {/* Your own row when you're outside the top 10, with how many trail you. */}
+          {myRank >= 10 && myEntry && (
             <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30">
-              <span className="text-[14px] font-bold w-6 text-center text-[var(--color-accent,#2EC4C4)]">#{myRank + 1}</span>
-              <p className="flex-1 text-[14px] font-semibold text-[var(--color-accent,#2EC4C4)] truncate">
-                {myEntry.name} <span className="ml-1.5 text-[10px] font-bold text-[var(--color-accent,#2EC4C4)]">{t('challenges.you')}</span>
-              </p>
-              <p className="text-[13px] font-bold text-[var(--color-accent,#2EC4C4)]">
+              <span className="text-[14px] font-bold w-7 text-center text-[var(--color-accent,#2EC4C4)] tabular-nums flex-shrink-0">#{myRank + 1}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-semibold text-[var(--color-accent,#2EC4C4)] truncate">
+                  {myEntry.name} <span className="ml-1.5 text-[10px] font-bold text-[var(--color-accent,#2EC4C4)]">{t('challenges.you')}</span>
+                </p>
+                {entries.length - (myRank + 1) > 0 && (
+                  <p className="text-[11px] font-medium text-[var(--color-accent,#2EC4C4)]/70">
+                    {t('challenges.belowYou', { count: entries.length - (myRank + 1), defaultValue: '{{count}} below you' })}
+                  </p>
+                )}
+              </div>
+              <p className="text-[13px] font-bold text-[var(--color-accent,#2EC4C4)] flex-shrink-0">
                 {myEntry.score.toLocaleString()} <span className="text-[11px] font-medium text-[var(--color-accent,#2EC4C4)]/70">{unit}</span>
               </p>
             </div>

@@ -577,6 +577,8 @@
     "leaveConfirm": "¿Estás seguro que quieres salir de este reto?",
     "rewards": "Recompensas",
     "yourRank": "Tu posición",
+    "othersCount": "+{{count}} más",
+    "belowYou": "{{count}} debajo de ti",
     "yourScore": "Tu puntaje",
     "youEarned": "¡Ganaste {{points}} pts!",
     "you": "TÚ",

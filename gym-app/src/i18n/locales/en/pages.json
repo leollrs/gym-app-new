@@ -577,6 +577,8 @@
     "leaveConfirm": "Are you sure you want to leave this challenge?",
     "rewards": "Rewards",
     "yourRank": "Your rank",
+    "othersCount": "+{{count}} others",
+    "belowYou": "{{count}} below you",
     "yourScore": "Your score",
     "youEarned": "You earned {{points}} pts!",
     "you": "YOU",
