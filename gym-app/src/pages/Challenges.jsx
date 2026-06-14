@@ -79,6 +79,15 @@ const Countdown = ({ date, prefix }) => {
 // trigger forces leaderboard_visible=false on every staff account, so
 // filtering on it replaces the old `profiles.is_staff = false` join filter
 // — and additionally respects members who opted out of leaderboards.
+// Display name for compact lists / leaderboards: first name + first surname
+// only. Full names (middle name + two apellidos) overflow these rows and
+// squish the layout, so everywhere a member is shown in a ranking/list we trim
+// to the first two tokens.
+const shortName = (full) => {
+  const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
+  return parts.length <= 2 ? parts.join(' ') : `${parts[0]} ${parts[1]}`;
+};
+
 const fetchMemberProfiles = async (profileIds) => {
   const ids = [...new Set((profileIds || []).filter(Boolean))];
   const byId = new Map();
@@ -112,7 +121,7 @@ const ParticipantList = ({ challengeId, t, refreshKey }) => {
         .limit(100);
       const profs = await fetchMemberProfiles((data || []).map(p => p.profile_id));
       if (cancelled) return;
-      setNames([...profs.values()].map(p => p.full_name || p.username).filter(Boolean));
+      setNames([...profs.values()].map(p => shortName(p.full_name) || p.username).filter(Boolean));
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -203,7 +212,7 @@ const PastChallengeParticipants = ({ challenge, t }) => {
           (!p.score || Math.round(p.score) === 0) && profs.has(p.profile_id));
         setRows(dnf.map(p => ({
           id: p.profile_id,
-          name: profs.get(p.profile_id)?.full_name ?? profs.get(p.profile_id)?.username ?? '—',
+          name: shortName(profs.get(p.profile_id)?.full_name) || profs.get(p.profile_id)?.username || '—',
           avatar: profs.get(p.profile_id)?.avatar_url || null,
           isTeam: false,
         })));
@@ -474,7 +483,7 @@ const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
         .filter(p => profs.has(p.profile_id))
         .map(p => ({
           id:    p.profile_id,
-          name:  profs.get(p.profile_id)?.full_name ?? profs.get(p.profile_id)?.username ?? '—',
+          name:  shortName(profs.get(p.profile_id)?.full_name) || profs.get(p.profile_id)?.username || '—',
           score: Math.round(p.score ?? 0),
         }))
     );
@@ -764,7 +773,7 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
       .filter(p => profs.has(p.profile_id))
       .map(p => ({
         id: p.profile_id,
-        name: profs.get(p.profile_id)?.full_name ?? profs.get(p.profile_id)?.username ?? '—',
+        name: shortName(profs.get(p.profile_id)?.full_name) || profs.get(p.profile_id)?.username || '—',
         score: Math.round(p.score ?? 0),
       })));
     setLoading(false);
@@ -1078,7 +1087,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                       <div className="w-8 h-8 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
                         {f.avatar_url ? <img src={f.avatar_url} alt={`${f.full_name || t('challenges.team.member', 'Team member')} avatar`} className="w-8 h-8 rounded-full object-cover" /> : <span className="text-[11px] font-bold text-[var(--color-accent,#2EC4C4)]">{(f.full_name || '?')[0]}</span>}
                       </div>
-                      <p className="flex-1 text-[13px] font-medium text-[var(--color-text-primary)] truncate">{f.full_name}</p>
+                      <p className="flex-1 text-[13px] font-medium text-[var(--color-text-primary)] truncate">{shortName(f.full_name)}</p>
                       {isSelected && <Check size={16} className="text-[var(--color-accent,#2EC4C4)]" />}
                     </button>
                   );
