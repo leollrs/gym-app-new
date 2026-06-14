@@ -4489,6 +4489,33 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
   const [loggedByDay, setLoggedByDay] = useState({});
   // Regenerating-day spinner state — null when idle, day index when running.
   const [regenerating, setRegenerating] = useState(null);
+  // Two-tap confirm for the destructive "Clear week" action (iOS-safe; window.confirm is dropped in the Capacitor WebView).
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  // Recompute a day's macro totals from its meals (after a remove/clear).
+  const sumTotals = (meals) => (meals || []).reduce((tot, m) => ({
+    calories: (tot.calories || 0) + (m.calories || 0),
+    protein: (tot.protein || 0) + (m.protein || 0),
+    carbs: (tot.carbs || 0) + (m.carbs || 0),
+    fat: (tot.fat || 0) + (m.fat || 0),
+  }), {});
+
+  // Persist a 7-day plan array to the active generated_meal_plans row (current
+  // week) and update local state. Shared by generate / remove / clear so the
+  // week_start + upsert shape stays in one place.
+  const persistPlan = useCallback(async (nextPlan, targets) => {
+    setPlan(nextPlan);
+    if (!user?.id) return;
+    const sow = new Date();
+    sow.setDate(sow.getDate() - sow.getDay());
+    const weekStartStr = sow.toISOString().split('T')[0];
+    try {
+      await supabase.from('generated_meal_plans').upsert({
+        profile_id: user.id, week_start: weekStartStr,
+        plan_data: nextPlan, macro_targets: targets || macros || {}, is_active: true,
+      }, { onConflict: 'profile_id,week_start' });
+    } catch (e) { console.error('[persistPlan]', e); }
+  }, [user?.id, setPlan, macros]);
 
   const dayShorts = useMemo(() => lang === 'es'
     ? ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
@@ -4604,6 +4631,8 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
   const dayPlan = plan[activeDay] || plan[0] || { meals: [], totals: {} };
   const totals = dayPlan.totals || {};
   const dayMeals = dayPlan.meals || [];
+  // Empty plan ⇒ the week button reads "Generate"; any meals present ⇒ "Regenerate".
+  const planHasMeals = Array.isArray(plan) && plan.some(d => (d?.meals?.length || 0) > 0);
   const goalKcal = macros?.calories || 2400;
   const dayCal = totals.calories || dayMeals.reduce((s, m) => s + (m.calories || 0), 0);
   const dayP = totals.protein || dayMeals.reduce((s, m) => s + (m.protein || 0), 0);
@@ -4759,7 +4788,12 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
           const slot = slotKey ? t(`nutrition.meals.${slotKey}`) : SLOT_LABELS[3];
           const isEaten = !!meal.eaten;
 
-          const recipeForMeal = RECIPES.find(r => r.id === meal.id) || mealData;
+          // Resolve to the full recipe (ingredients/steps/image) so tapping the
+          // card always opens a populated detail modal. Match by id, then by
+          // name for older plans whose ids drifted from the current MEALS data.
+          const recipeForMeal = RECIPES.find(r => r.id === meal.id)
+            || RECIPES.find(r => (r.title || r.name) === (meal.name || meal.title) && (meal.name || meal.title))
+            || mealData;
           return (
             <div key={mi} className="rounded-[18px] p-3" style={{
               background: 'var(--color-bg-card)',
@@ -4796,9 +4830,18 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
               </button>
               {/* Action row */}
               <div className="flex gap-1.5 pt-2.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-                <button className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                  style={{ color: 'var(--color-text-muted)', background: 'transparent', border: 'none' }}>
-                  <RefreshCw size={12} />{t('nutrition.swap', 'Swap')}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = Array.isArray(plan) ? plan.map(d => ({ ...d })) : [];
+                    const kept = (next[activeDay]?.meals || []).filter((_, idx) => idx !== mi);
+                    next[activeDay] = { ...(next[activeDay] || {}), meals: kept, totals: sumTotals(kept) };
+                    persistPlan(next, macros);
+                    showToast?.(t('nutrition.mealRemoved', 'Removed from plan'));
+                  }}
+                  className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+                  style={{ color: 'var(--color-danger)', background: 'transparent', border: 'none' }}>
+                  <Trash2 size={12} />{t('nutrition.removeMeal', 'Remove')}
                 </button>
                 {/* Per-meal "Add to grocery list" — pulls this recipe's
                     ingredients via the parent's handler, which dedupes and
@@ -4941,7 +4984,9 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
           <Sparkles size={14} style={{ color: TU.coach }} />
           {regenerating === activeDay
             ? t('nutrition.regeneratingDay', 'Regenerating…')
-            : t('nutrition.regenerateDay', 'Regenerate this day')}
+            : (dayMeals.length > 0
+              ? t('nutrition.regenerateDay', 'Regenerate this day')
+              : t('nutrition.generateDay', 'Generate this day'))}
         </button>
       </div>
 
@@ -4952,6 +4997,7 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
           disabled={regenerating === 'week'}
           onClick={async () => {
             if (!user?.id) return;
+            if (weekOffset < 0) { showToast?.(t('nutrition.cantGeneratePast', "Can't change a past week")); return; }
             try {
               setRegenerating('week');
               const macroTargets = macros || { calories: 2400, protein: 150, carbs: 250, fat: 80 };
@@ -4961,8 +5007,15 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
                 carbs: macroTargets.carbs || macroTargets.daily_carbs_g || 250,
                 fat: macroTargets.fat || macroTargets.daily_fat_g || 80,
               };
+              // Fill only the days REMAINING in the displayed week: current week ⇒
+              // today→Saturday (earlier days keep whatever was already planned);
+              // a future week fills all 7. Past weeks are blocked above.
+              const fillFrom = weekOffset === 0 ? new Date().getDay() : 0;
+              const existing = Array.isArray(plan) ? plan : [];
+              const wasFresh = !existing.slice(fillFrom).some(d => (d?.meals?.length || 0) > 0);
               const week = generateWeekPlan({ targets: targetsArg, favorites: [], lang });
               const nextPlan = Array.from({ length: 7 }, (_, i) => {
+                if (i < fillFrom) return existing[i] || { meals: [], totals: {} };
                 const day = week[i] || { meals: [], totals: {} };
                 const newMeals = (day.meals || []).map(m => ({
                   id: m.id, name: m.title, name_es: m.title_es,
@@ -4971,20 +5024,10 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
                 }));
                 return { meals: newMeals, totals: day.totals || {} };
               });
-              setPlan(nextPlan);
-              const startOfWeek = new Date();
-              startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-              const weekStartStr = startOfWeek.toISOString().split('T')[0];
-              await supabase
-                .from('generated_meal_plans')
-                .upsert({
-                  profile_id: user.id,
-                  week_start: weekStartStr,
-                  plan_data: nextPlan,
-                  macro_targets: targetsArg,
-                  is_active: true,
-                }, { onConflict: 'profile_id,week_start' });
-              showToast?.(t('nutrition.regenerateWeekDone', 'Week regenerated'));
+              await persistPlan(nextPlan, targetsArg);
+              showToast?.(wasFresh
+                ? t('nutrition.generateWeekDone', 'Week generated')
+                : t('nutrition.regenerateWeekDone', 'Week regenerated'));
             } catch (err) {
               console.error('[regenerateWeek]', err);
               showToast?.(t('nutrition.regenerateWeekFailed', 'Could not regenerate week'));
@@ -4997,9 +5040,49 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
           <Sparkles size={15} className="text-white" />
           {regenerating === 'week'
             ? t('nutrition.regeneratingWeek', 'Regenerating week…')
-            : t('nutrition.regenerateWeek', 'Regenerate week')}
+            : (planHasMeals
+              ? t('nutrition.regenerateWeek', 'Regenerate week')
+              : t('nutrition.generateWeek', 'Generate week'))}
         </button>
       </div>
+
+      {/* Clear week — destructive, so a two-tap confirm (iOS-safe; window.confirm
+          is dropped in the Capacitor WebView). Only shown when there's a plan. */}
+      {planHasMeals && (
+        <div className="px-4 pb-8 -mt-3">
+          {confirmClear ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmClear(false)}
+                className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold active:scale-95"
+                style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+                {t('nutrition.keepPlan', 'Keep')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const empty = Array.from({ length: 7 }, () => ({ meals: [], totals: {} }));
+                  persistPlan(empty, macros);
+                  setConfirmClear(false);
+                  showToast?.(t('nutrition.weekCleared', 'Week cleared'));
+                }}
+                className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+                style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}>
+                <Trash2 size={12} />{t('nutrition.clearWeek', 'Clear week')}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmClear(true)}
+              className="w-full py-2.5 text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+              style={{ background: 'transparent', border: 'none', color: 'var(--color-text-muted)' }}>
+              <Trash2 size={12} />{t('nutrition.clearWeek', 'Clear week')}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };
