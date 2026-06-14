@@ -2497,6 +2497,29 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   const [toast, setToast] = useState('');
   const [removingSlot, setRemovingSlot] = useState(null);
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current, -1 = past, +1 = next
+  const { profile } = useAuth();
+  const [showPrefs, setShowPrefs] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  // Food prefs (allergies / dietary restrictions / foods-to-avoid + learned
+  // affinities) — loaded once and fed into generation so the planner
+  // hard-excludes unsafe/avoided meals and leans toward learned likes.
+  const [prefs, setPrefs] = useState({ allergies: [], restrictions: [], avoid: [], affinities: {} });
+  const loadPrefs = useCallback(async () => {
+    if (!userId) return;
+    const [ob, dis, aff] = await Promise.all([
+      supabase.from('member_onboarding').select('food_allergies, dietary_restrictions').eq('profile_id', userId).maybeSingle(),
+      supabase.from('disliked_foods').select('food_name').eq('profile_id', userId),
+      loadAffinities(userId),
+    ]);
+    if (ob.error || dis.error) console.warn('[loadPrefs]', ob.error || dis.error);
+    setPrefs({
+      allergies: ob.data?.food_allergies || [],
+      restrictions: ob.data?.dietary_restrictions || [],
+      avoid: (dis.data || []).map(d => d.food_name).filter(Boolean),
+      affinities: aff || {},
+    });
+  }, [userId]);
+  useEffect(() => { loadPrefs(); }, [loadPrefs]);
 
   const currentWeekStart = useMemo(() => getWeekStartDate(), []);
 
@@ -2581,9 +2604,13 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
       fat: targets?.daily_fat_g || 65,
     };
     posthogPlanner?.capture('meal_plan_generated', { plan_type: 'week' });
-    const weekPlan = generateWeekPlan({ targets: macroTargets, favorites: [], lang });
+    const weekPlan = generateWeekPlan({ targets: macroTargets, favorites: [], lang, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
+    const ts = todayStr();
     const newPlan = { ...plan };
     weekDates.forEach((date, i) => {
+      // Current week: only fill the days that haven't happened yet (today→Sat);
+      // never plan into the past.
+      if (weekOffset === 0 && date < ts) return;
       if (!newPlan[date]) newPlan[date] = {};
       const dayMeals = weekPlan[i]?.meals || [];
       PLANNER_SLOT_KEYS.forEach((slot, si) => {
@@ -2598,7 +2625,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
     savePlan(newPlan);
     setToast(t('nutrition.planGenerated', 'Plan generated!'));
     setTimeout(() => setToast(''), 2000);
-  }, [targets, plan, weekDates, savePlan, lang, t, isPastWeek]);
+  }, [targets, plan, weekDates, weekOffset, prefs, savePlan, lang, t, isPastWeek]);
 
   const handleRemoveMeal = useCallback((date, slot) => {
     if (isPastWeek) return;
@@ -2646,14 +2673,24 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
     };
     // slotTypes: the NAMED empty slots — an empty breakfast gets a breakfast
     // dish, an empty dinner gets a dinner-appropriate one.
-    const fillPlan = generateDayPlan({ targets: remainingTargets, slots: emptySlots.length, slotTypes: emptySlots, excludeIds: usedIds });
+    const fillPlan = generateDayPlan({ targets: remainingTargets, slots: emptySlots.length, slotTypes: emptySlots, excludeIds: usedIds, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
     const newPlan = { ...plan };
     if (!newPlan[date]) newPlan[date] = {};
     emptySlots.forEach((slot, i) => {
       if (fillPlan.meals[i]) newPlan[date][slot] = fillPlan.meals[i];
     });
     savePlan(newPlan);
-  }, [plan, savePlan, targets, isPastWeek]);
+  }, [plan, savePlan, targets, prefs, isPastWeek]);
+
+  // Clear every meal in the displayed week.
+  const handleClearWeek = useCallback(() => {
+    const newPlan = { ...plan };
+    weekDates.forEach(d => { delete newPlan[d]; });
+    savePlan(newPlan);
+    setConfirmClear(false);
+    setToast(t('nutrition.weekCleared', 'Week cleared'));
+    setTimeout(() => setToast(''), 2000);
+  }, [plan, weekDates, savePlan, t]);
 
   const calTarget = targets?.daily_calories || 2000;
   const proteinTarget = targets?.daily_protein_g || 150;
@@ -2697,6 +2734,8 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   const activeDayF = PLANNER_SLOT_KEYS.reduce((s, k) => s + (activeDayData[k]?.fat || 0), 0);
   const activePct = calTarget > 0 ? activeDayCal / calTarget : 0;
   const filledSlots = PLANNER_SLOT_KEYS.filter(k => activeDayData[k]).length;
+  // Any meals anywhere this week ⇒ the week button reads "Regenerate"; none ⇒ "Generate".
+  const weekHasMeals = weekDates.some(d => PLANNER_SLOT_KEYS.some(k => plan[d]?.[k]));
 
   const dayShorts = lang === 'es'
     ? ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
@@ -2722,6 +2761,10 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
             {t('nutrition.myPlan', 'My Plan')}
           </div>
         </div>
+        <button onClick={() => setShowPrefs(true)} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
+          style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('nutrition.prefsTitle', 'Preferences')}>
+          <SlidersHorizontal size={18} style={{ color: 'var(--color-text-muted)' }} />
+        </button>
       </div>
 
       {/* Scrollable content */}
@@ -2851,7 +2894,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
 
             return (
               <div key={slot} className="rounded-[18px] p-3" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-                <div className="flex gap-3 items-center mb-2.5">
+                <button type="button" onClick={() => onOpenRecipe(meal)} className="w-full flex gap-3 items-center mb-2.5 text-left active:scale-[0.985] transition-transform">
                   {meal.image ? (
                     <img src={foodImageUrl(meal.image)} alt="" className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
                   ) : (
@@ -2869,13 +2912,13 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
                       <span><strong style={{ color: TU.macroF }}>{meal.fat ?? 0}F</strong></span>
                     </div>
                   </div>
-                </div>
+                </button>
                 {/* Action row */}
                 <div className="flex gap-1.5 pt-2.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
                   <button onClick={() => handleRemoveMeal(activeDateStr, slot)}
                     className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                    style={{ color: 'var(--color-text-muted)', background: 'transparent', border: 'none' }}>
-                    <RefreshCw size={12} />{t('nutrition.swap', 'Swap')}
+                    style={{ color: 'var(--color-danger)', background: 'transparent', border: 'none' }}>
+                    <Trash2 size={12} />{t('nutrition.removeMeal', 'Remove')}
                   </button>
                   <button className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
                     style={{ color: 'var(--color-text-muted)', background: 'transparent', border: 'none' }}>
@@ -2899,7 +2942,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
               className="w-full py-3.5 rounded-[14px] text-[13px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
               style={{ background: 'transparent', border: '1.5px dashed var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
               <Sparkles size={14} style={{ color: TU.coach }} />
-              {t('nutrition.regenerateDay', 'Regenerate this day')}
+              {filledSlots > 0 ? t('nutrition.regenerateDay', 'Regenerate this day') : t('nutrition.generateDay', 'Generate this day')}
             </button>
           </div>
         )}
@@ -2911,12 +2954,53 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
               className="w-full py-3.5 rounded-[14px] text-[14px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
               style={{ background: TU.coach, color: '#fff', letterSpacing: -0.2 }}>
               <Sparkles size={15} />
-              {t('nutrition.regenerateWeek', 'Regenerate week')}
+              {weekHasMeals ? t('nutrition.regenerateWeek', 'Regenerate week') : t('nutrition.generateWeek', 'Generate week')}
             </button>
+            {weekHasMeals && (
+              <div className="mt-2">
+                {confirmClear ? (
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setConfirmClear(false)}
+                      className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold active:scale-95"
+                      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+                      {t('nutrition.keepPlan', 'Keep')}
+                    </button>
+                    <button type="button" onClick={handleClearWeek}
+                      className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+                      style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}>
+                      <Trash2 size={12} />{t('nutrition.clearWeek', 'Clear week')}
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setConfirmClear(true)}
+                    className="w-full py-2.5 text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+                    style={{ background: 'transparent', border: 'none', color: 'var(--color-text-muted)' }}>
+                    <Trash2 size={12} />{t('nutrition.clearWeek', 'Clear week')}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
       </div>{/* end scrollable */}
+
+      <MealPrefsSheet
+        open={showPrefs}
+        onClose={() => setShowPrefs(false)}
+        userId={userId}
+        gymId={profile?.gym_id}
+        initialAllergies={prefs.allergies}
+        initialRestrictions={prefs.restrictions}
+        initialAvoid={prefs.avoid}
+        onSaved={({ allergies, restrictions, avoid }) => {
+          setPrefs(p => ({ ...p, allergies, restrictions, avoid }));
+          setShowPrefs(false);
+          setToast(t('nutrition.prefsSaved', 'Preferences saved'));
+          setTimeout(() => setToast(''), 2000);
+          loadPrefs();
+        }}
+      />
     </div>
   );
 
