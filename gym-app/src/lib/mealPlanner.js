@@ -43,11 +43,15 @@ const SLOT_SHARE = { breakfast: 0.28, lunch: 0.34, dinner: 0.38, snack: 0.14 };
  * Get the filtered meal pool based on user restrictions.
  * This is the single entry point — all functions use this.
  */
-function getFilteredMeals({ allergies = [], restrictions = [], excludeIds = [] }) {
+function getFilteredMeals({ allergies = [], restrictions = [], excludeIds = [], avoidIngredients = [] }) {
+  const avoidSet = new Set(avoidIngredients);
   return MEALS
     .filter(m => !excludeIds.includes(m.id))
     .filter(m => isMealAllergenSafe(m, allergies))
-    .filter(m => isMealDietaryCompliant(m, restrictions));
+    .filter(m => isMealDietaryCompliant(m, restrictions))
+    // Explicit "foods to avoid" (disliked ingredients) are a HARD exclude —
+    // same rule onboarding's "available meals" count uses, so the two agree.
+    .filter(m => avoidSet.size === 0 || !(m.ingredients || []).some(i => avoidSet.has(i)));
 }
 
 /**
@@ -94,7 +98,7 @@ function scoreMeal(meal, remaining) {
  */
 export function suggestMeals({
   targets, consumed, mealType, excludeIds = [], favorites = [],
-  allergies = [], restrictions = [], affinities = {}, lang = 'en',
+  allergies = [], restrictions = [], avoidIngredients = [], affinities = {}, lang = 'en',
 }) {
   excludeIds = Array.isArray(excludeIds) ? excludeIds : [...(excludeIds || [])];
   favorites = Array.isArray(favorites) ? favorites : [...(favorites || [])];
@@ -107,7 +111,7 @@ export function suggestMeals({
 
   if (remaining.calories < 50) return []; // Already at target
 
-  const pool = getFilteredMeals({ allergies, restrictions, excludeIds });
+  const pool = getFilteredMeals({ allergies, restrictions, excludeIds, avoidIngredients });
 
   // Slot-aware: only meals that fit the requested meal time. (The old check
   // compared against `category`, which only ever matched 'breakfast' — lunch/
@@ -146,13 +150,13 @@ export function suggestMeals({
  */
 export function generateDayPlan({
   targets, slots = 3, slotTypes = null, excludeIds = [], favorites = [], recentMealIds = [],
-  allergies = [], restrictions = [], affinities = {}, planMealsSoFar = [],
+  allergies = [], restrictions = [], avoidIngredients = [], affinities = {}, planMealsSoFar = [],
 }) {
   excludeIds = Array.isArray(excludeIds) ? excludeIds : [...(excludeIds || [])];
   favorites = Array.isArray(favorites) ? favorites : [...(favorites || [])];
   recentMealIds = Array.isArray(recentMealIds) ? recentMealIds : [...(recentMealIds || [])];
 
-  const available = getFilteredMeals({ allergies, restrictions, excludeIds });
+  const available = getFilteredMeals({ allergies, restrictions, excludeIds, avoidIngredients });
 
   // One meal-time key per slot — callers with named slots (the weekly planner
   // filling only "dinner", a trainer swapping a "snack") pass slotTypes
@@ -272,7 +276,7 @@ export function generateDayPlan({
  * No meal repeats within 3 days.
  */
 export function generateWeekPlan({
-  targets, slots = 3, favorites = [], allergies = [], restrictions = [], affinities = {}, lang = 'en',
+  targets, slots = 3, favorites = [], allergies = [], restrictions = [], avoidIngredients = [], affinities = {}, lang = 'en',
 }) {
   favorites = Array.isArray(favorites) ? favorites : [...(favorites || [])];
   const days = [];
@@ -291,6 +295,7 @@ export function generateWeekPlan({
       recentMealIds: recentIds.slice(),
       allergies,
       restrictions,
+      avoidIngredients,
       affinities,
       planMealsSoFar: allPlanMeals,
     });
@@ -307,7 +312,7 @@ export function generateWeekPlan({
  * Suggest a post-workout recovery meal (high protein + carbs, moderate fat).
  */
 export function suggestPostWorkoutMeal({
-  targets, consumed, favorites = [], allergies = [], restrictions = [], affinities = {},
+  targets, consumed, favorites = [], allergies = [], restrictions = [], avoidIngredients = [], affinities = {},
 }) {
   favorites = Array.isArray(favorites) ? favorites : [...(favorites || [])];
   const remaining = {
@@ -317,7 +322,7 @@ export function suggestPostWorkoutMeal({
     fat: Math.max(5, targets.fat - consumed.fat),
   };
 
-  const pool = getFilteredMeals({ allergies, restrictions });
+  const pool = getFilteredMeals({ allergies, restrictions, avoidIngredients });
 
   return pool
     .filter(m => (m.protein || 0) >= 20)

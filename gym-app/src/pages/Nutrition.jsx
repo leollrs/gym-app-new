@@ -10,7 +10,7 @@ import {
   Sunrise, Sun, Moon, Apple, Camera, CheckCircle2, AlertCircle,
   SlidersHorizontal, Sparkles, RefreshCw, BarChart2, ChevronDown, ChevronUp,
   Calendar, ScanLine, ScanBarcode, Loader, ArrowUp, ArrowDown,
-  BookOpen, Utensils, ArrowRight,
+  BookOpen, Utensils, ArrowRight, ThumbsUp, ThumbsDown,
 } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { List as VirtualList } from 'react-window';
@@ -33,6 +33,7 @@ import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { suggestMeals, generateDayPlan, generateWeekPlan, suggestPostWorkoutMeal } from '../lib/mealPlanner';
+import { loadAffinities, rateMeal, rebuildAffinities } from '../lib/mealPreferences';
 import FoodScanResultModal, { cleanFoodName } from '../components/nutrition/FoodScanResultModal';
 import MenuScanResultModal from '../components/nutrition/MenuScanResultModal';
 import MealMacroCard from '../components/nutrition/MealMacroCard';
@@ -432,7 +433,7 @@ const CategoryRow = ({ category, recipes, savedIds, onSave, onOpen, lang = 'en' 
 };
 
 // ── RECIPE DETAIL MODAL ─────────────────────────────────────
-const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onLogMeal, groceryAdded, lang = 'en' }) => {
+const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onLogMeal, groceryAdded, lang = 'en', rating = 0, onRate }) => {
   const { t } = useTranslation('pages');
   if (!recipe) return null;
   const mealTitle = (lang === 'es' && recipe.title_es) ? recipe.title_es : recipe.title;
@@ -488,6 +489,27 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onL
               {recipe.prepTime && ` · ${recipe.prepTime} min`}
               {mealDifficulty && ` · ${mealDifficulty}`}
             </p>
+            {/* Like / dislike — teaches the planner what to recommend or avoid. */}
+            {onRate && (
+              <div className="flex items-center gap-2 mt-3">
+                <button type="button" onClick={() => onRate(recipe.id, rating === 1 ? 0 : 1)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-bold active:scale-95 transition-all"
+                  style={rating === 1
+                    ? { background: '#10b981', color: '#fff', border: 'none' }
+                    : { background: 'var(--color-bg-card)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
+                  aria-label={t('nutrition.like', 'Like')}>
+                  <ThumbsUp size={14} />{t('nutrition.like', 'Like')}
+                </button>
+                <button type="button" onClick={() => onRate(recipe.id, rating === -1 ? 0 : -1)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-bold active:scale-95 transition-all"
+                  style={rating === -1
+                    ? { background: 'var(--color-danger)', color: '#fff', border: 'none' }
+                    : { background: 'var(--color-bg-card)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
+                  aria-label={t('nutrition.dislike', 'Dislike')}>
+                  <ThumbsDown size={14} />{t('nutrition.dislike', 'Dislike')}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* ── Macro Card ── */}
@@ -4480,9 +4502,127 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
   );
 };
 
+// ── Food preferences (edit allergies / diet / foods-to-avoid post-onboarding) ──
+// Mirrors the onboarding meal-plan step so the sheet edits the exact same data
+// (member_onboarding.food_allergies/dietary_restrictions + disliked_foods).
+const PREF_DIETARY = ['vegan', 'vegetarian', 'pescatarian', 'keto', 'gluten_free', 'dairy_free', 'halal'];
+const PREF_ALLERGIES = [
+  { value: 'nuts', key: 'allergyNuts' }, { value: 'shellfish', key: 'allergyShellfish' },
+  { value: 'dairy', key: 'allergyDairy' }, { value: 'eggs', key: 'allergyEggs' },
+  { value: 'soy', key: 'allergySoy' }, { value: 'wheat', key: 'allergyWheat' },
+  { value: 'fish', key: 'allergyFish' },
+];
+const PREF_COMMON_INGREDIENTS = [
+  'chicken_breast', 'salmon_fillet', 'ground_turkey', 'lean_ground_beef', 'tofu', 'shrimp',
+  'eggs', 'greek_yogurt', 'oats', 'brown_rice', 'quinoa', 'sweet_potato', 'broccoli', 'spinach',
+  'avocado', 'peanut_butter', 'cottage_cheese', 'tuna', 'mushrooms', 'bell_pepper', 'black_beans',
+  'chickpeas', 'lentils', 'kale', 'cauliflower', 'zucchini', 'asparagus', 'brussels_sprouts',
+  'coconut_milk', 'soy_sauce', 'olive_oil',
+];
+const formatIngredientLabel = (ing) => ing.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], initialRestrictions = [], initialAvoid = [], onSaved }) => {
+  const { t } = useTranslation(['pages', 'onboarding']);
+  const [allergies, setAllergies] = useState(initialAllergies);
+  const [restrictions, setRestrictions] = useState(initialRestrictions);
+  const [avoid, setAvoid] = useState(initialAvoid);
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (open) { setAllergies(initialAllergies); setRestrictions(initialRestrictions); setAvoid(initialAvoid); setSearch(''); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  if (!open) return null;
+  const toggleIn = (arr, setter, v) => setter(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
+  const extraAvoid = avoid.filter(a => !PREF_COMMON_INGREDIENTS.includes(a));
+  const pool = [...extraAvoid, ...PREF_COMMON_INGREDIENTS];
+  const shown = search.trim()
+    ? pool.filter(i => i.replace(/_/g, ' ').toLowerCase().includes(search.trim().toLowerCase()))
+    : pool;
+  const Chip = ({ active, onClick, children }) => (
+    <button type="button" onClick={onClick}
+      className="px-3 py-2 rounded-full text-[12.5px] font-semibold active:scale-95 transition-all"
+      style={active
+        ? { background: TU.accent, color: '#fff', border: 'none' }
+        : { background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)' }}>
+      {children}
+    </button>
+  );
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await supabase.from('member_onboarding').update({ food_allergies: allergies, dietary_restrictions: restrictions }).eq('profile_id', userId);
+      const { data: existing } = await supabase.from('disliked_foods').select('food_name').eq('profile_id', userId);
+      const existingSet = new Set((existing || []).map(d => d.food_name));
+      const toAdd = avoid.filter(a => !existingSet.has(a));
+      const toRemove = [...existingSet].filter(a => !avoid.includes(a));
+      if (toAdd.length) {
+        await supabase.from('disliked_foods').upsert(
+          toAdd.map(food_name => ({ profile_id: userId, gym_id: gymId, food_name })),
+          { onConflict: 'profile_id,food_name', ignoreDuplicates: true });
+      }
+      if (toRemove.length) {
+        await supabase.from('disliked_foods').delete().eq('profile_id', userId).in('food_name', toRemove);
+      }
+      // Avoided ingredients also feed affinity learning — refresh in background.
+      rebuildAffinities(userId, gymId).catch(() => {});
+      onSaved?.({ allergies, restrictions, avoid });
+    } catch (e) { console.error('[savePrefs]', e); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} role="presentation" />
+      <div className="relative w-full sm:max-w-[460px] max-h-[88dvh] flex flex-col overflow-hidden rounded-t-[24px] sm:rounded-[24px]"
+        style={{ background: 'var(--color-bg-primary)', boxShadow: '0 -8px 40px rgba(0,0,0,0.3)' }}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-2 flex-shrink-0">
+          <div style={{ fontFamily: TU.display, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('nutrition.prefsTitle', 'Preferences')}</div>
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }} aria-label={t('common.close', 'Close')}>
+            <X size={17} style={{ color: 'var(--color-text-muted)' }} />
+          </button>
+        </div>
+        <p className="px-5 pb-3 text-[12.5px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.prefsHint', 'Generated plans skip anything you flag here.')}</p>
+        <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-5" style={{ overscrollBehavior: 'contain' }}>
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{t('nutrition.prefsAllergies', 'Allergies')}</div>
+            <div className="flex flex-wrap gap-2">
+              {PREF_ALLERGIES.map(o => <Chip key={o.value} active={allergies.includes(o.value)} onClick={() => toggleIn(allergies, setAllergies, o.value)}>{t(`onboarding:mealPlan.${o.key}`)}</Chip>)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{t('nutrition.prefsDiet', 'Diet')}</div>
+            <div className="flex flex-wrap gap-2">
+              {PREF_DIETARY.map(v => <Chip key={v} active={restrictions.includes(v)} onClick={() => toggleIn(restrictions, setRestrictions, v)}>{t(`onboarding:mealPlan.${v}`)}</Chip>)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{t('nutrition.prefsAvoid', 'Foods to avoid')}</div>
+            <div className="relative mb-2.5">
+              <Search size={15} style={{ color: 'var(--color-text-muted)', position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('nutrition.prefsAvoidSearch', 'Search ingredients…')}
+                className="w-full pl-9 pr-3 py-2.5 rounded-[12px] text-[14px] focus:outline-none"
+                style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {shown.map(i => <Chip key={i} active={avoid.includes(i)} onClick={() => toggleIn(avoid, setAvoid, i)}>{formatIngredientLabel(i)}</Chip>)}
+            </div>
+          </div>
+        </div>
+        <div className="px-5 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+          <button onClick={handleSave} disabled={saving}
+            className="w-full py-3.5 rounded-[14px] font-bold text-[14px] active:scale-[0.98] transition-all disabled:opacity-60"
+            style={{ background: TU.accent, color: '#fff' }}>
+            {saving ? '…' : t('nutrition.prefsSave', 'Save preferences')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── MY PLAN VIEW ───────────────────────────────────────────
 const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
   const { showToast } = useToast();
   const lang = i18n.language || 'en';
@@ -4527,6 +4667,27 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
       }, { onConflict: 'profile_id,week_start' });
     } catch (e) { console.error('[persistPlan]', e); }
   }, [user?.id, setPlan, macros]);
+
+  // Food prefs (allergies / dietary restrictions / foods-to-avoid + learned
+  // affinities) — loaded once and fed into every plan generation so the planner
+  // hard-excludes unsafe/avoided meals and leans toward learned likes.
+  const [prefs, setPrefs] = useState({ allergies: [], restrictions: [], avoid: [], affinities: {} });
+  const [showPrefs, setShowPrefs] = useState(false);
+  const loadPrefs = useCallback(async () => {
+    if (!user?.id) return;
+    const [ob, dis, aff] = await Promise.all([
+      supabase.from('member_onboarding').select('food_allergies, dietary_restrictions').eq('profile_id', user.id).maybeSingle(),
+      supabase.from('disliked_foods').select('food_name').eq('profile_id', user.id),
+      loadAffinities(user.id),
+    ]);
+    setPrefs({
+      allergies: ob.data?.food_allergies || [],
+      restrictions: ob.data?.dietary_restrictions || [],
+      avoid: (dis.data || []).map(d => d.food_name).filter(Boolean),
+      affinities: aff || {},
+    });
+  }, [user?.id]);
+  useEffect(() => { loadPrefs(); }, [loadPrefs]);
 
   const dayShorts = useMemo(() => lang === 'es'
     ? ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
@@ -4614,9 +4775,13 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
         style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common.back', 'Go back')}>
         <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
       </button>
-      <div style={{ fontFamily: TU.display, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>
+      <div className="flex-1 truncate" style={{ fontFamily: TU.display, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>
         {t('nutrition.myPlan', 'My Plan')}
       </div>
+      <button onClick={() => setShowPrefs(true)} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
+        style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('nutrition.prefsTitle', 'Preferences')}>
+        <SlidersHorizontal size={17} style={{ color: 'var(--color-text-muted)' }} />
+      </button>
     </div>
   );
 
@@ -4956,6 +5121,10 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
                 slots: 4,
                 excludeIds: currentDayIds,
                 recentMealIds: otherDayIds,
+                allergies: prefs.allergies,
+                restrictions: prefs.restrictions,
+                avoidIngredients: prefs.avoid,
+                affinities: prefs.affinities,
               });
               const nextPlan = Array.isArray(plan) ? [...plan] : [];
               while (nextPlan.length < 7) nextPlan.push({ meals: [], totals: {} });
@@ -5024,7 +5193,7 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
               const fillFrom = weekOffset === 0 ? new Date().getDay() : 0;
               const existing = Array.isArray(plan) ? plan : [];
               const wasFresh = !existing.slice(fillFrom).some(d => (d?.meals?.length || 0) > 0);
-              const week = generateWeekPlan({ targets: targetsArg, favorites: [], lang });
+              const week = generateWeekPlan({ targets: targetsArg, favorites: [], lang, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
               const nextPlan = Array.from({ length: 7 }, (_, i) => {
                 if (i < fillFrom) return existing[i] || { meals: [], totals: {} };
                 const day = week[i] || { meals: [], totals: {} };
@@ -5094,6 +5263,22 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
           )}
         </div>
       )}
+
+      <MealPrefsSheet
+        open={showPrefs}
+        onClose={() => setShowPrefs(false)}
+        userId={user?.id}
+        gymId={profile?.gym_id}
+        initialAllergies={prefs.allergies}
+        initialRestrictions={prefs.restrictions}
+        initialAvoid={prefs.avoid}
+        onSaved={({ allergies, restrictions, avoid }) => {
+          setPrefs(p => ({ ...p, allergies, restrictions, avoid }));
+          setShowPrefs(false);
+          showToast?.(t('nutrition.prefsSaved', 'Preferences saved'));
+          loadPrefs();
+        }}
+      />
     </div>
   );
 };
@@ -5329,6 +5514,30 @@ export default function Nutrition({ embedded = false }) {
   const [openRecipe, setOpenRecipe] = useState(null);
   const [openCollection, setOpenCollection] = useState(null);
   const [collectionContext, setCollectionContext] = useState(null);
+
+  // Per-meal thumbs (likes/dislikes) → meal_ratings → affinity learning.
+  const [mealRatings, setMealRatings] = useState({});
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    supabase.from('meal_ratings').select('meal_id, rating').eq('profile_id', user.id)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const map = {};
+        (data || []).forEach(r => { map[r.meal_id] = r.rating; });
+        setMealRatings(map);
+      });
+    return () => { cancelled = true; };
+  }, [user?.id]);
+  const handleRateMeal = useCallback(async (mealId, rating) => {
+    setMealRatings(prev => { const n = { ...prev }; if (!rating) delete n[mealId]; else n[mealId] = rating; return n; });
+    if (!rating) {
+      await supabase.from('meal_ratings').delete().eq('profile_id', user.id).eq('meal_id', mealId);
+      rebuildAffinities(user.id, profile?.gym_id).catch(() => {});
+    } else {
+      rateMeal(user.id, profile?.gym_id, mealId, rating);
+    }
+  }, [user?.id, profile?.gym_id]);
   // Portion-adjust sheet for logging a suggested meal
   const [logMealSheet, setLogMealSheet] = useState(null);
   const [savedRecipeIds, setSavedRecipeIds] = useState(() => {
@@ -6553,6 +6762,8 @@ export default function Nutrition({ embedded = false }) {
         onLogMeal={(recipe) => { setOpenRecipe(null); setLogMealSheet(recipe); }}
         groceryAdded={openRecipe ? groceryAdded.has(openRecipe.id) : false}
         lang={lang}
+        rating={openRecipe ? (mealRatings[openRecipe.id] || 0) : 0}
+        onRate={handleRateMeal}
       />
 
       {/* Collection Detail Modal */}
@@ -7268,6 +7479,8 @@ export default function Nutrition({ embedded = false }) {
         onLogMeal={(recipe) => { setOpenRecipe(null); setLogMealSheet(recipe); }}
         groceryAdded={openRecipe ? groceryAdded.has(openRecipe.id) : false}
         lang={lang}
+        rating={openRecipe ? (mealRatings[openRecipe.id] || 0) : 0}
+        onRate={handleRateMeal}
       />
       <FoodSearchModal
         open={searchOpen}
