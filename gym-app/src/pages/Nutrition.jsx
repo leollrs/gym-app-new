@@ -4528,10 +4528,14 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
   const [avoid, setAvoid] = useState(initialAvoid);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  // Re-sync local edits from the parent's loaded prefs whenever the sheet
+  // opens OR the loaded values change (covers opening the gear before
+  // loadPrefs has resolved — otherwise it'd capture empty arrays and stick).
+  const initKey = `${initialAllergies.join()}|${initialRestrictions.join()}|${initialAvoid.join()}`;
   useEffect(() => {
     if (open) { setAllergies(initialAllergies); setRestrictions(initialRestrictions); setAvoid(initialAvoid); setSearch(''); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, initKey]);
   if (!open) return null;
   const toggleIn = (arr, setter, v) => setter(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
   const extraAvoid = avoid.filter(a => !PREF_COMMON_INGREDIENTS.includes(a));
@@ -4551,7 +4555,13 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
   const handleSave = async () => {
     setSaving(true);
     try {
-      await supabase.from('member_onboarding').update({ food_allergies: allergies, dietary_restrictions: restrictions }).eq('profile_id', userId);
+      // Upsert (not update) — a member who skipped the onboarding diet step may
+      // have no member_onboarding row yet; .update() would silently match zero
+      // rows and the save would vanish. gym_id is NOT NULL, so include it.
+      const obPayload = { profile_id: userId, food_allergies: allergies, dietary_restrictions: restrictions };
+      if (gymId) obPayload.gym_id = gymId;
+      const obSave = await supabase.from('member_onboarding').upsert(obPayload, { onConflict: 'profile_id' });
+      if (obSave.error) throw obSave.error;
       const { data: existing } = await supabase.from('disliked_foods').select('food_name').eq('profile_id', userId);
       const existingSet = new Set((existing || []).map(d => d.food_name));
       const toAdd = avoid.filter(a => !existingSet.has(a));
@@ -4680,6 +4690,7 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
       supabase.from('disliked_foods').select('food_name').eq('profile_id', user.id),
       loadAffinities(user.id),
     ]);
+    if (ob.error || dis.error) console.warn('[loadPrefs]', ob.error || dis.error);
     setPrefs({
       allergies: ob.data?.food_allergies || [],
       restrictions: ob.data?.dietary_restrictions || [],
@@ -5676,9 +5687,14 @@ export default function Nutrition({ embedded = false }) {
         showToast?.(t('nutrition.fillFromMealsEmpty', 'No active meal plan to pull from'));
         return;
       }
+      // Only shop for days that haven't happened yet. The active plan is the
+      // current week (index 0=Sun..6=Sat), so skip anything before today —
+      // no reason to buy groceries for meals that are already in the past.
+      const todayDow = new Date().getDay();
       const seenRecipeIds = new Set();
       let added = 0;
-      planArr.forEach(day => {
+      planArr.forEach((day, idx) => {
+        if (idx < todayDow) return;
         (day.meals || []).forEach(m => {
           const recipe = RECIPES.find(r => r.id === m.id);
           if (!recipe || !recipe.ingredients?.length || seenRecipeIds.has(recipe.id)) return;
